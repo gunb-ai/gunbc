@@ -585,7 +585,6 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::*;
     use gunbc_ir::transport::{RestResponse, ShellResponse};
 
     fn rest_spec_simple() -> RestOperationSpec {

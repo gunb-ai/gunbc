@@ -192,6 +192,16 @@ fn lower_pure_step(
         PureBody::Literal(value) => {
             assign_outputs(step_index, step, json_value_to_expr(value), output_vars)
         }
+        PureBody::PrepareTransport { kind } => assign_outputs(
+            step_index,
+            step,
+            Expr::call_with_obligation(
+                format!("prepare_{}", transport_kind_name(*kind)),
+                ordered_inputs.to_vec(),
+                CallObligation::ServiceTransportPrepare,
+            ),
+            output_vars,
+        ),
         PureBody::Template { pattern, vars } => {
             let args = vars
                 .iter()

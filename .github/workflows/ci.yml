@@ -41,11 +41,9 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
 
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.sha }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-${{ runner.os }}-
 
       - name: Run CI Pipeline

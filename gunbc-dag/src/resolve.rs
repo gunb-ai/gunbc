@@ -8,9 +8,8 @@
 //!
 //! Resolution has two layers:
 //!
-//! 1. **Infrastructure** (cross-module): Content upsert pattern nodes, FsEnv,
-//!    and transport execute nodes are recognized by name pattern and obligation
-//!    category. These map to shared primitive/transport ops.
+//! 1. **Infrastructure** (cross-module): Typed lowered primitive nodes
+//!    (`LoweredOp::Primitive`) map to shared primitive/transport ops.
 //!
 //! 2. **Domain** (per-module): Module-specific callables (e.g., `tools.pragma`
 //!    / `render_clippy_toml`) map to their domain op variants.
@@ -25,7 +24,8 @@
 use std::collections::HashMap;
 
 use daglang_lower::{
-    CollectionOpKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceOperationSpec,
+    CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
+    ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
@@ -64,40 +64,205 @@ impl std::fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
-/// Placeholder for lowered DSL callables that are intentionally unresolved.
-///
-/// This is only used for explicitly allowlisted modules/callables while we
-/// finish runtime mappings. Unknown modules/callables fail fast.
-#[derive(Debug, Clone)]
-struct DeferredCallableOp {
-    output_port_names: Vec<String>,
+fn declared_output_names(outputs: &[Port]) -> Vec<String> {
+    outputs.iter().map(|p| p.name.0.clone()).collect()
 }
 
-impl DeferredCallableOp {
-    fn new(_module: &str, _name: &str, outputs: &[Port]) -> Self {
-        Self {
-            output_port_names: outputs.iter().map(|p| p.name.0.clone()).collect(),
+fn execute_with_declared_output_passthrough(
+    output_port_names: &[String],
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let mut outputs = HashMap::new();
+    for (key, value) in &inputs {
+        outputs.insert(key.clone(), value.clone());
+    }
+    for port_name in output_port_names {
+        outputs.entry(port_name.clone()).or_insert(Value::Skipped);
+    }
+    Ok(outputs)
+}
+
+#[derive(Debug, Clone)]
+enum BuildToolOp {
+    BuildAll { output_port_names: Vec<String> },
+}
+
+impl Executable for BuildToolOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match self {
+            Self::BuildAll { output_port_names } => {
+                execute_with_declared_output_passthrough(output_port_names, inputs)
+            }
         }
     }
 }
 
-impl Executable for DeferredCallableOp {
+#[derive(Debug, Clone)]
+enum DocgenToolOp {
+    Docgen { output_port_names: Vec<String> },
+    RenderAbWorkflowsDoc { output_port_names: Vec<String> },
+}
+
+impl Executable for DocgenToolOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut outputs = HashMap::new();
-        // Forward all inputs as outputs (identity passthrough).
-        for (key, value) in &inputs {
-            outputs.insert(key.clone(), value.clone());
+        let output_port_names = match self {
+            Self::Docgen { output_port_names }
+            | Self::RenderAbWorkflowsDoc { output_port_names } => output_port_names,
+        };
+        execute_with_declared_output_passthrough(output_port_names, inputs)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum TestgenToolOp {
+    GenerateTests { output_port_names: Vec<String> },
+    Testgen { output_port_names: Vec<String> },
+}
+
+impl Executable for TestgenToolOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let output_port_names = match self {
+            Self::GenerateTests { output_port_names } | Self::Testgen { output_port_names } => {
+                output_port_names
+            }
+        };
+        execute_with_declared_output_passthrough(output_port_names, inputs)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum ClippyToolOp {
+    ClippyLint { output_port_names: Vec<String> },
+}
+
+impl Executable for ClippyToolOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match self {
+            Self::ClippyLint { output_port_names } => {
+                execute_with_declared_output_passthrough(output_port_names, inputs)
+            }
         }
-        // Ensure all declared output ports have a value. Use Value::Skipped
-        // (not empty string) for ports not populated by input passthrough, so
-        // downstream nodes see an honest "no value produced" signal rather than
-        // a type-violating empty string that silently passes type checks.
-        for port_name in &self.output_port_names {
-            outputs
-                .entry(port_name.clone())
-                .or_insert(Value::Skipped);
+    }
+}
+
+#[derive(Debug, Clone)]
+enum DepsToolOp {
+    RenderDepsToml { output_port_names: Vec<String> },
+    SelectPlatformDeps { output_port_names: Vec<String> },
+    DepsInstall { output_port_names: Vec<String> },
+    DepsGenerate { output_port_names: Vec<String> },
+}
+
+impl Executable for DepsToolOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let output_port_names = match self {
+            Self::RenderDepsToml { output_port_names }
+            | Self::SelectPlatformDeps { output_port_names }
+            | Self::DepsInstall { output_port_names }
+            | Self::DepsGenerate { output_port_names } => output_port_names,
+        };
+        execute_with_declared_output_passthrough(output_port_names, inputs)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum PipelineCiOp {
+    Ci { output_port_names: Vec<String> },
+}
+
+impl Executable for PipelineCiOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match self {
+            Self::Ci { output_port_names } => {
+                execute_with_declared_output_passthrough(output_port_names, inputs)
+            }
         }
-        Ok(outputs)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum SharedDagUtilOp {
+    AggregateResults { output_port_names: Vec<String> },
+    AllSucceeded { output_port_names: Vec<String> },
+    FormatReport { output_port_names: Vec<String> },
+    StageResult { output_port_names: Vec<String> },
+    SkippedStage { output_port_names: Vec<String> },
+    StageFromOutput { output_port_names: Vec<String> },
+    GeneratedHeader { output_port_names: Vec<String> },
+    RenderAndUpsert { output_port_names: Vec<String> },
+}
+
+impl Executable for SharedDagUtilOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let output_port_names = match self {
+            Self::AggregateResults { output_port_names }
+            | Self::AllSucceeded { output_port_names }
+            | Self::FormatReport { output_port_names }
+            | Self::StageResult { output_port_names }
+            | Self::SkippedStage { output_port_names }
+            | Self::StageFromOutput { output_port_names }
+            | Self::GeneratedHeader { output_port_names }
+            | Self::RenderAndUpsert { output_port_names } => output_port_names,
+        };
+        execute_with_declared_output_passthrough(output_port_names, inputs)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum SharedGistModesOp {
+    BranchContext { output_port_names: Vec<String> },
+    ResolveRecentBase { output_port_names: Vec<String> },
+    GistFilename { output_port_names: Vec<String> },
+    GistUpload { output_port_names: Vec<String> },
+    ShareContent { output_port_names: Vec<String> },
+    DetectRuntime { output_port_names: Vec<String> },
+}
+
+impl Executable for SharedGistModesOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let output_port_names = match self {
+            Self::BranchContext { output_port_names }
+            | Self::ResolveRecentBase { output_port_names }
+            | Self::GistFilename { output_port_names }
+            | Self::GistUpload { output_port_names }
+            | Self::ShareContent { output_port_names }
+            | Self::DetectRuntime { output_port_names } => output_port_names,
+        };
+        execute_with_declared_output_passthrough(output_port_names, inputs)
+    }
+}
+
+#[derive(Debug, Clone)]
+enum StdPatternsOp {
+    FileContentMatches { output_port_names: Vec<String> },
+    ClassifyFiles { output_port_names: Vec<String> },
+    ReadTextFiles { output_port_names: Vec<String> },
+    AcquireSubjectToken { output_port_names: Vec<String> },
+    OptionalImpersonation { output_port_names: Vec<String> },
+    Ensure { output_port_names: Vec<String> },
+    Upsert { output_port_names: Vec<String> },
+    ContentUpsert { output_port_names: Vec<String> },
+    CredentialChain { output_port_names: Vec<String> },
+    Transaction { output_port_names: Vec<String> },
+    Retry { output_port_names: Vec<String> },
+}
+
+impl Executable for StdPatternsOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let output_port_names = match self {
+            Self::FileContentMatches { output_port_names }
+            | Self::ClassifyFiles { output_port_names }
+            | Self::ReadTextFiles { output_port_names }
+            | Self::AcquireSubjectToken { output_port_names }
+            | Self::OptionalImpersonation { output_port_names }
+            | Self::Ensure { output_port_names }
+            | Self::Upsert { output_port_names }
+            | Self::ContentUpsert { output_port_names }
+            | Self::CredentialChain { output_port_names }
+            | Self::Transaction { output_port_names }
+            | Self::Retry { output_port_names } => output_port_names,
+        };
+        execute_with_declared_output_passthrough(output_port_names, inputs)
     }
 }
 
@@ -147,21 +312,6 @@ impl Executable for LiteralSourceOp {
         OutputMap::new()
             .value(self.output_port.as_str(), self.value.clone())
             .ok()
-    }
-}
-
-/// Invalid literal source adapter: fails fast at execution with decode context.
-#[derive(Debug, Clone)]
-struct InvalidLiteralSourceOp {
-    reason: String,
-}
-
-impl Executable for InvalidLiteralSourceOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        Err(ExecError::new(self.reason.clone()))
     }
 }
 
@@ -396,20 +546,13 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
         LoweredOp::Pipeline { module, name, .. } => Ok(DynOp::new(UnsupportedOp {
             callable: format!("Pipeline::{module}::{name}"),
         })),
+        LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
             module,
             name,
-            obligation,
             service_metadata,
             ..
-        } => {
-            // Infrastructure patterns first (cross-module)
-            if let Some(dyn_op) = resolve_infrastructure(name, obligation, outputs) {
-                return Ok(dyn_op);
-            }
-            // Module-specific domain ops
-            resolve_domain(node_id, module, name, outputs, service_metadata.as_ref())
-        }
+        } => resolve_domain(node_id, module, name, outputs, service_metadata.as_ref()),
     }
 }
 
@@ -417,99 +560,30 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
 // Infrastructure resolution (cross-module patterns)
 // ============================================================================
 
-/// Resolve infrastructure nodes shared across all modules.
-///
-/// These are recognized by name pattern and obligation category:
-/// - `fs_env` (ResourceProvide) → FsEnv with Write scope
-/// - `content_upsert::prepare_read_*` → PrepareFileReadOp
-/// - `content_upsert::execute_read_*` → TransportOps::Execute
-/// - `content_upsert::compare_*_content` → BlobOps::CompareContent
-/// - `content_upsert::prepare_write_*` → PrepareFileWriteOp
-/// - `content_upsert::execute_*_transport` → TransportOps::Execute
-fn resolve_infrastructure(
-    name: &str,
-    _obligation: &ObligationCategory,
-    outputs: &[Port],
-) -> Option<DynOp> {
-    // FsEnv resource provider
-    if name == "fs_env" {
-        return Some(DynOp::new(DslFsEnvOp));
+/// Resolve typed lowered primitive nodes shared across all modules.
+fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, ResolveError> {
+    match kind {
+        PrimitiveOpKind::FsEnv => Ok(DynOp::new(DslFsEnvOp)),
+        PrimitiveOpKind::CallParamSource { .. } => Ok(DynOp::new(IdentityCallableOp)),
+        PrimitiveOpKind::CallLiteralSource { literal } => {
+            let output_port = outputs
+                .first()
+                .map(|port| port.name.0.clone())
+                .unwrap_or_else(|| "value".to_string());
+            let value = match literal {
+                PrimitiveLiteral::String(value) => Value::Str(value.clone()),
+                PrimitiveLiteral::Int(value) => Value::Int(*value),
+                PrimitiveLiteral::Bool(value) => Value::Bool(*value),
+                PrimitiveLiteral::Unit => Value::Unit,
+            };
+            Ok(DynOp::new(LiteralSourceOp { output_port, value }))
+        }
+        PrimitiveOpKind::IoPrepareFileRead => Ok(DynOp::new(PrepareFileReadCompatOp)),
+        PrimitiveOpKind::IoExecuteFileRead => Ok(DynOp::new(TransportOps::Execute)),
+        PrimitiveOpKind::CompareEquality => Ok(DynOp::new(BlobOps::CompareContent)),
+        PrimitiveOpKind::IoPrepareFileWrite => Ok(DynOp::new(PrepareFileWriteCompatOp)),
+        PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
     }
-
-    // Parameter sources generated by lowering for callable args:
-    // call_param_source::<callable>::<param>
-    if name.starts_with("call_param_source::") {
-        return Some(DynOp::new(IdentityCallableOp));
-    }
-
-    // Literal sources generated by lowering for call arguments:
-    // call_literal_source::{strhex:<hex>|int:<n>|bool:<b>|none}
-    if let Some(spec) = name.strip_prefix("call_literal_source::") {
-        let output_port = outputs
-            .first()
-            .map(|port| port.name.0.clone())
-            .unwrap_or_else(|| "value".to_string());
-
-        let value = if let Some(hex) = spec.strip_prefix("strhex:") {
-            match hex_decode(hex).and_then(|bytes| {
-                String::from_utf8(bytes).map_err(|error| format!("invalid utf8 literal: {error}"))
-            }) {
-                Ok(decoded) => Value::Str(decoded),
-                Err(error) => {
-                    return Some(DynOp::new(InvalidLiteralSourceOp {
-                        reason: format!("invalid literal source `{name}`: {error}"),
-                    }));
-                }
-            }
-        } else if let Some(int) = spec.strip_prefix("int:") {
-            match int.parse::<i64>() {
-                Ok(value) => Value::Int(value),
-                Err(error) => {
-                    return Some(DynOp::new(InvalidLiteralSourceOp {
-                        reason: format!("invalid literal source `{name}`: {error}"),
-                    }));
-                }
-            }
-        } else if let Some(boolean) = spec.strip_prefix("bool:") {
-            match boolean.parse::<bool>() {
-                Ok(value) => Value::Bool(value),
-                Err(error) => {
-                    return Some(DynOp::new(InvalidLiteralSourceOp {
-                        reason: format!("invalid literal source `{name}`: {error}"),
-                    }));
-                }
-            }
-        } else if spec == "none" {
-            Value::Unit
-        } else {
-            return Some(DynOp::new(InvalidLiteralSourceOp {
-                reason: format!("invalid literal source `{name}`: unknown literal kind"),
-            }));
-        };
-
-        return Some(DynOp::new(LiteralSourceOp { output_port, value }));
-    }
-
-    // Content upsert pattern nodes (expanded from `content_upsert()` pattern)
-    if let Some(suffix) = name.strip_prefix("content_upsert::") {
-        if suffix.starts_with("prepare_read_") {
-            return Some(DynOp::new(PrepareFileReadCompatOp));
-        }
-        if suffix.starts_with("execute_read_") {
-            return Some(DynOp::new(TransportOps::Execute));
-        }
-        if suffix.starts_with("compare_") && suffix.ends_with("_content") {
-            return Some(DynOp::new(BlobOps::CompareContent));
-        }
-        if suffix.starts_with("prepare_write_") {
-            return Some(DynOp::new(PrepareFileWriteCompatOp));
-        }
-        if suffix.ends_with("_transport") {
-            return Some(DynOp::new(TransportOps::Execute));
-        }
-    }
-
-    None
 }
 
 // ============================================================================
@@ -533,14 +607,15 @@ fn resolve_domain(
         "tools.testgen" => resolve_testgen(node_id, name, outputs),
         "tools.clippy" => resolve_clippy(node_id, name, outputs),
         "tools.deps" => resolve_deps(node_id, name, outputs),
+        "pipelines.ci" => resolve_pipeline_ci(node_id, name, outputs),
+        "shared.dag_util" => resolve_shared_dag_util(node_id, name, outputs),
+        "shared.gist_modes" => resolve_shared_gist_modes(node_id, name, outputs),
+        "std.patterns" => resolve_std_patterns(node_id, name, outputs),
         "std.resources" => resolve_std_resources(name),
-        "pipelines.ci" | "shared.dag_util" | "shared.gist_modes" | "std.patterns" => {
-            Ok(deferred_callable(module, name, outputs))
-        }
         _ if module.starts_with("services.") || module.starts_with("workspace.") => {
             resolve_service_transport(node_id, module, name, service_metadata)
         }
-        _ => Ok(deferred_callable(module, name, outputs)),
+        _ => Err(unknown_callable(node_id, module, name)),
     }
 }
 
@@ -565,7 +640,9 @@ fn resolve_makegen(node_id: &str, name: &str) -> Result<DynOp, ResolveError> {
 
 fn resolve_build(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match name {
-        "build_all" => Ok(deferred_callable("tools.build", "build_all", outputs)),
+        "build_all" => Ok(DynOp::new(BuildToolOp::BuildAll {
+            output_port_names: declared_output_names(outputs),
+        })),
         _ => Err(unknown_callable(node_id, "tools.build", name)),
     }
 }
@@ -589,46 +666,161 @@ fn resolve_bootstrap(node_id: &str, name: &str, _outputs: &[Port]) -> Result<Dyn
 
 fn resolve_docgen(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match name {
-        "docgen" => Ok(deferred_callable("tools.docgen", "docgen", outputs)),
-        "render_ab_workflows_doc" => Ok(deferred_callable(
-            "tools.docgen",
-            "render_ab_workflows_doc",
-            outputs,
-        )),
+        "docgen" => Ok(DynOp::new(DocgenToolOp::Docgen {
+            output_port_names: declared_output_names(outputs),
+        })),
+        "render_ab_workflows_doc" => Ok(DynOp::new(DocgenToolOp::RenderAbWorkflowsDoc {
+            output_port_names: declared_output_names(outputs),
+        })),
         _ => Err(unknown_callable(node_id, "tools.docgen", name)),
     }
 }
 
 fn resolve_testgen(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match name {
-        "generate_tests" => Ok(deferred_callable(
-            "tools.testgen",
-            "generate_tests",
-            outputs,
-        )),
-        "testgen" => Ok(deferred_callable("tools.testgen", "testgen", outputs)),
+        "generate_tests" => Ok(DynOp::new(TestgenToolOp::GenerateTests {
+            output_port_names: declared_output_names(outputs),
+        })),
+        "testgen" => Ok(DynOp::new(TestgenToolOp::Testgen {
+            output_port_names: declared_output_names(outputs),
+        })),
         _ => Err(unknown_callable(node_id, "tools.testgen", name)),
     }
 }
 
 fn resolve_clippy(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match name {
-        "clippy_lint" => Ok(deferred_callable("tools.clippy", "clippy_lint", outputs)),
+        "clippy_lint" => Ok(DynOp::new(ClippyToolOp::ClippyLint {
+            output_port_names: declared_output_names(outputs),
+        })),
         _ => Err(unknown_callable(node_id, "tools.clippy", name)),
     }
 }
 
 fn resolve_deps(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match name {
-        "render_deps_toml" => Ok(deferred_callable("tools.deps", "render_deps_toml", outputs)),
-        "select_platform_deps" => Ok(deferred_callable(
-            "tools.deps",
-            "select_platform_deps",
-            outputs,
-        )),
-        "deps_install" => Ok(deferred_callable("tools.deps", "deps_install", outputs)),
-        "deps_generate" => Ok(deferred_callable("tools.deps", "deps_generate", outputs)),
+        "render_deps_toml" => Ok(DynOp::new(DepsToolOp::RenderDepsToml {
+            output_port_names: declared_output_names(outputs),
+        })),
+        "select_platform_deps" => Ok(DynOp::new(DepsToolOp::SelectPlatformDeps {
+            output_port_names: declared_output_names(outputs),
+        })),
+        "deps_install" => Ok(DynOp::new(DepsToolOp::DepsInstall {
+            output_port_names: declared_output_names(outputs),
+        })),
+        "deps_generate" => Ok(DynOp::new(DepsToolOp::DepsGenerate {
+            output_port_names: declared_output_names(outputs),
+        })),
         _ => Err(unknown_callable(node_id, "tools.deps", name)),
+    }
+}
+
+fn resolve_pipeline_ci(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
+    match name {
+        "ci" => Ok(DynOp::new(PipelineCiOp::Ci {
+            output_port_names: declared_output_names(outputs),
+        })),
+        _ => Err(unknown_callable(node_id, "pipelines.ci", name)),
+    }
+}
+
+fn resolve_shared_dag_util(
+    node_id: &str,
+    name: &str,
+    outputs: &[Port],
+) -> Result<DynOp, ResolveError> {
+    let output_port_names = declared_output_names(outputs);
+    match name {
+        "aggregate_results" => Ok(DynOp::new(SharedDagUtilOp::AggregateResults {
+            output_port_names,
+        })),
+        "all_succeeded" => Ok(DynOp::new(SharedDagUtilOp::AllSucceeded {
+            output_port_names,
+        })),
+        "format_report" => Ok(DynOp::new(SharedDagUtilOp::FormatReport {
+            output_port_names,
+        })),
+        "stage_result" => Ok(DynOp::new(SharedDagUtilOp::StageResult {
+            output_port_names,
+        })),
+        "skipped_stage" => Ok(DynOp::new(SharedDagUtilOp::SkippedStage {
+            output_port_names,
+        })),
+        "stage_from_output" => Ok(DynOp::new(SharedDagUtilOp::StageFromOutput {
+            output_port_names,
+        })),
+        "generated_header" => Ok(DynOp::new(SharedDagUtilOp::GeneratedHeader {
+            output_port_names,
+        })),
+        "render_and_upsert" => Ok(DynOp::new(SharedDagUtilOp::RenderAndUpsert {
+            output_port_names,
+        })),
+        _ => Err(unknown_callable(node_id, "shared.dag_util", name)),
+    }
+}
+
+fn resolve_shared_gist_modes(
+    node_id: &str,
+    name: &str,
+    outputs: &[Port],
+) -> Result<DynOp, ResolveError> {
+    let output_port_names = declared_output_names(outputs);
+    match name {
+        "branch_context" => Ok(DynOp::new(SharedGistModesOp::BranchContext {
+            output_port_names,
+        })),
+        "resolve_recent_base" => Ok(DynOp::new(SharedGistModesOp::ResolveRecentBase {
+            output_port_names,
+        })),
+        "gist_filename" => Ok(DynOp::new(SharedGistModesOp::GistFilename {
+            output_port_names,
+        })),
+        "gist_upload" => Ok(DynOp::new(SharedGistModesOp::GistUpload {
+            output_port_names,
+        })),
+        "share_content" => Ok(DynOp::new(SharedGistModesOp::ShareContent {
+            output_port_names,
+        })),
+        "detect_runtime" => Ok(DynOp::new(SharedGistModesOp::DetectRuntime {
+            output_port_names,
+        })),
+        _ => Err(unknown_callable(node_id, "shared.gist_modes", name)),
+    }
+}
+
+fn resolve_std_patterns(
+    node_id: &str,
+    name: &str,
+    outputs: &[Port],
+) -> Result<DynOp, ResolveError> {
+    let output_port_names = declared_output_names(outputs);
+    match name {
+        "file_content_matches" => Ok(DynOp::new(StdPatternsOp::FileContentMatches {
+            output_port_names,
+        })),
+        "classify_files" => Ok(DynOp::new(StdPatternsOp::ClassifyFiles {
+            output_port_names,
+        })),
+        "read_text_files" => Ok(DynOp::new(StdPatternsOp::ReadTextFiles {
+            output_port_names,
+        })),
+        "acquire_subject_token" => Ok(DynOp::new(StdPatternsOp::AcquireSubjectToken {
+            output_port_names,
+        })),
+        "optional_impersonation" => Ok(DynOp::new(StdPatternsOp::OptionalImpersonation {
+            output_port_names,
+        })),
+        "ensure" => Ok(DynOp::new(StdPatternsOp::Ensure { output_port_names })),
+        "upsert" => Ok(DynOp::new(StdPatternsOp::Upsert { output_port_names })),
+        "content_upsert" => Ok(DynOp::new(StdPatternsOp::ContentUpsert {
+            output_port_names,
+        })),
+        "credential_chain" => Ok(DynOp::new(StdPatternsOp::CredentialChain {
+            output_port_names,
+        })),
+        "transaction" => Ok(DynOp::new(StdPatternsOp::Transaction { output_port_names })),
+        "retry" => Ok(DynOp::new(StdPatternsOp::Retry { output_port_names })),
+        _ => Err(unknown_callable(node_id, "std.patterns", name)),
     }
 }
 
@@ -728,28 +920,11 @@ fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
 // Helpers
 // ============================================================================
 
-fn hex_decode(input: &str) -> Result<Vec<u8>, String> {
-    if !input.len().is_multiple_of(2) {
-        return Err("invalid hex length".to_string());
-    }
-    let mut out = Vec::with_capacity(input.len() / 2);
-    for idx in (0..input.len()).step_by(2) {
-        let byte = u8::from_str_radix(&input[idx..idx + 2], 16)
-            .map_err(|_| format!("invalid hex at offset {idx}"))?;
-        out.push(byte);
-    }
-    Ok(out)
-}
-
 fn unknown_callable(node_id: &str, module: &str, name: &str) -> ResolveError {
     ResolveError {
         node_id: node_id.to_string(),
         reason: format!("unknown callable `{module}.{name}`"),
     }
-}
-
-fn deferred_callable(module: &str, name: &str, outputs: &[Port]) -> DynOp {
-    DynOp::new(DeferredCallableOp::new(module, name, outputs))
 }
 
 /// Check if a transport execute node needs a filesystem resource input added.
@@ -762,39 +937,31 @@ fn needs_transport_resource(
     lowered: &Node<LoweredOp>,
     resolved: &Node<DynOp>,
 ) -> Option<AccessMode> {
-    let NodeBody::Opaque(LoweredOp::Callable {
-        name, obligation, ..
-    }) = &lowered.body
-    else {
-        return None;
-    };
-
-    // Determine access mode from the node's role.
-    let mode = if let Some(suffix) = name.strip_prefix("content_upsert::") {
-        if suffix.ends_with("_transport") {
-            AccessMode::Write
-        } else if suffix.starts_with("execute_read_") {
+    let mode = match &lowered.body {
+        NodeBody::Opaque(LoweredOp::Primitive {
+            kind: PrimitiveOpKind::IoExecuteFileWrite,
+            ..
+        }) => AccessMode::Write,
+        NodeBody::Opaque(LoweredOp::Primitive {
+            kind: PrimitiveOpKind::IoExecuteFileRead,
+            ..
+        }) => AccessMode::Read,
+        NodeBody::Opaque(LoweredOp::Callable {
+            name, obligation, ..
+        }) if matches!(obligation, ObligationCategory::ServiceTransportExecute)
+            || name.starts_with("service_transport::execute::") =>
+        {
+            // Service transport execute nodes need filesystem access.
             AccessMode::Read
-        } else {
-            return None;
         }
-    } else if matches!(obligation, ObligationCategory::ServiceTransportExecute)
-        || name.starts_with("service_transport::execute::")
-    {
-        // Service transport execute nodes need filesystem access.
-        AccessMode::Read
-    } else {
-        return None;
+        _ => return None,
     };
 
     // Only add if not already present.
-    let already_has = resolved
-        .inputs
-        .iter()
-        .any(|port| {
-            port.type_id.0 == "FilesystemHandle"
-                && (port.name.0 == "res:file" || port.name.0.starts_with("res:file:"))
-        });
+    let already_has = resolved.inputs.iter().any(|port| {
+        port.type_id.0 == "FilesystemHandle"
+            && (port.name.0 == "res:file" || port.name.0.starts_with("res:file:"))
+    });
     if already_has {
         None
     } else {
@@ -867,7 +1034,7 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::CallableKind;
+    use daglang_lower::{CallableKind, PrimitiveLiteral, PrimitiveOpKind};
     use gunbc_ir::{Node, Port};
 
     fn callable_node(
@@ -900,6 +1067,24 @@ mod tests {
             LoweredOp::Collection {
                 module: "test".to_string(),
                 callable: "test_fn".to_string(),
+                kind,
+            },
+        )
+    }
+
+    fn primitive_node(
+        id: &str,
+        module: &str,
+        name: &str,
+        kind: PrimitiveOpKind,
+    ) -> Node<LoweredOp> {
+        Node::opaque(
+            id,
+            vec![],
+            vec![Port::new("out", "String")],
+            LoweredOp::Primitive {
+                module: module.to_string(),
+                name: name.to_string(),
                 kind,
             },
         )
@@ -1102,23 +1287,18 @@ mod tests {
 
     #[test]
     fn resolve_fs_env() {
-        let node = callable_node(
-            "fs_env",
-            "tools.pragma",
-            "fs_env",
-            ObligationCategory::ResourceProvide,
-        );
+        let node = primitive_node("fs_env", "tools.makegen", "fs_env", PrimitiveOpKind::FsEnv);
         let result = resolve_node(&node).expect("fs_env");
         assert!(format!("{:?}", result).contains("FsEnv"));
     }
 
     #[test]
     fn resolve_content_upsert_prepare_read() {
-        let node = callable_node(
+        let node = primitive_node(
             "prepare_read_clippy",
             "tools.pragma",
             "content_upsert::prepare_read_clippy",
-            ObligationCategory::ServiceTransportPrepare,
+            PrimitiveOpKind::IoPrepareFileRead,
         );
         let result = resolve_node(&node).expect("prepare_read");
         assert!(format!("{:?}", result).contains("PrepareFileRead"));
@@ -1126,11 +1306,11 @@ mod tests {
 
     #[test]
     fn resolve_content_upsert_execute_read() {
-        let node = callable_node(
+        let node = primitive_node(
             "execute_read_clippy",
             "tools.pragma",
             "content_upsert::execute_read_clippy",
-            ObligationCategory::ServiceTransportExecute,
+            PrimitiveOpKind::IoExecuteFileRead,
         );
         let result = resolve_node(&node).expect("execute_read");
         assert!(format!("{:?}", result).contains("Execute"));
@@ -1138,11 +1318,11 @@ mod tests {
 
     #[test]
     fn resolve_content_upsert_compare() {
-        let node = callable_node(
+        let node = primitive_node(
             "compare_clippy_content",
             "tools.pragma",
             "content_upsert::compare_clippy_content",
-            ObligationCategory::InterfaceContractVerification,
+            PrimitiveOpKind::CompareEquality,
         );
         let result = resolve_node(&node).expect("compare");
         assert!(format!("{:?}", result).contains("CompareContent"));
@@ -1150,11 +1330,11 @@ mod tests {
 
     #[test]
     fn resolve_content_upsert_prepare_write() {
-        let node = callable_node(
+        let node = primitive_node(
             "prepare_write_clippy",
             "tools.pragma",
             "content_upsert::prepare_write_clippy",
-            ObligationCategory::ServiceTransportPrepare,
+            PrimitiveOpKind::IoPrepareFileWrite,
         );
         let result = resolve_node(&node).expect("prepare_write");
         assert!(format!("{:?}", result).contains("PrepareFileWrite"));
@@ -1162,11 +1342,11 @@ mod tests {
 
     #[test]
     fn resolve_content_upsert_execute_transport() {
-        let node = callable_node(
+        let node = primitive_node(
             "execute_clippy_transport",
             "tools.pragma",
             "content_upsert::execute_clippy_transport",
-            ObligationCategory::ServiceTransportExecute,
+            PrimitiveOpKind::IoExecuteFileWrite,
         );
         let result = resolve_node(&node).expect("execute_transport");
         assert!(format!("{:?}", result).contains("Execute"));
@@ -1178,14 +1358,12 @@ mod tests {
             "literal_path",
             vec![],
             vec![Port::new("path", "String")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.bootstrap".to_string(),
-                kind: CallableKind::Pattern,
                 name: "call_literal_source::strhex:637261746573".to_string(),
-                obligation: ObligationCategory::ServiceParamSource,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("crates".to_string()),
+                },
             },
         );
         let result = resolve_node(&node).expect("literal source should resolve");
@@ -1205,14 +1383,13 @@ mod tests {
             "param_source_path",
             vec![Port::new("path", "String")],
             vec![Port::new("path", "String")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".to_string(),
-                kind: CallableKind::Pattern,
                 name: "call_param_source::makegen::path".to_string(),
-                obligation: ObligationCategory::ServiceParamSource,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: PrimitiveOpKind::CallParamSource {
+                    callable: "makegen".to_string(),
+                    param: "path".to_string(),
+                },
             },
         );
         let result = resolve_node(&node).expect("param source should resolve");
@@ -1223,33 +1400,6 @@ mod tests {
             outputs.get("path").and_then(Value::as_str),
             Some("tmp/out.mk"),
             "param source should pass through input port value"
-        );
-    }
-
-    #[test]
-    fn resolve_invalid_literal_source_fails_at_execution() {
-        let node = Node::opaque(
-            "literal_bad",
-            vec![],
-            vec![Port::new("path", "String")],
-            LoweredOp::Callable {
-                module: "tools.bootstrap".to_string(),
-                kind: CallableKind::Pattern,
-                name: "call_literal_source::strhex:zz".to_string(),
-                obligation: ObligationCategory::ServiceParamSource,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
-            },
-        );
-        let result =
-            resolve_node(&node).expect("invalid literal source should resolve to error op");
-        let err = result
-            .execute(HashMap::new())
-            .expect_err("invalid literal source should fail at runtime");
-        assert!(
-            err.to_string().contains("invalid literal source"),
-            "unexpected error: {err}"
         );
     }
 
@@ -1417,19 +1567,15 @@ mod tests {
     }
 
     #[test]
-    fn resolve_unknown_module_defers_as_passthrough() {
+    fn resolve_unknown_module_fails_closed() {
         let node = callable_node(
             "unknown_op",
             "tools.unknown",
             "do_something",
             ObligationCategory::None,
         );
-        let op = resolve_node(&node).expect("unknown modules should defer");
-        let debug = format!("{op:?}");
-        assert!(
-            debug.contains("DeferredCallableOp"),
-            "expected deferred callable, got {debug}"
-        );
+        let err = resolve_node(&node).expect_err("unknown modules should fail closed");
+        assert!(err.reason.contains("unknown callable"));
     }
 
     #[test]
@@ -1465,11 +1611,11 @@ mod tests {
             "render_clippy_toml",
             ObligationCategory::None,
         ));
-        dag.add_node(callable_node(
+        dag.add_node(primitive_node(
             "prepare_read",
             "tools.pragma",
             "content_upsert::prepare_read_clippy",
-            ObligationCategory::ServiceTransportPrepare,
+            PrimitiveOpKind::IoPrepareFileRead,
         ));
         dag.edges.push(gunbc_ir::Edge {
             from_node: "render".into(),
@@ -1489,11 +1635,11 @@ mod tests {
 
     #[test]
     fn needs_transport_resource_respects_existing_res_file_port() {
-        let lowered = callable_node(
+        let lowered = primitive_node(
             "execute_read_makegen",
             "tools.makegen",
             "content_upsert::execute_read_makegen",
-            ObligationCategory::ServiceTransportExecute,
+            PrimitiveOpKind::IoExecuteFileRead,
         );
         let resolved = Node::opaque(
             "execute_read_makegen",

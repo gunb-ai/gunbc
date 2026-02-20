@@ -90,6 +90,9 @@ pub enum PureBody {
     /// Hardcoded value (e.g., LoadRegistry, FsEnv configuration).
     Literal(serde_json::Value),
 
+    /// Build a transport request payload from step inputs.
+    PrepareTransport { kind: TransportKind },
+
     /// String interpolation: fill variables into a pattern.
     /// `pattern` uses `{var}` placeholders; `vars` lists the names to substitute.
     Template { pattern: String, vars: Vec<String> },
@@ -265,7 +268,9 @@ pub enum CollectionOpKind {
 // Classification (A1.3)
 // ===========================================================================
 
-use daglang_lower::{LoweredOp, ObligationCategory, ServiceTransportClass};
+use daglang_lower::{
+    LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind, ServiceTransportClass,
+};
 use gunbc_ir::node::{Node, NodeBody};
 use gunbc_ir::Port;
 
@@ -316,6 +321,9 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
                 strategy: AggregateKind::Concat,
             },
         }),
+        LoweredOp::Primitive { module, name, kind } => {
+            classify_primitive(module, name, kind, inputs, outputs)
+        }
         LoweredOp::Callable {
             module,
             name,
@@ -330,6 +338,94 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             inputs,
             outputs,
         ),
+    }
+}
+
+fn classify_primitive(
+    _module: &str,
+    name: &str,
+    kind: &PrimitiveOpKind,
+    inputs: Vec<TypedPort>,
+    outputs: Vec<TypedPort>,
+) -> Result<Computation, ClassifyError> {
+    match kind {
+        PrimitiveOpKind::FsEnv => {
+            let handle_type = outputs
+                .first()
+                .map(|p| p.abstract_type.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+            Ok(Computation::ResourceAcquire {
+                handle_type,
+                handle_value: name.to_string(),
+            })
+        }
+        PrimitiveOpKind::CallLiteralSource { literal } => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(primitive_literal_to_json(literal)),
+        }),
+        PrimitiveOpKind::IoPrepareFileRead => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::PrepareTransport {
+                kind: TransportKind::FileRead,
+            },
+        }),
+        PrimitiveOpKind::IoExecuteFileRead => Ok(Computation::Transport {
+            prepare: RequestSpec {
+                input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
+                kind: RequestKind::FilePath {
+                    path_port: "request".to_string(),
+                },
+            },
+            execute: TransportKind::FileRead,
+            parse: ResponseSpec {
+                output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
+                kind: ResponseKind::RawContent,
+            },
+        }),
+        PrimitiveOpKind::CompareEquality => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Compare {
+                left: "expected_content".to_string(),
+                right: "response".to_string(),
+            },
+        }),
+        PrimitiveOpKind::IoPrepareFileWrite => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::PrepareTransport {
+                kind: TransportKind::FileWrite,
+            },
+        }),
+        PrimitiveOpKind::IoExecuteFileWrite => Ok(Computation::Transport {
+            prepare: RequestSpec {
+                input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
+                kind: RequestKind::FilePath {
+                    path_port: "request".to_string(),
+                },
+            },
+            execute: TransportKind::FileWrite,
+            parse: ResponseSpec {
+                output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
+                kind: ResponseKind::ExitStatus,
+            },
+        }),
+        PrimitiveOpKind::CallParamSource { .. } => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::Null),
+        }),
+    }
+}
+
+fn primitive_literal_to_json(literal: &PrimitiveLiteral) -> serde_json::Value {
+    match literal {
+        PrimitiveLiteral::String(value) => serde_json::Value::String(value.clone()),
+        PrimitiveLiteral::Int(value) => serde_json::Value::Number((*value).into()),
+        PrimitiveLiteral::Bool(value) => serde_json::Value::Bool(*value),
+        PrimitiveLiteral::Unit => serde_json::Value::Null,
     }
 }
 
@@ -610,7 +706,9 @@ fn classify_content_upsert(
         return Ok(Computation::Pure {
             inputs,
             outputs,
-            body: PureBody::Literal(serde_json::Value::String("prepare_file_read".to_string())),
+            body: PureBody::PrepareTransport {
+                kind: TransportKind::FileRead,
+            },
         });
     }
 
@@ -652,7 +750,9 @@ fn classify_content_upsert(
         return Ok(Computation::Pure {
             inputs,
             outputs,
-            body: PureBody::Literal(serde_json::Value::String("prepare_file_write".to_string())),
+            body: PureBody::PrepareTransport {
+                kind: TransportKind::FileWrite,
+            },
         });
     }
 
@@ -785,11 +885,13 @@ mod tests {
             matches!(
                 comp,
                 Computation::Pure {
-                    body: PureBody::Literal(_),
+                    body: PureBody::PrepareTransport {
+                        kind: TransportKind::FileRead
+                    },
                     ..
                 }
             ),
-            "prepare_read should be Pure(Literal), got {comp:?}"
+            "prepare_read should prepare file-read transport request, got {comp:?}"
         );
     }
 
@@ -875,11 +977,13 @@ mod tests {
             matches!(
                 comp,
                 Computation::Pure {
-                    body: PureBody::Literal(_),
+                    body: PureBody::PrepareTransport {
+                        kind: TransportKind::FileWrite
+                    },
                     ..
                 }
             ),
-            "prepare_write should be Pure(Literal), got {comp:?}"
+            "prepare_write should prepare file-write transport request, got {comp:?}"
         );
     }
 

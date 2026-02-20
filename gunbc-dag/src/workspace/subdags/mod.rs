@@ -112,6 +112,10 @@ fn discover_dsl_module_names(
                     path.display(),
                 ))
             })?;
+        // Skip _test.dag files — these are DSL test fixtures, not workflow modules.
+        if stem.ends_with("_test") {
+            continue;
+        }
         names.insert(stem.to_string());
     }
     Ok(names)

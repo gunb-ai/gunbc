@@ -41,6 +41,11 @@ pub enum LoweredOp {
         is_interactive: bool,
         resource_target: Option<String>,
     },
+    Primitive {
+        module: String,
+        name: String,
+        kind: PrimitiveOpKind,
+    },
     Collection {
         module: String,
         callable: String,
@@ -126,6 +131,26 @@ pub enum CallableKind {
     Fn,
     Func,
     Pattern,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrimitiveOpKind {
+    FsEnv,
+    CallParamSource { callable: String, param: String },
+    CallLiteralSource { literal: PrimitiveLiteral },
+    IoPrepareFileRead,
+    IoExecuteFileRead,
+    CompareEquality,
+    IoPrepareFileWrite,
+    IoExecuteFileWrite,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrimitiveLiteral {
+    String(String),
+    Int(i64),
+    Bool(bool),
+    Unit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,6 +292,7 @@ impl LoweredOp {
     pub fn obligation_category(&self) -> ObligationCategory {
         match self {
             Self::Callable { obligation, .. } => *obligation,
+            Self::Primitive { kind, .. } => kind.obligation_category(),
             Self::Collection { .. } | Self::Pipeline { .. } => ObligationCategory::None,
         }
     }
@@ -276,7 +302,25 @@ impl LoweredOp {
             Self::Callable {
                 service_metadata, ..
             } => service_metadata.as_ref(),
-            Self::Collection { .. } | Self::Pipeline { .. } => None,
+            Self::Primitive { .. } | Self::Collection { .. } | Self::Pipeline { .. } => None,
+        }
+    }
+}
+
+impl PrimitiveOpKind {
+    pub fn obligation_category(&self) -> ObligationCategory {
+        match self {
+            Self::FsEnv => ObligationCategory::ResourceProvide,
+            Self::CallParamSource { .. } | Self::CallLiteralSource { .. } => {
+                ObligationCategory::ServiceParamSource
+            }
+            Self::IoPrepareFileRead | Self::IoPrepareFileWrite => {
+                ObligationCategory::ServiceTransportPrepare
+            }
+            Self::IoExecuteFileRead | Self::IoExecuteFileWrite => {
+                ObligationCategory::ServiceTransportExecute
+            }
+            Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
         }
     }
 }
@@ -316,6 +360,9 @@ pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
     dag.topology_with_kind(|node| match &node.body {
         gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { obligation, .. }) => {
             canonical_kind_for_obligation(*obligation).map(str::to_string)
+        }
+        gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
+            canonical_kind_for_obligation(kind.obligation_category()).map(str::to_string)
         }
         gunbc_ir::node::NodeBody::Opaque(_) | gunbc_ir::node::NodeBody::SubDag(_) => None,
     })
@@ -1202,6 +1249,15 @@ mod parity {
                     &node.outputs,
                     false,
                     Some(*obligation),
+                )
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { kind, .. }) => {
+                canonical_kind_from_shape(
+                    &node.id.0,
+                    &node.inputs,
+                    &node.outputs,
+                    false,
+                    Some(kind.obligation_category()),
                 )
             }
         }
@@ -2980,14 +3036,10 @@ fn expand_single_content_upsert(
             Port::scalar("request", "TransportRequest"),
             Port::scalar("skip", "Bool"),
         ],
-        LoweredOp::Callable {
+        LoweredOp::Primitive {
             module: module_name.to_string(),
-            kind: CallableKind::Pattern,
             name: format!("content_upsert::{prepare_read_id}"),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
+            kind: PrimitiveOpKind::IoPrepareFileRead,
         },
     ));
     builder.add_node(Node::opaque(
@@ -2997,14 +3049,10 @@ fn expand_single_content_upsert(
             Port::scalar("skip", "Bool"),
         ],
         vec![Port::scalar("response", "TransportResponse")],
-        LoweredOp::Callable {
+        LoweredOp::Primitive {
             module: module_name.to_string(),
-            kind: CallableKind::Pattern,
             name: format!("content_upsert::{execute_read_id}"),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
+            kind: PrimitiveOpKind::IoExecuteFileRead,
         },
     ));
     builder.add_node(Node::opaque(
@@ -3014,14 +3062,10 @@ fn expand_single_content_upsert(
             Port::scalar("response", "TransportResponse"),
         ],
         vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
-        LoweredOp::Callable {
+        LoweredOp::Primitive {
             module: module_name.to_string(),
-            kind: CallableKind::Pattern,
             name: format!("content_upsert::{compare_id}"),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
+            kind: PrimitiveOpKind::CompareEquality,
         },
     ));
     builder.add_node(Node::opaque(
@@ -3031,14 +3075,10 @@ fn expand_single_content_upsert(
             Port::scalar("path", "String"),
         ],
         vec![Port::scalar("request", "TransportRequest")],
-        LoweredOp::Callable {
+        LoweredOp::Primitive {
             module: module_name.to_string(),
-            kind: CallableKind::Pattern,
             name: format!("content_upsert::{prepare_write_id}"),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
+            kind: PrimitiveOpKind::IoPrepareFileWrite,
         },
     ));
     let mut execute_transport_inputs = vec![
@@ -3056,14 +3096,10 @@ fn expand_single_content_upsert(
         execute_transport_id.clone(),
         execute_transport_inputs,
         vec![Port::scalar("response", "TransportResponse")],
-        LoweredOp::Callable {
+        LoweredOp::Primitive {
             module: module_name.to_string(),
-            kind: CallableKind::Pattern,
             name: format!("content_upsert::{execute_transport_id}"),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
+            kind: PrimitiveOpKind::IoExecuteFileWrite,
         },
     ));
 
@@ -3106,17 +3142,17 @@ fn expand_single_content_upsert(
     );
     if !wired_path {
         if let Some(literal) = resolve_path_literal(args) {
-        let literal_source = ensure_literal_source_node(
-            builder,
-            module_name,
-            item_name,
-            "path",
-            "String",
-            &literal,
-            format!("content_upsert_path_{suffix}").as_str(),
-        );
-        builder.add_edge(literal_source.as_str(), "path", &prepare_read_id, "path");
-        builder.add_edge(literal_source.as_str(), "path", &prepare_write_id, "path");
+            let literal_source = ensure_literal_source_node(
+                builder,
+                module_name,
+                item_name,
+                "path",
+                "String",
+                &literal,
+                format!("content_upsert_path_{suffix}").as_str(),
+            );
+            builder.add_edge(literal_source.as_str(), "path", &prepare_read_id, "path");
+            builder.add_edge(literal_source.as_str(), "path", &prepare_write_id, "path");
         }
     }
 }
@@ -3299,14 +3335,10 @@ fn add_makegen_scaffolding(
                 "fs_env",
                 vec![],
                 vec![Port::scalar("FilesystemHandle", "FilesystemHandle")],
-                LoweredOp::Callable {
+                LoweredOp::Primitive {
                     module: "tools.makegen".to_string(),
-                    kind: CallableKind::Pattern,
                     name: "fs_env".to_string(),
-                    obligation: ObligationCategory::None,
-                    service_metadata: None,
-                    is_interactive: false,
-                    resource_target: None,
+                    kind: PrimitiveOpKind::FsEnv,
                 },
             ));
         }
@@ -4597,14 +4629,13 @@ fn ensure_param_source_node(
         node_id.clone(),
         vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
         vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
-        LoweredOp::Callable {
+        LoweredOp::Primitive {
             module: module_name.to_string(),
-            kind: CallableKind::Pattern,
             name: format!("call_param_source::{callable}::{param}"),
-            obligation: ObligationCategory::ServiceParamSource,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
+            kind: PrimitiveOpKind::CallParamSource {
+                callable: callable.to_string(),
+                param: param.to_string(),
+            },
         },
     ));
     node_id
@@ -4627,14 +4658,12 @@ fn ensure_literal_source_node(
         node_id.clone(),
         vec![],
         vec![Port::with_cardinality(param, ty, Cardinality::ONE)],
-        LoweredOp::Callable {
+        LoweredOp::Primitive {
             module: module_name.to_string(),
-            kind: CallableKind::Pattern,
             name: format!("call_literal_source::{}", encode_literal_for_name(literal)),
-            obligation: ObligationCategory::ServiceParamSource,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
+            kind: PrimitiveOpKind::CallLiteralSource {
+                literal: primitive_literal_from_service_literal(literal),
+            },
         },
     ));
     node_id
@@ -4646,6 +4675,15 @@ fn encode_literal_for_name(literal: &ServiceCallArgLiteral) -> String {
         ServiceCallArgLiteral::Int(value) => format!("int:{value}"),
         ServiceCallArgLiteral::Bool(value) => format!("bool:{value}"),
         ServiceCallArgLiteral::None => "none".to_string(),
+    }
+}
+
+fn primitive_literal_from_service_literal(literal: &ServiceCallArgLiteral) -> PrimitiveLiteral {
+    match literal {
+        ServiceCallArgLiteral::String(value) => PrimitiveLiteral::String(value.clone()),
+        ServiceCallArgLiteral::Int(value) => PrimitiveLiteral::Int(*value),
+        ServiceCallArgLiteral::Bool(value) => PrimitiveLiteral::Bool(*value),
+        ServiceCallArgLiteral::None => PrimitiveLiteral::Unit,
     }
 }
 
@@ -4670,7 +4708,10 @@ fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
 fn item_callable_interactive_flag(item: &Item) -> Option<(&str, bool)> {
     match item {
         Item::FnDef(def) => Some((def.name.as_str(), false)),
-        Item::FuncDef(def) => Some((def.name.as_str(), has_annotation(&def.annotations, "interactive"))),
+        Item::FuncDef(def) => Some((
+            def.name.as_str(),
+            has_annotation(&def.annotations, "interactive"),
+        )),
         Item::PatternDef(def) => Some((def.name.as_str(), false)),
         _ => None,
     }
@@ -6029,8 +6070,12 @@ func run() -> { body: String } {
             .find(|node| {
                 matches!(
                     &node.body,
-                    gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { name, .. })
-                        if name.starts_with("call_literal_source::strhex:")
+                    gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                        kind: PrimitiveOpKind::CallLiteralSource {
+                            literal: PrimitiveLiteral::String(value)
+                        },
+                        ..
+                    }) if value == "crates"
                 )
             })
             .expect("literal source node should be present");

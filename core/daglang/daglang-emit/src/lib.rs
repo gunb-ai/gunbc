@@ -210,6 +210,11 @@ pub fn emit_rust_bundle(
                 };
                 emitted_functions.push(rendered);
             }
+            LoweredOp::Primitive { module, name, .. } => {
+                callable_count += 1;
+                let fn_name = sanitize_identifier(&format!("{module}_{name}"));
+                emitted_functions.push(backend.emit_func(&fn_name));
+            }
             LoweredOp::Collection {
                 module,
                 callable,
@@ -550,6 +555,14 @@ fn collect_symbols_with_metadata(
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{name}")),
                     spec,
+                    raw_name: name.clone(),
+                });
+            }
+            LoweredOp::Primitive { module, name, .. } => {
+                callable_count += 1;
+                symbols.push(CollectedSymbol {
+                    name: sanitize_identifier(&format!("{module}_{name}")),
+                    spec: None,
                     raw_name: name.clone(),
                 });
             }
