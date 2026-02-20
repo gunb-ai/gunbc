@@ -9,7 +9,13 @@ pub type BuildGraphOp = DynOp;
 
 /// Get the declared signature for the build workflow (auto-derived from DAG).
 pub fn build_signature() -> WorkflowSignature {
-    infer_signature(&build_build_graph().expect("build DAG should build for signature"))
+    match build_build_graph() {
+        Ok(dag) => infer_signature(&dag),
+        Err(err) => {
+            eprintln!("warning: failed to build build DAG for signature: {err}");
+            WorkflowSignature::default()
+        }
+    }
 }
 
 /// Build the build graph from the DSL source.

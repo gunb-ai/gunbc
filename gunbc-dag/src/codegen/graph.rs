@@ -10,7 +10,13 @@ pub type CodegenGraphOp = DynOp;
 
 /// Get the declared signature for the codegen workflow (auto-derived from DAG).
 pub fn codegen_signature() -> WorkflowSignature {
-    infer_signature(&build_codegen_graph().expect("codegen DAG should build for signature"))
+    match build_codegen_graph() {
+        Ok(dag) => infer_signature(&dag),
+        Err(err) => {
+            eprintln!("warning: failed to build codegen DAG for signature: {err}");
+            WorkflowSignature::default()
+        }
+    }
 }
 
 /// Build the codegen graph from the DSL source.

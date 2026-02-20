@@ -494,9 +494,13 @@ fn lift_branch_dag(dag: Dag<BranchResolutionOp>) -> Dag<DagVizGraphOp> {
 
 /// Declared workflow signature for dag-viz (auto-derived from DAG).
 pub fn dag_viz_signature(mode: &DagVizMode) -> WorkflowSignature {
-    gunbc_ir::infer_signature(
-        &build_dag_viz_graph(mode.clone()).expect("dag-viz DAG should build for signature"),
-    )
+    match build_dag_viz_graph(mode.clone()) {
+        Ok(dag) => gunbc_ir::infer_signature(&dag),
+        Err(err) => {
+            eprintln!("warning: failed to build dag-viz DAG for signature: {err}");
+            WorkflowSignature::default()
+        }
+    }
 }
 
 // ============================================================================

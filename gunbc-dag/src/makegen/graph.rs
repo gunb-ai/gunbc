@@ -9,7 +9,13 @@ pub type MakegenGraphOp = DynOp;
 
 /// Get the declared signature for the makegen workflow (auto-derived from DAG).
 pub fn makegen_signature() -> WorkflowSignature {
-    infer_signature(&build_makegen_graph().expect("makegen DAG should build for signature"))
+    match build_makegen_graph() {
+        Ok(dag) => infer_signature(&dag),
+        Err(err) => {
+            eprintln!("warning: failed to build makegen DAG for signature: {err}");
+            WorkflowSignature::default()
+        }
+    }
 }
 
 /// Build makegen graph from the DSL source.

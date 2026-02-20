@@ -9,7 +9,13 @@ pub type PragmaGraphOp = DynOp;
 
 /// Get the declared signature for the pragma workflow (auto-derived from DAG).
 pub fn pragma_signature() -> WorkflowSignature {
-    infer_signature(&build_pragma_graph().expect("pragma DAG should build for signature"))
+    match build_pragma_graph() {
+        Ok(dag) => infer_signature(&dag),
+        Err(err) => {
+            eprintln!("warning: failed to build pragma DAG for signature: {err}");
+            WorkflowSignature::default()
+        }
+    }
 }
 
 /// Build pragma graph from the DSL source.
