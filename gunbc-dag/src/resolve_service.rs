@@ -544,7 +544,7 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
         return Ok(Vec::new());
     }
 
-    if !sextets.len().is_multiple_of(4) {
+    if sextets.len() % 4 != 0 {
         return Err("invalid base64 length".to_string());
     }
 
