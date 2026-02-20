@@ -36,7 +36,11 @@ use gunbc_cli::BinaryArgs;
 use gunbc_dag::{print_tool_header, run_tool, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_lib_review::graph::build_diff_review_graph_with;
+use gunbc_lib_review::dimension::FermiDepth;
+use gunbc_lib_review::graph::{
+    build_diff_review_graph_with, build_dimension_diff_review_graph_with,
+};
+use gunbc_lib_review::profile::coding_review_profile;
 use gunbc_lib_review::ReviewPipelineConfig;
 use std::process;
 
@@ -77,19 +81,13 @@ fn main() {
     }
 
     let dry_run = parsed.dry_run;
-    let repo_path = parsed
-        .get_string("repo_path")
-        .unwrap_or(".")
-        .to_string();
+    let repo_path = parsed.get_string("repo_path").unwrap_or(".").to_string();
     let base_ref = parsed.get_string("base_ref").map(|s| s.to_string());
     let provider = parsed
         .get_string("provider")
         .unwrap_or("anthropic")
         .to_string();
-    let depth = parsed
-        .get_string("depth")
-        .unwrap_or("M")
-        .to_string();
+    let depth = parsed.get_string("depth").unwrap_or("M").to_string();
     let pr_number = parsed.get_string("pr").map(|s| s.to_string());
 
     // Validate provider
@@ -111,13 +109,11 @@ fn main() {
         print_attention(
             AttentionLevel::Error,
             "Unknown depth",
-            &format!(
-                "'{}' is not a valid depth. Use XS, S, M, L, or XL.",
-                depth
-            ),
+            &format!("'{}' is not a valid depth. Use XS, S, M, L, or XL.", depth),
         );
         process::exit(1);
     }
+    let depth_level = FermiDepth::parse(&depth_upper).unwrap_or(FermiDepth::M);
 
     // In dry-run mode, use the default config (OpenAI) to match mock specs.
     // In real mode, use the user-selected provider.
@@ -144,16 +140,33 @@ fn main() {
         default_branch: base_ref.clone().unwrap_or_else(|| "main".to_string()),
     };
 
-    // Build the review DAG
-    let dag = match build_diff_review_graph_with(config) {
-        Ok(d) => d,
-        Err(e) => {
-            print_attention(
-                AttentionLevel::Error,
-                "Review graph build failed",
-                &e.to_string(),
-            );
-            process::exit(1);
+    // Build the review DAG.
+    // Keep dry-run on the legacy mock-backed graph for deterministic local smoke tests.
+    // Real mode uses the W4 4-dimension graph wired from ReviewProfile.
+    let dag = if dry_run {
+        match build_diff_review_graph_with(config.clone()) {
+            Ok(d) => d,
+            Err(e) => {
+                print_attention(
+                    AttentionLevel::Error,
+                    "Review graph build failed",
+                    &e.to_string(),
+                );
+                process::exit(1);
+            }
+        }
+    } else {
+        let profile = coding_review_profile(depth_level);
+        match build_dimension_diff_review_graph_with(config, profile) {
+            Ok(d) => d,
+            Err(e) => {
+                print_attention(
+                    AttentionLevel::Error,
+                    "Review graph build failed",
+                    &e.to_string(),
+                );
+                process::exit(1);
+            }
         }
     };
 

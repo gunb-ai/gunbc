@@ -517,28 +517,141 @@ fn execute_parse_dimension_response(
 
     let base_result = crate::execute_parse_review_response(base_inputs)?;
 
-    // Tag output with dimension
-    if let Some(Value::Json(mut output_json)) = base_result.get("output").cloned() {
-        if let Some(obj) = output_json.as_object_mut() {
-            obj.insert(
-                "dimension".into(),
-                serde_json::Value::String(dimension_str.to_string()),
-            );
+    let mut errors: Vec<String> = base_result
+        .get("errors")
+        .and_then(|v| v.as_json())
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+
+    let Some(Value::Json(output_json)) = base_result.get("output").cloned() else {
+        return Ok(base_result);
+    };
+
+    if dimension_str == ReviewDimension::Aspirational.as_str() {
+        let base_output: ReviewOutput = serde_json::from_value(output_json)
+            .exec_context("invalid base review output for aspirational dimension")?;
+        let parsed = extract_json_from_dimension_answer(answer)
+            .map_err(|e| ExecError::new(format!("failed to parse aspirational JSON: {e}")))?;
+        let mut severity_by_issue_key = HashMap::new();
+        if let Some(items) = parsed.get("findings").and_then(|v| v.as_array()) {
+            for item in items {
+                let issue_key = item
+                    .get("issue_key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let severity = item
+                    .get("severity")
+                    .and_then(|v| v.as_str())
+                    .and_then(parse_severity_label);
+                if issue_key.is_empty() {
+                    continue;
+                }
+                if let Some(severity) = severity {
+                    severity_by_issue_key.insert(issue_key.to_string(), severity);
+                }
+            }
         }
-        OutputMap::new()
-            .json("output", output_json)
+
+        let mut aspirational_findings = Vec::with_capacity(base_output.findings.len());
+        for finding in base_output.findings {
+            if let Some(severity) = severity_by_issue_key.get(&finding.issue_key).copied() {
+                aspirational_findings.push(AspirationalFinding { finding, severity });
+            } else {
+                errors.push(format!(
+                    "aspirational finding '{}' is missing a valid severity label",
+                    finding.issue_key
+                ));
+            }
+        }
+
+        let aspirational_output = AspirationalReviewOutput {
+            schema_version: base_output.schema_version,
+            criteria_name: base_output.criteria_name,
+            source: base_output.source,
+            findings: aspirational_findings,
+            candidate_remediations: None,
+            summary: base_output.summary,
+        };
+
+        return OutputMap::new()
+            .json(
+                "output",
+                serde_json::to_value(&aspirational_output)
+                    .unwrap_or_else(|_| serde_json::json!({})),
+            )
             .json(
                 "errors",
-                base_result
-                    .get("errors")
-                    .and_then(|v| v.as_json())
-                    .cloned()
-                    .unwrap_or(serde_json::json!([])),
+                serde_json::to_value(&errors).unwrap_or_else(|_| serde_json::json!([])),
             )
-            .ok()
-    } else {
-        Ok(base_result)
+            .ok();
     }
+
+    // Tag non-aspirational outputs with dimension metadata.
+    let mut tagged_output = output_json;
+    if let Some(obj) = tagged_output.as_object_mut() {
+        obj.insert(
+            "dimension".into(),
+            serde_json::Value::String(dimension_str.to_string()),
+        );
+    }
+    OutputMap::new()
+        .json("output", tagged_output)
+        .json(
+            "errors",
+            serde_json::to_value(&errors).unwrap_or_else(|_| serde_json::json!([])),
+        )
+        .ok()
+}
+
+fn parse_severity_label(label: &str) -> Option<Severity> {
+    match label.trim().to_ascii_lowercase().as_str() {
+        "must-fix" => Some(Severity::MustFix),
+        "defer" => Some(Severity::Defer),
+        "accept" => Some(Severity::Accept),
+        _ => None,
+    }
+}
+
+fn extract_json_from_dimension_answer(answer: &str) -> Result<serde_json::Value, String> {
+    let trimmed = answer.trim();
+
+    if let Ok(v) = serde_json::from_str(trimmed) {
+        return Ok(v);
+    }
+
+    if let Some(start) = trimmed.find("```json") {
+        let after_marker = &trimmed[start + 7..];
+        if let Some(end) = after_marker.find("```") {
+            let json_str = after_marker[..end].trim();
+            if let Ok(v) = serde_json::from_str(json_str) {
+                return Ok(v);
+            }
+        }
+    }
+
+    if let Some(start) = trimmed.find("```\n") {
+        let after_marker = &trimmed[start + 4..];
+        if let Some(end) = after_marker.find("```") {
+            let json_str = after_marker[..end].trim();
+            if let Ok(v) = serde_json::from_str(json_str) {
+                return Ok(v);
+            }
+        }
+    }
+
+    if let Some(start) = trimmed.find('{') {
+        if let Some(end) = trimmed.rfind('}') {
+            if start < end {
+                let json_str = &trimmed[start..=end];
+                if let Ok(v) = serde_json::from_str(json_str) {
+                    return Ok(v);
+                }
+            }
+        }
+    }
+
+    Err("Could not extract valid JSON from response".to_string())
 }
 
 fn execute_merge_dimension_outputs(
@@ -764,6 +877,42 @@ mod tests {
         assert!(question.contains("Prior findings"));
         assert!(question.contains("must-fix, defer, or accept"));
         assert!(question.contains("\"severity\": \"must-fix|defer|accept\""));
+    }
+
+    #[test]
+    fn test_parse_dimension_response_preserves_aspirational_severity() {
+        let response = r#"{
+            "findings": [
+                {
+                    "check_id": "logic-error",
+                    "issue_key": "null_deref",
+                    "location": {"type": "unlocated"},
+                    "observation": "Possible null dereference",
+                    "severity": "must-fix"
+                }
+            ],
+            "summary": "1 must-fix"
+        }"#;
+
+        let mut inputs = HashMap::new();
+        inputs.insert("answer".to_string(), Value::Str(response.to_string()));
+        inputs.insert(
+            "criteria".to_string(),
+            Value::Json(serde_json::to_value(test_criteria()).unwrap()),
+        );
+        inputs.insert("dimension".to_string(), Value::Str("aspirational".into()));
+
+        let result = DimensionOps::ParseDimensionResponse
+            .execute(inputs)
+            .expect("parse should succeed");
+        let output_json = result
+            .get("output")
+            .and_then(Value::as_json)
+            .cloned()
+            .expect("output json should exist");
+        let parsed: AspirationalReviewOutput = serde_json::from_value(output_json).unwrap();
+        assert_eq!(parsed.findings.len(), 1);
+        assert_eq!(parsed.findings[0].severity, Severity::MustFix);
     }
 
     #[test]
