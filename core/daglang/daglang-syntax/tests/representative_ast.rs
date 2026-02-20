@@ -171,6 +171,16 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type CodegenTarget",
             "type CodegenBackend",
             "type PragmaDirective",
+            "type IssueLifecycleStage",
+            "type TrackedIssue",
+            "type DesignOutput",
+            "type DesignSections",
+            "type DesignReviewOutput",
+            "type DesignFinding",
+            "type ImplementationPlan",
+            "type ImplementationTask",
+            "type PipelineRun",
+            "type PipelineArtifact",
             "type DocSource",
         ]
     );
