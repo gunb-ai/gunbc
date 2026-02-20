@@ -5,6 +5,10 @@ use std::collections::BTreeMap;
 use gunbc_ir::{AccessMode, NodeId};
 use serde::{Deserialize, Serialize};
 
+use super::capabilities::{
+    CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID,
+};
+
 /// Canonical process identifier.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ProcessId(pub String);
@@ -155,6 +159,14 @@ fn test_all_ref(unit: &str) -> ProcessUnitRef {
     ProcessUnitRef::new("test_all", unit)
 }
 
+fn compilation_ref() -> ProcessUnitRef {
+    ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT)
+}
+
+fn codegen_ref() -> ProcessUnitRef {
+    ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT)
+}
+
 /// Default registry for WF1/WF2 planner bootstrap.
 pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     let mut registry = ProcessUnitRegistry::new();
@@ -274,6 +286,35 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
         registry.register(spec);
     }
 
+    // Universal capability units (WF14/WF15).
+    //
+    // These are shared across all workflows via context-free WorkIdentity.
+    // `compilation.ensure` and `codegen.ensure` resolve to the same identity
+    // regardless of which workflow invokes them.
+    for spec in [
+        // WF14: Compilation capability — binary freshness as a planner-managed
+        // keyed unit. Key inputs: source hashes, cargo metadata, compiler version.
+        // Claims: writes to file:target (binary output), reads tool:cargo.
+        ProcessUnitSpec::new(
+            compilation_ref(),
+            1,
+            vec![
+                UnitClaim::write("file:target"),
+                UnitClaim::read("tool:cargo"),
+            ],
+        ),
+        // WF15: Codegen capability — codegen freshness as a keyed unit.
+        // Key inputs: DSL source hashes, codegen binary version.
+        // Claims: writes generated CLI entrypoints.
+        ProcessUnitSpec::new(
+            codegen_ref(),
+            1,
+            vec![UnitClaim::write("file:generated:cli")],
+        ),
+    ] {
+        registry.register(spec);
+    }
+
     registry
 }
 
@@ -350,6 +391,86 @@ mod tests {
         assert_eq!(
             claim_handle_type_id(&ClaimId::new("ledger:workflow")),
             "WorkflowLedgerHandle"
+        );
+    }
+
+    // WF14/WF15: Universal capability registry tests
+
+    #[test]
+    fn default_registry_contains_compilation_and_codegen_units() {
+        let registry = default_process_unit_registry();
+        assert!(
+            registry.contains(&compilation_ref()),
+            "compilation.ensure should be registered"
+        );
+        assert!(
+            registry.contains(&codegen_ref()),
+            "codegen.ensure should be registered"
+        );
+    }
+
+    #[test]
+    fn compilation_unit_has_correct_claims() {
+        let registry = default_process_unit_registry();
+        let spec = registry
+            .get(&compilation_ref())
+            .expect("compilation.ensure should exist");
+        assert!(spec
+            .required_claims
+            .iter()
+            .any(|c| c.claim_id.0 == "file:target" && c.access_mode == AccessMode::Write));
+        assert!(spec
+            .required_claims
+            .iter()
+            .any(|c| c.claim_id.0 == "tool:cargo" && c.access_mode == AccessMode::Read));
+    }
+
+    #[test]
+    fn codegen_unit_has_correct_claims() {
+        let registry = default_process_unit_registry();
+        let spec = registry
+            .get(&codegen_ref())
+            .expect("codegen.ensure should exist");
+        assert!(spec
+            .required_claims
+            .iter()
+            .any(|c| c.claim_id.0 == "file:generated:cli" && c.access_mode == AccessMode::Write));
+    }
+
+    #[test]
+    fn compilation_canonical_identity_is_context_free() {
+        let registry = default_process_unit_registry();
+        let spec = registry
+            .get(&compilation_ref())
+            .expect("compilation_ensure should exist");
+        let (process, unit) = spec.canonical_work_identity();
+        assert_eq!(process.0, "process-unit");
+        // Unit ID uses underscore (not dot) to avoid canonicalization stripping.
+        assert_eq!(unit.0, "compilation_ensure");
+    }
+
+    #[test]
+    fn codegen_capability_canonical_identity_is_context_free() {
+        let registry = default_process_unit_registry();
+        let spec = registry
+            .get(&codegen_ref())
+            .expect("codegen_ensure should exist");
+        let (process, unit) = spec.canonical_work_identity();
+        assert_eq!(process.0, "process-unit");
+        assert_eq!(unit.0, "codegen_ensure");
+    }
+
+    #[test]
+    fn compilation_and_codegen_have_distinct_canonical_identities() {
+        let registry = default_process_unit_registry();
+        let compilation = registry
+            .get(&compilation_ref())
+            .expect("compilation_ensure");
+        let codegen = registry.get(&codegen_ref()).expect("codegen_ensure");
+        assert_ne!(
+            compilation.canonical_work_identity(),
+            codegen.canonical_work_identity(),
+            "compilation and codegen must have distinct canonical identities"
         );
     }
 }

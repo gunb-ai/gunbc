@@ -4,7 +4,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use gunbc_dag::{
-    ci_workflow_spec, default_process_unit_registry, explain_plan, plan_workflow_with_mode,
+    bootstrap_workflow_spec, ci_workflow_spec, default_process_unit_registry, explain_plan,
+    gist_diff_workflow_spec, gist_snapshot_workflow_spec, plan_workflow_with_mode,
     test_all_workflow_spec, DryRunMode, MissReason, PlannerInputs,
 };
 use serde::Serialize;
@@ -36,8 +37,11 @@ fn main() {
     let spec = match args.workflow.as_str() {
         "ci" => ci_workflow_spec(),
         "test-all" | "test_all" => test_all_workflow_spec(),
+        "gist-snapshot" | "gist_snapshot" => gist_snapshot_workflow_spec(),
+        "gist-diff" | "gist_diff" => gist_diff_workflow_spec(),
+        "bootstrap" => bootstrap_workflow_spec(),
         other => Err(format!(
-            "unknown workflow '{}': expected ci or test-all",
+            "unknown workflow '{}': expected ci, test-all, gist-snapshot, gist-diff, or bootstrap",
             other
         )),
     };
@@ -86,7 +90,7 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                 i += 1;
                 let value = argv
                     .get(i)
-                    .ok_or_else(|| "--plan requires <ci|test-all>".to_string())?;
+                    .ok_or_else(|| "--plan requires a workflow name".to_string())?;
                 workflow = Some(value.clone());
             }
             "--workspace-root" => {
@@ -129,7 +133,7 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
         i += 1;
     }
 
-    let workflow = workflow.ok_or_else(|| "missing required --plan <ci|test-all>".to_string())?;
+    let workflow = workflow.ok_or_else(|| "missing required --plan <workflow>".to_string())?;
     let workspace_root = workspace_root
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     Ok(Args {
@@ -317,11 +321,18 @@ fn print_help() {
     println!();
     println!("USAGE:");
     println!(
-        "  gunbc-workflow --plan <ci|test-all> [--workspace-root <path>] [--dry-run <strict|lenient>]"
+        "  gunbc-workflow --plan <workflow> [--workspace-root <path>] [--dry-run <strict|lenient>]"
     );
     println!();
+    println!("WORKFLOWS:");
+    println!("  ci              CI pipeline workflow");
+    println!("  test-all        Full test suite workflow");
+    println!("  gist-snapshot   Gist snapshot workflow (WF14/WF15)");
+    println!("  gist-diff       Gist diff workflow (WF14/WF15)");
+    println!("  bootstrap       Bootstrap workflow (WF14/WF15)");
+    println!();
     println!("FLAGS:");
-    println!("  --plan <name>           Workflow to plan (ci or test-all)");
+    println!("  --plan <name>           Workflow to plan");
     println!("  --workspace-root <dir>  Workspace root for ledger/CAS paths");
     println!("  --dry-run <mode>        Dry-run strictness (default: strict)");
     println!("  --format <text|json>    Output format (default: text)");
@@ -351,7 +362,7 @@ mod tests {
     fn parse_args_rejects_missing_plan_value() {
         let error = parse_args(vec!["gunbc-workflow".to_string(), "--plan".to_string()])
             .expect_err("missing plan value should fail");
-        assert!(error.contains("--plan requires"));
+        assert!(error.contains("--plan requires"), "got: {error}");
     }
 
     #[test]
