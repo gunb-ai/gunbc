@@ -194,9 +194,8 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                         .get(i)
                         .ok_or_else(|| "--format requires <text|json>".to_string())?;
                     output_format = parse_output_format(value)?;
-                } else if i + 1 < argv.len() && !argv[i + 1].starts_with('-') {
-                    // Run mode reserves --format for tool passthrough.
-                    i += 1;
+                } else {
+                    return Err("unknown argument '--format'".to_string());
                 }
             }
             _ if arg.starts_with("--plan=") => {
@@ -213,22 +212,14 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
             _ if arg.starts_with("--format=") => {
                 if mode == Mode::Plan {
                     output_format = parse_output_format(&arg["--format=".len()..])?;
+                } else {
+                    return Err(format!("unknown argument '{arg}'"));
                 }
             }
             _ if !arg.starts_with('-') => {
                 positional = Some(arg.to_string());
             }
-            other => {
-                if mode == Mode::Run && other.starts_with('-') {
-                    // Run mode accepts passthrough CLI flags for tool binaries.
-                    // Planner-only mode remains strict.
-                    if !other.contains('=') && i + 1 < argv.len() && !argv[i + 1].starts_with('-') {
-                        i += 1;
-                    }
-                } else {
-                    return Err(format!("unknown argument '{other}'"));
-                }
-            }
+            other => return Err(format!("unknown argument '{other}'")),
         }
         i += 1;
     }
@@ -622,8 +613,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_args_allows_passthrough_flags_in_run_mode() {
-        let args = parse_args(vec![
+    fn parse_args_rejects_unknown_flags_in_run_mode() {
+        let error = parse_args(vec![
             "gunbc-workflow".to_string(),
             "dag-viz".to_string(),
             "--repo-path".to_string(),
@@ -631,9 +622,8 @@ mod tests {
             "--format".to_string(),
             "svg".to_string(),
         ])
-        .expect("run mode should allow passthrough flags");
-        assert_eq!(args.workflow, "dag-viz");
-        assert_eq!(args.output_format, OutputFormat::Text);
+        .expect_err("run mode should reject unknown passthrough flags");
+        assert!(error.contains("unknown argument"));
     }
 
     #[test]
