@@ -1,7 +1,7 @@
 {
   "module": "tools.makegen",
   "path": "tools/makegen.dag",
-  "items": 2,
+  "items": 3,
   "dependencies": [
     "std.patterns",
     "std.types",
