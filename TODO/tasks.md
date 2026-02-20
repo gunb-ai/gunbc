@@ -442,6 +442,17 @@ Additional active open items:
    Scope: `WF21` (Makefile thinning).
 5. `default_registry()` couples tool discovery to `gunbc_codegen::registry::derive_tool_defs()`.
    Post-planner, tool discovery should come from workflow specs. Low priority.
+6. daglang CLI: `compile.rs` and `pipeline.rs` have two partially-overlapping pipeline
+   implementations. Consolidate to one frontend API with commands as projections/views.
+   Scope: next daglang iteration.
+7. daglang CLI: `daglang manifest` currently outputs topology stats (nodes, edges, waves),
+   not a progress manifest in the roadmap sense. Decide naming: rename to `daglang topology`
+   or add a separate `daglang progress` command. Scope: next daglang iteration.
+8. daglang CLI: canonical IR JSON (`makegen_canonical_ir.json`) is a test snapshot, not a
+   stable CLI output. Promote to `daglang compile --format canonical-json` for diffable CI
+   artifacts. Scope: next daglang iteration.
+9. daglang CLI: `daglang viz` defaults to Mermaid output; roadmap expects ASCII default
+   with `--format mermaid` as optional. Decide and update. Scope: next daglang iteration.
 
 ---
 

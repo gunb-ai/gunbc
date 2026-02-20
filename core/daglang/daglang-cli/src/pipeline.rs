@@ -273,10 +273,24 @@ pub fn build_pipeline_dag() -> Dag<CompilerOp> {
     dag
 }
 
+/// Run the compiler pipeline up to the specified stop point.
+///
+/// The pipeline DAG is constructed and validated (topological order, port
+/// wiring, semantic constraints) as a structural correctness check, but
+/// execution is direct function calls — the DAG does not drive dispatch.
+///
+/// Design intent: the DAG validates that the pipeline structure is sound
+/// (no cycles, ports match, required nodes exist) even though execution
+/// is currently sequential. If the pipeline DAG and direct calls ever
+/// diverge, the validation will catch it at the structure level. When/if
+/// execution moves to a generic DAG executor, this validation stays and
+/// the direct calls below become the executor's dispatch targets.
 pub fn run_pipeline(
     context: &PipelineContext,
     stop: PipelineStop,
 ) -> Result<PipelineResult, PipelineError> {
+    // Validate pipeline structure (catches cycles, missing nodes, port mismatches).
+    // Execution is direct calls below — see doc comment above.
     let dag = build_pipeline_dag();
     validate_pipeline_semantics(&dag)?;
     topological_order(&dag)?;
