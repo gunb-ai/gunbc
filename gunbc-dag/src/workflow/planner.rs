@@ -70,6 +70,10 @@ pub enum WorkflowPlannerError {
     Key(String),
     Ledger(WorkflowLedgerError),
     UnknownNode(NodeId),
+    UnknownProcessUnit {
+        node_id: NodeId,
+        process_unit: super::process_registry::ProcessUnitRef,
+    },
     StrictDryRunMissingInput {
         node_id: NodeId,
         port: PortName,
@@ -87,6 +91,14 @@ impl std::fmt::Display for WorkflowPlannerError {
             WorkflowPlannerError::UnknownNode(node_id) => {
                 write!(f, "workflow planner: unknown node '{}'", node_id.0)
             }
+            WorkflowPlannerError::UnknownProcessUnit {
+                node_id,
+                process_unit,
+            } => write!(
+                f,
+                "workflow planner: node '{}' references unknown process unit '{}::{}'",
+                node_id.0, process_unit.process_id.0, process_unit.unit_id.0
+            ),
             WorkflowPlannerError::StrictDryRunMissingInput {
                 node_id,
                 port,
@@ -164,22 +176,17 @@ pub fn plan_workflow_with_mode(
 
         let (work_id, op_version) = match op {
             WorkflowOp::InvokeProcessUnit(process_ref) => {
-                if let Some(process_spec) = registry.get(process_ref) {
-                    let (canonical_process, canonical_unit) =
-                        process_spec.canonical_work_identity();
-                    (
-                        WorkIdentity::new(canonical_process, canonical_unit),
-                        process_spec.op_version,
-                    )
-                } else {
-                    (
-                        WorkIdentity::new(
-                            process_ref.process_id.clone(),
-                            process_ref.unit_id.clone(),
-                        ),
-                        1,
-                    )
-                }
+                let process_spec = registry.get(process_ref).ok_or_else(|| {
+                    WorkflowPlannerError::UnknownProcessUnit {
+                        node_id: node_id.clone(),
+                        process_unit: process_ref.clone(),
+                    }
+                })?;
+                let (canonical_process, canonical_unit) = process_spec.canonical_work_identity();
+                (
+                    WorkIdentity::new(canonical_process, canonical_unit),
+                    process_spec.op_version,
+                )
             }
             WorkflowOp::Aggregate(_) => (
                 WorkIdentity::new(

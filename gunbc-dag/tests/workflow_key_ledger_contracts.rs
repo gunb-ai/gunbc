@@ -1,13 +1,18 @@
 //! Workflow key + ledger contracts (WF3).
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use std::collections::BTreeMap;
+use std::fs;
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gunbc_dag::{
     append_global_ledger_entry, ci_workflow_spec, default_process_unit_registry, plan_workflow,
-    store_output_payload, LedgerStatus, MissReason, PlanAction, PlannerInputs, RunLedgerEntry,
+    required_input_contract, required_output_contract, store_output_payload, LedgerStatus,
+    MissReason, PlanAction, PlannerInputs, ProcessUnitRef, ProcessUnitRegistry, RunLedgerEntry,
+    PlannerWorkflowSpec, WorkflowId, WorkflowOp, WorkflowPlannerError, WorkflowUnit,
 };
-use gunbc_ir::{NodeId, PortName, Value};
+use gunbc_ir::{Dag, Node, NodeId, PortName, Value};
 
 fn temp_root() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
@@ -146,4 +151,76 @@ fn cached_hits_rehydrate_result_outputs() {
         rehydrated_outputs.get(&PortName::from("result")),
         Some(&payload)
     );
+}
+
+#[test]
+fn unknown_process_units_fail_planner_admission() {
+    let root = temp_root();
+    let mut dag = Dag::new();
+    dag.add_node(Node::opaque(
+        "wf.unknown",
+        required_input_contract(),
+        required_output_contract(),
+        WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+            "wf",
+            "wf.unknown",
+        ))),
+    ));
+    let spec = PlannerWorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+    let registry = ProcessUnitRegistry::new();
+
+    let err = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root)
+        .expect_err("unknown process unit should fail planner");
+    assert!(matches!(
+        err,
+        WorkflowPlannerError::UnknownProcessUnit { node_id, .. } if node_id == NodeId::from("wf.unknown")
+    ));
+}
+
+#[test]
+fn corrupted_ledger_fails_closed() {
+    let root = temp_root();
+    let ledger_root = root.join(".gunbc").join("workflow-ledger");
+    fs::create_dir_all(&ledger_root).expect("create workflow ledger dir");
+    fs::write(ledger_root.join("global.ndjson"), b"{not valid json\n")
+        .expect("write corrupt global ledger");
+
+    let spec = ci_workflow_spec().expect("ci spec");
+    let registry = default_process_unit_registry();
+    let err = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root)
+        .expect_err("corrupt ledger should fail planning");
+    assert!(matches!(err, WorkflowPlannerError::Ledger(_)));
+}
+
+#[test]
+fn concurrent_planning_calls_remain_deterministic() {
+    let root = temp_root();
+    let spec = ci_workflow_spec().expect("ci spec");
+    let registry = default_process_unit_registry();
+    let baseline = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root)
+        .expect("baseline plan should succeed")
+        .nodes
+        .into_iter()
+        .map(|node| (node.node_id, node.key.digest))
+        .collect::<Vec<_>>();
+
+    let mut handles = Vec::new();
+    for _ in 0..6 {
+        let spec = spec.clone();
+        let registry = registry.clone();
+        let root = root.clone();
+        handles.push(thread::spawn(move || {
+            plan_workflow(&spec, &registry, &PlannerInputs::new(), &root)
+                .expect("concurrent plan should succeed")
+                .nodes
+                .into_iter()
+                .map(|node| (node.node_id, node.key.digest))
+                .collect::<Vec<_>>()
+        }));
+    }
+
+    for handle in handles {
+        let digests = handle.join().expect("planning thread should not panic");
+        assert_eq!(digests, baseline);
+    }
 }

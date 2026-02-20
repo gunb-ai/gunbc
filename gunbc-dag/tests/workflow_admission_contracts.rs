@@ -156,3 +156,29 @@ fn missing_required_claims_fail_closed() {
         WorkflowAdmissionError::UndeclaredEffectfulIo { node_id, .. } if node_id.0 == "wf.a"
     )));
 }
+
+#[test]
+fn coarse_file_claim_conflicts_with_qualified_file_claim() {
+    let mut dag = Dag::new();
+    dag.add_node(invoke_node("wf.a", "wf", "a", &[("file", AccessMode::Write)]));
+    dag.add_node(invoke_node(
+        "wf.b",
+        "wf",
+        "b",
+        &[("file:workspace", AccessMode::Write)],
+    ));
+    let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
+    let registry = registry_for_two_nodes(
+        vec![UnitClaim::write("file")],
+        vec![UnitClaim::write("file:workspace")],
+    );
+
+    let errors =
+        validate_workflow_admission(&spec, &registry).expect_err("coarse vs scoped must conflict");
+    assert!(errors.iter().any(|error| matches!(
+        error,
+        WorkflowAdmissionError::ConflictingClaims { left_claim, right_claim, .. }
+            if (left_claim == &ClaimId::new("file") && right_claim == &ClaimId::new("file:workspace"))
+            || (left_claim == &ClaimId::new("file:workspace") && right_claim == &ClaimId::new("file"))
+    )));
+}

@@ -241,12 +241,42 @@ fn mode_rank(mode: gunbc_ir::AccessMode) -> u8 {
 }
 
 fn resource_ids_conflict(left: &ResourceId, right: &ResourceId) -> bool {
+    // Resource conflict semantics:
+    // - exact same resource ID conflicts,
+    // - coarse file domain claim (`file`) conflicts with any qualified file
+    //   claim (`file:<path>`),
+    // - qualified file claims only conflict with the same qualified path,
+    // - non-file domains only conflict on exact ID match.
     if left == right {
         return true;
     }
-    let left_file = left.0 == "file" || left.0.starts_with("file:");
-    let right_file = right.0 == "file" || right.0.starts_with("file:");
-    left_file && right_file && (left.0 == "file" || right.0 == "file")
+
+    enum ResourceScope<'a> {
+        FileRoot,
+        FileScoped(&'a str),
+        Other(&'a str),
+    }
+
+    fn classify(resource_id: &ResourceId) -> ResourceScope<'_> {
+        if resource_id.0 == "file" {
+            ResourceScope::FileRoot
+        } else if let Some(rest) = resource_id.0.strip_prefix("file:") {
+            ResourceScope::FileScoped(rest)
+        } else {
+            ResourceScope::Other(resource_id.0.as_str())
+        }
+    }
+
+    match (classify(left), classify(right)) {
+        (ResourceScope::FileRoot, ResourceScope::FileRoot) => true,
+        (ResourceScope::FileRoot, ResourceScope::FileScoped(_))
+        | (ResourceScope::FileScoped(_), ResourceScope::FileRoot) => true,
+        (ResourceScope::FileScoped(left_path), ResourceScope::FileScoped(right_path)) => {
+            left_path == right_path
+        }
+        (ResourceScope::Other(left_id), ResourceScope::Other(right_id)) => left_id == right_id,
+        _ => false,
+    }
 }
 
 fn compute_ordered_pairs(dag: &Dag<WorkflowUnit>) -> HashSet<(gunbc_ir::NodeId, gunbc_ir::NodeId)> {
@@ -447,5 +477,45 @@ mod tests {
             error,
             WorkflowAdmissionError::UndeclaredEffectfulIo { node_id, .. } if node_id.0 == "wf.a"
         )));
+    }
+
+    #[test]
+    fn file_root_claim_conflicts_with_file_scoped_claims() {
+        assert!(resource_ids_conflict(
+            &ResourceId::new("file"),
+            &ResourceId::new("file:workspace")
+        ));
+        assert!(resource_ids_conflict(
+            &ResourceId::new("file:workspace"),
+            &ResourceId::new("file")
+        ));
+    }
+
+    #[test]
+    fn different_file_scoped_claims_do_not_conflict() {
+        assert!(!resource_ids_conflict(
+            &ResourceId::new("file:workspace"),
+            &ResourceId::new("file:tmp")
+        ));
+    }
+
+    #[test]
+    fn identical_scoped_claims_conflict() {
+        assert!(resource_ids_conflict(
+            &ResourceId::new("file:workspace"),
+            &ResourceId::new("file:workspace")
+        ));
+    }
+
+    #[test]
+    fn non_file_domains_only_conflict_on_exact_match() {
+        assert!(!resource_ids_conflict(
+            &ResourceId::new("tool:cargo"),
+            &ResourceId::new("tool:rustc")
+        ));
+        assert!(resource_ids_conflict(
+            &ResourceId::new("tool:cargo"),
+            &ResourceId::new("tool:cargo")
+        ));
     }
 }

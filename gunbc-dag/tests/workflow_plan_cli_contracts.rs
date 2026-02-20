@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde_json::Value;
+
 fn temp_root() -> PathBuf {
     std::env::temp_dir().join(format!(
         "gunbc-workflow-cli-contracts-{}-{}",
@@ -16,10 +18,12 @@ fn temp_root() -> PathBuf {
     ))
 }
 
-fn run_workflow_plan(workflow: &str, workspace_root: &PathBuf) -> String {
+fn run_workflow_plan_json(workflow: &str, workspace_root: &PathBuf) -> Value {
     let output = Command::new(env!("CARGO_BIN_EXE_gunbc-workflow"))
         .arg("--plan")
         .arg(workflow)
+        .arg("--format")
+        .arg("json")
         .arg("--workspace-root")
         .arg(workspace_root)
         .output()
@@ -29,7 +33,7 @@ fn run_workflow_plan(workflow: &str, workspace_root: &PathBuf) -> String {
         "gunbc-workflow failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    String::from_utf8(output.stdout).expect("stdout should be utf-8")
+    serde_json::from_slice(&output.stdout).expect("workflow plan output should be valid json")
 }
 
 #[test]
@@ -37,13 +41,23 @@ fn plan_output_is_deterministic_for_ci_fixture_state() {
     let root = temp_root();
     std::fs::create_dir_all(&root).expect("temp workspace root");
 
-    let first = run_workflow_plan("ci", &root);
-    let second = run_workflow_plan("ci", &root);
+    let first = run_workflow_plan_json("ci", &root);
+    let second = run_workflow_plan_json("ci", &root);
     assert_eq!(first, second, "ci plan output should be deterministic");
-    assert!(first.contains("workflow: ci"));
-    assert!(first.contains("execute-set:"));
-    assert!(first.contains("cache-hit-set:"));
-    assert!(first.contains("critical-path:"));
+    assert_eq!(first["workflow"], Value::String("ci".to_string()));
+    assert!(first["execute_set"].is_array());
+    assert!(first["cache_hit_set"].is_array());
+    assert!(first["critical_path"].is_array());
+    assert!(first["blocked"].is_object());
+    assert!(first["ready"].is_array());
+
+    for entry in first["execute_set"]
+        .as_array()
+        .expect("execute_set should be an array")
+    {
+        assert!(entry["node_id"].is_string());
+        assert!(entry["miss_reason"].is_string());
+    }
 }
 
 #[test]
@@ -51,17 +65,25 @@ fn plan_output_is_deterministic_for_test_all_fixture_state() {
     let root = temp_root();
     std::fs::create_dir_all(&root).expect("temp workspace root");
 
-    let first = run_workflow_plan("test-all", &root);
-    let second = run_workflow_plan("test-all", &root);
+    let first = run_workflow_plan_json("test-all", &root);
+    let second = run_workflow_plan_json("test-all", &root);
     assert_eq!(
         first, second,
         "test-all plan output should be deterministic"
     );
-    assert!(first.contains("workflow: test-all"));
-    assert!(first.contains("execute-set:"));
-    assert!(first.contains("critical-path:"));
+    assert_eq!(first["workflow"], Value::String("test-all".to_string()));
+    assert!(first["execute_set"].is_array());
+    assert!(first["critical_path"].is_array());
     assert!(
-        first.contains("miss:no-prior-run"),
-        "fresh fixture should classify misses as no-prior-run"
+        first["execute_set"]
+            .as_array()
+            .expect("execute_set should be an array")
+            .iter()
+            .all(|entry| {
+                entry["miss_reason"]
+                    .as_str()
+                    .is_some_and(|reason| reason.starts_with("miss:no-prior-run"))
+            }),
+        "fresh fixture should classify execute set misses as no-prior-run"
     );
 }

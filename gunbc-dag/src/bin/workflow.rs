@@ -1,17 +1,26 @@
 //! gunbc-workflow planner entrypoint (WF5).
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use gunbc_dag::{
     ci_workflow_spec, default_process_unit_registry, explain_plan, plan_workflow_with_mode,
     test_all_workflow_spec, DryRunMode, MissReason, PlannerInputs,
 };
+use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Args {
     workflow: String,
     workspace_root: PathBuf,
     dry_run_mode: DryRunMode,
+    output_format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputFormat {
+    Text,
+    Json,
 }
 
 fn main() {
@@ -56,13 +65,17 @@ fn main() {
         }
     };
     let explain = explain_plan(&spec, &plan);
-    println!("{}", render_plan_output(&spec.id.0, &explain));
+    println!(
+        "{}",
+        render_plan_output(&spec.id.0, &explain, args.output_format)
+    );
 }
 
 fn parse_args(argv: Vec<String>) -> Result<Args, String> {
     let mut workflow: Option<String> = None;
     let mut workspace_root: Option<PathBuf> = None;
     let mut dry_run_mode = DryRunMode::Strict;
+    let mut output_format = OutputFormat::Text;
 
     let mut i = 1usize;
     while i < argv.len() {
@@ -90,6 +103,13 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                     .ok_or_else(|| "--dry-run requires <strict|lenient>".to_string())?;
                 dry_run_mode = parse_dry_run_mode(value)?;
             }
+            "--format" => {
+                i += 1;
+                let value = argv
+                    .get(i)
+                    .ok_or_else(|| "--format requires <text|json>".to_string())?;
+                output_format = parse_output_format(value)?;
+            }
             _ if arg.starts_with("--plan=") => {
                 workflow = Some(arg["--plan=".len()..].to_string());
             }
@@ -98,6 +118,9 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
             }
             _ if arg.starts_with("--dry-run=") => {
                 dry_run_mode = parse_dry_run_mode(&arg["--dry-run=".len()..])?;
+            }
+            _ if arg.starts_with("--format=") => {
+                output_format = parse_output_format(&arg["--format=".len()..])?;
             }
             other => {
                 return Err(format!("unknown argument '{other}'"));
@@ -113,6 +136,7 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
         workflow,
         workspace_root,
         dry_run_mode,
+        output_format,
     })
 }
 
@@ -127,7 +151,29 @@ fn parse_dry_run_mode(raw: &str) -> Result<DryRunMode, String> {
     }
 }
 
-fn render_plan_output(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> String {
+fn parse_output_format(raw: &str) -> Result<OutputFormat, String> {
+    match raw.to_ascii_lowercase().as_str() {
+        "text" => Ok(OutputFormat::Text),
+        "json" => Ok(OutputFormat::Json),
+        other => Err(format!(
+            "unknown --format value '{}': expected text or json",
+            other
+        )),
+    }
+}
+
+fn render_plan_output(
+    workflow_name: &str,
+    explain: &gunbc_dag::PlanExplain,
+    format: OutputFormat,
+) -> String {
+    match format {
+        OutputFormat::Text => render_plan_text(workflow_name, explain),
+        OutputFormat::Json => render_plan_json(workflow_name, explain),
+    }
+}
+
+fn render_plan_text(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> String {
     let mut out = String::new();
     out.push_str(&format!("workflow: {workflow_name}\n"));
 
@@ -175,6 +221,82 @@ fn render_plan_output(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> 
     out
 }
 
+#[derive(Debug, Serialize)]
+struct JsonPlanOutput {
+    workflow: String,
+    execute_set: Vec<JsonExecuteNode>,
+    cache_hit_set: Vec<String>,
+    ready: Vec<String>,
+    blocked: BTreeMap<String, Vec<String>>,
+    critical_path: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonExecuteNode {
+    node_id: String,
+    miss_reason: String,
+}
+
+fn render_plan_json(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> String {
+    let execute_set = explain
+        .execute_set
+        .iter()
+        .map(|node| JsonExecuteNode {
+            node_id: node.0.clone(),
+            miss_reason: explain
+                .miss_reasons
+                .get(node)
+                .map(format_miss_reason)
+                .unwrap_or_else(|| "unknown".to_string()),
+        })
+        .collect::<Vec<_>>();
+
+    let cache_hit_set = explain
+        .cache_hit_set
+        .iter()
+        .map(|node| node.0.clone())
+        .collect::<Vec<_>>();
+    let ready = explain
+        .ready
+        .iter()
+        .map(|node| node.0.clone())
+        .collect::<Vec<_>>();
+    let critical_path = explain
+        .critical_path
+        .iter()
+        .map(|node| node.0.clone())
+        .collect::<Vec<_>>();
+
+    let blocked = explain
+        .blocked
+        .iter()
+        .map(|(node, reasons)| {
+            let formatted = reasons
+                .iter()
+                .map(|reason| match reason {
+                    gunbc_dag::BlockedReason::UncommittedPrerequisite { node_id } => {
+                        format!("waiting-for-commit:{}", node_id.0)
+                    }
+                    gunbc_dag::BlockedReason::MissingRequiredDataInput { port } => {
+                        format!("missing-input:{}", port.0)
+                    }
+                })
+                .collect::<Vec<_>>();
+            (node.0.clone(), formatted)
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    serde_json::to_string_pretty(&JsonPlanOutput {
+        workflow: workflow_name.to_string(),
+        execute_set,
+        cache_hit_set,
+        ready,
+        blocked,
+        critical_path,
+    })
+    .expect("json plan output should always be serializable")
+}
+
 fn format_miss_reason(reason: &MissReason) -> String {
     match reason {
         MissReason::NoPriorRun => "miss:no-prior-run".to_string(),
@@ -202,6 +324,7 @@ fn print_help() {
     println!("  --plan <name>           Workflow to plan (ci or test-all)");
     println!("  --workspace-root <dir>  Workspace root for ledger/CAS paths");
     println!("  --dry-run <mode>        Dry-run strictness (default: strict)");
+    println!("  --format <text|json>    Output format (default: text)");
     println!("  -h, --help              Show this help");
 }
 
@@ -221,6 +344,7 @@ mod tests {
         assert_eq!(args.workflow, "ci");
         assert_eq!(args.workspace_root, PathBuf::from("/tmp/x"));
         assert_eq!(args.dry_run_mode, DryRunMode::Strict);
+        assert_eq!(args.output_format, OutputFormat::Text);
     }
 
     #[test]
@@ -244,6 +368,19 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_supports_json_output_mode() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "--plan".to_string(),
+            "ci".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ])
+        .expect("parse should succeed");
+        assert_eq!(args.output_format, OutputFormat::Json);
+    }
+
+    #[test]
     fn render_output_is_deterministic_for_same_explain_data() {
         let explain = gunbc_dag::PlanExplain {
             execute_set: vec![gunbc_ir::NodeId::from("ci.codegen")],
@@ -256,8 +393,26 @@ mod tests {
             ready: vec![gunbc_ir::NodeId::from("ci.lint_upsert")],
             critical_path: vec![gunbc_ir::NodeId::from("ci.lint_upsert")],
         };
-        let a = render_plan_output("ci", &explain);
-        let b = render_plan_output("ci", &explain);
+        let a = render_plan_output("ci", &explain, OutputFormat::Text);
+        let b = render_plan_output("ci", &explain, OutputFormat::Text);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn render_json_output_is_deterministic_for_same_explain_data() {
+        let explain = gunbc_dag::PlanExplain {
+            execute_set: vec![gunbc_ir::NodeId::from("ci.codegen")],
+            cache_hit_set: vec![],
+            miss_reasons: BTreeMap::from([(
+                gunbc_ir::NodeId::from("ci.codegen"),
+                MissReason::NoPriorRun,
+            )]),
+            blocked: BTreeMap::new(),
+            ready: vec![gunbc_ir::NodeId::from("ci.lint_upsert")],
+            critical_path: vec![gunbc_ir::NodeId::from("ci.lint_upsert")],
+        };
+        let a = render_plan_output("ci", &explain, OutputFormat::Json);
+        let b = render_plan_output("ci", &explain, OutputFormat::Json);
         assert_eq!(a, b);
     }
 }
