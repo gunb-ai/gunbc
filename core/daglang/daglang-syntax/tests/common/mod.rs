@@ -47,6 +47,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "services/gcp/sts.dag",
         "services/git.dag",
         "services/github/gist.dag",
+        "services/github/issues.dag",
         "services/llm/anthropic.dag",
         "services/llm/openai.dag",
         "services/shell.dag",
