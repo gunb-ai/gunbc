@@ -575,23 +575,22 @@ pub(crate) fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow
 
 fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String {
     let _ = config;
-    let cli_args = render_cli_args(&tool.entrypoints);
-    workflow_tool_command(tool, dry_run, &cli_args)
+    workflow_tool_command(tool, dry_run)
 }
 
 /// Render a workflow-dispatched tool command.
 ///
 /// All tool targets dispatch through `gunbc-workflow` run mode via `cargo run`,
 /// so cold-start clones and stale binaries are handled by Cargo freshness.
-fn workflow_tool_command(tool: &ToolInfo, dry_run: bool, cli_args: &str) -> String {
+fn workflow_tool_command(tool: &ToolInfo, dry_run: bool) -> String {
     let base = format!(
         "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- {}",
         tool.short_name
     );
     if dry_run {
-        format!("{base} --dry-run strict{cli_args}")
+        format!("{base} --dry-run strict")
     } else {
-        format!("{base}{cli_args}")
+        base
     }
 }
 
@@ -613,31 +612,6 @@ fn build_extra_target(tool: &ToolInfo, extra: &ExtraTarget) -> StructuredBlock {
             .into(),
         ),
     })
-}
-
-/// Render CLI arguments from entrypoint parameters.
-fn render_cli_args(params: &[EntrypointParam]) -> String {
-    if params.is_empty() {
-        return String::new();
-    }
-
-    let args: Vec<String> = params
-        .iter()
-        .map(|p| {
-            if p.repeatable {
-                // $(if $(VAR),$(foreach v,$(VAR),--flag $(v)))
-                format!(
-                    " $(if $({}),$(foreach v,$({}),{} $(v)))",
-                    p.make_var, p.make_var, p.cli_flag
-                )
-            } else {
-                // $(if $(VAR),--flag $(VAR))
-                format!(" $(if $({}),{} $({}))", p.make_var, p.cli_flag, p.make_var)
-            }
-        })
-        .collect();
-
-    args.join("")
 }
 
 #[cfg(test)]
@@ -667,23 +641,21 @@ mod tests {
     }
 
     #[test]
-    fn test_render_makefile_has_cli_args() {
+    fn test_render_makefile_help_mentions_entrypoint_variables() {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        // Should have conditional variable expansion
-        assert!(makefile.contains("$(if $(REPO)"));
-        assert!(makefile.contains("--repo"));
+        assert!(makefile.contains("[REPO=..."));
     }
 
     #[test]
-    fn test_render_makefile_repeatable_cli_args() {
+    fn test_render_makefile_help_mentions_repeatable_entrypoint_variables() {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
         assert!(
-            makefile.contains("$(foreach v,$(EXT),--extensions $(v))"),
-            "repeatable vars should expand into repeated flags"
+            makefile.contains("[EXT=... ...]"),
+            "repeatable vars should be documented in help"
         );
     }
 

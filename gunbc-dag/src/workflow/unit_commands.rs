@@ -106,6 +106,7 @@ pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
                 "-p",
                 "gunbc-dag",
                 "--bin",
+                // The DAG wrapper binary supports --mode verify/ensure.
                 "gunbc-codegen-dag",
                 "--",
                 "--mode=verify",
@@ -175,6 +176,7 @@ pub fn test_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
                 "-p",
                 "gunbc-dag",
                 "--bin",
+                // The DAG wrapper binary supports --mode verify/ensure.
                 "gunbc-codegen-dag",
                 "--",
                 "--mode=ensure",
@@ -289,21 +291,23 @@ fn bootstrap_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("bootstrap.codegen_ensure"),
         codegen_ensure_command(),
     );
+    let bootstrap_cmd = UnitCommand::cargo(
+        "bootstrap ensure",
+        vec![
+            "run",
+            "-p",
+            "gunbc-dag",
+            "--bin",
+            "gunbc-bootstrap",
+            "--",
+            "--mode=ensure",
+        ],
+    );
     commands.insert(
         NodeId::from("bootstrap.upsert_makefile"),
-        UnitCommand::cargo(
-            "bootstrap ensure",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-bootstrap",
-                "--",
-                "--mode=ensure",
-            ],
-        ),
+        bootstrap_cmd.clone(),
     );
+    commands.insert(NodeId::from("bootstrap.upsert_gitignore"), bootstrap_cmd);
     commands
 }
 
@@ -345,21 +349,21 @@ fn pragma_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("pragma.codegen_ensure"),
         codegen_ensure_command(),
     );
-    commands.insert(
-        NodeId::from("pragma.upsert_policy"),
-        UnitCommand::cargo(
-            "pragma ensure",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-pragma",
-                "--",
-                "--mode=ensure",
-            ],
-        ),
+    let pragma_cmd = UnitCommand::cargo(
+        "pragma ensure",
+        vec![
+            "run",
+            "-p",
+            "gunbc-dag",
+            "--bin",
+            "gunbc-pragma",
+            "--",
+            "--mode=ensure",
+        ],
     );
+    commands.insert(NodeId::from("pragma.upsert_clippy"), pragma_cmd.clone());
+    commands.insert(NodeId::from("pragma.upsert_allowlist"), pragma_cmd.clone());
+    commands.insert(NodeId::from("pragma.upsert_policy"), pragma_cmd);
     commands
 }
 
@@ -373,13 +377,12 @@ fn deps_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("deps.codegen_ensure"),
         codegen_ensure_command(),
     );
-    commands.insert(
-        NodeId::from("deps.execute_installs"),
-        UnitCommand::cargo(
-            "deps",
-            vec!["run", "-p", "gunbc-deps", "--bin", "gunbc-deps", "--"],
-        ),
+    let deps_cmd = UnitCommand::cargo(
+        "deps",
+        vec!["run", "-p", "gunbc-deps", "--bin", "gunbc-deps", "--"],
     );
+    commands.insert(NodeId::from("deps.execute_installs"), deps_cmd.clone());
+    commands.insert(NodeId::from("deps.write_deps_toml"), deps_cmd);
     commands
 }
 
@@ -524,6 +527,7 @@ mod tests {
         assert!(commands.contains_key(&NodeId::from("bootstrap.compilation_ensure")));
         assert!(commands.contains_key(&NodeId::from("bootstrap.codegen_ensure")));
         assert!(commands.contains_key(&NodeId::from("bootstrap.upsert_makefile")));
+        assert!(commands.contains_key(&NodeId::from("bootstrap.upsert_gitignore")));
     }
 
     #[test]
