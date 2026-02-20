@@ -1136,18 +1136,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config)?;
     let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth)?;
 
-    let merge = builder.add_root_node(Node::opaque(
-        "merge_dimensions",
-        vec![
-            optional("coherence_output", "OptionalJson"),
-            optional("quality_output", "OptionalJson"),
-            optional("requirements_output", "OptionalJson"),
-            optional("aspirational_output", "OptionalJson"),
-        ],
-        vec![port("output", "Json"), port("summary", "String")],
-        DynOp::new(DimensionOps::MergeDimensionOutputs),
-    ))?;
-
+    let mut merge_inputs: Vec<(NodeRef<ReviewGraphOp>, &'static str)> = Vec::new();
     let mut parallel_dimension_outputs: Vec<(ReviewDimension, NodeRef<ReviewGraphOp>)> = Vec::new();
 
     for &dimension in ReviewDimension::parallel_dimensions() {
@@ -1275,10 +1264,10 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             llm_triplet.in_port("scope_verified"),
         )?;
         builder.add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))?;
-        builder.add_edge(
-            parse_response.out("output"),
-            merge.in_port(merge_input_port_for_dimension(dimension)),
-        )?;
+        merge_inputs.push((
+            parse_response.clone(),
+            merge_input_port_for_dimension(dimension),
+        ));
 
         parallel_dimension_outputs.push((dimension, parse_response));
     }
@@ -1368,7 +1357,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             DynOp::new(LlmOps::PrepareSimpleRequest),
             DynOp::new(LlmOps::ParseSimpleResponse),
             DynOp::new(TransportOps::Execute),
-            Some(&cloud_credential),
+            Some(&aspirational_prepare),
         )?;
 
         let aspirational_parse = builder.add_node_after(
@@ -1442,10 +1431,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             aspirational_llm.out("answer"),
             aspirational_parse.in_port("answer"),
         )?;
-        builder.add_edge(
-            aspirational_parse.out("output"),
-            merge.in_port("aspirational_output"),
-        )?;
+        merge_inputs.push((aspirational_parse, "aspirational_output"));
     }
 
     builder.add_edge(
@@ -1456,6 +1442,28 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         fs_env.out(FsEnv::WRITE_PORT),
         diff_triplet.in_port("res:file"),
     )?;
+
+    let merge_node_def = Node::opaque(
+        "merge_dimensions",
+        vec![
+            optional("coherence_output", "OptionalJson"),
+            optional("quality_output", "OptionalJson"),
+            optional("requirements_output", "OptionalJson"),
+            optional("aspirational_output", "OptionalJson"),
+        ],
+        vec![port("output", "Json"), port("summary", "String")],
+        DynOp::new(DimensionOps::MergeDimensionOutputs),
+    );
+    let merge = if merge_inputs.is_empty() {
+        builder.add_root_node(merge_node_def)?
+    } else {
+        let parent_refs: Vec<&NodeRef<ReviewGraphOp>> =
+            merge_inputs.iter().map(|(node, _)| node).collect();
+        builder.add_node_after_all(merge_node_def, &parent_refs)?
+    };
+    for (source_node, merge_port) in &merge_inputs {
+        builder.add_edge(source_node.out("output"), merge.in_port(*merge_port))?;
+    }
 
     Ok(builder.build())
 }
