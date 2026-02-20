@@ -466,7 +466,7 @@ fn resolve_lowered_dag_maps_makegen_nodes_to_dyn_ops() {
 }
 
 #[test]
-fn resolve_lowered_dag_defers_unknown_callable_module() {
+fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
         "sample::unknown",
@@ -483,23 +483,10 @@ fn resolve_lowered_dag_defers_unknown_callable_module() {
         },
     ));
 
-    let resolved = resolve_lowered_dag(&dag).expect("unknown modules should defer");
-    assert_eq!(resolved.nodes.len(), 1);
-    let debug = format!("{:?}", resolved.nodes[0].body);
+    let error = resolve_lowered_dag(&dag).expect_err("unknown modules should fail closed");
     assert!(
-        debug.contains("DeferredCallableOp"),
-        "expected deferred callable fallback, got {debug}"
-    );
-    // Deferred callables are passthrough: inputs forwarded, output ports populated.
-    let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
-        panic!("unknown callable fixture should not contain subdag nodes")
-    };
-    let outputs = op
-        .execute(HashMap::new())
-        .expect("deferred callable should pass through");
-    assert!(
-        outputs.contains_key("out"),
-        "deferred callable should populate declared output ports"
+        error.to_string().contains("unknown callable"),
+        "unexpected error: {error}"
     );
 }
 

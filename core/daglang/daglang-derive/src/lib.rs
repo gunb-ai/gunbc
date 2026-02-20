@@ -459,6 +459,9 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { module, name, .. }) => {
                     format!("{module}.{name}")
                 }
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive { module, name, .. }) => {
+                    format!("{module}.{name}")
+                }
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Collection {
                     module,
                     callable,
@@ -519,9 +522,7 @@ fn derive_interactive_nodes(nodes: &[Node<LoweredOp>]) -> Vec<String> {
             Some(LoweredOp::Callable {
                 is_interactive: true,
                 ..
-            }) => {
-                Some(node.id.0.clone())
-            }
+            }) => Some(node.id.0.clone()),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -579,9 +580,9 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
             continue;
         };
         let (module, is_pipeline) = match op {
-            LoweredOp::Callable { module, .. } | LoweredOp::Collection { module, .. } => {
-                (module, false)
-            }
+            LoweredOp::Callable { module, .. }
+            | LoweredOp::Primitive { module, .. }
+            | LoweredOp::Collection { module, .. } => (module, false),
             LoweredOp::Pipeline { module, .. } => (module, true),
         };
         let entry = by_module
@@ -1235,7 +1236,11 @@ mod tests {
             Some(CaptureMode::Passthrough)
         );
         assert_eq!(
-            artifacts.manifest.capture_modes.get("transport_node").cloned(),
+            artifacts
+                .manifest
+                .capture_modes
+                .get("transport_node")
+                .cloned(),
             Some(CaptureMode::Captured)
         );
     }
