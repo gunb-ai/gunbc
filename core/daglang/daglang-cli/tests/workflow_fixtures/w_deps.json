@@ -1,7 +1,7 @@
 {
   "module": "tools.deps",
-  "path": "tools/deps.dag",
-  "items": 6,
+  "path": "/workspace/dsl/tools/deps.dag",
+  "items": 9,
   "dependencies": [
     "std.patterns",
     "std.resources",

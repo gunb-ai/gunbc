@@ -1,7 +1,7 @@
 {
   "module": "tools.bootstrap",
-  "path": "tools/bootstrap.dag",
-  "items": 3,
+  "path": "/workspace/dsl/tools/bootstrap.dag",
+  "items": 4,
   "dependencies": [
     "std.patterns",
     "std.resources",

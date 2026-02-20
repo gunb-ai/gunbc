@@ -1,6 +1,6 @@
 {
   "module": "infra.azure.resources",
-  "path": "infra/azure/resources.dag",
+  "path": "/workspace/dsl/infra/azure/resources.dag",
   "items": 5,
   "dependencies": [
     "infra.core",

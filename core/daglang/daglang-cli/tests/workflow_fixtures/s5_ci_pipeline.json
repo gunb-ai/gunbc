@@ -1,7 +1,7 @@
 {
   "module": "pipelines.ci",
-  "path": "pipelines/ci.dag",
-  "items": 1,
+  "path": "/workspace/dsl/pipelines/ci.dag",
+  "items": 2,
   "dependencies": [
     "tools.makegen",
     "tools.bootstrap",
