@@ -710,57 +710,59 @@ Each stage transition:
 
 ---
 
-## Parallelization Guide
+## Parallelization Guide (Open Work Only)
 
-```
-SPRINT 1 ├─ DONE
-         │
-SPRINT 2 ├─ DONE (except R2: wildcard resources — STARTED)
-         │  R3-R12, P6, P12 all complete.
-         │
-    ─────┤ (Sprint 3/8: dev pipeline + SDLC — NEXT ACTIVE WORK)
-         │
-         ├─ W1→W2→W3              (credentials + CLI binary + multi-provider)
-         ├─ W4→W5→W6              (abstract review model → PR mode → CI context)
-         ├─ W9, W10               (GitHub Issues transport + DesignOps — parallelize with W4)
-         ├─ W7→W8                 (orchestration + issue integration)
-         ├─ W11→W12→W13           (SDLC pipeline resolver → CLI → approval gates)
-         ├─ W14                   (pipeline metrics + monitoring)
-         ├─ DL1, DL2, DL3, DL4   (daglang CLI hardening — independent, any time)
-         │
-SPRINT 4 ├─ DONE (P6 complete)
-         │
-SPRINT 5 ├─ DONE (WF1-D through WF5 complete)
-         │
-    ─────┤ (Sprint 5b: tool workflow minimization — OPEN, unblocked)
-         │
-         ├─ Lane F: WF14→WF15
-         │                     (universal: compilation + codegen — designs done)
-         ├─ Lane G: WF16→(WF17,WF18)
-         │                     (gist: base workflow → diff + recent — designs done)
-         ├─ Lane H: WF19→WF20→WF21→WF22
-         │                     (remaining: FS write + generators — designs done)
-         ├─ Lane C: WF6→WF7→WF8→WF9
-                               (workflow cutover/perf — unblocked by WF1-WF5)
-         │
-SPRINT 6 ├─ DONE (M7-M19 all complete)
-         │
-SPRINT 7 ├─ DONE (SC1-SC7 all complete)
-```
+This is a dependency-accurate execution board for unfinished work. Use it to assign
+multiple workers with minimal overlap.
 
-### What's Next (Priority Order)
+> Naming note: `W9` (SDLC issues transport) and `WF9` (workflow latency SLO) are different tasks.
 
-**Immediate (Sprint 3/8 — dev pipeline + SDLC)**:
-W1 (`gunbc review` CLI) is the critical path — first real end-to-end execution.
-W4 (abstract review DAG with 4 dimensions) is the design centerpiece. W9/W10
-(GitHub Issues transport + DesignOps) can parallelize with W4. By end of sprint:
-`gunbc sdlc --issue 42` runs the full lifecycle, `gunbc pipeline --pr 123` runs
-4-dimension review with CI context. DL1-DL4 (daglang CLI hardening) are independent
-quick fixes from external review feedback.
+### A) Independent tasks (start anytime, parallel-safe)
 
-**Next (Sprint 5b — tool workflow minimization)**:
-All design docs are done (WF14-D through WF19-D). Lane F (WF14→WF15: compilation +
-codegen capabilities) is the critical path — unlocks Lanes G and H. Lane C
-(WF6→WF7→WF8→WF9: workflow cutover) is unblocked by completed WF1-WF5.
+| Group | Tasks | Notes |
+|---|---|---|
+| Wildcard semantics hardening | `R2` | Independent from active `W*`/`WF*` tracks. |
+| Daglang CLI hardening | `DL1`, `DL2`, `DL3`, `DL4` | Independent quick fixes; can run in parallel with all lanes. |
+
+### B) Dev Pipeline + SDLC track (`W*`)
+
+| Wave | Parallel Tasks | Depends On | Unblocks |
+|---|---|---|---|
+| W-0 | `W1` | — | `W2`, `W9` |
+| W-1 | `W2`, `W9` | `W1` | `W3`; early SDLC transport |
+| W-2 | `W3` | `W2` | `W4`, `W10` (partially) |
+| W-3 | `W4` | `W3` | `W5`, `W10` |
+| W-4 | `W5`, `W10` | `W4` (+ `W3` for `W10`) | `W6`, `W11` |
+| W-5 | `W6`, `W11` | `W5` and (`W9` + `W10`) | `W7`, `W12` |
+| W-6 | `W7`, `W12` | `W6`, `W11` | `W8`, `W13`, `W14` |
+| W-7 | `W8`, `W13`, `W14` | `W7` (for `W8`), `W12` (for `W13`,`W14`) | End-to-end daily + SDLC flow |
+
+### C) Workflow planner/tool minimization track (`WF*`)
+
+| Wave | Parallel Tasks | Depends On | Unblocks |
+|---|---|---|---|
+| WF-0 | `WF6`, `WF7`, `WF14`, `WF15` | done prereqs (`WF1`-`WF5`, design tasks) | planner cutover + universal capability base |
+| WF-1 | `WF8`, `WF9`, `WF16`, `WF19`, `WF20` | `WF6`+`WF7` (for `WF8`,`WF9`); `WF14`+`WF15` (for `WF16`,`WF19`,`WF20`) | gist modes + remaining tools + SLO base |
+| WF-2 | `WF17`, `WF18` | `WF16` | full gist mode family |
+| WF-3 | `WF21` | `WF16`,`WF17`,`WF18`,`WF19`,`WF20` | global tool target cutover |
+| WF-4 | `WF22` | `WF21`,`WF9` | capability-level verification complete |
+
+### D) Suggested lane ownership (to reduce merge conflicts)
+
+| Lane | First Task | Then |
+|---|---|---|
+| Lane 1: Review/SDLC core | `W1` | Follow `W-1` to `W-7` |
+| Lane 2: Workflow cutover | `WF6`, `WF7` | `WF8`, `WF9` |
+| Lane 3: Universal capabilities | `WF14` | `WF15`, then feed `WF16/19/20` |
+| Lane 4: Gist modes | `WF16` | `WF17`, `WF18` |
+| Lane 5: Remaining tool capabilities | `WF19`, `WF20` | `WF21`, `WF22` |
+| Lane 6: Daglang hardening | `DL1`-`DL4` | finish independently |
+| Lane 7: Resource semantics | `R2` | finish independently |
+
+### Priority
+
+1. **Critical path now**: `W1` and `WF14` (they unlock the most downstream work).
+2. In parallel: `WF6`/`WF7`, `DL1`-`DL4`, and `R2`.
+3. Keep `W*` and `WF*` in separate owner lanes to avoid cross-track churn.
 
 **Backlog**: XL features and migration work in `backlog.md`.
