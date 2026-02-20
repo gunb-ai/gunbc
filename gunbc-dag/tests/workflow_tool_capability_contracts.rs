@@ -6,6 +6,7 @@
 //! 2. All tool workflow specs build deterministically.
 //! 3. Global plan flattening and non-redundancy proofs hold when tool
 //!    workflows are included alongside CI and test-all.
+#![allow(clippy::disallowed_methods)]
 
 use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
