@@ -2,382 +2,584 @@
 
 Status: Draft
 Owner: `gunbc` codegen/daglang
-Scope: Generating all service transport infrastructure from `.dag` service definitions
-Upstream: `dsl/services/**/*.dag` (source of truth)
-Downstream: `gunbc-dag/src/resolve.rs`, `core/ir/src/transport/`, `lib/*-ops/`
+Scope: Bottom-up transport interface modeling so all services are pure DSL
 
 ## 0. Document Contract
 
-1. This document is the normative source for the service codegen pipeline design.
-2. It supersedes no existing design docs — it covers a new capability.
-3. Existing `.dag` service definitions are the source of truth for service contracts.
-   Generated code must be mechanically equivalent to what those files declare.
+1. This document is the normative source for service interface modeling and codegen.
+2. `.dag` service definitions are the sole source of truth for service contracts.
+3. No hand-written Rust per-service. The Rust layer implements *protocol interfaces*,
+   not individual services.
 
 ## 1. Problem Statement
 
-The `.dag` service definitions already declare everything needed to build and parse
-REST/shell transport requests: endpoint URL, HTTP method, path template, input fields
-with types, output fields with JSON mappings, auth scheme, permissions, and mock
-responses.
+The DSL already declares 7 service files with 19 operations across 3 transport classes.
+Every operation specifies its endpoint, method, path, input/output types, auth scheme,
+permissions, and mock responses. The daglang compiler already parses these and lowers
+service calls to `prepare → execute → parse` transport triplets in the GraphIR.
 
-Despite this, every service operation today requires hand-written Rust across three
-locations:
+Despite this, `resolve.rs` contains 12 hand-written `Executable` adapter structs — one
+per service operation — that do mechanically identical work. Each REST prepare adapter:
+extracts inputs, interpolates URL, builds JSON body, returns `TransportRequest::Rest`.
+Each REST parse adapter: checks status, extracts JSON fields, returns outputs.
 
-1. **IR transport types** (`core/ir/src/transport/{service}.rs`): Request/response
-   structs, `to_rest_request()`, `credential_intent()`, response parsers. ~270 lines
-   per service (gist), ~2800 lines for LLM (multi-provider).
+The problem is that these adapters are written *per service* when they should be written
+*per transport class*. There are exactly 3 protocol interfaces (REST, Shell, File), and
+every service operation is an instance of one of them.
 
-2. **Resolver adapters** (`gunbc-dag/src/resolve.rs`): A `ServiceXxxPrepareOp` and
-   `ServiceXxxParseOp` struct per operation, each implementing `Executable`. Currently
-   ~800 lines of boilerplate spanning 12 service operations.
+### 1.1 What Exists Today
 
-3. **Ops library SubDag builders** (`lib/{service}-ops/`): Credential chain wiring,
-   transport triplet composition, composite op enums. ~500 lines of structural
-   boilerplate per service.
-
-### 1.1 Current State
-
-The daglang compiler *already* does two things:
-
-- **Parses** `service` blocks in `.dag` files (syntax, typecheck, resolve)
-- **Lowers** service calls in `func` bodies to transport triplets in the GraphIR:
-  `prepare_transport_{suffix}` → `execute_transport_{suffix}` → `parse_transport_{suffix}`
-
-What it does *not* do is generate the Rust `Executable` implementations that back those
-triplet nodes. Instead, `resolve.rs` hand-matches each
-`"service_transport::prepare::{Service}::{Op}"` string to a hand-written struct.
-
-### 1.2 Consequences
-
-| Consequence | Impact |
-|-------------|--------|
-| Adding a new REST service requires ~10 files and ~1500 lines of Rust | Adoption friction |
-| The `.dag` file says "Replaces: ..." but doesn't actually replace | Semantic drift |
-| IR types duplicate what `.dag` already declares | Maintenance burden |
-| Each prepare/parse adapter follows identical patterns | Wasted engineering time |
-| New services (LLM, Dropbox, etc.) must reimplement the same scaffold | Not scalable |
-
-### 1.3 Goal
-
-After this work, adding a new REST service (e.g., Dropbox file upload) requires:
-
-1. One `.dag` service definition (~30 lines)
-2. One `.dag` tool definition (~60 lines)
-3. Domain-specific pure functions in Rust (only if non-trivial logic exists)
-4. `make install` (codegen generates everything else)
-
-The hand-written Rust-per-service drops from ~1500 lines to ~0 for standard REST
-services, and to domain-logic-only for complex ones (LLM multi-provider dispatch).
-
-## 2. Architecture
-
-### 2.1 Current Pipeline (DSL → Execution)
-
+**Compiler pipeline (works):**
 ```
 .dag service definition
-  │
-  ├──[daglang-syntax]──→ ServiceDef AST node
-  │
-  ├──[daglang-typecheck]──→ validated types
-  │
-  ├──[daglang-lower]──→ transport triplets in GraphIR (LoweredOp::Callable)
-  │                       prepare: "service_transport::prepare::github.Gist::Create"
-  │                       execute: "service_transport::execute::github.Gist::Create"
-  │                       parse:   "service_transport::parse::github.Gist::Create"
-  │
-  ├──[resolve.rs]──→ DynOp (hand-written ServiceGistCreatePrepareOp, etc.)
-  │                   ▲▲▲ THIS IS THE GAP ▲▲▲
-  │
-  └──[exec]──→ runtime execution
+  → [syntax] ServiceDef AST
+  → [typecheck] validated types
+  → [lower] transport triplets (prepare/execute/parse nodes in GraphIR)
 ```
 
-### 2.2 Target Pipeline
-
+**Resolution gap (the problem):**
 ```
-.dag service definition
-  │
-  ├──[daglang-syntax]──→ ServiceDef AST node
-  │
-  ├──[daglang-typecheck]──→ validated types
-  │
-  ├──[daglang-lower]──→ transport triplets in GraphIR
-  │
-  ├──[daglang-emit / service-codegen]──→ generated Rust for prepare/parse ops
-  │     NEW: reads ServiceDef metadata, emits Executable impls
-  │
-  ├──[resolve.rs]──→ DynOp via generated lookup table (no hand-written adapters)
-  │
-  └──[exec]──→ runtime execution
+resolve_service_transport() matches on service name strings:
+  "service_transport::prepare::github.Gist::Create"  → ServiceGistCreatePrepareOp
+  "service_transport::prepare::gcp.STS::Exchange"     → ServiceGcpStsExchangePrepareOp
+  "service_transport::parse::gcp.STS::Exchange"       → ServiceGcpStsExchangeParseOp
+  ... (12 structs, ~800 lines)
 ```
 
-### 2.3 What Gets Generated
+Each of these structs does the same thing parameterized by different data that's already
+in the `.dag` file.
 
-For each `service` block with each `operation`:
+### 1.2 Goal
 
-**Generated prepare adapter** (from `@rest(METHOD, "/path/{param}")` + `input { ... }`):
+After this work:
+
+1. The resolver has **3 generic executables** (one per transport class), not N per-service
+   executables. Adding a service means adding a `.dag` file — nothing else.
+2. All existing services (`resolve.rs` adapters, `core/ir/src/transport/gist.rs`,
+   scope contracts, etc.) are deleted and replaced by DSL definitions.
+3. New services (LLM, Dropbox, Slack, any REST API) are defined entirely in DSL.
+
+## 2. Interface Hierarchy
+
+The core insight: model bottom-up from transport primitive to application service.
+
+### Layer 0: Transport Primitives (exists today)
+
+```
+TransportRequest  = Shell(ShellRequest) | Rest(RestRequest) | File(FileRequest)
+TransportResponse = Shell(ShellResponse) | Rest(RestResponse) | File(FileResponse)
+TransportOps::Execute  — the boundary that sends a request and receives a response
+```
+
+These are correct and don't change.
+
+### Layer 1: Protocol Interfaces (new — this is what we build)
+
+A protocol interface defines **how to prepare a request** and **how to parse a
+response** for a class of transport. The DSL annotations map directly to protocol
+interface parameters.
+
+#### REST Protocol
+
+Every REST operation follows one pattern:
+
+```
+prepare(inputs, spec) → TransportRequest::Rest:
+  1. Interpolate path template:  "/v1/projects/{project}/secrets/{secret}"
+     with input field values:    project="my-proj", secret="my-secret"
+  2. Build URL:                  endpoint + interpolated_path
+  3. Build body (POST/PUT/PATCH): JSON from non-path input fields
+     or query params (GET/DELETE): from non-path input fields
+  4. Return:                     RestRequest::method(url).json(body)
+
+parse(response, spec) → outputs:
+  1. Check status:               response.is_success()
+  2. Extract fields:             response.body.get(json_path) for each output field
+  3. Wrap secrets:               SecretString for Secret-typed outputs
+  4. Return:                     OutputMap with extracted values
+```
+
+DSL annotations that parameterize this:
+
+| Annotation | Maps to |
+|---|---|
+| `@endpoint("https://...")` | Base URL |
+| `@rest(METHOD, "/path/{param}")` | HTTP method + path template |
+| `input { field: Type = default }` | Fields to extract from inputs |
+| `output { field: Type @json("key") }` | Fields to extract from response |
+| `@auth(BearerToken \| Header("name"))` | Auth metadata (for execute boundary) |
+| `@body_template({...})` | Explicit body shape (when not all-inputs-as-JSON) |
+| `@headers({...})` | Extra HTTP headers |
+| `@mock_response(...)` | Test mock |
+
+**One Rust struct handles all REST operations:**
+
 ```rust
-// AUTO-GENERATED from dsl/services/github/gist.dag — do not edit
-struct PrepareGithubGistCreate;
+struct RestPrepareOp {
+    spec: RestOperationSpec,  // endpoint, method, path_template, input_fields, body_template, headers
+}
 
-impl Executable for PrepareGithubGistCreate {
+impl Executable for RestPrepareOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let description = inputs.get("description").and_then(Value::as_str).unwrap_or("");
-        let files = /* extract Map<String,String> from inputs */;
-        let public = inputs.get("public").and_then(Value::as_bool).unwrap_or(false);
-
-        let body = serde_json::json!({
-            "description": description,
-            "files": files_to_json(files),
-            "public": public,
-        });
-
-        OutputMap::new()
-            .request("request", TransportRequest::Rest(
-                RestRequest::post("https://api.github.com/gists").json(body)
-            ))
-            .ok()
+        let url = self.spec.interpolate_url(&inputs)?;
+        let body = self.spec.build_body(&inputs)?;
+        let request = match self.spec.method {
+            Method::GET    => RestRequest::get(url),
+            Method::POST   => RestRequest::post(url).json(body),
+            Method::PUT    => RestRequest::put(url).json(body),
+            Method::DELETE => RestRequest::delete(url),
+            // ...
+        };
+        let request = self.spec.apply_headers(request);
+        OutputMap::new().request("request", TransportRequest::Rest(request)).ok()
     }
 }
 ```
 
-**Generated parse adapter** (from `output { url: Url @json("html_url"), id: GistId }`):
 ```rust
-struct ParseGithubGistCreate;
+struct RestParseOp {
+    spec: RestOutputSpec,  // output_fields: Vec<{name, json_path, type, is_secret}>
+    service_label: String, // for error messages: "github.Gist.Create"
+}
 
-impl Executable for ParseGithubGistCreate {
+impl Executable for RestParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match inputs.get("response") {
             Some(Value::Response(TransportResponse::Rest(rest))) => {
                 if !rest.is_success() {
-                    return Err(ExecError::new(format!("github.Gist.Create failed ({})", rest.status)));
+                    return Err(ExecError::new(format!(
+                        "{} failed (status {})", self.service_label, rest.status
+                    )));
                 }
-                let url = rest.body.get("html_url").and_then(|v| v.as_str()).unwrap_or("");
-                let id = rest.body.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                OutputMap::new().str("url", url).str("id", id).ok()
+                let mut out = OutputMap::new();
+                for field in &self.spec.fields {
+                    let value = rest.body.pointer(&field.json_path)
+                        .and_then(|v| field.extract(v));
+                    out = out.value(&field.name, value.unwrap_or(field.default_value()));
+                }
+                out.ok()
             }
-            Some(Value::Skipped) | None => OutputMap::new().str("url", "").str("id", "").ok(),
+            Some(Value::Skipped) | None => {
+                // Produce typed defaults for all output fields
+                self.spec.default_outputs()
+            }
             Some(other) => Err(ExecError::new(format!(
-                "expected REST response for github.Gist.Create, got {:?}",
-                std::mem::discriminant(other)
+                "expected REST response for {}, got {:?}",
+                self.service_label, std::mem::discriminant(other)
             ))),
         }
     }
 }
 ```
 
-**Generated resolver entry** (replaces hand-written match arms in `resolve_service_transport`):
+#### Shell Protocol
+
+Every shell operation follows one pattern:
+
+```
+prepare(inputs, spec) → TransportRequest::Shell:
+  1. Start with argv template:   ["cargo", "clippy", "--all-targets"]
+  2. Interpolate {param}:        replace template variables with input values
+  3. Append conditional args:    e.g., "--all-targets" only if all_targets=true
+  4. Return:                     ShellRequest::new(binary).args(argv)
+
+parse(response, spec) → outputs:
+  1. Extract exit code:          response.success()
+  2. Parse stdout:               split by newline (List), trim (String), or raw
+  3. Return:                     OutputMap with (success, stdout, stderr) or custom fields
+```
+
+DSL annotations:
+
+| Annotation | Maps to |
+|---|---|
+| `@shell(["binary", "arg1", "{param}", ...])` | Argv template with interpolation |
+| `@hermetic` | No side effects outside process |
+| `@readonly` | Read-only access |
+| `input { field: Type }` | Values interpolated into argv |
+| `output { success: Bool, stdout: String, ... }` | Parsing rules |
+
+**One Rust struct handles all Shell operations:**
+
 ```rust
-fn resolve_service_transport_generated(name: &str) -> Option<DynOp> {
-    match name {
-        "service_transport::prepare::github.Gist::Create" => Some(DynOp::new(PrepareGithubGistCreate)),
-        "service_transport::parse::github.Gist::Create" => Some(DynOp::new(ParseGithubGistCreate)),
-        // ... all other services ...
-        _ => None,
+struct ShellPrepareOp {
+    spec: ShellOperationSpec,  // argv_template, conditional_args
+}
+
+struct ShellParseOp {
+    spec: ShellOutputSpec,  // output_fields with parsing rules (trim, split, raw)
+    service_label: String,
+}
+```
+
+#### File Protocol
+
+Already handled by `content_upsert::` infrastructure patterns and `Filesystem`
+resource capabilities in `dsl/std/resources.dag`. No per-service adapters needed.
+The `@file(READ|WRITE, "{path}")` annotation on resource capabilities is resolved
+by existing infrastructure resolution. No changes needed here.
+
+### Layer 2: Application Services (existing .dag files — no changes needed)
+
+Application services are just data that parameterizes Layer 1:
+
+```
+// This .dag file IS the complete service definition.
+// No Rust backing needed — the REST protocol interface handles it.
+service github.Gist {
+    @endpoint("https://api.github.com")
+    @auth(BearerToken)
+
+    operation Create {
+        input { description: String, files: Map<String, String>, public: Bool = false }
+        output { url: Url @json("html_url"), id: GistId }
+        @rest(POST, "/gists")
+        @permissions(["gist"])
+        @mock_response(status: 201, body: { "html_url": "https://gist.github.com/mock/{id}", "id": "{id}" })
     }
 }
 ```
 
-## 3. Service Transport Classes
+Every existing `.dag` service file already has exactly this shape. Nothing changes
+in the DSL — what changes is that the resolver now interprets these specs generically
+instead of matching them to hand-written Rust.
 
-The codegen must handle all transport classes declared in `.dag` files:
+## 3. Spec Extraction: Compiler → Resolver
 
-### 3.1 REST Services (`@rest`)
+### 3.1 `ServiceOperationSpec`
 
-The simplest and highest-value target. Input declared via `@rest(METHOD, "/path")`.
+The daglang lowerer already creates `ServiceCallMetadata` (transport class, permissions,
+idempotent/readonly). We extend this to carry the full protocol spec:
 
-**Codegen contract:**
+```rust
+/// Complete specification for a service operation, extracted from the .dag AST.
+/// Carries all information needed for the generic protocol interpreters.
+#[derive(Debug, Clone)]
+pub enum ServiceOperationSpec {
+    Rest(RestOperationSpec),
+    Shell(ShellOperationSpec),
+    File(FileOperationSpec),
+}
 
-| DSL Annotation | Generated Rust |
-|----------------|----------------|
-| `@endpoint("https://api.example.com")` | Base URL constant |
-| `@rest(POST, "/gists")` | `RestRequest::post(url)` |
-| `@rest(GET, "/v1/projects/{project}/secrets/{secret}/...")` | URL interpolation from inputs |
-| `input { field: Type }` | Extract field from `inputs` HashMap |
-| `input { field: Type = default }` | Extract with fallback to default |
-| `output { field: Type @json("json_key") }` | Extract from `rest.body.get("json_key")` |
-| `output { field: Type }` | Extract from `rest.body.get("field")` (name = json key) |
-| `output { field: Secret }` | Wrap in `SecretString` |
-| `@auth(BearerToken)` | Auth metadata for credential chain |
-| `@auth(AwsSigV4)` | AWS SigV4 signing metadata |
-| `@mock_response(status: N, body: {...})` | Mock spec generation |
+#[derive(Debug, Clone)]
+pub struct RestOperationSpec {
+    pub endpoint: String,                    // from @endpoint
+    pub method: HttpMethod,                  // from @rest(METHOD, ...)
+    pub path_template: String,               // from @rest(..., "/path/{param}")
+    pub input_fields: Vec<FieldSpec>,         // from input { ... }
+    pub output_fields: Vec<OutputFieldSpec>,  // from output { ... @json(...) }
+    pub body_template: Option<BodyTemplate>, // from @body_template({...}), if present
+    pub headers: Vec<(String, String)>,       // from @headers({...})
+    pub auth_scheme: AuthScheme,             // from @auth(...)
+    pub permissions: Vec<String>,            // from @permissions([...])
+    pub mock_response: Option<MockSpec>,     // from @mock_response(...)
+}
 
-**Path interpolation rule:** `{param}` in path is replaced by the value of the input
-field named `param`. The field must be declared in `input { ... }`.
+#[derive(Debug, Clone)]
+pub struct ShellOperationSpec {
+    pub argv_template: Vec<ArgvSegment>,     // from @shell([...])
+    pub input_fields: Vec<FieldSpec>,
+    pub output_fields: Vec<OutputFieldSpec>,
+    pub output_parsing: ShellOutputParsing,  // Trim, SplitLines, SuccessStdoutStderr
+}
 
-**Body construction rule:** For POST/PUT/PATCH, all non-path input fields become JSON
-body fields. For GET/DELETE, non-path fields become query parameters.
+#[derive(Debug, Clone)]
+pub struct FieldSpec {
+    pub name: String,
+    pub type_id: String,
+    pub default: Option<DefaultValue>,
+    pub is_secret: bool,        // type is Secret
+    pub is_path_param: bool,    // appears in {param} in path/argv template
+}
 
-### 3.2 Shell Services (`@shell`)
+#[derive(Debug, Clone)]
+pub struct OutputFieldSpec {
+    pub name: String,
+    pub type_id: String,
+    pub json_path: String,      // from @json("key") or defaults to field name
+    pub is_secret: bool,
+}
 
-Input is a CLI command. Slightly more varied than REST.
+/// Body template for REST operations with non-default body shapes.
+/// Mixes literal JSON values with input field references.
+#[derive(Debug, Clone)]
+pub struct BodyTemplate {
+    pub entries: Vec<BodyEntry>,
+}
 
-**Codegen contract:**
+#[derive(Debug, Clone)]
+pub enum BodyEntry {
+    Literal(String, serde_json::Value),      // "grant_type": "urn:ietf:..."
+    InputRef(String, String),                 // "audience": audience  (json_key, input_field)
+}
 
-| DSL Pattern | Generated Rust |
-|-------------|----------------|
-| CLI binary + subcommand | `ShellRequest::new(binary).args(subcommand)` |
-| Input fields → CLI args | Positional or flag-based (needs annotation) |
-| Output parsing | Stdout line splitting, exit code check |
+#[derive(Debug, Clone)]
+pub enum ArgvSegment {
+    Literal(String),                          // "cargo", "--all-targets"
+    InputRef(String),                         // "{package}"
+    Conditional(String, String, String),       // if input_field, then flag, else nothing
+}
 
-Shell services have more variation in how inputs map to CLI arguments. Two strategies:
-
-1. **Annotated mapping** (preferred): DSL declares `@cli_arg("--flag")` per input field
-2. **Convention-based**: For simple services (find, which), codegen uses positional args
-
-### 3.3 File Services (`@file`)
-
-Direct filesystem read/write. Already handled by infrastructure resolution in
-`resolve.rs` (the `content_upsert::` pattern). No new codegen needed — these are
-cross-module patterns, not per-service.
-
-## 4. Handling Service Complexity Tiers
-
-Not all services are equal. The codegen must handle a spectrum from trivial to complex.
-
-### 4.1 Tier 1: Pure REST (fully generatable)
-
-Services where the `.dag` declaration is the complete specification.
-
-**Examples:** github.Gist, gcp.SecretManager, gcp.IAM, gcp.STS
-
-**What codegen produces:** Complete prepare + parse adapters. Zero hand-written Rust.
-
-**Characteristics:**
-- Single endpoint per operation
-- JSON body from input fields
-- JSON response parsed to output fields
-- Standard auth (Bearer or header-based)
-
-### 4.2 Tier 2: REST with Custom Body Shape
-
-Services where the body construction doesn't follow the simple "all inputs → JSON
-fields" rule.
-
-**Examples:** gcp.STS.Exchange (OAuth2 grant_type fields), AWS services (X-Amz-Target
-header + JSON protocol)
-
-**What codegen produces:** Prepare adapter with a body template. Parse adapter generated.
-
-**DSL extension needed:** Body template annotation:
-```
-operation Exchange {
-    input { subject_token: Secret, audience: String }
-    output { access_token: Secret, expires_in: Int }
-    @rest(POST, "/v1/token")
-    @body_template({
-        "audience": audience,
-        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-        "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
-        "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-        "subject_token": subject_token,
-    })
+#[derive(Debug, Clone)]
+pub enum ShellOutputParsing {
+    /// Single string: trim(stdout)
+    TrimStdout,
+    /// List of strings: split(trim(stdout), "\n")
+    SplitLines,
+    /// Standard triple: (success: Bool, stdout: String, stderr: String)
+    SuccessStdoutStderr,
+    /// Bool from exit code: success = exit_code == 0
+    ExitCodeBool,
+    /// Custom field extraction
+    Custom(Vec<OutputFieldSpec>),
 }
 ```
 
-This lets the DSL declare literal constants alongside input field references. Codegen
-emits the JSON construction with the right mix of constants and extracted values.
+### 3.2 How the Spec Travels
 
-### 4.3 Tier 3: Multi-Provider Dispatch (partially generatable)
-
-Services that dispatch to different endpoints/formats based on a runtime input.
-
-**Examples:** LLM (OpenAI vs Anthropic — different endpoints, request shapes, response
-shapes, auth schemes)
-
-**What codegen produces:** Per-provider prepare/parse adapters. Hand-written dispatch
-function.
-
-**DSL extension needed:** Provider variants:
 ```
-service llm.ChatCompletion {
-    variant openai {
-        @endpoint("https://api.openai.com")
-        @auth(BearerToken)
-        // OpenAI-specific request/response shape
+[daglang-lower]
+  ├── reads ServiceDef AST node
+  ├── extracts ServiceOperationSpec from annotations + fields
+  └── attaches spec to LoweredOp::Callable.service_metadata
+        (currently ServiceCallMetadata; extend to include full spec)
+
+[resolve.rs]
+  ├── receives LoweredOp with attached spec
+  └── constructs RestPrepareOp(spec) or ShellPrepareOp(spec)
+        (no per-service matching — dispatch on transport class only)
+```
+
+### 3.3 Resolver Changes
+
+The entire `resolve_service_transport()` function (currently ~80 lines of per-service
+match arms) becomes:
+
+```rust
+fn resolve_service_transport(
+    node_id: &str,
+    _module: &str,
+    name: &str,
+    spec: &ServiceOperationSpec,
+) -> Result<DynOp, ResolveError> {
+    if name.starts_with("service_transport::execute::") {
+        return Ok(DynOp::new(TransportOps::Execute));
     }
-    variant anthropic {
-        @endpoint("https://api.anthropic.com")
-        @auth(Header("x-api-key"))
-        // Anthropic-specific request/response shape
+
+    let is_prepare = name.starts_with("service_transport::prepare::");
+    let is_parse = name.starts_with("service_transport::parse::");
+
+    match spec {
+        ServiceOperationSpec::Rest(rest_spec) => {
+            if is_prepare {
+                Ok(DynOp::new(RestPrepareOp { spec: rest_spec.clone() }))
+            } else if is_parse {
+                Ok(DynOp::new(RestParseOp {
+                    spec: rest_spec.output_spec(),
+                    service_label: extract_service_label(name),
+                }))
+            } else {
+                Err(unknown_callable(node_id, _module, name))
+            }
+        }
+        ServiceOperationSpec::Shell(shell_spec) => {
+            if is_prepare {
+                Ok(DynOp::new(ShellPrepareOp { spec: shell_spec.clone() }))
+            } else if is_parse {
+                Ok(DynOp::new(ShellParseOp {
+                    spec: shell_spec.output_spec(),
+                    service_label: extract_service_label(name),
+                }))
+            } else {
+                Err(unknown_callable(node_id, _module, name))
+            }
+        }
+        ServiceOperationSpec::File(_) => {
+            // File ops handled by infrastructure resolution (content_upsert pattern)
+            Err(unknown_callable(node_id, _module, name))
+        }
     }
 }
 ```
 
-Each variant generates its own prepare/parse pair. The dispatch function can be either:
-- Generated (if the variant selector is a simple input field)
-- Hand-written (if dispatch logic is complex, e.g., model name → provider ID)
+That's it. ~30 lines replaces ~800 lines. No per-service structs. No per-service
+match arms. Transport class dispatch only.
 
-### 4.4 Tier 4: Domain-Specific Logic (codegen + escape hatch)
+## 4. All Existing Services as Examples
 
-Services where prepare or parse involves non-trivial business logic beyond
-field extraction/construction.
+Every existing hand-written adapter maps to a spec instance. Here's the proof that
+the generic interpreters cover all 19 operations:
 
-**Examples:**
-- Gist: filename generation with branch sanitization, timestamp formatting
-- LLM: content block assembly, thinking config, cache hints
-- Review: structured finding extraction from LLM response, stable hashing
+### 4.1 REST Operations (10 operations)
 
-**What codegen produces:** The transport scaffold (request building, response field
-extraction). Domain logic stays in hand-written Rust, invoked via a hook.
+| Service.Operation | Method | Path Template | Body Shape | Output Shape |
+|---|---|---|---|---|
+| `github.Gist.Create` | POST | `/gists` | all inputs | `@json` fields |
+| `gcp.SecretManager.AccessVersion` | GET | `/v1/projects/{project}/secrets/{secret}/versions/{version}:access` | none | nested `payload.data` (base64) |
+| `gcp.SecretManager.CreateSecret` | POST | `/v1/projects/{project}/secrets` | partial | `@json` fields |
+| `gcp.SecretManager.AddVersion` | POST | `/v1/{secret_name}:addVersion` | partial | `@json` fields |
+| `gcp.IAM.GenerateAccessToken` | POST | `/v1/projects/-/serviceAccounts/{target_sa}:generateAccessToken` | partial | `@json` fields with camelCase |
+| `gcp.ResourceManager.GetIamPolicy` | POST | `/v1/projects/{project}:getIamPolicy` | empty | `@json` fields |
+| `gcp.ResourceManager.SetIamPolicy` | POST | `/v1/projects/{project}:setIamPolicy` | all inputs | bool |
+| `gcp.STS.Exchange` | POST | `/v1/token` | `@body_template` (OAuth2 constants) | `@json` fields |
+| `github.OIDC.GetToken` | GET | `?audience={audience}` | none | `@json` fields |
+| `oauth2.Google.Refresh` | POST | `/token` | `@body_template` (OAuth2 grant) | `@json` fields |
 
-**Pattern: `@prepare_hook` / `@parse_hook`:**
+**Special cases handled by spec:**
+- `gcp.SecretManager.AccessVersion`: nested JSON path (`payload.data`) + base64 decode
+  → `OutputFieldSpec.json_path = "payload/data"` + `type_id = "Bytes"` triggers decode
+- `gcp.STS.Exchange`: non-default body shape → `@body_template` with literal constants
+- `gcp.Metadata.GetIdentityToken`: raw body (not JSON) → response body is the token
+  → `OutputFieldSpec.json_path = ""` (empty = raw body)
+
+### 4.2 Shell Operations (9 operations)
+
+| Service.Operation | Argv Template | Output Parsing |
+|---|---|---|
+| `git.Core.CurrentBranch` | `["git", "rev-parse", "--abbrev-ref", "HEAD"]` | TrimStdout |
+| `git.Core.RemoteBranches` | `["git", "branch", "-r", "--format=%(refname:short)"]` | SplitLines |
+| `git.Core.LsFiles` | `["git", "ls-files"]` | SplitLines |
+| `git.Core.Diff` | `["git", "diff", "{base}...{head}"]` | TrimStdout |
+| `git.Core.RevList` | `["git", "rev-list", "--since={since}", "HEAD"]` | SplitLines |
+| `git.Core.Show` | `["git", "show", "{ref}:{path}"]` | TrimStdout |
+| `shell.Find.ListDirs` | `["find", "{path}", "-maxdepth", "{max_depth}", ...]` | SplitLines |
+| `shell.Codegen.Check` | `["test", "-f", "target/codegen/.stamp"]` | ExitCodeBool |
+| `shell.Codegen.Run` | `["cargo", "run", "-p", "gunbc-dag", ...]` | SuccessStdoutStderr |
+
+Plus cargo operations (`cargo.Build.Build`, `cargo.Build.Test`, `cargo.Build.Clippy`,
+etc.) which all use `SuccessStdoutStderr` parsing with conditional `--all-targets` flag.
+
+### 4.3 File Operations
+
+Handled entirely by `dsl/std/resources.dag` capabilities + `content_upsert` pattern.
+No per-service infrastructure needed.
+
+## 5. LLM Service Design
+
+The LLM integration is the most complex upcoming case. The bottom-up approach handles
+it cleanly by recognizing that LLM providers are just REST services with different
+request/response shapes.
+
+### 5.1 Each Provider Is a Separate REST Service
+
 ```
-operation Create {
-    input { description: String, files: Map<String, String>, public: Bool = false }
-    output { url: Url @json("html_url"), id: GistId }
-    @rest(POST, "/gists")
-    @prepare_hook("gist_ops::prepare_gist_request")
+service llm.OpenAI {
+    @endpoint("https://api.openai.com")
+    @auth(BearerToken)
+
+    operation ChatCompletion {
+        input {
+            model: String
+            messages: Json           // pre-built message array
+            temperature: Float?
+            max_tokens: Int?
+        }
+        output {
+            content: String @json("choices/0/message/content")
+            model: String @json("model")
+            finish_reason: String @json("choices/0/finish_reason")
+            prompt_tokens: Int @json("usage/prompt_tokens")
+            completion_tokens: Int @json("usage/completion_tokens")
+        }
+        @rest(POST, "/v1/chat/completions")
+        @permissions(["chat_completion"])
+    }
+}
+
+service llm.Anthropic {
+    @endpoint("https://api.anthropic.com")
+    @auth(Header("x-api-key"))
+
+    operation Messages {
+        input {
+            model: String
+            messages: Json
+            max_tokens: Int = 4096
+        }
+        output {
+            content: String @json("content/0/text")
+            model: String @json("model")
+            stop_reason: String @json("stop_reason")
+            input_tokens: Int @json("usage/input_tokens")
+            output_tokens: Int @json("usage/output_tokens")
+        }
+        @rest(POST, "/v1/messages")
+        @headers({ "anthropic-version": "2023-06-01" })
+        @permissions(["messages"])
+    }
 }
 ```
 
-When a hook is declared, codegen generates:
-1. The standard adapter skeleton (input extraction, request building, output mapping)
-2. A call to the hook function at the appropriate point
-3. The hook function signature is derived from input/output types
+Each is a standard REST service. The generic `RestPrepareOp` / `RestParseOp` handles
+both — no special LLM code needed at the transport layer.
 
-This keeps the scaffold generated while allowing arbitrary Rust logic where needed.
+### 5.2 Unified Chat Interface Is a DSL Pattern
 
-## 5. Credential Chain Generation
-
-The credential chain is the most repetitive cross-service boilerplate. Today,
-`build_gist_upload_subdag()` is ~280 lines of SubDag wiring for a pattern that's
-identical across services except for:
-
-- `secret_name` (e.g., "github-token" vs "openai-api-key")
-- `service` identifier (e.g., "github" vs "openai")
-- `scheme` (e.g., "bearer" vs "header")
-- `header_name` (empty for bearer, "x-api-key" for Anthropic)
-- `required_scopes` (e.g., ["gist:write"] vs ["llm:chat_completion"])
-
-### 5.1 Current State
-
-The `credential_chain()` DSL pattern in `dsl/std/patterns.dag` already parameterizes
-all of this. But the *Rust-side* SubDag builders (`build_gist_upload_subdag`,
-`build_chat_completion_graph`) still hand-wire the credential chain in Rust.
-
-### 5.2 Target
-
-Services that use `credential_chain()` in their `.dag` tool definition get the
-credential SubDag generated from the pattern expansion. The DSL already declares:
+The cross-provider abstraction (unified `ChatRequest` → provider-specific request →
+provider-specific response → unified `ChatResponse`) is a **DSL-level composition**,
+not a transport-level concern:
 
 ```
-credential_chain(
-    runtime: detect_runtime(),
-    audience: "sigstore",
-    project: "gunbc",
-    secret_name: "github-token",
-    source_id: "gist",
-    required_scopes: ["gist"],
-    scheme: Bearer,
-)
+// dsl/shared/llm.dag
+
+import services.llm.openai { llm.OpenAI }
+import services.llm.anthropic { llm.Anthropic }
+
+/// Unified chat interface — dispatches to provider at runtime.
+func chat_completion(
+    provider: String,
+    model: String,
+    messages: Json,
+    max_tokens: Int = 4096,
+    temperature: Float?
+) -> { content: String, model: String, tokens_used: Int } {
+    // Provider dispatch is a conditional branch in the DAG
+    openai_result = llm.OpenAI.ChatCompletion(
+        model: model, messages: messages, temperature: temperature, max_tokens: max_tokens
+    ) [when provider == "openai"]
+
+    anthropic_result = llm.Anthropic.Messages(
+        model: model, messages: messages, max_tokens: max_tokens
+    ) [when provider == "anthropic"]
+
+    // Merge results (only one branch executes)
+    return {
+        content: openai_result.content ?? anthropic_result.content,
+        model: openai_result.model ?? anthropic_result.model,
+        tokens_used: (openai_result.prompt_tokens + openai_result.completion_tokens)
+                  ?? (anthropic_result.input_tokens + anthropic_result.output_tokens),
+    }
+}
 ```
 
-This should generate the full SubDag: resolve_auth → bind_secret → cloud_credential →
-scope_preflight, with all edges wired from the declared parameters.
+This keeps:
+- **Transport layer**: pure protocol (REST prepare/parse) — no LLM knowledge
+- **Service layer**: per-provider REST definitions — no cross-provider knowledge
+- **Composition layer**: DSL pattern for unified dispatch — no Rust
 
-### 5.3 Scope Contract Generation
+### 5.3 Message Building
 
-From the `.dag` service definition:
+The `messages: Json` input is built by the caller (the tool `.dag` file), not by
+the transport layer. Message formatting (system prompts, user content, tool calls,
+thinking blocks) is a pure function in DSL or Rust — it produces a JSON value that
+the REST prepare op sends as-is.
+
+For advanced LLM features (extended thinking, cache hints, content blocks), the
+message builder is a domain-specific pure function (`fn` in DSL or Rust) that produces
+the `messages` JSON. The transport layer doesn't need to know about these features —
+it just sends the JSON body.
+
+## 6. Credential Scope Contracts
+
+### 6.1 Current Problem
+
+Hand-written per-service: `GistScopeContract`, `LlmScopeContract`, each implementing
+`ScopeContract` with hardcoded provider/scheme/scopes. ~50-80 lines per service.
+
+### 6.2 Solution: Derive from Service Spec
+
+The `@auth` and `@permissions` annotations already declare everything needed:
+
 ```
 service github.Gist {
     @auth(BearerToken)
@@ -385,352 +587,392 @@ service github.Gist {
 }
 ```
 
-Codegen can emit:
-```rust
-fn gist_create_credential_intent() -> CredentialIntent {
-    CredentialIntent::new("github", "github", "bearer")
-        .with_required_scopes(["gist"])
-        .with_interactive_allowed(true)
-}
-```
-
-This replaces `GistScopeContract`, `GistScope` enum, `GITHUB_SECRET_ID` constant,
-and the entire `impl ScopeContract` block — all derivable from the `.dag` annotations.
-
-## 6. Upcoming Service Cases
-
-### 6.1 LLM Services (In Progress)
-
-The LLM integration is the most complex service in the codebase (~8400 lines across
-IR, ops, and graph). It exemplifies Tier 3/4:
-
-**What's generatable:**
-- Per-provider REST request building (endpoint, method, headers)
-- Per-provider response parsing (field extraction)
-- Scope contracts (per provider)
-- Credential chain SubDag wiring
-- Mock specs from `@mock_response` annotations
-
-**What stays hand-written:**
-- `ChatRequest`/`ChatResponse` unified types (cross-provider abstraction)
-- Content block assembly (text, cache hints, thinking blocks)
-- Multi-turn thinking block preservation
-- Provider dispatch logic (model → provider ID mapping)
-- Extended thinking budget configuration
-
-**DSL representation:**
-```
-service llm.ChatCompletion {
-    variant openai {
-        @endpoint("https://api.openai.com")
-        @auth(BearerToken)
-        operation Complete {
-            input { model: String, messages: List<Message>, temperature: Float? }
-            output { content: String, model: String, finish_reason: String }
-            @rest(POST, "/v1/chat/completions")
-        }
-    }
-    variant anthropic {
-        @endpoint("https://api.anthropic.com")
-        @auth(Header("x-api-key"))
-        operation Complete {
-            input { model: String, messages: List<Message>, max_tokens: Int }
-            output { content: String, model: String, stop_reason: String }
-            @rest(POST, "/v1/messages")
-            @headers({ "anthropic-version": "2023-06-01" })
-        }
-    }
-}
-```
-
-**Migration plan:** Incrementally replace IR types with generated code:
-1. Generate per-provider request builders (replaces `openai.rs::build_openai_request`,
-   `anthropic.rs::build_anthropic_request`)
-2. Generate per-provider response parsers (replaces `openai.rs::parse_openai_response`,
-   `anthropic.rs::parse_anthropic_response`)
-3. Generate scope contracts (replaces `LlmScopeContract`, `LlmScope` enum)
-4. Keep unified `ChatRequest`/`ChatResponse` as hand-written domain types
-5. Keep provider dispatch as hand-written (uses domain types)
-
-### 6.2 File Storage Services (Future)
-
-If switching from gist to Dropbox or S3 for file uploads:
-
-**Dropbox example:**
-```
-service dropbox.Files {
-    @endpoint("https://content.dropboxapi.com")
-    @auth(BearerToken)
-
-    operation Upload {
-        input {
-            path: String
-            content: Bytes
-            mode: String = "add"
-        }
-        output {
-            id: String @json("id")
-            path_display: String @json("path_display")
-            rev: String @json("rev")
-        }
-        @rest(POST, "/2/files/upload")
-        @headers({ "Dropbox-API-Arg": "{\"path\": \"{path}\", \"mode\": \"{mode}\"}" })
-        @body_raw(content)
-        @permissions(["files.content.write"])
-    }
-}
-```
-
-With e2e codegen, adding Dropbox requires:
-1. This `.dag` definition (~25 lines)
-2. A `.dag` tool definition wiring `dropbox.Files.Upload` to content acquisition (~30 lines)
-3. Zero Rust (unless domain-specific logic is needed)
-
-### 6.3 Infrastructure Services (AWS, Azure, GCP)
-
-The `dsl/infra/` directory already defines ~20 infrastructure services (S3, Lambda,
-SecretManager, KeyVault, etc.). These are currently DSL-only with no Rust backing.
-
-With e2e codegen, all of these become immediately executable — the codegen generates
-prepare/parse adapters from their `.dag` definitions.
-
-## 7. Implementation Plan
-
-### Phase 1: Service Metadata Extraction
-
-**Goal:** Extract structured service metadata from the daglang compiler's existing AST.
-
-The compiler already parses `ServiceDef` nodes and derives `ServiceCallMetadata`
-(transport class, permissions, idempotent/readonly flags). Extend this to also extract:
-
-- Endpoint URL (from `@endpoint`)
-- HTTP method and path template (from `@rest`)
-- Input field names, types, and defaults
-- Output field names, types, and JSON mappings (from `@json`)
-- Auth scheme (from `@auth`)
-- Mock response (from `@mock_response`)
-- Body template (from `@body_template`, new annotation)
-- Custom headers (from `@headers`, new annotation)
-- Prepare/parse hooks (from `@prepare_hook`/`@parse_hook`, new annotations)
-
-**Output:** `ServiceOperationSpec` struct capturing all of the above, available after
-typecheck.
-
-### Phase 2: Prepare/Parse Codegen
-
-**Goal:** Generate `Executable` impls for each service operation.
-
-Two emission strategies:
-
-**Strategy A — Static code generation (preferred for resolver):**
-- A new codegen pass reads all `ServiceOperationSpec` from the compiled project
-- Emits a Rust source file (`target/codegen/service_transport.rs`) with:
-  - One prepare struct + `impl Executable` per operation
-  - One parse struct + `impl Executable` per operation
-  - A dispatch function `resolve_service_transport_generated(name: &str) -> Option<DynOp>`
-- `resolve.rs` calls the generated dispatch function before falling through to
-  hand-written adapters (gradual migration)
-
-**Strategy B — Dynamic dispatch (preferred for DSL-native execution):**
-- The lowered `LoweredOp` carries the full `ServiceOperationSpec`
-- A generic `ServicePrepareOp` and `ServiceParseOp` take the spec at construction time
-- No per-service Rust structs needed — one generic impl handles all Tier 1/2 services
-- The spec is the configuration; the impl is the interpreter
-
-**Recommendation:** Start with Strategy B (simpler, no codegen step) and optionally
-add Strategy A later for performance if needed (static dispatch vs dynamic).
-
-### Phase 3: Credential Chain Codegen
-
-**Goal:** Generate credential SubDag wiring from `credential_chain()` pattern calls.
-
-The DSL `credential_chain()` call in `.dag` files already declares all parameters.
-When the pattern expander resolves this call, it should produce a SubDag in the IR
-that the resolver can execute without hand-written Rust.
-
-This requires:
-1. The pattern expander emits concrete SubDag nodes (it already partially does this)
-2. The resolver handles pattern-expanded nodes generically (auth resolve, bind secret,
-   cloud credential, scope preflight)
-3. The auth resolver reads the declared `@auth` + `@permissions` from the service spec
-   instead of hardcoding `GistScopeContract`
-
-### Phase 4: IR Type Elimination
-
-**Goal:** Remove hand-written IR transport types for services that are fully covered.
-
-For each service that's 100% generated:
-1. Delete `core/ir/src/transport/{service}.rs`
-2. Delete the corresponding `ScopeContract` impl
-3. Delete the hand-written `resolve_service_transport` match arms
-4. The `.dag` file becomes the single source of truth with no Rust shadow
-
-**Ordering (by risk):**
-1. `gcp.STS.Exchange` — simplest REST, already in resolve.rs
-2. `gcp.SecretManager.AccessVersion` — simple REST with path interpolation
-3. `shell.Find.ListDirs` — simple shell service
-4. `shell.Codegen.{Check,Run}` — shell services with fixed commands
-5. `cargo.Build.{Build,Test,Clippy}` — shell services with input-dependent args
-6. `github.Gist.Create` — REST with `@body_template` needed
-7. LLM providers — Tier 3, partial generation only
-
-### Phase 5: DSL Extensions
-
-New annotations needed (in order of implementation):
-
-1. **`@body_template({...})`** — Declare literal + interpolated JSON body (Phase 1)
-2. **`@headers({...})`** — Declare extra HTTP headers (Phase 1)
-3. **`@body_raw(field)`** — Send input field as raw body, not JSON (Phase 2)
-4. **`@prepare_hook("module::function")`** — Delegate to hand-written Rust (Phase 2)
-5. **`@parse_hook("module::function")`** — Delegate to hand-written Rust (Phase 2)
-6. **`variant name { ... }`** — Multi-provider service blocks (Phase 3)
-7. **`@cli_arg("--flag")`** — Shell service input-to-arg mapping (Phase 3)
-
-### Phase 6: Mock Spec Generation
-
-**Goal:** Generate mock specs from `@mock_response` annotations.
-
-The `.dag` files already declare mock responses:
-```
-@mock_response(status: 201, body: { "html_url": "https://...", "id": "..." })
-```
-
-Codegen can emit the `MockSpec` boundary mock for each service operation,
-eliminating the hand-written `graph_mock.rs` for service transport boundaries.
-
-## 8. Migration Strategy
-
-### 8.1 Gradual Cutover
-
-The generated dispatch is tried *before* the hand-written fallback:
+The `RestOperationSpec` carries `auth_scheme` and `permissions`. The credential chain
+pattern reads these from the spec at runtime — no per-service Rust trait impl needed.
 
 ```rust
-fn resolve_service_transport(node_id: &str, module: &str, name: &str) -> Result<DynOp, ResolveError> {
-    // Try generated adapters first
-    if let Some(op) = resolve_service_transport_generated(name) {
-        return Ok(op);
+fn credential_intent_from_spec(spec: &RestOperationSpec, service_id: &str) -> CredentialIntent {
+    let scheme = match &spec.auth_scheme {
+        AuthScheme::Bearer => "bearer",
+        AuthScheme::Header { name } => "header",
+    };
+    let mut intent = CredentialIntent::new(service_id, service_id, scheme)
+        .with_required_scopes(spec.permissions.clone())
+        .with_interactive_allowed(true);
+    if let AuthScheme::Header { name } = &spec.auth_scheme {
+        intent = intent.with_header_name(name);
     }
-    // Fall through to hand-written adapters (shrinks over time)
-    // ...existing match arms...
+    intent
 }
 ```
 
-This means:
-- New services are immediately generated (no Rust needed)
-- Existing services can be migrated one at a time
-- Each migration is verifiable: run the tool, compare output
+One function, all services. Delete `GistScopeContract`, `GistScope`, `LlmScopeContract`,
+`LlmScope`, `GITHUB_SECRET_ID`, and every other per-service credential boilerplate.
 
-### 8.2 Verification
+## 7. What Gets Deleted
 
-For each migrated service operation:
+This is not gradual migration. Every item below is replaced by the generic protocol
+interpreters + DSL specs:
 
-1. **Structural test:** Generated prepare output matches hand-written output for
-   identical inputs (property test across input space)
-2. **Integration test:** `make {tool} --dry-run` produces identical mock execution log
-3. **Live test:** If live test infrastructure exists, run against real API
+### 7.1 Resolver Adapters (resolve.rs)
 
-### 8.3 Deletion Criteria
+**Delete all of these structs:**
 
-A hand-written adapter can be deleted when:
-1. The generated adapter passes all existing tests
-2. The dry-run output is byte-identical
-3. A live smoke test passes (if applicable)
-4. The `.dag` file's `// Replaces:` comment is honored
+| Struct | Lines | Replaced by |
+|---|---|---|
+| `ServiceGcpStsExchangePrepareOp` | ~20 | `RestPrepareOp` |
+| `ServiceGcpStsExchangeParseOp` | ~30 | `RestParseOp` |
+| `ServiceGcpSecretManagerAccessVersionPrepareOp` | ~20 | `RestPrepareOp` |
+| `ServiceGcpSecretManagerAccessVersionParseOp` | ~40 | `RestParseOp` |
+| `ServiceCargoBuildPrepareOp` | ~15 | `ShellPrepareOp` |
+| `ServiceCargoTestPrepareOp` | ~12 | `ShellPrepareOp` |
+| `ServiceCargoClippyPrepareOp` | ~18 | `ShellPrepareOp` |
+| `ServiceCargoParseOp` | ~18 | `ShellParseOp` |
+| `ServiceShellFindListDirsPrepareOp` | ~20 | `ShellPrepareOp` |
+| `ServiceShellFindListDirsParseOp` | ~25 | `ShellParseOp` |
+| `ServiceShellCodegenCheckPrepareOp` | ~12 | `ShellPrepareOp` |
+| `ServiceShellCodegenCheckParseOp` | ~15 | `ShellParseOp` |
+| `ServiceShellCodegenRunPrepareOp` | ~20 | `ShellPrepareOp` |
+| `ServiceShellCodegenRunParseOp` | ~18 | `ShellParseOp` |
+| `resolve_service_transport()` | ~80 | ~30 lines (transport class dispatch) |
+| **Total** | **~363** | **~200** (3 generic structs + dispatch) |
 
-## 9. Cross-Cutting Concerns
+### 7.2 IR Transport Types
 
-### 9.1 Error Messages
+**Delete entirely:**
 
-Generated parse adapters must produce error messages that include:
-- Service name and operation
-- HTTP status code (for REST)
-- Response body excerpt (for debugging)
-- The source `.dag` file and line number (via `#[track_caller]` or embedded metadata)
+| File | Lines | Reason |
+|---|---|---|
+| `core/ir/src/transport/gist.rs` | ~270 | `dsl/services/github/gist.dag` is source of truth |
+| `GistRequest`, `GistFile`, `GistScope`, `GistScopeContract` | — | All derivable from spec |
+| `GITHUB_SECRET_ID` constant | — | Inline in DSL |
 
-### 9.2 Secret Handling
+**LLM — delete transport boilerplate, keep domain types:**
 
-Input fields typed as `Secret` must:
-- Be extracted via `SecretString::new()` wrapping
-- Never appear in error messages or logs
-- Use `Value::Secret` in the output map, not `Value::Str`
+| Delete | Keep |
+|---|---|
+| `build_chat_request()` dispatcher | `ChatMessage` builder helpers (pure fn) |
+| `parse_chat_response()` dispatcher | Content block types (if needed by callers) |
+| `LlmScopeContract`, `LlmScope` | — |
+| Per-provider `build_*_request()` | — |
+| Per-provider `parse_*_response()` | — |
 
-### 9.3 Auth Header Injection
+### 7.3 Ops Library SubDag Builders
 
-For REST services, the `execute` node (TransportOps::Execute) already handles
-credential injection. The prepare adapter only needs to indicate *which* auth scheme
-is expected — it doesn't attach the token itself. This is already correct.
+**Delete entirely** once credential chain and transport triplet composition are
+DSL-resolved:
 
-### 9.4 Backward Compatibility
+| Component | Lines | Replaced by |
+|---|---|---|
+| `lib/gist-ops/` SubDag builder | ~280 | DSL tool definition + `credential_chain` pattern |
+| `lib/llm-ops/` SubDag builder | ~267 | DSL tool definition + per-provider service defs |
 
-During migration, the same tool must work regardless of whether the generated or
-hand-written adapter is active. The verification tests (Section 8.2) enforce this.
+## 8. Implementation Plan
 
-## 10. Impact Assessment
+No phased migration. Just build the interface, switch everything over, delete the old code.
 
-### 10.1 Lines of Code
+### Step 1: `ServiceOperationSpec` in the Lowerer
 
-| Component | Current (hand-written) | After codegen | Delta |
-|-----------|----------------------|---------------|-------|
-| `resolve.rs` service adapters | ~800 | ~50 (dispatch stub) | -750 |
-| `core/ir/src/transport/gist.rs` | ~270 | 0 (deleted) | -270 |
-| `core/ir/src/transport/llm/` | ~2800 | ~1200 (domain types only) | -1600 |
-| `lib/gist-ops/` SubDag builder | ~280 | 0 (generated) | -280 |
-| `lib/llm-ops/` SubDag builder | ~267 | 0 (generated) | -267 |
-| New: codegen pass | 0 | ~400 | +400 |
-| New: DSL annotations | 0 | ~100 | +100 |
-| **Net** | **~4415** | **~1750** | **-2665** |
+Extend `daglang-lower` to extract the full spec from `ServiceDef` AST nodes and attach
+it to the `LoweredOp::Callable` that represents prepare/parse triplet nodes.
 
-### 10.2 Developer Experience
+**What changes:**
+- `ServiceCallMetadata` gains a `spec: Option<ServiceOperationSpec>` field
+- `derive_service_call_metadata()` populates it from annotations + input/output fields
+- The spec is available to the resolver via `LoweredOp::Callable.service_metadata`
 
-| Scenario | Before | After |
-|----------|--------|-------|
-| Add Tier 1 REST service | ~10 files, ~1500 lines Rust | 1 `.dag` file, ~30 lines |
-| Add Tier 3 multi-provider service | ~15 files, ~3000 lines | 1 `.dag` file + domain types |
-| Change endpoint URL | Edit Rust, recompile | Edit `.dag`, `make install` |
-| Add field to existing operation | Edit 3 Rust files | Edit `.dag` definition |
-| Add new auth scheme | Implement trait, wire everywhere | Add `@auth(NewScheme)` support |
+**Verify:** `daglang expand <service>.dag` shows spec data on prepare/parse nodes.
 
-### 10.3 Compile Time
+### Step 2: Generic Protocol Interpreters
 
-Strategy B (dynamic dispatch) adds zero to compile time — the `ServiceOperationSpec`
-is a runtime struct, not generated code. Strategy A adds one generated Rust file
-per codegen pass, which is fast to compile.
+Implement `RestPrepareOp`, `RestParseOp`, `ShellPrepareOp`, `ShellParseOp` as
+generic `Executable` impls that take a spec struct.
 
-## 11. Relationship to Existing Work
+**What changes:**
+- New file `gunbc-dag/src/resolve_service.rs` with the 4 generic structs
+- Each struct's `execute()` interprets the spec (URL interpolation, body building,
+  response field extraction, etc.)
+- Comprehensive unit tests: one test per existing hand-written adapter, verifying
+  identical output for identical inputs
 
-### 11.1 Workflow Minimization (Sprint 5/5b)
+**Verify:** For every existing adapter, a test shows `generic.execute(inputs) ==
+handwritten.execute(inputs)`.
 
-The service codegen is *orthogonal* to workflow minimization but enables it:
-- WF16 (gist base workflow): The credential SubDag codegen (Phase 3) directly
-  supports the "minimize credentialing" capability requirement
-- WF14 (compilation): Pre-built binary dispatch is separate from service codegen
-- WF15 (codegen freshness): The codegen pass itself becomes a keyed unit in the
-  minimization ledger
+### Step 3: Switch the Resolver
 
-### 11.2 Unified Registration (docs/design/unified-registration.md)
+Replace `resolve_service_transport()` with transport-class dispatch.
 
-Service codegen feeds into the tool registry. Generated adapters are discovered
-the same way as hand-written ones — via `resolve.rs` dispatch.
+**What changes:**
+- `resolve_service_transport()` dispatches on `spec.transport_class()`, not service name
+- All per-service match arms deleted
+- All per-service structs deleted
 
-### 11.3 Test Generation (docs/design/testgen.md)
+**Verify:** `cargo test --workspace` passes. `make gist --dry-run`, `make bootstrap
+--dry-run`, `make build --dry-run` all produce identical output.
 
-Generated mock specs from `@mock_response` annotations integrate with the existing
-proof obligation model. Each generated adapter gets Bucket A (execution semantics)
-tests automatically.
+### Step 4: Delete Redundant Rust
 
-## 12. Open Questions
+Delete `core/ir/src/transport/gist.rs`, scope contracts, SubDag builders, and any
+other per-service Rust that's now fully covered by DSL + generic interpreter.
 
-1. **Strategy A vs B:** Should we generate static Rust code or use a generic interpreter?
-   Strategy B is simpler but may have performance implications for hot-path services.
-   For the current service count (~12 operations), this is negligible.
+**Verify:** `cargo test --workspace` passes. The `.dag` `// Replaces:` comments
+are honored.
 
-2. **Shell service input mapping:** Shell services have more varied input-to-arg patterns
-   than REST services. Do we need `@cli_arg` annotations, or can we use a convention
-   (e.g., inputs become positional args in declaration order)?
+### Step 5: LLM as DSL Services
 
-3. **AWS SigV4:** This auth scheme requires request signing, not just header injection.
-   Does the `execute` boundary handle this, or does the prepare adapter need to sign?
+Write `dsl/services/llm/openai.dag` and `dsl/services/llm/anthropic.dag` as standard
+REST service definitions. Write `dsl/shared/llm.dag` for unified dispatch. Delete
+LLM transport boilerplate from `core/ir/src/transport/llm/`.
 
-4. **Body template vs body_raw:** For services like Dropbox where the body is raw bytes
-   (not JSON), we need `@body_raw`. Is this sufficient, or do we need a more general
-   content-type system?
+**Verify:** `gunbc review --provider anthropic --dry-run` uses DSL-defined service.
+
+### Step 6: Smoke Test — New Service from Scratch
+
+Define a test-only REST service entirely in `.dag` (e.g., `httpbin.Anything`) and
+verify end-to-end execution with zero Rust.
+
+**Verify:** Service defined, tool wired, `--dry-run` works, no service-specific Rust.
+
+## 9. Special Cases
+
+### 9.1 `@body_template` (Non-Default Body Shape)
+
+Some REST operations don't follow the "all non-path inputs become JSON body fields"
+convention. `gcp.STS.Exchange` mixes input fields with OAuth2 literal constants.
+
+The `@body_template` annotation declares the exact body shape:
+
+```
+@body_template({
+    "audience": audience,                                    // input field ref
+    "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",  // literal
+    "requested_token_type": "urn:ietf:params:oauth:token-type:access_token",
+    "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+    "subject_token": subject_token,                          // input field ref
+})
+```
+
+The `RestPrepareOp` checks: if `spec.body_template.is_some()`, use the template;
+otherwise, build body from all non-path input fields.
+
+### 9.2 Nested JSON Paths in Responses
+
+`gcp.SecretManager.AccessVersion` returns `payload.data` (nested). Use JSON pointer
+syntax in `@json`:
+
+```
+output { payload: Bytes @json("payload/data") }
+```
+
+The `RestParseOp` uses `response.body.pointer("/payload/data")` instead of
+`response.body.get("payload")`.
+
+### 9.3 Raw Body Responses
+
+`gcp.Metadata.GetIdentityToken` returns the token as a raw string body (not JSON).
+Handle with:
+
+```
+output { subject_token: Secret @raw_body }
+```
+
+The `RestParseOp` checks: if the output field has `@raw_body`, use the response body
+as a string directly instead of JSON-parsing it.
+
+### 9.4 Base64 Encoded Fields
+
+`gcp.SecretManager.AccessVersion` returns base64-encoded payload. The type system
+handles this: `Bytes` type in the output spec triggers base64 decoding.
+
+### 9.5 Dynamic Endpoint URLs
+
+`github.OIDC.GetToken` uses an environment variable as the endpoint:
+
+```
+@endpoint("$ACTIONS_ID_TOKEN_REQUEST_URL")
+```
+
+The `$` prefix tells the spec extractor to resolve the endpoint from an environment
+variable at runtime, not hardcode a URL.
+
+### 9.6 Conditional Argv Segments
+
+`cargo.Build.Build` appends `--all-targets` only when `all_targets=true`:
+
+```
+@shell(["cargo", "build", "--all-targets" if all_targets])
+```
+
+The `ArgvSegment::Conditional` variant handles this.
+
+## 10. Cross-Cutting Concerns
+
+### 10.1 Secret Handling
+
+- Input fields typed `Secret` → extracted via `Value::as_secret()`, never logged
+- Output fields typed `Secret` → wrapped in `SecretString::new()` in parse op
+- Error messages never include secret field values
+
+### 10.2 Error Messages
+
+All parse ops include the service label (e.g., "gcp.STS.Exchange") in error messages.
+The label is derived from the lowered node name at resolve time — no manual annotation
+needed.
+
+### 10.3 Mock Specs
+
+`@mock_response` annotations generate `MockSpec` entries for dry-run execution. The
+generic parse op handles mock responses identically to real responses — no special
+mock path.
+
+### 10.4 Auth Injection
+
+The `execute` boundary (`TransportOps::Execute`) handles credential injection. The
+prepare op doesn't attach tokens — it just builds the request. Auth metadata (scheme,
+header name) travels via the spec to the credential chain, not through the prepare op.
+
+## 11. Multi-Language Emission
+
+The protocol interfaces aren't Rust-specific. The daglang compiler already emits Go, C,
+and MIPS (with more backends planned). The `ServiceOperationSpec` must be available to
+all emission targets, not just the Rust exec-runtime resolver.
+
+### 11.1 Current Multi-Language Pipeline
+
+```
+.dag file
+  → [lower] GraphIR (Dag<LoweredOp>)
+  → [emit] target language code
+       ├── rust_exec_runtime.rs  (Layer 1: Rust via gunbc-exec)
+       ├── lower_rust.rs         (Layer 2: standalone Rust)
+       ├── lower_go.rs           (Go)
+       ├── lower_c.rs            (C)
+       └── lower_mips.rs         (MIPS assembly)
+```
+
+Today, service transport triplets in the GraphIR are opaque `LoweredOp::Callable`
+nodes. The emission backends skip them or emit stub functions. With the spec attached,
+each backend can generate native protocol implementations.
+
+### 11.2 Per-Language Protocol Interface Generation
+
+The `ServiceOperationSpec` is language-agnostic data. Each emission backend interprets
+it to generate native code:
+
+**Rust (exec-runtime):** Generic `Executable` impls as described above. This is the
+runtime interpreter path — the spec is interpreted at execution time.
+
+**Rust (standalone / Layer 2):** Generate static Rust functions:
+```rust
+fn prepare_github_gist_create(description: &str, files: &HashMap<String, String>, public: bool) -> RestRequest {
+    RestRequest::post("https://api.github.com/gists").json(json!({
+        "description": description,
+        "files": files_to_json(files),
+        "public": public,
+    }))
+}
+```
+
+**Go:** Generate Go functions with `net/http`:
+```go
+func prepareGithubGistCreate(description string, files map[string]string, public bool) *http.Request {
+    body := map[string]interface{}{
+        "description": description,
+        "files":       filesToJSON(files),
+        "public":      public,
+    }
+    // ...
+}
+```
+
+**C:** Generate C functions with libcurl or raw sockets:
+```c
+struct rest_request prepare_github_gist_create(const char *description, /* ... */) {
+    // JSON body construction via string builder
+    // URL construction from template
+}
+```
+
+**MIPS:** Generate MIPS syscall sequences for HTTP (via runtime library or libc shim).
+
+### 11.3 Spec in the IR
+
+The `ServiceOperationSpec` becomes part of the `LoweredOp` that the emission backends
+read. This is the key modeling change — the spec isn't just for the Rust resolver, it's
+IR-level data that travels through all emission paths:
+
+```
+LoweredOp::Callable {
+    module: "services.github.gist",
+    kind: CallableKind::Pattern,
+    name: "service_transport::prepare::github.Gist::Create",
+    service_metadata: Some(ServiceCallMetadata {
+        transport: ServiceTransportClass::Rest,
+        spec: Some(ServiceOperationSpec::Rest(RestOperationSpec { ... })),
+        // ...
+    }),
+    // ...
+}
+```
+
+Each emission backend pattern-matches on the spec:
+- **rust_exec_runtime**: constructs `RestPrepareOp(spec)` (runtime interpreter)
+- **lower_rust**: emits a static function with inlined spec values
+- **lower_go**: emits a Go function with the same logic
+- **lower_c**: emits a C function
+- **lower_mips**: emits MIPS assembly
+
+### 11.4 Shared AbstractIR for Service Transport
+
+The emission pipeline already uses `AbstractIR` as an intermediate between GraphIR and
+target-language code. Service transport operations can be lowered to AbstractIR nodes
+that each renderer then emits:
+
+```
+AbstractIR::ServicePrepare {
+    spec: RestOperationSpec,
+    inputs: Vec<AbstractIR::Binding>,
+}
+→ Rust renderer: emits RestRequest construction
+→ Go renderer: emits http.NewRequest construction
+→ C renderer: emits curl_easy_setopt calls
+→ MIPS renderer: emits syscall sequence
+```
+
+This keeps the pattern uniform: one `ServiceOperationSpec` in the IR, each backend
+renders it natively.
+
+### 11.5 Protocol Interface as Shared Library per Language
+
+For each target language, there's a thin runtime library that implements the protocol
+interface:
+
+| Language | REST Library | Shell Library | File Library |
+|---|---|---|---|
+| Rust | `RestRequest::post(url).json(body)` | `ShellRequest::new(cmd).args(args)` | `FileRequest::write(path, content)` |
+| Go | `http.NewRequest("POST", url, body)` | `exec.Command(cmd, args...)` | `os.WriteFile(path, content)` |
+| C | `curl_easy_setopt(...)` | `posix_spawn(...)` | `fopen/fwrite/fclose` |
+| MIPS | `syscall(SYS_socket, ...)` | `syscall(SYS_execve, ...)` | `syscall(SYS_write, ...)` |
+
+The emitter generates code that *calls* these libraries with spec-derived parameters.
+The libraries themselves are small, per-language, and shared across all services.
+
+## 12. Summary
+
+**Before:** N per-service adapter structs, per language. Adding a service = writing
+adapters in every target language.
+**After:** 3 per-protocol-class interfaces, implemented once per language. Adding a
+service = writing DSL.
+
+The interface hierarchy is:
+```
+Transport Primitives (Layer 0)  — per-language: http client, process exec, file I/O
+  ↓ parameterized by
+Protocol Interfaces (Layer 1)   — per-language: RestPrepare, RestParse, ShellPrepare, ShellParse
+  ↓ parameterized by
+Service Specs (Layer 2)         — .dag files: endpoint, method, path, fields, auth (language-agnostic)
+```
+
+Layer 0 is implemented once per language (thin runtime library).
+Layer 1 is generated once per language by the emission backend.
+Layer 2 is written once in DSL and shared across all languages.
