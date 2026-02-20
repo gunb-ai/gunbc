@@ -103,7 +103,13 @@ fn main() {
             let commands = match args.workflow.as_str() {
                 "ci" => ci_unit_commands(),
                 "test-all" | "test_all" => test_all_unit_commands(),
-                _ => BTreeMap::new(),
+                other => {
+                    eprintln!(
+                        "error: workflow '{}' does not support execution mode; use --plan",
+                        other
+                    );
+                    std::process::exit(2);
+                }
             };
 
             println!("gunbc-workflow {}", args.workflow);
