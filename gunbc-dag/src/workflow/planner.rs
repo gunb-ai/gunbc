@@ -231,11 +231,12 @@ pub fn plan_workflow_with_mode(
                         previous_run,
                         rehydrated_outputs: outputs,
                     },
-                    Err(_) => PlanAction::Execute {
+                    Err(WorkflowLedgerError::MissingOutputPayload { .. }) => PlanAction::Execute {
                         miss_reason: MissReason::OutputMissing {
                             port: PortName::from(PORT_RESULT),
                         },
                     },
+                    Err(error) => return Err(WorkflowPlannerError::Ledger(error)),
                 }
             }
             Some(previous) => {

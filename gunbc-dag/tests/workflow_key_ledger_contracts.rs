@@ -193,6 +193,45 @@ fn corrupted_ledger_fails_closed() {
 }
 
 #[test]
+fn corrupted_cached_payload_fails_with_ledger_error() {
+    let root = temp_root();
+    let spec = ci_workflow_spec().expect("ci spec");
+    let registry = default_process_unit_registry();
+    let initial = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root)
+        .expect("initial plan should succeed");
+    let codegen = initial
+        .nodes
+        .iter()
+        .find(|node| node.node_id == NodeId::from("ci.codegen"))
+        .expect("ci.codegen should exist")
+        .clone();
+
+    let ledger_root = root.join(".gunbc").join("workflow-ledger");
+    fs::create_dir_all(ledger_root.join("cas")).expect("create cas dir");
+    fs::write(ledger_root.join("cas").join("broken-payload.json"), b"not-json")
+        .expect("write invalid cas payload");
+
+    append_global_ledger_entry(
+        &root,
+        RunLedgerEntry {
+            exec_node_id: codegen.node_id.clone(),
+            work_id: codegen.work_id.clone(),
+            key: codegen.key.clone(),
+            status: LedgerStatus::CachedHit {
+                previous_run: "run-bad-cas".to_string(),
+            },
+            output_hashes: BTreeMap::from([(PortName::from("result"), "broken-payload".into())]),
+            duration_ms: 1,
+        },
+    )
+    .expect("append corrupted cached entry");
+
+    let err = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root)
+        .expect_err("invalid cas payload should fail planner");
+    assert!(matches!(err, WorkflowPlannerError::Ledger(_)));
+}
+
+#[test]
 fn concurrent_planning_calls_remain_deterministic() {
     let root = temp_root();
     let spec = ci_workflow_spec().expect("ci spec");
