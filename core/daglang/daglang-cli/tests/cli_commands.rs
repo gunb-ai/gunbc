@@ -181,6 +181,7 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "services.gcp.sts",
         "services.git",
         "services.github.gist",
+        "services.github.issues",
         "services.llm.anthropic",
         "services.llm.openai",
         "services.shell",
@@ -224,6 +225,7 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "services.gcp.secret_manager",
         "services.gcp.sts",
         "services.github.gist",
+        "services.github.issues",
         "services.llm.anthropic",
         "services.llm.openai",
         "std.resources",
@@ -1067,7 +1069,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 45 file(s)"),
+        stdout.contains("OK: checked 46 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1096,7 +1098,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(45));
+    assert_eq!(stdout, expected_check_success_stdout(46));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -11531,7 +11533,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 45 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 46 file(s)"),
         "default check should parse full DSL corpus"
     );
 }
