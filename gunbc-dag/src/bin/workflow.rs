@@ -6,9 +6,80 @@ use std::path::PathBuf;
 use gunbc_dag::{
     bootstrap_workflow_spec, ci_workflow_spec, default_process_unit_registry, explain_plan,
     gist_diff_workflow_spec, gist_snapshot_workflow_spec, plan_workflow_with_mode,
-    test_all_workflow_spec, DryRunMode, MissReason, PlannerInputs,
+    test_all_workflow_spec, DryRunMode, MissReason, PlanExplain, PlannerInputs,
+    PlannerWorkflowSpec,
 };
 use serde::Serialize;
+
+// ============================================================================
+// Workflow Registry — single source of truth for all known workflows
+// ============================================================================
+
+/// One workflow entry. All CLI dispatch, help text, and error messages derive
+/// from this table.
+struct WorkflowEntry {
+    /// Primary name (used in help and error messages).
+    name: &'static str,
+    /// Accepted aliases (underscore variants, abbreviations).
+    aliases: &'static [&'static str],
+    /// Short description for help output.
+    description: &'static str,
+    /// Builder function.
+    build: fn() -> Result<PlannerWorkflowSpec, String>,
+}
+
+/// The single table of all registered workflows. Add a new workflow here and
+/// it automatically appears in dispatch, help, and error messages.
+const WORKFLOWS: &[WorkflowEntry] = &[
+    WorkflowEntry {
+        name: "ci",
+        aliases: &[],
+        description: "CI pipeline workflow",
+        build: ci_workflow_spec,
+    },
+    WorkflowEntry {
+        name: "test-all",
+        aliases: &["test_all"],
+        description: "Full test suite workflow",
+        build: test_all_workflow_spec,
+    },
+    WorkflowEntry {
+        name: "gist-snapshot",
+        aliases: &["gist_snapshot"],
+        description: "Gist snapshot workflow (WF14/WF15)",
+        build: gist_snapshot_workflow_spec,
+    },
+    WorkflowEntry {
+        name: "gist-diff",
+        aliases: &["gist_diff"],
+        description: "Gist diff workflow (WF14/WF15)",
+        build: gist_diff_workflow_spec,
+    },
+    WorkflowEntry {
+        name: "bootstrap",
+        aliases: &[],
+        description: "Bootstrap workflow (WF14/WF15)",
+        build: bootstrap_workflow_spec,
+    },
+];
+
+fn lookup_workflow(name: &str) -> Option<&'static WorkflowEntry> {
+    WORKFLOWS
+        .iter()
+        .find(|entry| entry.name == name || entry.aliases.contains(&name))
+}
+
+fn workflow_names_for_display() -> String {
+    WORKFLOWS
+        .iter()
+        .map(|entry| entry.name)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+// ============================================================================
+// CLI
+// ============================================================================
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Args {
@@ -34,18 +105,18 @@ fn main() {
         }
     };
 
-    let spec = match args.workflow.as_str() {
-        "ci" => ci_workflow_spec(),
-        "test-all" | "test_all" => test_all_workflow_spec(),
-        "gist-snapshot" | "gist_snapshot" => gist_snapshot_workflow_spec(),
-        "gist-diff" | "gist_diff" => gist_diff_workflow_spec(),
-        "bootstrap" => bootstrap_workflow_spec(),
-        other => Err(format!(
-            "unknown workflow '{}': expected ci, test-all, gist-snapshot, gist-diff, or bootstrap",
-            other
-        )),
+    let entry = match lookup_workflow(&args.workflow) {
+        Some(entry) => entry,
+        None => {
+            eprintln!(
+                "error: unknown workflow '{}': expected one of: {}",
+                args.workflow,
+                workflow_names_for_display()
+            );
+            std::process::exit(1);
+        }
     };
-    let spec = match spec {
+    let spec = match (entry.build)() {
         Ok(spec) => spec,
         Err(error) => {
             eprintln!("error: failed to build workflow spec: {error}");
@@ -166,18 +237,18 @@ fn parse_output_format(raw: &str) -> Result<OutputFormat, String> {
     }
 }
 
-fn render_plan_output(
-    workflow_name: &str,
-    explain: &gunbc_dag::PlanExplain,
-    format: OutputFormat,
-) -> String {
+// ============================================================================
+// Plan rendering
+// ============================================================================
+
+fn render_plan_output(workflow_name: &str, explain: &PlanExplain, format: OutputFormat) -> String {
     match format {
         OutputFormat::Text => render_plan_text(workflow_name, explain),
         OutputFormat::Json => render_plan_json(workflow_name, explain),
     }
 }
 
-fn render_plan_text(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> String {
+fn render_plan_text(workflow_name: &str, explain: &PlanExplain) -> String {
     let mut out = String::new();
     out.push_str(&format!("workflow: {workflow_name}\n"));
 
@@ -241,7 +312,7 @@ struct JsonExecuteNode {
     miss_reason: String,
 }
 
-fn render_plan_json(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> String {
+fn render_plan_json(workflow_name: &str, explain: &PlanExplain) -> String {
     let execute_set = explain
         .execute_set
         .iter()
@@ -316,6 +387,10 @@ fn format_miss_reason(reason: &MissReason) -> String {
     }
 }
 
+// ============================================================================
+// Help — derived entirely from WORKFLOWS table
+// ============================================================================
+
 fn print_help() {
     println!("gunbc-workflow - workflow planner/explainability");
     println!();
@@ -325,11 +400,10 @@ fn print_help() {
     );
     println!();
     println!("WORKFLOWS:");
-    println!("  ci              CI pipeline workflow");
-    println!("  test-all        Full test suite workflow");
-    println!("  gist-snapshot   Gist snapshot workflow (WF14/WF15)");
-    println!("  gist-diff       Gist diff workflow (WF14/WF15)");
-    println!("  bootstrap       Bootstrap workflow (WF14/WF15)");
+    let max_name = WORKFLOWS.iter().map(|e| e.name.len()).max().unwrap_or(0);
+    for entry in WORKFLOWS {
+        println!("  {:<width$}  {}", entry.name, entry.description, width = max_name);
+    }
     println!();
     println!("FLAGS:");
     println!("  --plan <name>           Workflow to plan");
@@ -425,5 +499,43 @@ mod tests {
         let a = render_plan_output("ci", &explain, OutputFormat::Json);
         let b = render_plan_output("ci", &explain, OutputFormat::Json);
         assert_eq!(a, b);
+    }
+
+    // Registry-driven tests
+
+    #[test]
+    fn all_workflow_entries_have_valid_builders() {
+        for entry in WORKFLOWS {
+            let spec = (entry.build)();
+            assert!(
+                spec.is_ok(),
+                "workflow '{}' builder failed: {}",
+                entry.name,
+                spec.unwrap_err()
+            );
+        }
+    }
+
+    #[test]
+    fn lookup_resolves_primary_names() {
+        for entry in WORKFLOWS {
+            assert!(
+                lookup_workflow(entry.name).is_some(),
+                "primary name '{}' should resolve",
+                entry.name
+            );
+        }
+    }
+
+    #[test]
+    fn lookup_resolves_aliases() {
+        assert!(lookup_workflow("test_all").is_some());
+        assert!(lookup_workflow("gist_snapshot").is_some());
+        assert!(lookup_workflow("gist_diff").is_some());
+    }
+
+    #[test]
+    fn lookup_rejects_unknown() {
+        assert!(lookup_workflow("nonexistent").is_none());
     }
 }
