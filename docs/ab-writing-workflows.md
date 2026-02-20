@@ -1,17 +1,18 @@
-# Traditional vs Graph-First Workflows (Clippy + Gist)
+# Traditional vs DSL-First Workflows (Clippy + Gist)
 
-This doc shows two side-by-side comparisons: a minimal tool workflow (clippy upsert) and a real workflow (gist snapshot). Each example is written in three traditional styles and then modeled as a gunbc DAG, with guarantees and generated artifacts called out.
+This doc shows two side-by-side comparisons: a minimal tool workflow (clippy upsert) and a real workflow (gist snapshot). Each example is written in three traditional styles and then modeled as a gunbc `.dag` definition, with guarantees and generated artifacts called out. The DSL is the primary authoring surface — the compiler handles lowering to Graph IR, type-checking, and multi-language emission.
 
 ## What Is gunbc (10-second version)
 
-gunbc is a compiler/validator for workflows modeled as **typed DAGs**. You build a graph, validate it, and execute it in:
+gunbc is a **DSL-first workflow compiler** where everything is a DAG. You write `.dag` files, the compiler validates and lowers them to typed Graph IR, and you execute them in:
 - `DryRun`: intercept boundary nodes (no real I/O)
 - `Real`: run with actual transports
 
 **Why this matters (short version)**
-- The diagram and the code are the same artifact.
+- The `.dag` definition and the runtime graph are the same artifact.
 - Workflow wiring stays correct by construction (less hand-written wiring tests).
 - Failures localize to nodes and boundaries instead of hidden control flow.
+- Adding a new service or tool requires only a `.dag` file — zero hand-written Rust.
 
 ## Structural Guarantees by Construction (Fewer Hand-Written Tests)
 
@@ -27,46 +28,37 @@ These guarantees don't replace behavioral testing (op semantics and boundary beh
 
 Boundary definition (used below): boundaries are the only nodes allowed to touch the outside world; DryRun intercepts them so execution can't accidentally do real I/O.
 
-## Core Difference: Graph-First Workflows
+## Core Difference: DSL-First Workflows
 
 Traditional code makes workflow structure implicit: ordering, wiring, I/O boundaries, and skip paths live in control flow and conventions.
 
-gunbc makes the workflow itself explicit as a **typed DAG**. The graph is validated and compiled into an artifact you can inspect, execute (`DryRun` or `Real`), and generate mocks/tests from. Wiring, boundaries, and dataflow become first-class objects, not "whatever the code happens to do."
+gunbc makes the workflow itself explicit as a **typed DAG** authored in `.dag` files. The compiler validates the definition and compiles it into a Graph IR you can inspect, execute (`DryRun` or `Real`), and generate mocks/tests from. Wiring, boundaries, and dataflow become first-class objects, not "whatever the code happens to do."
 
 Example 1 (minimal): clippy upsert
 - Clippy = Rust linter distributed as a rustup component.
 - Goal: ensure clippy is installed, then run it
-- Build-time config: `args: [String]` (CLI flags for the run step)
+- DSL definition: `dsl/tools/clippy.dag`
 - Runtime input: `trigger: Unit`
-- Output: `result: CliResult`
+- Output: `{ clean: Bool, findings: String }`
 
-Interface (call shape):
+Interface (DSL):
 
-```text
-Build-time:  args: [String]
-Runtime:     trigger: Unit
-Output:      result: CliResult
-
-dag = build_clippy_graph(args)
-{result} = execute(dag, {trigger: ()})
+```
+func clippy_lint(paths: List<String>?) -> { clean: Bool, findings: String }
 ```
 
 Example 2 (real): gist snapshot
 - Gist snapshot = turn a repo's files into a GitHub gist.
 - Mode: Snapshot (list files, read contents, render code blocks, create gist)
-- Input: `repo_path: String`
-- Output: `url: String`
-- I/O boundaries: git commands and gist creation via explicit transport execution
+- DSL definitions: `dsl/services/github/gist.dag` + `dsl/tools/gist.dag`
+- Runtime input: `base_ref: CommitSha?`
+- Output: `{ url: Url }`
 
-Interface (call shape):
+Interface (DSL):
 
-```text
-Build-time:  mode = Snapshot, extensions, public
-Runtime:     repo_path: String
-Output:      url: String
-
-dag = build_gist_graph(Snapshot, extensions, public)
-{url} = execute(dag, {repo_path})
+```
+func gist_snapshot(base_ref: CommitSha?) -> { url: Url }
+  uses fs: Filesystem(mode: Read)
 ```
 
 ## DAG Model + Typing (Ports, Cardinality, Resources)
@@ -215,11 +207,58 @@ What you must ensure manually:
 
 ---
 
-### A.4 gunbc DAG (Clippy Upsert)
+### A.4 gunbc DSL (Clippy Upsert)
 
-Clippy uses the generic CLI upsert pattern. The builder returns a **SubDag node** containing the check -> install -> run flow (internally, this maps to UpsertBuilder's check/create/resolve phases).
+Clippy uses the upsert pattern: check if installed, install if missing, then run. The DSL definition in `dsl/tools/clippy.dag` is the primary authoring surface:
 
-Mermaid (conceptual flow):
+```
+module tools.clippy
+
+import std.patterns { upsert }
+import std.resources { Filesystem }
+import services.cargo
+
+resource Clippy {
+  kind: Capability
+  mode: Read
+  lifecycle: Persistent
+
+  capability check {
+    input {}
+    output { exists: Bool }
+    @shell(["cargo", "clippy", "--version"])
+    @hermetic @readonly
+  }
+
+  capability install {
+    input {}
+    output { installed: Bool }
+    @shell(["rustup", "component", "add", "clippy"])
+    @hermetic
+  }
+
+  capability resolve {
+    input {}
+    output { handle: String }
+    @shell(["cargo", "clippy", "--version"])
+    @hermetic @readonly
+  }
+}
+
+func clippy_lint(paths: List<String>?) -> { clean: Bool, findings: String }
+  uses clippy: Clippy
+{
+  tool = upsert(
+    check: clippy.check(),
+    create: clippy.install(),
+    resolve: clippy.resolve()
+  )
+  result = cargo.Build.Clippy() [after tool]
+  return { clean: result.success, findings: result.stderr }
+}
+```
+
+The compiler lowers this to a SubDag node with the upsert pattern:
 
 ```mermaid
 flowchart LR
@@ -230,16 +269,7 @@ flowchart LR
   run --> result((result: CliResult))
 ```
 
-```rust
-use gunbc_ir::node::Node;
-use gunbc_ir::transport::cli::{self, build_cli_upsert, CliToolOp};
-
-pub fn build_clippy_upsert(args: &[&str]) -> Node<CliToolOp> {
-    build_cli_upsert(&cli::CLIPPY, args)
-}
-```
-
-Shape of the sub-DAG (simplified, actual node IDs):
+Shape of the compiled sub-DAG (simplified):
 
 ```text
 +------------------------- clippy (SubDag) --------------------------+
@@ -253,7 +283,10 @@ Shape of the sub-DAG (simplified, actual node IDs):
 +-------------------------------------------------------------------+
 ```
 
-Actual code (core upsert builder in `core/ir/src/transport/cli.rs`):
+<details>
+<summary><strong>Legacy Rust builder (compilation target)</strong></summary>
+
+The compiler generates the equivalent of this Graph IR — you no longer write it by hand:
 
 ```rust
 pub fn build_cli_upsert(tool: &'static CliToolDef, args: &[&str]) -> Node<CliToolOp> {
@@ -267,10 +300,13 @@ pub fn build_cli_upsert(tool: &'static CliToolDef, args: &[&str]) -> Node<CliToo
 }
 ```
 
-What gunbc compilation proves (beyond Rust/Java compilers):
+</details>
+
+What the DSL compiler proves (beyond Rust/Java compilers):
 - The upsert flow is acyclic and structurally complete.
 - All edges are type-compatible and cardinality-compatible.
 - The SubDag interface matches how the parent graph uses it.
+- Service operations have well-typed inputs/outputs matching their annotations.
 
 MockSpec (excerpt from `lib/tools/clippy/src/graph_mock.rs`):
 
@@ -443,13 +479,71 @@ What you must ensure manually:
 
 ---
 
-### B.4 gunbc DAG (Gist Snapshot)
+### B.4 gunbc DSL (Gist Snapshot)
 
-#### DAG structure (real nodes, simplified view)
+#### Service definition (`dsl/services/github/gist.dag`)
 
-Snapshot mode in `lib/tools/gist/src/graph.rs` builds this structure.
+```
+service github.Gist {
+  @endpoint("https://api.github.com")
+  @auth(BearerToken)
 
-If your markdown supports Mermaid, this renders the graph:
+  operation Create {
+    input {
+      description: String
+      files: Map<String, String>
+      public: Bool = false
+    }
+    output {
+      url: Url @json("html_url")
+      id: GistId
+    }
+    @rest(POST, "/gists")
+    @permissions(["gist"])
+    @mock_response(
+      status: 201,
+      body: { "html_url": "https://gist.github.com/mock/{id}", "id": "{id}" }
+    )
+  }
+}
+```
+
+#### Tool workflow (`dsl/tools/gist.dag`)
+
+```
+module tools.gist
+
+import services.git
+import std.patterns { read_text_files }
+import std.resources { Filesystem }
+import std.types { CommitSha, Url }
+import shared.gist_modes { branch_context, share_content }
+
+fn render_snapshot(files: List<{ path: TextFilePath, content: String }>) -> String {
+  let header = "# Code Snapshot\n\n"
+  let sections = files
+    |> map(f => "## `{f.path}`\n\n```\n{f.content}\n```")
+    |> join("\n\n")
+  "{header}{sections}"
+}
+
+func gist_snapshot(base_ref: CommitSha?) -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+{
+  ctx = branch_context()
+  files = git.Core.LsFiles()
+  read_result = read_text_files(paths: files.files)
+  markdown = render_snapshot(files: read_result.files)
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref)
+  return { url: result.url }
+}
+```
+
+The compiler generates the transport triplet (`prepare → execute → parse`) automatically from each service call — `git.Core.LsFiles()`, `github.Gist.Create()`, etc. — no hand-written `PrepareRequest`/`ParseGistResponse` structs needed.
+
+#### Compiled DAG structure
+
+The compiler lowers the DSL to this Graph IR:
 
 ```mermaid
 graph LR
@@ -471,7 +565,7 @@ graph LR
   end
 ```
 
-ASCII fallback (simplified, real node names):
+ASCII fallback:
 
 ```text
 +------------------ List + Read ------------------+
@@ -489,12 +583,18 @@ ASCII fallback (simplified, real node names):
 [clock_env] --clock--> prepare_gist_request
 render_markdown --markdown--> prepare_gist_request
 prepare_gist_request -> execute_gist -> parse_gist_response -> url
-
-read_files_loop (SubDag):
-  prepare_read_file -> execute_read_file -> parse_read_file
 ```
 
-Real code (excerpt from `lib/tools/gist/src/graph.rs`):
+Key points:
+- The `.dag` file is ~15 lines of intent. The compiler generates all the transport wiring (~60 nodes, hundreds of edges).
+- All I/O is concentrated in `TransportOps::Execute` nodes.
+- The file read loop is a SubDag with its own transport boundary.
+- `@mock_response` on the service operation provides mock data for DryRun and testgen.
+
+<details>
+<summary><strong>Legacy Rust builder (compilation target)</strong></summary>
+
+The compiler generates the equivalent of this Graph IR — you no longer write it by hand:
 
 ```rust
 let prepare_gist_request = builder.add_node_after(
@@ -514,47 +614,25 @@ let prepare_gist_request = builder.add_node_after(
     &render_markdown,
 )?;
 
-builder.add_edge(
-    render_markdown.out("markdown"),
-    prepare_gist_request.in_port("markdown"),
-)?;
-builder.add_edge(
-    current_branch.parse.out("branch"),
-    prepare_gist_request.in_port("branch"),
-)?;
-builder.add_edge(
-    remote_branches.parse.out("remote_branch"),
-    prepare_gist_request.in_port("remote_branch"),
-)?;
-builder.add_edge(
-    fs_env.out("fs:write"),
-    prepare_gist_request.in_port("res:fs"),
-)?;
-builder.add_edge(
-    clock_env.out("clock"),
-    prepare_gist_request.in_port("res:clock"),
-)?;
+builder.add_edge(render_markdown.out("markdown"), prepare_gist_request.in_port("markdown"))?;
+builder.add_edge(current_branch.parse.out("branch"), prepare_gist_request.in_port("branch"))?;
+// ... (40+ more edge wiring lines)
 ```
 
-Key points:
-- All I/O is concentrated in `TransportOps::Execute` nodes.
-- The file read loop is a SubDag with its own transport boundary.
-- `fs_env` and `clock_env` provide resource inputs to `prepare_gist_request`.
-- `prepare_gist_request` consumes: `markdown`, `branch?`, `remote_branch?`, `base_ref?`, `res:fs`, and `res:clock`.
+</details>
 
-Note on resource naming: `fs:write` is the handle scope; `AccessMode::Read` describes how the node uses that handle in the resource system.
-
-Real run (DAG execution):
+Real run (compiled DAG execution):
 
 ```rust
 use gunbc_exec::{execute_with_mode, ExecutionMode};
 use gunbc_gist::{build_gist_graph, GistMode};
 
+// The compiler produces this Graph IR from dsl/tools/gist.dag
 let dag = build_gist_graph(GistMode::Snapshot, vec![], false)?;
 let _log = execute_with_mode(&dag, ExecutionMode::Real)?;
 ```
 
-#### What gunbc compilation proves (beyond Rust/Java compilers)
+#### What the DSL compiler proves (beyond Rust/Java compilers)
 
 These are graph-level guarantees that general-purpose compilers do not provide:
 - The workflow is acyclic.
@@ -562,6 +640,7 @@ These are graph-level guarantees that general-purpose compilers do not provide:
 - SubDag interfaces (like the loop body) match their parent usage.
 - Entrypoints and boundaries are inferred structurally from connectivity.
 - Resource wiring is validated so resource inputs are not left dangling.
+- Service operations are type-checked against their `@rest`/`@shell` annotations.
 
 #### Generated artifacts and tests (gist snapshot)
 
