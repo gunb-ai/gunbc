@@ -12,8 +12,8 @@ use std::path::PathBuf;
 use gunbc_dag::{
     check_slo, ci_unit_commands, ci_workflow_spec, default_process_unit_registry,
     default_slo_budgets, execute_workflow_plan, explain_plan, plan_workflow_with_mode,
-    render_execution_report, test_all_unit_commands, test_all_workflow_spec, DryRunMode,
-    MissReason, PlannerInputs, SloBudget,
+    render_execution_report, test_all_unit_commands, test_all_workflow_spec, tool_workflow_spec,
+    CapabilityAction, DryRunMode, MissReason, PlannerInputs, SloBudget, TOOL_WORKFLOW_NAMES,
 };
 use serde::Serialize;
 
@@ -54,10 +54,18 @@ fn main() {
     let spec = match args.workflow.as_str() {
         "ci" => ci_workflow_spec(),
         "test-all" | "test_all" => test_all_workflow_spec(),
-        other => Err(format!(
-            "unknown workflow '{}': expected ci or test-all",
-            other
-        )),
+        name => tool_workflow_spec(name).map_err(|_| {
+            let all_names: Vec<&str> = ["ci", "test-all"]
+                .iter()
+                .copied()
+                .chain(TOOL_WORKFLOW_NAMES.iter().copied())
+                .collect();
+            format!(
+                "unknown workflow '{}': expected one of {}",
+                name,
+                all_names.join(", ")
+            )
+        }),
     };
     let spec = match spec {
         Ok(spec) => spec,
@@ -224,7 +232,12 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
     }
 
     let workflow = workflow.ok_or_else(|| {
-        "missing workflow name: use 'gunbc-workflow ci' or 'gunbc-workflow --plan ci'".to_string()
+        if mode == Mode::Plan {
+            "missing required --plan <workflow>".to_string()
+        } else {
+            "missing workflow name: use 'gunbc-workflow ci' or 'gunbc-workflow --plan ci'"
+                .to_string()
+        }
     })?;
     let workspace_root = workspace_root
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
@@ -316,6 +329,32 @@ fn render_plan_text(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> St
     for node in &explain.critical_path {
         out.push_str(&format!("  - {}\n", node.0));
     }
+
+    // WF22: Per-capability hit/miss/execute breakdown
+    if !explain.capability_status.is_empty() {
+        out.push_str("capabilities:\n");
+        for status in explain.capability_status.values() {
+            let action_str = match &status.action {
+                CapabilityAction::CachedHit { previous_run } => {
+                    format!("CachedHit from {previous_run}")
+                }
+                CapabilityAction::Execute { miss_reason } => {
+                    format!("Execute ({})", format_miss_reason(miss_reason))
+                }
+            };
+            let nodes_str = status
+                .node_ids
+                .iter()
+                .map(|n| n.0.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push_str(&format!(
+                "  - {}: {} [{}]\n",
+                status.capability, action_str, nodes_str
+            ));
+        }
+    }
+
     out
 }
 
@@ -327,12 +366,21 @@ struct JsonPlanOutput {
     ready: Vec<String>,
     blocked: BTreeMap<String, Vec<String>>,
     critical_path: Vec<String>,
+    capabilities: Vec<JsonCapabilityStatus>,
 }
 
 #[derive(Debug, Serialize)]
 struct JsonExecuteNode {
     node_id: String,
     miss_reason: String,
+}
+
+#[derive(Debug, Serialize)]
+struct JsonCapabilityStatus {
+    capability: String,
+    action: String,
+    detail: String,
+    node_ids: Vec<String>,
 }
 
 fn render_plan_json(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> String {
@@ -384,6 +432,27 @@ fn render_plan_json(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> St
         })
         .collect::<BTreeMap<_, _>>();
 
+    let capabilities = explain
+        .capability_status
+        .values()
+        .map(|status| {
+            let (action, detail) = match &status.action {
+                CapabilityAction::CachedHit { previous_run } => {
+                    ("CachedHit".to_string(), previous_run.clone())
+                }
+                CapabilityAction::Execute { miss_reason } => {
+                    ("Execute".to_string(), format_miss_reason(miss_reason))
+                }
+            };
+            JsonCapabilityStatus {
+                capability: status.capability.clone(),
+                action,
+                detail,
+                node_ids: status.node_ids.iter().map(|n| n.0.clone()).collect(),
+            }
+        })
+        .collect::<Vec<_>>();
+
     serde_json::to_string_pretty(&JsonPlanOutput {
         workflow: workflow_name.to_string(),
         execute_set,
@@ -391,6 +460,7 @@ fn render_plan_json(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> St
         ready,
         blocked,
         critical_path,
+        capabilities,
     })
     .expect("json plan output should always be serializable")
 }
@@ -411,11 +481,19 @@ fn format_miss_reason(reason: &MissReason) -> String {
 }
 
 fn print_help() {
+    let all_names: Vec<&str> = ["ci", "test-all"]
+        .iter()
+        .copied()
+        .chain(TOOL_WORKFLOW_NAMES.iter().copied())
+        .collect();
     println!("gunbc-workflow - workflow planner and executor");
     println!();
     println!("USAGE:");
-    println!("  gunbc-workflow <ci|test-all>                Run workflow via planner (WF6/WF7)");
-    println!("  gunbc-workflow --plan <ci|test-all>         Plan only (WF5 explainability)");
+    println!("  gunbc-workflow <workflow> [--dry-run] [--workspace-root <path>]");
+    println!("  gunbc-workflow --plan <workflow> [--workspace-root <path>] [--dry-run <strict|lenient>]");
+    println!();
+    println!("WORKFLOWS:");
+    println!("  {}", all_names.join(", "));
     println!();
     println!("OPTIONS:");
     println!("  --plan <name>           Plan-only mode (show execute set + miss reasons)");
@@ -575,5 +653,18 @@ mod tests {
         let a = render_plan_output("ci", &explain, OutputFormat::Json);
         let b = render_plan_output("ci", &explain, OutputFormat::Json);
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn parse_args_accepts_tool_workflow_names() {
+        for name in TOOL_WORKFLOW_NAMES {
+            let args = parse_args(vec![
+                "gunbc-workflow".to_string(),
+                "--plan".to_string(),
+                name.to_string(),
+            ])
+            .expect(&format!("parse should succeed for {name}"));
+            assert_eq!(args.workflow, *name);
+        }
     }
 }
