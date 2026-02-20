@@ -25,7 +25,7 @@ use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_review::dimension::FermiDepth;
 use gunbc_lib_review::graph::build_diff_review_graph_with;
 use gunbc_lib_review::profile::{
-    coding_review_profile_from_repo, coding_review_profile_with_requirements,
+    coding_review_profile_with_context, coding_review_profile_with_requirements, ProjectContext,
 };
 use gunbc_lib_review::ReviewPipelineConfig;
 use std::path::Path;
@@ -34,6 +34,7 @@ use std::process;
 /// Query CI status for a PR using `gh run list`.
 ///
 /// Returns a formatted string describing CI status, or None if not available.
+#[allow(clippy::disallowed_methods)] // Binary entry point context gathering (not DAG runtime I/O)
 fn query_ci_status(pr_number: &str) -> Option<String> {
     let output = std::process::Command::new("gh")
         .args([
@@ -76,6 +77,7 @@ fn query_ci_status(pr_number: &str) -> Option<String> {
 }
 
 /// Query PR description for requirements context.
+#[allow(clippy::disallowed_methods)] // Binary entry point context gathering (not DAG runtime I/O)
 fn query_pr_description(pr_number: &str) -> Option<String> {
     let output = std::process::Command::new("gh")
         .args([
@@ -102,6 +104,7 @@ fn query_pr_description(pr_number: &str) -> Option<String> {
 }
 
 /// Query issue description for requirements context.
+#[allow(clippy::disallowed_methods)] // Binary entry point context gathering (not DAG runtime I/O)
 fn query_issue_description(issue_number: &str) -> Option<String> {
     let output = std::process::Command::new("gh")
         .args([
@@ -125,6 +128,20 @@ fn query_issue_description(issue_number: &str) -> Option<String> {
     let body = issue.get("body").and_then(|v| v.as_str()).unwrap_or("");
 
     Some(format!("Issue: {}\n\n{}", title, body))
+}
+
+/// Read project context files from the repo path.
+///
+/// Binary entry points are the I/O boundary — this is where file reads
+/// happen before entering the pure DAG world (I6 compliant).
+#[allow(clippy::disallowed_methods)] // Binary entry point reads (not DAG runtime I/O)
+fn read_project_context(repo: &Path) -> ProjectContext {
+    let agent_md = std::fs::read_to_string(repo.join("AGENT.md")).ok();
+    let clippy_toml = std::fs::read_to_string(repo.join("clippy.toml")).ok();
+    ProjectContext {
+        agent_md,
+        clippy_toml,
+    }
 }
 
 fn main() {
@@ -223,20 +240,33 @@ fn main() {
     // ========================================================================
 
     let repo = Path::new(&repo_path);
+
+    // Read project context files (binary is the I/O boundary — I6 compliant)
+    let project_context = read_project_context(repo);
+
     let requirements_text = combined_context.as_deref().unwrap_or("");
 
     let profile = if requirements_text.is_empty() {
-        coding_review_profile_from_repo(repo, depth)
+        coding_review_profile_with_context(depth, &project_context)
     } else {
-        coding_review_profile_with_requirements(repo, depth, requirements_text)
+        coding_review_profile_with_requirements(depth, &project_context, requirements_text)
     };
 
-    // Use the first active dimension's criteria for the single-pass review
-    // (full 4-dimension support comes from dimension graph builder)
-    let criteria = profile
-        .criteria_for(gunbc_lib_review::dimension::ReviewDimension::Quality)
-        .cloned()
-        .unwrap_or_else(gunbc_lib_review::graph_mock::default_criteria);
+    // Select criteria for the single-pass review config node.
+    // When requirements context is available (--pr / --issue), use the
+    // requirements dimension so CI/PR/issue context reaches prompt generation.
+    // Otherwise fall back to quality criteria for standard code review.
+    let criteria = if combined_context.is_some() {
+        profile
+            .criteria_for(gunbc_lib_review::dimension::ReviewDimension::Requirements)
+            .cloned()
+            .unwrap_or_else(gunbc_lib_review::graph_mock::default_criteria)
+    } else {
+        profile
+            .criteria_for(gunbc_lib_review::dimension::ReviewDimension::Quality)
+            .cloned()
+            .unwrap_or_else(gunbc_lib_review::graph_mock::default_criteria)
+    };
 
     // In dry-run mode, use the default config (OpenAI) to match mock specs.
     let (effective_provider, model) = if dry_run {

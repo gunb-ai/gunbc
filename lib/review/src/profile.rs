@@ -17,7 +17,6 @@ use crate::dimension::{FermiDepth, ReviewDimension};
 use crate::{Check, Criteria};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
 
 // ============================================================================
 // ReviewProfile
@@ -123,15 +122,21 @@ pub struct ProjectContext {
     pub clippy_toml: Option<String>,
 }
 
-/// Build a coding review profile with pre-read project context.
+/// Build a coding review profile with explicit project context.
 ///
 /// Quality criteria are enriched with AGENT.md and clippy.toml content
-/// when available. File reading is the caller's responsibility (I6).
-pub fn coding_review_profile_from_repo(_repo_path: &Path, depth: FermiDepth) -> ReviewProfile {
-    coding_review_profile_with_context(depth, &ProjectContext::default())
-}
-
-/// Build a coding review profile with explicit project context.
+/// when available. File reading is the caller's responsibility (I6:
+/// no escape hatches — all I/O through transport boundaries).
+///
+/// # Example
+///
+/// ```ignore
+/// let ctx = ProjectContext {
+///     agent_md: Some(agent_md_content),
+///     clippy_toml: Some(clippy_toml_content),
+/// };
+/// let profile = coding_review_profile_with_context(FermiDepth::M, &ctx);
+/// ```
 pub fn coding_review_profile_with_context(
     depth: FermiDepth,
     context: &ProjectContext,
@@ -167,13 +172,17 @@ pub fn coding_review_profile_with_context(
     profile
 }
 
-/// Build a coding review profile with requirements from a GitHub issue or PR.
+/// Build a coding review profile with requirements context.
+///
+/// Extends [`coding_review_profile_with_context`] by injecting requirements
+/// text (from a GitHub issue or PR description) into the requirements
+/// dimension criteria.
 pub fn coding_review_profile_with_requirements(
-    repo_path: &Path,
     depth: FermiDepth,
+    context: &ProjectContext,
     requirements_text: &str,
 ) -> ReviewProfile {
-    let mut profile = coding_review_profile_from_repo(repo_path, depth);
+    let mut profile = coding_review_profile_with_context(depth, context);
 
     if let Some(req) = profile.dimension_criteria.get_mut("requirements") {
         req.description = format!(
@@ -430,18 +439,29 @@ mod tests {
     }
 
     #[test]
-    fn test_profile_from_nonexistent_repo() {
-        // Should gracefully handle missing files
+    fn test_profile_with_empty_context() {
         let profile =
-            coding_review_profile_from_repo(Path::new("/nonexistent/path"), FermiDepth::M);
+            coding_review_profile_with_context(FermiDepth::M, &ProjectContext::default());
         assert!(profile.is_active(ReviewDimension::Quality));
+    }
+
+    #[test]
+    fn test_profile_with_project_context() {
+        let ctx = ProjectContext {
+            agent_md: Some("## Rules\n- No unwrap()".to_string()),
+            clippy_toml: Some("too-many-lines-threshold = 100".to_string()),
+        };
+        let profile = coding_review_profile_with_context(FermiDepth::M, &ctx);
+        let quality = profile.criteria_for(ReviewDimension::Quality).unwrap();
+        assert!(quality.description.contains("AGENT.md"));
+        assert!(quality.description.contains("clippy.toml"));
     }
 
     #[test]
     fn test_profile_with_requirements() {
         let profile = coding_review_profile_with_requirements(
-            Path::new("/nonexistent"),
             FermiDepth::M,
+            &ProjectContext::default(),
             "Implement user authentication with OAuth2",
         );
         let req = profile.criteria_for(ReviewDimension::Requirements).unwrap();
