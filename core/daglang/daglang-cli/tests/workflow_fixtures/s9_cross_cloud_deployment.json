@@ -1,6 +1,6 @@
 {
   "module": "examples.deployment",
-  "path": "/workspace/dsl/examples/deployment.dag",
+  "path": "examples/deployment.dag",
   "items": 11,
   "dependencies": [
     "infra.core",

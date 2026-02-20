@@ -1,6 +1,6 @@
 {
   "module": "tools.clippy",
-  "path": "/workspace/dsl/tools/clippy.dag",
+  "path": "tools/clippy.dag",
   "items": 3,
   "dependencies": [
     "std.patterns",

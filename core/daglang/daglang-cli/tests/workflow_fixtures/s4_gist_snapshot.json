@@ -1,6 +1,6 @@
 {
   "module": "tools.gist",
-  "path": "/workspace/dsl/tools/gist.dag",
+  "path": "tools/gist.dag",
   "items": 10,
   "dependencies": [
     "services.git",

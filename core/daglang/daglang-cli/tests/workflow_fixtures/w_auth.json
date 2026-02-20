@@ -1,6 +1,6 @@
 {
   "module": "services.shell",
-  "path": "/workspace/dsl/services/shell.dag",
+  "path": "services/shell.dag",
   "items": 6,
   "dependencies": [
     "std.types"

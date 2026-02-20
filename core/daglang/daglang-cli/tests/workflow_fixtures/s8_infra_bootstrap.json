@@ -1,6 +1,6 @@
 {
   "module": "infra.core",
-  "path": "/workspace/dsl/infra/core.dag",
+  "path": "infra/core.dag",
   "items": 10,
   "dependencies": [],
   "expand_contract": {

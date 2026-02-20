@@ -1,6 +1,6 @@
 {
   "module": "tools.makegen",
-  "path": "/workspace/dsl/tools/makegen.dag",
+  "path": "tools/makegen.dag",
   "items": 3,
   "dependencies": [
     "std.patterns",
