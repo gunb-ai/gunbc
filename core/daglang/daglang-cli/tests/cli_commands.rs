@@ -929,9 +929,12 @@ fn assert_dag_extension_symlink_directory_variants(command: &str) {
             let curdir_link = run_cli(command, &curdir_link_arg, &root);
 
             let expect_success = false;
+            let real_expect_success = if command == "check" { !has_errors } else { true };
             assert!(
-                real_output.status.success(),
-                "{test_name}: non-.dag real directory should remain valid"
+                real_output.status.success() == real_expect_success,
+                "{test_name}: non-.dag real directory expected success={real_expect_success}, got exit={:?}\nstderr: {}",
+                real_output.status.code(),
+                String::from_utf8_lossy(&real_output.stderr)
             );
             assert!(
                 !link_output.status.success(),

@@ -81,6 +81,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                     eprintln!("{error}");
                     std::process::exit(1);
                 }
+                if let Some(error) = path_utils::check_dag_directory_conflict(&normalized) {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
             }
             let roots = if let Some(root) = root_arg {
                 vec![resolve_root(cwd, Some(&root))]
