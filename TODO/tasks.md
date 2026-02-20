@@ -70,7 +70,7 @@ Bug surfaced by automated review. This is real but latent (not causing test fail
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **R2** | **[STARTED 2026-02-19]** **Wildcard resource semantics deferred**: remove generated/injected `res:file:*` usage for now (coarsen to `res:file`), treat coarse `file` as conflicting with any specific `file:<path>` lock in admission control, and normalize wildcard IDs to coarse `file` in resource accounting. Track full glob semantics as design work in `backlog.md` before enabling pattern-aware admission control. | — | M |
+| **R2** | **[DONE 2026-02-20]** **Wildcard resource semantics deferred**: remove generated/injected `res:file:*` usage for now (coarsen to `res:file`), treat coarse `file` as conflicting with any specific `file:<path>` lock in admission control, and normalize wildcard IDs to coarse `file` in resource accounting. Track full glob semantics as design work in `backlog.md` before enabling pattern-aware admission control. | — | M |
 
 ### Code TODOs & DSL Compiler Polish
 
@@ -721,7 +721,7 @@ multiple workers with minimal overlap.
 
 | Group | Tasks | Notes |
 |---|---|---|
-| Wildcard semantics hardening | `R2` | Independent from active `W*`/`WF*` tracks. |
+| Wildcard semantics hardening | `R2` | **DONE** — wildcard ports normalized at construction, coarse conflict detection enforced. |
 | Daglang CLI hardening | `DL1`, `DL2`, `DL3`, `DL4` | Independent quick fixes; can run in parallel with all lanes. |
 
 ### B) Dev Pipeline + SDLC track (`W*`)
@@ -757,12 +757,12 @@ multiple workers with minimal overlap.
 | Lane 4: Gist modes | `WF16` | `WF17`, `WF18` |
 | Lane 5: Remaining tool capabilities | `WF19`, `WF20` | `WF21`, `WF22` |
 | Lane 6: Daglang hardening | `DL1`-`DL4` | finish independently |
-| Lane 7: Resource semantics | `R2` | finish independently |
+| Lane 7: Resource semantics | `R2` | **DONE** |
 
 ### Priority
 
 1. **Critical path now**: `W1` and `WF14` (they unlock the most downstream work).
-2. In parallel: `WF6`/`WF7`, `DL1`-`DL4`, and `R2`.
+2. In parallel: `WF6`/`WF7`, `DL1`-`DL4`.
 3. Keep `W*` and `WF*` in separate owner lanes to avoid cross-track churn.
 
 **Backlog**: XL features and migration work in `backlog.md`.

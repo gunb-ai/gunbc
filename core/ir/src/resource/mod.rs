@@ -1074,4 +1074,122 @@ mod tests {
         assert_eq!(accesses.len(), 1);
         assert_eq!(accesses[0].mode, AccessMode::Exclusive);
     }
+
+    // ============ R2: Wildcard normalization and coarse conflict edge cases ============
+
+    #[test]
+    fn test_normalize_resource_id_various_wildcards() {
+        // All wildcard forms must coarsen to "file".
+        assert_eq!(normalize_resource_id("file:*"), "file");
+        assert_eq!(normalize_resource_id("file:src/*"), "file");
+        assert_eq!(normalize_resource_id("file:*.rs"), "file");
+        assert_eq!(normalize_resource_id("file:src/main*"), "file");
+        assert_eq!(normalize_resource_id("res:file:*"), "file");
+        assert_eq!(normalize_resource_id("res:file:src/*"), "file");
+    }
+
+    #[test]
+    fn test_normalize_resource_id_non_wildcard_preserved() {
+        // Specific file paths must not be coarsened.
+        assert_eq!(normalize_resource_id("file:Makefile"), "file:Makefile");
+        assert_eq!(normalize_resource_id("file:src/main.rs"), "file:src/main.rs");
+        // Coarse `file` stays as `file`.
+        assert_eq!(normalize_resource_id("file"), "file");
+        // Non-file resources unaffected.
+        assert_eq!(normalize_resource_id("api:network"), "api:network");
+        assert_eq!(normalize_resource_id("tool:clippy"), "tool:clippy");
+        assert_eq!(normalize_resource_id("repo"), "repo");
+    }
+
+    #[test]
+    fn test_coarse_file_conflicts_with_multiple_specific_files() {
+        let dag = parallel_dag();
+
+        // Coarse `file` should conflict with any specific file path.
+        let accesses = vec![
+            ResourceAccess::write("a", "file"),
+            ResourceAccess::write("b", "file:src/main.rs"),
+        ];
+        let conflicts = detect_conflicts(&dag, &accesses);
+        assert_eq!(conflicts.len(), 1, "coarse file must conflict with specific file path");
+    }
+
+    #[test]
+    fn test_two_specific_files_do_not_conflict() {
+        let dag = parallel_dag();
+
+        // Two different specific file paths should NOT conflict.
+        let accesses = vec![
+            ResourceAccess::write("a", "file:Makefile"),
+            ResourceAccess::write("b", "file:Cargo.toml"),
+        ];
+        let conflicts = detect_conflicts(&dag, &accesses);
+        assert!(
+            conflicts.is_empty(),
+            "different specific file paths must not conflict"
+        );
+    }
+
+    #[test]
+    fn test_coarse_file_read_read_no_conflict() {
+        let dag = parallel_dag();
+
+        // Coarse file Read + specific file Read = no conflict.
+        let accesses = vec![
+            ResourceAccess::read("a", "file"),
+            ResourceAccess::read("b", "file:Makefile"),
+        ];
+        let conflicts = detect_conflicts(&dag, &accesses);
+        assert!(conflicts.is_empty(), "read-read should never conflict");
+    }
+
+    #[test]
+    fn test_wildcard_port_construction_normalizes_in_dag_conflict_detection() {
+        // Build a DAG where one node uses a wildcard-constructed port and
+        // another uses a specific file — verify conflict detection sees them
+        // as coarse vs specific and flags the conflict.
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "wildcard",
+            vec![Port::resource("file:*", "FilesystemHandle", AccessMode::Write)],
+            vec![],
+            "op_a".to_string(),
+        ));
+        dag.add_node(Node::opaque(
+            "specific",
+            vec![Port::resource("file:out.txt", "FilesystemHandle", AccessMode::Write)],
+            vec![],
+            "op_b".to_string(),
+        ));
+
+        let conflicts = detect_resource_conflicts(&dag).expect("should derive accesses");
+        assert_eq!(
+            conflicts.len(),
+            1,
+            "normalized wildcard (coarse file) must conflict with specific file"
+        );
+        assert_eq!(conflicts[0].resource_id.0, "file");
+    }
+
+    #[test]
+    fn test_resource_ids_conflict_symmetry() {
+        let coarse = ResourceId::new("file");
+        let specific = ResourceId::new("file:Makefile");
+
+        // Conflict should be symmetric.
+        assert!(resource_ids_conflict(&coarse, &specific));
+        assert!(resource_ids_conflict(&specific, &coarse));
+    }
+
+    #[test]
+    fn test_resource_ids_no_cross_kind_conflict() {
+        // file vs api should never conflict.
+        let file = ResourceId::new("file");
+        let api = ResourceId::new("api:network");
+        assert!(!resource_ids_conflict(&file, &api));
+
+        // file vs tool should never conflict.
+        let tool = ResourceId::new("tool:clippy");
+        assert!(!resource_ids_conflict(&file, &tool));
+    }
 }

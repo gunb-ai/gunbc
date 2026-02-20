@@ -924,12 +924,17 @@ struct ActiveResourceLock {
     exclusive: bool,
 }
 
+/// Check if two normalized resource IDs conflict for admission control.
+///
+/// Exact ID equality always conflicts.  Additionally, coarse `file`
+/// conflicts with any specific `file:<path>` lock (R2 semantics).
+/// Full glob-aware conflict detection is deferred (see `TODO/backlog.md`).
 fn resource_ids_conflict(required_id: &str, active_id: &str) -> bool {
     if required_id == active_id {
         return true;
     }
 
-    // `file` is a coarse filesystem lock that conflicts with any specific file path.
+    // Coarse `file` conflicts with any specific `file:<path>` lock.
     let required_is_file = required_id == "file" || required_id.starts_with("file:");
     let active_is_file = active_id == "file" || active_id.starts_with("file:");
     required_is_file && active_is_file && (required_id == "file" || active_id == "file")
@@ -1049,6 +1054,14 @@ fn normalize_file_guard_path(path: &str) -> String {
     normalized
 }
 
+/// Match a file resource pattern against a concrete path.
+///
+/// Since wildcard resource IDs are normalized to coarse `file` at
+/// `Port::resource()` construction time (R2), the `pattern` argument
+/// here should only ever be `"*"` (from coarse `res:file`) or a
+/// literal path (from specific `res:file:<path>`).  The glob-style
+/// branches below are retained as defense-in-depth; full glob-aware
+/// resource admission is deferred (see `TODO/backlog.md`).
 fn file_resource_pattern_matches_path(pattern: &str, path: &str) -> bool {
     let normalized_pattern = normalize_file_guard_path(pattern);
     let normalized_path = normalize_file_guard_path(path);
@@ -3177,13 +3190,21 @@ mod tests {
     }
 
     #[test]
-    fn runtime_file_guard_allows_legacy_wildcard_and_coarse_file() {
+    fn runtime_file_guard_wildcard_normalized_to_coarse_file() {
+        // Wildcard `file:*` is normalized to coarse `file` at Port construction
+        // time (R2: wildcard resource semantics deferred).
         let wildcard_node = Node::opaque(
             "wildcard_writer",
             vec![resource("file:*", "FilesystemHandle", AccessMode::Write)],
             vec![port("response", "TransportResponse")],
             TestOp::echo(),
         );
+        // Verify normalization: the port name should be `res:file`, not `res:file:*`.
+        assert_eq!(
+            wildcard_node.inputs[0].name.0, "res:file",
+            "wildcard file:* must be normalized to coarse res:file at construction"
+        );
+
         let coarse_node = Node::opaque(
             "coarse_writer",
             vec![resource("file", "FilesystemHandle", AccessMode::Write)],
@@ -3198,7 +3219,7 @@ mod tests {
         );
 
         enforce_runtime_file_guard(&wildcard_node, &outputs, true)
-            .expect("legacy wildcard declarations should remain accepted");
+            .expect("normalized coarse res:file should allow any file write");
         enforce_runtime_file_guard(&coarse_node, &outputs, true)
             .expect("coarse res:file should allow writes");
     }
