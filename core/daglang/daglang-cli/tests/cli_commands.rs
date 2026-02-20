@@ -872,7 +872,7 @@ fn assert_dag_extension_directory_variants(command: &str) {
                 "{test_name}: plain .dag directory variant should fail"
             );
             assert!(
-                String::from_utf8_lossy(&plain.stderr).contains("has `.dag` extension but is a directory"),
+                String::from_utf8_lossy(&plain.stderr).contains("target is a directory"),
                 "{test_name}: expected explicit .dag directory conflict error, got stderr: {}",
                 String::from_utf8_lossy(&plain.stderr)
             );
@@ -941,7 +941,7 @@ fn assert_dag_extension_symlink_directory_variants(command: &str) {
                 "{test_name}: .dag symlink path should fail"
             );
             assert!(
-                String::from_utf8_lossy(&link_output.stderr).contains("has `.dag` extension but is a directory"),
+                String::from_utf8_lossy(&link_output.stderr).contains("target is a directory"),
                 "{test_name}: expected explicit .dag directory conflict error, got stderr: {}",
                 String::from_utf8_lossy(&link_output.stderr)
             );

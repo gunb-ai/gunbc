@@ -27,10 +27,11 @@ pub fn is_single_file_target(path: &Path) -> bool {
 pub fn check_dag_directory_conflict(path: &Path) -> Option<String> {
     if has_dag_extension(path) && path.is_dir() {
         Some(format!(
-            "path `{}` has `.dag` extension but is a directory; \
+            "failed to read {}: target is a directory. \
+             `.dag` paths are treated as single-file targets; \
              pass the directory path without the `.dag` suffix, \
              or reference a `.dag` file inside it",
-            path.display()
+            path.display(),
         ))
     } else {
         None
