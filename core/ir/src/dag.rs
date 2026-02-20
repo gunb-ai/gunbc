@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use crate::log_detail::LogDetailLevel;
 use crate::node::Node;
-use crate::resource::AccessMode;
+use crate::resource::{normalize_resource_id, AccessMode};
 use crate::type_op::TypeOp;
 use crate::type_registry::TypeRegistry;
 use crate::types::{Cardinality, NodeId, PortName, TypeId};
@@ -563,7 +563,11 @@ impl Port {
     pub fn resource(name: impl Into<String>, type_id: impl Into<TypeId>, mode: AccessMode) -> Self {
         let raw = name.into();
         let stripped = raw.strip_prefix("res:").unwrap_or(&raw);
-        let full_name = format!("res:{stripped}");
+        // Normalize wildcard patterns (e.g. `file:*`, `file:src/*`) to coarse
+        // equivalents at construction time so wildcard resource IDs never enter
+        // the DAG.  Full glob semantics are deferred (see backlog.md).
+        let normalized = normalize_resource_id(stripped);
+        let full_name = format!("res:{normalized}");
         let type_id = type_id.into();
         assert!(
             !matches!(type_id.0.as_str(), "List" | "Set"),
@@ -1041,5 +1045,53 @@ mod tests {
         assert!(rendered.contains("  - group [subdag]"));
         assert!(rendered.contains("DAG root::group"));
         assert!(rendered.contains("  Nodes:\n    - child_node"));
+    }
+
+    // ============ R2: Wildcard resource normalization at construction ============
+
+    #[test]
+    fn test_resource_port_normalizes_file_wildcard_to_coarse() {
+        let port = Port::resource("file:*", "FilesystemHandle", AccessMode::Write);
+        assert_eq!(
+            port.name.0, "res:file",
+            "file:* must normalize to coarse res:file at construction"
+        );
+        assert_eq!(port.resource_access, Some(AccessMode::Write));
+    }
+
+    #[test]
+    fn test_resource_port_normalizes_prefixed_file_wildcard() {
+        let port = Port::resource("file:src/*", "FilesystemHandle", AccessMode::Write);
+        assert_eq!(
+            port.name.0, "res:file",
+            "file:src/* must normalize to coarse res:file at construction"
+        );
+    }
+
+    #[test]
+    fn test_resource_port_normalizes_res_prefixed_wildcard() {
+        let port = Port::resource("res:file:*", "FilesystemHandle", AccessMode::Write);
+        assert_eq!(
+            port.name.0, "res:file",
+            "res:file:* must normalize to coarse res:file at construction"
+        );
+    }
+
+    #[test]
+    fn test_resource_port_preserves_specific_file_path() {
+        let port = Port::resource("file:Makefile", "FilesystemHandle", AccessMode::Write);
+        assert_eq!(
+            port.name.0, "res:file:Makefile",
+            "specific file paths must not be coarsened"
+        );
+    }
+
+    #[test]
+    fn test_resource_port_preserves_non_file_resources() {
+        let port = Port::resource("api:network", "NetworkHandle", AccessMode::Read);
+        assert_eq!(port.name.0, "res:api:network");
+
+        let port2 = Port::resource("tool:clippy", "ToolHandle", AccessMode::Read);
+        assert_eq!(port2.name.0, "res:tool:clippy");
     }
 }
