@@ -32,6 +32,7 @@ struct Args {
     dry_run_mode: DryRunMode,
     dry_run: bool,
     output_format: OutputFormat,
+    passthrough_args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,13 +97,21 @@ fn main() {
             );
         }
         Mode::Run => {
-            let commands = match workflow_unit_commands(&args.workflow) {
+            let mut commands = match workflow_unit_commands(&args.workflow) {
                 Ok(commands) => commands,
                 Err(error) => {
                     eprintln!("error: {error}");
                     std::process::exit(2);
                 }
             };
+            if let Err(error) = append_passthrough_to_workflow_commands(
+                &args.workflow,
+                &mut commands,
+                &args.passthrough_args,
+            ) {
+                eprintln!("error: {error}");
+                std::process::exit(2);
+            }
 
             println!("gunbc-workflow {}", args.workflow);
             println!("  mode: {}", if args.dry_run { "dry-run" } else { "real" });
@@ -151,7 +160,11 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
     let mut output_format = OutputFormat::Text;
     let mut mode = Mode::Run;
     let mut dry_run = false;
-    let mut positional: Option<String> = None;
+    let mut passthrough_args = Vec::new();
+    let plan_mode_requested = argv
+        .iter()
+        .skip(1)
+        .any(|arg| arg == "--plan" || arg.starts_with("--plan="));
 
     let mut i = 1usize;
     while i < argv.len() {
@@ -188,14 +201,14 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                 dry_run = true;
             }
             "--format" => {
-                if mode == Mode::Plan {
+                if plan_mode_requested {
                     i += 1;
                     let value = argv
                         .get(i)
                         .ok_or_else(|| "--format requires <text|json>".to_string())?;
                     output_format = parse_output_format(value)?;
                 } else {
-                    return Err("unknown argument '--format'".to_string());
+                    passthrough_args.push(arg.to_string());
                 }
             }
             _ if arg.starts_with("--plan=") => {
@@ -210,25 +223,29 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                 dry_run = true;
             }
             _ if arg.starts_with("--format=") => {
-                if mode == Mode::Plan {
+                if plan_mode_requested {
                     output_format = parse_output_format(&arg["--format=".len()..])?;
                 } else {
-                    return Err(format!("unknown argument '{arg}'"));
+                    passthrough_args.push(arg.to_string());
                 }
             }
-            _ if !arg.starts_with('-') => {
-                positional = Some(arg.to_string());
+            _ if arg.starts_with('-') => {
+                if plan_mode_requested {
+                    return Err(format!("unknown argument '{arg}'"));
+                }
+                passthrough_args.push(arg.to_string());
             }
-            other => return Err(format!("unknown argument '{other}'")),
+            _ => {
+                if workflow.is_none() {
+                    workflow = Some(arg.to_string());
+                } else if plan_mode_requested {
+                    return Err(format!("unknown argument '{arg}'"));
+                } else {
+                    passthrough_args.push(arg.to_string());
+                }
+            }
         }
         i += 1;
-    }
-
-    // Positional argument sets workflow for run mode.
-    if workflow.is_none() {
-        if let Some(pos) = positional {
-            workflow = Some(pos);
-        }
     }
 
     let workflow = workflow.ok_or_else(|| {
@@ -239,6 +256,9 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                 .to_string()
         }
     })?;
+    if mode == Mode::Run && !passthrough_args.is_empty() && !is_tool_workflow_name(&workflow) {
+        return Err(format!("unknown argument '{}'", passthrough_args[0]));
+    }
     let workspace_root = workspace_root
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     Ok(Args {
@@ -248,7 +268,60 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
         dry_run_mode,
         dry_run,
         output_format,
+        passthrough_args,
     })
+}
+
+fn normalize_workflow_name(name: &str) -> String {
+    name.replace('_', "-")
+}
+
+fn is_tool_workflow_name(name: &str) -> bool {
+    let normalized = normalize_workflow_name(name);
+    all_tool_workflow_names()
+        .iter()
+        .any(|tool_name| *tool_name == normalized)
+}
+
+fn passthrough_target_nodes(workflow: &str) -> &'static [&'static str] {
+    match normalize_workflow_name(workflow).as_str() {
+        "gist" | "gist-snapshot" | "gist-diff" | "gist-recent" => &["gist.gist_create"],
+        "bootstrap" => &["bootstrap.upsert_makefile"],
+        "makegen" => &["makegen.upsert_makefile"],
+        "pragma" => &["pragma.upsert_policy"],
+        "deps" => &["deps.execute_installs"],
+        "dag-viz" | "dag-viz-diff" | "dag-viz-recent" => &["dag_viz.gist_upload"],
+        "dag-snapshot" => &["dag_snapshot.gist_upload"],
+        "build-all" => &["build_all.build"],
+        _ => &[],
+    }
+}
+
+fn append_passthrough_to_workflow_commands(
+    workflow: &str,
+    commands: &mut BTreeMap<gunbc_ir::NodeId, gunbc_dag::UnitCommand>,
+    passthrough_args: &[String],
+) -> Result<(), String> {
+    if passthrough_args.is_empty() {
+        return Ok(());
+    }
+    let target_nodes = passthrough_target_nodes(workflow);
+    if target_nodes.is_empty() {
+        return Err(format!(
+            "workflow '{}' does not support entrypoint arguments",
+            workflow
+        ));
+    }
+    for node in target_nodes {
+        let Some(command) = commands.get_mut(&gunbc_ir::NodeId::from(*node)) else {
+            return Err(format!(
+                "workflow '{}' missing command mapping for node '{}'",
+                workflow, node
+            ));
+        };
+        command.args.extend(passthrough_args.iter().cloned());
+    }
+    Ok(())
 }
 
 fn parse_dry_run_mode(raw: &str) -> Result<DryRunMode, String> {
@@ -614,7 +687,7 @@ mod tests {
 
     #[test]
     fn parse_args_rejects_unknown_flags_in_run_mode() {
-        let error = parse_args(vec![
+        let args = parse_args(vec![
             "gunbc-workflow".to_string(),
             "dag-viz".to_string(),
             "--repo-path".to_string(),
@@ -622,8 +695,29 @@ mod tests {
             "--format".to_string(),
             "svg".to_string(),
         ])
-        .expect_err("run mode should reject unknown passthrough flags");
-        assert!(error.contains("unknown argument"));
+        .expect("run mode should accept tool passthrough flags");
+        assert_eq!(args.workflow, "dag-viz");
+        assert_eq!(
+            args.passthrough_args,
+            vec![
+                "--repo-path".to_string(),
+                ".".to_string(),
+                "--format".to_string(),
+                "svg".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_args_rejects_unknown_flags_for_core_workflow_run_mode() {
+        let error = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "ci".to_string(),
+            "--repo-path".to_string(),
+            ".".to_string(),
+        ])
+        .expect_err("core workflow run mode should reject unknown flags");
+        assert!(error.contains("unknown argument '--repo-path'"));
     }
 
     #[test]
@@ -650,6 +744,42 @@ mod tests {
         ])
         .expect("parse should succeed");
         assert_eq!(args.output_format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn parse_args_supports_json_output_mode_before_plan_flag() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+            "--plan".to_string(),
+            "ci".to_string(),
+        ])
+        .expect("parse should succeed regardless of flag order");
+        assert_eq!(args.mode, Mode::Plan);
+        assert_eq!(args.workflow, "ci");
+        assert_eq!(args.output_format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn append_passthrough_to_workflow_commands_targets_tool_leaf_node_only() {
+        let mut commands = workflow_unit_commands("gist").expect("gist commands");
+        append_passthrough_to_workflow_commands(
+            "gist",
+            &mut commands,
+            &["--repo".to_string(), ".".to_string()],
+        )
+        .expect("passthrough append should succeed");
+
+        let create = commands
+            .get(&gunbc_ir::NodeId::from("gist.gist_create"))
+            .expect("gist create command");
+        assert!(create.args.ends_with(&["--repo".to_string(), ".".to_string()]));
+
+        let codegen = commands
+            .get(&gunbc_ir::NodeId::from("gist.codegen_ensure"))
+            .expect("codegen command");
+        assert!(!codegen.args.contains(&"--repo".to_string()));
     }
 
     #[test]
