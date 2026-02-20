@@ -275,6 +275,14 @@ pub(crate) fn core_workflow_body(
         ],
         "fmt-fix" => vec![config.fmt_shell().into()],
         "lint-fix" => vec![config.lint_fix_shell().into()],
+        // WF8: CI and test-all are thin wrappers over gunbc-workflow planner.
+        "ci" => vec![
+            "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -- ci".into(),
+        ],
+        "test-all" => vec![
+            "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -- test-all"
+                .into(),
+        ],
         _ => panic!(
             "missing core workflow body renderer for '{}'",
             workflow.name

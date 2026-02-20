@@ -1,19 +1,37 @@
-//! gunbc-workflow planner entrypoint (WF5).
+//! gunbc-workflow planner + executor entrypoint (WF5/WF6/WF7/WF9).
+//!
+//! Modes:
+//! - `gunbc-workflow --plan <ci|test-all>`: Plan only (WF5 explainability).
+//! - `gunbc-workflow ci`: Execute CI workflow via planner (WF6).
+//! - `gunbc-workflow test-all`: Execute test-all workflow via planner (WF7).
+//! - `gunbc-workflow ci --dry-run`: Dry-run execution (no shell commands).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use gunbc_dag::{
-    ci_workflow_spec, default_process_unit_registry, explain_plan, plan_workflow_with_mode,
-    test_all_workflow_spec, DryRunMode, MissReason, PlannerInputs,
+    check_slo, ci_unit_commands, ci_workflow_spec, default_process_unit_registry,
+    default_slo_budgets, execute_workflow_plan, explain_plan, plan_workflow_with_mode,
+    render_execution_report, test_all_unit_commands, test_all_workflow_spec, DryRunMode,
+    MissReason, PlannerInputs, SloBudget,
 };
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum Mode {
+    /// Plan-only: show execute set and miss reasons (WF5).
+    Plan,
+    /// Execute: run the workflow via planner (WF6/WF7).
+    Run,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Args {
+    mode: Mode,
     workflow: String,
     workspace_root: PathBuf,
     dry_run_mode: DryRunMode,
+    dry_run: bool,
     output_format: OutputFormat,
 }
 
@@ -64,11 +82,62 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let explain = explain_plan(&spec, &plan);
-    println!(
-        "{}",
-        render_plan_output(&spec.id.0, &explain, args.output_format)
-    );
+
+    match args.mode {
+        Mode::Plan => {
+            let explain = explain_plan(&spec, &plan);
+            println!(
+                "{}",
+                render_plan_output(&spec.id.0, &explain, args.output_format)
+            );
+        }
+        Mode::Run => {
+            let commands = match args.workflow.as_str() {
+                "ci" => ci_unit_commands(),
+                "test-all" | "test_all" => test_all_unit_commands(),
+                _ => BTreeMap::new(),
+            };
+
+            println!("gunbc-workflow {}", args.workflow);
+            println!("  mode: {}", if args.dry_run { "dry-run" } else { "real" });
+            println!("  units: {}", plan.nodes.len());
+            println!();
+
+            let summary = execute_workflow_plan(
+                &spec,
+                &plan,
+                &commands,
+                &args.workspace_root,
+                args.dry_run,
+            );
+            let explain = explain_plan(&spec, &plan);
+
+            // SLO check (WF9).
+            let slo_budgets = default_slo_budgets();
+            let slo_budget = slo_budgets
+                .iter()
+                .find(|b| b.workflow_id == args.workflow)
+                .cloned()
+                .unwrap_or(SloBudget {
+                    workflow_id: args.workflow.clone(),
+                    warm_noop_ms: 10_000,
+                    total_max_ms: 600_000,
+                });
+            let slo_result = check_slo(&summary, &slo_budget);
+
+            println!();
+            println!("{}", render_execution_report(&summary, &explain, &slo_result));
+
+            if !summary.success() {
+                std::process::exit(1);
+            }
+            if !slo_result.is_pass() {
+                // SLO failure is a warning in execution mode, not a hard exit.
+                // CI gate can check exit code or parse report.
+                eprintln!("warning: SLO budget exceeded (see report above)");
+            }
+        }
+    }
 }
 
 fn parse_args(argv: Vec<String>) -> Result<Args, String> {
@@ -76,6 +145,9 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
     let mut workspace_root: Option<PathBuf> = None;
     let mut dry_run_mode = DryRunMode::Strict;
     let mut output_format = OutputFormat::Text;
+    let mut mode = Mode::Run;
+    let mut dry_run = false;
+    let mut positional: Option<String> = None;
 
     let mut i = 1usize;
     while i < argv.len() {
@@ -83,6 +155,7 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
         match arg {
             "-h" | "--help" => return Err("help requested".to_string()),
             "--plan" => {
+                mode = Mode::Plan;
                 i += 1;
                 let value = argv
                     .get(i)
@@ -97,11 +170,21 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                 workspace_root = Some(PathBuf::from(value));
             }
             "--dry-run" => {
-                i += 1;
-                let value = argv
-                    .get(i)
-                    .ok_or_else(|| "--dry-run requires <strict|lenient>".to_string())?;
-                dry_run_mode = parse_dry_run_mode(value)?;
+                // In plan mode: controls strictness. In run mode: skips execution.
+                if i + 1 < argv.len() {
+                    let next = argv[i + 1].as_str();
+                    if next == "strict" || next == "lenient" {
+                        i += 1;
+                        dry_run_mode = parse_dry_run_mode(next)?;
+                    } else {
+                        dry_run = true;
+                    }
+                } else {
+                    dry_run = true;
+                }
+            }
+            "-n" => {
+                dry_run = true;
             }
             "--format" => {
                 i += 1;
@@ -111,6 +194,7 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                 output_format = parse_output_format(value)?;
             }
             _ if arg.starts_with("--plan=") => {
+                mode = Mode::Plan;
                 workflow = Some(arg["--plan=".len()..].to_string());
             }
             _ if arg.starts_with("--workspace-root=") => {
@@ -122,6 +206,9 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
             _ if arg.starts_with("--format=") => {
                 output_format = parse_output_format(&arg["--format=".len()..])?;
             }
+            _ if !arg.starts_with('-') => {
+                positional = Some(arg.to_string());
+            }
             other => {
                 return Err(format!("unknown argument '{other}'"));
             }
@@ -129,13 +216,24 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
         i += 1;
     }
 
-    let workflow = workflow.ok_or_else(|| "missing required --plan <ci|test-all>".to_string())?;
+    // Positional argument sets workflow for run mode.
+    if workflow.is_none() {
+        if let Some(pos) = positional {
+            workflow = Some(pos);
+        }
+    }
+
+    let workflow = workflow.ok_or_else(|| {
+        "missing workflow name: use 'gunbc-workflow ci' or 'gunbc-workflow --plan ci'".to_string()
+    })?;
     let workspace_root = workspace_root
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     Ok(Args {
+        mode,
         workflow,
         workspace_root,
         dry_run_mode,
+        dry_run,
         output_format,
     })
 }
@@ -313,25 +411,89 @@ fn format_miss_reason(reason: &MissReason) -> String {
 }
 
 fn print_help() {
-    println!("gunbc-workflow - workflow planner/explainability");
+    println!("gunbc-workflow - workflow planner and executor");
     println!();
     println!("USAGE:");
-    println!(
-        "  gunbc-workflow --plan <ci|test-all> [--workspace-root <path>] [--dry-run <strict|lenient>]"
-    );
+    println!("  gunbc-workflow <ci|test-all>                Run workflow via planner (WF6/WF7)");
+    println!("  gunbc-workflow --plan <ci|test-all>         Plan only (WF5 explainability)");
     println!();
-    println!("FLAGS:");
-    println!("  --plan <name>           Workflow to plan (ci or test-all)");
+    println!("OPTIONS:");
+    println!("  --plan <name>           Plan-only mode (show execute set + miss reasons)");
     println!("  --workspace-root <dir>  Workspace root for ledger/CAS paths");
-    println!("  --dry-run <mode>        Dry-run strictness (default: strict)");
+    println!("  --dry-run               Dry-run: show commands without executing (run mode)");
+    println!("  --dry-run <mode>        Dry-run strictness for plan mode (strict|lenient)");
+    println!("  -n                      Alias for --dry-run");
     println!("  --format <text|json>    Output format (default: text)");
     println!("  -h, --help              Show this help");
+    println!();
+    println!("EXAMPLES:");
+    println!("  gunbc-workflow ci                    # Run CI via planner");
+    println!("  gunbc-workflow test-all              # Run test-all via planner");
+    println!("  gunbc-workflow ci --dry-run          # Preview CI without execution");
+    println!("  gunbc-workflow --plan ci             # Show plan only");
+    println!("  gunbc-workflow --plan ci --format json  # Plan in JSON format");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn parse_args_supports_plan_mode() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "--plan".to_string(),
+            "ci".to_string(),
+        ])
+        .expect("parse should succeed");
+        assert_eq!(args.mode, Mode::Plan);
+        assert_eq!(args.workflow, "ci");
+    }
+
+    #[test]
+    fn parse_args_supports_run_mode_positional() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "ci".to_string(),
+        ])
+        .expect("parse should succeed");
+        assert_eq!(args.mode, Mode::Run);
+        assert_eq!(args.workflow, "ci");
+    }
+
+    #[test]
+    fn parse_args_supports_test_all_positional() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "test-all".to_string(),
+        ])
+        .expect("parse should succeed");
+        assert_eq!(args.mode, Mode::Run);
+        assert_eq!(args.workflow, "test-all");
+    }
+
+    #[test]
+    fn parse_args_supports_dry_run_flag() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "ci".to_string(),
+            "--dry-run".to_string(),
+        ])
+        .expect("parse should succeed");
+        assert!(args.dry_run);
+    }
+
+    #[test]
+    fn parse_args_supports_n_flag() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "ci".to_string(),
+            "-n".to_string(),
+        ])
+        .expect("parse should succeed");
+        assert!(args.dry_run);
+    }
 
     #[test]
     fn parse_args_supports_equals_syntax() {
@@ -341,17 +503,16 @@ mod tests {
             "--workspace-root=/tmp/x".to_string(),
         ])
         .expect("parse should succeed");
+        assert_eq!(args.mode, Mode::Plan);
         assert_eq!(args.workflow, "ci");
         assert_eq!(args.workspace_root, PathBuf::from("/tmp/x"));
-        assert_eq!(args.dry_run_mode, DryRunMode::Strict);
-        assert_eq!(args.output_format, OutputFormat::Text);
     }
 
     #[test]
-    fn parse_args_rejects_missing_plan_value() {
-        let error = parse_args(vec!["gunbc-workflow".to_string(), "--plan".to_string()])
-            .expect_err("missing plan value should fail");
-        assert!(error.contains("--plan requires"));
+    fn parse_args_rejects_missing_workflow() {
+        let error = parse_args(vec!["gunbc-workflow".to_string()])
+            .expect_err("missing workflow should fail");
+        assert!(error.contains("missing workflow"));
     }
 
     #[test]

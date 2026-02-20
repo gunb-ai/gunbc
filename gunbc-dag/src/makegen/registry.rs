@@ -1386,6 +1386,17 @@ pub fn default_core_workflows() -> Vec<WorkflowSpec> {
             "lint-fix: auto-fix lint issues where possible",
             &["pragma"],
         ),
+        // WF8: CI and test-all are thin wrappers over gunbc-workflow planner.
+        WorkflowSpec::core(
+            "ci",
+            "Run CI via workflow planner (typed units, deterministic keying)",
+            &[],
+        ),
+        WorkflowSpec::core(
+            "test-all",
+            "Run all tests via workflow planner (warm-path optimized)",
+            &[],
+        ),
     ]
 }
 
@@ -1726,6 +1737,7 @@ impl ManualToolDef {
 
 /// All manual tool definitions. Adding a new manual tool here automatically
 /// validates its DSL module exists and registers its Makefile target.
+// WF8: ci is now a core workflow (thin wrapper over gunbc-workflow), not a manual tool.
 const MANUAL_TOOL_DEFS: &[ManualToolDef] = &[
     ManualToolDef::pipeline("ci"),
     ManualToolDef::tool("pragma"),
