@@ -355,7 +355,49 @@ For natural review in Markdown:
 3. keep key/ledger unification diagram near WF3-D section,
 4. keep canonical references visible in each WF section.
 
-## 9. Review Checklist (Approval Gate)
+## 9. Artifact Dependency Direction and Bootstrap Invariant
+
+This section summarizes the normative artifact graph from the canonical model
+(Section 17). The design pack must be consistent with these constraints.
+
+### 9.1 Codegen Feeds Compilation (Not Reverse)
+
+The CI orchestration DAG (Section 3.1) correctly shows `codegen → build`. This
+is not incidental — it reflects the true artifact dependency:
+
+```
+codegen.ensure ──→ compile.tool_bins.ensure
+```
+
+Generated Rust sources (`target/codegen/bin/*/main.rs`, `*/generated_tests*.rs`)
+are **compilation inputs**. If the planner skips codegen and marks compilation as
+fresh, it can produce stale binaries — a **correctness bug**.
+
+### 9.2 Bootstrap Invariant
+
+The `ci` binary has a hand-written `main.rs` because it runs codegen for other
+tools and cannot depend on generated code. This is a **bootstrap invariant** that
+must be preserved:
+
+> There exists at least one bootstrap-safe binary (the codegen binary) that can
+> produce generated artifacts when they are missing or stale. Its compilation
+> must not depend on codegen outputs.
+
+The planner must model compilation as two phases:
+
+1. `compile.bootstrap.ensure` — builds codegen/ci binaries (no codegen dependency).
+2. `compile.tool_bins.ensure` — builds tool binaries (depends on codegen outputs).
+
+See canonical model Section 17.3 for the full two-phase compilation model.
+
+### 9.3 Build Configuration in Keys
+
+Compilation materialization keys must include build profile, target triple, feature
+flags, and `RUSTFLAGS` in addition to source and dependency hashes. Codegen keys
+must include output schema version and registry configuration. See canonical model
+Section 17.4 for the complete key input tables.
+
+## 10. Review Checklist (Approval Gate)
 
 1. Canonical-vs-derived boundary is explicit and conflict-free.
 2. DAGs are orchestration-only and do not inline authored process internals.
@@ -369,3 +411,7 @@ For natural review in Markdown:
 10. Multi-producer fan-in is represented in key payload without contributor loss.
 11. Cached-hit nodes rehydrate outputs from CAS before downstream dataflow.
 12. Key encoding is canonical and versioned for deterministic hashing behavior.
+13. Artifact dependency direction is codegen → compilation (not reverse).
+14. Bootstrap invariant is preserved: codegen binary compilable without generated sources.
+15. Build configuration inputs (profile, target triple, features, RUSTFLAGS) are
+    included in compilation key contracts.

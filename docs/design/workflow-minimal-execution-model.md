@@ -908,6 +908,154 @@ by construction:
 6. `docs/design/workflow/tool-workflow-design-pack.md`: concrete DAG views for gist,
    deps, bootstrap, makegen, pragma, dag-viz (analogous to `wf1-wf4-dag-design-pack.md`).
 
+## 17. Artifact Graph and Dependency Direction
+
+### 17.1 What Codegen Produces
+
+Codegen produces **generated Rust source files** consumed at compile-time:
+
+| Artifact | Location | Consumers | Description |
+|----------|----------|-----------|-------------|
+| CLI entrypoints | `target/codegen/bin/*/main.rs` | `cargo build` (tool binaries) | Generated `fn main()` for each tool binary |
+| Test harnesses | `*/generated_tests*.rs` | `cargo test` (test binaries) | Generated integration test modules from `#[testgen_target]` |
+| Registration tables | `target/codegen/*/mod.rs` | `cargo build` (gunbc-dag) | Inventory registration for tools/pipelines |
+| Makefiles | `Makefile` | Make (build orchestration) | Generated from registry + DSL |
+
+The critical observation: **codegen outputs are compilation inputs**. Generated Rust
+sources must exist before `cargo build` can compile the binaries that depend on them.
+
+### 17.2 Dependency Direction (codegen → compilation, not reverse)
+
+The correct artifact dependency graph is:
+
+```
+codegen.ensure ──→ compilation.ensure(tool binaries)
+```
+
+NOT:
+
+```
+compilation.ensure ──→ codegen.ensure  (WRONG — creates stale-binary risk)
+```
+
+If the planner models `compilation.ensure` as preceding `codegen.ensure`, it can
+conclude a binary is fresh (source hashes match) even when codegen outputs are stale —
+producing a **correctness bug**, not just a performance issue.
+
+The CI orchestration DAG in `wf1-wf4-dag-design-pack.md` (Section 3.1) already
+encodes this direction correctly: `codegen → build`. This section makes it normative.
+
+### 17.3 Two-Phase Compilation (Bootstrap Invariant)
+
+Not all binaries depend on generated sources. The codegen binary itself must be
+compilable **without** generated artifacts — otherwise there is a bootstrap cycle:
+
+```
+codegen binary needs compilation → but compilation needs codegen outputs → ...
+```
+
+The codebase already enforces this constraint: `ci` (the CI pipeline binary) has a
+hand-written `main.rs` specifically because "it's the bootstrap tool that runs codegen
+for other tools, so it can't depend on generated code."
+
+This means compilation is **two-phase**:
+
+```
+Phase 1: compile.bootstrap.ensure
+    Builds bootstrap-safe binaries (codegen, ci) that do NOT depend on
+    generated sources. Key inputs: source hashes + cargo metadata + compiler
+    version. No codegen dependency edge.
+
+Phase 2: compile.tool_bins.ensure
+    Builds tool binaries that DO depend on generated sources. Key inputs:
+    source hashes + cargo metadata + compiler version + codegen output hashes.
+    Has explicit codegen dependency edge.
+```
+
+```mermaid
+flowchart LR
+  src["Source hashes"]
+  cargo["Cargo metadata"]
+  rustc["Compiler version"]
+
+  compile_bootstrap["compile.bootstrap.ensure"]
+  codegen["codegen.ensure"]
+  compile_tools["compile.tool_bins.ensure"]
+
+  src --> compile_bootstrap
+  cargo --> compile_bootstrap
+  rustc --> compile_bootstrap
+
+  compile_bootstrap --> codegen
+  codegen --> compile_tools
+  src --> compile_tools
+  cargo --> compile_tools
+  rustc --> compile_tools
+```
+
+**Bootstrap invariant**: there must always exist at least one compilable binary
+(the codegen binary) that can produce generated artifacts when they are missing or
+stale. This binary's compilation must not depend on codegen outputs. The planner
+must model this as a hard constraint, not an optimization.
+
+### 17.4 Build Configuration in Key Contracts
+
+Materialization keys for compilation units must include build configuration to
+prevent stale-binary cache hits across configuration changes:
+
+**Compilation key inputs** (both phases):
+
+| Input | Source | Why |
+|-------|--------|-----|
+| Source content hashes | `src/**/*.rs` content digest | Source changes invalidate binary |
+| Cargo metadata hashes | `Cargo.lock` + `Cargo.toml` dependency graph | Dependency changes invalidate binary |
+| Compiler version | `rustc --version` | Compiler upgrades may change codegen |
+| Build profile | `debug` / `release` | Different profiles produce different binaries |
+| Target triple | `x86_64-unknown-linux-gnu` etc. | Cross-compilation changes output |
+| Feature flags | Cargo feature selections | Feature gates change compiled code |
+| RUSTFLAGS | env `RUSTFLAGS` | Compiler flags affect output (e.g. `-D warnings`) |
+| Codegen output hashes | `target/codegen/**` content digest | **Phase 2 only** — generated sources |
+
+**Codegen key inputs**:
+
+| Input | Source | Why |
+|-------|--------|-----|
+| DSL source hashes | `dsl/**/*.dag` content digest | DSL changes trigger regeneration |
+| Codegen binary version | semantic version or binary content hash | Binary changes may produce different output |
+| Output schema version | codegen output format version marker | Schema changes require regeneration |
+| Registry configuration | tool/pipeline registry data | Registry changes affect generated output |
+
+Without these inputs in the key payload, `CachedHit` can return the wrong binary
+(e.g., a debug binary when release was requested, or a binary compiled before a
+dependency update).
+
+### 17.5 Daggen Status (Explicitly Deferred)
+
+The codebase has a `needs_daggen()` function that currently returns `false`. Daggen
+(generating lowered DAG workflow structures from DSL into compiled Rust code) is
+**explicitly deferred** from the current codegen pipeline.
+
+Current state:
+- **CLI codegen** (generated entrypoints, test harnesses) — **active**, always runs.
+- **DAG codegen / daggen** (generating lowered DAG definitions) — **off**, `needs_daggen() = false`.
+
+Design decision: daggen is **not** folded into `codegen.ensure` in the current phase.
+Workflow DAGs remain hand-authored in Rust (via `build_*_graph()` functions). The
+DSL test framework (`_test.dag` files) and `ServiceOperationSpec`-driven generic
+interpreters reduce the scope of hand-written Rust, but do not eliminate it.
+
+When daggen becomes necessary (e.g., to eliminate hand-written `build_*_graph()`
+functions), it should be modeled as a separate planner unit:
+
+```
+daggen.ensure
+    Key inputs: DSL source hashes + daggen binary version + output schema version
+    Produces: generated Rust DAG construction code
+    Consumers: compile.tool_bins.ensure (same phase as codegen outputs)
+```
+
+This is tracked as future work, not current scope.
+
 ---
 
 This design keeps the current DAG/resource architecture, but moves orchestration from imperative Make composition into a typed planner with explicit keys, explicit invalidation, and strict fail-closed semantics.
