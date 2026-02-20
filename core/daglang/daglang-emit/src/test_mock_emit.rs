@@ -44,8 +44,20 @@ use daglang_syntax::ast::{
     Annotation, Expr, ExpectStmt, FixtureDef, InputDecl, Literal, MockDecl, SourceFile, Item,
     TestDef,
 };
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt::Write;
+
+/// Sentinel node ID emitted for `expect result.*` assertions.
+///
+/// When a test uses `expect result.field ...`, the emitter cannot resolve
+/// which DAG node is the terminal (it sees only the AST, not the lowered
+/// DAG topology). Testgen resolves this sentinel to the actual terminal
+/// node at code generation time.
+///
+/// Eliminating this sentinel entirely would require passing DAG topology
+/// into the test emitter, which means lowering each module during test
+/// extraction — a heavier operation reserved for a future refactor.
+pub const TERMINAL_NODE_SENTINEL: &str = "__terminal__";
 
 /// Configuration for test mock emission.
 #[derive(Debug, Clone)]
@@ -65,14 +77,15 @@ pub struct TestEmitConfig {
 /// A parsed test file containing fixtures and test cases.
 #[derive(Debug)]
 pub struct TestFile {
-    pub fixtures: HashMap<String, FixtureDef>,
+    /// Fixtures keyed by name. `BTreeMap` for deterministic emission order.
+    pub fixtures: BTreeMap<String, FixtureDef>,
     pub tests: Vec<TestDef>,
 }
 
 impl TestFile {
     /// Extract fixtures and tests from a parsed source file.
     pub fn from_source(source: &SourceFile) -> Self {
-        let mut fixtures = HashMap::new();
+        let mut fixtures = BTreeMap::new();
         let mut tests = Vec::new();
         for item in &source.items {
             match &item.node {
@@ -111,6 +124,25 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     writeln!(out, "use gunbc_ir::transport::{{RestResponse, ShellResponse, FileResponse, FileOp, TransportResponse}};").unwrap();
     writeln!(out).unwrap();
 
+    // Emit Rust mock helper annotations as documentation comments.
+    let rust_helpers: Vec<&str> = test_file
+        .tests
+        .iter()
+        .filter_map(|t| find_annotation_string(&t.annotations, "rust_mock_helpers"))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|s| s.leak() as &str)   // Static lifetime for dedup — emitter runs once.
+        .collect();
+    if !rust_helpers.is_empty() {
+        let mut seen = std::collections::BTreeSet::new();
+        for helper in &rust_helpers {
+            if seen.insert(*helper) {
+                writeln!(out, "// Rust mock helpers: {helper}").unwrap();
+            }
+        }
+        writeln!(out).unwrap();
+    }
+
     // Emit fixture helpers
     for fixture in test_file.fixtures.values() {
         emit_fixture_fn(&mut out, fixture);
@@ -141,7 +173,7 @@ fn emit_fixture_fn(out: &mut String, fixture: &FixtureDef) {
 fn emit_test_fn(
     out: &mut String,
     test: &TestDef,
-    fixtures: &HashMap<String, FixtureDef>,
+    fixtures: &BTreeMap<String, FixtureDef>,
     config: &TestEmitConfig,
 ) {
     let fn_name = format!("{}_mock_spec", test.name);
@@ -172,6 +204,15 @@ fn emit_test_fn(
     );
     let module_name = format!("{}_generated_tests", test.name);
 
+    // Normalise builder expression once: strip any trailing .unwrap() / .expect(…)
+    // and apply a uniform .expect("graph should build").
+    let builder_base = config
+        .dag_builder
+        .strip_suffix(".unwrap()")
+        .or_else(|| config.dag_builder.strip_suffix(".expect(\"graph should build\")"))
+        .unwrap_or(&config.dag_builder);
+    let builder_expr = format!("{builder_base}.expect(\"graph should build\")");
+
     // resource_test_target decorator
     writeln!(
         out,
@@ -181,8 +222,7 @@ fn emit_test_fn(
     writeln!(out, "    name = \"{test_name}\",").unwrap();
     writeln!(
         out,
-        "    builder = \"{}\"",
-        config.dag_builder
+        "    builder = \"{builder_expr}\""
     )
     .unwrap();
     writeln!(out, ")]").unwrap();
@@ -198,8 +238,7 @@ fn emit_test_fn(
     writeln!(out, "    module = \"{module_name}\",").unwrap();
     writeln!(
         out,
-        "    builder = \"{}\",",
-        config.dag_builder
+        "    builder = \"{builder_expr}\","
     )
     .unwrap();
     if let Some(ref sig) = config.signature_fn {
@@ -215,8 +254,7 @@ fn emit_test_fn(
     writeln!(out, "pub fn {fn_name}() -> MockSpec {{").unwrap();
     writeln!(
         out,
-        "    let dag = {};",
-        config.dag_builder.replace(".unwrap()", ".expect(\"graph should build\")")
+        "    let dag = {builder_expr};",
     )
     .unwrap();
     writeln!(
@@ -253,15 +291,40 @@ fn emit_test_fn(
     writeln!(out).unwrap();
 }
 
+/// Whether the expression is a transport response constructor.
+///
+/// Transport mocks are distinguished from boundary mocks by the **value type**,
+/// not the port name. If the mock value is a transport response constructor
+/// (`rest_response`, `shell_response`, `file_response`), it's a transport mock.
+fn is_transport_response_value(expr: &Expr) -> bool {
+    match expr {
+        Expr::Call(name, _) => {
+            matches!(name.as_str(), "rest_response" | "shell_response" | "file_response")
+        }
+        Expr::Record(name, _) => name.as_deref().is_some_and(|n| {
+            matches!(
+                n,
+                "rest_response" | "RestResponse"
+                    | "shell_response" | "ShellResponse"
+                    | "file_response" | "FileResponse"
+            )
+        }),
+        _ => false,
+    }
+}
+
 /// Emit a mock application statement.
+///
+/// The mock kind (transport vs boundary) is determined by the value's type:
+/// transport response constructors (`rest_response`, `shell_response`,
+/// `file_response`) produce `spec.transport_mock(...)`, all other values
+/// produce `spec.boundary(...)`.
 fn emit_mock_apply(out: &mut String, mock: &MockDecl, indent: &str) {
     let node_id = mock.node_segments.join("/");
     let port = &mock.port;
     let value_expr = emit_value_expr(&mock.value);
 
-    // Heuristic: if the port is "response" on a node that looks like a transport
-    // executor, use transport_mock. Otherwise use boundary.
-    if port == "response" {
+    if is_transport_response_value(&mock.value) {
         writeln!(
             out,
             "{indent}spec = spec.transport_mock(\"{node_id}\", \"{port}\", {value_expr});"
@@ -303,7 +366,7 @@ fn emit_expect_apply(out: &mut String, expect: &ExpectStmt, indent: &str) {
         }
         ExpectStmt::Contains(lhs, rhs) => {
             if let Some((node, port)) = extract_result_path(lhs) {
-                let substr = emit_string_value(rhs);
+                let substr = emit_string_literal(rhs);
                 writeln!(
                     out,
                     "{indent}spec = spec.live_expected_output(\"{node}\", \"{port}\", gunbc_test::OutputMatcher::contains({substr}));"
@@ -355,15 +418,14 @@ fn emit_expect_apply(out: &mut String, expect: &ExpectStmt, indent: &str) {
 
 /// Extract (node_id, port_name) from a `result.field` expression.
 ///
-/// For now, `result.foo` maps to the terminal node with output port "foo".
+/// `result.foo` maps to [`TERMINAL_NODE_SENTINEL`] with output port "foo".
 /// The actual node ID resolution happens at testgen time when the DAG is available.
 fn extract_result_path(expr: &Expr) -> Option<(String, String)> {
     match expr {
         Expr::FieldAccess(base, field) => {
             if let Expr::Ident(name) = base.as_ref() {
                 if name == "result" {
-                    // `result.field` — the node is resolved at testgen time
-                    return Some(("__terminal__".to_string(), field.clone()));
+                    return Some((TERMINAL_NODE_SENTINEL.to_string(), field.clone()));
                 }
                 // `node.port` — direct node reference
                 return Some((name.clone(), field.clone()));
@@ -389,7 +451,6 @@ fn emit_value_expr(expr: &Expr) -> String {
             Literal::None => "Value::None".to_string(),
         },
         Expr::StringInterp(parts) => {
-            // For simplicity, concatenate parts into a single string
             let mut s = String::new();
             for part in parts {
                 match part {
@@ -402,24 +463,7 @@ fn emit_value_expr(expr: &Expr) -> String {
             format!("Value::Str({}.to_string())", quote_rust_str(&s))
         }
         Expr::Record(name, fields) => {
-            // Emit as JSON value
-            let mut json_parts = Vec::new();
-            for (key, value) in fields {
-                json_parts.push(format!("\"{key}\": {}", emit_json_value(value)));
-            }
-            let json = format!("{{{}}}", json_parts.join(", "));
-            if name.as_deref() == Some("rest_response") || name.as_deref() == Some("RestResponse") {
-                // Special handling for REST responses
-                format!(
-                    "Value::Response(TransportResponse::Rest(RestResponse::new(200, serde_json::json!({}))))",
-                    json
-                )
-            } else {
-                format!(
-                    "Value::Json(serde_json::json!({}))",
-                    json
-                )
-            }
+            emit_record_value(name.as_deref(), fields)
         }
         Expr::Call(name, args) => {
             match name.as_str() {
@@ -428,7 +472,7 @@ fn emit_value_expr(expr: &Expr) -> String {
                 "file_response" => emit_file_response_call(args),
                 "bytes" => {
                     if let Some((_, arg)) = args.first() {
-                        let s = emit_string_value(arg);
+                        let s = emit_string_literal(arg);
                         format!("Value::Str({s}.to_string())")
                     } else {
                         "Value::Str(String::new())".to_string()
@@ -482,8 +526,70 @@ fn emit_value_expr(expr: &Expr) -> String {
                 }
             }
         }
-        // For other expression types, fall back to string representation
-        _ => "Value::None".to_string(),
+        other => {
+            // Fail at compile time in the generated code so unhandled
+            // expression variants surface immediately instead of silently
+            // producing None.
+            let variant = std::mem::discriminant(other);
+            format!("compile_error!(\"test_mock_emit: unhandled DSL expression variant ({variant:?})\")")
+        }
+    }
+}
+
+/// Emit a record value expression, extracting status from transport records.
+fn emit_record_value(name: Option<&str>, fields: &[(String, Expr)]) -> String {
+    match name {
+        Some("rest_response" | "RestResponse") => {
+            // Extract status from fields, default to 200 if absent.
+            let status = fields
+                .iter()
+                .find(|(k, _)| k == "status" || k == "code")
+                .map(|(_, v)| emit_int_value(v))
+                .unwrap_or(200);
+            // Build JSON body from non-status fields.
+            let body_parts: Vec<String> = fields
+                .iter()
+                .filter(|(k, _)| k != "status" && k != "code")
+                .map(|(k, v)| format!("\"{k}\": {}", emit_json_value(v)))
+                .collect();
+            let body_json = format!("{{{}}}", body_parts.join(", "));
+            format!(
+                "Value::Response(TransportResponse::Rest(RestResponse::new({status}, serde_json::json!({body_json}))))"
+            )
+        }
+        Some("shell_response" | "ShellResponse") => {
+            let exit_code = fields
+                .iter()
+                .find(|(k, _)| k == "exit_code")
+                .map(|(_, v)| emit_int_value(v))
+                .unwrap_or(0);
+            let stdout = fields
+                .iter()
+                .find(|(k, _)| k == "stdout")
+                .map(|(_, v)| emit_string_literal(v))
+                .unwrap_or_else(|| "\"\"".to_string());
+            format!(
+                "Value::Response(TransportResponse::Shell(ShellResponse {{ exit_code: {exit_code}, stdout: {stdout}.to_string(), stderr: String::new() }}))"
+            )
+        }
+        Some("file_response" | "FileResponse") => {
+            let path = fields
+                .iter()
+                .find(|(k, _)| k == "path")
+                .map(|(_, v)| emit_string_literal(v))
+                .unwrap_or_else(|| "\"\"".to_string());
+            format!(
+                "Value::Response(TransportResponse::File(FileResponse {{ path: {path}.to_string(), operation: FileOp::Read, success: true, content: None, exists: None, error: None }}))"
+            )
+        }
+        _ => {
+            let json_parts: Vec<String> = fields
+                .iter()
+                .map(|(k, v)| format!("\"{k}\": {}", emit_json_value(v)))
+                .collect();
+            let json = format!("{{{}}}", json_parts.join(", "));
+            format!("Value::Json(serde_json::json!({json}))")
+        }
     }
 }
 
@@ -510,7 +616,7 @@ fn emit_shell_response_call(args: &[(Option<String>, Expr)]) -> String {
         .unwrap_or(0);
     let stdout = args
         .get(1)
-        .map(|(_, e)| emit_raw_string_value(e))
+        .map(|(_, e)| emit_string_literal(e))
         .unwrap_or_default();
     format!(
         "Value::Response(TransportResponse::Shell(ShellResponse {{ exit_code: {exit_code}, stdout: {stdout}.to_string(), stderr: String::new() }}))"
@@ -521,7 +627,7 @@ fn emit_shell_response_call(args: &[(Option<String>, Expr)]) -> String {
 fn emit_file_response_call(args: &[(Option<String>, Expr)]) -> String {
     let path = args
         .first()
-        .map(|(_, e)| emit_raw_string_value(e))
+        .map(|(_, e)| emit_string_literal(e))
         .unwrap_or_else(|| "\"\"".to_string());
     format!(
         "Value::Response(TransportResponse::File(FileResponse {{ path: {path}.to_string(), operation: FileOp::Read, success: true, content: None, exists: None, error: None }}))"
@@ -541,16 +647,8 @@ fn emit_int_value(expr: &Expr) -> i64 {
     }
 }
 
-/// Emit a string value from an expression (Rust literal).
-fn emit_string_value(expr: &Expr) -> String {
-    match expr {
-        Expr::Literal(Literal::String(s)) => quote_rust_str(s),
-        _ => "\"\"".to_string(),
-    }
-}
-
-/// Emit a raw string from an expression.
-fn emit_raw_string_value(expr: &Expr) -> String {
+/// Emit a Rust string literal from an expression.
+fn emit_string_literal(expr: &Expr) -> String {
     match expr {
         Expr::Literal(Literal::String(s)) => quote_rust_str(s),
         _ => "\"\"".to_string(),
@@ -666,6 +764,9 @@ test bootstrap_dryrun : cloud_base {
         assert!(output.contains("resource_test_target"));
         assert!(output.contains("apply_cloud_base(spec)"));
         assert!(output.contains("transport_mock"));
+        // Builder should use .expect(), not .unwrap()
+        assert!(output.contains(".expect(\"graph should build\")"));
+        assert!(!output.contains(".unwrap()"));
     }
 
     #[test]
@@ -710,5 +811,80 @@ test gist_upload_test {
             vec!["gist_upload", "cloud_credential", "gcp_wif_secret", "parse_set_iam"]
         );
         assert_eq!(test_file.tests[0].mocks[1].port, "ok");
+    }
+
+    #[test]
+    fn transport_mock_detected_by_value_type_not_port_name() {
+        let source = r#"
+test value_type_detection {
+    mock node_a.response -> { some: "boundary-data" }
+    mock node_b.data -> rest_response(200, { ok: true })
+}
+"#;
+
+        let ast = parser::parse(source).expect("should parse");
+        let test_file = TestFile::from_source(&ast);
+
+        let config = TestEmitConfig {
+            dag_builder: "crate::build_graph()".to_string(),
+            auto_mock_fn: "crate::auto_mock_spec".to_string(),
+            output_dir: "test".to_string(),
+            tool_name: None,
+            signature_fn: None,
+        };
+
+        let output = emit_test_mock_file(&test_file, &config);
+
+        // node_a.response has a record value (not transport) → boundary
+        assert!(output.contains("spec.boundary(\"node_a\", \"response\""));
+        // node_b.data has a rest_response value → transport_mock
+        assert!(output.contains("spec.transport_mock(\"node_b\", \"data\""));
+    }
+
+    #[test]
+    fn terminal_sentinel_used_for_result_paths() {
+        let source = r#"
+test sentinel_check {
+    expect result.content is String
+}
+"#;
+
+        let ast = parser::parse(source).expect("should parse");
+        let test_file = TestFile::from_source(&ast);
+
+        let config = TestEmitConfig {
+            dag_builder: "crate::build_graph()".to_string(),
+            auto_mock_fn: "crate::auto_mock_spec".to_string(),
+            output_dir: "test".to_string(),
+            tool_name: None,
+            signature_fn: None,
+        };
+
+        let output = emit_test_mock_file(&test_file, &config);
+        assert!(output.contains(TERMINAL_NODE_SENTINEL));
+    }
+
+    #[test]
+    fn rust_mock_helpers_annotation_emitted_as_comment() {
+        let source = r#"
+test with_helpers {
+    @rust_mock_helpers("gunbc_lib_review::graph_mock")
+    mock execute.data -> { ok: true }
+}
+"#;
+
+        let ast = parser::parse(source).expect("should parse");
+        let test_file = TestFile::from_source(&ast);
+
+        let config = TestEmitConfig {
+            dag_builder: "crate::build_graph()".to_string(),
+            auto_mock_fn: "crate::auto_mock_spec".to_string(),
+            output_dir: "test".to_string(),
+            tool_name: None,
+            signature_fn: None,
+        };
+
+        let output = emit_test_mock_file(&test_file, &config);
+        assert!(output.contains("// Rust mock helpers: gunbc_lib_review::graph_mock"));
     }
 }

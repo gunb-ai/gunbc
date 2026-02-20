@@ -434,7 +434,7 @@ fn input_as_string(
 ) -> String {
     match inputs.get(name) {
         Some(Value::Str(s)) => s.clone(),
-        Some(Value::Secret(secret)) => secret.expose().to_string(),
+        Some(Value::Secret(secret)) => secret.expose_plaintext_for_transport().to_string(),
         Some(Value::Int(n)) => n.to_string(),
         Some(Value::Bool(b)) => b.to_string(),
         _ => default.unwrap_or("(unresolved)").to_string(),
@@ -484,7 +484,7 @@ fn insert_value_as_json(
         Value::Secret(secret) => {
             map.insert(
                 key.to_string(),
-                serde_json::Value::String(secret.expose().to_string()),
+                serde_json::Value::String(secret.expose_plaintext_for_transport().to_string()),
             );
         }
         Value::Int(n) => {
@@ -805,7 +805,7 @@ mod tests {
 
         let outputs = op.execute(inputs).unwrap();
         match outputs.get("access_token") {
-            Some(Value::Secret(s)) => assert_eq!(s.expose(), "ya29.secret-token"),
+            Some(Value::Secret(s)) => assert_eq!(s.expose_plaintext_for_transport(), "ya29.secret-token"),
             other => panic!("expected Secret, got {other:?}"),
         }
         assert_eq!(outputs.get("expires_in"), Some(&Value::Int(3600)));
