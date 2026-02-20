@@ -1,12 +1,13 @@
 //! Contract tests for workflow executor (WF6/WF7) and SLO instrumentation (WF9).
+#![allow(clippy::disallowed_methods)]
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gunbc_dag::{
     check_slo, ci_unit_commands, ci_workflow_spec, default_process_unit_registry,
-    default_slo_budgets, execute_workflow_plan, explain_plan, plan_workflow, render_execution_report,
-    test_all_unit_commands, test_all_workflow_spec, top_slow_units, ExecutionSummary, MissReason,
-    PlannerInputs, SloBudget, SloResult, UnitResult,
+    default_slo_budgets, execute_workflow_plan, explain_plan, plan_workflow,
+    render_execution_report, test_all_unit_commands, test_all_workflow_spec, top_slow_units,
+    ExecutionSummary, MissReason, PlannerInputs, SloBudget, SloResult, UnitResult,
 };
 use gunbc_ir::NodeId;
 
@@ -38,7 +39,10 @@ fn ci_workflow_dry_run_plans_all_units_as_execute_on_cold_ledger() {
     // Cold ledger: all units should be executed (no cache hits).
     assert!(summary.success(), "dry-run should always succeed");
     assert_eq!(summary.total_units, plan.nodes.len());
-    assert_eq!(summary.cache_hits, 0, "cold ledger should have no cache hits");
+    assert_eq!(
+        summary.cache_hits, 0,
+        "cold ledger should have no cache hits"
+    );
     assert!(summary.executed > 0, "should have executed units");
     let _ = std::fs::remove_dir_all(root);
 }
