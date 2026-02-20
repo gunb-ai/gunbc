@@ -97,7 +97,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        45,
+        55,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
