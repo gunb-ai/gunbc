@@ -645,7 +645,11 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("[REPO=..."));
+        assert!(makefile.contains("[REPO="));
+        assert!(
+            !makefile.contains("$(if $(REPO)"),
+            "tool entrypoint args should not be threaded through workflow wrapper commands"
+        );
     }
 
     #[test]
