@@ -11,15 +11,20 @@ use super::{resolve_lowered_dag, CheckOutput, CompileError, CompileOptions, Comp
 
 /// Builds compile pipeline context from CLI input.
 ///
-/// Compatibility note: paths ending in `.dag` are always treated as
-/// single-file targets, even when they point to a directory.
-/// This only applies to the strict lowercase `.dag` extension.
-/// Wrong-cased dag-like extensions (`.DAG`, `.DaG`, etc.) are handled by
-/// higher-level CLI validation and are not treated as single-file targets.
+/// Paths ending in `.dag` that are regular files are treated as single-file
+/// targets. Directories named with a `.dag` suffix are rejected with an
+/// explicit error — callers should pass the directory path without the
+/// `.dag` suffix or reference a `.dag` file inside it.
 pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
     let parsed = input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
+    if let Some(ref path) = parsed {
+        if let Some(error) = path_utils::check_dag_directory_conflict(path) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    }
     let (roots, target_file) = match parsed {
-        Some(path) if path_utils::is_single_file_target(&path, true) => {
+        Some(path) if path_utils::is_single_file_target(&path) => {
             let root = path_utils::resolve_single_file_root(cwd, &path);
             (vec![root], Some(path))
         }

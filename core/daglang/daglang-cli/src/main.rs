@@ -144,8 +144,9 @@ fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>
 
 /// Builds check pipeline context from CLI input.
 ///
-/// Unlike compile context construction, `.dag`-suffixed paths that resolve to
-/// directories stay in directory mode for `daglang check`.
+/// Paths ending in `.dag` that are regular files are treated as single-file
+/// targets. Directories named with a `.dag` suffix are rejected with an
+/// explicit error — matching compile-mode behavior.
 #[cfg(test)]
 fn build_check_pipeline_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
     build_check_pipeline_context_with_default_roots(cwd, input, None)
@@ -158,8 +159,14 @@ fn build_check_pipeline_context_with_default_roots(
 ) -> PipelineContext {
     let normalized_input =
         input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
+    if let Some(ref path) = normalized_input {
+        if let Some(error) = path_utils::check_dag_directory_conflict(path) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    }
     let (roots, target_file) = match normalized_input {
-        Some(path) if path_utils::is_single_file_target(&path, false) => {
+        Some(path) if path_utils::is_single_file_target(&path) => {
             let root = path_utils::resolve_single_file_root(cwd, &path);
             (vec![root], Some(path))
         }
@@ -1607,17 +1614,18 @@ mod tests {
     }
 
     #[test]
-    fn build_check_pipeline_context_treats_dag_named_directory_as_root() {
+    fn dag_named_directory_is_rejected_by_conflict_check() {
         let root = unique_temp_dir("check_context_dag_dir");
         let cwd = root.join("workspace");
         let dag_dir = cwd.join("bundle.dag");
         std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory fixture");
-        let input = "bundle.dag".to_string();
 
-        let context = super::build_check_pipeline_context(&cwd, Some(&input));
-
-        assert_eq!(context.target_file, None);
-        assert_eq!(context.roots, vec![dag_dir.clone()]);
+        let normalized = path_utils::normalize_cli_path(&cwd, &PathBuf::from("bundle.dag"));
+        let error = path_utils::check_dag_directory_conflict(&normalized);
+        assert!(
+            error.is_some(),
+            ".dag directory should be rejected with an explicit error"
+        );
 
         std::fs::remove_dir_all(&root).expect("failed to cleanup temp fixture");
     }
