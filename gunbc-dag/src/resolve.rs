@@ -82,187 +82,137 @@ fn execute_with_declared_output_passthrough(
     Ok(outputs)
 }
 
-#[derive(Debug, Clone)]
-enum BuildToolOp {
-    BuildAll { output_port_names: Vec<String> },
-}
+/// Generates a port-forwarding domain op: enum definition, `Executable` impl,
+/// and resolver function — all from a single declaration.
+///
+/// Every variant carries `output_port_names: Vec<String>` and the executor
+/// delegates to `execute_with_declared_output_passthrough`. The resolver maps
+/// DSL callable names to enum variants.
+///
+/// # Example
+///
+/// ```ignore
+/// domain_passthrough_op! {
+///     BuildToolOp, "tools.build", resolve_build {
+///         "build_all" => BuildAll,
+///     }
+/// }
+/// ```
+macro_rules! domain_passthrough_op {
+    (
+        $enum_name:ident, $module:expr, $fn_name:ident {
+            $( $dsl_name:expr => $variant:ident ),* $(,)?
+        }
+    ) => {
+        #[derive(Debug, Clone)]
+        enum $enum_name {
+            $( $variant { output_port_names: Vec<String> }, )*
+        }
 
-impl Executable for BuildToolOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            Self::BuildAll { output_port_names } => {
+        impl Executable for $enum_name {
+            fn execute(
+                &self,
+                inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                let output_port_names = match self {
+                    $( Self::$variant { output_port_names } )|* => output_port_names,
+                };
                 execute_with_declared_output_passthrough(output_port_names, inputs)
             }
         }
-    }
-}
 
-#[derive(Debug, Clone)]
-enum DocgenToolOp {
-    Docgen { output_port_names: Vec<String> },
-    RenderAbWorkflowsDoc { output_port_names: Vec<String> },
-}
-
-impl Executable for DocgenToolOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let output_port_names = match self {
-            Self::Docgen { output_port_names }
-            | Self::RenderAbWorkflowsDoc { output_port_names } => output_port_names,
-        };
-        execute_with_declared_output_passthrough(output_port_names, inputs)
-    }
-}
-
-#[derive(Debug, Clone)]
-enum TestgenToolOp {
-    GenerateTests { output_port_names: Vec<String> },
-    Testgen { output_port_names: Vec<String> },
-}
-
-impl Executable for TestgenToolOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let output_port_names = match self {
-            Self::GenerateTests { output_port_names } | Self::Testgen { output_port_names } => {
-                output_port_names
-            }
-        };
-        execute_with_declared_output_passthrough(output_port_names, inputs)
-    }
-}
-
-#[derive(Debug, Clone)]
-enum ClippyToolOp {
-    ClippyLint { output_port_names: Vec<String> },
-}
-
-impl Executable for ClippyToolOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            Self::ClippyLint { output_port_names } => {
-                execute_with_declared_output_passthrough(output_port_names, inputs)
+        fn $fn_name(
+            node_id: &str,
+            name: &str,
+            outputs: &[Port],
+        ) -> Result<DynOp, ResolveError> {
+            let output_port_names = declared_output_names(outputs);
+            match name {
+                $( $dsl_name => Ok(DynOp::new($enum_name::$variant { output_port_names })), )*
+                _ => Err(unknown_callable(node_id, $module, name)),
             }
         }
+    };
+}
+
+domain_passthrough_op! {
+    BuildToolOp, "tools.build", resolve_build {
+        "build_all" => BuildAll,
     }
 }
 
-#[derive(Debug, Clone)]
-enum DepsToolOp {
-    RenderDepsToml { output_port_names: Vec<String> },
-    SelectPlatformDeps { output_port_names: Vec<String> },
-    DepsInstall { output_port_names: Vec<String> },
-    DepsGenerate { output_port_names: Vec<String> },
-}
-
-impl Executable for DepsToolOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let output_port_names = match self {
-            Self::RenderDepsToml { output_port_names }
-            | Self::SelectPlatformDeps { output_port_names }
-            | Self::DepsInstall { output_port_names }
-            | Self::DepsGenerate { output_port_names } => output_port_names,
-        };
-        execute_with_declared_output_passthrough(output_port_names, inputs)
+domain_passthrough_op! {
+    DocgenToolOp, "tools.docgen", resolve_docgen {
+        "docgen" => Docgen,
+        "render_ab_workflows_doc" => RenderAbWorkflowsDoc,
     }
 }
 
-#[derive(Debug, Clone)]
-enum PipelineCiOp {
-    Ci { output_port_names: Vec<String> },
-}
-
-impl Executable for PipelineCiOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            Self::Ci { output_port_names } => {
-                execute_with_declared_output_passthrough(output_port_names, inputs)
-            }
-        }
+domain_passthrough_op! {
+    TestgenToolOp, "tools.testgen", resolve_testgen {
+        "generate_tests" => GenerateTests,
+        "testgen" => Testgen,
     }
 }
 
-#[derive(Debug, Clone)]
-enum SharedDagUtilOp {
-    AggregateResults { output_port_names: Vec<String> },
-    AllSucceeded { output_port_names: Vec<String> },
-    FormatReport { output_port_names: Vec<String> },
-    StageResult { output_port_names: Vec<String> },
-    SkippedStage { output_port_names: Vec<String> },
-    StageFromOutput { output_port_names: Vec<String> },
-    GeneratedHeader { output_port_names: Vec<String> },
-    RenderAndUpsert { output_port_names: Vec<String> },
-}
-
-impl Executable for SharedDagUtilOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let output_port_names = match self {
-            Self::AggregateResults { output_port_names }
-            | Self::AllSucceeded { output_port_names }
-            | Self::FormatReport { output_port_names }
-            | Self::StageResult { output_port_names }
-            | Self::SkippedStage { output_port_names }
-            | Self::StageFromOutput { output_port_names }
-            | Self::GeneratedHeader { output_port_names }
-            | Self::RenderAndUpsert { output_port_names } => output_port_names,
-        };
-        execute_with_declared_output_passthrough(output_port_names, inputs)
+domain_passthrough_op! {
+    ClippyToolOp, "tools.clippy", resolve_clippy {
+        "clippy_lint" => ClippyLint,
     }
 }
 
-#[derive(Debug, Clone)]
-enum SharedGistModesOp {
-    BranchContext { output_port_names: Vec<String> },
-    ResolveRecentBase { output_port_names: Vec<String> },
-    GistFilename { output_port_names: Vec<String> },
-    GistUpload { output_port_names: Vec<String> },
-    ShareContent { output_port_names: Vec<String> },
-    DetectRuntime { output_port_names: Vec<String> },
-}
-
-impl Executable for SharedGistModesOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let output_port_names = match self {
-            Self::BranchContext { output_port_names }
-            | Self::ResolveRecentBase { output_port_names }
-            | Self::GistFilename { output_port_names }
-            | Self::GistUpload { output_port_names }
-            | Self::ShareContent { output_port_names }
-            | Self::DetectRuntime { output_port_names } => output_port_names,
-        };
-        execute_with_declared_output_passthrough(output_port_names, inputs)
+domain_passthrough_op! {
+    DepsToolOp, "tools.deps", resolve_deps {
+        "render_deps_toml" => RenderDepsToml,
+        "select_platform_deps" => SelectPlatformDeps,
+        "deps_install" => DepsInstall,
+        "deps_generate" => DepsGenerate,
     }
 }
 
-#[derive(Debug, Clone)]
-enum StdPatternsOp {
-    FileContentMatches { output_port_names: Vec<String> },
-    ClassifyFiles { output_port_names: Vec<String> },
-    ReadTextFiles { output_port_names: Vec<String> },
-    AcquireSubjectToken { output_port_names: Vec<String> },
-    OptionalImpersonation { output_port_names: Vec<String> },
-    Ensure { output_port_names: Vec<String> },
-    Upsert { output_port_names: Vec<String> },
-    ContentUpsert { output_port_names: Vec<String> },
-    CredentialChain { output_port_names: Vec<String> },
-    Transaction { output_port_names: Vec<String> },
-    Retry { output_port_names: Vec<String> },
+domain_passthrough_op! {
+    PipelineCiOp, "pipelines.ci", resolve_pipeline_ci {
+        "ci" => Ci,
+    }
 }
 
-impl Executable for StdPatternsOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let output_port_names = match self {
-            Self::FileContentMatches { output_port_names }
-            | Self::ClassifyFiles { output_port_names }
-            | Self::ReadTextFiles { output_port_names }
-            | Self::AcquireSubjectToken { output_port_names }
-            | Self::OptionalImpersonation { output_port_names }
-            | Self::Ensure { output_port_names }
-            | Self::Upsert { output_port_names }
-            | Self::ContentUpsert { output_port_names }
-            | Self::CredentialChain { output_port_names }
-            | Self::Transaction { output_port_names }
-            | Self::Retry { output_port_names } => output_port_names,
-        };
-        execute_with_declared_output_passthrough(output_port_names, inputs)
+domain_passthrough_op! {
+    SharedDagUtilOp, "shared.dag_util", resolve_shared_dag_util {
+        "aggregate_results" => AggregateResults,
+        "all_succeeded" => AllSucceeded,
+        "format_report" => FormatReport,
+        "stage_result" => StageResult,
+        "skipped_stage" => SkippedStage,
+        "stage_from_output" => StageFromOutput,
+        "generated_header" => GeneratedHeader,
+        "render_and_upsert" => RenderAndUpsert,
+    }
+}
+
+domain_passthrough_op! {
+    SharedGistModesOp, "shared.gist_modes", resolve_shared_gist_modes {
+        "branch_context" => BranchContext,
+        "resolve_recent_base" => ResolveRecentBase,
+        "gist_filename" => GistFilename,
+        "gist_upload" => GistUpload,
+        "share_content" => ShareContent,
+        "detect_runtime" => DetectRuntime,
+    }
+}
+
+domain_passthrough_op! {
+    StdPatternsOp, "std.patterns", resolve_std_patterns {
+        "file_content_matches" => FileContentMatches,
+        "classify_files" => ClassifyFiles,
+        "read_text_files" => ReadTextFiles,
+        "acquire_subject_token" => AcquireSubjectToken,
+        "optional_impersonation" => OptionalImpersonation,
+        "ensure" => Ensure,
+        "upsert" => Upsert,
+        "content_upsert" => ContentUpsert,
+        "credential_chain" => CredentialChain,
+        "transaction" => Transaction,
+        "retry" => Retry,
     }
 }
 
@@ -638,15 +588,6 @@ fn resolve_makegen(node_id: &str, name: &str) -> Result<DynOp, ResolveError> {
     }
 }
 
-fn resolve_build(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
-    match name {
-        "build_all" => Ok(DynOp::new(BuildToolOp::BuildAll {
-            output_port_names: declared_output_names(outputs),
-        })),
-        _ => Err(unknown_callable(node_id, "tools.build", name)),
-    }
-}
-
 fn resolve_codegen(node_id: &str, name: &str) -> Result<DynOp, ResolveError> {
     match name {
         "codegen" => Ok(DynOp::new(IdentityCallableOp)),
@@ -661,166 +602,6 @@ fn resolve_bootstrap(node_id: &str, name: &str, _outputs: &[Port]) -> Result<Dyn
         "render_bootstrap_makefile" => Ok(DynOp::new(BootstrapOp::GenerateMakefile)),
         "render_bootstrap_gitignore" => Ok(DynOp::new(BootstrapOp::GenerateGitignore)),
         _ => Err(unknown_callable(node_id, "tools.bootstrap", name)),
-    }
-}
-
-fn resolve_docgen(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
-    match name {
-        "docgen" => Ok(DynOp::new(DocgenToolOp::Docgen {
-            output_port_names: declared_output_names(outputs),
-        })),
-        "render_ab_workflows_doc" => Ok(DynOp::new(DocgenToolOp::RenderAbWorkflowsDoc {
-            output_port_names: declared_output_names(outputs),
-        })),
-        _ => Err(unknown_callable(node_id, "tools.docgen", name)),
-    }
-}
-
-fn resolve_testgen(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
-    match name {
-        "generate_tests" => Ok(DynOp::new(TestgenToolOp::GenerateTests {
-            output_port_names: declared_output_names(outputs),
-        })),
-        "testgen" => Ok(DynOp::new(TestgenToolOp::Testgen {
-            output_port_names: declared_output_names(outputs),
-        })),
-        _ => Err(unknown_callable(node_id, "tools.testgen", name)),
-    }
-}
-
-fn resolve_clippy(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
-    match name {
-        "clippy_lint" => Ok(DynOp::new(ClippyToolOp::ClippyLint {
-            output_port_names: declared_output_names(outputs),
-        })),
-        _ => Err(unknown_callable(node_id, "tools.clippy", name)),
-    }
-}
-
-fn resolve_deps(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
-    match name {
-        "render_deps_toml" => Ok(DynOp::new(DepsToolOp::RenderDepsToml {
-            output_port_names: declared_output_names(outputs),
-        })),
-        "select_platform_deps" => Ok(DynOp::new(DepsToolOp::SelectPlatformDeps {
-            output_port_names: declared_output_names(outputs),
-        })),
-        "deps_install" => Ok(DynOp::new(DepsToolOp::DepsInstall {
-            output_port_names: declared_output_names(outputs),
-        })),
-        "deps_generate" => Ok(DynOp::new(DepsToolOp::DepsGenerate {
-            output_port_names: declared_output_names(outputs),
-        })),
-        _ => Err(unknown_callable(node_id, "tools.deps", name)),
-    }
-}
-
-fn resolve_pipeline_ci(node_id: &str, name: &str, outputs: &[Port]) -> Result<DynOp, ResolveError> {
-    match name {
-        "ci" => Ok(DynOp::new(PipelineCiOp::Ci {
-            output_port_names: declared_output_names(outputs),
-        })),
-        _ => Err(unknown_callable(node_id, "pipelines.ci", name)),
-    }
-}
-
-fn resolve_shared_dag_util(
-    node_id: &str,
-    name: &str,
-    outputs: &[Port],
-) -> Result<DynOp, ResolveError> {
-    let output_port_names = declared_output_names(outputs);
-    match name {
-        "aggregate_results" => Ok(DynOp::new(SharedDagUtilOp::AggregateResults {
-            output_port_names,
-        })),
-        "all_succeeded" => Ok(DynOp::new(SharedDagUtilOp::AllSucceeded {
-            output_port_names,
-        })),
-        "format_report" => Ok(DynOp::new(SharedDagUtilOp::FormatReport {
-            output_port_names,
-        })),
-        "stage_result" => Ok(DynOp::new(SharedDagUtilOp::StageResult {
-            output_port_names,
-        })),
-        "skipped_stage" => Ok(DynOp::new(SharedDagUtilOp::SkippedStage {
-            output_port_names,
-        })),
-        "stage_from_output" => Ok(DynOp::new(SharedDagUtilOp::StageFromOutput {
-            output_port_names,
-        })),
-        "generated_header" => Ok(DynOp::new(SharedDagUtilOp::GeneratedHeader {
-            output_port_names,
-        })),
-        "render_and_upsert" => Ok(DynOp::new(SharedDagUtilOp::RenderAndUpsert {
-            output_port_names,
-        })),
-        _ => Err(unknown_callable(node_id, "shared.dag_util", name)),
-    }
-}
-
-fn resolve_shared_gist_modes(
-    node_id: &str,
-    name: &str,
-    outputs: &[Port],
-) -> Result<DynOp, ResolveError> {
-    let output_port_names = declared_output_names(outputs);
-    match name {
-        "branch_context" => Ok(DynOp::new(SharedGistModesOp::BranchContext {
-            output_port_names,
-        })),
-        "resolve_recent_base" => Ok(DynOp::new(SharedGistModesOp::ResolveRecentBase {
-            output_port_names,
-        })),
-        "gist_filename" => Ok(DynOp::new(SharedGistModesOp::GistFilename {
-            output_port_names,
-        })),
-        "gist_upload" => Ok(DynOp::new(SharedGistModesOp::GistUpload {
-            output_port_names,
-        })),
-        "share_content" => Ok(DynOp::new(SharedGistModesOp::ShareContent {
-            output_port_names,
-        })),
-        "detect_runtime" => Ok(DynOp::new(SharedGistModesOp::DetectRuntime {
-            output_port_names,
-        })),
-        _ => Err(unknown_callable(node_id, "shared.gist_modes", name)),
-    }
-}
-
-fn resolve_std_patterns(
-    node_id: &str,
-    name: &str,
-    outputs: &[Port],
-) -> Result<DynOp, ResolveError> {
-    let output_port_names = declared_output_names(outputs);
-    match name {
-        "file_content_matches" => Ok(DynOp::new(StdPatternsOp::FileContentMatches {
-            output_port_names,
-        })),
-        "classify_files" => Ok(DynOp::new(StdPatternsOp::ClassifyFiles {
-            output_port_names,
-        })),
-        "read_text_files" => Ok(DynOp::new(StdPatternsOp::ReadTextFiles {
-            output_port_names,
-        })),
-        "acquire_subject_token" => Ok(DynOp::new(StdPatternsOp::AcquireSubjectToken {
-            output_port_names,
-        })),
-        "optional_impersonation" => Ok(DynOp::new(StdPatternsOp::OptionalImpersonation {
-            output_port_names,
-        })),
-        "ensure" => Ok(DynOp::new(StdPatternsOp::Ensure { output_port_names })),
-        "upsert" => Ok(DynOp::new(StdPatternsOp::Upsert { output_port_names })),
-        "content_upsert" => Ok(DynOp::new(StdPatternsOp::ContentUpsert {
-            output_port_names,
-        })),
-        "credential_chain" => Ok(DynOp::new(StdPatternsOp::CredentialChain {
-            output_port_names,
-        })),
-        "transaction" => Ok(DynOp::new(StdPatternsOp::Transaction { output_port_names })),
-        "retry" => Ok(DynOp::new(StdPatternsOp::Retry { output_port_names })),
-        _ => Err(unknown_callable(node_id, "std.patterns", name)),
     }
 }
 

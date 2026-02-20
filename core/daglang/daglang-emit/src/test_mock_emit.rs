@@ -467,9 +467,9 @@ fn emit_value_expr(expr: &Expr) -> String {
         }
         Expr::Call(name, args) => {
             match name.as_str() {
-                "rest_response" => emit_rest_response_call(args),
-                "shell_response" => emit_shell_response_call(args),
-                "file_response" => emit_file_response_call(args),
+                kind @ ("rest_response" | "shell_response" | "file_response") => {
+                    emit_transport_response(kind, TransportFields::Positional(args))
+                }
                 "bytes" => {
                     if let Some((_, arg)) = args.first() {
                         let s = emit_string_literal(arg);
@@ -536,51 +536,103 @@ fn emit_value_expr(expr: &Expr) -> String {
     }
 }
 
-/// Emit a record value expression, extracting status from transport records.
-fn emit_record_value(name: Option<&str>, fields: &[(String, Expr)]) -> String {
-    match name {
-        Some("rest_response" | "RestResponse") => {
-            // Extract status from fields, default to 200 if absent.
+/// Normalised field access for transport response constructors.
+///
+/// Both call-syntax `rest_response(200, { ok: true })` and record-syntax
+/// `rest_response { status: 200, ok: true }` need to produce the same output.
+/// This enum unifies positional and named access so a single emit function
+/// handles both.
+enum TransportFields<'a> {
+    /// Positional arguments from `Expr::Call`.
+    Positional(&'a [(Option<String>, Expr)]),
+    /// Named fields from `Expr::Record`.
+    Named(&'a [(String, Expr)]),
+}
+
+impl<'a> TransportFields<'a> {
+    /// Get the first positional arg, or look up a named field.
+    fn get(&self, position: usize, names: &[&str]) -> Option<&'a Expr> {
+        match self {
+            Self::Positional(args) => args.get(position).map(|(_, e)| e),
+            Self::Named(fields) => fields
+                .iter()
+                .find(|(k, _)| names.iter().any(|n| k == n))
+                .map(|(_, v)| v),
+        }
+    }
+
+    /// Iterate named fields (for building the JSON body of a rest_response).
+    /// For positional args, the body is at position 1; for named fields, it's
+    /// everything that isn't in `exclude`.
+    fn rest_body_json(&self, exclude: &[&str]) -> String {
+        match self {
+            Self::Positional(args) => args
+                .get(1)
+                .map(|(_, e)| emit_json_value(e))
+                .unwrap_or_else(|| "{}".to_string()),
+            Self::Named(fields) => {
+                let parts: Vec<String> = fields
+                    .iter()
+                    .filter(|(k, _)| !exclude.iter().any(|ex| k == ex))
+                    .map(|(k, v)| format!("\"{k}\": {}", emit_json_value(v)))
+                    .collect();
+                format!("{{{}}}", parts.join(", "))
+            }
+        }
+    }
+}
+
+/// Emit a transport response expression (rest, shell, or file).
+///
+/// Handles both call-syntax and record-syntax via [`TransportFields`].
+fn emit_transport_response(kind: &str, fields: TransportFields<'_>) -> String {
+    match kind {
+        "rest_response" | "RestResponse" => {
             let status = fields
-                .iter()
-                .find(|(k, _)| k == "status" || k == "code")
-                .map(|(_, v)| emit_int_value(v))
+                .get(0, &["status", "code"])
+                .map(emit_int_value)
                 .unwrap_or(200);
-            // Build JSON body from non-status fields.
-            let body_parts: Vec<String> = fields
-                .iter()
-                .filter(|(k, _)| k != "status" && k != "code")
-                .map(|(k, v)| format!("\"{k}\": {}", emit_json_value(v)))
-                .collect();
-            let body_json = format!("{{{}}}", body_parts.join(", "));
+            let body = fields.rest_body_json(&["status", "code"]);
             format!(
-                "Value::Response(TransportResponse::Rest(RestResponse::new({status}, serde_json::json!({body_json}))))"
+                "Value::Response(TransportResponse::Rest(RestResponse::new({status}, serde_json::json!({body}))))"
             )
         }
-        Some("shell_response" | "ShellResponse") => {
+        "shell_response" | "ShellResponse" => {
             let exit_code = fields
-                .iter()
-                .find(|(k, _)| k == "exit_code")
-                .map(|(_, v)| emit_int_value(v))
+                .get(0, &["exit_code"])
+                .map(emit_int_value)
                 .unwrap_or(0);
             let stdout = fields
-                .iter()
-                .find(|(k, _)| k == "stdout")
-                .map(|(_, v)| emit_string_literal(v))
+                .get(1, &["stdout"])
+                .map(emit_string_literal)
                 .unwrap_or_else(|| "\"\"".to_string());
             format!(
                 "Value::Response(TransportResponse::Shell(ShellResponse {{ exit_code: {exit_code}, stdout: {stdout}.to_string(), stderr: String::new() }}))"
             )
         }
-        Some("file_response" | "FileResponse") => {
+        "file_response" | "FileResponse" => {
             let path = fields
-                .iter()
-                .find(|(k, _)| k == "path")
-                .map(|(_, v)| emit_string_literal(v))
+                .get(0, &["path"])
+                .map(emit_string_literal)
                 .unwrap_or_else(|| "\"\"".to_string());
             format!(
                 "Value::Response(TransportResponse::File(FileResponse {{ path: {path}.to_string(), operation: FileOp::Read, success: true, content: None, exists: None, error: None }}))"
             )
+        }
+        _ => unreachable!("emit_transport_response called with unknown kind: {kind}"),
+    }
+}
+
+/// Emit a record value expression.
+///
+/// Transport records delegate to [`emit_transport_response`]; everything else
+/// becomes `Value::Json(serde_json::json!(...))`.
+fn emit_record_value(name: Option<&str>, fields: &[(String, Expr)]) -> String {
+    match name {
+        Some(kind @ ("rest_response" | "RestResponse"
+            | "shell_response" | "ShellResponse"
+            | "file_response" | "FileResponse")) => {
+            emit_transport_response(kind, TransportFields::Named(fields))
         }
         _ => {
             let json_parts: Vec<String> = fields
@@ -591,47 +643,6 @@ fn emit_record_value(name: Option<&str>, fields: &[(String, Expr)]) -> String {
             format!("Value::Json(serde_json::json!({json}))")
         }
     }
-}
-
-/// Emit a rest_response(status, body) call.
-fn emit_rest_response_call(args: &[(Option<String>, Expr)]) -> String {
-    let status = args
-        .first()
-        .map(|(_, e)| emit_int_value(e))
-        .unwrap_or(200);
-    let body = args
-        .get(1)
-        .map(|(_, e)| emit_json_value(e))
-        .unwrap_or_else(|| "{}".to_string());
-    format!(
-        "Value::Response(TransportResponse::Rest(RestResponse::new({status}, serde_json::json!({body}))))"
-    )
-}
-
-/// Emit a shell_response(exit_code, stdout) call.
-fn emit_shell_response_call(args: &[(Option<String>, Expr)]) -> String {
-    let exit_code = args
-        .first()
-        .map(|(_, e)| emit_int_value(e))
-        .unwrap_or(0);
-    let stdout = args
-        .get(1)
-        .map(|(_, e)| emit_string_literal(e))
-        .unwrap_or_default();
-    format!(
-        "Value::Response(TransportResponse::Shell(ShellResponse {{ exit_code: {exit_code}, stdout: {stdout}.to_string(), stderr: String::new() }}))"
-    )
-}
-
-/// Emit a file_response(path, op, success) call.
-fn emit_file_response_call(args: &[(Option<String>, Expr)]) -> String {
-    let path = args
-        .first()
-        .map(|(_, e)| emit_string_literal(e))
-        .unwrap_or_else(|| "\"\"".to_string());
-    format!(
-        "Value::Response(TransportResponse::File(FileResponse {{ path: {path}.to_string(), operation: FileOp::Read, success: true, content: None, exists: None, error: None }}))"
-    )
 }
 
 /// Emit a Rust string literal (properly escaped).
