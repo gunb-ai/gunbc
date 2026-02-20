@@ -531,6 +531,34 @@ mod tests {
     }
 
     #[test]
+    fn workflow_unit_commands_supports_pragma_terminal_branches() {
+        let commands = workflow_unit_commands("pragma").expect("pragma commands");
+        assert!(commands.contains_key(&NodeId::from("pragma.upsert_clippy")));
+        assert!(commands.contains_key(&NodeId::from("pragma.upsert_allowlist")));
+        assert!(commands.contains_key(&NodeId::from("pragma.upsert_policy")));
+    }
+
+    #[test]
+    fn workflow_unit_commands_supports_deps_terminal_branches() {
+        let commands = workflow_unit_commands("deps").expect("deps commands");
+        assert!(commands.contains_key(&NodeId::from("deps.execute_installs")));
+        assert!(commands.contains_key(&NodeId::from("deps.write_deps_toml")));
+    }
+
+    #[test]
+    fn ci_verify_uses_codegen_dag_binary() {
+        let commands = ci_unit_commands();
+        let verify = commands
+            .get(&NodeId::from("ci.verify"))
+            .expect("ci.verify command");
+        assert_eq!(verify.program, "cargo");
+        assert!(
+            verify.args.contains(&"gunbc-codegen-dag".to_string()),
+            "ci.verify must use codegen DAG wrapper binary for --mode support"
+        );
+    }
+
+    #[test]
     fn workflow_unit_commands_supports_gist_aliases() {
         let gist = workflow_unit_commands("gist").expect("gist");
         let snapshot = workflow_unit_commands("gist-snapshot").expect("snapshot");
