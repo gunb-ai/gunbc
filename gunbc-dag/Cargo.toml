@@ -112,5 +112,13 @@ name = "gunbc-infra"
 path = "src/bin/infra.rs"
 
 [[bin]]
+name = "gunbc-review"
+path = "src/bin/review.rs"
+
+[[bin]]
+name = "gunbc-pipeline"
+path = "src/bin/pipeline.rs"
+
+[[bin]]
 name = "gunbc-workflow"
 path = "src/bin/workflow.rs"
