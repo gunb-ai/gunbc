@@ -569,6 +569,12 @@ pub(crate) fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow
 }
 
 fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String {
+    // Planner-managed tools (WF21): dispatch via gunbc-workflow binary.
+    // The planner handles compilation/codegen freshness as keyed units.
+    if tool.planner_managed {
+        return planner_tool_command(tool, dry_run);
+    }
+
     let cli_args = render_cli_args(&tool.entrypoints);
 
     let warning_prefix = if config.warnings == Warnings::Deny {
@@ -592,6 +598,26 @@ fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String 
             warning_prefix,
             tool.invocation.command(),
             cli_args
+        )
+    }
+}
+
+/// Render a planner-dispatched tool command (WF21).
+///
+/// Planner-managed tools use `target/release/gunbc-workflow --plan <tool>`
+/// instead of `cargo run`. The planner resolves compilation, codegen,
+/// and all capability freshness via global ledger dedup.
+fn planner_tool_command(tool: &ToolInfo, dry_run: bool) -> String {
+    let cli_args = render_cli_args(&tool.entrypoints);
+    if dry_run {
+        format!(
+            "@target/release/gunbc-workflow --plan {} --dry-run strict{}",
+            tool.short_name, cli_args
+        )
+    } else {
+        format!(
+            "@target/release/gunbc-workflow --plan {}{}",
+            tool.short_name, cli_args
         )
     }
 }
@@ -1069,5 +1095,54 @@ mod tests {
                 "maintenance target '{target}' must depend on lint-upsert for full verification"
             );
         }
+    }
+
+    #[test]
+    fn test_planner_managed_tools_use_gunbc_workflow_command() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Bootstrap should use gunbc-workflow dispatch, no ensure-codegen dep
+        assert!(
+            makefile.contains("@target/release/gunbc-workflow --plan bootstrap"),
+            "bootstrap should dispatch via gunbc-workflow"
+        );
+        assert!(
+            !makefile.contains("bootstrap: ensure-codegen"),
+            "bootstrap should not have ensure-codegen prerequisite"
+        );
+
+        // Pragma should use gunbc-workflow dispatch
+        assert!(
+            makefile.contains("@target/release/gunbc-workflow --plan pragma"),
+            "pragma should dispatch via gunbc-workflow"
+        );
+    }
+
+    #[test]
+    fn test_planner_managed_dry_run_uses_strict_mode() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        assert!(
+            makefile.contains("@target/release/gunbc-workflow --plan bootstrap --dry-run strict"),
+            "bootstrap-dry should dispatch via gunbc-workflow with --dry-run strict"
+        );
+    }
+
+    #[test]
+    fn test_non_planner_tools_still_use_cargo_run() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Gist is not planner-managed, should still use cargo run
+        assert!(
+            makefile.contains("gist: ensure-codegen"),
+            "gist should still depend on ensure-codegen"
+        );
+        assert!(
+            makefile.contains("cargo run -p gunbc-gist --bin gunbc-gist"),
+            "gist should still use cargo run"
+        );
     }
 }

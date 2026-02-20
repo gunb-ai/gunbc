@@ -33,8 +33,9 @@ pub use ledger::{
     RunLedgerEntry, WorkflowLedgerError, WorkflowLedgerPaths,
 };
 pub use planner::{
-    explain_plan, plan_workflow, plan_workflow_with_mode, DryRunMode, NodePlan, PlanAction,
-    PlanExplain, PlannerInputs, WorkflowPlan, WorkflowPlannerError,
+    explain_plan, plan_workflow, plan_workflow_with_mode, CapabilityAction, CapabilityStatus,
+    DryRunMode, NodePlan, PlanAction, PlanExplain, PlannerInputs, WorkflowPlan,
+    WorkflowPlannerError,
 };
 pub use process_registry::{
     claim_handle_type_id, default_process_unit_registry, ClaimId, ProcessId, ProcessUnitRef,
@@ -50,6 +51,11 @@ pub use schema::{
     PORT_RESULT, TYPE_WORKFLOW_RESULT,
 };
 pub use spec_builders::{
-    ci_workflow_spec, ci_workflow_spec_with_registry, test_all_workflow_spec,
-    test_all_workflow_spec_with_registry,
+    bootstrap_workflow_spec, bootstrap_workflow_spec_with_registry, ci_workflow_spec,
+    ci_workflow_spec_with_registry, dag_snapshot_workflow_spec,
+    dag_snapshot_workflow_spec_with_registry, dag_viz_workflow_spec,
+    dag_viz_workflow_spec_with_registry, deps_workflow_spec, deps_workflow_spec_with_registry,
+    makegen_workflow_spec, makegen_workflow_spec_with_registry, pragma_workflow_spec,
+    pragma_workflow_spec_with_registry, test_all_workflow_spec,
+    test_all_workflow_spec_with_registry, tool_workflow_spec, TOOL_WORKFLOW_NAMES,
 };
