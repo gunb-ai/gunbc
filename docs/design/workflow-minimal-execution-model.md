@@ -916,10 +916,18 @@ Codegen produces **generated Rust source files** consumed at compile-time:
 
 | Artifact | Location | Consumers | Description |
 |----------|----------|-----------|-------------|
-| CLI entrypoints | `target/codegen/bin/*/main.rs` | `cargo build` (tool binaries) | Generated `fn main()` for each tool binary |
-| Test harnesses | `*/generated_tests*.rs` | `cargo test` (test binaries) | Generated integration test modules from `#[testgen_target]` |
-| Registration tables | `target/codegen/*/mod.rs` | `cargo build` (gunbc-dag) | Inventory registration for tools/pipelines |
+| CLI entrypoints | `target/codegen/bin/{tool}/main.rs` | `cargo build` (tool binaries) | Generated `fn main()` for each tool binary |
+| Test harnesses | `{crate}/src/{module}/generated_tests*.rs` | `cargo test` (test binaries, `#[cfg(test)]` only) | Generated integration test modules via `include!()` |
+| Codegen lib | `target/codegen/lib/` | `cargo build` (gunbc-dag) | Shared codegen support files |
+| Codegen stamp | `target/codegen/.codegen-stamp` | Bootstrap freshness check | Marker for successful codegen completion |
 | Makefiles | `Makefile` | Make (build orchestration) | Generated from registry + DSL |
+
+Note: test harnesses are scattered across source crate directories (e.g.,
+`gunbc-dag/src/bootstrap/generated_tests.rs`, `lib/gcp-ops/src/generated_tests*.rs`)
+rather than centralized under `target/codegen/`. They are included via
+`#[cfg(test)] mod generated_tests { include!("generated_tests.rs"); }` blocks, so
+they are **compilation inputs for test binaries only**, not tool binaries. This means
+test harness staleness affects `cargo test` correctness but not `cargo build --bins`.
 
 The critical observation: **codegen outputs are compilation inputs**. Generated Rust
 sources must exist before `cargo build` can compile the binaries that depend on them.

@@ -434,6 +434,14 @@ Additional active open items:
 
 1. Resource wildcard pattern semantics remain explicitly deferred (`R2` + `backlog.md`).
 2. Deferred-callable migration is implementation-open but design-resolved (`P6`, `P12`).
+3. Bootstrap invariant has no CI enforcement gate. A compile-time or CI test should
+   assert that bootstrap-safe binaries (`codegen.rs`, `ci.rs`) do not depend on
+   generated artifacts (no `include!("generated_")` outside `#[cfg(test)]`). Scope: `WF14`.
+4. `render_makefile()` has no planner-awareness parameter — it always wires
+   `ensure-codegen` as a prerequisite, even when the planner manages codegen freshness.
+   Scope: `WF21` (Makefile thinning).
+5. `default_registry()` couples tool discovery to `gunbc_codegen::registry::derive_tool_defs()`.
+   Post-planner, tool discovery should come from workflow specs. Low priority.
 
 ---
 

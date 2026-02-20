@@ -369,9 +369,11 @@ is not incidental — it reflects the true artifact dependency:
 codegen.ensure ──→ compile.tool_bins.ensure
 ```
 
-Generated Rust sources (`target/codegen/bin/*/main.rs`, `*/generated_tests*.rs`)
-are **compilation inputs**. If the planner skips codegen and marks compilation as
-fresh, it can produce stale binaries — a **correctness bug**.
+Generated Rust sources (`target/codegen/bin/{tool}/main.rs`) are **compilation
+inputs for tool binaries**. Test harnesses (`{crate}/src/{module}/generated_tests*.rs`)
+are compilation inputs for test binaries only (`#[cfg(test)]`). If the planner
+skips codegen and marks compilation as fresh, it can produce stale binaries — a
+**correctness bug**.
 
 ### 9.2 Bootstrap Invariant
 

@@ -377,6 +377,10 @@ impl BuildConfig {
     }
 
     /// Get the ensure-codegen command as a shell string.
+    ///
+    /// TODO(WF15): Replace `cargo run` dispatch with direct pre-built binary
+    /// invocation once binary freshness is planner-managed. Codegen freshness
+    /// will be a ledger-backed keyed unit, not a Make subprocess.
     pub fn ensure_codegen_shell(&self) -> String {
         format!("@{}", self.ensure_codegen.to_shell())
     }
@@ -827,6 +831,11 @@ impl WorkflowSpec {
     }
 }
 
+// TODO(WF15): When planner path is active, tool targets should not have
+// `ensure-codegen` as a Make prerequisite. Codegen freshness will be resolved
+// by the planner via ledger lookup (keyed unit model), not as a Make dependency.
+// See `docs/design/workflow-minimal-execution-model.md` Section 17 and WF15
+// in `TODO/tasks.md`.
 fn tool_dependency_targets(tool: &ToolInfo, config: &BuildConfig) -> Vec<String> {
     if config.build_system == BuildSystem::Cargo {
         let mut deps = Vec::new();
@@ -1489,9 +1498,13 @@ impl ToolRegistry {
     }
 
     /// Check if any daggen is needed.
+    ///
+    /// DEFERRED: Daggen (generating lowered DAG workflow definitions from DSL into
+    /// compiled Rust) is explicitly out of scope for the current planner phase.
+    /// Workflow DAGs remain hand-authored in Rust via `build_*_graph()` functions.
+    /// See `docs/design/workflow-minimal-execution-model.md` Section 17.5 and the
+    /// "Daggen status: Deferred" design decision in `TODO/tasks.md`.
     pub fn needs_daggen(&self) -> bool {
-        // For now, daggen is optional - only needed if we want to regenerate
-        // declarative DAG definitions into code
         false
     }
 
