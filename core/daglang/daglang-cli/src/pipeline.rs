@@ -823,6 +823,7 @@ mod tests {
             "examples.deployment",
             "tools.makegen",
             "tools.pragma",
+            "tools.review",
             "tools.testgen",
             "pipelines.ci",
         ]
@@ -1073,7 +1074,7 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 44);
+        assert_eq!(result.parsed_count(), 45);
         assert!(
             result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
@@ -1118,7 +1119,7 @@ mod tests {
         .expect("pipeline should execute");
         assert_eq!(
             result.parsed_count(),
-            44,
+            45,
             "report stop should retain parse-stage file count for real corpus"
         );
     }

@@ -970,10 +970,6 @@ fn discover_dsl_module_names(root: &Path, module_kind: &str) -> Result<BTreeSet<
                     path.display()
                 )
             })?;
-        // Skip _test.dag files — these are DSL test fixtures, not workflow modules.
-        if stem.ends_with("_test") {
-            continue;
-        }
         modules.insert(stem.to_string());
     }
     Ok(modules)

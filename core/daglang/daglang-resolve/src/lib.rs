@@ -35,13 +35,6 @@ pub fn has_dag_extension(path: &Path) -> bool {
         .is_some_and(|ext| ext == "dag")
 }
 
-/// Check whether a `.dag` file is a test file (`*_test.dag`).
-pub fn is_test_dag_file(path: &Path) -> bool {
-    path.file_stem()
-        .and_then(|s| s.to_str())
-        .is_some_and(|stem| stem.ends_with("_test"))
-}
-
 /// Case-insensitive check — matches `.dag`, `.DAG`, `.DaG`, etc.
 /// Used internally to detect wrong-cased extensions and produce clear errors.
 pub fn has_dag_like_extension(path: &Path) -> bool {
@@ -51,7 +44,6 @@ pub fn has_dag_like_extension(path: &Path) -> bool {
 }
 
 /// Discover `.dag` files recursively under a root directory.
-/// Excludes `*_test.dag` files — use [`discover_test_dag_files`] for those.
 pub fn discover_dag_files(root: &Path) -> Result<Vec<PathBuf>, ResolveError> {
     let mut files = Vec::new();
     let mut visited_dirs = HashSet::new();
@@ -59,20 +51,6 @@ pub fn discover_dag_files(root: &Path) -> Result<Vec<PathBuf>, ResolveError> {
     files.sort();
     files.dedup();
     Ok(files)
-}
-
-/// Discover `*_test.dag` files recursively under a root directory.
-pub fn discover_test_dag_files(root: &Path) -> Result<Vec<PathBuf>, ResolveError> {
-    let mut all_files = Vec::new();
-    let mut visited_dirs = HashSet::new();
-    collect_all_dag_files(root, &mut all_files, &mut visited_dirs)?;
-    let mut test_files: Vec<PathBuf> = all_files
-        .into_iter()
-        .filter(|p| is_test_dag_file(p))
-        .collect();
-    test_files.sort();
-    test_files.dedup();
-    Ok(test_files)
 }
 
 /// A resolved module in the dependency graph.
@@ -222,7 +200,10 @@ impl ModuleGraph {
     }
 }
 
-/// Recursively collect all `.dag` files under `dir`, excluding `*_test.dag`.
+/// Recursively collect all `.dag` files under `dir`.
+///
+/// Tests and fixtures are defined inline within regular `.dag` files,
+/// so no filename-based filtering is needed.
 // Compiler pipeline: recursively discovers .dag files
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn collect_dag_files(
@@ -245,40 +226,6 @@ fn collect_dag_files(
         let p = entry.path();
         if p.is_dir() {
             collect_dag_files(&p, out, visited_dirs)?;
-        } else if has_dag_extension(&p) {
-            // Skip test files from the normal module graph.
-            if !is_test_dag_file(&p) {
-                out.push(p);
-            }
-        } else if has_dag_like_extension(&p) {
-            return Err(ResolveError::InvalidExtensionCase(p));
-        }
-    }
-    Ok(())
-}
-
-/// Recursively collect ALL `.dag` files under `dir` (including `*_test.dag`).
-#[allow(clippy::disallowed_methods, clippy::disallowed_types)]
-fn collect_all_dag_files(
-    dir: &Path,
-    out: &mut Vec<PathBuf>,
-    visited_dirs: &mut HashSet<PathBuf>,
-) -> Result<(), ResolveError> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    let canonical_dir =
-        std::fs::canonicalize(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
-    if !visited_dirs.insert(canonical_dir) {
-        return Ok(());
-    }
-    let entries =
-        std::fs::read_dir(dir).map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| ResolveError::IoError(dir.to_path_buf(), e))?;
-        let p = entry.path();
-        if p.is_dir() {
-            collect_all_dag_files(&p, out, visited_dirs)?;
         } else if has_dag_extension(&p) {
             out.push(p);
         } else if has_dag_like_extension(&p) {

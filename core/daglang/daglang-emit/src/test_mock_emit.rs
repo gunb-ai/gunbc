@@ -1,6 +1,6 @@
-//! Test mock emitter: generates `graph_mock.rs` Rust code from `_test.dag` files.
+//! Test mock emitter: generates `graph_mock.rs` Rust code from inline test blocks.
 //!
-//! Each `test` block in a `_test.dag` file becomes a function that returns
+//! Each `test` block in a `.dag` file becomes a function that returns
 //! a `MockSpec`, decorated with `#[testgen_target]` and
 //! `#[resource_test_target]` proc macros.
 //!
@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```dag
-//! // bootstrap_test.dag
+//! // bootstrap.dag (tests at bottom)
 //! fixture cloud_env {
 //!     mock cloud_env.config -> { project: "mock-project" }
 //! }
@@ -104,7 +104,7 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     let mut out = String::new();
 
     // Header
-    writeln!(out, "//! Generated from _test.dag — do not edit by hand.").unwrap();
+    writeln!(out, "//! Generated from inline test blocks — do not edit by hand.").unwrap();
     writeln!(out).unwrap();
     writeln!(out, "use gunbc_test::MockSpec;").unwrap();
     writeln!(out, "use gunbc_ir::Value;").unwrap();

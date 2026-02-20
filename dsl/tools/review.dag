@@ -1,4 +1,4 @@
-// tools/review_test.dag -- Test specifications for code review graphs.
+// tools/review.dag -- Code review tool specification.
 //
 // Replaces: lib/review/src/graph_mock.rs
 // Two review modes: inline (direct content) and diff (git diff).
@@ -7,7 +7,9 @@
 // NOTE: Complex Rust types (SecretString, CloudSecretConfig, FilesystemHandle,
 // mock_openai_response, Criteria) still use Rust helpers via @rust_mock_helpers.
 
-module tools.review_test
+module tools.review
+
+// ── Tests ──────────────────────────────────────────────────────────
 
 // Shared cloud environment for GCP WIF credential resolution.
 fixture review_cloud_env {

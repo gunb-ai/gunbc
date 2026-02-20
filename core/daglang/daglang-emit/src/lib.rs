@@ -55,7 +55,7 @@ pub mod test_gen;
 // Wave 6 (SC5-SC6): service transport code generation per language.
 pub mod service_emit;
 
-// Wave 7: DSL-native test mock emission (_test.dag -> graph_mock.rs).
+// Wave 7: DSL-native test mock emission (inline test blocks -> graph_mock.rs).
 pub mod test_mock_emit;
 
 #[cfg(test)]

@@ -52,3 +52,83 @@ service llm.OpenAI {
     @permissions(["chat_completion"])
   }
 }
+
+// ── Tests ──────────────────────────────────────────────────────────
+//
+// Multiple test cases for different scenarios: basic, code review,
+// and provider variants (OpenAI, Anthropic).
+//
+// NOTE: Provider-specific response formats and cloud credential composition
+// still use Rust helpers via @rust_mock_helpers.
+
+// Shared cloud environment for GCP WIF credential resolution.
+fixture llm_cloud_env {
+    mock cloud_env.config -> { provider: "gcp", runtime: "local-dev", audience: "local-dev", project_or_account: "mock-secrets" }
+    mock cloud_env.request_url -> "https://example.com/oidc"
+    mock cloud_env.credential -> { token: "<MOCK_API_KEY>", source_type: "static", scheme: "bearer" }
+}
+
+test openai_chat_completion : llm_cloud_env {
+    @tier(Unit)
+    @hermetic(true)
+    @rust_mock_helpers("gunbc_lib_llm_ops::graph_mock")
+
+    // Inputs
+    input chat_completion/prepare.provider -> "openai"
+    input chat_completion/prepare.model -> "gpt-4o"
+    input chat_completion/prepare.messages -> [{ role: "user", content: "Hello" }]
+
+    // Transport mock: OpenAI response format
+    mock chat_completion/execute.response -> rest_response(200, {
+        choices: [{ message: { content: "Hello! How can I help you?" }, finish_reason: "stop" }],
+        model: "gpt-4o",
+        usage: { prompt_tokens: 10, completion_tokens: 20 }
+    })
+
+    expect result.content is String
+    expect result.model == "gpt-4o"
+    expect result.finish_reason == "Stop"
+}
+
+test anthropic_chat_completion : llm_cloud_env {
+    @tier(Unit)
+    @hermetic(true)
+    @rust_mock_helpers("gunbc_lib_llm_ops::graph_mock")
+
+    // Inputs
+    input chat_completion/prepare.provider -> "anthropic"
+    input chat_completion/prepare.model -> "claude-sonnet-4-20250514"
+    input chat_completion/prepare.messages -> [{ role: "user", content: "Hello" }]
+
+    // Transport mock: Anthropic response format
+    mock chat_completion/execute.response -> rest_response(200, {
+        content: [{ type: "text", text: "Hello! I'm Claude." }],
+        model: "claude-sonnet-4-20250514",
+        stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 15 }
+    })
+
+    expect result.content is String
+    expect result.model == "claude-sonnet-4-20250514"
+    expect result.finish_reason == "Stop"
+}
+
+test code_review_completion : llm_cloud_env {
+    @tier(Scenario)
+    @hermetic(true)
+    @rust_mock_helpers("gunbc_lib_llm_ops::graph_mock")
+
+    // Inputs
+    input chat_completion/prepare.provider -> "openai"
+    input chat_completion/prepare.model -> "gpt-4o"
+    input chat_completion/prepare.messages -> [{ role: "system", content: "Review this code" }, { role: "user", content: "fn main() {}" }]
+
+    // Transport mock: review response
+    mock chat_completion/execute.response -> rest_response(200, {
+        choices: [{ message: { content: "The code looks good. No issues found." }, finish_reason: "stop" }],
+        model: "gpt-4o",
+        usage: { prompt_tokens: 50, completion_tokens: 30 }
+    })
+
+    expect result.content contains "No issues found"
+}

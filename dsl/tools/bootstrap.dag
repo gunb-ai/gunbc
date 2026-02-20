@@ -46,3 +46,11 @@ func bootstrap(check_mode: Bool?) -> { crate_count: Int, makefile_written: Bool,
     gitignore_written: gitignore.written
   }
 }
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test bootstrap_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}

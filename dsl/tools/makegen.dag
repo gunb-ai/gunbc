@@ -32,3 +32,11 @@ func makegen(registry: ToolRegistry, path: String) -> { written: Bool } {
   result = content_upsert(content: content, path: path)
   return { written: result.written }
 }
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test makegen_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}
