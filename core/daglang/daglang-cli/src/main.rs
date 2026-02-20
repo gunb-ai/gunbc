@@ -144,10 +144,14 @@ fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>
 
 /// Builds check pipeline context from CLI input.
 ///
-/// Unlike compile context construction, `.dag`-suffixed paths that resolve to
-/// directories stay in directory mode for `daglang check`.
+/// Paths ending in `.dag` that are regular files are treated as single-file
+/// targets. Directories named with a `.dag` suffix are rejected with an
+/// explicit error — matching compile-mode behavior.
 #[cfg(test)]
-fn build_check_pipeline_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
+fn build_check_pipeline_context(
+    cwd: &std::path::Path,
+    input: Option<&String>,
+) -> Result<PipelineContext, String> {
     build_check_pipeline_context_with_default_roots(cwd, input, None)
 }
 
@@ -155,11 +159,16 @@ fn build_check_pipeline_context_with_default_roots(
     cwd: &std::path::Path,
     input: Option<&String>,
     default_roots: Option<&[PathBuf]>,
-) -> PipelineContext {
+) -> Result<PipelineContext, String> {
     let normalized_input =
         input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
+    if let Some(ref path) = normalized_input {
+        if let Some(error) = path_utils::check_dag_directory_conflict(path) {
+            return Err(error);
+        }
+    }
     let (roots, target_file) = match normalized_input {
-        Some(path) if path_utils::is_single_file_target(&path, false) => {
+        Some(path) if path_utils::is_single_file_target(&path) => {
             let root = path_utils::resolve_single_file_root(cwd, &path);
             (vec![root], Some(path))
         }
@@ -171,7 +180,7 @@ fn build_check_pipeline_context_with_default_roots(
             None,
         ),
     };
-    PipelineContext { roots, target_file }
+    Ok(PipelineContext { roots, target_file })
 }
 
 fn compile_target_or_exit(cwd: &std::path::Path, input: Option<&String>) -> CompileOutput {
@@ -217,7 +226,13 @@ fn compile_target_or_exit_with_compile_options(
             }
         }
     } else {
-        build_context(cwd, input)
+        match build_context(cwd, input) {
+            Ok(context) => context,
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
     };
     match compile_from_context_with_options(&context, options) {
         Ok(output) => output,
@@ -1576,7 +1591,8 @@ mod tests {
     #[test]
     fn build_check_pipeline_context_defaults_to_cwd_dsl_root_without_input() {
         let cwd = root_path().join("workspace").join("project").join(".");
-        let context = super::build_check_pipeline_context(&cwd, None);
+        let context = super::build_check_pipeline_context(&cwd, None)
+            .expect("build_check_pipeline_context should succeed");
         assert_eq!(context.target_file, None);
         assert_eq!(
             context.roots,
@@ -1589,7 +1605,8 @@ mod tests {
         let cwd = root_path().join("workspace").join("project");
         let defaults = vec![cwd.join("custom"), cwd.join("shared")];
         let context =
-            super::build_check_pipeline_context_with_default_roots(&cwd, None, Some(&defaults));
+            super::build_check_pipeline_context_with_default_roots(&cwd, None, Some(&defaults))
+                .expect("build_check_pipeline_context should succeed");
         assert_eq!(context.target_file, None);
         assert_eq!(context.roots, defaults);
     }
@@ -1598,7 +1615,8 @@ mod tests {
     fn build_check_pipeline_context_treats_dag_file_as_target_input() {
         let cwd = root_path().join("workspace").join("project");
         let input = "nested/tool.dag".to_string();
-        let context = super::build_check_pipeline_context(&cwd, Some(&input));
+        let context = super::build_check_pipeline_context(&cwd, Some(&input))
+            .expect("build_check_pipeline_context should succeed");
         assert_eq!(
             context.target_file,
             Some(cwd.join("nested").join("tool.dag"))
@@ -1607,17 +1625,19 @@ mod tests {
     }
 
     #[test]
-    fn build_check_pipeline_context_treats_dag_named_directory_as_root() {
+    fn dag_named_directory_is_rejected_by_conflict_check() {
         let root = unique_temp_dir("check_context_dag_dir");
         let cwd = root.join("workspace");
         let dag_dir = cwd.join("bundle.dag");
         std::fs::create_dir_all(&dag_dir).expect("failed to create .dag directory fixture");
+
         let input = "bundle.dag".to_string();
-
-        let context = super::build_check_pipeline_context(&cwd, Some(&input));
-
-        assert_eq!(context.target_file, None);
-        assert_eq!(context.roots, vec![dag_dir.clone()]);
+        let error = super::build_check_pipeline_context(&cwd, Some(&input))
+            .expect_err(".dag directory should be rejected");
+        assert!(
+            error.contains("is a directory"),
+            "error should mention directory: {error}"
+        );
 
         std::fs::remove_dir_all(&root).expect("failed to cleanup temp fixture");
     }
@@ -1630,7 +1650,8 @@ mod tests {
         std::fs::create_dir_all(&dag_dir).expect("failed to create .DAG directory fixture");
         let input = "bundle.DAG".to_string();
 
-        let context = super::build_check_pipeline_context(&cwd, Some(&input));
+        let context = super::build_check_pipeline_context(&cwd, Some(&input))
+            .expect("non-lowercase .dag extension should not be rejected");
 
         assert_eq!(context.target_file, None);
         assert_eq!(context.roots, vec![dag_dir.clone()]);
@@ -1647,7 +1668,8 @@ mod tests {
         std::fs::create_dir_all(&dag_dir).expect("failed to create .DaG directory fixture");
         let input = "bundle.DaG/".to_string();
 
-        let context = super::build_check_pipeline_context(&cwd, Some(&input));
+        let context = super::build_check_pipeline_context(&cwd, Some(&input))
+            .expect("non-lowercase .dag extension should not be rejected");
 
         assert_eq!(context.target_file, None);
         assert_eq!(context.roots, vec![dag_dir.clone()]);
