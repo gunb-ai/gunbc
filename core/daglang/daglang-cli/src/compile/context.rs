@@ -15,12 +15,11 @@ use super::{resolve_lowered_dag, CheckOutput, CompileError, CompileOptions, Comp
 /// targets. Directories named with a `.dag` suffix are rejected with an
 /// explicit error — callers should pass the directory path without the
 /// `.dag` suffix or reference a `.dag` file inside it.
-pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineContext {
+pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> Result<PipelineContext, String> {
     let parsed = input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
     if let Some(ref path) = parsed {
         if let Some(error) = path_utils::check_dag_directory_conflict(path) {
-            eprintln!("{error}");
-            std::process::exit(1);
+            return Err(error);
         }
     }
     let (roots, target_file) = match parsed {
@@ -32,7 +31,7 @@ pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> PipelineC
         None => (vec![path_utils::resolve_default_root(cwd)], None),
     };
 
-    PipelineContext { roots, target_file }
+    Ok(PipelineContext { roots, target_file })
 }
 
 pub fn compile_from_context(context: &PipelineContext) -> Result<CompileOutput, CompileError> {

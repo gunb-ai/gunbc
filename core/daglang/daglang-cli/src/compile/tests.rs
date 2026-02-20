@@ -125,7 +125,7 @@ fn build_context_normalizes_absolute_directory_input_components() {
     let input_str = input.to_string_lossy().to_string();
 
     let cwd = std::env::temp_dir();
-    let context = build_context(&cwd, Some(&input_str));
+    let context = build_context(&cwd, Some(&input_str)).expect("build_context should succeed");
     assert_eq!(context.roots, vec![normalized_root.clone()]);
     assert!(context.target_file.is_none());
 
@@ -155,7 +155,7 @@ fn build_context_normalizes_absolute_single_file_input_components() {
     let input_str = input.to_string_lossy().to_string();
 
     let cwd = std::env::temp_dir();
-    let context = build_context(&cwd, Some(&input_str));
+    let context = build_context(&cwd, Some(&input_str)).expect("build_context should succeed");
     assert_eq!(
         context.roots,
         vec![normalized_file
@@ -178,7 +178,7 @@ fn build_context_default_root_is_cwd_dsl() {
             .expect("system clock should be after unix epoch")
             .as_nanos()
     ));
-    let context = build_context(&cwd, None);
+    let context = build_context(&cwd, None).expect("build_context should succeed");
     assert_eq!(context.roots, vec![cwd.join("dsl")]);
     assert!(context.target_file.is_none());
 }
@@ -195,7 +195,7 @@ fn run() -> Unit { }
     .expect("failed to write check valid fixture");
     let cwd = std::env::temp_dir();
     let input = fixture.to_string_lossy().to_string();
-    let context = build_context(&cwd, Some(&input));
+    let context = build_context(&cwd, Some(&input)).expect("build_context should succeed");
 
     let output = check_from_context(&context).expect("check should succeed");
     assert_eq!(
@@ -218,7 +218,7 @@ fn run() -> String { return 42 }
     .expect("failed to write check invalid fixture");
     let cwd = std::env::temp_dir();
     let input = fixture.to_string_lossy().to_string();
-    let context = build_context(&cwd, Some(&input));
+    let context = build_context(&cwd, Some(&input)).expect("build_context should succeed");
 
     let error = check_from_context(&context).expect_err("check should fail");
     assert_typecheck_stage_error(&error);
@@ -299,7 +299,8 @@ fn build_context_treats_uppercase_dag_directory_with_trailing_slash_as_root() {
     let input_with_trailing_slash = format!("{}/", dag_dir.display());
 
     let cwd = std::env::temp_dir();
-    let context = build_context(&cwd, Some(&input_with_trailing_slash));
+    let context = build_context(&cwd, Some(&input_with_trailing_slash))
+        .expect("build_context should succeed for non-lowercase .dag extension");
 
     assert_eq!(context.roots, vec![dag_dir.clone()]);
     assert_eq!(context.target_file, None);
@@ -322,7 +323,8 @@ fn build_context_treats_mixed_case_dag_directory_with_trailing_slash_as_root() {
     let input_with_trailing_slash = format!("{}/", dag_dir.display());
 
     let cwd = std::env::temp_dir();
-    let context = build_context(&cwd, Some(&input_with_trailing_slash));
+    let context = build_context(&cwd, Some(&input_with_trailing_slash))
+        .expect("build_context should succeed for non-lowercase .dag extension");
 
     assert_eq!(context.roots, vec![dag_dir.clone()]);
     assert_eq!(context.target_file, None);
@@ -345,7 +347,8 @@ fn build_context_treats_uppercase_dag_directory_input_as_root() {
 
     let input_str = dag_dir.to_string_lossy().to_string();
     let cwd = std::env::temp_dir();
-    let context = build_context(&cwd, Some(&input_str));
+    let context = build_context(&cwd, Some(&input_str))
+        .expect("build_context should succeed for non-lowercase .dag extension");
 
     assert_eq!(context.roots, vec![dag_dir.clone()]);
     assert_eq!(context.target_file, None);
@@ -368,7 +371,8 @@ fn build_context_treats_mixed_case_dag_directory_input_as_root() {
 
     let input_str = dag_dir.to_string_lossy().to_string();
     let cwd = std::env::temp_dir();
-    let context = build_context(&cwd, Some(&input_str));
+    let context = build_context(&cwd, Some(&input_str))
+        .expect("build_context should succeed for non-lowercase .dag extension");
 
     assert_eq!(context.roots, vec![dag_dir.clone()]);
     assert_eq!(context.target_file, None);
