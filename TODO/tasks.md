@@ -1,6 +1,6 @@
 # Task Sheet — Dependency-Ordered, Parallelizable
 
-**Last updated**: 2026-02-19
+**Last updated**: 2026-02-20
 **Verification**: `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
 **Archive**: Completed items in `TODONE/tasks-completed.md`. Backlog in `backlog.md`.
 
@@ -20,7 +20,7 @@
 |---|---|---|
 | Backend semantics encoded in IR | Resolved | Applied in `R3`-`R6` (now done). |
 | External system semantics typed | Resolved | Applied in `R7`-`R12` (now done). |
-| DeferredCallableOp elimination strategy | Resolved (impl pending) | Contract resolved; implementation tracked by `P6`/`P12`. |
+| DeferredCallableOp elimination strategy | Resolved (done) | Implemented in `P6`/`P12`. |
 | Runtime environment | Resolved | Local-first CLI, env creds + CI/cloud WIF path. |
 | Abstract review model | Resolved | Four-dimension typed model with criteria-driven opt-in. |
 | Workflow minimum unit + exclusive coordination | Resolved | Canonicalized in WF design docs (`WF1-D`..`WF4-D`). |
@@ -28,27 +28,29 @@
 | Cached `result` persistence | Resolved (strict/minimal default) | Persist typed summary/reference by default; optional full payload in CAS. |
 | Changed-input routing authority | Resolved (strict correctness) | Optimization hint only; non-authoritative for soundness. |
 | Conflict commutativity exceptions | Resolved (strict default) | No commutativity exceptions in current phase. |
-| Service codegen strategy | Resolved (generic interpreter) | Strategy B: runtime interpreter over `ServiceOperationSpec`, not static codegen. |
-| DSL as source of truth for services | Resolved | `.dag` service definitions replace hand-written IR transport types. |
+| Service codegen strategy | Resolved (done) | Strategy B implemented: generic interpreters over `ServiceOperationSpec` (SC1-SC3). |
+| DSL as source of truth for services | Resolved (done) | `.dag` service definitions replace hand-written IR transport types (SC4-SC7). |
 | Artifact dependency direction | Resolved (codegen → compilation) | Codegen outputs are compilation inputs; planner must not model compilation before codegen. See canonical model Section 17.2. |
 | Two-phase compilation | Resolved (bootstrap + tool bins) | Bootstrap-safe binaries (codegen, ci) compiled without generated sources; tool binaries depend on codegen outputs. See canonical model Section 17.3. |
 | Daggen status | Deferred | `needs_daggen()` returns false. Workflow DAGs remain hand-authored in Rust. Daggen is not folded into `codegen.ensure` in current phase. See canonical model Section 17.5. |
+| SDLC pipeline architecture | Resolved | Issue-centric lifecycle with provider-agnostic types. DSL stubs: `sdlc.dag`, `issues.dag`, `design.dag`, types in `std/types.dag`. |
 
 ### Tonight Handoff Lanes (Open Work)
 
 Use these lanes to assign workers with minimal overlap and clear stop conditions.
 
-| Lane | Task IDs | Preconditions | Primary Files/Areas | Done When | Verify |
-|---|---|---|---|---|---|
-| A: Resolver de-stringing | `P12` -> `P6` | none (`P12` first) | `resolve.rs`, `daglang-lower`, runtime resolver/dispatch | no string-prefix op resolution; no deferred passthrough fallback for migrated modules | `cargo test --workspace`, resolver golden tests |
-| B: Workflow planner core | `WF1` -> `WF2` -> `WF3` -> `WF4` -> `WF5` | `WF1-D`..`WF4-D` reviewed | `gunbc-dag` workflow schema/planner/ledger/executor, workflow docs | deterministic typed plan, claim-safe admission, key/rehydration correctness, plan explainability | `cargo test --workspace`, `cargo run -p gunbc-dag --bin gunbc-workflow -- --plan ci` |
-| C: Workflow cutover/perf | `WF6` -> `WF7` -> `WF8` -> `WF9` | Lane B complete | workflow entrypoints + `Makefile` wrappers + CI wiring | `make ci`/`make test-all` use planner path with SLO telemetry | `make ci`, `make test-all`, CI dry run |
-| D: Modeling hardening graph/runtime | `M8` -> `M9` -> `M16` and `M10` -> `M11` | corresponding `-D` tasks approved | IR type DAG/system-model/transport + runtime resource/dry-run paths | metadata inertness, typed dependency markers, strict dry-run enforced | targeted model tests + `cargo test --workspace` |
-| E: Security/install/process drift | `M7`, `M15`, `M13` -> `M14`, `M17` -> `M18` -> `M19` | corresponding `-D` tasks approved | value redaction, installer model, registry/make/CLI contracts, proof harness | no accidental secret leak path; typed PM policy; no projection drift; invariants testable | test suites for each module + planner invariant suite |
-| F: Universal capabilities | `WF14-D` -> `WF14` -> `WF15-D` -> `WF15` | `WF1-D`..`WF4-D` reviewed (design deps) | binary dispatch, codegen keyed unit, planner integration | compilation + codegen capabilities keyed and shared across all workflows | `gunbc-workflow --plan gist-snapshot` shows codegen CachedHit |
-| G: Gist capability stack | `WF16-D` -> `WF16` -> (`WF17`, `WF18`) | Lane F complete | gist graph, gist_modes, credential chain, git state units | base gist workflow built; diff + recent augment base; all modes use planner path | `make gist` warm path, credential sharing across gist/dag-viz |
-| H: Remaining capabilities | `WF19-D` -> `WF19` -> `WF20` -> `WF21` -> `WF22` | Lane F complete | bootstrap/makegen/pragma/deps/dag-viz, Makefile | FS write + generator capabilities minimized; all tools on planner path with verification | per-capability hit/miss reporting, cross-workflow sharing observable |
-| I: Service codegen | `SC1` -> `SC2` -> `SC3` -> (`SC4`, `SC5`) -> `SC6` -> `SC7` | none | daglang-lower, resolve.rs, daglang-emit/*, service .dag files | 3 protocol interfaces replace all per-service Rust; all emission targets generate service code from DSL | `make gist --dry-run` uses generic interpreter; httpbin test service works in all 4 targets with zero service-specific code |
+| Lane | Task IDs | Preconditions | Primary Files/Areas | Done When | Verify | Status |
+|---|---|---|---|---|---|---|
+| A: Resolver de-stringing | `P12` -> `P6` | none | `resolve.rs`, `daglang-lower`, runtime resolver/dispatch | no string-prefix op resolution; no deferred passthrough fallback | `cargo test --workspace`, resolver golden tests | **DONE** |
+| B: Workflow planner core | `WF1` -> `WF2` -> `WF3` -> `WF4` -> `WF5` | `WF1-D`..`WF4-D` reviewed | `gunbc-dag` workflow schema/planner/ledger/executor | deterministic typed plan, claim-safe admission, key/rehydration correctness | `cargo test --workspace` | **DONE** |
+| C: Workflow cutover/perf | `WF6` -> `WF7` -> `WF8` -> `WF9` | Lane B complete ✓ | workflow entrypoints + `Makefile` wrappers + CI wiring | `make ci`/`make test-all` use planner path with SLO telemetry | `make ci`, `make test-all`, CI dry run | **OPEN (unblocked)** |
+| D: Modeling hardening graph/runtime | `M8` -> `M9` -> `M16` and `M10` -> `M11` | `-D` tasks approved | IR type DAG/system-model/transport + runtime resource/dry-run | metadata inertness, typed dependency markers, strict dry-run enforced | targeted model tests + `cargo test --workspace` | **DONE** |
+| E: Security/install/process drift | `M7`, `M15`, `M17` -> `M18` -> `M19` | `-D` tasks approved | value redaction, installer model, proof harness | no accidental secret leak path; typed PM policy; invariants testable | test suites for each module + planner invariant suite | **DONE** |
+| F: Universal capabilities | `WF14-D` -> `WF14` -> `WF15-D` -> `WF15` | Lane B complete ✓ | binary dispatch, codegen keyed unit, planner integration | compilation + codegen capabilities keyed and shared across all workflows | `gunbc-workflow --plan gist-snapshot` shows codegen CachedHit | **OPEN (design done, impl unblocked)** |
+| G: Gist capability stack | `WF16-D` -> `WF16` -> (`WF17`, `WF18`) | Lane F complete | gist graph, gist_modes, credential chain, git state units | base gist workflow built; diff + recent augment base; all modes use planner path | `make gist` warm path, credential sharing across gist/dag-viz | **OPEN (design done, blocked on F)** |
+| H: Remaining capabilities | `WF19-D` -> `WF19` -> `WF20` -> `WF21` -> `WF22` | Lane F complete | bootstrap/makegen/pragma/deps/dag-viz, Makefile | FS write + generator capabilities minimized; all tools on planner path with verification | per-capability hit/miss reporting, cross-workflow sharing observable | **OPEN (design done, blocked on F)** |
+| I: Service codegen | `SC1` -> `SC2` -> `SC3` -> (`SC4`, `SC5`) -> `SC6` -> `SC7` | none | daglang-lower, resolve.rs, daglang-emit/*, service .dag files | 3 protocol interfaces replace all per-service Rust; all emission targets generate service code from DSL | `make gist --dry-run` uses generic interpreter | **DONE** |
+| J: SDLC pipeline | `W9` -> `W10` -> `W11` -> `W12` -> `W13` | W1-W3 (credentials) | `dsl/pipelines/sdlc.dag`, `lib/ticket-ops/`, `lib/design-ops/` | issue-centric pipeline: post issue → design → review → implement → close | `gunbc sdlc --issue 42` runs full lifecycle | **OPEN (design done, blocked on W1-W3)** |
 
 Handoff rules:
 
@@ -143,8 +145,8 @@ catch-all `_ => Ok(deferred_callable(...))` on line 872 becomes
 
 | ID | Task | Deps | Size | Source |
 |----|------|------|------|--------|
-| **P6** | `DeferredCallableOp` → per-module domain ops: implement `*Op` enums for each deferred module (see table above), replace catch-all passthrough with `Err(unknown_callable(...))`. Dry-run via `ExecutionMode` check inside each op, not via identity passthrough. ~15 modules, ~25 callables total. (`resolve.rs`, `rust_exec_runtime.rs:306`) | — | L | PR review |
-| **P12** | Move `resolve_infrastructure()` string-prefix matching up to lowering: lowerer should emit typed `LoweredOp` variants (e.g., `LoweredOp::Primitive(PrepareFileWrite)`) instead of encoding op identity in callable name strings. Resolver becomes exhaustive enum match, not prefix scan. 9 golden tests already cover current behavior. (`resolve.rs:758-842`, `daglang-lower`) | — | M | PR review |
+| **P6** | **[DONE 2026-02-20]** `DeferredCallableOp` → per-module domain ops: implement `*Op` enums for each deferred module, replace catch-all passthrough with `Err(unknown_callable(...))`. Further consolidated via `domain_passthrough_op!` macro. | — | L | PR review |
+| **P12** | **[DONE 2026-02-20]** Move `resolve_infrastructure()` string-prefix matching up to lowering: lowerer emits typed `LoweredOp` variants. Resolver is exhaustive enum match, not prefix scan. | — | M | PR review |
 
 ---
 
@@ -401,15 +403,15 @@ design artifact is reviewed:
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **WF1-D** | **Workflow schema design spec**: author concrete design for `WorkflowSpec` as `Dag<WorkflowUnit>` wrapper, typed IDs (`NodeId`, `PortName`), and op semantics without parallel graph structures. **Design doc**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Sections 2-4). **Acceptance**: design doc includes concrete DAG skeletons for `ci` and `test-all`, typed interface contracts, explicit no-fallback guarantees, and a `ProcessUnitRef -> ProcessSpec semantic-version/digest` contract used for `op_version` derivation in keying. | — | S |
-| **WF1** | **Minimum work-unit schema**: implement approved `WF1-D` design (typed units over existing DAG primitives, no untyped shell fallback nodes). **Acceptance**: no planner node can be created from an untyped shell string; each unit has stable ID and explicit IO contract; schema docs landed. | WF1-D | M |
-| **WF2-D** | **Mutual-exclusion/admission design spec**: define concurrency model using typed resource identities + access modes and derive admission behavior from declared resource ports/claims. **Design doc**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 5). **Acceptance**: conflict matrix, fairness/tie-break rules, and control-edge sequencing model documented with concrete DAG examples. | WF1-D | S |
-| **WF2** | **Mutual-exclusion claim model**: implement approved `WF2-D` admission model so conflicting units cannot co-run. **Acceptance**: planner/executor rejects unsatisfied/conflicting claims fail-closed; conflict diagnostics include both unit IDs + claim IDs; tests cover read/read allowed and write/write denied cases. | WF1, WF2-D | M |
-| **WF3-D** | **Key/ledger causality design spec**: define canonical key payload structure, typed miss-reason ADT, and ledger-state ADT with atomic persistence semantics. **Design doc**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 6). **Acceptance**: no ambient env/toolchain probing in key computation; miss causes are structurally diffable from payloads; fan-in contributors for multi-producer ports are preserved deterministically in key payloads; key encoding/versioning contract is explicit (`key_format_version` + canonical serializer rules); cached-hit output rehydration contract (CAS-backed) is documented, including typed `result` payload materialization; crash-safe write pattern documented. | WF1-D | S |
-| **WF3** | **Deterministic materialization keys + miss reasons**: implement approved `WF3-D` key/ledger model. **Acceptance**: same repo state yields identical keys; key drift is explained by explicit miss reason; no mtime-only freshness path in planner core; cached-hit nodes rehydrate declared outputs (including `result` when consumed) before downstream dataflow. | WF1, WF3-D | M |
-| **WF4-D** | **Downstream coordination design spec**: define readiness/commit boundaries with typed graph semantics (`EdgeKind::Control` where appropriate), including failure/skip propagation rules. **Design doc**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 7). **Acceptance**: concrete DAGs prove downstream nodes block on uncommitted prerequisites without implicit make-order dependence; dependency gate uses commit/output-availability semantics (not domain-success semantics); dataflow/readiness interaction is explicit (required data inputs must exist before run). | WF1-D, WF2-D | S |
-| **WF4** | **Downstream coordination contract**: implement approved `WF4-D` coordination model so downstream units execute only after upstream commit/output availability. **Acceptance**: planner proves topological + contract consistency before execution; downstream units are blocked on uncommitted prerequisites with explicit reason output; domain-failure results still reach report/aggregate nodes. | WF1, WF2, WF4-D | M |
-| **WF5** | **Planner dry-run + execution plan explainability**: add a planner mode that prints execute-set, cache-hit/miss set, and critical path before running. **Acceptance**: `gunbc-workflow --plan ci` and `--plan test-all` produce deterministic node lists and miss reasons; tests pin output stability for a fixed fixture repo state. | WF2, WF3, WF4 | S |
+| **WF1-D** | **[DONE 2026-02-20]** **Workflow schema design spec**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Sections 2-4). | — | S |
+| **WF1** | **[DONE 2026-02-20]** **Minimum work-unit schema**: typed units over existing DAG primitives, no untyped shell fallback nodes. | WF1-D | M |
+| **WF2-D** | **[DONE 2026-02-20]** **Mutual-exclusion/admission design spec**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 5). | WF1-D | S |
+| **WF2** | **[DONE 2026-02-20]** **Mutual-exclusion claim model**: conflicting units cannot co-run; fail-closed admission. | WF1, WF2-D | M |
+| **WF3-D** | **[DONE 2026-02-20]** **Key/ledger causality design spec**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 6). | WF1-D | S |
+| **WF3** | **[DONE 2026-02-20]** **Deterministic materialization keys + miss reasons**: same repo state yields identical keys; cached-hit rehydration; fail-closed on rehydration errors. | WF1, WF3-D | M |
+| **WF4-D** | **[DONE 2026-02-20]** **Downstream coordination design spec**: `docs/design/workflow/wf1-wf4-dag-design-pack.md` (Section 7). | WF1-D, WF2-D | S |
+| **WF4** | **[DONE 2026-02-20]** **Downstream coordination contract**: planner proves topological + contract consistency; domain-failure results still reach report/aggregate nodes. | WF1, WF2, WF4-D | M |
+| **WF5** | **[DONE 2026-02-20]** **Planner dry-run + execution plan explainability**: `gunbc-workflow --plan ci` produces deterministic node lists and miss reasons. | WF2, WF3, WF4 | S |
 | **WF6** | **Port `ci` to workflow planner**: implement `gunbc-workflow ci` using the new unit model and planner/executor, with behavior parity to current `gunbc-ci`. **Acceptance**: CI path no longer composes redundant prerequisite chains; all `ci` steps execute via typed units with claims + keys; parity tests validate outputs and failure semantics. | WF5 | M |
 | **WF7** | **Port `test-all` to workflow planner**: implement `gunbc-workflow test-all` with minimal dirty-closure execution and shared artifacts with `ci` flow. **Acceptance**: warm no-op executes zero functional units; single-input edits execute only transitive dirty closure; regression tests assert no duplicate generator/build unit execution in one run. | WF5 | M |
 | **WF8** | **Makefile thinning + strict mode cutover**: convert `make ci`/`make test-all` into thin wrappers over `gunbc-workflow`; remove redundant legacy chaining for these targets; keep explicit strict-mode failures for unmapped/deprecated paths. **Acceptance**: Make targets are transport-only wrappers; removed duplicate orchestration for these commands; CI gate asserts planner path is used. | WF6, WF7 | S |
@@ -425,10 +427,10 @@ prioritized.
 
 | ID | Decision | Chosen Default | Deps | Size |
 |---|---|---|---|---|
-| **WF10-D** | Control-token model beyond fail-late default (`done`/`ok` split) | Keep completion-gated control + explicit typed success guards (no dual-token expansion in current phase). | WF4-D | S |
-| **WF11-D** | Cached `result` persistence strategy (full payload vs typed summary/reference) | Typed summary/reference is mandatory baseline; full payload persistence is optional per-unit policy. | WF3-D | S |
-| **WF12-D** | Changed-input routing authority boundary | Routing remains optimization hint only; never authoritative for correctness in current phase. | WF3-D | S |
-| **WF13-D** | Conflict commutativity policy for resource claims | No commutativity exceptions; conflicting claims require explicit ordering. | WF2-D | S |
+| **WF10-D** | **[DONE]** Control-token model: completion-gated control + explicit typed success guards. | WF4-D | S |
+| **WF11-D** | **[DONE]** Cached `result` persistence: typed summary/reference mandatory, full payload optional. | WF3-D | S |
+| **WF12-D** | **[DONE]** Changed-input routing: optimization hint only, never authoritative for correctness. | WF3-D | S |
+| **WF13-D** | **[DONE]** Conflict commutativity: no exceptions, conflicting claims require explicit ordering. | WF2-D | S |
 
 Additional active open items:
 
@@ -492,9 +494,9 @@ invalidation signals, and cross-workflow sharing semantics before implementation
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **WF14-D** | **Compilation capability design spec**: define binary freshness as a keyed unit with **two-phase compilation** — bootstrap-safe binaries (codegen, ci) are compiled without generated sources (Phase 1), tool binaries depend on codegen outputs (Phase 2). Key inputs include source content hashes + `cargo metadata` dependency hashes + compiler version + **build profile** (debug/release) + **target triple** + **feature flags** + **RUSTFLAGS**. Phase 2 additionally includes codegen output hashes. Specify pre-built binary dispatch model replacing `cargo run`. Document **bootstrap invariant**: the codegen binary must be compilable when generated artifacts are missing. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 2). **Canonical reference**: `workflow-minimal-execution-model.md` Sections 17.2-17.4. **Acceptance**: design includes two-phase keying contract, bootstrap invariant gate, complete build-configuration key inputs (not just source hashes), before/after Make target shapes, and cross-workflow sharing semantics (one binary build per phase serves all tool invocations). | WF1-D | S |
+| **WF14-D** | **[DONE 2026-02-20]** **Compilation capability design spec**: two-phase compilation, bootstrap invariant, keying contract. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 2). | WF1-D | S |
 | **WF14** | **Compilation capability implementation**: implement binary freshness as a planner-managed keyed unit with two compilation phases. Make targets dispatch to pre-built binaries, bypassing `cargo run`. **Acceptance**: `make gist` no longer invokes `cargo run`; binary staleness is detected by planner key (source hash + cargo metadata + profile + target + features + RUSTFLAGS), not by Cargo's internal check; bootstrap phase compiles without codegen dependency; tool-binary phase depends on codegen outputs; one compilation unit per phase is shared across all tool workflows. | WF14-D, WF1 | M |
-| **WF15-D** | **Codegen capability design spec**: define codegen freshness as a keyed unit — key inputs are DSL source hashes (`dsl/**/*.dag`) + codegen binary semantic version + **output schema version** + **registry configuration**. Specify how tool workflows declare codegen as a typed input dependency (not Make prerequisite). Explicitly scope: codegen = CLI codegen only (generated entrypoints, test harnesses, registration tables); daggen (lowered DAG definitions) is **deferred** (`needs_daggen() = false`, see canonical model Section 17.5). **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 3). **Canonical reference**: `workflow-minimal-execution-model.md` Sections 17.1, 17.4-17.5. **Acceptance**: design proves `ensure-codegen` Make target is eliminated for planner-managed flows; **no Make target depends on `ensure-codegen` for planner-managed flows** (codegen freshness is a planner dependency edge, not a Make prerequisite); codegen freshness resolved via ledger lookup (no subprocess); miss reason for stale codegen is explicit; codegen unit is shared across all workflows that depend on generated artifacts; daggen deferral is documented with explicit rationale. | WF3-D, WF14-D | S |
+| **WF15-D** | **[DONE 2026-02-20]** **Codegen capability design spec**: codegen freshness as keyed unit, daggen deferred. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 3). | WF3-D, WF14-D | S |
 | **WF15** | **Codegen capability implementation**: implement codegen as a planner-managed keyed unit with ledger-backed freshness. Remove `ensure-codegen` as Make prerequisite for planner-managed targets. **Acceptance**: warm-state tool invocation does not spawn codegen subprocess; codegen staleness triggers re-run with typed miss reason; global ledger shares codegen freshness across `ci`, `gist`, `bootstrap`, etc.; **no planner-managed Make target has `ensure-codegen` as a prerequisite**; Makefile rendering no longer wires `ensure-codegen` dependency for planner-managed flows. | WF15-D, WF3 | M |
 
 ### Phase T-B: Gist Capability Stack (Base Workflow + Mode Augmentations)
@@ -505,7 +507,7 @@ modes compose on top. See design doc Section 15.4.
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **WF16-D** | **Gist base + mode capability design spec**: define the base gist workflow (branch context, credential resolution, gist upload) as shared capability units, then define each mode's content acquisition augmentation (snapshot: ls-files + file read; diff: git diff; recent: rev-list + per-commit diff + cloud credential override). For each unit: key inputs, invalidation signals, volatility, cross-workflow sharing (base units shared with dag-viz). Credential capability: local-dev path (env var hash), cloud path (WIF sub-chain with per-step TTL keying), and replacement of `GUNBC_CLOUD_CONFIG_REQUIRED=1` with explicit `runtime_mode` input port. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 4). **Acceptance**: base units are factored and reusable; each mode is base + mode-specific units; credential chain decomposes into independently-keyed sub-units; warm-state plan shows only volatile transport in execute set; base units shared with dag-viz family. | WF1-D, WF3-D, WF15-D | M |
+| **WF16-D** | **[DONE 2026-02-20]** **Gist base + mode capability design spec**: base workflow + mode-specific augmentations. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Section 4). | WF1-D, WF3-D, WF15-D | M |
 | **WF16** | **Base gist workflow + snapshot mode**: implement the shared base gist capability units (codegen, compilation, `git.current_branch`, `credential.resolve`, `github.gist_create`) and the snapshot augmentation (`git.ls_files`, `fs.read_files`, `render_snapshot`). `gunbc-workflow gist-snapshot` composes base + snapshot. **Acceptance**: warm no-op: base + snapshot capability units resolve from ledger, only transport executes; base units are reusable by diff/recent modes; parity test validates output matches current `gunbc-gist` behavior. | WF16-D, WF5, WF14, WF15 | M |
 | **WF17** | **Gist diff mode (augments base)**: implement `gunbc-workflow gist-diff` as base gist + diff-specific content acquisition (`git.diff`, `render_diff`). **Acceptance**: base units (branch context, credential, upload) shared with snapshot via global ledger — not re-implemented; key miss on `base_ref` or `HEAD` triggers minimal dirty closure (diff + render + transport only). | WF16, WF16-D | S |
 | **WF18** | **Gist recent mode (augments base + cloud credential)**: implement `gunbc-workflow gist-recent` as base gist + recent-specific content acquisition (`git.rev_list`, per-commit `git.diff`, `render_recent`) + credential cloud override (`runtime_mode: Cloud` triggers WIF sub-chain). **Acceptance**: base units shared with snapshot/diff; credential sub-chain (STS exchange, IAM impersonation, Secret Manager) independently keyed with TTL; warm no-op with valid TTL + no new commits: zero capability units except transport; `runtime_mode` is typed input, not ambient env probe. | WF16, WF16-D | M |
@@ -514,7 +516,7 @@ modes compose on top. See design doc Section 15.4.
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **WF19-D** | **Generator + remaining tool capability design spec**: decompose bootstrap, makegen, pragma, deps, dag-viz (3 modes), dag-snapshot into capability units. Focus on the filesystem write (content-upsert) capability: keying contract where generation inputs determine skip (not post-hoc content comparison). dag-viz shares git state + credential capabilities from WF16-D. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Sections 5-9). **Acceptance**: each tool has capability decomposition with keying contracts; content-upsert skip is a consequence of input keying, not a separate mechanism; shared capability units are identified and marked. | WF1-D, WF3-D, WF15-D | M |
+| **WF19-D** | **[DONE 2026-02-20]** **Generator + remaining tool capability design spec**: bootstrap/makegen/pragma/deps/dag-viz decomposed. **Design doc**: `docs/design/workflow/tool-workflow-design-pack.md` (Sections 5-9). | WF1-D, WF3-D, WF15-D | M |
 | **WF19** | **Generator workflow capability port (bootstrap/makegen/pragma)**: implement planner path with keyed generation + filesystem-upsert capabilities. **Acceptance**: warm no-op executes zero capability units; generation step skips when generation inputs (registry data, templates, config) are unchanged; filesystem write skips as consequence. | WF19-D, WF5, WF14, WF15 | M |
 | **WF20** | **Remaining tool capability port (deps/dag-viz/dag-snapshot)**: implement planner path for remaining tools. dag-viz modes reuse git state + credential capability units from gist family. **Acceptance**: warm no-op executes zero capability units; dag-viz credential resolution shared with gist via global ledger. | WF19-D, WF5, WF14, WF15 | M |
 
@@ -558,26 +560,26 @@ For every task in this sprint:
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **M7-D** | **Secret redaction design spec**: define secret capability boundary model, explicit plaintext extraction API, and enforcement points (formatting + lint guardrails) per `TODO/modeling.md` M7 checklist. | — | S |
-| **M7** | **Secret redaction by default**: implement approved `M7-D` model so secret-bearing values are redacted by default in all display/debug paths and plaintext extraction is transport-boundary-only. | M7-D | M |
-| **M8-D** | **`TypeOp::Meta` design spec**: define inert metadata payload model, migration plan from metadata-over-`Validate(Custom(...))`, and erasure-invariance test contract per `TODO/modeling.md` M8 checklist. | — | S |
-| **M8** | **Semantically inert metadata op**: implement approved `M8-D` model (`TypeOp::Meta`) and migrate system-model metadata/property encoding off validation nodes. | M8-D | M |
-| **M9-D** | **Typed dependency marker design spec**: define typed dependency identity/edges and migration from string marker conventions per `TODO/modeling.md` M9 checklist. | M8-D | S |
-| **M9** | **Typed dependency markers**: implement approved `M9-D` model and remove string-prefix dependency semantics from runtime/validator logic. | M8, M9-D | S |
-| **M10-D** | **Resource declaration + auto-wiring design spec**: define mandatory effectful-resource declaration rule, auto-wiring policy, and admission derivation model per `TODO/modeling.md` M10 checklist. | WF2-D | M |
-| **M10** | **Mandatory resource declarations + auto-wiring**: implement approved `M10-D` model and enforce fail-closed behavior for undeclared effectful I/O. | WF2, M10-D | L |
-| **M11-D** | **Strict dry-run poisoning design spec**: define strict/lenient dry-run semantics, poison/unset propagation, and fail-fast trace behavior per `TODO/modeling.md` M11 checklist. | M10-D | S |
-| **M11** | **Strict dry-run mode**: implement approved `M11-D` model and wire strict mode into CI/testgen/integration paths. | M10, M11-D | M |
-| **M15-D** | **Typed package-manager design spec**: define strict `PackageManagerId`, explicit selection policy, and compatibility boundary per `TODO/modeling.md` M15 checklist. | — | S |
-| **M15** | **Typed install planning**: implement approved `M15-D` model across installer and tool-upsert bridging with fail-closed unknown PM handling. | M15-D | M |
-| **M16-D** | **SystemModel/TransportBehavior unification design spec**: define shared invocation contract and parity-test model per `TODO/modeling.md` M16 checklist. | M8-D, R8, R10 | M |
-| **M16** | **SystemModel/TransportBehavior unification**: implement approved `M16-D` shared contract model and remove/guard duplicate spec surfaces. | M8, M9, M16-D | M |
-| **M17-D** | **Global flattening + context-free identity design spec**: define flatten-before-execute contract, `WorkIdentity` semantics independent of workflow node names, and cross-workflow dedup behavior per `TODO/modeling.md` M17 checklist. | WF3-D, WF4-D | M |
-| **M17** | **Global flattening + context-free identity**: implement approved `M17-D` model so equivalent work across `ci`/`test-all` is unified and executed once per equivalent key payload. | WF3, WF4, M17-D | L |
-| **M18-D** | **Single semantic authority/projection design spec**: define canonical model + generated/validated projection boundaries (Make/CLI/report) per `TODO/modeling.md` M18 checklist. | M17-D | M |
-| **M18** | **Projection-only surfaces + drift enforcement**: implement approved `M18-D` model so wrapper surfaces cannot introduce divergent dependency/effect semantics. | M17, M18-D | M |
-| **M19-D** | **Formal non-redundancy proof design spec**: define invariant suite + diagnostic model for at-most-once, minimal closure, and single-writer ordering per `TODO/modeling.md` M19 checklist. | M17-D, M18-D | M |
-| **M19** | **Formal non-redundancy proof harness**: implement approved `M19-D` invariants and CI gates over planner preflight + execution/ledger traces. | M17, M18, M19-D | M |
+| **M7-D** | **[DONE 2026-02-20]** **Secret redaction design spec**. | — | S |
+| **M7** | **[DONE 2026-02-20]** **Secret redaction by default**: transport-boundary plaintext extraction enforced. | M7-D | M |
+| **M8-D** | **[DONE 2026-02-20]** **`TypeOp::Meta` design spec**. | — | S |
+| **M8** | **[DONE 2026-02-20]** **Semantically inert metadata op**: `TypeOp::Meta` landed; system-model metadata migrated. | M8-D | M |
+| **M9-D** | **[DONE 2026-02-20]** **Typed dependency marker design spec**. | M8-D | S |
+| **M9** | **[DONE 2026-02-20]** **Typed dependency markers**: string-prefix dependency semantics removed. | M8, M9-D | S |
+| **M10-D** | **[DONE 2026-02-20]** **Resource declaration + auto-wiring design spec**. | WF2-D | M |
+| **M10** | **[DONE 2026-02-20]** **Mandatory resource declarations + auto-wiring**: fail-closed for undeclared effectful I/O. | WF2, M10-D | L |
+| **M11-D** | **[DONE 2026-02-20]** **Strict dry-run poisoning design spec**. | M10-D | S |
+| **M11** | **[DONE 2026-02-20]** **Strict dry-run mode**: strict mode wired into CI/testgen/integration paths. | M10, M11-D | M |
+| **M15-D** | **[DONE 2026-02-20]** **Typed package-manager design spec**. | — | S |
+| **M15** | **[DONE 2026-02-20]** **Typed install planning**: fail-closed unknown PM handling. | M15-D | M |
+| **M16-D** | **[DONE 2026-02-20]** **SystemModel/TransportBehavior unification design spec**. | M8-D, R8, R10 | M |
+| **M16** | **[DONE 2026-02-20]** **SystemModel/TransportBehavior unification**: shared invocation contract model. | M8, M9, M16-D | M |
+| **M17-D** | **[DONE 2026-02-20]** **Global flattening + context-free identity design spec**. | WF3-D, WF4-D | M |
+| **M17** | **[DONE 2026-02-20]** **Global flattening + context-free identity**: equivalent work across workflows unified. | WF3, WF4, M17-D | L |
+| **M18-D** | **[DONE 2026-02-20]** **Single semantic authority/projection design spec**. | M17-D | M |
+| **M18** | **[DONE 2026-02-20]** **Projection-only surfaces + drift enforcement**. | M17, M18-D | M |
+| **M19-D** | **[DONE 2026-02-20]** **Formal non-redundancy proof design spec**. | M17-D, M18-D | M |
+| **M19** | **[DONE 2026-02-20]** **Formal non-redundancy proof harness**: CI gates over planner preflight + execution/ledger traces. | M17, M18, M19-D | M |
 
 ---
 
@@ -610,23 +612,23 @@ protocol interface code. One `.dag` definition → all target languages.
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **SC1** | **`ServiceOperationSpec` in the IR**: define `ServiceOperationSpec` enum (Rest/Shell/File variants) with all fields needed by protocol interfaces (endpoint, method, path template, input/output field specs, body template, headers, auth, output parsing mode). Extend `ServiceCallMetadata` to carry the full spec. Extend `derive_service_call_metadata()` in daglang-lower to populate it from AST annotations and input/output fields. **Acceptance**: `daglang expand gist.dag` shows spec on prepare/parse nodes; unit tests pin spec fields for all 19 existing operations across all 7 service files; spec covers `@body_template` and `@headers` needed by gcp.STS and LLM services. | — | M |
-| **SC2** | **Generic protocol interpreters (Rust exec-runtime)**: implement `RestPrepareOp`, `RestParseOp`, `ShellPrepareOp`, `ShellParseOp` as generic `Executable` impls parameterized by spec. REST: URL interpolation, JSON body construction (default or `@body_template`), JSON pointer response extraction, base64 decode for Bytes, Secret wrapping. Shell: argv interpolation with conditionals, stdout parsing (Trim/SplitLines/SuccessStdoutStderr/ExitCodeBool). **Acceptance**: for every one of the 14 existing hand-written adapter structs in `resolve.rs`, a unit test proves identical output from the generic interpreter for identical inputs. | SC1 | M |
-| **SC3** | **Switch resolver + delete per-service Rust**: replace `resolve_service_transport()` with transport-class dispatch (~30 lines). Delete all 14 per-service adapter structs. Delete `core/ir/src/transport/gist.rs`, `GistScopeContract`, `GistScope`, `GITHUB_SECRET_ID`. Add `credential_intent_from_spec()` to derive credential intents from `@auth` + `@permissions` at runtime (one function, all services). Delete `GistScopeContract`, `LlmScopeContract`. **Acceptance**: `cargo test --workspace` passes; `make gist --dry-run`, `make bootstrap --dry-run`, `make build --dry-run` produce identical output to before; zero per-service Rust remains in `resolve.rs`. | SC2 | M |
+| **SC1** | **[DONE 2026-02-20]** **`ServiceOperationSpec` in the IR**: `ServiceOperationSpec` enum with Rest/Shell/File variants. `ServiceCallMetadata` carries full spec. | — | M |
+| **SC2** | **[DONE 2026-02-20]** **Generic protocol interpreters (Rust exec-runtime)**: `RestPrepareOp`, `RestParseOp`, `ShellPrepareOp`, `ShellParseOp` parameterized by spec. Parity tests against all 14 former hand-written adapters. | SC1 | M |
+| **SC3** | **[DONE 2026-02-20]** **Switch resolver + delete per-service Rust**: transport-class dispatch. All per-service adapter structs deleted. | SC2 | M |
 
 ### Phase SC-B: LLM Services + Multi-Language Emission
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **SC4** | **LLM provider service definitions**: write `dsl/services/llm/openai.dag` and `dsl/services/llm/anthropic.dag` as standard REST service definitions. Write `dsl/shared/llm.dag` for unified dispatch pattern (conditional branch per provider). Each provider is just a REST service with `@headers` for Anthropic. Message building is a pure `fn` that produces `Json`, not a transport concern. Delete LLM transport boilerplate from `core/ir/src/transport/llm/` (keep `ChatMessage` builder helpers if callers need them as pure fns). **Acceptance**: `gunbc review --provider anthropic --dry-run` uses DSL-defined service; LLM transport code in `core/ir/src/transport/llm/` reduced to domain-only pure functions. | SC3 | M |
-| **SC5** | **Multi-language service emission (Go)**: extend `lower_go.rs` to handle `ServiceOperationSpec` on prepare/parse nodes. Generate Go functions that call `net/http` for REST and `exec.Command` for Shell, parameterized by spec. **Acceptance**: `daglang compile --target go gist.dag` produces compilable Go code with HTTP client calls; `daglang compile --target go bootstrap.dag` produces Go code with exec calls; generated Go compiles (`go build`). | SC1 | M |
-| **SC6** | **Multi-language service emission (C + MIPS)**: extend `lower_c.rs` and `lower_mips.rs` to handle `ServiceOperationSpec`. C generates libcurl/posix calls, MIPS generates syscall sequences. **Acceptance**: `daglang compile --target c gist.dag` produces compilable C; `daglang compile --target mips gist.dag` produces valid MIPS assembly; structural tests verify correct URL construction and response parsing in generated code. | SC1, SC5 | M |
+| **SC4** | **[DONE 2026-02-20]** **LLM provider service definitions**: `openai.dag`, `anthropic.dag` as standard REST services. LLM transport boilerplate deleted. | SC3 | M |
+| **SC5** | **[DONE 2026-02-20]** **Multi-language service emission (Go)**: `ServiceOperationSpec` on prepare/parse nodes generates native Go `net/http` + `exec.Command`. | SC1 | M |
+| **SC6** | **[DONE 2026-02-20]** **Multi-language service emission (C + MIPS)**: C generates libcurl/posix; MIPS generates syscall sequences. | SC1, SC5 | M |
 
 ### Phase SC-C: Validation + New Service Proof
 
 | ID | Task | Deps | Size |
 |----|------|------|------|
-| **SC7** | **New service smoke test (all languages)**: define `dsl/services/test/httpbin.dag` as a test-only REST service (`POST /anything`). Wire `dsl/tools/httpbin_test.dag`. Verify: `make httpbin-test --dry-run` works (Rust); `daglang compile --target go httpbin_test.dag` produces compilable Go; zero service-specific code in any language. This is the proof that adding a service = adding DSL. **Acceptance**: test service + tool defined in `.dag` only; all 4 emission targets (Rust, Go, C, MIPS) produce valid output; no hand-written service-specific code exists in any language. | SC3, SC5, SC6 | S |
+| **SC7** | **[DONE 2026-02-20]** **New service smoke test (all languages)**: `httpbin.dag` test service works in all 4 emission targets with zero hand-written code. | SC3, SC5, SC6 | S |
 
 ### Lane Summary
 
@@ -636,83 +638,129 @@ generic interpreters, and full resolver cutover. SC4 (LLM) can overlap with SC5-
 
 ---
 
+## Sprint 8: Issue-Centric SDLC Pipeline
+
+**Goal**: make the repo feel alive — post an issue with an idea, and the infra picks it up,
+generates a design, reviews it, tracks implementation, and closes it when done.
+
+**Design reference**: `dsl/pipelines/sdlc.dag`, `dsl/services/github/issues.dag`,
+`dsl/tools/design.dag`, SDLC types in `dsl/std/types.dag`.
+
+### Design Decision (Resolved 2026-02-20): Provider-Agnostic Issue Lifecycle
+
+The pipeline works against abstract types (`TrackedIssue`, `DesignOutput`,
+`IssueLifecycleStage`, etc.) defined in `std/types.dag`. The concrete issue backend
+(GitHub Issues, Linear, local blob store) is a transport swap — one import line change.
+This mirrors the LLM pattern: `ChatRequest`/`ChatResponse` are abstract, `openai.dag`
+and `anthropic.dag` are concrete bindings.
+
+### Design Decision (Resolved 2026-02-20): Issues as State Machine
+
+GitHub issue labels encode lifecycle stages:
+`idea → design → design-review → accepted → implementing → code-review → testing → done`
+
+Each stage transition:
+1. Reads current issue state
+2. Executes stage logic (LLM call, CI run, etc.)
+3. Posts artifact as issue comment
+4. Updates labels to next stage
+
+### Phase W-A: Credentials + CLI (prerequisite — from Sprint 3)
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **W1** | **`gunbc review` CLI binary**: binary entry point, credential resolution from env/policy, Real mode execution. Input: git diff. Output: structured findings JSON. | — | M |
+| **W2** | **Credential smoke test**: run `gunbc review` locally with `ANTHROPIC_API_KEY`, verify full chain. | W1 | S |
+| **W3** | **Multi-provider support**: verify `--provider openai` and `--provider anthropic` both work. | W2 | S |
+
+### Phase W-B: Review Pipeline (from Sprint 3)
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **W4** | **Abstract review DAG**: 4-dimension model (coherence, quality, requirements, aspirational). Dimensions opt-in via criteria. Depth controls cost/quality. | W3 | M |
+| **W5** | **Coding review profile**: `ReviewProfile` for code — loads criteria from `AGENT.md` + `clippy.toml` + GitHub issue body. `gunbc review --pr <number>`. | W4 | M |
+| **W6** | **CI status as review context**: `gunbc review --pr <number>` queries CI via `gh run list`. Inject failure context. Support `--depth XS|S|M|L|XL`. | W5 | S |
+
+### Phase W-C: SDLC Pipeline
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **W9** | **GitHub Issues transport**: `core/ir/src/transport/github/issues.rs` (request/response types) + `lib/ticket-ops/` (pure prepare/parse ops following `LlmOps` pattern). Provider-agnostic `TrackedIssue` adapter converts GitHub responses to abstract types. **Acceptance**: `Issues.Create`, `Get`, `Update`, `AddComment`, `SetLabels`, `List` work via generic REST interpreter; round-trip tests against mock responses. | W1 | M |
+| **W10** | **DesignOps**: `lib/design-ops/` with `PrepareDesignPrompt` / `ParseDesignResponse`. System prompt produces structured markdown. Design review reuses W4's review pipeline with design-specific `ReviewProfile`. **Acceptance**: `generate_design(idea)` produces valid `DesignOutput`; `review_design(design)` produces `DesignReviewOutput` with findings. | W3, W4 | M |
+| **W11** | **SDLC pipeline resolver**: wire `pipelines.sdlc` module into `resolve.rs`. Connect `issues.dag` service ops to generic REST interpreter. **Acceptance**: `gunbc sdlc --issue 42 --dry-run` resolves all ops; full stage chain works with mocked transport. | W9, W10 | M |
+| **W12** | **`gunbc sdlc` CLI**: entrypoint that runs the SDLC pipeline for a given issue number. `gunbc sdlc --issue 42` fetches issue, runs stages based on current label, posts artifacts. **Acceptance**: end-to-end test with real GitHub issue + LLM call. | W11 | M |
+| **W13** | **Approval gates in workflow planner**: extend `WorkflowOp` with `AwaitApproval`; extend ledger with approval state; extend admission control. Human override via label change or comment command. **Acceptance**: pipeline pauses at approval points; manual label change resumes; ledger records approval events. | W12, WF4 | L |
+
+### Phase W-D: Orchestration + Monitoring
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **W7** | **`gunbc pipeline` command**: orchestrates full daily flow for a branch/PR: fetch CI status → run 4-dimension review → output summary. | W6 | M |
+| **W8** | **GitHub issue integration**: `gunbc pipeline --issue <number>` reads issue description as requirements input. Validates implementation matches intent. | W7 | S |
+| **W14** | **Pipeline metrics + monitoring**: record stage durations, LLM costs, approval latency. Report ops extended with time-series. **Acceptance**: `gunbc sdlc --report` shows per-stage breakdown. | W12 | M |
+
+### Daglang CLI Hardening (from external review feedback)
+
+| ID | Task | Deps | Size |
+|----|------|------|------|
+| **DL1** | **Fix `normalize_path_components` root-clamping**: `ParentDir` past root should clamp (not empty). Leading `..` on relative paths should be preserved. | — | S |
+| **DL2** | **Normalize diagnostics at Parse stop**: `run_pipeline()` normalizes at Build stop but not Parse — add normalization for deterministic output. | — | S |
+| **DL3** | **Remove unused pipeline DAG/toposort**: `run_pipeline()` builds a DAG and computes topo-order but ignores both. Remove or use. | — | S |
+| **DL4** | **Unify `.dag` directory behavior or explicit error**: compile mode treats `.dag` dirs as files; check mode walks them. Either unify or emit clear error. | — | S |
+
+---
+
 ## Parallelization Guide
 
 ```
-SPRINT 1 ├─ DONE                   (2984/2984 passing, 0 failures)
+SPRINT 1 ├─ DONE
          │
-    ─────┤ (Sprint 2: review fixes + polish)
+SPRINT 2 ├─ DONE (except R2: wildcard resources — STARTED)
+         │  R3-R12, P6, P12 all complete.
          │
-         ├─ R2                     (review finding: wildcard resources)
-         ├─ R3→(R4, R5)→R6         (modeled backend correctness hardening)
-         ├─ R7→R8→R10              (typed GCP/service-model semantics)
-         ├─ R9→R12                 (typed CLI boundary + semantic mock seeding)
-         ├─ R11                    (strict platform parsing boundaries)
-         ├─ P12                    (resolve_infrastructure typed-lowering migration)
-         │
-    ─────┤ (Sprint 3: dev pipeline — real workflow)
+    ─────┤ (Sprint 3/8: dev pipeline + SDLC — NEXT ACTIVE WORK)
          │
          ├─ W1→W2→W3              (credentials + CLI binary + multi-provider)
          ├─ W4→W5→W6              (abstract review model → PR mode → CI context)
-         ├─ W7→W8                  (orchestration + issue integration)
+         ├─ W9, W10               (GitHub Issues transport + DesignOps — parallelize with W4)
+         ├─ W7→W8                 (orchestration + issue integration)
+         ├─ W11→W12→W13           (SDLC pipeline resolver → CLI → approval gates)
+         ├─ W14                   (pipeline metrics + monitoring)
+         ├─ DL1, DL2, DL3, DL4   (daglang CLI hardening — independent, any time)
          │
-    ─────┤ (Sprint 4: cleanup informed by real usage)
+SPRINT 4 ├─ DONE (P6 complete)
          │
-         └─ P6                     (per-module domain ops, L)
+SPRINT 5 ├─ DONE (WF1-D through WF5 complete)
          │
-    ─────┤ (Sprint 5: minimal workflow execution model)
+    ─────┤ (Sprint 5b: tool workflow minimization — OPEN, unblocked)
          │
-         └─ WF1-D→(WF2-D,WF3-D)→WF4-D→WF1→WF2→WF3→WF4→WF5→(WF6,WF7)→WF8→WF9
+         ├─ Lane F: WF14→WF15
+         │                     (universal: compilation + codegen — designs done)
+         ├─ Lane G: WF16→(WF17,WF18)
+         │                     (gist: base workflow → diff + recent — designs done)
+         ├─ Lane H: WF19→WF20→WF21→WF22
+         │                     (remaining: FS write + generators — designs done)
+         ├─ Lane C: WF6→WF7→WF8→WF9
+                               (workflow cutover/perf — unblocked by WF1-WF5)
          │
-    ─────┤ (Sprint 5b: tool workflow minimization — gist + all targets)
+SPRINT 6 ├─ DONE (M7-M19 all complete)
          │
-         ├─ Lane F: WF14-D→WF14→WF15-D→WF15
-         │                                 (universal: compilation + codegen capabilities)
-         ├─ Lane G: WF16-D→WF16→(WF17,WF18)
-         │                                 (gist: base workflow → diff + recent augment)
-         └─ Lane H: WF19-D→WF19→WF20→WF21→WF22
-                                           (remaining: FS write + generators + cutover)
-         │
-    ─────┤ (Sprint 7: e2e service codegen from DSL)
-         │
-         └─ Lane I: SC1→SC2→SC3→(SC4,SC5)→SC6→SC7
-                                           (protocol interfaces → resolver cutover → LLM + multi-lang → proof)
-         │
-    ─────┤ (Sprint 6: modeling hardening, design-first)
-         │
-         ├─ M7-D→M7                (secret redaction by construction)
-         ├─ M8-D→M8→M9-D→M9        (metadata + dependency typing)
-         ├─ M10-D→M10→M11-D→M11    (resource declarations + strict dry-run)
-         ├─ M15-D→M15              (typed package-manager modeling)
-         ├─ M16-D→M16              (SystemModel/TransportBehavior unification)
-         └─ M17-D→M17→M18-D→M18→M19-D→M19
-                                   (global flattening + anti-duplicate-modeling proofs)
+SPRINT 7 ├─ DONE (SC1-SC7 all complete)
 ```
 
-**Sprint 2**: R2 + R3/R4/R5/R6 backend modeling hardening + R7/R8/R9/R10/R11/R12
-external-system modeling hardening + remaining integration fixes.
-**Sprint 3**: W1 (`gunbc review` CLI) is the critical path — first real end-to-end
-execution. W4 (abstract review DAG with 4 dimensions) is the design centerpiece.
-By end of sprint: `gunbc pipeline --pr 123` runs coherence + quality + requirements
-+ aspirational review with CI context, outputs must-fix / defer / accept findings.
-**Sprint 4**: P6 informed by which deferred callables real execution exercises.
-**Sprint 5**: WF track now gates implementation behind reviewed DAG-first design
-artifacts (`WF1-D`..`WF4-D`), then lands typed minimum units + exclusive claims +
-downstream coordination contracts before porting `ci`/`test-all`.
-**Sprint 5b**: Extends Sprint 5 planner/ledger to all tool workflows via
-capability-first minimization. Lane F makes the two universal capabilities
-(compilation + codegen) keyed and shared across all workflows. Lane G minimizes
-the gist capability stack (credential chain with TTL sub-keying, git state,
-network transport). Lane H minimizes remaining capabilities (FS write/upsert
-for generator workflows) and cuts over all tool targets to planner path with
-capability-level verification instrumentation.
-**Sprint 6**: M track is now promoted with explicit paired design/implementation
-tasks (`M7-D`..`M19-D`) and checklist-based review gates from `TODO/modeling.md`.
-**Sprint 7**: Bottom-up protocol interface modeling. Lane I implements 3 generic
-protocol interpreters (REST, Shell, File) parameterized by `ServiceOperationSpec` from
-the IR. SC1 extracts specs from `.dag` AST; SC2 builds generic interpreters; SC3 cuts
-over the resolver and deletes all per-service Rust. SC4 models LLM providers as standard
-REST services in DSL. SC5-SC6 extend multi-language emission (Go, C, MIPS) to generate
-native service code from specs. SC7 proves a new service works in all targets with zero
-hand-written code.
+### What's Next (Priority Order)
+
+**Immediate (Sprint 3/8 — dev pipeline + SDLC)**:
+W1 (`gunbc review` CLI) is the critical path — first real end-to-end execution.
+W4 (abstract review DAG with 4 dimensions) is the design centerpiece. W9/W10
+(GitHub Issues transport + DesignOps) can parallelize with W4. By end of sprint:
+`gunbc sdlc --issue 42` runs the full lifecycle, `gunbc pipeline --pr 123` runs
+4-dimension review with CI context. DL1-DL4 (daglang CLI hardening) are independent
+quick fixes from external review feedback.
+
+**Next (Sprint 5b — tool workflow minimization)**:
+All design docs are done (WF14-D through WF19-D). Lane F (WF14→WF15: compilation +
+codegen capabilities) is the critical path — unlocks Lanes G and H. Lane C
+(WF6→WF7→WF8→WF9: workflow cutover) is unblocked by completed WF1-WF5.
+
 **Backlog**: XL features and migration work in `backlog.md`.
