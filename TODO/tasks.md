@@ -761,8 +761,10 @@ multiple workers with minimal overlap.
 
 ### Priority
 
-1. **Critical path now**: `W1` and `WF14` (they unlock the most downstream work).
-2. In parallel: `WF6`/`WF7`, `DL1`-`DL4`.
+1. **Critical path now**: `W1` (verify existing binary works e2e) and `WF14` (they unlock the most downstream work).
+2. In parallel: `DL1`-`DL4`.
 3. Keep `W*` and `WF*` in separate owner lanes to avoid cross-track churn.
+
+**Next-steps analysis**: [`next-steps.md`](next-steps.md) — gap analysis, execution plan, risk assessment.
 
 **Backlog**: XL features and migration work in `backlog.md`.
