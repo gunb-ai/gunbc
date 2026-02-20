@@ -620,16 +620,14 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     // =========================================================================
     // Build-all workflow units
     // =========================================================================
-    for spec in [ProcessUnitSpec::new(
+    registry.register(ProcessUnitSpec::new(
         build_all_ref("build_all.build"),
         1,
         vec![
             UnitClaim::write("file:target"),
             UnitClaim::read("tool:cargo"),
         ],
-    )] {
-        registry.register(spec);
-    }
+    ));
 
     registry
 }
