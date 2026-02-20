@@ -98,7 +98,9 @@ mod tests {
 
     use super::*;
     use crate::workflow::process_registry::default_process_unit_registry;
-    use crate::workflow::spec_builders::{ci_workflow_spec, test_all_workflow_spec};
+    use crate::workflow::spec_builders::{
+        ci_workflow_spec, gist_snapshot_workflow_spec, test_all_workflow_spec,
+    };
 
     fn temp_root() -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
@@ -137,6 +139,51 @@ mod tests {
             .node_refs
             .iter()
             .any(|reference| reference.workflow_id == WorkflowId::new("test-all")));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// WF14/WF15: compilation and codegen capabilities shared between
+    /// gist-snapshot and CI workflows via global dedup.
+    #[test]
+    fn universal_capabilities_deduped_across_ci_and_gist() {
+        let root = temp_root();
+        let specs = vec![
+            ci_workflow_spec().expect("ci spec"),
+            gist_snapshot_workflow_spec().expect("gist-snapshot spec"),
+        ];
+        let registry = default_process_unit_registry();
+        let global =
+            plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
+                .expect("global plan");
+
+        // compilation_ensure should appear as a shared vertex.
+        let compilation = global
+            .vertices
+            .iter()
+            .find(|vertex| vertex.work_id.unit_id == NodeId::from("compilation_ensure"))
+            .expect("expected canonical compilation_ensure vertex");
+        assert!(
+            compilation
+                .node_refs
+                .iter()
+                .any(|r| r.workflow_id == WorkflowId::new("gist-snapshot")),
+            "compilation_ensure should reference gist-snapshot workflow"
+        );
+
+        // codegen_ensure should appear as a shared vertex.
+        let codegen_ensure = global
+            .vertices
+            .iter()
+            .find(|vertex| vertex.work_id.unit_id == NodeId::from("codegen_ensure"))
+            .expect("expected canonical codegen_ensure vertex");
+        assert!(
+            codegen_ensure
+                .node_refs
+                .iter()
+                .any(|r| r.workflow_id == WorkflowId::new("gist-snapshot")),
+            "codegen_ensure should reference gist-snapshot workflow"
+        );
+
         let _ = std::fs::remove_dir_all(root);
     }
 }

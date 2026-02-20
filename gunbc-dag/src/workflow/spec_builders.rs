@@ -2,6 +2,9 @@
 
 use gunbc_ir::{Dag, Edge, Node, Port};
 
+use super::capabilities::{
+    CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID,
+};
 use super::process_registry::{
     claim_handle_type_id, default_process_unit_registry, ProcessUnitRef, ProcessUnitRegistry,
 };
@@ -295,6 +298,112 @@ pub fn test_all_workflow_spec_with_registry(
 // =============================================================================
 // WF19: Generator workflow spec builders (bootstrap/makegen/pragma)
 // =============================================================================
+
+/// Build gist-snapshot workflow spec using universal capability units.
+pub fn gist_snapshot_workflow_spec() -> Result<WorkflowSpec, String> {
+    gist_snapshot_workflow_spec_with_registry(&default_process_unit_registry())
+}
+
+/// Build gist-snapshot workflow spec against an explicit process registry.
+pub fn gist_snapshot_workflow_spec_with_registry(
+    registry: &ProcessUnitRegistry,
+) -> Result<WorkflowSpec, String> {
+    let mut dag = Dag::new();
+
+    dag.add_node(invoke_node(
+        "gist.compilation_ensure",
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
+        registry,
+    )?);
+    dag.add_node(invoke_node(
+        "gist.codegen_ensure",
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
+        registry,
+    )?);
+    dag.add_node(Node::opaque(
+        "gist.snapshot",
+        required_input_contract(),
+        required_output_contract(),
+        WorkflowUnit::new(WorkflowOp::Aggregate(super::schema::AggregateSpec::new(
+            "gist.snapshot",
+        ))),
+    ));
+    dag.add_node(report_node("gist.report"));
+
+    dag.add_edge(Edge::control(
+        "gist.compilation_ensure",
+        "commit",
+        "gist.codegen_ensure",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "gist.codegen_ensure",
+        "commit",
+        "gist.snapshot",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "gist.snapshot",
+        "commit",
+        "gist.report",
+        "after",
+    ));
+
+    Ok(WorkflowSpec::new("gist-snapshot", dag, 1))
+}
+
+/// Build gist-diff workflow spec using universal capability units.
+pub fn gist_diff_workflow_spec() -> Result<WorkflowSpec, String> {
+    gist_diff_workflow_spec_with_registry(&default_process_unit_registry())
+}
+
+/// Build gist-diff workflow spec against an explicit process registry.
+pub fn gist_diff_workflow_spec_with_registry(
+    registry: &ProcessUnitRegistry,
+) -> Result<WorkflowSpec, String> {
+    let mut dag = Dag::new();
+
+    dag.add_node(invoke_node(
+        "gist_diff.compilation_ensure",
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
+        registry,
+    )?);
+    dag.add_node(invoke_node(
+        "gist_diff.codegen_ensure",
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
+        registry,
+    )?);
+    dag.add_node(Node::opaque(
+        "gist_diff.diff",
+        required_input_contract(),
+        required_output_contract(),
+        WorkflowUnit::new(WorkflowOp::Aggregate(super::schema::AggregateSpec::new(
+            "gist_diff.diff",
+        ))),
+    ));
+    dag.add_node(report_node("gist_diff.report"));
+
+    dag.add_edge(Edge::control(
+        "gist_diff.compilation_ensure",
+        "commit",
+        "gist_diff.codegen_ensure",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "gist_diff.codegen_ensure",
+        "commit",
+        "gist_diff.diff",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "gist_diff.diff",
+        "commit",
+        "gist_diff.report",
+        "after",
+    ));
+
+    Ok(WorkflowSpec::new("gist-diff", dag, 1))
+}
 
 /// Build WF19 bootstrap workflow spec.
 ///
@@ -1046,6 +1155,8 @@ pub fn dag_snapshot_workflow_spec_with_registry(
 
 /// All available tool workflow names for CLI dispatch.
 pub const TOOL_WORKFLOW_NAMES: &[&str] = &[
+    "gist-snapshot",
+    "gist-diff",
     "bootstrap",
     "makegen",
     "pragma",
@@ -1057,6 +1168,8 @@ pub const TOOL_WORKFLOW_NAMES: &[&str] = &[
 /// Build a tool workflow spec by name.
 pub fn tool_workflow_spec(name: &str) -> Result<WorkflowSpec, String> {
     match name {
+        "gist-snapshot" | "gist_snapshot" => gist_snapshot_workflow_spec(),
+        "gist-diff" | "gist_diff" => gist_diff_workflow_spec(),
         "bootstrap" => bootstrap_workflow_spec(),
         "makegen" => makegen_workflow_spec(),
         "pragma" => pragma_workflow_spec(),
@@ -1096,6 +1209,23 @@ mod tests {
                 node.id.0
             );
         }
+    }
+
+    #[test]
+    fn gist_snapshot_workflow_builder_is_deterministic() {
+        let a = gist_snapshot_workflow_spec().expect("gist-snapshot spec");
+        let b = gist_snapshot_workflow_spec().expect("gist-snapshot spec");
+        assert_eq!(
+            a.dag.to_ascii("gist-snapshot"),
+            b.dag.to_ascii("gist-snapshot")
+        );
+    }
+
+    #[test]
+    fn gist_diff_workflow_builder_is_deterministic() {
+        let a = gist_diff_workflow_spec().expect("gist-diff spec");
+        let b = gist_diff_workflow_spec().expect("gist-diff spec");
+        assert_eq!(a.dag.to_ascii("gist-diff"), b.dag.to_ascii("gist-diff"));
     }
 
     // WF19 tests

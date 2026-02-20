@@ -5,6 +5,10 @@ use std::collections::BTreeMap;
 use gunbc_ir::{AccessMode, NodeId};
 use serde::{Deserialize, Serialize};
 
+use super::capabilities::{
+    CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID,
+};
+
 /// Canonical process identifier.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ProcessId(pub String);
@@ -179,6 +183,14 @@ fn dag_snapshot_ref(unit: &str) -> ProcessUnitRef {
     ProcessUnitRef::new("dag_snapshot", unit)
 }
 
+fn compilation_ref() -> ProcessUnitRef {
+    ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT)
+}
+
+fn codegen_ref() -> ProcessUnitRef {
+    ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT)
+}
+
 /// Universal capability claims shared across all tool workflows.
 fn compilation_ensure_claims() -> Vec<UnitClaim> {
     vec![
@@ -195,6 +207,14 @@ fn codegen_ensure_claims() -> Vec<UnitClaim> {
 /// Default registry for WF1/WF2 planner bootstrap.
 pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     let mut registry = ProcessUnitRegistry::new();
+
+    // Canonical universal capabilities for cross-workflow reuse.
+    for spec in [
+        ProcessUnitSpec::new(compilation_ref(), 1, compilation_ensure_claims()),
+        ProcessUnitSpec::new(codegen_ref(), 1, codegen_ensure_claims()),
+    ] {
+        registry.register(spec);
+    }
 
     // CI workflow units
     for spec in [
@@ -678,6 +698,13 @@ mod tests {
             claim_handle_type_id(&ClaimId::new("ledger:workflow")),
             "WorkflowLedgerHandle"
         );
+    }
+
+    #[test]
+    fn default_registry_contains_canonical_capability_units() {
+        let registry = default_process_unit_registry();
+        assert!(registry.contains(&compilation_ref()));
+        assert!(registry.contains(&codegen_ref()));
     }
 
     #[test]

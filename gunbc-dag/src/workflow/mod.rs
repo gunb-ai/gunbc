@@ -1,6 +1,7 @@
 //! Workflow planner core modules (WF1+).
 
 pub mod admission;
+pub mod capabilities;
 pub mod coordination;
 pub mod errors;
 pub mod executor;
@@ -19,6 +20,10 @@ pub mod unit_commands;
 pub use admission::{
     validate_conflicting_claims, validate_effectful_claim_declarations, validate_required_claims,
     validate_workflow_admission,
+};
+pub use capabilities::{
+    codegen_key, compilation_key, CodegenMissReason, CompilationMissReason, CompilationPhase,
+    CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID,
 };
 pub use coordination::{coordination_status, BlockedReason, CoordinationStatus};
 pub use errors::WorkflowAdmissionError;
@@ -63,6 +68,8 @@ pub use spec_builders::{
     ci_workflow_spec_with_registry, dag_snapshot_workflow_spec,
     dag_snapshot_workflow_spec_with_registry, dag_viz_workflow_spec,
     dag_viz_workflow_spec_with_registry, deps_workflow_spec, deps_workflow_spec_with_registry,
+    gist_diff_workflow_spec, gist_diff_workflow_spec_with_registry, gist_snapshot_workflow_spec,
+    gist_snapshot_workflow_spec_with_registry,
     makegen_workflow_spec, makegen_workflow_spec_with_registry, pragma_workflow_spec,
     pragma_workflow_spec_with_registry, test_all_workflow_spec,
     test_all_workflow_spec_with_registry, tool_workflow_spec, TOOL_WORKFLOW_NAMES,

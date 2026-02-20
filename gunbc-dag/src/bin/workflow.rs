@@ -1,7 +1,7 @@
 //! gunbc-workflow planner + executor entrypoint (WF5/WF6/WF7/WF9).
 //!
 //! Modes:
-//! - `gunbc-workflow --plan <ci|test-all>`: Plan only (WF5 explainability).
+//! - `gunbc-workflow --plan <workflow>`: Plan only (WF5 explainability).
 //! - `gunbc-workflow ci`: Execute CI workflow via planner (WF6).
 //! - `gunbc-workflow test-all`: Execute test-all workflow via planner (WF7).
 //! - `gunbc-workflow ci --dry-run`: Dry-run execution (no shell commands).
@@ -167,7 +167,7 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
                 i += 1;
                 let value = argv
                     .get(i)
-                    .ok_or_else(|| "--plan requires <ci|test-all>".to_string())?;
+                    .ok_or_else(|| "--plan requires <workflow>".to_string())?;
                 workflow = Some(value.clone());
             }
             "--workspace-root" => {
@@ -631,6 +631,7 @@ mod tests {
             blocked: BTreeMap::new(),
             ready: vec![gunbc_ir::NodeId::from("ci.lint_upsert")],
             critical_path: vec![gunbc_ir::NodeId::from("ci.lint_upsert")],
+            capability_status: BTreeMap::new(),
         };
         let a = render_plan_output("ci", &explain, OutputFormat::Text);
         let b = render_plan_output("ci", &explain, OutputFormat::Text);
@@ -649,6 +650,7 @@ mod tests {
             blocked: BTreeMap::new(),
             ready: vec![gunbc_ir::NodeId::from("ci.lint_upsert")],
             critical_path: vec![gunbc_ir::NodeId::from("ci.lint_upsert")],
+            capability_status: BTreeMap::new(),
         };
         let a = render_plan_output("ci", &explain, OutputFormat::Json);
         let b = render_plan_output("ci", &explain, OutputFormat::Json);
