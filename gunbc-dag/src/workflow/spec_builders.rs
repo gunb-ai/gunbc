@@ -556,12 +556,12 @@ pub fn bootstrap_workflow_spec_with_registry(
     // Universal capabilities
     dag.add_node(invoke_node(
         "bootstrap.compilation_ensure",
-        ProcessUnitRef::new("bootstrap", "bootstrap.compilation_ensure"),
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
         registry,
     )?);
     dag.add_node(invoke_node(
         "bootstrap.codegen_ensure",
-        ProcessUnitRef::new("bootstrap", "bootstrap.codegen_ensure"),
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
         registry,
     )?);
 
@@ -672,12 +672,12 @@ pub fn makegen_workflow_spec_with_registry(
 
     dag.add_node(invoke_node(
         "makegen.compilation_ensure",
-        ProcessUnitRef::new("makegen", "makegen.compilation_ensure"),
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
         registry,
     )?);
     dag.add_node(invoke_node(
         "makegen.codegen_ensure",
-        ProcessUnitRef::new("makegen", "makegen.codegen_ensure"),
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
         registry,
     )?);
     dag.add_node(invoke_node(
@@ -753,12 +753,12 @@ pub fn pragma_workflow_spec_with_registry(
 
     dag.add_node(invoke_node(
         "pragma.compilation_ensure",
-        ProcessUnitRef::new("pragma", "pragma.compilation_ensure"),
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
         registry,
     )?);
     dag.add_node(invoke_node(
         "pragma.codegen_ensure",
-        ProcessUnitRef::new("pragma", "pragma.codegen_ensure"),
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
         registry,
     )?);
 
@@ -891,12 +891,12 @@ pub fn deps_workflow_spec_with_registry(
     // Universal capabilities
     dag.add_node(invoke_node(
         "deps.compilation_ensure",
-        ProcessUnitRef::new("deps", "deps.compilation_ensure"),
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
         registry,
     )?);
     dag.add_node(invoke_node(
         "deps.codegen_ensure",
-        ProcessUnitRef::new("deps", "deps.codegen_ensure"),
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
         registry,
     )?);
 
@@ -1033,12 +1033,12 @@ pub fn dag_viz_workflow_spec_with_registry(
 
     dag.add_node(invoke_node(
         "dag_viz.compilation_ensure",
-        ProcessUnitRef::new("dag_viz", "dag_viz.compilation_ensure"),
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
         registry,
     )?);
     dag.add_node(invoke_node(
         "dag_viz.codegen_ensure",
-        ProcessUnitRef::new("dag_viz", "dag_viz.codegen_ensure"),
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
         registry,
     )?);
 
@@ -1163,12 +1163,12 @@ pub fn dag_snapshot_workflow_spec_with_registry(
 
     dag.add_node(invoke_node(
         "dag_snapshot.compilation_ensure",
-        ProcessUnitRef::new("dag_snapshot", "dag_snapshot.compilation_ensure"),
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
         registry,
     )?);
     dag.add_node(invoke_node(
         "dag_snapshot.codegen_ensure",
-        ProcessUnitRef::new("dag_snapshot", "dag_snapshot.codegen_ensure"),
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
         registry,
     )?);
 
@@ -1283,33 +1283,188 @@ pub fn dag_snapshot_workflow_spec_with_registry(
     Ok(WorkflowSpec::new("dag-snapshot", dag, 1))
 }
 
-/// All available tool workflow names for CLI dispatch.
-pub const TOOL_WORKFLOW_NAMES: &[&str] = &[
-    "gist-snapshot",
-    "gist-diff",
-    "gist-recent",
-    "bootstrap",
-    "makegen",
-    "pragma",
-    "deps",
-    "dag-viz",
-    "dag-snapshot",
+/// Build "gist" workflow as an alias to gist-snapshot.
+pub fn gist_workflow_spec() -> Result<WorkflowSpec, String> {
+    gist_workflow_spec_with_registry(&default_process_unit_registry())
+}
+
+/// Build "gist" workflow against an explicit registry.
+pub fn gist_workflow_spec_with_registry(
+    registry: &ProcessUnitRegistry,
+) -> Result<WorkflowSpec, String> {
+    let mut spec = gist_snapshot_workflow_spec_with_registry(registry)?;
+    spec.id = "gist".into();
+    Ok(spec)
+}
+
+/// Build "dag-viz-diff" workflow as a mode alias.
+pub fn dag_viz_diff_workflow_spec() -> Result<WorkflowSpec, String> {
+    dag_viz_diff_workflow_spec_with_registry(&default_process_unit_registry())
+}
+
+/// Build "dag-viz-diff" workflow against an explicit registry.
+pub fn dag_viz_diff_workflow_spec_with_registry(
+    registry: &ProcessUnitRegistry,
+) -> Result<WorkflowSpec, String> {
+    let mut spec = dag_viz_workflow_spec_with_registry(registry)?;
+    spec.id = "dag-viz-diff".into();
+    Ok(spec)
+}
+
+/// Build "dag-viz-recent" workflow as a mode alias.
+pub fn dag_viz_recent_workflow_spec() -> Result<WorkflowSpec, String> {
+    dag_viz_recent_workflow_spec_with_registry(&default_process_unit_registry())
+}
+
+/// Build "dag-viz-recent" workflow against an explicit registry.
+pub fn dag_viz_recent_workflow_spec_with_registry(
+    registry: &ProcessUnitRegistry,
+) -> Result<WorkflowSpec, String> {
+    let mut spec = dag_viz_workflow_spec_with_registry(registry)?;
+    spec.id = "dag-viz-recent".into();
+    Ok(spec)
+}
+
+/// Build "build-all" workflow spec.
+pub fn build_all_workflow_spec() -> Result<WorkflowSpec, String> {
+    build_all_workflow_spec_with_registry(&default_process_unit_registry())
+}
+
+/// Build "build-all" workflow spec against an explicit registry.
+pub fn build_all_workflow_spec_with_registry(
+    registry: &ProcessUnitRegistry,
+) -> Result<WorkflowSpec, String> {
+    let mut dag = Dag::new();
+
+    dag.add_node(invoke_node(
+        "build_all.compilation_ensure",
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
+        registry,
+    )?);
+    dag.add_node(invoke_node(
+        "build_all.codegen_ensure",
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
+        registry,
+    )?);
+    dag.add_node(invoke_node(
+        "build_all.build",
+        ProcessUnitRef::new("build_all", "build_all.build"),
+        registry,
+    )?);
+    dag.add_node(report_node("build_all.report"));
+
+    dag.add_edge(Edge::control(
+        "build_all.compilation_ensure",
+        "commit",
+        "build_all.codegen_ensure",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "build_all.codegen_ensure",
+        "commit",
+        "build_all.build",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "build_all.build",
+        "commit",
+        "build_all.report",
+        "after",
+    ));
+
+    Ok(WorkflowSpec::new("build-all", dag, 1))
+}
+
+struct ToolWorkflowDescriptor {
+    canonical_name: &'static str,
+    aliases: &'static [&'static str],
+    build: fn() -> Result<WorkflowSpec, String>,
+}
+
+const TOOL_WORKFLOWS: &[ToolWorkflowDescriptor] = &[
+    ToolWorkflowDescriptor {
+        canonical_name: "gist",
+        aliases: &[],
+        build: gist_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "gist-snapshot",
+        aliases: &["gist_snapshot"],
+        build: gist_snapshot_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "gist-diff",
+        aliases: &["gist_diff"],
+        build: gist_diff_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "gist-recent",
+        aliases: &["gist_recent"],
+        build: gist_recent_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "bootstrap",
+        aliases: &[],
+        build: bootstrap_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "makegen",
+        aliases: &[],
+        build: makegen_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "pragma",
+        aliases: &[],
+        build: pragma_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "deps",
+        aliases: &[],
+        build: deps_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "dag-viz",
+        aliases: &["dag_viz"],
+        build: dag_viz_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "dag-viz-diff",
+        aliases: &["dag_viz_diff"],
+        build: dag_viz_diff_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "dag-viz-recent",
+        aliases: &["dag_viz_recent"],
+        build: dag_viz_recent_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "dag-snapshot",
+        aliases: &["dag_snapshot"],
+        build: dag_snapshot_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "build-all",
+        aliases: &["build_all"],
+        build: build_all_workflow_spec,
+    },
 ];
+
+/// Return canonical tool workflow names.
+pub fn all_tool_workflow_names() -> Vec<&'static str> {
+    TOOL_WORKFLOWS
+        .iter()
+        .map(|workflow| workflow.canonical_name)
+        .collect()
+}
 
 /// Build a tool workflow spec by name.
 pub fn tool_workflow_spec(name: &str) -> Result<WorkflowSpec, String> {
-    match name {
-        "gist-snapshot" | "gist_snapshot" => gist_snapshot_workflow_spec(),
-        "gist-diff" | "gist_diff" => gist_diff_workflow_spec(),
-        "gist-recent" | "gist_recent" => gist_recent_workflow_spec(),
-        "bootstrap" => bootstrap_workflow_spec(),
-        "makegen" => makegen_workflow_spec(),
-        "pragma" => pragma_workflow_spec(),
-        "deps" => deps_workflow_spec(),
-        "dag-viz" | "dag_viz" => dag_viz_workflow_spec(),
-        "dag-snapshot" | "dag_snapshot" => dag_snapshot_workflow_spec(),
-        other => Err(format!("unknown tool workflow: '{other}'")),
+    for workflow in TOOL_WORKFLOWS {
+        if workflow.canonical_name == name || workflow.aliases.contains(&name) {
+            return (workflow.build)();
+        }
     }
+    Err(format!("unknown tool workflow: '{name}'"))
 }
 
 #[cfg(test)]
@@ -1493,8 +1648,22 @@ mod tests {
     }
 
     #[test]
+    fn build_all_workflow_builder_is_deterministic() {
+        let a = build_all_workflow_spec().expect("build-all spec");
+        let b = build_all_workflow_spec().expect("build-all spec");
+        assert_eq!(a.dag.to_ascii("build-all"), b.dag.to_ascii("build-all"));
+    }
+
+    #[test]
+    fn build_all_workflow_has_expected_node_count() {
+        let spec = build_all_workflow_spec().expect("build-all spec");
+        // 2 universal + 1 build + 1 report = 4
+        assert_eq!(spec.dag.nodes.len(), 4);
+    }
+
+    #[test]
     fn all_tool_workflows_build_successfully() {
-        for name in TOOL_WORKFLOW_NAMES {
+        for name in all_tool_workflow_names() {
             tool_workflow_spec(name)
                 .unwrap_or_else(|error| panic!("tool workflow '{name}' failed to build: {error}"));
         }
@@ -1507,7 +1676,7 @@ mod tests {
 
     #[test]
     fn all_tool_workflow_nodes_have_required_contract() {
-        for name in TOOL_WORKFLOW_NAMES {
+        for name in all_tool_workflow_names() {
             let spec = tool_workflow_spec(name).expect(name);
             for node in &spec.dag.nodes {
                 assert!(

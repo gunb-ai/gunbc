@@ -208,6 +208,25 @@ pub struct DimensionFinding {
     pub severity: Option<Severity>,
 }
 
+/// Aspirational finding payload requiring explicit severity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AspirationalFinding {
+    #[serde(flatten)]
+    finding: Finding,
+    severity: Severity,
+}
+
+/// Aspirational review output with explicit per-finding severity labels.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AspirationalReviewOutput {
+    schema_version: String,
+    criteria_name: String,
+    source: String,
+    findings: Vec<AspirationalFinding>,
+    candidate_remediations: Option<Vec<String>>,
+    summary: String,
+}
+
 // ============================================================================
 // Dimension Review Output
 // ============================================================================
@@ -244,7 +263,7 @@ impl DimensionReviewOutput {
     /// Create from dimension outputs after aspirational classification.
     pub fn from_dimension_outputs(
         dimension_outputs: &[(ReviewDimension, ReviewOutput)],
-        aspirational_output: Option<&ReviewOutput>,
+        aspirational_output: Option<&AspirationalReviewOutput>,
     ) -> Self {
         let mut findings = Vec::new();
         let mut dimension_summaries = HashMap::new();
@@ -276,15 +295,15 @@ impl DimensionReviewOutput {
                 // Try to match by issue_key to existing findings
                 if let Some(existing) = findings
                     .iter_mut()
-                    .find(|f| f.finding.issue_key == asp_finding.issue_key)
+                    .find(|f| f.finding.issue_key == asp_finding.finding.issue_key)
                 {
-                    existing.severity = parse_severity_from_observation(&asp_finding.observation);
+                    existing.severity = Some(asp_finding.severity);
                 } else {
                     // New finding from aspirational dimension
                     findings.push(DimensionFinding {
-                        finding: asp_finding.clone(),
+                        finding: asp_finding.finding.clone(),
                         dimension: ReviewDimension::Aspirational,
-                        severity: parse_severity_from_observation(&asp_finding.observation),
+                        severity: Some(asp_finding.severity),
                     });
                 }
             }
@@ -314,20 +333,6 @@ impl DimensionReviewOutput {
             severity_counts,
             active_dimensions,
         }
-    }
-}
-
-/// Try to extract severity from an aspirational finding's observation text.
-fn parse_severity_from_observation(observation: &str) -> Option<Severity> {
-    let lower = observation.to_lowercase();
-    if lower.contains("must-fix") || lower.contains("must fix") || lower.contains("blocking") {
-        Some(Severity::MustFix)
-    } else if lower.contains("defer") || lower.contains("track for later") {
-        Some(Severity::Defer)
-    } else if lower.contains("accept") || lower.contains("no action") {
-        Some(Severity::Accept)
-    } else {
-        None
     }
 }
 
@@ -449,17 +454,25 @@ fn execute_prepare_dimension_prompt(
         ));
         parts.push(
             "\nFor each finding above, classify as must-fix, defer, or accept. \
-             Also identify any additional improvements."
+             Also identify any additional improvements. Every finding MUST include \
+             an explicit `severity` field."
                 .to_string(),
         );
     }
 
     parts.push(String::new());
-    parts.push("For each issue found, respond in JSON format:".to_string());
-    parts.push(
-        r#"{"findings": [{"check_id": "...", "issue_key": "...", "location": {...}, "observation": "...", "candidate_fix": "..."}], "summary": "..."}"#
-            .to_string(),
-    );
+    parts.push("For each issue found, respond in JSON format.".to_string());
+    if dimension == ReviewDimension::Aspirational {
+        parts.push(
+            r#"{"findings": [{"check_id": "...", "issue_key": "...", "location": {...}, "observation": "...", "candidate_fix": "...", "severity": "must-fix|defer|accept"}], "summary": "..."}"#
+                .to_string(),
+        );
+    } else {
+        parts.push(
+            r#"{"findings": [{"check_id": "...", "issue_key": "...", "location": {...}, "observation": "...", "candidate_fix": "..."}], "summary": "..."}"#
+                .to_string(),
+        );
+    }
     parts.push(String::new());
     parts.push("Checks to perform:".to_string());
 
@@ -550,14 +563,18 @@ fn execute_merge_dimension_outputs(
 
     if let Some(val) = inputs.get("aspirational_output") {
         if let Some(json) = val.as_json() {
-            if let Ok(output) = serde_json::from_value::<ReviewOutput>(json.clone()) {
-                aspirational_output = Some(output);
-            }
+            let output = serde_json::from_value::<AspirationalReviewOutput>(json.clone())
+                .exec_context(
+                    "invalid 'aspirational_output' JSON: expected severity on each finding",
+                )?;
+            aspirational_output = Some(output);
         }
     }
 
-    let result =
-        DimensionReviewOutput::from_dimension_outputs(&dimension_outputs, aspirational_output.as_ref());
+    let result = DimensionReviewOutput::from_dimension_outputs(
+        &dimension_outputs,
+        aspirational_output.as_ref(),
+    );
 
     let summary = result.summary.clone();
 
@@ -581,7 +598,11 @@ fn execute_format_prior_findings(
             if let Some(json) = val.as_json() {
                 if let Ok(output) = serde_json::from_value::<ReviewOutput>(json.clone()) {
                     if !output.findings.is_empty() {
-                        parts.push(format!("## {} Dimension ({} findings)", label, output.findings.len()));
+                        parts.push(format!(
+                            "## {} Dimension ({} findings)",
+                            label,
+                            output.findings.len()
+                        ));
                         for f in &output.findings {
                             parts.push(format!(
                                 "- [{}] {}: {}",
@@ -650,26 +671,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_severity_from_observation() {
-        assert_eq!(
-            parse_severity_from_observation("This is a must-fix issue"),
-            Some(Severity::MustFix)
-        );
-        assert_eq!(
-            parse_severity_from_observation("Defer this for later"),
-            Some(Severity::Defer)
-        );
-        assert_eq!(
-            parse_severity_from_observation("Accept as-is"),
-            Some(Severity::Accept)
-        );
-        assert_eq!(
-            parse_severity_from_observation("Some random observation"),
-            None
-        );
-    }
-
-    #[test]
     fn test_dimension_review_output_from_outputs() {
         let coherence = ReviewOutput {
             schema_version: "0.1.0".to_string(),
@@ -687,17 +688,20 @@ mod tests {
             summary: "Found 1 coherence issue".to_string(),
         };
 
-        let aspirational = ReviewOutput {
+        let aspirational = AspirationalReviewOutput {
             schema_version: "0.1.0".to_string(),
             criteria_name: "aspirational".to_string(),
             source: "llm".to_string(),
-            findings: vec![Finding {
-                id: "asp1".to_string(),
-                check_id: "logic-error".to_string(),
-                issue_key: "null_deref".to_string(),
-                location: Location::Unlocated,
-                observation: "Must-fix: this null dereference will cause crashes".to_string(),
-                candidate_fix: Some("Add null check".to_string()),
+            findings: vec![AspirationalFinding {
+                finding: Finding {
+                    id: "asp1".to_string(),
+                    check_id: "logic-error".to_string(),
+                    issue_key: "null_deref".to_string(),
+                    location: Location::Unlocated,
+                    observation: "Null dereference can crash at runtime".to_string(),
+                    candidate_fix: Some("Add null check".to_string()),
+                },
+                severity: Severity::MustFix,
             }],
             candidate_remediations: None,
             summary: "1 must-fix, 0 defer, 0 accept".to_string(),
@@ -759,14 +763,13 @@ mod tests {
         let question = result.get("question").unwrap().as_str().unwrap();
         assert!(question.contains("Prior findings"));
         assert!(question.contains("must-fix, defer, or accept"));
+        assert!(question.contains("\"severity\": \"must-fix|defer|accept\""));
     }
 
     #[test]
     fn test_merge_dimension_outputs_empty() {
         let inputs = HashMap::new();
-        let result = DimensionOps::MergeDimensionOutputs
-            .execute(inputs)
-            .unwrap();
+        let result = DimensionOps::MergeDimensionOutputs.execute(inputs).unwrap();
 
         let output: DimensionReviewOutput =
             serde_json::from_value(result.get("output").unwrap().as_json().unwrap().clone())

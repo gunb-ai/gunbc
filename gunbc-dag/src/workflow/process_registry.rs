@@ -187,6 +187,10 @@ fn gist_ref(unit: &str) -> ProcessUnitRef {
     ProcessUnitRef::new("gist", unit)
 }
 
+fn build_all_ref(unit: &str) -> ProcessUnitRef {
+    ProcessUnitRef::new("build_all", unit)
+}
+
 fn compilation_ref() -> ProcessUnitRef {
     ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT)
 }
@@ -388,17 +392,6 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     // WF19: Bootstrap workflow units
     // =========================================================================
     for spec in [
-        // Universal capabilities (shared via canonical_work_identity dedup)
-        ProcessUnitSpec::new(
-            bootstrap_ref("bootstrap.compilation_ensure"),
-            1,
-            compilation_ensure_claims(),
-        ),
-        ProcessUnitSpec::new(
-            bootstrap_ref("bootstrap.codegen_ensure"),
-            1,
-            codegen_ensure_claims(),
-        ),
         // Tool-specific: workspace scan
         ProcessUnitSpec::new(
             bootstrap_ref("bootstrap.workspace_scan"),
@@ -437,16 +430,6 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     // =========================================================================
     for spec in [
         ProcessUnitSpec::new(
-            makegen_ref("makegen.compilation_ensure"),
-            1,
-            compilation_ensure_claims(),
-        ),
-        ProcessUnitSpec::new(
-            makegen_ref("makegen.codegen_ensure"),
-            1,
-            codegen_ensure_claims(),
-        ),
-        ProcessUnitSpec::new(
             makegen_ref("makegen.load_registry"),
             1,
             vec![], // pure: reads tool registry
@@ -470,16 +453,6 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     // WF19: Pragma workflow units
     // =========================================================================
     for spec in [
-        ProcessUnitSpec::new(
-            pragma_ref("pragma.compilation_ensure"),
-            1,
-            compilation_ensure_claims(),
-        ),
-        ProcessUnitSpec::new(
-            pragma_ref("pragma.codegen_ensure"),
-            1,
-            codegen_ensure_claims(),
-        ),
         // Three independent parallel render+upsert chains
         ProcessUnitSpec::new(
             pragma_ref("pragma.render_clippy"),
@@ -520,12 +493,6 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     // WF20: Deps workflow units (install + generate)
     // =========================================================================
     for spec in [
-        ProcessUnitSpec::new(
-            deps_ref("deps.compilation_ensure"),
-            1,
-            compilation_ensure_claims(),
-        ),
-        ProcessUnitSpec::new(deps_ref("deps.codegen_ensure"), 1, codegen_ensure_claims()),
         // Install graph
         ProcessUnitSpec::new(
             deps_ref("deps.platform_env"),
@@ -572,16 +539,6 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     // WF20: DAG Viz workflow units (shared base + mode-specific)
     // =========================================================================
     for spec in [
-        ProcessUnitSpec::new(
-            dag_viz_ref("dag_viz.compilation_ensure"),
-            1,
-            compilation_ensure_claims(),
-        ),
-        ProcessUnitSpec::new(
-            dag_viz_ref("dag_viz.codegen_ensure"),
-            1,
-            codegen_ensure_claims(),
-        ),
         // Shared base units (same WorkIdentity as gist via canonical dedup)
         ProcessUnitSpec::new(
             dag_viz_ref("dag_viz.branch_resolution"),
@@ -623,16 +580,6 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     // =========================================================================
     for spec in [
         ProcessUnitSpec::new(
-            dag_snapshot_ref("dag_snapshot.compilation_ensure"),
-            1,
-            compilation_ensure_claims(),
-        ),
-        ProcessUnitSpec::new(
-            dag_snapshot_ref("dag_snapshot.codegen_ensure"),
-            1,
-            codegen_ensure_claims(),
-        ),
-        ProcessUnitSpec::new(
             dag_snapshot_ref("dag_snapshot.branch_resolution"),
             1,
             vec![UnitClaim::read("file:workspace")],
@@ -667,6 +614,20 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
         ),
         ProcessUnitSpec::new(dag_snapshot_ref("dag_snapshot.report"), 1, vec![]),
     ] {
+        registry.register(spec);
+    }
+
+    // =========================================================================
+    // Build-all workflow units
+    // =========================================================================
+    for spec in [ProcessUnitSpec::new(
+        build_all_ref("build_all.build"),
+        1,
+        vec![
+            UnitClaim::write("file:target"),
+            UnitClaim::read("tool:cargo"),
+        ],
+    )] {
         registry.register(spec);
     }
 
@@ -773,14 +734,6 @@ mod tests {
         // WF19: bootstrap
         assert!(registry.contains(&ProcessUnitRef::new(
             "bootstrap",
-            "bootstrap.compilation_ensure"
-        )));
-        assert!(registry.contains(&ProcessUnitRef::new(
-            "bootstrap",
-            "bootstrap.codegen_ensure"
-        )));
-        assert!(registry.contains(&ProcessUnitRef::new(
-            "bootstrap",
             "bootstrap.workspace_scan"
         )));
         assert!(registry.contains(&ProcessUnitRef::new(
@@ -792,32 +745,18 @@ mod tests {
             "bootstrap.upsert_makefile"
         )));
         // WF19: makegen
-        assert!(registry.contains(&ProcessUnitRef::new(
-            "makegen",
-            "makegen.compilation_ensure"
-        )));
         assert!(registry.contains(&ProcessUnitRef::new("makegen", "makegen.load_registry")));
         assert!(registry.contains(&ProcessUnitRef::new("makegen", "makegen.upsert_makefile")));
         // WF19: pragma
-        assert!(registry.contains(&ProcessUnitRef::new("pragma", "pragma.compilation_ensure")));
         assert!(registry.contains(&ProcessUnitRef::new("pragma", "pragma.render_clippy")));
         assert!(registry.contains(&ProcessUnitRef::new("pragma", "pragma.upsert_clippy")));
         // WF20: deps
-        assert!(registry.contains(&ProcessUnitRef::new("deps", "deps.compilation_ensure")));
         assert!(registry.contains(&ProcessUnitRef::new("deps", "deps.load_manifest")));
         assert!(registry.contains(&ProcessUnitRef::new("deps", "deps.execute_installs")));
         // WF20: dag_viz
-        assert!(registry.contains(&ProcessUnitRef::new(
-            "dag_viz",
-            "dag_viz.compilation_ensure"
-        )));
         assert!(registry.contains(&ProcessUnitRef::new("dag_viz", "dag_viz.branch_resolution")));
         assert!(registry.contains(&ProcessUnitRef::new("dag_viz", "dag_viz.gist_upload")));
         // WF20: dag_snapshot
-        assert!(registry.contains(&ProcessUnitRef::new(
-            "dag_snapshot",
-            "dag_snapshot.compilation_ensure"
-        )));
         assert!(registry.contains(&ProcessUnitRef::new(
             "dag_snapshot",
             "dag_snapshot.list_files"
@@ -826,6 +765,8 @@ mod tests {
             "dag_snapshot",
             "dag_snapshot.gist_upload"
         )));
+        // Build-all
+        assert!(registry.contains(&ProcessUnitRef::new("build_all", "build_all.build")));
     }
 
     #[test]
@@ -855,49 +796,32 @@ mod tests {
     }
 
     #[test]
-    fn universal_capabilities_share_identity_across_all_tool_workflows() {
+    fn universal_capabilities_are_registered_once_without_workflow_duplication() {
         let registry = default_process_unit_registry();
-        let workflows = [
-            "bootstrap",
-            "makegen",
-            "pragma",
-            "deps",
-            "dag_viz",
-            "dag_snapshot",
-        ];
-        // All compilation_ensure units should share the same canonical identity
-        let mut compilation_identities = Vec::new();
-        for wf in &workflows {
-            let ref_key = ProcessUnitRef::new(*wf, format!("{wf}.compilation_ensure"));
-            let spec = registry
-                .get(&ref_key)
-                .unwrap_or_else(|| panic!("{wf}.compilation_ensure should exist in registry"));
-            compilation_identities.push(spec.canonical_work_identity());
-        }
-        let first = &compilation_identities[0];
-        for identity in &compilation_identities[1..] {
-            assert_eq!(
-                first, identity,
-                "all compilation_ensure units must share canonical identity"
-            );
-        }
+        let compilation_specs: Vec<_> = registry
+            .iter()
+            .filter(|spec| spec.reference.process_id.0 == COMPILATION_PROCESS_ID)
+            .collect();
+        assert_eq!(
+            compilation_specs.len(),
+            1,
+            "compilation capability should be registered once"
+        );
+        assert_eq!(
+            compilation_specs[0].reference.unit_id.0,
+            COMPILATION_ENSURE_UNIT
+        );
 
-        // All codegen_ensure units should share the same canonical identity
-        let mut codegen_identities = Vec::new();
-        for wf in &workflows {
-            let ref_key = ProcessUnitRef::new(*wf, format!("{wf}.codegen_ensure"));
-            let spec = registry
-                .get(&ref_key)
-                .unwrap_or_else(|| panic!("{wf}.codegen_ensure should exist in registry"));
-            codegen_identities.push(spec.canonical_work_identity());
-        }
-        let first = &codegen_identities[0];
-        for identity in &codegen_identities[1..] {
-            assert_eq!(
-                first, identity,
-                "all codegen_ensure units must share canonical identity"
-            );
-        }
+        let codegen_specs: Vec<_> = registry
+            .iter()
+            .filter(|spec| spec.reference.process_id.0 == CODEGEN_PROCESS_ID)
+            .collect();
+        assert_eq!(
+            codegen_specs.len(),
+            1,
+            "codegen capability should be registered once"
+        );
+        assert_eq!(codegen_specs[0].reference.unit_id.0, CODEGEN_ENSURE_UNIT);
     }
 
     #[test]

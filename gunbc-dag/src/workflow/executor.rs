@@ -43,11 +43,7 @@ impl UnitCommand {
     }
 
     pub fn cargo(label: impl Into<String>, args: Vec<&str>) -> Self {
-        Self::new(
-            label,
-            "cargo",
-            args.into_iter().map(String::from).collect(),
-        )
+        Self::new(label, "cargo", args.into_iter().map(String::from).collect())
     }
 }
 
@@ -143,7 +139,9 @@ pub fn execute_workflow_plan(
                         duration_ms: 0,
                         miss_reason: Some(miss_reason.clone()),
                     });
-                    persist_executed_entry(workspace_root, node_plan, true, 0);
+                    if !dry_run {
+                        persist_executed_entry(workspace_root, node_plan, true, 0);
+                    }
                     emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
                     continue;
                 };
@@ -173,10 +171,7 @@ pub fn execute_workflow_plan(
                 }
 
                 persist_executed_entry(workspace_root, node_plan, success, duration_ms);
-                emit_unit_status(
-                    &node_plan.node_id,
-                    UnitStatus::Executed { success },
-                );
+                emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success });
 
                 results.push(UnitResult {
                     node_id: node_plan.node_id.clone(),
@@ -204,16 +199,11 @@ pub fn execute_workflow_plan(
 
 /// Run a shell command, inheriting stdout/stderr. Returns true on success.
 fn run_unit_command(cmd: &UnitCommand) -> bool {
-    let result = Command::new(&cmd.program)
-        .args(&cmd.args)
-        .status();
+    let result = Command::new(&cmd.program).args(&cmd.args).status();
     match result {
         Ok(status) => status.success(),
         Err(error) => {
-            eprintln!(
-                "  error: failed to spawn '{}': {}",
-                cmd.program, error
-            );
+            eprintln!("  error: failed to spawn '{}': {}", cmd.program, error);
             false
         }
     }
@@ -226,9 +216,10 @@ fn persist_executed_entry(
     success: bool,
     duration_ms: u64,
 ) {
-    let result_payload = Value::Map(BTreeMap::from([
-        ("success".to_string(), Value::Bool(success)),
-    ]));
+    let result_payload = Value::Map(BTreeMap::from([(
+        "success".to_string(),
+        Value::Bool(success),
+    )]));
     let hash = match store_output_payload(workspace_root, &result_payload) {
         Ok(h) => h,
         Err(error) => {
@@ -332,10 +323,10 @@ fn emit_unit_status(node_id: &NodeId, status: UnitStatus<'_>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::workflow::coordination::CoordinationStatus;
     use crate::workflow::key::{CanonicalKeyPayload, MaterializationKey, WorkIdentity};
     use crate::workflow::planner::WorkflowPlan;
     use crate::workflow::process_registry::ProcessId;
-    use crate::workflow::coordination::CoordinationStatus;
 
     fn make_node_plan(name: &str, action: PlanAction) -> NodePlan {
         let work_id = WorkIdentity::new(ProcessId::new("test"), NodeId::from(name));
@@ -361,11 +352,7 @@ mod tests {
 
     #[test]
     fn cached_hit_nodes_are_counted_not_executed() {
-        let spec = crate::workflow::schema::WorkflowSpec::new(
-            "test",
-            gunbc_ir::Dag::new(),
-            1,
-        );
+        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![make_node_plan(
                 "a",
@@ -394,11 +381,7 @@ mod tests {
 
     #[test]
     fn execute_nodes_without_commands_succeed_as_noop() {
-        let spec = crate::workflow::schema::WorkflowSpec::new(
-            "test",
-            gunbc_ir::Dag::new(),
-            1,
-        );
+        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![make_node_plan(
                 "report",
@@ -424,12 +407,40 @@ mod tests {
     }
 
     #[test]
-    fn dry_run_does_not_execute_commands() {
-        let spec = crate::workflow::schema::WorkflowSpec::new(
-            "test",
-            gunbc_ir::Dag::new(),
-            1,
+    fn dry_run_noop_nodes_do_not_persist_ledger_entries() {
+        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
+        let plan = WorkflowPlan {
+            nodes: vec![make_node_plan(
+                "report",
+                PlanAction::Execute {
+                    miss_reason: MissReason::NoPriorRun,
+                },
+            )],
+            coordination: CoordinationStatus {
+                ready: vec![],
+                blocked: BTreeMap::new(),
+            },
+        };
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-executor-dry-run-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+
+        let summary = execute_workflow_plan(&spec, &plan, &BTreeMap::new(), &root, true);
+        assert!(summary.success());
+        assert!(
+            !root.exists(),
+            "dry-run with no-op nodes must not create ledger state"
         );
+    }
+
+    #[test]
+    fn dry_run_does_not_execute_commands() {
+        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![make_node_plan(
                 "build",
@@ -450,24 +461,15 @@ mod tests {
         );
 
         // dry_run=true should not actually run the `false` command.
-        let summary = execute_workflow_plan(
-            &spec,
-            &plan,
-            &commands,
-            Path::new("/tmp/nonexistent"),
-            true,
-        );
+        let summary =
+            execute_workflow_plan(&spec, &plan, &commands, Path::new("/tmp/nonexistent"), true);
         assert_eq!(summary.executed, 1);
         assert!(summary.success());
     }
 
     #[test]
     fn execution_summary_reports_correct_totals() {
-        let spec = crate::workflow::schema::WorkflowSpec::new(
-            "test",
-            gunbc_ir::Dag::new(),
-            1,
-        );
+        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![
                 make_node_plan(

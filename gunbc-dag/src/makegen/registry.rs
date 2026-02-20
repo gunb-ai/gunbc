@@ -516,10 +516,6 @@ pub struct ToolInfo {
     /// Secret environment variables required for live execution.
     /// Derived from `DagSpecTestgen` registrations. Empty if no secrets needed.
     pub live_secrets: Vec<String>,
-    /// Whether this tool is managed by the workflow planner (WF21).
-    /// When true, the Make target becomes a thin wrapper over `gunbc-workflow`
-    /// and the `ensure-codegen` prerequisite is removed (planner manages freshness).
-    pub planner_managed: bool,
 }
 
 /// An extra target that combines the main tool with additional commands.
@@ -551,7 +547,6 @@ impl ToolInfo {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
-            planner_managed: false,
         }
     }
 
@@ -574,7 +569,6 @@ impl ToolInfo {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
-            planner_managed: false,
         }
     }
 
@@ -599,7 +593,6 @@ impl ToolInfo {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
-            planner_managed: false,
         }
     }
 
@@ -614,7 +607,6 @@ impl ToolInfo {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
-            planner_managed: false,
         }
     }
 
@@ -645,7 +637,6 @@ impl ToolInfo {
             has_declarative_dag: false,
             needs_generated_cli: true,
             live_secrets: Vec::new(),
-            planner_managed: false,
         }
     }
 
@@ -665,7 +656,6 @@ impl ToolInfo {
             has_declarative_dag: def.meta.tool_name == "makegen",
             needs_generated_cli: true,
             live_secrets: Vec::new(),
-            planner_managed: false,
         };
 
         // Convert entrypoints that have make_var set
@@ -712,16 +702,6 @@ impl ToolInfo {
     /// Mark this tool as having a hand-written main.rs (no generated CLI).
     pub fn manual(mut self) -> Self {
         self.needs_generated_cli = false;
-        self
-    }
-
-    /// Mark this tool as planner-managed (WF21).
-    ///
-    /// Planner-managed tools use `gunbc-workflow --plan <tool>` for execution
-    /// instead of direct `cargo run`. The planner handles compilation/codegen
-    /// freshness via ledger-backed keyed units.
-    pub fn planner_managed(mut self) -> Self {
-        self.planner_managed = true;
         self
     }
 
@@ -851,27 +831,9 @@ impl WorkflowSpec {
     }
 }
 
-// Planner-managed tools (WF21) have no Make prerequisites — the planner
-// resolves compilation/codegen freshness via ledger-backed keyed units.
-// Non-planner tools retain `ensure-codegen` as a prerequisite.
 fn tool_dependency_targets(tool: &ToolInfo, config: &BuildConfig) -> Vec<String> {
-    if tool.planner_managed {
-        return Vec::new();
-    }
-    if config.build_system == BuildSystem::Cargo {
-        let mut deps = Vec::new();
-        if !tool.needs_generated_cli {
-            deps.push("preflight-fix".to_string());
-        }
-        deps.push("ensure-codegen".to_string());
-        deps
-    } else if tool.short_name == "pragma" {
-        vec!["preflight-fix".to_string()]
-    } else if tool.needs_generated_cli {
-        vec!["ensure-codegen".to_string()]
-    } else {
-        vec!["preflight-fix".to_string()]
-    }
+    let _ = (tool, config);
+    Vec::new()
 }
 
 // ============================================================================
@@ -1263,11 +1225,6 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
             .needs(compiled_code_resource_id(), ExecMode::Ensure)
             .needs(verified_artifacts_resource_id(), ExecMode::Ensure)
             .with_fix_variant(vec![FixAlias::FmtFix, FixAlias::LintFix]),
-        // test-all - run all tests regardless of cost (includes XL)
-        MetaTarget::new("test-all", "Run all tests (<=XL)", ConfigField::Test)
-            .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
-            .needs(compiled_code_resource_id(), ExecMode::Ensure)
-            .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
         // test-integration - run integration-oriented test subset.
         MetaTarget::new(
             "test-integration",
@@ -1548,8 +1505,8 @@ impl ToolRegistry {
     ///
     /// This eliminates manual dual-registration: adding a tool to the codegen
     /// registry with `.invocation()` is sufficient for it to appear in the
-    /// Makefile. Only tools that can't be in the codegen registry (like `ci`,
-    /// which has a handwritten main.rs) are added manually here.
+    /// Makefile. Only tools with handwritten binaries that are intentionally
+    /// outside codegen discovery are added manually here.
     pub fn default_registry() -> Self {
         let mut registry = Self {
             core_workflows: default_core_workflows(),
@@ -1570,11 +1527,6 @@ impl ToolRegistry {
         for tool in manual_workspace_tools_from_dsl_modules(&tool_modules, &pipeline_modules) {
             registry.register_if_missing(tool);
         }
-
-        // WF21: Mark tools that have planner-managed workflow specs.
-        // These tools dispatch via `gunbc-workflow --plan <tool>` and no longer
-        // need `ensure-codegen` as a Make prerequisite.
-        mark_planner_managed_tools(&mut registry.tools);
 
         // Enrich tools with live-secret requirements from DagSpec registrations.
         enrich_live_secrets(&mut registry.tools);
@@ -1640,31 +1592,6 @@ fn extend_live_secrets_unique(target: &mut Vec<String>, secrets: impl IntoIterat
     for secret in secrets {
         if !target.contains(&secret) {
             target.push(secret);
-        }
-    }
-}
-
-/// Tools with planner-managed workflow specs (WF19/WF20).
-///
-/// These tool names have corresponding `WorkflowSpec` builders in
-/// `workflow::spec_builders`. Their Make targets become thin wrappers
-/// over `gunbc-workflow --plan <tool>`.
-const PLANNER_MANAGED_TOOL_NAMES: &[&str] = &[
-    "bootstrap",
-    "makegen",
-    "pragma",
-    "deps",
-    "dag-viz",
-    "dag-viz-diff",
-    "dag-viz-recent",
-    "dag-snapshot",
-];
-
-/// Mark tools that are planner-managed (WF21).
-fn mark_planner_managed_tools(tools: &mut [ToolInfo]) {
-    for tool in tools.iter_mut() {
-        if PLANNER_MANAGED_TOOL_NAMES.contains(&tool.short_name.as_str()) {
-            tool.planner_managed = true;
         }
     }
 }
@@ -1778,22 +1705,13 @@ impl ManualToolDef {
             is_pipeline: false,
         }
     }
-    const fn pipeline(module: &'static str) -> Self {
-        Self {
-            module,
-            is_pipeline: true,
-        }
-    }
 }
 
 /// All manual tool definitions. Adding a new manual tool here automatically
 /// validates its DSL module exists and registers its Makefile target.
 // WF8: ci is now a core workflow (thin wrapper over gunbc-workflow), not a manual tool.
-const MANUAL_TOOL_DEFS: &[ManualToolDef] = &[
-    ManualToolDef::pipeline("ci"),
-    ManualToolDef::tool("pragma"),
-    ManualToolDef::tool("build"),
-];
+const MANUAL_TOOL_DEFS: &[ManualToolDef] =
+    &[ManualToolDef::tool("pragma"), ManualToolDef::tool("build")];
 
 fn validate_required_manual_tool_modules(
     tool_modules: &BTreeSet<String>,
@@ -1825,10 +1743,8 @@ fn manual_workspace_tools_from_dsl_modules(
     tool_modules: &BTreeSet<String>,
     pipeline_modules: &BTreeSet<String>,
 ) -> Vec<ToolInfo> {
+    let _ = pipeline_modules;
     let mut tools = Vec::new();
-    if pipeline_modules.contains("ci") {
-        tools.push(ToolInfo::workspace(WorkspaceBinary::Ci, "Run CI pipeline").manual());
-    }
     if tool_modules.contains("pragma") {
         tools.push(
             ToolInfo::workspace(
@@ -1851,7 +1767,6 @@ fn manual_workspace_tools_from_dsl_modules(
             has_declarative_dag: false,
             needs_generated_cli: false,
             live_secrets: Vec::new(),
-            planner_managed: false,
         });
     }
     tools
@@ -1917,7 +1832,7 @@ mod tests {
     #[test]
     fn test_default_registry_manual_tools_follow_dsl_discovery() {
         let registry = ToolRegistry::default_registry();
-        assert!(registry.tools.iter().any(|t| t.short_name == "ci"));
+        assert!(!registry.tools.iter().any(|t| t.short_name == "ci"));
         assert!(registry.tools.iter().any(|t| t.short_name == "pragma"));
         assert!(registry.tools.iter().any(|t| t.short_name == "build-all"));
     }
@@ -1975,9 +1890,8 @@ mod tests {
     fn test_default_meta_targets() {
         let targets = default_meta_targets();
 
-        // Should have test, test-all, integration/external slices, check, clippy, fmt
+        // Should have test, integration/external slices, check, clippy, fmt.
         assert!(targets.iter().any(|t| t.name == "test"));
-        assert!(targets.iter().any(|t| t.name == "test-all"));
         assert!(targets.iter().any(|t| t.name == "test-integration"));
         assert!(targets.iter().any(|t| t.name == "test-external"));
         assert!(targets.iter().any(|t| t.name == "check"));
@@ -2081,7 +1995,7 @@ mod tests {
         assert_eq!(spec.kind, WorkflowKind::Tool);
         assert_eq!(spec.entrypoints.len(), 1);
         assert_eq!(spec.resources.len(), 0);
-        assert_eq!(spec.deps, vec!["preflight-fix", "ensure-codegen"]);
+        assert!(spec.deps.is_empty());
         assert_eq!(spec.live_secrets, vec!["CI_TOKEN"]);
     }
 
@@ -2398,42 +2312,22 @@ mod tests {
     }
 
     #[test]
-    fn test_planner_managed_tools_have_no_make_deps() {
+    fn test_all_tools_have_no_make_deps() {
         let registry = ToolRegistry::default_registry();
         let config = BuildConfig::cargo();
         for tool in &registry.tools {
-            if tool.planner_managed {
-                let deps = tool_dependency_targets(tool, &config);
-                assert!(
-                    deps.is_empty(),
-                    "planner-managed tool '{}' should have no Make deps, found: {:?}",
-                    tool.short_name,
-                    deps
-                );
-            }
+            let deps = tool_dependency_targets(tool, &config);
+            assert!(
+                deps.is_empty(),
+                "tool '{}' should have no Make prerequisites, found: {:?}",
+                tool.short_name,
+                deps
+            );
         }
     }
 
     #[test]
-    fn test_planner_managed_tools_are_marked() {
-        let registry = ToolRegistry::default_registry();
-        for name in PLANNER_MANAGED_TOOL_NAMES {
-            let found = registry
-                .tools
-                .iter()
-                .find(|t| t.short_name == *name);
-            if let Some(tool) = found {
-                assert!(
-                    tool.planner_managed,
-                    "tool '{}' should be planner-managed",
-                    name
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_non_planner_tools_retain_ensure_codegen_dep() {
+    fn test_gist_has_no_make_prerequisites() {
         let registry = ToolRegistry::default_registry();
         let config = BuildConfig::cargo();
         let gist = registry
@@ -2441,11 +2335,10 @@ mod tests {
             .iter()
             .find(|t| t.short_name == "gist")
             .expect("gist should be in registry");
-        assert!(!gist.planner_managed);
         let deps = tool_dependency_targets(gist, &config);
         assert!(
-            deps.contains(&"ensure-codegen".to_string()),
-            "non-planner gist should retain ensure-codegen dep"
+            deps.is_empty(),
+            "gist should be dispatched by workflow without make prerequisites"
         );
     }
 }

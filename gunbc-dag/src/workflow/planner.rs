@@ -408,7 +408,7 @@ pub fn explain_plan(spec: &WorkflowSpec, plan: &WorkflowPlan) -> PlanExplain {
     let mut capability_status = BTreeMap::new();
 
     for node in &plan.nodes {
-        let canonical_name = canonicalize_node_id(&node.node_id);
+        let canonical_name = node.work_id.unit_id.0.clone();
         match &node.action {
             PlanAction::CachedHit { previous_run, .. } => {
                 cache_hit_set.push(node.node_id.clone());
@@ -427,16 +427,15 @@ pub fn explain_plan(spec: &WorkflowSpec, plan: &WorkflowPlan) -> PlanExplain {
             PlanAction::Execute { miss_reason } => {
                 execute_set.push(node.node_id.clone());
                 miss_reasons.insert(node.node_id.clone(), miss_reason.clone());
-                let entry =
-                    capability_status
-                        .entry(canonical_name.clone())
-                        .or_insert_with(|| CapabilityStatus {
-                            capability: canonical_name,
-                            node_ids: Vec::new(),
-                            action: CapabilityAction::Execute {
-                                miss_reason: miss_reason.clone(),
-                            },
-                        });
+                let entry = capability_status
+                    .entry(canonical_name.clone())
+                    .or_insert_with(|| CapabilityStatus {
+                        capability: canonical_name,
+                        node_ids: Vec::new(),
+                        action: CapabilityAction::Execute {
+                            miss_reason: miss_reason.clone(),
+                        },
+                    });
                 entry.node_ids.push(node.node_id.clone());
                 // Execute always wins over CachedHit
                 if matches!(entry.action, CapabilityAction::CachedHit { .. }) {
@@ -459,15 +458,6 @@ pub fn explain_plan(spec: &WorkflowSpec, plan: &WorkflowPlan) -> PlanExplain {
         ready: plan.coordination.ready.clone(),
         critical_path,
         capability_status,
-    }
-}
-
-/// Strip workflow prefix from node ID to get canonical capability name.
-fn canonicalize_node_id(node_id: &NodeId) -> String {
-    if let Some((_, suffix)) = node_id.0.split_once('.') {
-        suffix.to_string()
-    } else {
-        node_id.0.clone()
     }
 }
 

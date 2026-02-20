@@ -2,18 +2,17 @@
 //!
 //! Modes:
 //! - `gunbc-workflow --plan <workflow>`: Plan only (WF5 explainability).
-//! - `gunbc-workflow ci`: Execute CI workflow via planner (WF6).
-//! - `gunbc-workflow test-all`: Execute test-all workflow via planner (WF7).
-//! - `gunbc-workflow ci --dry-run`: Dry-run execution (no shell commands).
+//! - `gunbc-workflow <workflow>`: Execute workflow via planner (WF6+).
+//! - `gunbc-workflow <workflow> --dry-run`: Dry-run execution (no shell commands).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use gunbc_dag::{
-    check_slo, ci_unit_commands, ci_workflow_spec, default_process_unit_registry,
+    all_tool_workflow_names, check_slo, ci_workflow_spec, default_process_unit_registry,
     default_slo_budgets, execute_workflow_plan, explain_plan, plan_workflow_with_mode,
-    render_execution_report, test_all_unit_commands, test_all_workflow_spec, tool_workflow_spec,
-    CapabilityAction, DryRunMode, MissReason, PlannerInputs, SloBudget, TOOL_WORKFLOW_NAMES,
+    render_execution_report, test_all_workflow_spec, tool_workflow_spec, workflow_unit_commands,
+    CapabilityAction, DryRunMode, MissReason, PlannerInputs, SloBudget,
 };
 use serde::Serialize;
 
@@ -55,11 +54,8 @@ fn main() {
         "ci" => ci_workflow_spec(),
         "test-all" | "test_all" => test_all_workflow_spec(),
         name => tool_workflow_spec(name).map_err(|_| {
-            let all_names: Vec<&str> = ["ci", "test-all"]
-                .iter()
-                .copied()
-                .chain(TOOL_WORKFLOW_NAMES.iter().copied())
-                .collect();
+            let mut all_names = vec!["ci", "test-all"];
+            all_names.extend(all_tool_workflow_names());
             format!(
                 "unknown workflow '{}': expected one of {}",
                 name,
@@ -100,14 +96,10 @@ fn main() {
             );
         }
         Mode::Run => {
-            let commands = match args.workflow.as_str() {
-                "ci" => ci_unit_commands(),
-                "test-all" | "test_all" => test_all_unit_commands(),
-                other => {
-                    eprintln!(
-                        "error: workflow '{}' does not support execution mode; use --plan",
-                        other
-                    );
+            let commands = match workflow_unit_commands(&args.workflow) {
+                Ok(commands) => commands,
+                Err(error) => {
+                    eprintln!("error: {error}");
                     std::process::exit(2);
                 }
             };
@@ -117,13 +109,8 @@ fn main() {
             println!("  units: {}", plan.nodes.len());
             println!();
 
-            let summary = execute_workflow_plan(
-                &spec,
-                &plan,
-                &commands,
-                &args.workspace_root,
-                args.dry_run,
-            );
+            let summary =
+                execute_workflow_plan(&spec, &plan, &commands, &args.workspace_root, args.dry_run);
             let explain = explain_plan(&spec, &plan);
 
             // SLO check (WF9).
@@ -140,7 +127,10 @@ fn main() {
             let slo_result = check_slo(&summary, &slo_budget);
 
             println!();
-            println!("{}", render_execution_report(&summary, &explain, &slo_result));
+            println!(
+                "{}",
+                render_execution_report(&summary, &explain, &slo_result)
+            );
 
             if !summary.success() {
                 std::process::exit(1);
@@ -185,27 +175,29 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
             }
             "--dry-run" => {
                 // In plan mode: controls strictness. In run mode: skips execution.
+                dry_run = true;
                 if i + 1 < argv.len() {
                     let next = argv[i + 1].as_str();
                     if next == "strict" || next == "lenient" {
                         i += 1;
                         dry_run_mode = parse_dry_run_mode(next)?;
-                    } else {
-                        dry_run = true;
                     }
-                } else {
-                    dry_run = true;
                 }
             }
             "-n" => {
                 dry_run = true;
             }
             "--format" => {
-                i += 1;
-                let value = argv
-                    .get(i)
-                    .ok_or_else(|| "--format requires <text|json>".to_string())?;
-                output_format = parse_output_format(value)?;
+                if mode == Mode::Plan {
+                    i += 1;
+                    let value = argv
+                        .get(i)
+                        .ok_or_else(|| "--format requires <text|json>".to_string())?;
+                    output_format = parse_output_format(value)?;
+                } else if i + 1 < argv.len() && !argv[i + 1].starts_with('-') {
+                    // Run mode reserves --format for tool passthrough.
+                    i += 1;
+                }
             }
             _ if arg.starts_with("--plan=") => {
                 mode = Mode::Plan;
@@ -216,15 +208,26 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
             }
             _ if arg.starts_with("--dry-run=") => {
                 dry_run_mode = parse_dry_run_mode(&arg["--dry-run=".len()..])?;
+                dry_run = true;
             }
             _ if arg.starts_with("--format=") => {
-                output_format = parse_output_format(&arg["--format=".len()..])?;
+                if mode == Mode::Plan {
+                    output_format = parse_output_format(&arg["--format=".len()..])?;
+                }
             }
             _ if !arg.starts_with('-') => {
                 positional = Some(arg.to_string());
             }
             other => {
-                return Err(format!("unknown argument '{other}'"));
+                if mode == Mode::Run && other.starts_with('-') {
+                    // Run mode accepts passthrough CLI flags for tool binaries.
+                    // Planner-only mode remains strict.
+                    if !other.contains('=') && i + 1 < argv.len() && !argv[i + 1].starts_with('-') {
+                        i += 1;
+                    }
+                } else {
+                    return Err(format!("unknown argument '{other}'"));
+                }
             }
         }
         i += 1;
@@ -487,16 +490,15 @@ fn format_miss_reason(reason: &MissReason) -> String {
 }
 
 fn print_help() {
-    let all_names: Vec<&str> = ["ci", "test-all"]
-        .iter()
-        .copied()
-        .chain(TOOL_WORKFLOW_NAMES.iter().copied())
-        .collect();
+    let mut all_names = vec!["ci", "test-all"];
+    all_names.extend(all_tool_workflow_names());
     println!("gunbc-workflow - workflow planner and executor");
     println!();
     println!("USAGE:");
     println!("  gunbc-workflow <workflow> [--dry-run] [--workspace-root <path>]");
-    println!("  gunbc-workflow --plan <workflow> [--workspace-root <path>] [--dry-run <strict|lenient>]");
+    println!(
+        "  gunbc-workflow --plan <workflow> [--workspace-root <path>] [--dry-run <strict|lenient>]"
+    );
     println!();
     println!("WORKFLOWS:");
     println!("  {}", all_names.join(", "));
@@ -507,7 +509,7 @@ fn print_help() {
     println!("  --dry-run               Dry-run: show commands without executing (run mode)");
     println!("  --dry-run <mode>        Dry-run strictness for plan mode (strict|lenient)");
     println!("  -n                      Alias for --dry-run");
-    println!("  --format <text|json>    Output format (default: text)");
+    println!("  --format <text|json>    Plan output format (plan mode only)");
     println!("  -h, --help              Show this help");
     println!();
     println!("EXAMPLES:");
@@ -537,22 +539,16 @@ mod tests {
 
     #[test]
     fn parse_args_supports_run_mode_positional() {
-        let args = parse_args(vec![
-            "gunbc-workflow".to_string(),
-            "ci".to_string(),
-        ])
-        .expect("parse should succeed");
+        let args = parse_args(vec!["gunbc-workflow".to_string(), "ci".to_string()])
+            .expect("parse should succeed");
         assert_eq!(args.mode, Mode::Run);
         assert_eq!(args.workflow, "ci");
     }
 
     #[test]
     fn parse_args_supports_test_all_positional() {
-        let args = parse_args(vec![
-            "gunbc-workflow".to_string(),
-            "test-all".to_string(),
-        ])
-        .expect("parse should succeed");
+        let args = parse_args(vec!["gunbc-workflow".to_string(), "test-all".to_string()])
+            .expect("parse should succeed");
         assert_eq!(args.mode, Mode::Run);
         assert_eq!(args.workflow, "test-all");
     }
@@ -610,6 +606,47 @@ mod tests {
         ])
         .expect("parse should succeed");
         assert_eq!(args.dry_run_mode, DryRunMode::Lenient);
+        assert!(args.dry_run);
+    }
+
+    #[test]
+    fn parse_args_sets_dry_run_for_equals_mode_syntax() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "ci".to_string(),
+            "--dry-run=strict".to_string(),
+        ])
+        .expect("parse should succeed");
+        assert_eq!(args.dry_run_mode, DryRunMode::Strict);
+        assert!(args.dry_run);
+    }
+
+    #[test]
+    fn parse_args_allows_passthrough_flags_in_run_mode() {
+        let args = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "dag-viz".to_string(),
+            "--repo-path".to_string(),
+            ".".to_string(),
+            "--format".to_string(),
+            "svg".to_string(),
+        ])
+        .expect("run mode should allow passthrough flags");
+        assert_eq!(args.workflow, "dag-viz");
+        assert_eq!(args.output_format, OutputFormat::Text);
+    }
+
+    #[test]
+    fn parse_args_rejects_unknown_flags_in_plan_mode() {
+        let error = parse_args(vec![
+            "gunbc-workflow".to_string(),
+            "--plan".to_string(),
+            "dag-viz".to_string(),
+            "--repo-path".to_string(),
+            ".".to_string(),
+        ])
+        .expect_err("plan mode should reject unknown flags");
+        assert!(error.contains("unknown argument"));
     }
 
     #[test]
@@ -665,7 +702,7 @@ mod tests {
 
     #[test]
     fn parse_args_accepts_tool_workflow_names() {
-        for name in TOOL_WORKFLOW_NAMES {
+        for name in all_tool_workflow_names() {
             let args = parse_args(vec![
                 "gunbc-workflow".to_string(),
                 "--plan".to_string(),

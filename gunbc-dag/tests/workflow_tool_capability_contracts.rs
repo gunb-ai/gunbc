@@ -11,11 +11,11 @@ use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gunbc_dag::{
-    bootstrap_workflow_spec, ci_workflow_spec, dag_snapshot_workflow_spec, dag_viz_workflow_spec,
-    default_process_unit_registry, deps_workflow_spec, makegen_workflow_spec,
-    plan_global_workflows, pragma_workflow_spec, project_execute_set, prove_non_redundancy,
-    test_all_workflow_spec, tool_workflow_spec, validate_projection_equivalence,
-    PlannerInputsByWorkflow, TOOL_WORKFLOW_NAMES,
+    all_tool_workflow_names, bootstrap_workflow_spec, ci_workflow_spec, dag_snapshot_workflow_spec,
+    dag_viz_workflow_spec, default_process_unit_registry, deps_workflow_spec,
+    makegen_workflow_spec, plan_global_workflows, pragma_workflow_spec, project_execute_set,
+    prove_non_redundancy, test_all_workflow_spec, tool_workflow_spec,
+    validate_projection_equivalence, PlannerInputsByWorkflow,
 };
 use gunbc_ir::NodeId;
 
@@ -36,7 +36,7 @@ fn temp_root() -> std::path::PathBuf {
 
 #[test]
 fn all_tool_workflow_specs_build_without_error() {
-    for name in TOOL_WORKFLOW_NAMES {
+    for name in all_tool_workflow_names() {
         tool_workflow_spec(name)
             .unwrap_or_else(|error| panic!("tool workflow '{name}' failed to build: {error}"));
     }
@@ -44,7 +44,7 @@ fn all_tool_workflow_specs_build_without_error() {
 
 #[test]
 fn all_tool_workflow_specs_are_deterministic() {
-    for name in TOOL_WORKFLOW_NAMES {
+    for name in all_tool_workflow_names() {
         let a = tool_workflow_spec(name).expect(name);
         let b = tool_workflow_spec(name).expect(name);
         assert_eq!(
