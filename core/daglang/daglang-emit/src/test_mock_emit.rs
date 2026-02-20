@@ -579,7 +579,7 @@ fn emit_json_value(expr: &Expr) -> String {
             format!("{{{}}}", parts.join(", "))
         }
         Expr::List(items) => {
-            let parts: Vec<String> = items.iter().map(|e| emit_json_value(e)).collect();
+            let parts: Vec<String> = items.iter().map(emit_json_value).collect();
             format!("[{}]", parts.join(", "))
         }
         _ => "null".to_string(),

@@ -37,7 +37,7 @@ pub enum LoweredOp {
         kind: CallableKind,
         name: String,
         obligation: ObligationCategory,
-        service_metadata: Option<ServiceCallMetadata>,
+        service_metadata: Option<Box<ServiceCallMetadata>>,
         is_interactive: bool,
         resource_target: Option<String>,
     },
@@ -301,7 +301,7 @@ impl LoweredOp {
         match self {
             Self::Callable {
                 service_metadata, ..
-            } => service_metadata.as_ref(),
+            } => service_metadata.as_deref(),
             Self::Primitive { .. } | Self::Collection { .. } | Self::Pipeline { .. } => None,
         }
     }
@@ -3876,7 +3876,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportPrepare,
-                        service_metadata: Some(service_metadata.clone()),
+                        service_metadata: Some(Box::new(service_metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
                     },
@@ -3893,7 +3893,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportExecute,
-                        service_metadata: Some(service_metadata.clone()),
+                        service_metadata: Some(Box::new(service_metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
                     },
@@ -3926,7 +3926,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportParse,
-                        service_metadata: Some(service_metadata),
+                        service_metadata: Some(Box::new(service_metadata)),
                         is_interactive: false,
                         resource_target: None,
                     },

@@ -554,7 +554,7 @@ fn go_convert_value(var: &str, type_id: &str) -> String {
         "Float" | "f64" => format!("{var}.(float64)"),
         "Bool" => format!("{var}.(bool)"),
         "Secret" => format!("{var}.(string)"),
-        _ => format!("{var}"),
+        _ => var.to_string(),
     }
 }
 

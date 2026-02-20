@@ -951,8 +951,8 @@ mod tests {
                 module: "services.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::prepare::llm.Anthropic::Messages".to_string(),
-                obligation: ObligationCategory::None,
-                service_metadata: Some(ServiceCallMetadata {
+                obligation: ObligationCategory::ServiceTransportPrepare,
+                service_metadata: Some(Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
                     transport: ServiceTransportClass::RestNetwork,
@@ -960,7 +960,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec.clone()),
-                }),
+                })),
                 is_interactive: false,
                 resource_target: None,
             },
@@ -975,8 +975,8 @@ mod tests {
                 module: "services.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::execute::llm.Anthropic::Messages".to_string(),
-                obligation: ObligationCategory::None,
-                service_metadata: Some(ServiceCallMetadata {
+                obligation: ObligationCategory::ServiceTransportExecute,
+                service_metadata: Some(Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
                     transport: ServiceTransportClass::RestNetwork,
@@ -984,7 +984,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec.clone()),
-                }),
+                })),
                 is_interactive: false,
                 resource_target: None,
             },
@@ -999,8 +999,8 @@ mod tests {
                 module: "services.llm.anthropic".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::parse::llm.Anthropic::Messages".to_string(),
-                obligation: ObligationCategory::None,
-                service_metadata: Some(ServiceCallMetadata {
+                obligation: ObligationCategory::ServiceTransportParse,
+                service_metadata: Some(Box::new(ServiceCallMetadata {
                     service: "llm.Anthropic".to_string(),
                     operation: "Messages".to_string(),
                     transport: ServiceTransportClass::RestNetwork,
@@ -1008,7 +1008,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec),
-                }),
+                })),
                 is_interactive: false,
                 resource_target: None,
             },
@@ -1023,8 +1023,8 @@ mod tests {
                 module: "services.cargo".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::prepare::cargo.Cargo::Build".to_string(),
-                obligation: ObligationCategory::None,
-                service_metadata: Some(ServiceCallMetadata {
+                obligation: ObligationCategory::ServiceTransportPrepare,
+                service_metadata: Some(Box::new(ServiceCallMetadata {
                     service: "cargo.Cargo".to_string(),
                     operation: "Build".to_string(),
                     transport: ServiceTransportClass::ShellLocal,
@@ -1032,7 +1032,7 @@ mod tests {
                     readonly: false,
                     permissions: vec![],
                     spec: Some(shell_spec.clone()),
-                }),
+                })),
                 is_interactive: false,
                 resource_target: None,
             },
@@ -1047,8 +1047,8 @@ mod tests {
                 module: "services.cargo".to_string(),
                 kind: CallableKind::Func,
                 name: "service_transport::parse::cargo.Cargo::Build".to_string(),
-                obligation: ObligationCategory::None,
-                service_metadata: Some(ServiceCallMetadata {
+                obligation: ObligationCategory::ServiceTransportParse,
+                service_metadata: Some(Box::new(ServiceCallMetadata {
                     service: "cargo.Cargo".to_string(),
                     operation: "Build".to_string(),
                     transport: ServiceTransportClass::ShellLocal,
@@ -1056,7 +1056,7 @@ mod tests {
                     readonly: false,
                     permissions: vec![],
                     spec: Some(shell_spec),
-                }),
+                })),
                 is_interactive: false,
                 resource_target: None,
             },

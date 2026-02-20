@@ -552,7 +552,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             name,
             service_metadata,
             ..
-        } => resolve_domain(node_id, module, name, outputs, service_metadata.as_ref()),
+        } => resolve_domain(node_id, module, name, outputs, service_metadata.as_deref()),
     }
 }
 
@@ -1146,7 +1146,7 @@ mod tests {
                 kind: CallableKind::Fn,
                 name: name.to_string(),
                 obligation,
-                service_metadata: Some(metadata),
+                service_metadata: Some(Box::new(metadata)),
                 is_interactive: false,
                 resource_target: None,
             },

@@ -688,7 +688,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             kind: CallableKind::Pattern,
             name: "service_transport::prepare::FsStorage::read".to_string(),
             obligation: ObligationCategory::ServiceTransportPrepare,
-            service_metadata: Some(ServiceCallMetadata {
+            service_metadata: Some(Box::new(ServiceCallMetadata {
                 service: "FsStorage".to_string(),
                 operation: "read".to_string(),
                 transport: ServiceTransportClass::ShellLocal,
@@ -696,7 +696,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-            }),
+            })),
             is_interactive: false,
             resource_target: None,
         },
@@ -710,7 +710,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             kind: CallableKind::Pattern,
             name: "service_transport::execute::FsStorage::read".to_string(),
             obligation: ObligationCategory::ServiceTransportExecute,
-            service_metadata: Some(ServiceCallMetadata {
+            service_metadata: Some(Box::new(ServiceCallMetadata {
                 service: "FsStorage".to_string(),
                 operation: "read".to_string(),
                 transport: ServiceTransportClass::ShellLocal,
@@ -718,7 +718,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-            }),
+            })),
             is_interactive: false,
             resource_target: None,
         },
@@ -732,7 +732,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             kind: CallableKind::Pattern,
             name: "service_transport::parse::FsStorage::read".to_string(),
             obligation: ObligationCategory::ServiceTransportParse,
-            service_metadata: Some(ServiceCallMetadata {
+            service_metadata: Some(Box::new(ServiceCallMetadata {
                 service: "FsStorage".to_string(),
                 operation: "read".to_string(),
                 transport: ServiceTransportClass::ShellLocal,
@@ -740,7 +740,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-            }),
+            })),
             is_interactive: false,
             resource_target: None,
         },
