@@ -5,6 +5,41 @@ Date: 2026-02-19
 Scope: `WF1-D`, `WF2-D`, `WF3-D`, `WF4-D` for planner-first `ci` and `test-all`  
 Canonical normative model: `docs/design/workflow-minimal-execution-model.md`
 
+## Implementation Status
+
+WF1/WF2/WF3/WF4/WF5 planner foundations now have an initial typed implementation in
+`gunbc-dag::workflow`:
+
+1. WF1 schema types and deterministic `ci` / `test-all` spec builders:
+   - `workflow/schema.rs`
+   - `workflow/process_registry.rs`
+   - `workflow/spec_builders.rs`
+2. WF2 fail-closed admission validation:
+   - `workflow/admission.rs`
+   - `workflow/errors.rs`
+3. WF3 deterministic key/ledger + cached-hit rehydration:
+   - `workflow/key.rs`
+   - `workflow/ledger.rs`
+   - `workflow/planner.rs`
+4. WF4 downstream coordination/readiness modeling:
+   - `workflow/coordination.rs`
+   - planner integration via `WorkflowPlan.coordination`
+5. WF5 plan explainability surface:
+   - `src/bin/workflow.rs` (`gunbc-workflow --plan ...`)
+   - `workflow/planner.rs` explain projection (`explain_plan`)
+6. Contract coverage:
+   - `gunbc-dag/tests/workflow_schema_contracts.rs`
+   - `gunbc-dag/tests/workflow_admission_contracts.rs`
+   - `gunbc-dag/tests/workflow_key_ledger_contracts.rs`
+   - `gunbc-dag/tests/workflow_plan_cli_contracts.rs`
+
+Related modeling hardening follow-ups landed with the planner:
+
+- M17: global flattening and context-free work identity via
+  `workflow/global_plan.rs` + canonicalized `ProcessUnitSpec::canonical_work_identity`.
+- M18: projection drift enforcement via `workflow/projection.rs`.
+- M19: non-redundancy invariant harness via `workflow/proof.rs`.
+
 ## 1. Read This First
 
 This pack is consolidated with the canonical model:
@@ -355,7 +390,51 @@ For natural review in Markdown:
 3. keep key/ledger unification diagram near WF3-D section,
 4. keep canonical references visible in each WF section.
 
-## 9. Review Checklist (Approval Gate)
+## 9. Artifact Dependency Direction and Bootstrap Invariant
+
+This section summarizes the normative artifact graph from the canonical model
+(Section 17). The design pack must be consistent with these constraints.
+
+### 9.1 Codegen Feeds Compilation (Not Reverse)
+
+The CI orchestration DAG (Section 3.1) correctly shows `codegen → build`. This
+is not incidental — it reflects the true artifact dependency:
+
+```
+codegen.ensure ──→ compile.tool_bins.ensure
+```
+
+Generated Rust sources (`target/codegen/bin/{tool}/main.rs`) are **compilation
+inputs for tool binaries**. Test harnesses (`{crate}/src/{module}/generated_tests*.rs`)
+are compilation inputs for test binaries only (`#[cfg(test)]`). If the planner
+skips codegen and marks compilation as fresh, it can produce stale binaries — a
+**correctness bug**.
+
+### 9.2 Bootstrap Invariant
+
+The `ci` binary has a hand-written `main.rs` because it runs codegen for other
+tools and cannot depend on generated code. This is a **bootstrap invariant** that
+must be preserved:
+
+> There exists at least one bootstrap-safe binary (the codegen binary) that can
+> produce generated artifacts when they are missing or stale. Its compilation
+> must not depend on codegen outputs.
+
+The planner must model compilation as two phases:
+
+1. `compile.bootstrap.ensure` — builds codegen/ci binaries (no codegen dependency).
+2. `compile.tool_bins.ensure` — builds tool binaries (depends on codegen outputs).
+
+See canonical model Section 17.3 for the full two-phase compilation model.
+
+### 9.3 Build Configuration in Keys
+
+Compilation materialization keys must include build profile, target triple, feature
+flags, and `RUSTFLAGS` in addition to source and dependency hashes. Codegen keys
+must include output schema version and registry configuration. See canonical model
+Section 17.4 for the complete key input tables.
+
+## 10. Review Checklist (Approval Gate)
 
 1. Canonical-vs-derived boundary is explicit and conflict-free.
 2. DAGs are orchestration-only and do not inline authored process internals.
@@ -369,3 +448,7 @@ For natural review in Markdown:
 10. Multi-producer fan-in is represented in key payload without contributor loss.
 11. Cached-hit nodes rehydrate outputs from CAS before downstream dataflow.
 12. Key encoding is canonical and versioned for deterministic hashing behavior.
+13. Artifact dependency direction is codegen → compilation (not reverse).
+14. Bootstrap invariant is preserved: codegen binary compilable without generated sources.
+15. Build configuration inputs (profile, target triple, features, RUSTFLAGS) are
+    included in compilation key contracts.

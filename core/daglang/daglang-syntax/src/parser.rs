@@ -241,6 +241,11 @@ impl Parser {
             TokenKind::Config => "config",
             TokenKind::With => "with",
             TokenKind::SelfKw => "self",
+            TokenKind::Test => "test",
+            TokenKind::Fixture => "fixture",
+            TokenKind::Mock => "mock",
+            TokenKind::Expect => "expect",
+            TokenKind::Contains => "contains",
             _ => return None,
         };
         Some(text.to_string())
@@ -270,7 +275,9 @@ impl Parser {
                 | TokenKind::Service
                 | TokenKind::Resource
                 | TokenKind::Interface
-                | TokenKind::Pipeline => return,
+                | TokenKind::Pipeline
+                | TokenKind::Test
+                | TokenKind::Fixture => return,
                 _ => {
                     self.advance();
                 }
@@ -482,6 +489,8 @@ impl Parser {
             TokenKind::Resource => Item::ResourceDef(self.parse_resource_def()?),
             TokenKind::Interface => Item::InterfaceDef(self.parse_interface_def()?),
             TokenKind::Pipeline => Item::PipelineDef(self.parse_pipeline_def()?),
+            TokenKind::Test => Item::TestDef(self.parse_test_def(leading_anns)?),
+            TokenKind::Fixture => Item::FixtureDef(self.parse_fixture_def()?),
             _ => {
                 return Err(self.err(format!(
                     "expected item declaration, found {}",
@@ -1234,6 +1243,214 @@ impl Parser {
         self.expect(&TokenKind::LBrace)?;
         let body = self.parse_func_body_lossy()?;
         Ok(StageDef { name, body, after })
+    }
+
+    // ── test DSL ───────────────────────────────────────────────────
+
+    /// Parse a fixture definition: `fixture <name> { mock* }`
+    fn parse_fixture_def(&mut self) -> Result<FixtureDef, ParseError> {
+        self.expect(&TokenKind::Fixture)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let mut mocks = Vec::new();
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            if self.check(&TokenKind::Mock) {
+                mocks.push(self.parse_mock_decl()?);
+            } else {
+                return Err(self.err(format!(
+                    "expected 'mock' inside fixture, found {}",
+                    self.peek().kind.desc()
+                )));
+            }
+        }
+        self.expect(&TokenKind::RBrace)?;
+        Ok(FixtureDef { name, mocks })
+    }
+
+    /// Parse a test definition:
+    /// `test <name> [: <fixture>] { annotation* (mock | input | expect)* }`
+    fn parse_test_def(
+        &mut self,
+        leading_anns: Vec<Annotation>,
+    ) -> Result<TestDef, ParseError> {
+        self.expect(&TokenKind::Test)?;
+        let name = self.expect_ident()?;
+        let fixture = if self.eat(&TokenKind::Colon) {
+            Some(self.expect_ident()?)
+        } else {
+            None
+        };
+        self.expect(&TokenKind::LBrace)?;
+
+        // Collect inline annotations at the top of the test body.
+        let mut annotations = leading_anns;
+        while self.check(&TokenKind::At) {
+            match self.parse_annotation() {
+                Ok(a) => annotations.push(a),
+                Err(e) => {
+                    self.record_err(e);
+                    self.skip_annotation_value();
+                }
+            }
+        }
+
+        let mut mocks = Vec::new();
+        let mut inputs = Vec::new();
+        let mut expects = Vec::new();
+
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            match &self.peek().kind {
+                TokenKind::Mock => mocks.push(self.parse_mock_decl()?),
+                TokenKind::Input => inputs.push(self.parse_input_decl()?),
+                TokenKind::Expect => expects.push(self.parse_expect_stmt()?),
+                _ => {
+                    return Err(self.err(format!(
+                        "expected 'mock', 'input', or 'expect' inside test, found {}",
+                        self.peek().kind.desc()
+                    )));
+                }
+            }
+        }
+        self.expect(&TokenKind::RBrace)?;
+
+        Ok(TestDef {
+            name,
+            annotations,
+            fixture,
+            mocks,
+            inputs,
+            expects,
+        })
+    }
+
+    /// Parse a mock target path: `seg1/seg2/.../segN.port` or bare `port`
+    ///
+    /// Segments before the last `.` are joined with `/` to form the node ID.
+    /// The segment after the last `.` is the port name.
+    /// If no `.` is present, the identifier is treated as a bare port name
+    /// with an empty node path (broadcast-style input).
+    fn parse_mock_target(&mut self) -> Result<(Vec<String>, String), ParseError> {
+        let first = self.expect_ident()?;
+
+        // Collect path segments separated by `/`
+        let mut segments = vec![first];
+        while self.eat(&TokenKind::Slash) {
+            segments.push(self.expect_ident()?);
+        }
+
+        // If no `.` follows, the single identifier is a bare port name
+        if !self.check(&TokenKind::Dot) {
+            let port = segments.pop().unwrap();
+            return Ok((segments, port));
+        }
+
+        // The port is after the last `.`
+        self.expect(&TokenKind::Dot)?;
+        let port = self.expect_ident()?;
+
+        // There may be more `.` separated path parts before the final port
+        // e.g., `gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam.ok`
+        // In this case node = gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam
+        //                port = ok
+        // But there could also be `gist_upload.execute.response`:
+        //   node = gist_upload/execute, port = response
+        // We use `.` for both sub-path separators and the final node/port separator.
+        // Resolution: collect all dotted segments, the last one is the port.
+        let mut dotted = vec![port];
+        while self.eat(&TokenKind::Dot) {
+            dotted.push(self.expect_ident()?);
+        }
+
+        let port = dotted.pop().unwrap();
+        // Remaining dotted segments become additional path segments
+        for seg in dotted {
+            segments.push(seg);
+        }
+
+        Ok((segments, port))
+    }
+
+    /// Parse: `mock <target> -> <expr>`
+    fn parse_mock_decl(&mut self) -> Result<MockDecl, ParseError> {
+        self.expect(&TokenKind::Mock)?;
+        let (node_segments, port) = self.parse_mock_target()?;
+        self.expect(&TokenKind::Arrow)?;
+        let value = self.parse_expr(0)?;
+        Ok(MockDecl {
+            node_segments,
+            port,
+            value,
+        })
+    }
+
+    /// Parse: `input <target> -> <expr>`
+    fn parse_input_decl(&mut self) -> Result<InputDecl, ParseError> {
+        self.expect(&TokenKind::Input)?;
+        let (node_segments, port) = self.parse_mock_target()?;
+        self.expect(&TokenKind::Arrow)?;
+        let value = self.parse_expr(0)?;
+        Ok(InputDecl {
+            node_segments,
+            port,
+            value,
+        })
+    }
+
+    /// Parse: `expect <expr> <comparison> <expr>`
+    ///        `expect <expr> contains <expr>`
+    ///        `expect <expr> is <TypeName>`
+    ///        `expect <expr>`
+    fn parse_expect_stmt(&mut self) -> Result<ExpectStmt, ParseError> {
+        self.expect(&TokenKind::Expect)?;
+        let lhs = self.parse_expr(0)?;
+
+        match &self.peek().kind {
+            TokenKind::EqEq => {
+                self.advance();
+                let rhs = self.parse_expr(0)?;
+                Ok(ExpectStmt::Eq(lhs, rhs))
+            }
+            TokenKind::Ne => {
+                self.advance();
+                let rhs = self.parse_expr(0)?;
+                Ok(ExpectStmt::Ne(lhs, rhs))
+            }
+            TokenKind::Lt => {
+                self.advance();
+                let rhs = self.parse_expr(0)?;
+                Ok(ExpectStmt::Lt(lhs, rhs))
+            }
+            TokenKind::Gt => {
+                self.advance();
+                let rhs = self.parse_expr(0)?;
+                Ok(ExpectStmt::Gt(lhs, rhs))
+            }
+            TokenKind::Le => {
+                self.advance();
+                let rhs = self.parse_expr(0)?;
+                Ok(ExpectStmt::Le(lhs, rhs))
+            }
+            TokenKind::Ge => {
+                self.advance();
+                let rhs = self.parse_expr(0)?;
+                Ok(ExpectStmt::Ge(lhs, rhs))
+            }
+            TokenKind::Contains => {
+                self.advance();
+                let rhs = self.parse_expr(0)?;
+                Ok(ExpectStmt::Contains(lhs, rhs))
+            }
+            // `is <TypeName>` — keyword `is` parsed as Ident("is")
+            TokenKind::Ident(s) if s == "is" => {
+                self.advance();
+                let type_name = self.expect_ident()?;
+                Ok(ExpectStmt::Is(lhs, type_name))
+            }
+            _ => {
+                // Just a truthiness check
+                Ok(ExpectStmt::Truthy(lhs))
+            }
+        }
     }
 
     fn consume_brace_block_contents(&mut self) -> Result<(), ParseError> {

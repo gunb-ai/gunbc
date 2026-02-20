@@ -615,6 +615,54 @@ fn validate_module_path_consistency(
     }
 }
 
+// ── Inline test extraction ──────────────────────────────────────────
+
+/// Result of extracting and emitting inline tests from compiled modules.
+#[derive(Debug)]
+pub struct TestEmitOutput {
+    /// Map from module source path to generated Rust test code.
+    pub generated: Vec<(PathBuf, String)>,
+}
+
+/// Extract inline tests from an already-resolved module graph.
+///
+/// Tests and fixtures are defined directly within `.dag` files alongside
+/// the tool/service definitions they test. This function walks the module
+/// graph, extracts any `test` / `fixture` blocks from each module's AST,
+/// and emits the corresponding `graph_mock.rs` Rust code.
+///
+/// The `config_resolver` receives the module path segments (e.g.
+/// `["tools", "bootstrap"]`) and the filesystem path, returning the
+/// `TestEmitConfig` when the module has a registered test target.
+pub fn extract_inline_tests(
+    graph: &daglang_resolve::ModuleGraph,
+    config_resolver: impl Fn(&[String], &Path) -> Option<daglang_emit::test_mock_emit::TestEmitConfig>,
+) -> Result<TestEmitOutput, CompileError> {
+    let mut generated = Vec::new();
+
+    for module in &graph.modules {
+        let test_file = daglang_emit::test_mock_emit::TestFile::from_source(&module.ast);
+
+        if test_file.tests.is_empty() {
+            continue; // Module has no inline tests.
+        }
+
+        let config =
+            config_resolver(&module.module_path, &module.path).ok_or_else(|| {
+                format!(
+                    "no test emit config for module `{}`",
+                    module.module_path.join(".")
+                )
+            })?;
+
+        let rust_code =
+            daglang_emit::test_mock_emit::emit_test_mock_file(&test_file, &config);
+        generated.push((module.path.clone(), rust_code));
+    }
+
+    Ok(TestEmitOutput { generated })
+}
+
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod tests {

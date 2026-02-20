@@ -188,6 +188,7 @@ version = "0.1.0"
 dependencies = [
  "daglang-derive",
  "daglang-lower",
+ "daglang-syntax",
  "gunbc-ir",
  "serde_json",
 ]
@@ -386,6 +387,7 @@ dependencies = [
  "gunbc-testgen-registry-macros",
  "gunbc-tool-registry",
  "gunbc-tool-registry-macros",
+ "serde",
  "serde_json",
  "toml_edit",
 ]

@@ -47,6 +47,8 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "services/gcp/sts.dag",
         "services/git.dag",
         "services/github/gist.dag",
+        "services/llm/anthropic.dag",
+        "services/llm/openai.dag",
         "services/shell.dag",
         "shared/dag_util.dag",
         "shared/gist_modes.dag",
@@ -63,6 +65,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "tools/gist.dag",
         "tools/makegen.dag",
         "tools/pragma.dag",
+        "tools/review.dag",
         "tools/testgen.dag",
     ]
 }

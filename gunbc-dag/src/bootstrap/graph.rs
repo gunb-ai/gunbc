@@ -9,7 +9,13 @@ pub type BootstrapGraphOp = DynOp;
 
 /// Get the declared signature for the bootstrap workflow (auto-derived from DAG).
 pub fn bootstrap_signature() -> WorkflowSignature {
-    infer_signature(&build_bootstrap_graph().expect("bootstrap DAG should build for signature"))
+    match build_bootstrap_graph() {
+        Ok(dag) => infer_signature(&dag),
+        Err(err) => {
+            eprintln!("warning: failed to build bootstrap DAG for signature: {err}");
+            WorkflowSignature::default()
+        }
+    }
 }
 
 /// Build bootstrap graph from the DSL source.

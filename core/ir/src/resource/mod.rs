@@ -222,7 +222,7 @@ pub fn capability_marker() -> SecretString {
 /// Validate that a map contains the capability marker.
 pub fn ensure_capability_marker(map: &BTreeMap<String, Value>, kind: &str) -> Result<(), String> {
     match map.get("cap") {
-        Some(Value::Secret(s)) if s.expose() == CAPABILITY_MARKER => Ok(()),
+        Some(Value::Secret(s)) if s.expose_plaintext_for_transport() == CAPABILITY_MARKER => Ok(()),
         _ => Err(format!(
             "{} value missing capability marker (expected secret field 'cap')",
             kind

@@ -334,7 +334,7 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             module,
             name,
             *obligation,
-            service_metadata.as_ref(),
+            service_metadata.as_deref(),
             inputs,
             outputs,
         ),
@@ -1258,6 +1258,7 @@ mod tests {
             idempotent: true,
             readonly: false,
             permissions: vec![],
+            spec: None,
         };
         let node = make_node(
             "execute_cmd",
@@ -1268,7 +1269,7 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "run_command".into(),
                 obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: Some(meta),
+                service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
             },
@@ -1295,6 +1296,7 @@ mod tests {
             idempotent: true,
             readonly: true,
             permissions: vec!["repo:read".into()],
+            spec: None,
         };
         let node = make_node(
             "execute_list_repos",
@@ -1305,7 +1307,7 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "list_repos".into(),
                 obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: Some(meta),
+                service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
             },
@@ -1329,6 +1331,7 @@ mod tests {
             idempotent: true,
             readonly: true,
             permissions: vec![],
+            spec: None,
         };
         let node = make_node(
             "prepare_list_repos",
@@ -1339,7 +1342,7 @@ mod tests {
                 kind: CallableKind::Func,
                 name: "prepare_list_repos".into(),
                 obligation: ObligationCategory::ServiceTransportPrepare,
-                service_metadata: Some(meta),
+                service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
             },

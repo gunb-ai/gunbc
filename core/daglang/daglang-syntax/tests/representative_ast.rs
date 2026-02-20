@@ -31,6 +31,8 @@ fn item_signatures(source: &SourceFile) -> Vec<String> {
             Item::ResourceDef(def) => format!("resource {}", def.name),
             Item::InterfaceDef(def) => format!("interface {}", def.name),
             Item::PipelineDef(def) => format!("pipeline {}", def.name),
+            Item::TestDef(def) => format!("test {}", def.name),
+            Item::FixtureDef(def) => format!("fixture {}", def.name),
         })
         .collect()
 }
@@ -40,8 +42,8 @@ fn makegen_contains_fn_and_func_items() {
     let source = parse_dsl("tools/makegen.dag");
     assert_eq!(
         source.items.len(),
-        2,
-        "makegen should contain 2 top-level items"
+        3,
+        "makegen should contain 3 top-level items (fn, func, test)"
     );
     assert_eq!(
         source
@@ -86,7 +88,7 @@ fn makegen_contains_fn_and_func_items() {
     );
     assert_eq!(
         item_signatures(&source),
-        vec!["fn render_makefile", "func makegen"]
+        vec!["fn render_makefile", "func makegen", "test makegen_dryrun"]
     );
 }
 

@@ -16,7 +16,13 @@ pub type CIGraphOp = DynOp;
 
 /// Get the declared signature for the ci workflow (auto-derived from DAG).
 pub fn ci_signature() -> WorkflowSignature {
-    infer_signature(&build_ci_graph().expect("ci DAG should build for signature"))
+    match build_ci_graph() {
+        Ok(dag) => infer_signature(&dag),
+        Err(err) => {
+            eprintln!("warning: failed to build ci DAG for signature: {err}");
+            WorkflowSignature::default()
+        }
+    }
 }
 
 /// Get the integrations used by the CI workflow.

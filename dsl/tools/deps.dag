@@ -61,3 +61,44 @@ func deps_generate(registry: ToolRegistry) -> { written: Bool } {
   result = content_upsert(content: content, path: "deps.toml")
   return { written: result.written }
 }
+
+// ── Tests ──────────────────────────────────────────────────────────
+//
+// NOTE: Complex mock values (FilesystemHandle, Platform) still use Rust
+// helpers via @rust_mock_helpers.
+
+// Shared filesystem and platform mocks.
+fixture deps_env {
+    mock fs_env.handle -> "write_scope"
+    mock platform_env.platform -> "linux"
+}
+
+test deps_install_dryrun : deps_env {
+    @tier(Unit)
+    @hermetic(true)
+    @rust_mock_helpers("gunbc_deps::graph_mock")
+
+    // File transport mock: load manifest
+    mock load_manifest/execute_load_manifest.response -> file_response("deps.toml")
+
+    // Shell transport mocks: install commands
+    mock execute_installs/execute_installs.response -> shell_response(0, "installed ripgrep")
+
+    expect result.installed is Bool
+    expect result.installed == true
+}
+
+test deps_install_pkg_fails : deps_env {
+    @tier(Scenario)
+    @hermetic(true)
+    @testgen_skip(true)
+    @rust_mock_helpers("gunbc_deps::graph_mock")
+
+    // File transport mock: load manifest
+    mock load_manifest/execute_load_manifest.response -> file_response("deps.toml")
+
+    // Shell transport mock: install fails
+    mock execute_installs/execute_installs.response -> shell_response(1, "error: package not found")
+
+    expect result.installed == false
+}

@@ -1,5 +1,11 @@
 //! gunbc-codegen-dag main entry point.
 //!
+//! BOOTSTRAP-SAFE BINARY: This main.rs is hand-written (not generated) because
+//! the codegen tool produces the generated CLI entrypoints that other tool binaries
+//! depend on. It must be compilable WITHOUT generated artifacts — otherwise there
+//! is a bootstrap cycle (codegen needs compilation, compilation needs codegen
+//! outputs). See `docs/design/workflow-minimal-execution-model.md` Section 17.3.
+//!
 //! Upsert-style codegen prep: checks for generated CLI entrypoints,
 //! runs the bootstrapper if missing, and writes a stamp file.
 

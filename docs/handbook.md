@@ -3,12 +3,12 @@
 This handbook is the practical guide to the gunbc codebase. It explains the core concepts, how the system is structured, and the recurring patterns you should recognize when reading or extending the code.
 
 Companion documents:
+- `docs/design/v4/dsl-design.md` for the full DSL language specification
+- `docs/design/service-codegen.md` for DSL-driven service codegen architecture
 - `docs/design/overview.md` for design rationale and formal framing
 - `SPEC.md` for the formal IR specification
 - `docs/design/testgen.md` for the test generation model
-- `docs/ab-writing-workflows.md` for A/B workflow comparisons (imperative/OO/functional vs gunbc DAG)
-- `docs/design/unified-emission.md` for the rendering unification plan
-- `docs/design/unified-registration.md` for the registration unification plan
+- `docs/ab-writing-workflows.md` for A/B workflow comparisons
 - `AGENT.md` for onboarding guardrails and repo pointers
 
 This file is self-contained: [Appendix A](#appendix-a-pattern-reference) has every pattern reference, [Appendix B](#appendix-b-end-to-end-examples) has full pipeline walkthroughs.
@@ -18,48 +18,65 @@ This file is self-contained: [Appendix A](#appendix-a-pattern-reference) has eve
 | Doc | Focus | Use When |
 | --- | --- | --- |
 | `docs/handbook.md` | Practical overview, pattern catalog, e2e examples | You need the conceptual map, pattern details, or concrete examples |
+| `docs/design/v4/dsl-design.md` | DSL language specification | You are writing `.dag` files or extending the language |
+| `docs/design/service-codegen.md` | Service codegen from DSL | You are adding a new service or modifying the emit pipeline |
 | `docs/design/overview.md` | Philosophy + formal model | You want design rationale and invariants |
-| `SPEC.md` | Formal IR spec | You need canonical definitions |
+| `SPEC.md` | Formal IR spec | You need canonical IR type definitions |
 | `docs/design/testgen.md` | Test generation theory | You are touching testgen or proof obligations |
-| `docs/ab-writing-workflows.md` | A/B workflow comparisons | You want marketing-ready examples of imperative/OO/functional vs gunbc DAG |
-| `docs/design/unified-emission.md` | Rendering unification | You are touching rendering or codegen |
-| `docs/design/unified-registration.md` | Registration unification | You are adding tools or auto-discovery |
+| `docs/ab-writing-workflows.md` | A/B workflow comparisons | You want side-by-side imperative vs DAG examples |
 | `AGENT.md` | Onboarding + guardrails | You are new to the repo or doing refactors |
 
 ## Mental Model
 
-gunbc is a Rust-based workflow IR where **everything is a DAG**.
+gunbc is a **DSL-first workflow compiler** where **everything is a DAG**.
+
+The primary authoring surface is the `.dag` language — declarative definitions that compile to a typed Graph IR. The compiler pipeline is:
+
+```text
+.dag source  →  [parse]  →  [typecheck]  →  [lower]  →  Dag<LoweredOp>
+                                                              ↓
+                                               [emit] → Rust / Go / C / MIPS
+```
 
 Core claims:
 - Structural soundness means: acyclic, type-compatible, cardinality-compatible, and sub-DAG interfaces match.
 - Nodes are pure transformations. In the runtime DAG, world I/O only happens at explicit transport execution nodes.
+- Service operations (REST, Shell, File) are defined once in `.dag` and compiled to all target languages.
 - If it validates, it is structurally sound.
 
 ## Core IR: Dag, Node, Port, Edge
 
-Canonical types live in `core/ir/src/dag.rs`, `core/ir/src/node.rs`, and `core/ir/src/types.rs`.
+The Graph IR is the **compilation target** — you rarely construct it by hand. Instead, write `.dag` files and let the compiler produce `Dag<LoweredOp>`.
+
+Canonical IR types live in `core/ir/src/dag.rs`, `core/ir/src/node.rs`, and `core/ir/src/types.rs`.
+
+### DSL (primary authoring)
+
+```
+module example.fetch
+
+fn parse_body(body: String) -> Json { /* ... */ }
+
+func fetch_and_parse(url: String) -> { result: Json } {
+  body = http.Get(url: url)
+  result = parse_body(body: body.content)
+  return { result: result }
+}
+```
+
+The compiler lowers this to two nodes (`fetch`, `parse`) connected by an edge — the same Graph IR that the Rust API produces, but declared in tens of lines instead of hundreds.
+
+### Graph IR (compilation target)
 
 ```rust
+// You rarely write this directly anymore — the compiler generates it.
 use gunbc_ir::{Dag, Node, Port, Edge, NodeBody};
 
-struct MyOp;
-
 let mut dag: Dag<MyOp> = Dag::new();
-
-dag.add_node(Node::opaque(
-    "fetch",
-    vec![Port::new("url", "String")],
-    vec![Port::new("body", "String")],
-    MyOp,
-));
-
-dag.add_node(Node::opaque(
-    "parse",
-    vec![Port::new("body", "String")],
-    vec![Port::new("result", "Json")],
-    MyOp,
-));
-
+dag.add_node(Node::opaque("fetch",
+    vec![Port::new("url", "String")], vec![Port::new("body", "String")], MyOp));
+dag.add_node(Node::opaque("parse",
+    vec![Port::new("body", "String")], vec![Port::new("result", "Json")], MyOp));
 dag.add_edge(Edge::new("fetch", "body", "parse", "body"));
 ```
 
@@ -221,13 +238,18 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 
 | Path | Purpose |
 | --- | --- |
+| `dsl/` | **Primary authoring surface** — all `.dag` source files |
+| `dsl/services/` | Service definitions (REST, Shell): gcp, github, cargo, git, llm |
+| `dsl/tools/` | Tool workflows: clippy, gist, codegen, makegen, etc. |
+| `dsl/pipelines/` | Pipeline compositions: ci |
+| `core/daglang/` | DSL compiler: parse → typecheck → lower → emit |
 | `core/ir/` | Core IR types, patterns, transport model, resource system |
 | `core/exec/` | Execution engine, DryRun interception, simulation |
-| `core/codegen/` | CLI and test generation | 
+| `core/codegen/` | CLI and test generation |
 | `core/test/` | MockSpec and test utilities |
 | `lib/transport/` | Canonical runtime I/O boundary; direct I/O elsewhere is banned (tests exempt by pragma policy) |
 | `lib/tools/` | General-purpose tool wrappers (clippy, deps, gist) |
-| `gunbc-dag/` | Repo-specific DAGs and CLI entrypoints (ci, makegen, codegen, testgen, bootstrap) |
+| `gunbc-dag/` | Repo-specific runtime resolver and CLI entrypoints |
 | `docs/design/` | Design documentation |
 
 ## Glossary
@@ -243,12 +265,44 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 
 ## How to Extend
 
-Common tasks and the primary starting points:
-- Add a new pattern: `core/ir/src/patterns/` and `core/ir/src/patterns/mod.rs`.
-- Add a new CLI tool: `core/ir/src/transport/cli.rs`, plus a wrapper crate under `lib/tools/` if needed.
-- Add a new ToolDef for planning: `core/ir/src/transport/tool.rs` and `lib/tools/deps/` for deps.toml generation.
-- Add a new repo-specific tool: `gunbc-dag/src/` plus a bin in `gunbc-dag/src/bin/`.
+### DSL-first workflow (primary path)
+
+Most new work is done by writing or modifying `.dag` files. The compiler handles lowering, type checking, and multi-language emission.
+
+**Add a new REST/Shell service:**
+1. Create `dsl/services/<provider>/<name>.dag` with `service` block and `operation` definitions.
+2. Use `@rest(METHOD, "/path")` for REST or `@shell(["cmd", "arg"])` for shell operations.
+3. The compiler extracts `ServiceOperationSpec` from annotations and generates transport code for all backends.
+
+Example (adding a new REST service):
+```
+module services.stripe.payments
+
+service stripe.Payments {
+  @endpoint("https://api.stripe.com")
+  @auth(BearerToken)
+
+  operation CreateCharge {
+    input { amount: Int, currency: String }
+    output { id: String @json("id"), status: String @json("status") }
+    @rest(POST, "/v1/charges")
+  }
+}
+```
+
+**Add a new tool workflow:**
+1. Create `dsl/tools/<name>.dag` — import services, define `fn` (pure) and `func` (effectful) blocks.
+2. The compiler generates the `prepare → execute → parse` triplet automatically from service calls.
+
+**Add a new pipeline:**
+1. Create `dsl/pipelines/<name>.dag` — import tools, define `pipeline` block with `stage` dependencies.
+
+### Legacy Rust IR path (for framework internals)
+
+If you need to modify the compiler, IR types, or execution engine:
+- Add a new pattern: `core/ir/src/patterns/`.
 - Add a new transport: `core/ir/src/transport/` plus executor support in `lib/transport/`.
+- Extend the emit pipeline: `core/daglang/daglang-emit/src/` (add `service_emit` functions per backend).
 
 ---
 
@@ -917,30 +971,64 @@ pub struct ManifestEntry {
 
 # Appendix B: End-to-End Examples
 
-These examples trace real code through the full pipeline: DAG definition → MockSpec → testgen registration → generated tests.
+These examples trace real code through the full pipeline. The primary authoring surface is `.dag` files; the compiler handles lowering to Graph IR and emitting target-language code.
 
 ---
 
 ## B.1 Clippy Tool (Minimal Upsert)
 
-The simplest real tool. Shows the upsert pattern with no custom nodes.
+The simplest real tool. Shows the upsert pattern for tool acquisition.
 
-### Define the tool (`lib/tools/clippy/src/graph.rs`)
+### DSL definition (`dsl/tools/clippy.dag`)
 
-```rust
-use gunbc_ir::node::Node;
-use gunbc_ir::transport::cli::{self, build_cli_upsert, CliToolOp};
+```
+module tools.clippy
 
-pub fn build_clippy_upsert(args: &[&str]) -> Node<CliToolOp> {
-    build_cli_upsert(&cli::CLIPPY, args)
+import std.patterns { upsert }
+import std.resources { Filesystem }
+import services.cargo
+
+resource Clippy {
+  kind: Capability
+  mode: Read
+  lifecycle: Persistent
+
+  capability check {
+    input {}
+    output { exists: Bool }
+    @shell(["cargo", "clippy", "--version"])
+    @hermetic @readonly
+  }
+
+  capability install {
+    input {}
+    output { installed: Bool }
+    @shell(["rustup", "component", "add", "clippy"])
+    @hermetic
+  }
+
+  capability resolve {
+    input {}
+    output { handle: String }
+    @shell(["cargo", "clippy", "--version"])
+    @hermetic @readonly
+  }
 }
 
-pub fn build_clippy_lint_all() -> Node<CliToolOp> {
-    build_clippy_upsert(&["--all-targets", "--", "-D", "warnings"])
+func clippy_lint(paths: List<String>?) -> { clean: Bool, findings: String }
+  uses clippy: Clippy
+{
+  tool = upsert(
+    check: clippy.check(),
+    create: clippy.install(),
+    resolve: clippy.resolve()
+  )
+  result = cargo.Build.Clippy() [after tool]
+  return { clean: result.success, findings: result.stderr }
 }
 ```
 
-`build_cli_upsert` produces a SubDag node:
+The compiler lowers this to a SubDag node with the upsert pattern:
 
 ```text
 [check_clippy] ──exists?──▶ [install_clippy] ──▶ [run_clippy]
@@ -948,14 +1036,15 @@ pub fn build_clippy_lint_all() -> Node<CliToolOp> {
        └──────────already installed──────────────────┘
 ```
 
-### Compose into CI graph (`gunbc-dag/src/ci/graph.rs`)
+### Compose into CI pipeline (`dsl/pipelines/ci.dag`)
 
-```rust
-let clippy = build_clippy_lint_all();
-dag.add_node(clippy);
+```
+stage lint_stage [after build_stage, when build_result.success] {
+  lint_result = clippy_lint()
+}
 ```
 
-Fractal composition: each tool is a self-contained SubDag node that the CI graph treats as a single step.
+Fractal composition: each tool is a self-contained SubDag node that the CI pipeline treats as a single step.
 
 ---
 
@@ -963,106 +1052,84 @@ Fractal composition: each tool is a self-contained SubDag node that the CI graph
 
 Medium-complexity tool with multiple modes, transport boundaries, and resource access.
 
-### Step 1: Define the DAG (`lib/tools/gist/src/graph.rs`)
+### Step 1: Define the service (`dsl/services/github/gist.dag`)
 
-```rust
-pub fn build_gist_graph(
-    mode: GistMode, extensions: Vec<String>, public: bool,
-) -> Result<Dag<GistGraphOp>, BuilderError> {
-    let mut builder = DagBuilder::new();
-
-    // Environment nodes (intercepted in DryRun)
-    let fs_env = builder.add_root_node(Node::opaque(
-        "fs_env", vec![],
-        vec![port("fs:write", "FilesystemHandle")],
-        GistGraphOp::FsEnv(FsEnv::new(Scope::Write)),
-    ))?;
-    let clock_env = builder.add_root_node(Node::opaque(
-        "clock_env", vec![],
-        vec![port("clock", "Timestamp")],
-        GistGraphOp::ClockEnv(ClockEnv),
-    ))?;
-
-    // Mode-specific content acquisition
-    let render_markdown = match mode {
-        GistMode::Snapshot => build_snapshot_acquire(&mut builder, extensions)?,
-        GistMode::Diff { base_ref } => build_diff_acquire(&mut builder, &base_ref, extensions)?,
-        GistMode::Recent => { /* ... */ },
-    };
-
-    // Transport boundary: prepare (pure) → execute (I/O) → parse (pure)
-    let prepare = builder.add_node_after(Node::opaque(
-        "prepare_gist_request",
-        vec![scalar("markdown", "String")],
-        vec![scalar("request", "TransportRequest")],
-        GistGraphOp::Gist(GistOps::PrepareRequest { public }),
-    ), &render_markdown)?;
-
-    let execute = builder.add_node_after(Node::opaque(
-        "execute_gist",
-        vec![scalar("request", "TransportRequest")],
-        vec![scalar("response", "TransportResponse")],
-        GistGraphOp::Transport(TransportOps::Execute),
-    ), &prepare)?;
-
-    let parse = builder.add_node_after(Node::opaque(
-        "parse_gist_response",
-        vec![scalar("response", "TransportResponse")],
-        vec![scalar("url", "String")],
-        GistGraphOp::Gist(GistOps::ParseGistResponse),
-    ), &execute)?;
-
-    builder.build()
-}
 ```
+service github.Gist {
+  @endpoint("https://api.github.com")
+  @auth(BearerToken)
 
-### Step 2: Write the MockSpec (`lib/tools/gist/src/graph_mock.rs`)
-
-MockSpec is extracted from the DAG's actual structure — not hand-written:
-
-```rust
-fn gist_mock_spec(mode: &GistMode) -> MockSpec {
-    let dag = build_gist_graph(mode.clone(), vec![], false).expect("gist graph should build");
-
-    let mut reqs = extract_mock_requirements(&dag, "gist")
-        .boundary("fs_env", "fs:write", mock_fs_handle())
-        .expect("fs:write mock should match type")
-        .boundary("clock_env", "clock", mock_clock())
-        .expect("clock mock should match type");
-
-    match mode {
-        GistMode::Snapshot => {
-            reqs = reqs
-                .transport_response("execute_list_files", "response",
-                    TransportResponse::Shell(ShellResponse::ok("src/main.rs\nREADME.md\n")))
-                .expect("type check")
-                .transport_response("execute_read_files", "response",
-                    TransportResponse::Shell(ShellResponse::ok("fn main() {}\n")))
-                .expect("type check");
-        }
-        // ... other modes
+  operation Create {
+    input {
+      description: String
+      files: Map<String, String>
+      public: Bool = false
     }
-
-    reqs.boundary_str("parse_gist_response", "url",
-        "https://gist.github.com/mock/abc123def456")
-        .expect("type check")
-        .build_unchecked()
+    output {
+      url: Url @json("html_url")
+      id: GistId
+    }
+    @rest(POST, "/gists")
+    @permissions(["gist"])
+  }
 }
 ```
 
-### Step 3: Register with testgen
+### Step 2: Define the tool workflow (`dsl/tools/gist.dag`)
+
+```
+module tools.gist
+
+import services.git
+import std.patterns { read_text_files }
+import services.github.gist
+
+fn render_snapshot(files: List<{ path: TextFilePath, content: String }>) -> String {
+  let header = "# Code Snapshot\n\n"
+  let sections = files
+    |> map(f => "## `{f.path}`\n\n```\n{f.content}\n```")
+    |> join("\n\n")
+  "{header}{sections}"
+}
+
+func gist_snapshot(base_ref: CommitSha?) -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+{
+  ctx = branch_context()
+  files = git.Core.LsFiles()
+  read_result = read_text_files(paths: files.files)
+  markdown = render_snapshot(files: read_result.files)
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref)
+  return { url: result.url }
+}
+```
+
+The compiler generates the transport triplet (`prepare → execute → parse`) automatically from the service call `github.Gist.Create()` — no hand-written `PrepareRequest`/`ParseGistResponse` structs needed.
+
+### Step 3: MockSpec and testgen registration
+
+MockSpec is extracted from the DAG's actual structure — the `@mock_response` annotation on the service operation provides the mock data:
+
+```
+operation Create {
+    // ...
+    @mock_response(
+      status: 201,
+      body: { "html_url": "https://gist.github.com/mock/{id}", "id": "{id}" }
+    )
+}
+```
+
+For the testgen registration, the `#[testgen_target]` proc macro auto-discovers the test target at link time:
 
 ```rust
-#[gunbc_testgen_registry_macros::testgen_target(
+#[testgen_target(
     name = "gist-snapshot",
     output = "lib/tools/gist/src/generated_tests_snapshot.rs",
     module = "gist_snapshot_generated_tests",
     builder = "crate::build_gist_graph(crate::GistMode::Snapshot, vec![], false).unwrap()",
-    signature = "crate::gist_signature(&crate::GistMode::Snapshot)"
 )]
-pub fn gist_snapshot_mock_spec() -> MockSpec {
-    gist_mock_spec(&GistMode::Snapshot)
-}
+pub fn gist_snapshot_mock_spec() -> MockSpec { /* ... */ }
 ```
 
 No manual registration list — adding `#[testgen_target]` is the only step.
@@ -1165,19 +1232,109 @@ fn test_window_cloud_credential_through_execute() {
 
 ---
 
-## B.3 CI Graph (Large Composed DAG)
+## B.3 CI Graph (Large Composed Pipeline)
 
-The CI graph (`gunbc-dag/src/ci/graph.rs`) composes multiple tool SubDag nodes:
+The CI pipeline is defined in `dsl/pipelines/ci.dag` — a 12-stage composition that imports all gunbc tools and wires them together with stage dependencies, parallel groups, and aggregate reporting.
+
+### DSL definition (`dsl/pipelines/ci.dag`)
+
+```
+module pipelines.ci
+
+import tools.makegen
+import tools.bootstrap
+import tools.codegen
+import tools.testgen
+import tools.pragma
+import tools.build
+import tools.clippy { clippy_lint }
+import tools.deps
+import std.types { Summary, StageResult }
+import shared.dag_util { aggregate_results, format_report, stage_result, stage_from_output }
+
+pipeline ci {
+
+  stage cloud_env {
+    cloud_status = check_cloud_env()
+  }
+
+  stage codegen_stage [after cloud_env] {
+    codegen_result = codegen()
+  }
+
+  stage bootstrap_stage [after codegen_stage, when codegen_result.success] {
+    bootstrap_result = bootstrap()
+  }
+
+  stage generate [after codegen_stage, after bootstrap_stage, when codegen_result.success] {
+    parallel {
+      pragma_result = pragma(directives: load_pragma_directives())
+      testgen_result = testgen(targets: discover_testgen_targets())
+    }
+  }
+
+  stage build_stage [after generate] {
+    build_result = build_all()
+  }
+
+  stage test_stage [after build_stage, when build_result.success] {
+    test_result = cargo.Build.Test()
+  }
+
+  stage lint_stage [after build_stage, when build_result.success] {
+    lint_result = clippy_lint()
+  }
+
+  stage guardrails [after generate] {
+    guardrail_result = run_guardrail_checks()
+  }
+
+  stage verify [after generate] {
+    parallel {
+      verify_makegen = verify_makegen_output()
+      verify_deps = verify_deps_config()
+      verify_bootstrap = verify_bootstrap_output()
+      verify_testgen = verify_testgen_output()
+      verify_pragma = verify_pragma_output()
+    }
+    verify_aggregate = aggregate_verify(
+      results: [verify_makegen, verify_deps, verify_bootstrap, verify_testgen, verify_pragma]
+    )
+  }
+
+  stage report [after test_stage, after lint_stage, after guardrails, after verify] {
+    stages = [
+      stage_result(name: "codegen", success: codegen_result.success, stderr: ""),
+      stage_result(name: "bootstrap", success: true, stderr: ""),
+      // ... (all stages aggregated)
+    ]
+    summary = aggregate_results(stages: stages)
+    report_text = format_report(summary: summary, stages: stages)
+  }
+}
+```
+
+### Dependency graph
 
 ```text
-[deps_exists] -> [codegen_exists] -> [codegen] -> [testgen] -> [build] -> [test]
-                                                                             |
-                                                     [clippy_lint] <---------+
-                                                            |
-                                                     [guardrail_check]
-                                                            |
-                                                        [report]
+  cloud_env (root)
+      |
+  codegen
+      |
+      +---> deps_check
+      |
+      +---> bootstrap --------+
+      |                       |
+      +---> pragma -----------+---> lint (clippy)
+      |                       |
+      +---> testgen ----------+---> build ---> test ---+
+      |                       |                        |
+      |                       +---> guardrails --------+
+      |                       |                        |
+      +---> verify (5 checks) +---> aggregate ---------+---> report
 ```
+
+Each tool (`clippy_lint`, `codegen`, `bootstrap`, etc.) is a self-contained SubDag node imported from `dsl/tools/`. The pipeline only declares **what depends on what** — the compiler resolves the stage ordering and parallel execution groups.
 
 **Generated obligation stats:**
 ```
@@ -1191,50 +1348,62 @@ Meaning: 58 obligations proven statically (no test needed), 75 tests generated a
 
 ## B.4 Pipeline Summary
 
+The DSL-first pipeline from authoring to generated tests:
+
 ```text
 +-------------------------------+
-| 1. Define DAG                 |   graph.rs
-|    Node::opaque / DagBuilder  |   prepare -> execute -> parse
+| 1. Write .dag file            |   dsl/services/, dsl/tools/, dsl/pipelines/
+|    service + operation blocks |   @rest/@shell annotations, @mock_response
+|    fn/func blocks, pipeline   |   stage dependencies, parallel groups
 +-------------------------------+
               |
               v
 +-------------------------------+
-| 2. Write MockSpec             |   graph_mock.rs
+| 2. Compile                    |   core/daglang/
+|    parse → typecheck → lower  |   → Dag<LoweredOp> (Graph IR)
+|    → emit (Rust/Go/C/MIPS)   |   ServiceOperationSpec → transport code
++-------------------------------+
+              |
+              v
++-------------------------------+
+| 3. MockSpec (from annotations)|   @mock_response on service operations
 |    extract_mock_requirements  |   type-checked against DAG structure
-|    .boundary() / .transport() |
+|    + graph_mock.rs bridge     |   boundary mocks + transport mocks
 +-------------------------------+
               |
               v
 +-------------------------------+
-| 3. Register with testgen      |   #[testgen_target(name, output, builder)]
+| 4. Register with testgen      |   #[testgen_target(name, output, builder)]
 |    proc macro + inventory      |   auto-discovered at build time
 +-------------------------------+
               |
               v
 +-------------------------------+
-| 4. Analyze DAG                |   analyze.rs
+| 5. Analyze DAG                |   analyze.rs
 |    boundaries, transport,     |   structural facts + proof obligations
 |    cardinalities, resources   |
 +-------------------------------+
               |
               v
 +-------------------------------+
-| 5. Generate tests             |   codegen.rs
+| 6. Generate tests             |   codegen.rs
 |    TestGenerator + buckets    |   A: execution, B: contracts,
 |    (only for Unknown proofs)  |   C: scenarios, D: resources
 +-------------------------------+
               |
               v
 +-------------------------------+
-| 6. Output: generated_tests.rs |   content-hash header
+| 7. Output: generated_tests.rs |   content-hash header
 |    make testgen regenerates   |   50-150+ tests per DAG
 +-------------------------------+
 ```
 
 **Key invariants:**
 
-1. **MockSpec is derived from DAG structure**, not invented independently. `extract_mock_requirements()` reads the actual DAG and type-checks each mock.
-2. **Registration is automatic.** Adding `#[testgen_target(...)]` is sufficient. No manual list.
-3. **Tests are obligation-driven.** Only obligations that cannot be proven statically generate test code.
-4. **Content hashing detects drift.** Each generated file includes a `Content-Hash`. If the DAG or MockSpec changes, `make testgen` overwrites the file.
-5. **Windowed tests compose fractally.** Sliding windows of size 2..max are extracted as sub-DAGs, fed baseline inputs, and verified against baseline outputs.
+1. **`.dag` files are the single source of truth.** Service definitions, tool workflows, and pipelines are all authored in the DSL. The compiler handles lowering, type-checking, and multi-language emission.
+2. **MockSpec is derived from DAG structure**, not invented independently. `extract_mock_requirements()` reads the actual DAG and type-checks each mock. `@mock_response` annotations on service operations provide the mock data.
+3. **Registration is automatic.** Adding `#[testgen_target(...)]` is sufficient. No manual list.
+4. **Tests are obligation-driven.** Only obligations that cannot be proven statically generate test code.
+5. **Content hashing detects drift.** Each generated file includes a `Content-Hash`. If the DAG or MockSpec changes, `make testgen` overwrites the file.
+6. **Windowed tests compose fractally.** Sliding windows of size 2..max are extracted as sub-DAGs, fed baseline inputs, and verified against baseline outputs.
+7. **Multi-language emission from single definition.** Service operations compile to transport code for all backends (Rust, Go, C, MIPS) from the same `.dag` file.

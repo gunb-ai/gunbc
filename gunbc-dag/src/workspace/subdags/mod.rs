@@ -170,7 +170,7 @@ fn validate_coverage(
 fn required_dsl_tool_modules() -> BTreeSet<String> {
     // Keep this list colocated with add_discovered_tool_subdags().
     // External tool crates with workspace DSL modules live here.
-    let mut required: BTreeSet<String> = ["clippy", "dag_viz", "deps", "gist"]
+    let mut required: BTreeSet<String> = ["clippy", "dag_viz", "deps", "gist", "review"]
         .iter()
         .map(|name| (*name).to_string())
         .collect();
@@ -293,6 +293,7 @@ mod tests {
             "docgen",
             "gist",
             "pragma",
+            "review",
             "testgen",
         ]
         .into_iter()
@@ -330,6 +331,7 @@ mod tests {
             "docgen",
             "gist",
             "pragma",
+            "review",
             "testgen",
         ]
         .into_iter()
@@ -433,6 +435,7 @@ mod tests {
             "docgen",
             "gist",
             "pragma",
+            "review",
             "testgen",
             "unknown_new_tool",
         ]

@@ -1,17 +1,20 @@
 # DAG Workflow Audit
 
-**Date:** 2026-02-06
+**Date:** 2026-02-06 (updated 2026-02-20)
 
 **Scope:** All DAG graph definitions across the workspace — binary workflows, library tools, workspace composition, and advanced patterns.
+
+> **DSL-first migration:** The primary authoring surface is now `.dag` files in `dsl/`. The hand-written Rust graph builders documented below are being replaced by DSL definitions that compile to the same Graph IR. See `dsl/services/`, `dsl/tools/`, and `dsl/pipelines/` for the DSL equivalents. New workflows should always be authored as `.dag` files.
 
 ---
 
 ## Overview
 
-The codebase uses a custom DAG execution framework (`gunbc-ir` + `gunbc-exec`) where graphs are built from typed nodes connected by ports and edges. All business logic lives in **pure** nodes; I/O is isolated to **transport** nodes. Graphs are composed via SubDags, loops, and resource acquisition.
+The codebase uses a **DSL-first workflow compiler** (`core/daglang/`) where graphs are defined as `.dag` files and compiled to typed `Dag<LoweredOp>` IR. The compiler handles: parse → typecheck → lower → emit (Rust/Go/C/MIPS). Legacy hand-written Rust builders still exist but are being replaced by DSL definitions. All business logic lives in **pure** nodes; I/O is isolated to **transport** nodes. Graphs are composed via SubDags, loops, and resource acquisition.
 
 **Totals:**
-- 7 binary workflows
+- 44 `.dag` module definitions (services, tools, pipelines, shared)
+- 7 binary workflows (legacy Rust builders, being migrated to DSL)
 - 5 library tool graphs (gist, deps, clippy, review, llm-chat)
 - ~15 distinct graph builder functions
 - ~150+ nodes across all graphs
@@ -336,6 +339,29 @@ Access modes: `Read` (shared), `Write` (exclusive), `Exclusive` (no other access
 ---
 
 ## File Locations
+
+### DSL definitions (primary)
+
+| Workflow | DSL File |
+|----------|----------|
+| CI Pipeline | `dsl/pipelines/ci.dag` |
+| Clippy | `dsl/tools/clippy.dag` |
+| Gist | `dsl/tools/gist.dag` |
+| Codegen | `dsl/tools/codegen.dag` |
+| Bootstrap | `dsl/tools/bootstrap.dag` |
+| Build | `dsl/tools/build.dag` |
+| Makegen | `dsl/tools/makegen.dag` |
+| Testgen | `dsl/tools/testgen.dag` |
+| Pragma | `dsl/tools/pragma.dag` |
+| GitHub Gist API | `dsl/services/github/gist.dag` |
+| OpenAI API | `dsl/services/llm/openai.dag` |
+| Anthropic API | `dsl/services/llm/anthropic.dag` |
+| Git operations | `dsl/services/git/core.dag` |
+| Cargo operations | `dsl/services/cargo/build.dag` |
+| GCP operations | `dsl/services/gcp/*.dag` |
+| DSL Compiler | `core/daglang/` (parse, typecheck, lower, emit) |
+
+### Legacy Rust builders (being migrated)
 
 | Workflow | File |
 |----------|------|

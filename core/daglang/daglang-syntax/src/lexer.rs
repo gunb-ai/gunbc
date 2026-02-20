@@ -48,6 +48,12 @@ pub enum TokenKind {
     Config,
     With,
     SelfKw,
+    // Test DSL keywords
+    Test,
+    Fixture,
+    Mock,
+    Expect,
+    Contains,
     // Delimiters
     LBrace,
     RBrace,
@@ -138,6 +144,11 @@ impl TokenKind {
             Self::Config => "config",
             Self::With => "with",
             Self::SelfKw => "self",
+            Self::Test => "test",
+            Self::Fixture => "fixture",
+            Self::Mock => "mock",
+            Self::Expect => "expect",
+            Self::Contains => "contains",
             Self::LBrace => "{",
             Self::RBrace => "}",
             Self::LParen => "(",
@@ -550,6 +561,11 @@ impl<'a> Lexer<'a> {
             "config" => TokenKind::Config,
             "with" => TokenKind::With,
             "self" | "Self" => TokenKind::SelfKw,
+            "test" => TokenKind::Test,
+            "fixture" => TokenKind::Fixture,
+            "mock" => TokenKind::Mock,
+            "expect" => TokenKind::Expect,
+            "contains" => TokenKind::Contains,
             _ => TokenKind::Ident(text.to_string()),
         };
         self.tok(kind, start)

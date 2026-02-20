@@ -635,6 +635,17 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
         let Some(op) = node.body.as_opaque() else {
             continue;
         };
+        // Guardrail: a callable with service_metadata set should always have a
+        // non-None obligation category. If this fires, a lowering path forgot to
+        // set the obligation field on a service transport node, causing obligation
+        // counts to silently under-report.
+        debug_assert!(
+            !(op.service_call_metadata().is_some()
+                && classify_obligation(op) == ObligationCategory::None),
+            "node `{}` has service_metadata but ObligationCategory::None — \
+             lowering must set an explicit obligation category",
+            node.id.0,
+        );
         match classify_obligation(op) {
             ObligationCategory::ServiceTransportPrepare => {
                 counts.service_transport_prepare_targets += 1;
@@ -1094,14 +1105,15 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "service_transport::execute::FsStorage::read".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: Some(ServiceCallMetadata {
+                service_metadata: Some(Box::new(ServiceCallMetadata {
                     service: "FsStorage".to_string(),
                     operation: "read".to_string(),
                     transport: ServiceTransportClass::ShellLocal,
                     idempotent: true,
                     readonly: true,
                     permissions: vec![],
-                }),
+                    spec: None,
+                })),
                 is_interactive: false,
                 resource_target: None,
             },
@@ -1115,14 +1127,15 @@ mod tests {
                 kind: CallableKind::Pattern,
                 name: "service_transport::execute::GistApi::create".to_string(),
                 obligation: ObligationCategory::ServiceTransportExecute,
-                service_metadata: Some(ServiceCallMetadata {
+                service_metadata: Some(Box::new(ServiceCallMetadata {
                     service: "GistApi".to_string(),
                     operation: "create".to_string(),
                     transport: ServiceTransportClass::RestNetwork,
                     idempotent: false,
                     readonly: false,
                     permissions: vec!["gist.write".to_string()],
-                }),
+                    spec: None,
+                })),
                 is_interactive: false,
                 resource_target: None,
             },

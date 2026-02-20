@@ -22,18 +22,25 @@ After installation, run `make help` to see all available targets.
 ## Start Here
 
 - `docs/handbook.md` for the conceptual map, pattern catalog, and e2e examples (single file — copy-friendly)
+- `docs/design/v4/dsl-design.md` for the full DSL language specification
+- `docs/design/service-codegen.md` for DSL-driven service codegen architecture
 - `docs/design/overview.md` for design rationale and invariants
 - `SPEC.md` for the formal IR specification
 - `docs/design/testgen.md` for test generation and proof obligations
 
 ## Quick Context
 
-gunbc is a Rust-based workflow IR. The core idea is that **everything is a DAG**: workflows, types, validations, and resource flows. The system aims for **structural soundness**: if a DAG validates, its wiring is correct.
+gunbc is a **DSL-first workflow compiler** where **everything is a DAG**. The primary authoring surface is the `.dag` language — declarative definitions that compile to a typed Graph IR. The compiler pipeline is: `.dag` → parse → typecheck → lower → emit (Rust/Go/C/MIPS). The system aims for **structural soundness**: if a DAG validates, its wiring is correct.
 
 ## Repo Map
 
 | Path | Purpose |
 | --- | --- |
+| `dsl/` | **Primary authoring surface** — all `.dag` source files |
+| `dsl/services/` | Service definitions (REST, Shell): gcp, github, cargo, git, llm |
+| `dsl/tools/` | Tool workflows: clippy, gist, codegen, makegen, etc. |
+| `dsl/pipelines/` | Pipeline compositions: ci |
+| `core/daglang/` | DSL compiler: parse → typecheck → lower → emit |
 | `core/ir/` | Core IR types, patterns, transport model, resource system |
 | `core/exec/` | Execution engine, DryRun interception, simulation |
 | `core/codegen/` | CLI and test generation |
@@ -62,11 +69,17 @@ gunbc is a Rust-based workflow IR. The core idea is that **everything is a DAG**
 
 ## Common Tasks
 
+### DSL-first (primary path)
+
+- **Add a new REST/Shell service:** Create `dsl/services/<provider>/<name>.dag` with `service` block and `operation` definitions. Use `@rest(METHOD, "/path")` or `@shell(["cmd", "arg"])`.
+- **Add a new tool workflow:** Create `dsl/tools/<name>.dag` — import services, define `fn` (pure) and `func` (effectful) blocks.
+- **Add a new pipeline:** Create `dsl/pipelines/<name>.dag` — import tools, define `pipeline` block with `stage` dependencies.
+
+### Framework internals (rare)
+
 - Add a new pattern: `core/ir/src/patterns/` and `core/ir/src/patterns/mod.rs`.
-- Add a new CLI tool: `core/ir/src/transport/cli.rs`, plus a wrapper crate under `lib/tools/` if needed.
-- Add a new ToolDef for planning: `core/ir/src/transport/tool.rs` and `lib/tools/deps/` for deps.toml generation.
-- Add a new repo-specific tool: `gunbc-dag/src/` plus a bin in `gunbc-dag/src/bin/`.
 - Add a new transport: `core/ir/src/transport/` plus executor support in `lib/transport/`.
+- Extend the emit pipeline: `core/daglang/daglang-emit/src/` (add `service_emit` functions per backend).
 
 ## Testing
 

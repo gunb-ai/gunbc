@@ -37,7 +37,7 @@ pub enum LoweredOp {
         kind: CallableKind,
         name: String,
         obligation: ObligationCategory,
-        service_metadata: Option<ServiceCallMetadata>,
+        service_metadata: Option<Box<ServiceCallMetadata>>,
         is_interactive: bool,
         resource_target: Option<String>,
     },
@@ -183,6 +183,109 @@ pub struct ServiceCallMetadata {
     pub idempotent: bool,
     pub readonly: bool,
     pub permissions: Vec<String>,
+    /// Full protocol spec extracted from DSL annotations.
+    /// Used by generic protocol interpreters to replace per-service adapters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spec: Option<ServiceOperationSpec>,
+}
+
+// ============================================================================
+// Service Operation Spec — protocol interface parameterization
+// ============================================================================
+
+/// Complete specification for a service operation, extracted from `.dag` annotations.
+/// Each variant parameterizes a generic protocol interpreter (REST, Shell, File).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub enum ServiceOperationSpec {
+    Rest(RestOperationSpec),
+    Shell(ShellOperationSpec),
+}
+
+/// REST protocol specification: endpoint + method + path + body + response.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct RestOperationSpec {
+    /// Base URL from `@endpoint("https://...")` on the service.
+    pub endpoint: String,
+    /// HTTP method from `@rest(METHOD, ...)`.
+    pub method: String,
+    /// URL path template from `@rest(..., "/path/{param}")`.
+    pub path_template: String,
+    /// Input fields from `input { ... }`.
+    pub input_fields: Vec<FieldSpec>,
+    /// Output fields from `output { ... @json("key") }`.
+    pub output_fields: Vec<OutputFieldSpec>,
+    /// Explicit body template from `@body_template({...})`, if present.
+    /// When None, body is built from all non-path input fields.
+    pub body_template: Option<Vec<BodyEntry>>,
+    /// Extra HTTP headers from `@headers({...})`.
+    pub headers: Vec<(String, String)>,
+}
+
+/// Shell protocol specification: argv template + output parsing.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ShellOperationSpec {
+    /// Command + args template from `@shell(["cmd", "arg", "{param}"])`.
+    pub argv_template: Vec<ArgvSegment>,
+    /// Input fields from `input { ... }`.
+    pub input_fields: Vec<FieldSpec>,
+    /// Output fields from `output { ... }`.
+    pub output_fields: Vec<OutputFieldSpec>,
+    /// How to parse the shell response.
+    pub output_parsing: ShellOutputParsing,
+}
+
+/// Specification for an input field.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct FieldSpec {
+    pub name: String,
+    pub type_id: String,
+    pub default: Option<String>,
+    pub is_secret: bool,
+    /// True if this field appears as `{name}` in the path/argv template.
+    pub is_path_param: bool,
+}
+
+/// Specification for an output field.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct OutputFieldSpec {
+    pub name: String,
+    pub type_id: String,
+    /// JSON pointer path for extraction (from `@json("key")` or field name).
+    pub json_path: String,
+    pub is_secret: bool,
+    /// True if this field uses `@raw_body` (response body as raw string).
+    pub is_raw_body: bool,
+}
+
+/// Body template entry: either a literal constant or a reference to an input field.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub enum BodyEntry {
+    /// Literal JSON key-value: `"grant_type": "urn:ietf:..."`.
+    Literal(String, String),
+    /// Reference to an input field: `"audience": audience`.
+    InputRef(String, String),
+}
+
+/// Argv segment in a shell command template.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub enum ArgvSegment {
+    /// Literal string: `"cargo"`, `"--all-targets"`.
+    Literal(String),
+    /// Input field interpolation: `"{package}"`.
+    InputRef(String),
+}
+
+/// How to parse shell command output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub enum ShellOutputParsing {
+    /// Single string: `trim(stdout)`.
+    TrimStdout,
+    /// List of strings: `split(trim(stdout), "\n")`.
+    SplitLines,
+    /// Standard triple: `(success: Bool, stdout: String, stderr: String)`.
+    SuccessStdoutStderr,
+    /// Bool from exit code: `success = exit_code == 0`.
+    ExitCodeBool,
 }
 
 impl LoweredOp {
@@ -198,7 +301,7 @@ impl LoweredOp {
         match self {
             Self::Callable {
                 service_metadata, ..
-            } => service_metadata.as_ref(),
+            } => service_metadata.as_deref(),
             Self::Primitive { .. } | Self::Collection { .. } | Self::Pipeline { .. } => None,
         }
     }
@@ -3307,6 +3410,9 @@ fn derive_service_call_metadata(
     permissions.extend(annotation_permissions(&operation.annotations));
     permissions.sort();
     permissions.dedup();
+
+    let spec = derive_operation_spec(service, operation, transport);
+
     ServiceCallMetadata {
         service: service.name.clone(),
         operation: operation.name.clone(),
@@ -3316,6 +3422,363 @@ fn derive_service_call_metadata(
         readonly: has_annotation(&operation.annotations, "readonly")
             || has_annotation(&service.annotations, "readonly"),
         permissions,
+        spec,
+    }
+}
+
+// ============================================================================
+// ServiceOperationSpec extraction from annotations
+// ============================================================================
+
+/// Extract the full protocol spec from a service + operation definition.
+fn derive_operation_spec(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    transport: ServiceTransportClass,
+) -> Option<ServiceOperationSpec> {
+    match transport {
+        ServiceTransportClass::RestNetwork => {
+            derive_rest_spec(service, operation).map(ServiceOperationSpec::Rest)
+        }
+        ServiceTransportClass::ShellLocal => {
+            derive_shell_spec(service, operation).map(ServiceOperationSpec::Shell)
+        }
+        _ => None,
+    }
+}
+
+fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
+    let endpoint = annotation_string_arg(&service.annotations, "endpoint").unwrap_or_default();
+    let (method, path_template) = annotation_rest_details(
+        &operation.annotations,
+        &service.annotations,
+    )?;
+
+    let input_fields = derive_input_fields(&operation.inputs, &path_template);
+    let output_fields = derive_output_fields(&operation.outputs);
+    let body_template = annotation_body_template(&operation.annotations);
+    let headers = annotation_headers(&operation.annotations, &service.annotations);
+
+    Some(RestOperationSpec {
+        endpoint,
+        method,
+        path_template,
+        input_fields,
+        output_fields,
+        body_template,
+        headers,
+    })
+}
+
+fn derive_shell_spec(
+    service: &ServiceDef,
+    operation: &OperationDef,
+) -> Option<ShellOperationSpec> {
+    let argv_template = annotation_shell_argv(
+        &operation.annotations,
+        &service.annotations,
+    )?;
+
+    let input_fields = derive_input_fields_for_shell(&operation.inputs, &argv_template);
+    let output_fields = derive_output_fields(&operation.outputs);
+    let output_parsing = infer_shell_output_parsing(&operation.outputs);
+
+    Some(ShellOperationSpec {
+        argv_template,
+        input_fields,
+        output_fields,
+        output_parsing,
+    })
+}
+
+/// Extract a string argument from a named annotation: `@name("value")`.
+fn annotation_string_arg(annotations: &[Annotation], name: &str) -> Option<String> {
+    annotations.iter().find(|a| a.name == name).and_then(|a| {
+        a.args.first().and_then(|arg| match arg {
+            Expr::Literal(Literal::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+    })
+}
+
+/// Extract `(method, path_template)` from `@rest(METHOD, "/path/{param}")`.
+///
+/// The path may be a plain string literal or a string interpolation. Interpolated
+/// expressions like `{project}` are converted back to template placeholders `{project}`.
+fn annotation_rest_details(
+    op_annotations: &[Annotation],
+    service_annotations: &[Annotation],
+) -> Option<(String, String)> {
+    let rest_ann = op_annotations
+        .iter()
+        .chain(service_annotations.iter())
+        .find(|a| a.name == "rest")?;
+
+    if rest_ann.args.len() < 2 {
+        return None;
+    }
+
+    let method = match &rest_ann.args[0] {
+        Expr::Ident(m) => m.clone(),
+        Expr::Literal(Literal::String(m)) => m.clone(),
+        _ => return None,
+    };
+
+    let path = expr_to_template_string(&rest_ann.args[1])?;
+
+    Some((method, path))
+}
+
+/// Extract argv template from `@shell(["cmd", "arg", "{param}"])`.
+fn annotation_shell_argv(
+    op_annotations: &[Annotation],
+    service_annotations: &[Annotation],
+) -> Option<Vec<ArgvSegment>> {
+    let shell_ann = op_annotations
+        .iter()
+        .chain(service_annotations.iter())
+        .find(|a| a.name == "shell")?;
+
+    // @shell(["cmd", "arg1", "{param}", ...])
+    let list = shell_ann.args.first()?;
+    let items = match list {
+        Expr::List(items) => items,
+        _ => return None,
+    };
+
+    let mut segments = Vec::new();
+    for item in items {
+        match item {
+            Expr::Literal(Literal::String(s)) => {
+                // Check for {param} interpolation markers
+                if s.starts_with('{') && s.ends_with('}') && !s.contains(' ') {
+                    let param = s[1..s.len() - 1].to_string();
+                    segments.push(ArgvSegment::InputRef(param));
+                } else if s.contains('{') {
+                    // Complex interpolation like "{base}...{head}" — treat as literal
+                    // (the resolver will handle interpolation at runtime)
+                    segments.push(ArgvSegment::Literal(s.clone()));
+                } else {
+                    segments.push(ArgvSegment::Literal(s.clone()));
+                }
+            }
+            Expr::StringInterp(parts) => {
+                // Handle string interpolation: `"{param}"` or `"{base}...{head}"`
+                use daglang_syntax::ast::StringPart;
+                // Single-expr interpolation like `"{param}"` → InputRef
+                if parts.len() == 1 {
+                    if let StringPart::Expr(Expr::Ident(name)) = &parts[0] {
+                        segments.push(ArgvSegment::InputRef(name.clone()));
+                        continue;
+                    }
+                }
+                // Multi-part interpolation → reconstruct as Literal with {param} markers
+                let template = expr_to_template_string(item).unwrap_or_default();
+                if !template.is_empty() {
+                    segments.push(ArgvSegment::Literal(template));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if segments.is_empty() {
+        None
+    } else {
+        Some(segments)
+    }
+}
+
+/// Extract body template from `@body_template({ "key": value, ... })`.
+fn annotation_body_template(annotations: &[Annotation]) -> Option<Vec<BodyEntry>> {
+    let ann = annotations.iter().find(|a| a.name == "body_template")?;
+    let record = ann.args.first()?;
+
+    match record {
+        Expr::Record(_, fields) => {
+            let mut entries = Vec::new();
+            for (key, value) in fields {
+                match value {
+                    Expr::Ident(field_name) => {
+                        entries.push(BodyEntry::InputRef(key.clone(), field_name.clone()));
+                    }
+                    Expr::Literal(Literal::String(s)) => {
+                        entries.push(BodyEntry::Literal(key.clone(), s.clone()));
+                    }
+                    _ => {}
+                }
+            }
+            Some(entries)
+        }
+        _ => None,
+    }
+}
+
+/// Extract custom headers from `@headers({ "key": "value", ... })`.
+fn annotation_headers(
+    op_annotations: &[Annotation],
+    service_annotations: &[Annotation],
+) -> Vec<(String, String)> {
+    let mut headers = Vec::new();
+    for ann in op_annotations
+        .iter()
+        .chain(service_annotations.iter())
+        .filter(|a| a.name == "headers")
+    {
+        if let Some(Expr::Record(_, fields)) = ann.args.first() {
+            for (key, value) in fields {
+                if let Expr::Literal(Literal::String(v)) = value {
+                    headers.push((key.clone(), v.clone()));
+                }
+            }
+        }
+    }
+    headers
+}
+
+/// Derive input field specs from operation inputs.
+fn derive_input_fields(
+    inputs: &[daglang_syntax::ast::Field],
+    path_template: &str,
+) -> Vec<FieldSpec> {
+    inputs
+        .iter()
+        .map(|field| {
+            let type_id = type_expr_to_string(&field.ty);
+            let is_path_param = path_template.contains(&format!("{{{}}}", field.name));
+            FieldSpec {
+                name: field.name.clone(),
+                type_id: type_id.clone(),
+                default: field.default.as_ref().map(expr_to_default_string),
+                is_secret: type_id == "Secret",
+                is_path_param,
+            }
+        })
+        .collect()
+}
+
+/// Derive input field specs for shell operations.
+fn derive_input_fields_for_shell(
+    inputs: &[daglang_syntax::ast::Field],
+    argv: &[ArgvSegment],
+) -> Vec<FieldSpec> {
+    let argv_refs: HashSet<&str> = argv
+        .iter()
+        .filter_map(|s| match s {
+            ArgvSegment::InputRef(name) => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    inputs
+        .iter()
+        .map(|field| {
+            let type_id = type_expr_to_string(&field.ty);
+            FieldSpec {
+                name: field.name.clone(),
+                type_id: type_id.clone(),
+                default: field.default.as_ref().map(expr_to_default_string),
+                is_secret: type_id == "Secret",
+                is_path_param: argv_refs.contains(field.name.as_str()),
+            }
+        })
+        .collect()
+}
+
+/// Derive output field specs from operation outputs.
+fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFieldSpec> {
+    outputs
+        .iter()
+        .map(|field| {
+            let type_id = type_expr_to_string(&field.ty);
+            let json_path = annotation_string_arg(&field.annotations, "json")
+                .unwrap_or_else(|| field.name.clone());
+            let is_raw_body = has_annotation(&field.annotations, "raw_body");
+            OutputFieldSpec {
+                name: field.name.clone(),
+                type_id: type_id.clone(),
+                json_path,
+                is_secret: type_id == "Secret",
+                is_raw_body,
+            }
+        })
+        .collect()
+}
+
+/// Infer shell output parsing mode from output field types.
+fn infer_shell_output_parsing(outputs: &[daglang_syntax::ast::Field]) -> ShellOutputParsing {
+    // (success: Bool, stdout: String, stderr: String) → SuccessStdoutStderr
+    if outputs.len() == 3
+        && outputs.iter().any(|f| f.name == "success")
+        && outputs.iter().any(|f| f.name == "stdout")
+        && outputs.iter().any(|f| f.name == "stderr")
+    {
+        return ShellOutputParsing::SuccessStdoutStderr;
+    }
+
+    // Single Bool output (e.g., "needed", "exists") → ExitCodeBool
+    if outputs.len() == 1 {
+        let ty = type_expr_to_string(&outputs[0].ty);
+        if ty == "Bool" {
+            return ShellOutputParsing::ExitCodeBool;
+        }
+    }
+
+    // Check if any output is a List type → SplitLines
+    for field in outputs {
+        let ty = type_expr_to_string(&field.ty);
+        if ty.starts_with("List<") || ty.starts_with("List ") {
+            return ShellOutputParsing::SplitLines;
+        }
+    }
+
+    // Default: trim stdout
+    ShellOutputParsing::TrimStdout
+}
+
+/// Convert an expression to a template string, preserving `{param}` placeholders.
+///
+/// Handles both `Expr::Literal(String("..."))` (plain strings) and
+/// `Expr::StringInterp(...)` (interpolated strings like `"/v1/{project}/..."`)
+/// by converting interpolation expressions back to `{name}` template syntax.
+fn expr_to_template_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(s)) => Some(s.clone()),
+        Expr::StringInterp(parts) => {
+            use daglang_syntax::ast::StringPart;
+            let mut result = String::new();
+            for part in parts {
+                match part {
+                    StringPart::Literal(s) => result.push_str(s),
+                    StringPart::Expr(Expr::Ident(name)) => {
+                        result.push('{');
+                        result.push_str(name);
+                        result.push('}');
+                    }
+                    StringPart::Expr(other) => {
+                        // Complex expressions inside interpolation — stringify as-is.
+                        result.push('{');
+                        result.push_str(&format!("{other:?}"));
+                        result.push('}');
+                    }
+                }
+            }
+            Some(result)
+        }
+        _ => None,
+    }
+}
+
+/// Convert an expression to a default value string for FieldSpec.
+fn expr_to_default_string(expr: &Expr) -> String {
+    match expr {
+        Expr::Literal(Literal::String(s)) => s.clone(),
+        Expr::Literal(Literal::Int(n)) => n.to_string(),
+        Expr::Literal(Literal::Float(f)) => f.to_string(),
+        Expr::Literal(Literal::Bool(b)) => b.to_string(),
+        Expr::Literal(Literal::None) => "null".to_string(),
+        Expr::Ident(name) => name.clone(),
+        _ => String::new(),
     }
 }
 
@@ -3413,7 +3876,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportPrepare,
-                        service_metadata: Some(service_metadata.clone()),
+                        service_metadata: Some(Box::new(service_metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
                     },
@@ -3430,7 +3893,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportExecute,
-                        service_metadata: Some(service_metadata.clone()),
+                        service_metadata: Some(Box::new(service_metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
                     },
@@ -3463,7 +3926,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportParse,
-                        service_metadata: Some(service_metadata),
+                        service_metadata: Some(Box::new(service_metadata)),
                         is_interactive: false,
                         resource_target: None,
                     },

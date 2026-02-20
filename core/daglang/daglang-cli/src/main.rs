@@ -237,7 +237,21 @@ fn write_emitted_files(
     let out_root = path_utils::normalize_cli_path(cwd, out_dir);
     let mut written = Vec::with_capacity(files.len());
     for file in files {
-        let destination = out_root.join(&file.path);
+        let raw_path = std::path::Path::new(&file.path);
+        if raw_path.is_absolute() {
+            return Err(format!(
+                "emitted file path `{}` is absolute; paths must be relative to output directory",
+                file.path
+            ));
+        }
+        let destination = path_utils::normalize_path_components(&out_root.join(raw_path));
+        if !destination.starts_with(&out_root) {
+            return Err(format!(
+                "emitted file path `{}` escapes output directory `{}`",
+                file.path,
+                out_root.display()
+            ));
+        }
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
                 format!(

@@ -201,6 +201,9 @@ impl ModuleGraph {
 }
 
 /// Recursively collect all `.dag` files under `dir`.
+///
+/// Tests and fixtures are defined inline within regular `.dag` files,
+/// so no filename-based filtering is needed.
 // Compiler pipeline: recursively discovers .dag files
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 fn collect_dag_files(

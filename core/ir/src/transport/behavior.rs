@@ -4,10 +4,11 @@
 //! invariants (for example TCP timeout field routing) in a portable form that
 //! can be consumed by generated tests.
 
+use crate::InvocationContract;
 use serde::{Deserialize, Serialize};
 
 /// Transport families supported by the executor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum TransportKind {
     Tcp,
     Http,
@@ -87,6 +88,18 @@ impl TransportBehavior {
             .map(|(field, op)| FieldRouteSpec::new(*field, *op))
             .collect();
         self
+    }
+
+    /// Shared invocation contract for this transport behavior.
+    pub fn invocation_contract(&self) -> InvocationContract {
+        let docs = format!("transport behavior contract: {}", self.id);
+        match self.transport {
+            TransportKind::Tcp => InvocationContract::protocol("tcp", docs),
+            TransportKind::Http => InvocationContract::protocol("http", docs),
+            TransportKind::Rest => InvocationContract::protocol("rest", docs),
+            TransportKind::File => InvocationContract::protocol("file", docs),
+            TransportKind::Shell => InvocationContract::protocol("shell", docs),
+        }
     }
 }
 
@@ -183,5 +196,18 @@ mod tests {
             "write_timeout_ms",
             "set_write_timeout"
         )));
+    }
+
+    #[test]
+    fn behavior_invocation_contract_matches_transport_kind() {
+        let specs = default_transport_behaviors();
+        let rest = specs
+            .iter()
+            .find(|spec| spec.transport == TransportKind::Rest)
+            .expect("rest spec present");
+        assert!(matches!(
+            rest.invocation_contract(),
+            InvocationContract::Protocol { protocol, .. } if protocol == "rest"
+        ));
     }
 }

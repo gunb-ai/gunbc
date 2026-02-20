@@ -4,6 +4,7 @@ use gunbc_ir::system_model::{
     Behavior, BehaviorInput, BehaviorOutput, InputType, Invocation, OutputType, Property,
     SystemKind, SystemModel,
 };
+use gunbc_ir::transport::{default_transport_behaviors, TransportKind};
 use gunbc_ir::TypeId;
 
 fn ty(id: &str) -> InputType {
@@ -12,6 +13,16 @@ fn ty(id: &str) -> InputType {
 
 fn out_ty(id: &str) -> OutputType {
     OutputType::TypeId(TypeId::from(id))
+}
+
+fn invocation_for_transport_kind(kind: TransportKind) -> Invocation {
+    default_transport_behaviors()
+        .into_iter()
+        .find(|behavior| behavior.transport == kind)
+        .map(|behavior| behavior.invocation_contract())
+        .unwrap_or_else(|| {
+            panic!("missing default transport behavior contract for kind '{kind:?}'")
+        })
 }
 
 pub fn build_transport_file_model() -> SystemModel {
@@ -26,10 +37,7 @@ pub fn build_transport_file_model() -> SystemModel {
         Behavior::new(
             "read",
             "Read a file path",
-            Invocation::Protocol {
-                protocol: "file".to_string(),
-                docs: "gunbc file transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::File),
         )
         .with_inputs(vec![BehaviorInput::required("path", ty("String"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -40,10 +48,7 @@ pub fn build_transport_file_model() -> SystemModel {
         Behavior::new(
             "write",
             "Write file content",
-            Invocation::Protocol {
-                protocol: "file".to_string(),
-                docs: "gunbc file transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::File),
         )
         .with_inputs(vec![
             BehaviorInput::required("path", ty("String")),
@@ -57,10 +62,7 @@ pub fn build_transport_file_model() -> SystemModel {
         Behavior::new(
             "exists",
             "Check if a file exists",
-            Invocation::Protocol {
-                protocol: "file".to_string(),
-                docs: "gunbc file transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::File),
         )
         .with_inputs(vec![BehaviorInput::required("path", ty("String"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -71,10 +73,7 @@ pub fn build_transport_file_model() -> SystemModel {
         Behavior::new(
             "delete",
             "Delete file path",
-            Invocation::Protocol {
-                protocol: "file".to_string(),
-                docs: "gunbc file transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::File),
         )
         .with_inputs(vec![BehaviorInput::required("path", ty("String"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -98,10 +97,7 @@ pub fn build_transport_shell_model() -> SystemModel {
     .with_behaviors(vec![Behavior::new(
         "exec",
         "Execute shell command",
-        Invocation::Protocol {
-            protocol: "shell".to_string(),
-            docs: "gunbc shell transport".to_string(),
-        },
+        invocation_for_transport_kind(TransportKind::Shell),
     )
     .with_inputs(vec![
         BehaviorInput::required("command", ty("String")),
@@ -131,10 +127,7 @@ pub fn build_transport_http_rest_model() -> SystemModel {
         Behavior::new(
             "http_get",
             "HTTP GET request",
-            Invocation::Protocol {
-                protocol: "http".to_string(),
-                docs: "gunbc http transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::Http),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("HttpRequest"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -145,10 +138,7 @@ pub fn build_transport_http_rest_model() -> SystemModel {
         Behavior::new(
             "rest_post",
             "REST POST request",
-            Invocation::Protocol {
-                protocol: "rest".to_string(),
-                docs: "gunbc rest transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::Rest),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("RestRequest"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -159,10 +149,7 @@ pub fn build_transport_http_rest_model() -> SystemModel {
         Behavior::new(
             "http_post",
             "HTTP POST request",
-            Invocation::Protocol {
-                protocol: "http".to_string(),
-                docs: "gunbc http transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::Http),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("HttpRequest"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -173,10 +160,7 @@ pub fn build_transport_http_rest_model() -> SystemModel {
         Behavior::new(
             "http_put",
             "HTTP PUT request",
-            Invocation::Protocol {
-                protocol: "http".to_string(),
-                docs: "gunbc http transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::Http),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("HttpRequest"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -187,10 +171,7 @@ pub fn build_transport_http_rest_model() -> SystemModel {
         Behavior::new(
             "http_delete",
             "HTTP DELETE request",
-            Invocation::Protocol {
-                protocol: "http".to_string(),
-                docs: "gunbc http transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::Http),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("HttpRequest"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -201,10 +182,7 @@ pub fn build_transport_http_rest_model() -> SystemModel {
         Behavior::new(
             "rest_get",
             "REST GET request",
-            Invocation::Protocol {
-                protocol: "rest".to_string(),
-                docs: "gunbc rest transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::Rest),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("RestRequest"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -215,10 +193,7 @@ pub fn build_transport_http_rest_model() -> SystemModel {
         Behavior::new(
             "rest_put",
             "REST PUT request",
-            Invocation::Protocol {
-                protocol: "rest".to_string(),
-                docs: "gunbc rest transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::Rest),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("RestRequest"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -229,10 +204,7 @@ pub fn build_transport_http_rest_model() -> SystemModel {
         Behavior::new(
             "rest_delete",
             "REST DELETE request",
-            Invocation::Protocol {
-                protocol: "rest".to_string(),
-                docs: "gunbc rest transport".to_string(),
-            },
+            invocation_for_transport_kind(TransportKind::Rest),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("RestRequest"))])
         .with_outputs(vec![BehaviorOutput::new(
@@ -249,6 +221,7 @@ gunbc_ir::submit_system_model!(build_transport_http_rest_model);
 mod tests {
     use super::*;
     use gunbc_ir::system_model::validate_system_model;
+    use gunbc_ir::transport::default_transport_behaviors;
     use std::collections::BTreeSet;
 
     #[test]
@@ -300,6 +273,58 @@ mod tests {
             "rest_delete",
         ] {
             assert!(ops.contains(op), "missing http/rest operation {op}");
+        }
+    }
+
+    #[test]
+    fn system_model_invocations_align_with_transport_behavior_contracts() {
+        let behavior_contracts = default_transport_behaviors();
+        let expected = behavior_contracts
+            .iter()
+            .map(|behavior| (behavior.transport, behavior.invocation_contract()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+
+        let file_model = build_transport_file_model();
+        for behavior in &file_model.behaviors {
+            assert_eq!(
+                behavior.invocation,
+                expected
+                    .get(&TransportKind::File)
+                    .expect("file invocation contract")
+                    .clone()
+            );
+        }
+
+        let shell_model = build_transport_shell_model();
+        for behavior in &shell_model.behaviors {
+            assert_eq!(
+                behavior.invocation,
+                expected
+                    .get(&TransportKind::Shell)
+                    .expect("shell invocation contract")
+                    .clone()
+            );
+        }
+
+        let http_rest_model = build_transport_http_rest_model();
+        for behavior in &http_rest_model.behaviors {
+            match behavior.id.as_str() {
+                id if id.starts_with("http_") => assert_eq!(
+                    behavior.invocation,
+                    expected
+                        .get(&TransportKind::Http)
+                        .expect("http invocation contract")
+                        .clone()
+                ),
+                id if id.starts_with("rest_") => assert_eq!(
+                    behavior.invocation,
+                    expected
+                        .get(&TransportKind::Rest)
+                        .expect("rest invocation contract")
+                        .clone()
+                ),
+                other => panic!("unexpected behavior id '{other}'"),
+            }
         }
     }
 }

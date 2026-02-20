@@ -43,8 +43,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
-// Force-link crates that register live test targets used by ci_live_test_secrets().
+// Force-link crates that register tool targets needed for DSL coverage validation.
 use gunbc_lib_llm_ops as _;
+use gunbc_lib_review as _;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -1713,6 +1714,7 @@ pub fn sample_tool() {}
             "gist",
             "makegen",
             "pragma",
+            "review",
             "testgen",
             "unknown_new_tool",
         ]

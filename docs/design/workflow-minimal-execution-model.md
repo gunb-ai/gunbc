@@ -488,13 +488,581 @@ Must-pass checks:
 4. Safety: dependency/resource violations fail closed.
 5. UX parity: command outputs still map to existing user workflows.
 
-## 15. Immediate Next Design Artifacts
+## 15. Extended Scope: All Tool Workflows
 
-1. `workflow_spec.rs`: `WorkflowSpec { dag: Dag<WorkflowUnit> }` for `ci` and `test-all`.
+### 15.1 Motivation
+
+Sections 1-14 define the minimal execution model for `ci` and `test-all`. The same model
+must extend to **all** tool workflows in the workspace. Every tool workflow decomposes
+into a small set of **capability requirements** — credentialing, network upload, filesystem
+access, git state queries, codegen freshness, compilation, and pure computation. If each
+capability is modeled and minimized correctly, redundant work is eliminated by construction
+and performance follows.
+
+### 15.2 Capability Taxonomy
+
+Every tool workflow in the workspace draws from these capabilities. Each capability has
+a natural minimization contract — a statement of the minimum work required for correctness.
+
+#### 1. Git State
+
+**What it provides**: branch name, HEAD ref, tree listing, diffs, rev-lists.
+
+**Consumers**: gist (all modes), dag-viz (all modes), review, CI.
+
+**Minimization contract**: Git state is a deterministic function of `.git` object store
+contents. A git query's output is fully determined by its inputs (ref names, index state,
+object hashes). Two invocations with identical git state must produce identical output.
+
+| Query | Deterministic Input | Invalidation Signal |
+|---|---|---|
+| `git.CurrentBranch` | `.git/HEAD` content | HEAD changes (checkout, commit, rebase) |
+| `git.LsFiles` | `.git/index` content hash | index changes (add, rm, checkout) |
+| `git.Diff(base, head)` | `base` ref hash + `head` ref hash | either ref moves |
+| `git.RevList(since)` | object store + `since` boundary | new commits within window |
+
+**Current deficiency**: Every invocation re-runs every git query unconditionally.
+No query result is retained or checked against prior state.
+
+**Minimal model**: Each git query is a keyed unit. Key payload includes the
+deterministic inputs above. Planner skips the query when inputs haven't changed.
+
+#### 2. Filesystem Access
+
+**What it provides**: file listing, file content reads, file writes (upsert pattern).
+
+**Consumers**: gist-snapshot (read), bootstrap/makegen/pragma/testgen (read-compare-write),
+deps (read manifest), codegen (write generated files).
+
+**Minimization contract**: File reads are deterministic functions of file content hashes.
+File writes (upsert pattern) are conditional: skip when generated content matches existing
+file content.
+
+| Operation | Deterministic Input | Invalidation Signal |
+|---|---|---|
+| Read file(s) | content hash per file | file content changes on disk |
+| Write/upsert | generated content hash vs. existing content hash | generated content differs from existing |
+
+**Current deficiency**: Snapshot mode re-reads every file on every invocation. Upsert
+chains (bootstrap, makegen, pragma, testgen) do compare-before-write internally, but
+the entire chain still runs from scratch including the generation step.
+
+**Minimal model**: File content hashes are keyed inputs. Read nodes skip when content
+hashes haven't changed. Upsert chains skip entirely (including generation) when the
+generation inputs haven't changed — the content comparison is a consequence of keying,
+not a substitute for it.
+
+#### 3. Credentialing
+
+**What it provides**: authenticated tokens for GitHub API, GCP services, LLM providers.
+
+**Consumers**: gist (all modes), dag-viz (upload modes), review, LLM chat.
+
+**Minimization contract**: Credential resolution is a function of:
+1. runtime mode (`LocalDev` vs cloud),
+2. credential source (env var, WIF chain, Secret Manager), and
+3. token validity window (expiry timestamp).
+
+Within a validity window, the resolved credential is immutable. Re-resolution
+produces the same token until expiry or source change.
+
+| Resolution Path | Inputs | Validity |
+|---|---|---|
+| Local env var (`GITHUB_TOKEN`) | env var content hash | until env changes |
+| Cloud WIF chain | WIF provider + service account + audience | until token expiry (typically 1h) |
+| GCP Secret Manager | project + secret name + WIF token | until secret version changes |
+| LLM provider env var (`ANTHROPIC_API_KEY`) | env var content hash | until env changes |
+
+**Current deficiency**: Every invocation re-runs the full credential chain from scratch.
+`gist-recent` forces `GUNBC_CLOUD_CONFIG_REQUIRED=1`, triggering the entire WIF → OIDC →
+Secret Manager chain on every call. Local-dev mode with `GITHUB_TOKEN` set still enters
+the `credential_chain()` function and performs runtime detection.
+
+**Minimal model**: Credential resolution is a keyed unit. Key payload includes runtime
+mode + source identity + validity boundary. Within the validity window, the planner
+resolves credentials from ledger (zero network calls). The local-dev path (env var
+present) is the simplest case: key on env var hash, no cloud calls by construction.
+The `GUNBC_CLOUD_CONFIG_REQUIRED=1` ambient env probe is replaced by an explicit
+`runtime_mode` input port on the credential unit.
+
+#### 4. Network Transport (Upload/API)
+
+**What it provides**: HTTP requests to external services (GitHub Gist API, LLM APIs).
+
+**Consumers**: gist (all modes), dag-viz (upload modes), review, LLM chat.
+
+**Minimization contract**: Network transport is inherently effectful. Each call produces
+a new external side effect (new gist, new API response). However, the *inputs* to the
+transport are deterministic functions of upstream capability outputs.
+
+| Transport | Inputs | Effect | Idempotency |
+|---|---|---|---|
+| `github.Gist.Create` | rendered markdown + credential + metadata | creates new gist | not idempotent (new gist each call) |
+| LLM chat completion | prompt + credential + model config | new inference | not idempotent (non-deterministic) |
+
+**Current deficiency**: Transport nodes re-execute unconditionally, but so does every
+upstream node that produces the transport inputs. The transport itself is correctly
+volatile, but its inputs are re-derived unnecessarily.
+
+**Minimal model**: Transport nodes are marked `VolatileEffect` — always in the execute
+set. But all upstream nodes that produce transport inputs (rendering, content collection,
+credential resolution) are keyed and skip when their inputs are unchanged. The transport
+node receives cached upstream outputs, so the only actual work is the HTTP call itself.
+
+#### 5. Codegen Freshness
+
+**What it provides**: generated CLI entrypoints, type stubs, and tool registrations.
+
+**Consumers**: every tool target (via `ensure-codegen` Make prerequisite).
+
+**Minimization contract**: Codegen output is a deterministic function of DSL source
+files + codegen binary logic. If neither has changed, outputs are identical.
+
+| Input | Source |
+|---|---|
+| DSL source files | `dsl/**/*.dag` content hashes |
+| Codegen binary semantics | `gunbc-codegen` binary hash or semantic version |
+
+**Current deficiency**: `ensure-codegen` runs `cargo run -p gunbc-dag --bin gunbc-codegen`
+as a Make prerequisite for every tool target. This spawns a full Cargo compilation check
++ binary execution even when nothing has changed. Every `make gist`, `make bootstrap`,
+`make deps`, etc. pays this cost.
+
+**Minimal model**: Codegen is a keyed workflow unit in the planner. Key payload includes
+DSL source content hashes + binary semantic version. Tool workflows declare codegen
+freshness as a typed input dependency (not a Make ordering prerequisite). Planner
+resolves codegen freshness via ledger lookup — no subprocess, no Cargo check.
+
+#### 6. Compilation / Binary Dispatch
+
+**What it provides**: built Rust binaries for tool execution.
+
+**Consumers**: every `make <tool>` target (via `cargo run`).
+
+**Minimization contract**: A compiled binary is a deterministic function of workspace
+source files + Cargo dependency metadata + compiler version. If none have changed,
+the existing binary is valid.
+
+**Current deficiency**: Every `cargo run -p <pkg> --bin <bin>` invocation checks
+compilation freshness of the entire workspace dependency tree. This is Cargo's
+internal memoization, but it still costs 5-15s per invocation for a medium workspace.
+Stacking `ensure-codegen` (one `cargo run`) + the tool itself (another `cargo run`)
+means two full Cargo checks per tool invocation.
+
+**Minimal model**: Binary freshness is a keyed unit. Key payload includes source
+content hashes + `cargo metadata` dependency hashes + compiler version. Tool
+invocation dispatches to the pre-built binary directly (via `build-release-bins`
+or planner-managed binary path), bypassing `cargo run` entirely.
+
+#### 7. Pure Computation
+
+**What it provides**: markdown rendering, diff formatting, content aggregation,
+template expansion.
+
+**Consumers**: gist (render_snapshot/render_diff/render_recent), bootstrap
+(GenerateMakefile/GenerateGitignore), makegen (RenderMakefile), pragma
+(RenderClippy/RenderAllowlist/RenderPolicy), testgen (Generate_{name}).
+
+**Minimization contract**: Pure functions are deterministic by definition. Same
+inputs always produce same outputs. These are always cacheable.
+
+**Current deficiency**: Every invocation re-runs every pure computation node, even
+when inputs are identical to the last run.
+
+**Minimal model**: Pure nodes are keyed on their input hashes. Always skip on
+cache hit. No special treatment needed — the general keying model handles this.
+
+### 15.3 Workflow-to-Capability Matrix
+
+Which workflows require which capabilities:
+
+| Workflow | Git | FS Read | FS Write | Credential | Network | Codegen | Compilation | Pure |
+|---|---|---|---|---|---|---|---|---|
+| **gist (snapshot)** | branch, ls-files | file contents | — | GitHub token | gist upload | yes | yes | render_snapshot |
+| **gist (diff)** | branch, diff | — | — | GitHub token | gist upload | yes | yes | render_diff |
+| **gist (recent)** | branch, rev-list, diff | — | — | GitHub token (cloud) | gist upload | yes | yes | render_recent |
+| **dag-viz** | branch | — | — | GitHub token | gist upload | yes | yes | viz render |
+| **dag-viz (diff)** | branch, diff | — | — | GitHub token | gist upload | yes | yes | viz render |
+| **dag-viz (recent)** | branch, rev-list, diff | — | — | GitHub token (cloud) | gist upload | yes | yes | viz render |
+| **dag-snapshot** | — | — | — | — | — | yes | yes | dag serialize |
+| **bootstrap** | — | existing files | Makefile, .gitignore | — | — | yes | yes | generate |
+| **makegen** | — | existing Makefile | Makefile | — | — | yes | yes | render |
+| **pragma** | — | existing files | clippy.toml, allowlist, policy | — | — | yes | yes | render x3 |
+| **testgen** | — | existing test files | test files x N | — | — | yes | yes | generate x N |
+| **deps** | — | manifest | — | — | — | yes | yes | resolve, render |
+| **build** | — | — | — | — | — | yes | yes | — |
+| **clippy** | — | — | — | — | — | yes | yes | — |
+| **review** | diff | — | — | LLM API key | LLM API | yes | yes | prompt, parse |
+| **ci** | — | — | — | — | — | yes | yes | orchestration |
+| **test-all** | — | — | — | — | — | yes | yes | orchestration |
+
+Key observations:
+
+1. **Codegen + Compilation are universal** — every workflow pays this cost. Minimizing
+   these two capabilities has the highest leverage.
+2. **Credentialing is shared** across gist, dag-viz (upload modes), and review — a
+   single minimized credential unit serves all of them.
+3. **Git state is shared** across gist and dag-viz mode families — identical queries
+   with identical repo state should resolve from the same keyed unit.
+4. **FS Write (upsert)** is only used by generator workflows (bootstrap, makegen,
+   pragma, testgen) — all share the same content-upsert pattern.
+5. **Network transport** is the only inherently volatile capability — everything
+   upstream of it should be cacheable.
+
+### 15.4 Per-Capability Minimization Applied to Gist
+
+The gist family exercises five of the seven capabilities and is the primary focus
+target. The three modes (snapshot, diff, recent) share a **base gist workflow** — the
+DSL already factors this via `shared.gist_modes`. The design must preserve and
+formalize this structure: a base workflow that handles credentialing, branch context,
+and upload, composed with mode-specific content acquisition.
+
+#### Base Gist Workflow (shared by all modes)
+
+The base workflow is the invariant core. Every gist mode flows through it:
+
+```
+content acquisition (mode-specific)
+        │
+        ▼ markdown: String
+┌──────────────────────────────────────────────┐
+│  Base Gist Workflow                          │
+│                                              │
+│  branch_context()  ──────────┐               │
+│                               ▼               │
+│  credential.resolve  ───→  gist_upload()     │
+│                               │               │
+│                               ▼               │
+│                        github.Gist.Create    │
+└──────────────────────────────────────────────┘
+        │
+        ▼ url: Url
+```
+
+DSL source: `shared.gist_modes.share_content` → `gist_upload` → `credential_chain`
+→ `github.Gist.Create`.
+
+Base capability units (shared across all modes):
+
+```
+Capability        Unit                    Key Inputs                     Skip When
+─────────────────────────────────────────────────────────────────────────────────────
+Codegen           codegen.ensure          DSL hashes + binary version    DSL unchanged
+Compilation       binary.ensure           source hashes + cargo meta     source unchanged
+Git State         git.current_branch      .git/HEAD                      HEAD unchanged
+Credential        credential.resolve      runtime_mode + source hash     within validity
+Network           github.gist_create      markdown hash + credential     never (volatile)
+```
+
+These five units are identical across snapshot, diff, and recent. The global ledger
+means running `make gist` and then `make gist-diff` reuses the base units (codegen,
+compilation, branch context, credential) from the first invocation.
+
+#### Mode-Specific Content Acquisition (augments base)
+
+Each mode adds its own content acquisition capabilities upstream of the base workflow's
+`markdown` input:
+
+**Snapshot** — augments base with filesystem scan:
+
+```
+Capability        Unit                    Key Inputs                     Skip When
+─────────────────────────────────────────────────────────────────────────────────────
+Git State         git.ls_files            .git/index hash                index unchanged
+FS Read           fs.read_files           file content hashes            files unchanged
+Pure              gist.render_snapshot    upstream content hashes        inputs unchanged
+```
+
+DSL source: `gist_snapshot` → `git.LsFiles` → `read_text_files` → `render_snapshot`.
+
+**Diff** — augments base with git diff:
+
+```
+Capability        Unit                    Key Inputs                     Skip When
+─────────────────────────────────────────────────────────────────────────────────────
+Git State         git.diff(base, HEAD)    base ref hash + HEAD hash      neither ref moved
+Pure              gist.render_diff        upstream diff hash             inputs unchanged
+```
+
+DSL source: `gist_diff` → `git.Diff(base_ref)` → `render_diff`.
+
+**Recent** — augments base with rev-list + per-commit diffs + cloud credential path:
+
+```
+Capability        Unit                    Key Inputs                     Skip When
+─────────────────────────────────────────────────────────────────────────────────────
+Git State         git.rev_list(since)     object store + since boundary  no new commits
+Git State         git.diff(per commit)    commit hash + parent hash      refs unchanged
+Pure              gist.render_recent      upstream diff hashes           inputs unchanged
+Credential        credential.resolve      runtime_mode: Cloud + WIF cfg within TTL
+  (cloud override)  ├── gcp.sts_exchange  WIF provider + OIDC token      within token TTL
+                    ├── gcp.iam_impersonate  SA + STS token              within token TTL
+                    └── gcp.secret_access  project + secret + IAM token  within token TTL
+```
+
+DSL source: `gist_recent` → `resolve_recent_base` → `git.RevList` → per-commit
+`git.Diff` → `render_recent`. The credential unit is the same base unit but with
+`runtime_mode: Cloud` input (replacing `GUNBC_CLOUD_CONFIG_REQUIRED=1`), which
+triggers the WIF sub-chain.
+
+#### Composition Summary
+
+```
+gist-snapshot = base gist + [git.ls_files, fs.read_files, render_snapshot]
+gist-diff     = base gist + [git.diff, render_diff]
+gist-recent   = base gist + [git.rev_list, git.diff×N, render_recent]
+                           + credential.resolve(Cloud) override
+```
+
+The base workflow is not a separate `WorkflowSpec` — it's the shared set of capability
+units that appear identically in all three modes. The global ledger's `WorkIdentity`-based
+dedup (Section 6.2) means these shared units are executed once and reused across modes
+without explicit cross-workflow wiring. dag-viz modes share the same base via
+`shared.gist_modes`.
+
+### 15.5 Full Tool Workflow Inventory
+
+The planner model must cover all workflow families from the DAG audit
+(`docs/dag-workflow-audit.md`):
+
+| # | Workflow Family | Make Targets | DAG Source | Nodes | Mode Variants |
+|---|---|---|---|---|---|
+| 1 | Codegen | `codegen`, `ensure-codegen` | `gunbc-dag/src/codegen/graph.rs` | 8 | — |
+| 2 | Bootstrap | `bootstrap`, `bootstrap-dry` | `gunbc-dag/src/bootstrap/graph.rs` | 15 | — |
+| 3 | Build | `build-all`, `build-all-dry` | `gunbc-dag/src/build/graph.rs` | 10 | — |
+| 4 | Makegen | `makegen`, `makegen-dry` | `gunbc-dag/src/makegen/graph.rs` | 7 | — |
+| 5 | CI | `ci`, `ci-dry` | `gunbc-dag/src/ci/graph.rs` | many | — |
+| 6 | Pragma | `pragma`, `pragma-dry` | `gunbc-dag/src/pragma/graph.rs` | 18 | — |
+| 7 | Testgen | `testgen`, `testgen-check` | `gunbc-dag/src/testgen_dag/graph.rs` | Nx6 | — |
+| 8 | **Gist** | `gist`, `gist-diff`, `gist-recent` (+dry) | `lib/tools/gist/src/graph.rs` | 17 | snapshot, diff, recent |
+| 9 | Deps | `deps`, `deps-dry` | `lib/tools/deps/src/graph.rs` | 8 | install, generate |
+| 10 | Clippy | `clippy`, `clippy-fix` | `lib/tools/clippy/src/graph.rs` | 3 | — |
+| 11 | Review | (via `gunbc review`) | `lib/review/src/graph.rs` | 10-12 | phase, inline, diff, multi |
+| 12 | LLM Chat | (embedded in review) | `lib/llm-ops/src/graph.rs` | 5 | — |
+| 13 | DAG Viz | `dag-viz`, `dag-viz-diff`, `dag-viz-recent` (+dry) | shared gist_modes pattern | varies | snapshot, diff, recent |
+| 14 | DAG Snapshot | `dag-snapshot`, `dag-snapshot-dry` | snapshot mode | varies | — |
+
+### 15.6 Cross-Workflow Capability Sharing
+
+The capability matrix (15.3) reveals that capabilities are shared across workflows.
+The global ledger (Section 7.1) enables this sharing: identical capability units with
+identical key payloads resolve from the same ledger entry regardless of which workflow
+triggered them.
+
+Concrete sharing relationships:
+
+```
+codegen.ensure          ← shared by ALL workflows (universal prerequisite)
+binary.ensure           ← shared by ALL workflows (universal prerequisite)
+git.current_branch      ← shared by gist (all), dag-viz (all)
+git.ls_files            ← shared by gist-snapshot
+git.diff(base, head)    ← shared by gist-diff, dag-viz-diff, review
+git.rev_list(since)     ← shared by gist-recent, dag-viz-recent
+credential.resolve(gh)  ← shared by gist (all), dag-viz (upload modes)
+credential.resolve(llm) ← shared by review, LLM chat
+```
+
+This means: if `make gist-diff` has already resolved credentials and computed a diff,
+then `make dag-viz-diff` with the same `base_ref` reuses both from the ledger. The
+sharing is a consequence of context-free `WorkIdentity` (Section 6.2) — it requires
+no explicit cross-workflow wiring.
+
+### 15.7 Migration Approach
+
+Minimization is applied per-capability, not per-workflow. Each capability gets a
+keyed unit model, and workflows compose those units. The migration order follows
+leverage (universal capabilities first):
+
+1. **Codegen + Compilation** (universal) — eliminates the two capabilities that every
+   single workflow pays for today. Highest leverage.
+2. **Credentialing** — eliminates the most expensive single-capability cost (WIF chain).
+   Unblocks fast gist/dag-viz/review invocations.
+3. **Git State** — eliminates redundant git queries across gist/dag-viz/review.
+4. **Filesystem** — eliminates redundant reads/upsert-checks in generator workflows.
+5. **Pure Computation** — falls out naturally from general keying (no special work).
+6. **Network Transport** — already correctly volatile; upstream minimization is the win.
+
+### 15.8 Tool Workflow SLOs
+
+SLOs are a verification mechanism for capability minimization, not the design goal
+themselves. If each capability is minimized correctly, these budgets are satisfied
+by construction:
+
+| Target | Warm No-Op Budget | Notes |
+|---|---|---|
+| `make gist` / `gist-diff` / `gist-recent` | planner + ledger + upload | upload is the only real work |
+| `make dag-viz` / variants | planner + ledger + upload | same pattern as gist |
+| `make bootstrap` / `makegen` / `pragma` | planner + ledger | zero work on warm (upsert skips) |
+| `make deps` | planner + ledger | zero work if manifest unchanged |
+| `make build-all` | planner + ledger + cargo (if dirty) | cargo build time is external |
+| `make ci` / `test-all` | ≤5s / ≤10s | already scoped in Section 12 |
+
+## 16. Immediate Next Design Artifacts
+
+1. `workflow_spec.rs`: `WorkflowSpec { dag: Dag<WorkflowUnit> }` for `ci`, `test-all`,
+   and all tool workflows.
 2. `workflow_key.rs`: canonical key payload normalization and hashing.
 3. `workflow_planner.rs`: dirty-closure + scheduling plan with typed miss reasons.
 4. `workflow_ledger.rs`: stable on-disk format, versioning policy, atomic persistence.
 5. `docs/design/workflow-key-schema.md`: concrete key fields and miss reasons.
+6. `docs/design/workflow/tool-workflow-design-pack.md`: concrete DAG views for gist,
+   deps, bootstrap, makegen, pragma, dag-viz (analogous to `wf1-wf4-dag-design-pack.md`).
+
+## 17. Artifact Graph and Dependency Direction
+
+### 17.1 What Codegen Produces
+
+Codegen produces **generated Rust source files** consumed at compile-time:
+
+| Artifact | Location | Consumers | Description |
+|----------|----------|-----------|-------------|
+| CLI entrypoints | `target/codegen/bin/{tool}/main.rs` | `cargo build` (tool binaries) | Generated `fn main()` for each tool binary |
+| Test harnesses | `{crate}/src/{module}/generated_tests*.rs` | `cargo test` (test binaries, `#[cfg(test)]` only) | Generated integration test modules via `include!()` |
+| Codegen lib | `target/codegen/lib/` | `cargo build` (gunbc-dag) | Shared codegen support files |
+| Codegen stamp | `target/codegen/.codegen-stamp` | Bootstrap freshness check | Marker for successful codegen completion |
+| Makefiles | `Makefile` | Make (build orchestration) | Generated from registry + DSL |
+
+Note: test harnesses are scattered across source crate directories (e.g.,
+`gunbc-dag/src/bootstrap/generated_tests.rs`, `lib/gcp-ops/src/generated_tests*.rs`)
+rather than centralized under `target/codegen/`. They are included via
+`#[cfg(test)] mod generated_tests { include!("generated_tests.rs"); }` blocks, so
+they are **compilation inputs for test binaries only**, not tool binaries. This means
+test harness staleness affects `cargo test` correctness but not `cargo build --bins`.
+
+The critical observation: **codegen outputs are compilation inputs**. Generated Rust
+sources must exist before `cargo build` can compile the binaries that depend on them.
+
+### 17.2 Dependency Direction (codegen → compilation, not reverse)
+
+The correct artifact dependency graph is:
+
+```
+codegen.ensure ──→ compilation.ensure(tool binaries)
+```
+
+NOT:
+
+```
+compilation.ensure ──→ codegen.ensure  (WRONG — creates stale-binary risk)
+```
+
+If the planner models `compilation.ensure` as preceding `codegen.ensure`, it can
+conclude a binary is fresh (source hashes match) even when codegen outputs are stale —
+producing a **correctness bug**, not just a performance issue.
+
+The CI orchestration DAG in `wf1-wf4-dag-design-pack.md` (Section 3.1) already
+encodes this direction correctly: `codegen → build`. This section makes it normative.
+
+### 17.3 Two-Phase Compilation (Bootstrap Invariant)
+
+Not all binaries depend on generated sources. The codegen binary itself must be
+compilable **without** generated artifacts — otherwise there is a bootstrap cycle:
+
+```
+codegen binary needs compilation → but compilation needs codegen outputs → ...
+```
+
+The codebase already enforces this constraint: `ci` (the CI pipeline binary) has a
+hand-written `main.rs` specifically because "it's the bootstrap tool that runs codegen
+for other tools, so it can't depend on generated code."
+
+This means compilation is **two-phase**:
+
+```
+Phase 1: compile.bootstrap.ensure
+    Builds bootstrap-safe binaries (codegen, ci) that do NOT depend on
+    generated sources. Key inputs: source hashes + cargo metadata + compiler
+    version. No codegen dependency edge.
+
+Phase 2: compile.tool_bins.ensure
+    Builds tool binaries that DO depend on generated sources. Key inputs:
+    source hashes + cargo metadata + compiler version + codegen output hashes.
+    Has explicit codegen dependency edge.
+```
+
+```mermaid
+flowchart LR
+  src["Source hashes"]
+  cargo["Cargo metadata"]
+  rustc["Compiler version"]
+
+  compile_bootstrap["compile.bootstrap.ensure"]
+  codegen["codegen.ensure"]
+  compile_tools["compile.tool_bins.ensure"]
+
+  src --> compile_bootstrap
+  cargo --> compile_bootstrap
+  rustc --> compile_bootstrap
+
+  compile_bootstrap --> codegen
+  codegen --> compile_tools
+  src --> compile_tools
+  cargo --> compile_tools
+  rustc --> compile_tools
+```
+
+**Bootstrap invariant**: there must always exist at least one compilable binary
+(the codegen binary) that can produce generated artifacts when they are missing or
+stale. This binary's compilation must not depend on codegen outputs. The planner
+must model this as a hard constraint, not an optimization.
+
+### 17.4 Build Configuration in Key Contracts
+
+Materialization keys for compilation units must include build configuration to
+prevent stale-binary cache hits across configuration changes:
+
+**Compilation key inputs** (both phases):
+
+| Input | Source | Why |
+|-------|--------|-----|
+| Source content hashes | `src/**/*.rs` content digest | Source changes invalidate binary |
+| Cargo metadata hashes | `Cargo.lock` + `Cargo.toml` dependency graph | Dependency changes invalidate binary |
+| Compiler version | `rustc --version` | Compiler upgrades may change codegen |
+| Build profile | `debug` / `release` | Different profiles produce different binaries |
+| Target triple | `x86_64-unknown-linux-gnu` etc. | Cross-compilation changes output |
+| Feature flags | Cargo feature selections | Feature gates change compiled code |
+| RUSTFLAGS | env `RUSTFLAGS` | Compiler flags affect output (e.g. `-D warnings`) |
+| Codegen output hashes | `target/codegen/**` content digest | **Phase 2 only** — generated sources |
+
+**Codegen key inputs**:
+
+| Input | Source | Why |
+|-------|--------|-----|
+| DSL source hashes | `dsl/**/*.dag` content digest | DSL changes trigger regeneration |
+| Codegen binary version | semantic version or binary content hash | Binary changes may produce different output |
+| Output schema version | codegen output format version marker | Schema changes require regeneration |
+| Registry configuration | tool/pipeline registry data | Registry changes affect generated output |
+
+Without these inputs in the key payload, `CachedHit` can return the wrong binary
+(e.g., a debug binary when release was requested, or a binary compiled before a
+dependency update).
+
+### 17.5 Daggen Status (Explicitly Deferred)
+
+The codebase has a `needs_daggen()` function that currently returns `false`. Daggen
+(generating lowered DAG workflow structures from DSL into compiled Rust code) is
+**explicitly deferred** from the current codegen pipeline.
+
+Current state:
+- **CLI codegen** (generated entrypoints, test harnesses) — **active**, always runs.
+- **DAG codegen / daggen** (generating lowered DAG definitions) — **off**, `needs_daggen() = false`.
+
+Design decision: daggen is **not** folded into `codegen.ensure` in the current phase.
+Workflow DAGs remain hand-authored in Rust (via `build_*_graph()` functions). The
+DSL test framework (`_test.dag` files) and `ServiceOperationSpec`-driven generic
+interpreters reduce the scope of hand-written Rust, but do not eliminate it.
+
+When daggen becomes necessary (e.g., to eliminate hand-written `build_*_graph()`
+functions), it should be modeled as a separate planner unit:
+
+```
+daggen.ensure
+    Key inputs: DSL source hashes + daggen binary version + output schema version
+    Produces: generated Rust DAG construction code
+    Consumers: compile.tool_bins.ensure (same phase as codegen outputs)
+```
+
+This is tracked as future work, not current scope.
 
 ---
 

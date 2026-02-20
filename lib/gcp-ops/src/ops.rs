@@ -746,7 +746,7 @@ impl Executable for GcpOps {
                     project, secret
                 );
                 let body = serde_json::json!({
-                    "payload": { "data": base64_encode(secret_value.expose()) }
+                    "payload": { "data": base64_encode(secret_value.expose_plaintext_for_transport()) }
                 });
                 let req = RestRequest::post(url)
                     .header("Authorization", format!("Bearer {}", access_token))

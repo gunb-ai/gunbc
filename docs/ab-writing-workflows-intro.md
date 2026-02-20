@@ -1,19 +1,21 @@
-# Graph-First Workflows: A Short Introduction (Clippy + Gist)
+# DSL-First Workflows: A Short Introduction (Clippy + Gist)
 
-gunbc models workflows as **typed DAGs**. You build a graph, validate it, then execute it in:
+gunbc is a **DSL-first workflow compiler** where everything is a DAG. You write `.dag` files, the compiler validates and lowers them to typed Graph IR, then you execute them in:
 - `DryRun`: intercept boundary nodes (no real I/O)
 - `Real`: run with actual transports
 
 What you get:
-- The diagram and the code are the same artifact.
+- The `.dag` definition and the runtime graph are the same artifact.
 - Workflow wiring stays correct by construction (less hand-written wiring tests).
 - Failures localize to nodes and boundaries instead of hidden control flow.
+- Adding a new service or tool requires only a `.dag` file — zero hand-written Rust.
 
-What validation guarantees:
+What the compiler guarantees:
 - Acyclic workflow
 - Type + cardinality compatibility on edges
 - SubDag interfaces match how they are used
 - Resource ports are fully wired (no dangling handles)
+- Service operations are type-checked against their annotations
 
 You still test semantics (parsers/renderers) and boundary behavior (transport errors/auth).
 
@@ -21,31 +23,59 @@ You still test semantics (parsers/renderers) and boundary behavior (transport er
 
 Clippy = Rust linter distributed as a rustup component.
 
-```text
-Build-time:  args: [String]
-Runtime:     trigger: Unit
-Output:      result: CliResult
+DSL definition (`dsl/tools/clippy.dag`):
 
-dag = build_clippy_graph(args)
-{result} = execute(dag, {trigger: ()})
+```
+func clippy_lint(paths: List<String>?) -> { clean: Bool, findings: String }
+  uses clippy: Clippy
+{
+  tool = upsert(
+    check: clippy.check(),
+    create: clippy.install(),
+    resolve: clippy.resolve()
+  )
+  result = cargo.Build.Clippy() [after tool]
+  return { clean: result.success, findings: result.stderr }
+}
 ```
 
-gunbc modeling: a SubDag node that packages check -> install -> run. Validation proves the wiring; tests cover semantics and boundary behavior.
+The compiler lowers this to a SubDag node that packages check -> install -> run. Validation proves the wiring; tests cover semantics and boundary behavior.
 
 ## Example 2 (Real): Gist Snapshot
 
 Gist snapshot = turn a repo's files into a GitHub gist.
 
-```text
-Build-time:  mode = Snapshot, extensions, public
-Runtime:     repo_path: String
-Output:      url: String
+Service definition (`dsl/services/github/gist.dag`):
 
-dag = build_gist_graph(Snapshot, extensions, public)
-{url} = execute(dag, {repo_path})
+```
+service github.Gist {
+  @endpoint("https://api.github.com")
+  @auth(BearerToken)
+
+  operation Create {
+    input { description: String, files: Map<String, String>, public: Bool = false }
+    output { url: Url @json("html_url"), id: GistId }
+    @rest(POST, "/gists")
+  }
+}
 ```
 
-gunbc modeling: explicit transport boundaries, a loop SubDag, and generated artifacts (signature, MockSpec, tests, CLI).
+Tool workflow (`dsl/tools/gist.dag`):
+
+```
+func gist_snapshot(base_ref: CommitSha?) -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+{
+  ctx = branch_context()
+  files = git.Core.LsFiles()
+  read_result = read_text_files(paths: files.files)
+  markdown = render_snapshot(files: read_result.files)
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref)
+  return { url: result.url }
+}
+```
+
+The compiler generates explicit transport boundaries, a loop SubDag for file reads, and all the `prepare → execute → parse` triplets from service calls. MockSpec, tests, and CLI are generated from the compiled Graph IR.
 
 ## Read the Full Version
 

@@ -67,3 +67,11 @@ func pragma(directives: List<PragmaDirective>) -> { clippy_written: Bool, allowl
     policy_written: policy.written
   }
 }
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test pragma_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}

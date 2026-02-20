@@ -81,6 +81,8 @@ pub mod ast {
         ResourceDef(ResourceDef),
         InterfaceDef(InterfaceDef),
         PipelineDef(PipelineDef),
+        TestDef(TestDef),
+        FixtureDef(FixtureDef),
     }
 
     // ── Types ───────────────────────────────────────────────────────
@@ -242,6 +244,96 @@ pub mod ast {
         pub name: String,
         pub body: FuncBody,
         pub after: Vec<String>,
+    }
+
+    // ── Tests ────────────────────────────────────────────────────────
+
+    /// A named fixture: reusable mock declarations shared across tests.
+    ///
+    /// ```dag
+    /// fixture cloud_env {
+    ///     mock cloud_env.config -> { project: "mock-project" }
+    ///     mock cloud_env.request_url -> "https://example.com/oidc"
+    /// }
+    /// ```
+    #[derive(Debug)]
+    pub struct FixtureDef {
+        pub name: String,
+        pub mocks: Vec<MockDecl>,
+    }
+
+    /// A test case, optionally inheriting from a fixture.
+    ///
+    /// ```dag
+    /// test gist_snapshot_dryrun : cloud_env_fixture {
+    ///     @tier(Unit)
+    ///     @hermetic(true)
+    ///
+    ///     input render_snapshot.topology_json = "{}"
+    ///
+    ///     mock execute.response -> rest_response(200, { ok: true })
+    ///
+    ///     expect result.url is String
+    ///     expect result.ok == true
+    /// }
+    /// ```
+    #[derive(Debug)]
+    pub struct TestDef {
+        pub name: String,
+        pub annotations: Vec<Annotation>,
+        /// Optional parent fixture name.
+        pub fixture: Option<String>,
+        /// Mock declarations local to this test.
+        pub mocks: Vec<MockDecl>,
+        /// Input value injections for dangling DAG entry ports.
+        pub inputs: Vec<InputDecl>,
+        /// Assertions on the DAG result.
+        pub expects: Vec<ExpectStmt>,
+    }
+
+    /// A mock declaration: `mock <node_path>.<port> -> <value>`.
+    ///
+    /// The `node_segments` are joined with `/` to form the DAG node ID.
+    /// The last dotted segment is the port name.
+    #[derive(Debug, Clone)]
+    pub struct MockDecl {
+        /// Node path segments (joined with `/` to form node ID).
+        pub node_segments: Vec<String>,
+        /// Port name (the segment after the last `.`).
+        pub port: String,
+        /// The mock value expression.
+        pub value: Expr,
+    }
+
+    /// An input declaration: `input <node_path>.<port> = <value>`.
+    #[derive(Debug, Clone)]
+    pub struct InputDecl {
+        pub node_segments: Vec<String>,
+        pub port: String,
+        pub value: Expr,
+    }
+
+    /// An expect assertion.
+    #[derive(Debug, Clone)]
+    pub enum ExpectStmt {
+        /// `expect <expr> == <expr>`
+        Eq(Expr, Expr),
+        /// `expect <expr> != <expr>`
+        Ne(Expr, Expr),
+        /// `expect <expr> < <expr>`
+        Lt(Expr, Expr),
+        /// `expect <expr> > <expr>`
+        Gt(Expr, Expr),
+        /// `expect <expr> <= <expr>`
+        Le(Expr, Expr),
+        /// `expect <expr> >= <expr>`
+        Ge(Expr, Expr),
+        /// `expect <expr> contains <string_expr>`
+        Contains(Expr, Expr),
+        /// `expect <expr> is <type_name>` (e.g., String, Bool, Int, NonEmpty)
+        Is(Expr, String),
+        /// `expect <expr>` -- truthiness check
+        Truthy(Expr),
     }
 
     // ── Expressions (fn bodies) ─────────────────────────────────────

@@ -56,6 +56,8 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "services.gcp.sts",
         "services.git",
         "services.github.gist",
+        "services.llm.anthropic",
+        "services.llm.openai",
         "services.shell",
         "shared.dag_util",
         "shared.gist_modes",
@@ -72,6 +74,7 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "tools.gist",
         "tools.makegen",
         "tools.pragma",
+        "tools.review",
         "tools.testgen",
     ]
 }
@@ -96,6 +99,8 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "services.gcp.secret_manager",
         "services.gcp.sts",
         "services.github.gist",
+        "services.llm.anthropic",
+        "services.llm.openai",
         "std.resources",
         "std.types",
         "cloud.aws.credential",
@@ -118,6 +123,7 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "examples.deployment",
         "tools.makegen",
         "tools.pragma",
+        "tools.review",
         "tools.testgen",
         "pipelines.ci",
     ]
@@ -128,7 +134,7 @@ fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
 
-    assert_eq!(graph.modules.len(), 42, "expected 42 discovered modules");
+    assert_eq!(graph.modules.len(), 45, "expected 45 discovered modules");
     let mut module_names: Vec<String> = graph
         .modules
         .iter()
@@ -215,6 +221,8 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("services.gcp.sts".into(), 0),
         ("services.git".into(), 1),
         ("services.github.gist".into(), 0),
+        ("services.llm.anthropic".into(), 0),
+        ("services.llm.openai".into(), 0),
         ("services.shell".into(), 1),
         ("shared.dag_util".into(), 2),
         ("shared.gist_modes".into(), 5),
@@ -231,6 +239,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.gist".into(), 5),
         ("tools.makegen".into(), 3),
         ("tools.pragma".into(), 3),
+        ("tools.review".into(), 0),
         ("tools.testgen".into(), 2),
     ]);
 
