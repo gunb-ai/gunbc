@@ -1,0 +1,54 @@
+// services/llm/openai.dag -- OpenAI Chat Completions API.
+//
+// Replaces: core/ir/src/transport/llm/openai.rs (request builder + response parser)
+//           lib/llm-ops/src/lib.rs (PrepareChatRequest/ParseChatResponse for openai)
+
+module services.llm.openai
+
+service llm.OpenAI {
+  @endpoint("https://api.openai.com")
+  @auth(BearerToken)
+
+  operation ChatCompletion {
+    input {
+      model: String
+      messages: Json
+      temperature: Float?
+      max_tokens: Int?
+    }
+    output {
+      content: String @json("choices/0/message/content")
+      model: String @json("model")
+      finish_reason: String @json("choices/0/finish_reason")
+      prompt_tokens: Int @json("usage/prompt_tokens")
+      completion_tokens: Int @json("usage/completion_tokens")
+    }
+    @rest(POST, "/v1/chat/completions")
+    @permissions(["chat_completion"])
+    @mock_response(
+      status: 200,
+      body: {
+        "model": "gpt-4o",
+        "choices": [{"message": {"role": "assistant", "content": "Hello"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+      }
+    )
+  }
+
+  operation Responses {
+    input {
+      model: String
+      input: Json
+      instructions: String?
+      max_output_tokens: Int?
+    }
+    output {
+      content: String @json("output/0/content/0/text")
+      model: String @json("model")
+      output_tokens: Int @json("usage/output_tokens")
+      input_tokens: Int @json("usage/input_tokens")
+    }
+    @rest(POST, "/v1/responses")
+    @permissions(["chat_completion"])
+  }
+}

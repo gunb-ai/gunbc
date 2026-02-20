@@ -785,6 +785,8 @@ mod tests {
             "services.gcp.secret_manager",
             "services.gcp.sts",
             "services.github.gist",
+            "services.llm.anthropic",
+            "services.llm.openai",
             "std.resources",
             "std.types",
             "cloud.aws.credential",
@@ -1057,7 +1059,7 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 42);
+        assert_eq!(result.parsed_count(), 44);
         assert!(
             result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
@@ -1102,7 +1104,7 @@ mod tests {
         .expect("pipeline should execute");
         assert_eq!(
             result.parsed_count(),
-            42,
+            44,
             "report stop should retain parse-stage file count for real corpus"
         );
     }

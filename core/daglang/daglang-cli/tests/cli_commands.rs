@@ -181,6 +181,8 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "services.gcp.sts",
         "services.git",
         "services.github.gist",
+        "services.llm.anthropic",
+        "services.llm.openai",
         "services.shell",
         "shared.dag_util",
         "shared.gist_modes",
@@ -221,6 +223,8 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "services.gcp.secret_manager",
         "services.gcp.sts",
         "services.github.gist",
+        "services.llm.anthropic",
+        "services.llm.openai",
         "std.resources",
         "std.types",
         "cloud.aws.credential",
@@ -1061,7 +1065,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 42 file(s)"),
+        stdout.contains("OK: checked 44 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1090,7 +1094,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(42));
+    assert_eq!(stdout, expected_check_success_stdout(44));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -9162,7 +9166,7 @@ fn modules_command_prints_module_graph_summary() {
         .collect();
     assert_eq!(
         reported_modules, expected_modules,
-        "modules command should report the complete 42-module corpus"
+        "modules command should report the complete 44-module corpus"
     );
 }
 
@@ -11525,7 +11529,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 42 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 44 file(s)"),
         "default check should parse full DSL corpus"
     );
 }

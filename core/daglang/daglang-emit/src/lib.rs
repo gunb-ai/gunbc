@@ -52,11 +52,14 @@ pub mod render_rust;
 // Wave 5 (Task E3): test generation.
 pub mod test_gen;
 
+// Wave 6 (SC5-SC6): service transport code generation per language.
+pub mod service_emit;
+
 #[cfg(test)]
 mod backend_harness;
 
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
-use daglang_lower::{CallableKind, LoweredOp};
+use daglang_lower::{CallableKind, LoweredOp, ServiceOperationSpec};
 use gunbc_ir::Dag;
 use std::fmt::Write as _;
 
@@ -271,7 +274,7 @@ pub fn emit_go_bundle(
     artifacts: &DerivedArtifacts,
     makegen_content: Option<&str>,
 ) -> Result<EmissionBundle, EmitError> {
-    let (symbols, callable_count, pipeline_count) = collect_callable_symbols(dag)?;
+    let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
     let is_makegen = is_makegen_module(artifacts);
     let entrypoints = artifacts
@@ -281,9 +284,17 @@ pub fn emit_go_bundle(
         .map(|entry| sanitize_identifier(entry))
         .collect::<Vec<_>>();
 
+    let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
+
     let symbol_funcs = symbols
         .iter()
-        .map(|symbol| format!("func {symbol}() {{\n    // generated callable stub\n}}\n"))
+        .map(|sym| {
+            if let Some(ref spec) = sym.spec {
+                service_emit::emit_go_service_func(&sym.name, &sym.raw_name, spec)
+            } else {
+                format!("func {name}() {{\n    // generated callable stub\n}}\n", name = sym.name)
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -293,15 +304,33 @@ pub fn emit_go_bundle(
         .collect::<Vec<_>>()
         .join(", ");
 
+    let imports = if is_makegen {
+        "import (\n    \"fmt\"\n    \"os\"\n)\n".to_string()
+    } else if has_service_transport {
+        "import (\n    \"fmt\"\n    \"net/http\"\n    \"bytes\"\n    \"encoding/json\"\n    \"os/exec\"\n    \"strings\"\n)\n".to_string()
+    } else {
+        "import \"fmt\"\n".to_string()
+    };
+
     let main_go = if is_makegen {
         let makefile_literal = escape_string_literal(resolve_makegen_content(makegen_content));
         format!(
-            "package main\n\nimport (\n    \"fmt\"\n    \"os\"\n)\n\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc makegenContent() string {{\n    return \"{makefile_literal}\"\n}}\n\nfunc main() {{\n    if len(os.Args) > 1 {{\n        path := os.Args[1]\n        if err := os.WriteFile(path, []byte(makegenContent()), 0644); err != nil {{\n            fmt.Fprintf(os.Stderr, \"failed to write `%s`: %v\\n\", path, err)\n            os.Exit(1)\n        }}\n    }}\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
+            "package main\n\n{imports}\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc makegenContent() string {{\n    return \"{makefile_literal}\"\n}}\n\nfunc main() {{\n    if len(os.Args) > 1 {{\n        path := os.Args[1]\n        if err := os.WriteFile(path, []byte(makegenContent()), 0644); err != nil {{\n            fmt.Fprintf(os.Stderr, \"failed to write `%s`: %v\\n\", path, err)\n            os.Exit(1)\n        }}\n    }}\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
         )
     } else {
         format!(
-            "package main\n\nimport \"fmt\"\n\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc main() {{\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
+            "package main\n\n{imports}\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc main() {{\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
         )
+    };
+
+    // Suppress unused import warnings for service transport code.
+    let main_go = if has_service_transport && !is_makegen {
+        main_go.replace(
+            "func main() {",
+            "// Ensure imports used.\nvar _ = http.StatusOK\nvar _ = bytes.Compare\nvar _ = json.Unmarshal\nvar _ = exec.Command\nvar _ = strings.TrimSpace\n\nfunc main() {",
+        )
+    } else {
+        main_go
     };
 
     let mut files = vec![
@@ -338,9 +367,10 @@ pub fn emit_c_bundle(
     artifacts: &DerivedArtifacts,
     makegen_content: Option<&str>,
 ) -> Result<EmissionBundle, EmitError> {
-    let (symbols, callable_count, pipeline_count) = collect_callable_symbols(dag)?;
+    let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
     let is_makegen = is_makegen_module(artifacts);
+    let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
     let entrypoints = artifacts
         .manifest
         .entrypoint_nodes
@@ -350,7 +380,13 @@ pub fn emit_c_bundle(
 
     let symbol_funcs = symbols
         .iter()
-        .map(|symbol| format!("static void {symbol}(void) {{}}\n"))
+        .map(|sym| {
+            if let Some(ref spec) = sym.spec {
+                service_emit::emit_c_service_func(&sym.name, &sym.raw_name, spec)
+            } else {
+                format!("static void {name}(void) {{}}\n", name = sym.name)
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -360,14 +396,22 @@ pub fn emit_c_bundle(
         .collect::<Vec<_>>()
         .join(", ");
 
+    let includes = if is_makegen {
+        "#include <stdio.h>\n#include <string.h>\n".to_string()
+    } else if has_service_transport {
+        "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <curl/curl.h>\n".to_string()
+    } else {
+        "#include <stdio.h>\n".to_string()
+    };
+
     let main_c = if is_makegen {
         let makefile_literal = escape_string_literal(resolve_makegen_content(makegen_content));
         format!(
-            "#include <stdio.h>\n#include <string.h>\n\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\nstatic const char* MAKEGEN_CONTENT = \"{makefile_literal}\";\n\n{symbol_funcs}\nint main(int argc, char** argv) {{\n    (void)CLI_ENTRYPOINTS;\n    if (argc > 1) {{\n        const char* path = argv[1];\n        FILE* file = fopen(path, \"wb\");\n        if (!file) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n        size_t expected = strlen(MAKEGEN_CONTENT);\n        size_t written = fwrite(MAKEGEN_CONTENT, 1, expected, file);\n        fclose(file);\n        if (written != expected) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n    }}\n    printf(\"daglang generated c backend\\n\");\n    return 0;\n}}\n"
+            "{includes}\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\nstatic const char* MAKEGEN_CONTENT = \"{makefile_literal}\";\n\n{symbol_funcs}\nint main(int argc, char** argv) {{\n    (void)CLI_ENTRYPOINTS;\n    if (argc > 1) {{\n        const char* path = argv[1];\n        FILE* file = fopen(path, \"wb\");\n        if (!file) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n        size_t expected = strlen(MAKEGEN_CONTENT);\n        size_t written = fwrite(MAKEGEN_CONTENT, 1, expected, file);\n        fclose(file);\n        if (written != expected) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n    }}\n    printf(\"daglang generated c backend\\n\");\n    return 0;\n}}\n"
         )
     } else {
         format!(
-            "#include <stdio.h>\n\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\n\n{symbol_funcs}\nint main(void) {{\n    printf(\"daglang generated c backend\\n\");\n    return (int)(sizeof(CLI_ENTRYPOINTS) / sizeof(CLI_ENTRYPOINTS[0])) >= 0 ? 0 : 1;\n}}\n"
+            "{includes}\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\n\n{symbol_funcs}\nint main(void) {{\n    printf(\"daglang generated c backend\\n\");\n    return (int)(sizeof(CLI_ENTRYPOINTS) / sizeof(CLI_ENTRYPOINTS[0])) >= 0 ? 0 : 1;\n}}\n"
         )
     };
 
@@ -405,13 +449,19 @@ pub fn emit_mips_bundle(
     artifacts: &DerivedArtifacts,
     makegen_content: Option<&str>,
 ) -> Result<EmissionBundle, EmitError> {
-    let (symbols, callable_count, pipeline_count) = collect_callable_symbols(dag)?;
+    let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
     let is_makegen = is_makegen_module(artifacts);
 
     let label_defs = symbols
         .iter()
-        .map(|symbol| format!("{symbol}:\n    jr $ra\n"))
+        .map(|sym| {
+            if let Some(ref spec) = sym.spec {
+                service_emit::emit_mips_service_func(&sym.name, &sym.raw_name, spec)
+            } else {
+                format!("{name}:\n    jr $ra\n", name = sym.name)
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -460,9 +510,17 @@ pub fn emit_mips_bundle(
     })
 }
 
-fn collect_callable_symbols(
+/// A collected symbol from the DAG, with optional service transport metadata.
+struct CollectedSymbol {
+    name: String,
+    spec: Option<ServiceOperationSpec>,
+    /// The raw lowered-op name (e.g., "service_transport::prepare::github.Gist::Create").
+    raw_name: String,
+}
+
+fn collect_symbols_with_metadata(
     dag: &Dag<LoweredOp>,
-) -> Result<(Vec<String>, usize, usize), EmitError> {
+) -> Result<(Vec<CollectedSymbol>, usize, usize), EmitError> {
     let mut symbols = Vec::new();
     let mut callable_count = 0usize;
     let mut pipeline_count = 0usize;
@@ -476,9 +534,21 @@ fn collect_callable_symbols(
         };
 
         match op {
-            LoweredOp::Callable { module, name, .. } => {
+            LoweredOp::Callable {
+                module,
+                name,
+                service_metadata,
+                ..
+            } => {
                 callable_count += 1;
-                symbols.push(sanitize_identifier(&format!("{module}_{name}")));
+                let spec = service_metadata
+                    .as_ref()
+                    .and_then(|m| m.spec.clone());
+                symbols.push(CollectedSymbol {
+                    name: sanitize_identifier(&format!("{module}_{name}")),
+                    spec,
+                    raw_name: name.clone(),
+                });
             }
             LoweredOp::Collection {
                 module,
@@ -486,13 +556,21 @@ fn collect_callable_symbols(
                 kind,
             } => {
                 callable_count += 1;
-                symbols.push(sanitize_identifier(&format!(
-                    "{module}_{callable}_collection_{kind:?}"
-                )));
+                symbols.push(CollectedSymbol {
+                    name: sanitize_identifier(&format!(
+                        "{module}_{callable}_collection_{kind:?}"
+                    )),
+                    spec: None,
+                    raw_name: String::new(),
+                });
             }
             LoweredOp::Pipeline { module, name, .. } => {
                 pipeline_count += 1;
-                symbols.push(sanitize_identifier(&format!("{module}_{name}")));
+                symbols.push(CollectedSymbol {
+                    name: sanitize_identifier(&format!("{module}_{name}")),
+                    spec: None,
+                    raw_name: String::new(),
+                });
             }
         }
     }
@@ -782,5 +860,413 @@ mod tests {
             .iter()
             .any(|file| file.path.ends_with("dry_run_completion_test.s")
                 && file.content.contains("li $v0, 4001")));
+    }
+
+    // ======================================================================
+    // SC7: New service smoke tests across all languages
+    // ======================================================================
+
+    /// Build a sample DAG with REST and Shell service transport nodes.
+    fn service_dag() -> Dag<LoweredOp> {
+        use daglang_lower::{
+            FieldSpec, OutputFieldSpec, RestOperationSpec, ServiceCallMetadata,
+            ServiceOperationSpec, ServiceTransportClass, ShellOperationSpec, ShellOutputParsing,
+        };
+
+        let rest_spec = ServiceOperationSpec::Rest(RestOperationSpec {
+            endpoint: "https://api.anthropic.com".to_string(),
+            method: "POST".to_string(),
+            path_template: "/v1/messages".to_string(),
+            input_fields: vec![
+                FieldSpec {
+                    name: "model".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: false,
+                },
+                FieldSpec {
+                    name: "messages".to_string(),
+                    type_id: "Json".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: false,
+                },
+            ],
+            output_fields: vec![
+                OutputFieldSpec {
+                    name: "content".to_string(),
+                    type_id: "String".to_string(),
+                    json_path: "content/0/text".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                },
+                OutputFieldSpec {
+                    name: "model".to_string(),
+                    type_id: "String".to_string(),
+                    json_path: "model".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                },
+            ],
+            body_template: None,
+            headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
+        });
+
+        let shell_spec = ServiceOperationSpec::Shell(ShellOperationSpec {
+            argv_template: vec![
+                daglang_lower::ArgvSegment::Literal("cargo".to_string()),
+                daglang_lower::ArgvSegment::Literal("build".to_string()),
+                daglang_lower::ArgvSegment::Literal("--all-targets".to_string()),
+            ],
+            input_fields: vec![],
+            output_fields: vec![],
+            output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+        });
+
+        let mut dag = Dag::new();
+
+        // REST prepare node.
+        dag.add_node(Node::opaque(
+            "svc::rest_prepare",
+            vec![Port::scalar("model", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "services.llm.anthropic".to_string(),
+                kind: CallableKind::Func,
+                name: "service_transport::prepare::llm.Anthropic::Messages".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "llm.Anthropic".to_string(),
+                    operation: "Messages".to_string(),
+                    transport: ServiceTransportClass::RestNetwork,
+                    idempotent: false,
+                    readonly: false,
+                    permissions: vec!["messages".to_string()],
+                    spec: Some(rest_spec.clone()),
+                }),
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        // REST execute node.
+        dag.add_node(Node::opaque(
+            "svc::rest_execute",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Callable {
+                module: "services.llm.anthropic".to_string(),
+                kind: CallableKind::Func,
+                name: "service_transport::execute::llm.Anthropic::Messages".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "llm.Anthropic".to_string(),
+                    operation: "Messages".to_string(),
+                    transport: ServiceTransportClass::RestNetwork,
+                    idempotent: false,
+                    readonly: false,
+                    permissions: vec!["messages".to_string()],
+                    spec: Some(rest_spec.clone()),
+                }),
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        // REST parse node.
+        dag.add_node(Node::opaque(
+            "svc::rest_parse",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("content", "String")],
+            LoweredOp::Callable {
+                module: "services.llm.anthropic".to_string(),
+                kind: CallableKind::Func,
+                name: "service_transport::parse::llm.Anthropic::Messages".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "llm.Anthropic".to_string(),
+                    operation: "Messages".to_string(),
+                    transport: ServiceTransportClass::RestNetwork,
+                    idempotent: false,
+                    readonly: false,
+                    permissions: vec!["messages".to_string()],
+                    spec: Some(rest_spec),
+                }),
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        // Shell prepare node.
+        dag.add_node(Node::opaque(
+            "svc::shell_prepare",
+            vec![],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Callable {
+                module: "services.cargo".to_string(),
+                kind: CallableKind::Func,
+                name: "service_transport::prepare::cargo.Cargo::Build".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "cargo.Cargo".to_string(),
+                    operation: "Build".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: false,
+                    readonly: false,
+                    permissions: vec![],
+                    spec: Some(shell_spec.clone()),
+                }),
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        // Shell parse node.
+        dag.add_node(Node::opaque(
+            "svc::shell_parse",
+            vec![Port::scalar("response", "TransportResponse")],
+            vec![Port::scalar("success", "Bool")],
+            LoweredOp::Callable {
+                module: "services.cargo".to_string(),
+                kind: CallableKind::Func,
+                name: "service_transport::parse::cargo.Cargo::Build".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: Some(ServiceCallMetadata {
+                    service: "cargo.Cargo".to_string(),
+                    operation: "Build".to_string(),
+                    transport: ServiceTransportClass::ShellLocal,
+                    idempotent: false,
+                    readonly: false,
+                    permissions: vec![],
+                    spec: Some(shell_spec),
+                }),
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        // Wire the REST triplet.
+        dag.add_edge(Edge::new(
+            "svc::rest_prepare",
+            "request",
+            "svc::rest_execute",
+            "request",
+        ));
+        dag.add_edge(Edge::new(
+            "svc::rest_execute",
+            "response",
+            "svc::rest_parse",
+            "response",
+        ));
+
+        dag
+    }
+
+    // -- SC7.1: Go backend emits service transport functions --
+
+    #[test]
+    fn go_bundle_emits_rest_service_transport_functions() {
+        let dag = service_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let bundle = emit_go_bundle(&dag, &artifacts, None).expect("emit should succeed");
+
+        let main_go = bundle
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("main.go"))
+            .expect("should have main.go");
+
+        // REST prepare: should have http.NewRequest + endpoint URL.
+        assert!(
+            main_go.content.contains("http.NewRequest"),
+            "Go REST prepare should use http.NewRequest: {}",
+            main_go.content
+        );
+        assert!(
+            main_go.content.contains("https://api.anthropic.com"),
+            "Go REST prepare should reference endpoint"
+        );
+        assert!(
+            main_go.content.contains("anthropic-version"),
+            "Go REST prepare should set custom headers"
+        );
+
+        // REST parse: should have json.Unmarshal + result struct.
+        assert!(
+            main_go.content.contains("json.Unmarshal"),
+            "Go REST parse should unmarshal JSON"
+        );
+        assert!(
+            main_go.content.contains("Content string"),
+            "Go REST parse should have Content field in result struct"
+        );
+
+        // Shell prepare: should have exec.Command.
+        assert!(
+            main_go.content.contains("exec.Command"),
+            "Go Shell prepare should use exec.Command"
+        );
+        assert!(
+            main_go.content.contains("\"cargo\""),
+            "Go Shell prepare should have cargo argv"
+        );
+
+        // Shell parse: should have SuccessStdoutStderr result struct.
+        assert!(
+            main_go.content.contains("Success bool"),
+            "Go Shell parse should have Success field"
+        );
+    }
+
+    #[test]
+    fn go_bundle_imports_transport_packages() {
+        let dag = service_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let bundle = emit_go_bundle(&dag, &artifacts, None).expect("emit should succeed");
+
+        let main_go = bundle
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("main.go"))
+            .expect("should have main.go");
+
+        assert!(
+            main_go.content.contains("\"net/http\""),
+            "should import net/http"
+        );
+        assert!(
+            main_go.content.contains("\"encoding/json\""),
+            "should import encoding/json"
+        );
+        assert!(
+            main_go.content.contains("\"os/exec\""),
+            "should import os/exec"
+        );
+    }
+
+    // -- SC7.2: C backend emits service transport functions --
+
+    #[test]
+    fn c_bundle_emits_rest_service_transport_functions() {
+        let dag = service_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let bundle = emit_c_bundle(&dag, &artifacts, None).expect("emit should succeed");
+
+        let main_c = bundle
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("main.c"))
+            .expect("should have main.c");
+
+        // REST prepare: should have snprintf for URL construction.
+        assert!(
+            main_c.content.contains("snprintf"),
+            "C REST prepare should use snprintf for URL: {}",
+            main_c.content
+        );
+        assert!(
+            main_c.content.contains("api.anthropic.com"),
+            "C REST prepare should reference endpoint"
+        );
+
+        // REST parse: should document JSON paths.
+        assert!(
+            main_c.content.contains("content/0/text"),
+            "C REST parse should document json paths"
+        );
+
+        // Shell prepare: should document argv.
+        assert!(
+            main_c.content.contains("\"cargo\""),
+            "C Shell prepare should have cargo in argv"
+        );
+
+        // Should include curl header.
+        assert!(
+            main_c.content.contains("#include <curl/curl.h>"),
+            "C should include curl for REST services"
+        );
+    }
+
+    // -- SC7.3: MIPS backend emits service transport functions --
+
+    #[test]
+    fn mips_bundle_emits_rest_service_transport_functions() {
+        let dag = service_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let bundle = emit_mips_bundle(&dag, &artifacts, None).expect("emit should succeed");
+
+        let main_s = bundle
+            .files
+            .iter()
+            .find(|file| file.path.ends_with("main.s"))
+            .expect("should have main.s");
+
+        // REST prepare: should have spec comment.
+        assert!(
+            main_s.content.contains("prepare REST POST"),
+            "MIPS REST prepare should have spec comment: {}",
+            main_s.content
+        );
+        assert!(
+            main_s.content.contains("api.anthropic.com"),
+            "MIPS REST prepare should reference endpoint"
+        );
+
+        // Shell prepare: should have argv comment.
+        assert!(
+            main_s.content.contains("prepare shell [cargo build"),
+            "MIPS Shell prepare should have argv comment"
+        );
+
+        // All labels should return.
+        let label_count = main_s
+            .content
+            .lines()
+            .filter(|l| l.contains("jr $ra"))
+            .count();
+        assert!(
+            label_count >= 5,
+            "MIPS should have at least 5 jr $ra returns (for 5 service nodes), got {label_count}"
+        );
+    }
+
+    // -- SC7.4: Cross-backend consistency --
+
+    #[test]
+    fn all_backends_emit_same_number_of_service_functions() {
+        let dag = service_dag();
+        let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+
+        let go_bundle = emit_go_bundle(&dag, &artifacts, None).expect("go emit");
+        let c_bundle = emit_c_bundle(&dag, &artifacts, None).expect("c emit");
+        let mips_bundle = emit_mips_bundle(&dag, &artifacts, None).expect("mips emit");
+
+        // All should report the same callable count.
+        assert_eq!(go_bundle.summary.callable_count, 5, "Go callable count");
+        assert_eq!(c_bundle.summary.callable_count, 5, "C callable count");
+        assert_eq!(mips_bundle.summary.callable_count, 5, "MIPS callable count");
+
+        // None should contain generic "generated callable stub".
+        let go_main = go_bundle
+            .files
+            .iter()
+            .find(|f| f.path.ends_with("main.go"))
+            .unwrap();
+        assert!(
+            !go_main.content.contains("generated callable stub"),
+            "Go should not have generic stubs for service nodes"
+        );
+
+        let c_main = c_bundle
+            .files
+            .iter()
+            .find(|f| f.path.ends_with("main.c"))
+            .unwrap();
+        assert!(
+            !c_main.content.contains("static void"),
+            "C should not have void stubs for service nodes"
+        );
     }
 }
