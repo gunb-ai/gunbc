@@ -31,6 +31,8 @@ fn item_signatures(source: &SourceFile) -> Vec<String> {
             Item::ResourceDef(def) => format!("resource {}", def.name),
             Item::InterfaceDef(def) => format!("interface {}", def.name),
             Item::PipelineDef(def) => format!("pipeline {}", def.name),
+            Item::TestDef(def) => format!("test {}", def.name),
+            Item::FixtureDef(def) => format!("fixture {}", def.name),
         })
         .collect()
 }

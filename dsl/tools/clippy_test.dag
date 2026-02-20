@@ -1,0 +1,21 @@
+// clippy_test.dag -- Test specification for the clippy tool.
+//
+// Replaces lib/tools/clippy/src/graph_mock.rs.
+
+module tools.clippy_test
+
+test clippy_lint_all {
+    @tier(Unit)
+    @hermetic(true)
+    @testgen_skip(true)
+
+    // Transport mocks for the three shell commands
+    mock execute_check.response -> shell_response(0, "clippy 0.1.0")
+    mock execute_install.response -> shell_response(0, "")
+    mock execute_resolve.response -> shell_response(0, "")
+
+    // Input trigger
+    input prepare_check.trigger -> true
+
+    expect result.success is Bool
+}

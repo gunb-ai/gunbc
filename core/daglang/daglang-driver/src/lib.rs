@@ -615,6 +615,65 @@ fn validate_module_path_consistency(
     }
 }
 
+// ── Test file processing ────────────────────────────────────────────
+
+/// Result of processing `*_test.dag` files.
+#[derive(Debug)]
+pub struct TestEmitOutput {
+    /// Map from test file path to generated Rust code.
+    pub generated: Vec<(PathBuf, String)>,
+}
+
+/// Discover and process all `*_test.dag` files under the given roots.
+///
+/// For each test file, parses it, extracts test/fixture definitions, and
+/// emits the corresponding `graph_mock.rs` Rust code using the provided
+/// config resolver.
+#[allow(clippy::disallowed_methods)]
+pub fn process_test_dag_files(
+    roots: &[PathBuf],
+    config_resolver: impl Fn(&Path) -> Option<daglang_emit::test_mock_emit::TestEmitConfig>,
+) -> Result<TestEmitOutput, CompileError> {
+    let mut generated = Vec::new();
+
+    for root in roots {
+        let test_files = daglang_resolve::discover_test_dag_files(root)
+            .map_err(|e| format!("test file discovery error: {e}"))?;
+
+        for test_path in test_files {
+            let source = std::fs::read_to_string(&test_path)
+                .map_err(|e| format!("failed to read {}: {e}", test_path.display()))?;
+
+            let ast = parser::parse(&source).map_err(|errors| {
+                let mut message = format!("parse errors in {}:\n", test_path.display());
+                for error in &errors {
+                    writeln!(message, "  {error}").ok();
+                }
+                message
+            })?;
+
+            let test_file = daglang_emit::test_mock_emit::TestFile::from_source(&ast);
+
+            if test_file.tests.is_empty() {
+                continue; // Skip files with no test definitions.
+            }
+
+            let config = config_resolver(&test_path).ok_or_else(|| {
+                format!(
+                    "no test emit config for {}",
+                    test_path.display()
+                )
+            })?;
+
+            let rust_code =
+                daglang_emit::test_mock_emit::emit_test_mock_file(&test_file, &config);
+            generated.push((test_path, rust_code));
+        }
+    }
+
+    Ok(TestEmitOutput { generated })
+}
+
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod tests {

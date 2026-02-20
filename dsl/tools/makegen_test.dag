@@ -1,0 +1,12 @@
+// makegen_test.dag -- Test specification for the makegen tool.
+//
+// Replaces gunbc-dag/src/makegen/graph_mock.rs.
+// All boundary mocks are auto-filled; this test verifies structural validity.
+
+module tools.makegen_test
+
+test makegen_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}

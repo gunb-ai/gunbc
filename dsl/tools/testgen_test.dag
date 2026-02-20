@@ -1,0 +1,12 @@
+// testgen_test.dag -- Test specification for the testgen DAG tool.
+//
+// Replaces gunbc-dag/src/testgen_dag/graph_mock.rs.
+// All boundary mocks are auto-filled; this test verifies structural validity.
+
+module tools.testgen_test
+
+test testgen_dag_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}

@@ -1,0 +1,45 @@
+// deps_test.dag -- Test specifications for the deps tool.
+//
+// Replaces lib/tools/deps/src/graph_mock.rs.
+// Uses the typed mock builder pattern with extract_mock_requirements.
+//
+// NOTE: Complex mock values (FilesystemHandle, Platform) still use Rust
+// helpers via @rust_mock_helpers.
+
+module tools.deps_test
+
+// Shared filesystem and platform mocks.
+fixture deps_env {
+    mock fs_env.handle -> "write_scope"
+    mock platform_env.platform -> "linux"
+}
+
+test deps_install_dryrun : deps_env {
+    @tier(Unit)
+    @hermetic(true)
+    @rust_mock_helpers("gunbc_deps::graph_mock")
+
+    // File transport mock: load manifest
+    mock load_manifest/execute_load_manifest.response -> file_response("deps.toml")
+
+    // Shell transport mocks: install commands
+    mock execute_installs/execute_installs.response -> shell_response(0, "installed ripgrep")
+
+    expect result.installed is Bool
+    expect result.installed == true
+}
+
+test deps_install_pkg_fails : deps_env {
+    @tier(Scenario)
+    @hermetic(true)
+    @testgen_skip(true)
+    @rust_mock_helpers("gunbc_deps::graph_mock")
+
+    // File transport mock: load manifest
+    mock load_manifest/execute_load_manifest.response -> file_response("deps.toml")
+
+    // Shell transport mock: install fails
+    mock execute_installs/execute_installs.response -> shell_response(1, "error: package not found")
+
+    expect result.installed == false
+}

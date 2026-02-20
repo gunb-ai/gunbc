@@ -789,6 +789,9 @@ fn collect_signatures(
                     stage_names: def.stages.iter().map(|stage| stage.name.clone()).collect(),
                 });
             }
+            // Test and fixture definitions are handled by the test lowering
+            // pass, not the standard typecheck/lower pipeline.
+            Item::TestDef(_) | Item::FixtureDef(_) => {}
         }
     }
 

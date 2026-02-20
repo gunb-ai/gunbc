@@ -1,0 +1,12 @@
+// bootstrap_test.dag -- Test specification for the bootstrap tool.
+//
+// Replaces gunbc-dag/src/bootstrap/graph_mock.rs.
+// All boundary mocks are auto-filled; this test verifies structural validity.
+
+module tools.bootstrap_test
+
+test bootstrap_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}

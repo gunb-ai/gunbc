@@ -1,0 +1,59 @@
+// dag_viz_test.dag -- Test specifications for the dag-viz tool.
+//
+// Replaces gunbc-dag/src/dag_viz/graph_mock.rs.
+// Four test cases, one per DagVizMode variant.
+
+module tools.dag_viz_test
+
+// Shared mock data for gist upload and cloud credential assertions.
+fixture dag_viz_gist_upload {
+    mock gist_upload/parse_gist_response.url -> ""
+    mock gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam.ok -> true
+}
+
+test dag_viz_snapshot : dag_viz_gist_upload {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+    @mode("Snapshot")
+
+    input render_snapshot.topology_json -> "{\"nodes\":[],\"edges\":[]}"
+    input gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam.response -> rest_response(200, { ok: true })
+
+    expect result.url is NonEmpty
+}
+
+test dag_viz_diff : dag_viz_gist_upload {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+    @mode("Diff")
+
+    input diff_and_render.current_json -> "{\"nodes\":[],\"edges\":[]}"
+    input diff_and_render.base_json -> "{\"nodes\":[],\"edges\":[]}"
+    input gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam.response -> rest_response(200, { ok: true })
+
+    expect result.url is NonEmpty
+}
+
+test dag_viz_recent : dag_viz_gist_upload {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+    @mode("Recent")
+
+    input diff_and_render.current_json -> "{\"nodes\":[],\"edges\":[]}"
+    input diff_and_render.base_json -> "{\"nodes\":[],\"edges\":[]}"
+    input gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam.response -> rest_response(200, { ok: true })
+
+    expect result.url is NonEmpty
+}
+
+test dag_viz_save_snapshot : dag_viz_gist_upload {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+    @mode("SaveSnapshot")
+
+    input parse_write_result.response -> file_response(".dag-snapshots/workspace.json")
+}
