@@ -27,6 +27,7 @@ pub use capabilities::{
 };
 pub use coordination::{coordination_status, BlockedReason, CoordinationStatus};
 pub use errors::WorkflowAdmissionError;
+pub use executor::{execute_workflow_plan, ExecutionSummary, UnitCommand, UnitResult};
 pub use global_plan::{
     plan_global_workflows, GlobalExecutionVertex, GlobalWorkflowPlan, PlannerInputsByWorkflow,
     WorkflowNodeRef,
@@ -58,7 +59,6 @@ pub use schema::{
     ReportSpec, WorkflowId, WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER, PORT_COMMIT,
     PORT_RESULT, TYPE_WORKFLOW_RESULT,
 };
-pub use executor::{execute_workflow_plan, ExecutionSummary, UnitCommand, UnitResult};
 pub use slo::{
     check_slo, default_slo_budgets, render_execution_report, top_slow_units, SloBudget, SloResult,
     SlowUnit,
@@ -68,10 +68,11 @@ pub use spec_builders::{
     ci_workflow_spec_with_registry, dag_snapshot_workflow_spec,
     dag_snapshot_workflow_spec_with_registry, dag_viz_workflow_spec,
     dag_viz_workflow_spec_with_registry, deps_workflow_spec, deps_workflow_spec_with_registry,
-    gist_diff_workflow_spec, gist_diff_workflow_spec_with_registry, gist_snapshot_workflow_spec,
-    gist_snapshot_workflow_spec_with_registry,
-    makegen_workflow_spec, makegen_workflow_spec_with_registry, pragma_workflow_spec,
-    pragma_workflow_spec_with_registry, test_all_workflow_spec,
-    test_all_workflow_spec_with_registry, tool_workflow_spec, TOOL_WORKFLOW_NAMES,
+    gist_diff_workflow_spec, gist_diff_workflow_spec_with_registry, gist_recent_workflow_spec,
+    gist_recent_workflow_spec_with_registry, gist_snapshot_workflow_spec,
+    gist_snapshot_workflow_spec_with_registry, makegen_workflow_spec,
+    makegen_workflow_spec_with_registry, pragma_workflow_spec, pragma_workflow_spec_with_registry,
+    test_all_workflow_spec, test_all_workflow_spec_with_registry, tool_workflow_spec,
+    TOOL_WORKFLOW_NAMES,
 };
 pub use unit_commands::{ci_unit_commands, test_all_unit_commands};

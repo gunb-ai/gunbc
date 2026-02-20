@@ -37,14 +37,8 @@ pub fn default_slo_budgets() -> Vec<SloBudget> {
 #[derive(Debug, Clone)]
 pub enum SloResult {
     Pass,
-    WarmNoopExceeded {
-        budget_ms: u64,
-        actual_ms: u64,
-    },
-    TotalExceeded {
-        budget_ms: u64,
-        actual_ms: u64,
-    },
+    WarmNoopExceeded { budget_ms: u64, actual_ms: u64 },
+    TotalExceeded { budget_ms: u64, actual_ms: u64 },
 }
 
 impl SloResult {
@@ -81,10 +75,7 @@ pub struct SlowUnit {
 
 /// Extract top N slowest executed (non-cached) units from results.
 pub fn top_slow_units(results: &[UnitResult], top_n: usize) -> Vec<SlowUnit> {
-    let mut executed: Vec<&UnitResult> = results
-        .iter()
-        .filter(|r| !r.cached)
-        .collect();
+    let mut executed: Vec<&UnitResult> = results.iter().filter(|r| !r.cached).collect();
     executed.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
     executed
         .into_iter()
@@ -111,7 +102,10 @@ pub fn render_execution_report(
     out.push_str(&format!("executed: {}\n", summary.executed));
     out.push_str(&format!("failed: {}\n", summary.failed));
     out.push_str(&format!("skipped: {}\n", summary.skipped));
-    out.push_str(&format!("total-duration-ms: {}\n", summary.total_duration_ms));
+    out.push_str(&format!(
+        "total-duration-ms: {}\n",
+        summary.total_duration_ms
+    ));
 
     // Critical path from planner.
     out.push_str("critical-path:\n");
@@ -271,6 +265,7 @@ mod tests {
             blocked: BTreeMap::new(),
             ready: vec![],
             critical_path: vec![NodeId::from("ci.lint_upsert")],
+            capability_status: BTreeMap::new(),
         };
         let report = render_execution_report(&summary, &explain, &SloResult::Pass);
         assert!(report.contains("slo: PASS"));
@@ -287,6 +282,7 @@ mod tests {
             blocked: BTreeMap::new(),
             ready: vec![],
             critical_path: vec![],
+            capability_status: BTreeMap::new(),
         };
         let slo = SloResult::WarmNoopExceeded {
             budget_ms: 5_000,

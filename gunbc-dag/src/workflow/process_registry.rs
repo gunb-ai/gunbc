@@ -183,6 +183,10 @@ fn dag_snapshot_ref(unit: &str) -> ProcessUnitRef {
     ProcessUnitRef::new("dag_snapshot", unit)
 }
 
+fn gist_ref(unit: &str) -> ProcessUnitRef {
+    ProcessUnitRef::new("gist", unit)
+}
+
 fn compilation_ref() -> ProcessUnitRef {
     ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT)
 }
@@ -332,6 +336,55 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     }
 
     // =========================================================================
+    // WF16/WF17/WF18: Gist workflow units (snapshot/diff/recent)
+    // =========================================================================
+    for spec in [
+        // Shared base units
+        ProcessUnitSpec::new(
+            gist_ref("gist.branch_resolution"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ),
+        ProcessUnitSpec::new(
+            gist_ref("gist.credential_resolve"),
+            1,
+            vec![UnitClaim::read("credential:github")],
+        ),
+        ProcessUnitSpec::new(
+            gist_ref("gist.gist_create"),
+            1,
+            vec![UnitClaim::write("network:github_gist")],
+        ),
+        // WF16: snapshot content acquisition
+        ProcessUnitSpec::new(
+            gist_ref("gist.list_files"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ),
+        ProcessUnitSpec::new(
+            gist_ref("gist.read_files"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ),
+        ProcessUnitSpec::new(gist_ref("gist.render_snapshot"), 1, vec![]),
+        // WF17/WF18 shared diff rendering
+        ProcessUnitSpec::new(
+            gist_ref("gist.diff"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ),
+        ProcessUnitSpec::new(gist_ref("gist.render_diff"), 1, vec![]),
+        // WF18: recent-specific source selection
+        ProcessUnitSpec::new(
+            gist_ref("gist.rev_list"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ),
+    ] {
+        registry.register(spec);
+    }
+
+    // =========================================================================
     // WF19: Bootstrap workflow units
     // =========================================================================
     for spec in [
@@ -472,11 +525,7 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
             1,
             compilation_ensure_claims(),
         ),
-        ProcessUnitSpec::new(
-            deps_ref("deps.codegen_ensure"),
-            1,
-            codegen_ensure_claims(),
-        ),
+        ProcessUnitSpec::new(deps_ref("deps.codegen_ensure"), 1, codegen_ensure_claims()),
         // Install graph
         ProcessUnitSpec::new(
             deps_ref("deps.platform_env"),
@@ -710,14 +759,43 @@ mod tests {
     #[test]
     fn default_registry_contains_tool_workflow_units() {
         let registry = default_process_unit_registry();
+        // WF16/WF17/WF18: gist modes
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.branch_resolution")));
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.credential_resolve")));
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.gist_create")));
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.list_files")));
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.read_files")));
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.render_snapshot")));
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.diff")));
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.render_diff")));
+        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.rev_list")));
+
         // WF19: bootstrap
-        assert!(registry.contains(&ProcessUnitRef::new("bootstrap", "bootstrap.compilation_ensure")));
-        assert!(registry.contains(&ProcessUnitRef::new("bootstrap", "bootstrap.codegen_ensure")));
-        assert!(registry.contains(&ProcessUnitRef::new("bootstrap", "bootstrap.workspace_scan")));
-        assert!(registry.contains(&ProcessUnitRef::new("bootstrap", "bootstrap.generate_makefile")));
-        assert!(registry.contains(&ProcessUnitRef::new("bootstrap", "bootstrap.upsert_makefile")));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "bootstrap",
+            "bootstrap.compilation_ensure"
+        )));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "bootstrap",
+            "bootstrap.codegen_ensure"
+        )));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "bootstrap",
+            "bootstrap.workspace_scan"
+        )));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "bootstrap",
+            "bootstrap.generate_makefile"
+        )));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "bootstrap",
+            "bootstrap.upsert_makefile"
+        )));
         // WF19: makegen
-        assert!(registry.contains(&ProcessUnitRef::new("makegen", "makegen.compilation_ensure")));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "makegen",
+            "makegen.compilation_ensure"
+        )));
         assert!(registry.contains(&ProcessUnitRef::new("makegen", "makegen.load_registry")));
         assert!(registry.contains(&ProcessUnitRef::new("makegen", "makegen.upsert_makefile")));
         // WF19: pragma
@@ -729,47 +807,96 @@ mod tests {
         assert!(registry.contains(&ProcessUnitRef::new("deps", "deps.load_manifest")));
         assert!(registry.contains(&ProcessUnitRef::new("deps", "deps.execute_installs")));
         // WF20: dag_viz
-        assert!(registry.contains(&ProcessUnitRef::new("dag_viz", "dag_viz.compilation_ensure")));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "dag_viz",
+            "dag_viz.compilation_ensure"
+        )));
         assert!(registry.contains(&ProcessUnitRef::new("dag_viz", "dag_viz.branch_resolution")));
         assert!(registry.contains(&ProcessUnitRef::new("dag_viz", "dag_viz.gist_upload")));
         // WF20: dag_snapshot
-        assert!(registry.contains(&ProcessUnitRef::new("dag_snapshot", "dag_snapshot.compilation_ensure")));
-        assert!(registry.contains(&ProcessUnitRef::new("dag_snapshot", "dag_snapshot.list_files")));
-        assert!(registry.contains(&ProcessUnitRef::new("dag_snapshot", "dag_snapshot.gist_upload")));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "dag_snapshot",
+            "dag_snapshot.compilation_ensure"
+        )));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "dag_snapshot",
+            "dag_snapshot.list_files"
+        )));
+        assert!(registry.contains(&ProcessUnitRef::new(
+            "dag_snapshot",
+            "dag_snapshot.gist_upload"
+        )));
+    }
+
+    #[test]
+    fn gist_create_unit_has_network_write_claim() {
+        let registry = default_process_unit_registry();
+        let spec = registry
+            .get(&ProcessUnitRef::new("gist", "gist.gist_create"))
+            .expect("gist.gist_create");
+        assert!(spec
+            .required_claims
+            .iter()
+            .any(|claim| claim.claim_id.0 == "network:github_gist"
+                && claim.access_mode == AccessMode::Write));
+    }
+
+    #[test]
+    fn gist_credential_unit_has_credential_read_claim() {
+        let registry = default_process_unit_registry();
+        let spec = registry
+            .get(&ProcessUnitRef::new("gist", "gist.credential_resolve"))
+            .expect("gist.credential_resolve");
+        assert!(spec
+            .required_claims
+            .iter()
+            .any(|claim| claim.claim_id.0 == "credential:github"
+                && claim.access_mode == AccessMode::Read));
     }
 
     #[test]
     fn universal_capabilities_share_identity_across_all_tool_workflows() {
         let registry = default_process_unit_registry();
         let workflows = [
-            "bootstrap", "makegen", "pragma", "deps", "dag_viz", "dag_snapshot",
+            "bootstrap",
+            "makegen",
+            "pragma",
+            "deps",
+            "dag_viz",
+            "dag_snapshot",
         ];
         // All compilation_ensure units should share the same canonical identity
         let mut compilation_identities = Vec::new();
         for wf in &workflows {
             let ref_key = ProcessUnitRef::new(*wf, format!("{wf}.compilation_ensure"));
-            let spec = registry.get(&ref_key).unwrap_or_else(|| {
-                panic!("{wf}.compilation_ensure should exist in registry")
-            });
+            let spec = registry
+                .get(&ref_key)
+                .unwrap_or_else(|| panic!("{wf}.compilation_ensure should exist in registry"));
             compilation_identities.push(spec.canonical_work_identity());
         }
         let first = &compilation_identities[0];
         for identity in &compilation_identities[1..] {
-            assert_eq!(first, identity, "all compilation_ensure units must share canonical identity");
+            assert_eq!(
+                first, identity,
+                "all compilation_ensure units must share canonical identity"
+            );
         }
 
         // All codegen_ensure units should share the same canonical identity
         let mut codegen_identities = Vec::new();
         for wf in &workflows {
             let ref_key = ProcessUnitRef::new(*wf, format!("{wf}.codegen_ensure"));
-            let spec = registry.get(&ref_key).unwrap_or_else(|| {
-                panic!("{wf}.codegen_ensure should exist in registry")
-            });
+            let spec = registry
+                .get(&ref_key)
+                .unwrap_or_else(|| panic!("{wf}.codegen_ensure should exist in registry"));
             codegen_identities.push(spec.canonical_work_identity());
         }
         let first = &codegen_identities[0];
         for identity in &codegen_identities[1..] {
-            assert_eq!(first, identity, "all codegen_ensure units must share canonical identity");
+            assert_eq!(
+                first, identity,
+                "all codegen_ensure units must share canonical identity"
+            );
         }
     }
 
@@ -780,7 +907,10 @@ mod tests {
             .get(&ProcessUnitRef::new("dag_viz", "dag_viz.branch_resolution"))
             .expect("dag_viz.branch_resolution");
         let snap_branch = registry
-            .get(&ProcessUnitRef::new("dag_snapshot", "dag_snapshot.branch_resolution"))
+            .get(&ProcessUnitRef::new(
+                "dag_snapshot",
+                "dag_snapshot.branch_resolution",
+            ))
             .expect("dag_snapshot.branch_resolution");
         assert_eq!(
             viz_branch.canonical_work_identity(),
@@ -789,10 +919,16 @@ mod tests {
         );
 
         let viz_cred = registry
-            .get(&ProcessUnitRef::new("dag_viz", "dag_viz.credential_resolve"))
+            .get(&ProcessUnitRef::new(
+                "dag_viz",
+                "dag_viz.credential_resolve",
+            ))
             .expect("dag_viz.credential_resolve");
         let snap_cred = registry
-            .get(&ProcessUnitRef::new("dag_snapshot", "dag_snapshot.credential_resolve"))
+            .get(&ProcessUnitRef::new(
+                "dag_snapshot",
+                "dag_snapshot.credential_resolve",
+            ))
             .expect("dag_snapshot.credential_resolve");
         assert_eq!(
             viz_cred.canonical_work_identity(),
