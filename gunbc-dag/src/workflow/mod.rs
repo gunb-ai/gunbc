@@ -3,6 +3,7 @@
 pub mod admission;
 pub mod coordination;
 pub mod errors;
+pub mod executor;
 pub mod global_plan;
 pub mod key;
 pub mod ledger;
@@ -11,7 +12,9 @@ pub mod process_registry;
 pub mod projection;
 pub mod proof;
 pub mod schema;
+pub mod slo;
 pub mod spec_builders;
+pub mod unit_commands;
 
 pub use admission::{
     validate_conflicting_claims, validate_effectful_claim_declarations, validate_required_claims,
@@ -49,7 +52,13 @@ pub use schema::{
     ReportSpec, WorkflowId, WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER, PORT_COMMIT,
     PORT_RESULT, TYPE_WORKFLOW_RESULT,
 };
+pub use executor::{execute_workflow_plan, ExecutionSummary, UnitCommand, UnitResult};
+pub use slo::{
+    check_slo, default_slo_budgets, render_execution_report, top_slow_units, SloBudget, SloResult,
+    SlowUnit,
+};
 pub use spec_builders::{
     ci_workflow_spec, ci_workflow_spec_with_registry, test_all_workflow_spec,
     test_all_workflow_spec_with_registry,
 };
+pub use unit_commands::{ci_unit_commands, test_all_unit_commands};
