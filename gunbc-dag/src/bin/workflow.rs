@@ -698,7 +698,7 @@ mod tests {
                 "--plan".to_string(),
                 name.to_string(),
             ])
-            .expect(&format!("parse should succeed for {name}"));
+            .unwrap_or_else(|_| panic!("parse should succeed for {name}"));
             assert_eq!(args.workflow, *name);
         }
     }
