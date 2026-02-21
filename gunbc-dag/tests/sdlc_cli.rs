@@ -965,6 +965,71 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
 }
 
 #[test]
+fn worker_real_mode_persists_execution_report_with_metrics() {
+    let root = unique_temp_dir("worker_execution_report");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-execution-report",
+        "intent-20260221-execution-report",
+        Some(6767),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run worker");
+    assert!(
+        worker.status.success(),
+        "worker should succeed: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    let report_path = root.join("target/sdlc/execution-report.json");
+    assert_eq!(
+        payload["execution_report_path"],
+        "target/sdlc/execution-report.json",
+        "worker output should expose persisted execution report path"
+    );
+    let report_raw = std::fs::read_to_string(&report_path).expect("read execution report");
+    let report: serde_json::Value =
+        serde_json::from_str(&report_raw).expect("parse execution report");
+    assert_eq!(report["command"], "worker");
+    assert!(
+        report["metrics"]["stage_duration_ms"]
+            .as_object()
+            .expect("stage_duration metrics should be map")
+            .contains_key("intent-20260221-execution-report"),
+        "execution report should include stage duration metrics"
+    );
+    assert!(
+        report["metrics"]["llm_cost_units"]
+            .as_object()
+            .expect("llm cost metrics should be map")
+            .contains_key("intent-20260221-execution-report"),
+        "execution report should include llm cost metrics"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn worker_terminalizes_after_retry_budget_exhaustion() {
     let root = unique_temp_dir("worker_terminalize");
     std::fs::create_dir_all(&root).expect("create temp root");

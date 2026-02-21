@@ -703,46 +703,51 @@ fn run_worker(
     if drain_active {
         let released = release_worker_owned_claims_for_drain(&mut claim_ledger);
         save_claim_ledger(&claim_ledger_path, &claim_ledger)?;
+        let output = json!({
+            "command": command_label,
+            "mode": mode,
+            "issue_filter": issue_filter,
+            "pending_count": 0,
+            "intake_keys": [],
+            "ready_to_run": [],
+            "replay_skipped": [],
+            "executed_runs": [],
+            "acquired_claims": [],
+            "released_claims": released,
+            "claim_conflicts": [],
+            "terminalized": [],
+            "awaiting_approval": [],
+            "skipped_missing_issue": [],
+            "skipped_terminalized": [],
+            "ledger_path": ledger_path.display().to_string(),
+            "claim_ledger_path": claim_ledger_path.display().to_string(),
+            "run_state_path": run_state_path.display().to_string(),
+            "execution_report_path": execution_report_path().display().to_string(),
+            "reconcile_actions": [],
+            "preflight": preflight,
+            "drain": {
+                "active": true,
+                "flag_path": drain_flag.display().to_string(),
+                "released_claim_count": released.len(),
+            },
+            "metrics": {
+                "stage_duration_ms": {},
+                "approval_latency_ms": {},
+                "retry_attempts": {},
+                "llm_cost_units": {},
+                "cost_units": {
+                    "claim_acquire_attempts": 0,
+                    "reconcile_actions": 0,
+                }
+            }
+        });
+        if !dry_run {
+            save_execution_report(&output)?;
+        }
         println!(
             "{}",
-            serde_json::to_string_pretty(&json!({
-                "command": command_label,
-                "mode": mode,
-                "issue_filter": issue_filter,
-                "pending_count": 0,
-                "intake_keys": [],
-                "ready_to_run": [],
-                "replay_skipped": [],
-                "executed_runs": [],
-                "acquired_claims": [],
-                "released_claims": released,
-                "claim_conflicts": [],
-                "terminalized": [],
-                "awaiting_approval": [],
-                "skipped_missing_issue": [],
-                "skipped_terminalized": [],
-                "ledger_path": ledger_path.display().to_string(),
-                "claim_ledger_path": claim_ledger_path.display().to_string(),
-                "run_state_path": run_state_path.display().to_string(),
-                "reconcile_actions": [],
-                "preflight": preflight,
-                "drain": {
-                    "active": true,
-                    "flag_path": drain_flag.display().to_string(),
-                    "released_claim_count": released.len(),
-                },
-                "metrics": {
-                    "stage_duration_ms": {},
-                    "approval_latency_ms": {},
-                    "retry_attempts": {},
-                    "llm_cost_units": {},
-                    "cost_units": {
-                        "claim_acquire_attempts": 0,
-                        "reconcile_actions": 0,
-                    }
-                }
-            }))
-            .map_err(|error| format!("failed to serialize worker drain output: {error}"))?
+            serde_json::to_string_pretty(&output)
+                .map_err(|error| format!("failed to serialize worker drain output: {error}"))?
         );
         if emit_pending_exit_code {
             std::process::exit(0);
@@ -901,45 +906,50 @@ fn run_worker(
         .len()
         .saturating_sub(skipped_terminalized.len())
         .saturating_sub(terminalized.len());
+    let output = json!({
+        "command": command_label,
+        "issue_filter": issue_filter,
+        "mode": mode,
+        "pending_count": pending_count,
+        "intake_keys": intake_keys,
+        "ready_to_run": ready_to_run,
+        "replay_skipped": replay_skipped,
+        "executed_runs": executed_runs,
+        "acquired_claims": acquired_claims,
+        "released_claims": released_claims,
+        "claim_conflicts": claim_conflicts,
+        "terminalized": terminalized,
+        "awaiting_approval": awaiting_approval,
+        "skipped_missing_issue": skipped_missing_issue,
+        "skipped_terminalized": skipped_terminalized,
+        "ledger_path": ledger_path.display().to_string(),
+        "claim_ledger_path": claim_ledger_path.display().to_string(),
+        "run_state_path": run_state_path.display().to_string(),
+        "execution_report_path": execution_report_path().display().to_string(),
+        "reconcile_actions": reconcile_plan.actions,
+        "preflight": preflight,
+        "drain": {
+            "active": false,
+            "flag_path": drain_flag.display().to_string(),
+        },
+        "metrics": {
+            "stage_duration_ms": stage_duration_ms,
+            "approval_latency_ms": approval_latency_ms,
+            "retry_attempts": retry_attempts,
+            "llm_cost_units": llm_cost_units,
+            "cost_units": {
+                "claim_acquire_attempts": claim_acquire_attempts,
+                "reconcile_actions": reconcile_plan.actions.len(),
+            }
+        }
+    });
+    if !dry_run {
+        save_execution_report(&output)?;
+    }
     println!(
         "{}",
-        serde_json::to_string_pretty(&json!({
-            "command": command_label,
-            "issue_filter": issue_filter,
-            "mode": mode,
-            "pending_count": pending_count,
-            "intake_keys": intake_keys,
-            "ready_to_run": ready_to_run,
-            "replay_skipped": replay_skipped,
-            "executed_runs": executed_runs,
-            "acquired_claims": acquired_claims,
-            "released_claims": released_claims,
-            "claim_conflicts": claim_conflicts,
-            "terminalized": terminalized,
-            "awaiting_approval": awaiting_approval,
-            "skipped_missing_issue": skipped_missing_issue,
-            "skipped_terminalized": skipped_terminalized,
-            "ledger_path": ledger_path.display().to_string(),
-            "claim_ledger_path": claim_ledger_path.display().to_string(),
-            "run_state_path": run_state_path.display().to_string(),
-            "reconcile_actions": reconcile_plan.actions,
-            "preflight": preflight,
-            "drain": {
-                "active": false,
-                "flag_path": drain_flag.display().to_string(),
-            },
-            "metrics": {
-                "stage_duration_ms": stage_duration_ms,
-                "approval_latency_ms": approval_latency_ms,
-                "retry_attempts": retry_attempts,
-                "llm_cost_units": llm_cost_units,
-                "cost_units": {
-                    "claim_acquire_attempts": claim_acquire_attempts,
-                    "reconcile_actions": reconcile_plan.actions.len(),
-                }
-            }
-        }))
-        .map_err(|error| format!("failed to serialize worker output: {error}"))?
+        serde_json::to_string_pretty(&output)
+            .map_err(|error| format!("failed to serialize worker output: {error}"))?
     );
     if emit_pending_exit_code && !awaiting_approval.is_empty() {
         std::process::exit(42);
@@ -1500,6 +1510,12 @@ fn run_state_ledger_path() -> PathBuf {
     PathBuf::from("target").join("sdlc").join("run-state-ledger.json")
 }
 
+fn execution_report_path() -> PathBuf {
+    PathBuf::from("target")
+        .join("sdlc")
+        .join("execution-report.json")
+}
+
 fn default_infra_intent_path() -> PathBuf {
     PathBuf::from("TODO").join("infra-intent-template.yaml")
 }
@@ -1639,6 +1655,22 @@ fn save_run_state_ledger(path: &Path, ledger: &RunStateLedger) -> Result<(), Str
         .map_err(|error| format!("failed to serialize run state ledger: {error}"))?;
     std::fs::write(path, content)
         .map_err(|error| format!("failed to write run state ledger {}: {error}", path.display()))
+}
+
+fn save_execution_report(report: &serde_json::Value) -> Result<(), String> {
+    let path = execution_report_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create execution report directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    let content = serde_json::to_string_pretty(report)
+        .map_err(|error| format!("failed to serialize execution report: {error}"))?;
+    std::fs::write(&path, content)
+        .map_err(|error| format!("failed to write execution report {}: {error}", path.display()))
 }
 
 const fn default_stage() -> IssueLifecycleStage {
