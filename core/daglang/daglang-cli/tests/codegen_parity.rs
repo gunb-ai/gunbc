@@ -1007,6 +1007,38 @@ fn infra_tool_manifest_parity_across_rust_go_c_mips_targets() {
 }
 
 #[test]
+fn design_tool_manifest_parity_across_rust_go_c_mips_targets() {
+    let out_root = unique_workspace_target_dir("design_tool_manifest_parity");
+    let targets = ["rust", "go", "c", "mips"];
+    let mut manifests = BTreeMap::<String, String>::new();
+
+    for target in targets {
+        let target_out = out_root.join(target);
+        compile_module_for_target("dsl/tools/design.dag", target, &target_out);
+        manifests.insert(
+            target.to_string(),
+            read_target_manifest(&target_out, target),
+        );
+    }
+
+    let rust_manifest = manifests
+        .get("rust")
+        .expect("manifest map should contain rust output")
+        .clone();
+    for target in ["go", "c", "mips"] {
+        let target_manifest = manifests
+            .get(target)
+            .unwrap_or_else(|| panic!("manifest map should contain {target} output"));
+        assert_eq!(
+            &rust_manifest, target_manifest,
+            "design tool progress manifest parity mismatch: rust != {target}"
+        );
+    }
+
+    std::fs::remove_dir_all(&out_root).expect("failed to cleanup design tool manifest parity output root");
+}
+
+#[test]
 fn makegen_runtime_smoke_per_target_with_toolchain_awareness() {
     let native_out_root = unique_workspace_target_dir("runtime_native");
     let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1");
@@ -1167,6 +1199,32 @@ fn sdlc_control_plane_runtime_smoke_rust_layer1_executes_entrypoint() {
 
     std::fs::remove_dir_all(&rust_layer1_out)
         .expect("failed to cleanup rust layer1 sdlc control-plane runtime out root");
+}
+
+#[test]
+fn design_tool_runtime_smoke_rust_layer1_executes_entrypoint() {
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_design_tool");
+    compile_module_layer1_rust("dsl/tools/design.dag", &rust_layer1_out);
+
+    let rust = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
+    match rust {
+        RuntimeOutcome::Ran { stderr, .. } => {
+            assert!(
+                stderr.contains("execution completed"),
+                "rust design tool runtime should execute successfully: {stderr}"
+            );
+            assert!(
+                stderr.contains("tools.design::generate_design"),
+                "rust design tool runtime should execute design callable path: {stderr}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("rust design runtime smoke should not skip: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&rust_layer1_out)
+        .expect("failed to cleanup rust layer1 design tool runtime out root");
 }
 
 #[test]
@@ -1347,6 +1405,60 @@ fn sdlc_control_plane_runtime_smoke_mips_emits_runnable_binary_when_available() 
 
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native sdlc control-plane mips runtime out root");
+}
+
+#[test]
+fn design_tool_runtime_smoke_go_and_c_emit_runnable_binaries() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_design_tool");
+    compile_module_for_target("dsl/tools/design.dag", "go", &native_out_root.join("go"));
+    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
+
+    let go = run_infra_generated_go(&native_out_root.join("go"));
+    let c = run_infra_generated_c(&native_out_root.join("c"));
+
+    match go {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated go backend"),
+                "generated go design runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP design tool go runtime smoke: {reason}");
+        }
+    }
+
+    match c {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated c design runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP design tool c runtime smoke: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native design runtime out root");
+}
+
+#[test]
+fn design_tool_runtime_smoke_mips_emits_runnable_binary_when_available() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_design_tool_mips");
+    compile_module_for_target("dsl/tools/design.dag", "mips", &native_out_root.join("mips"));
+
+    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
+    match mips {
+        RuntimeOutcome::Ran { .. } => {}
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP design tool mips runtime smoke: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native design mips runtime out root");
 }
 
 #[test]
