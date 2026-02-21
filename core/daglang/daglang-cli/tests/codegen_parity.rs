@@ -1,6 +1,9 @@
 // Test infrastructure: filesystem access for generated artifacts.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
+use daglang_driver::DriverContext;
+use gunbc_dag::resolve_lowered_dag;
+use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::ToolchainCommands;
 use gunbc_ir::WorkspaceLayout;
 use std::collections::BTreeMap;
@@ -290,6 +293,46 @@ fn run_makegen_interpreter() -> RuntimeOutcome {
         stdout: generated_content,
         stderr: format!("{stdout}{stderr}"),
     }
+}
+
+fn run_module_interpreter_execution_nodes(relative_module: &str) -> Result<Vec<String>, String> {
+    let context = DriverContext {
+        roots: vec![workspace_root().join("dsl")],
+        target_file: Some(workspace_root().join(relative_module)),
+    };
+    let output = daglang_driver::compile_from_context(&context)
+        .map_err(|error| format!("compile failed for {relative_module}: {error}"))?;
+    let resolved = resolve_lowered_dag(&output.lowered_dag)
+        .map_err(|error| format!("resolve failed for {relative_module}: {error}"))?;
+    let input_mocks = BoundaryMocks::new();
+    let execution = execute_with_mode_and_inputs(
+        &resolved,
+        ExecutionMode::Real,
+        Some(&input_mocks),
+    )
+    .map_err(|error| format!("execute failed for {relative_module}: {error}"))?;
+    let mut nodes = execution
+        .entries
+        .iter()
+        .map(|entry| entry.node_id.clone())
+        .collect::<Vec<_>>();
+    nodes.sort();
+    Ok(nodes)
+}
+
+fn parse_generated_execution_nodes(stdout: &str, stderr: &str) -> Vec<String> {
+    let mut nodes = Vec::new();
+    for line in stdout.lines().chain(stderr.lines()) {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix('[') {
+            if let Some((node, _)) = rest.split_once("] intercepted=") {
+                nodes.push(node.to_string());
+            }
+        }
+    }
+    nodes.sort();
+    nodes.dedup();
+    nodes
 }
 
 fn run_makegen_generated_go(native_out_dir: &Path) -> RuntimeOutcome {
@@ -1428,6 +1471,37 @@ fn makegen_c_runtime_asan_ubsan_differential_matches_interpreter() {
 
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native makegen c asan+ubsan differential out root");
+}
+
+#[test]
+fn design_tool_rust_layer1_execution_trace_matches_interpreter() {
+    let module = "dsl/tools/design.dag";
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_trace_diff_design");
+    compile_module_layer1_rust(module, &rust_layer1_out);
+    let generated = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
+    let (generated_stdout, generated_stderr) = match generated {
+        RuntimeOutcome::Ran { stdout, stderr } => (stdout, stderr),
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
+        }
+    };
+    let generated_nodes = parse_generated_execution_nodes(&generated_stdout, &generated_stderr);
+    assert!(
+        !generated_nodes.is_empty(),
+        "generated rust layer1 runtime should emit execution trace for {module}"
+    );
+
+    let interpreter_nodes = run_module_interpreter_execution_nodes(module)
+        .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
+    assert_eq!(
+        interpreter_nodes, generated_nodes,
+        "execution trace differential mismatch for {module}"
+    );
+    std::fs::remove_dir_all(&rust_layer1_out).unwrap_or_else(|error| {
+        panic!(
+            "failed to cleanup rust layer1 trace differential out root for {module}: {error}"
+        )
+    });
 }
 
 #[test]
