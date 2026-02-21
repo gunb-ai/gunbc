@@ -1302,37 +1302,7 @@ fn makegen_manifest_parity_across_rust_go_c_mips_targets() {
     std::fs::remove_dir_all(&out_root).expect("failed to cleanup manifest parity output root");
 }
 
-#[test]
-fn sdlc_manifest_parity_across_rust_go_c_mips_targets() {
-    let out_root = unique_workspace_target_dir("sdlc_manifest_parity");
-    let targets = ["rust", "go", "c", "mips"];
-    let mut manifests = BTreeMap::<String, String>::new();
 
-    for target in targets {
-        let target_out = out_root.join(target);
-        compile_module_for_target("dsl/pipelines/sdlc.dag", target, &target_out);
-        manifests.insert(
-            target.to_string(),
-            read_target_manifest(&target_out, target),
-        );
-    }
-
-    let rust_manifest = manifests
-        .get("rust")
-        .expect("manifest map should contain rust output")
-        .clone();
-    for target in ["go", "c", "mips"] {
-        let target_manifest = manifests
-            .get(target)
-            .unwrap_or_else(|| panic!("manifest map should contain {target} output"));
-        assert_eq!(
-            &rust_manifest, target_manifest,
-            "sdlc progress manifest parity mismatch: rust != {target}"
-        );
-    }
-
-    std::fs::remove_dir_all(&out_root).expect("failed to cleanup sdlc manifest parity output root");
-}
 
 #[test]
 fn sdlc_control_plane_manifest_parity_across_rust_go_c_mips_targets() {
@@ -1399,37 +1369,7 @@ fn infra_tool_manifest_parity_across_rust_go_c_mips_targets() {
     std::fs::remove_dir_all(&out_root).expect("failed to cleanup infra tool manifest parity output root");
 }
 
-#[test]
-fn design_tool_manifest_parity_across_rust_go_c_mips_targets() {
-    let out_root = unique_workspace_target_dir("design_tool_manifest_parity");
-    let targets = ["rust", "go", "c", "mips"];
-    let mut manifests = BTreeMap::<String, String>::new();
 
-    for target in targets {
-        let target_out = out_root.join(target);
-        compile_module_for_target("dsl/tools/design.dag", target, &target_out);
-        manifests.insert(
-            target.to_string(),
-            read_target_manifest(&target_out, target),
-        );
-    }
-
-    let rust_manifest = manifests
-        .get("rust")
-        .expect("manifest map should contain rust output")
-        .clone();
-    for target in ["go", "c", "mips"] {
-        let target_manifest = manifests
-            .get(target)
-            .unwrap_or_else(|| panic!("manifest map should contain {target} output"));
-        assert_eq!(
-            &rust_manifest, target_manifest,
-            "design tool progress manifest parity mismatch: rust != {target}"
-        );
-    }
-
-    std::fs::remove_dir_all(&out_root).expect("failed to cleanup design tool manifest parity output root");
-}
 
 #[test]
 fn makegen_runtime_smoke_per_target_with_toolchain_awareness() {
@@ -1605,36 +1545,7 @@ fn makegen_c_runtime_asan_ubsan_differential_matches_interpreter() {
         .expect("failed to cleanup native makegen c asan+ubsan differential out root");
 }
 
-#[test]
-fn design_tool_rust_layer1_execution_trace_matches_interpreter() {
-    let module = "dsl/tools/design.dag";
-    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_trace_diff_design");
-    compile_module_layer1_rust(module, &rust_layer1_out);
-    let generated = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
-    let (generated_stdout, generated_stderr) = match generated {
-        RuntimeOutcome::Ran { stdout, stderr } => (stdout, stderr),
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
-        }
-    };
-    let generated_nodes = parse_generated_execution_nodes(&generated_stdout, &generated_stderr);
-    assert!(
-        !generated_nodes.is_empty(),
-        "generated rust layer1 runtime should emit execution trace for {module}"
-    );
 
-    let interpreter_nodes = run_module_interpreter_execution_nodes(module, &[])
-        .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
-    assert_eq!(
-        interpreter_nodes, generated_nodes,
-        "execution trace differential mismatch for {module}"
-    );
-    std::fs::remove_dir_all(&rust_layer1_out).unwrap_or_else(|error| {
-        panic!(
-            "failed to cleanup rust layer1 trace differential out root for {module}: {error}"
-        )
-    });
-}
 
 #[test]
 fn infra_tool_rust_layer1_execution_trace_matches_interpreter() {
@@ -1722,36 +1633,7 @@ fn sdlc_control_plane_rust_layer1_execution_trace_matches_interpreter() {
     });
 }
 
-#[test]
-fn sdlc_pipeline_rust_layer1_execution_trace_matches_interpreter() {
-    let module = "dsl/pipelines/sdlc.dag";
-    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_trace_diff_sdlc_pipeline");
-    compile_module_layer1_rust(module, &rust_layer1_out);
-    let generated = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
-    let (generated_stdout, generated_stderr) = match generated {
-        RuntimeOutcome::Ran { stdout, stderr } => (stdout, stderr),
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
-        }
-    };
-    let generated_nodes = parse_generated_execution_nodes(&generated_stdout, &generated_stderr);
-    assert!(
-        !generated_nodes.is_empty(),
-        "generated rust layer1 runtime should emit execution trace for {module}"
-    );
 
-    let interpreter_nodes = run_module_interpreter_execution_nodes(module, &[])
-        .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
-    assert_eq!(
-        interpreter_nodes, generated_nodes,
-        "execution trace differential mismatch for {module}"
-    );
-    std::fs::remove_dir_all(&rust_layer1_out).unwrap_or_else(|error| {
-        panic!(
-            "failed to cleanup rust layer1 trace differential out root for {module}: {error}"
-        )
-    });
-}
 
 #[test]
 fn infra_runtime_smoke_rust_layer1_executes_entrypoint() {
@@ -1779,21 +1661,7 @@ fn infra_runtime_smoke_rust_layer1_executes_entrypoint() {
         .expect("failed to cleanup rust layer1 infra runtime out root");
 }
 
-#[test]
-fn sdlc_pipeline_layer1_rust_compiles_for_exec_runtime() {
-    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_sdlc_pipeline");
-    compile_module_layer1_rust("dsl/pipelines/sdlc.dag", &rust_layer1_out);
-    assert!(
-        rust_layer1_out.join("Cargo.toml").is_file(),
-        "rust layer1 compile should emit Cargo.toml for sdlc pipeline"
-    );
-    assert!(
-        rust_layer1_out.join("src/main.rs").is_file(),
-        "rust layer1 compile should emit src/main.rs for sdlc pipeline"
-    );
-    std::fs::remove_dir_all(&rust_layer1_out)
-        .expect("failed to cleanup rust layer1 sdlc pipeline out root");
-}
+
 
 #[test]
 fn sdlc_control_plane_layer1_rust_compiles_for_exec_runtime() {
@@ -1812,31 +1680,7 @@ fn sdlc_control_plane_layer1_rust_compiles_for_exec_runtime() {
         .expect("failed to cleanup rust layer1 sdlc control-plane out root");
 }
 
-#[test]
-fn sdlc_pipeline_runtime_smoke_rust_layer1_executes_entrypoint() {
-    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_sdlc_pipeline");
-    compile_module_layer1_rust("dsl/pipelines/sdlc.dag", &rust_layer1_out);
 
-    let rust = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
-    match rust {
-        RuntimeOutcome::Ran { stderr, .. } => {
-            assert!(
-                stderr.contains("execution completed: 57 nodes executed"),
-                "rust sdlc pipeline runtime should execute expected node count: {stderr}"
-            );
-            assert!(
-                stderr.contains("[pipelines.sdlc::sdlc]"),
-                "rust sdlc pipeline runtime should execute pipeline entrypoint: {stderr}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("rust sdlc pipeline runtime smoke should not skip: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&rust_layer1_out)
-        .expect("failed to cleanup rust layer1 sdlc pipeline runtime out root");
-}
 
 #[test]
 fn sdlc_control_plane_runtime_smoke_rust_layer1_executes_entrypoint() {
@@ -1864,31 +1708,7 @@ fn sdlc_control_plane_runtime_smoke_rust_layer1_executes_entrypoint() {
         .expect("failed to cleanup rust layer1 sdlc control-plane runtime out root");
 }
 
-#[test]
-fn design_tool_runtime_smoke_rust_layer1_executes_entrypoint() {
-    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_design_tool");
-    compile_module_layer1_rust("dsl/tools/design.dag", &rust_layer1_out);
 
-    let rust = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
-    match rust {
-        RuntimeOutcome::Ran { stderr, .. } => {
-            assert!(
-                stderr.contains("execution completed"),
-                "rust design tool runtime should execute successfully: {stderr}"
-            );
-            assert!(
-                stderr.contains("tools.design::generate_design"),
-                "rust design tool runtime should execute design callable path: {stderr}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("rust design runtime smoke should not skip: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&rust_layer1_out)
-        .expect("failed to cleanup rust layer1 design tool runtime out root");
-}
 
 #[test]
 fn infra_runtime_smoke_go_and_c_emit_runnable_binaries() {
@@ -1946,69 +1766,9 @@ fn infra_runtime_smoke_mips_emits_runnable_binary_when_available() {
         .expect("failed to cleanup native infra mips runtime out root");
 }
 
-#[test]
-fn sdlc_pipeline_runtime_smoke_go_and_c_emit_runnable_binaries() {
-    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline");
-    compile_module_for_target("dsl/pipelines/sdlc.dag", "go", &native_out_root.join("go"));
-    compile_module_for_target("dsl/pipelines/sdlc.dag", "c", &native_out_root.join("c"));
 
-    let go = run_infra_generated_go(&native_out_root.join("go"));
-    let c = run_infra_generated_c(&native_out_root.join("c"));
 
-    match go {
-        RuntimeOutcome::Ran { stdout, .. } => {
-            assert!(
-                stdout.contains("daglang generated go backend"),
-                "generated go sdlc pipeline runtime should print backend banner: {stdout}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP sdlc pipeline go runtime smoke: {reason}");
-        }
-    }
 
-    match c {
-        RuntimeOutcome::Ran { stdout, .. } => {
-            assert!(
-                stdout.contains("daglang generated c backend"),
-                "generated c sdlc pipeline runtime should print backend banner: {stdout}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP sdlc pipeline c runtime smoke: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup native sdlc pipeline runtime out root");
-}
-
-#[test]
-fn sdlc_pipeline_go_runtime_executes_when_go_available() {
-    if !command_exists("go") {
-        eprintln!("SKIP sdlc pipeline go runtime strict check: go toolchain not available");
-        return;
-    }
-
-    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_go_strict");
-    compile_module_for_target("dsl/pipelines/sdlc.dag", "go", &native_out_root.join("go"));
-    let go = run_infra_generated_go(&native_out_root.join("go"));
-
-    match go {
-        RuntimeOutcome::Ran { stdout, .. } => {
-            assert!(
-                stdout.contains("daglang generated go backend"),
-                "generated go sdlc pipeline runtime should print backend banner: {stdout}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("sdlc pipeline go runtime should not skip when go is available: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup strict sdlc pipeline go runtime out root");
-}
 
 #[test]
 fn infra_go_runtime_executes_when_go_available() {
@@ -2068,59 +1828,9 @@ fn sdlc_control_plane_go_runtime_executes_when_go_available() {
         .expect("failed to cleanup strict sdlc control-plane go runtime out root");
 }
 
-#[test]
-fn design_tool_go_runtime_executes_when_go_available() {
-    if !command_exists("go") {
-        eprintln!("SKIP design tool go runtime strict check: go toolchain not available");
-        return;
-    }
 
-    let native_out_root = unique_workspace_target_dir("runtime_native_design_go_strict");
-    compile_module_for_target("dsl/tools/design.dag", "go", &native_out_root.join("go"));
-    let go = run_infra_generated_go(&native_out_root.join("go"));
 
-    match go {
-        RuntimeOutcome::Ran { stdout, .. } => {
-            assert!(
-                stdout.contains("daglang generated go backend"),
-                "generated go design runtime should print backend banner: {stdout}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("design tool go runtime should not skip when go is available: {reason}");
-        }
-    }
 
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup strict design go runtime out root");
-}
-
-#[test]
-fn design_tool_c_runtime_executes_when_cc_available() {
-    if !c_runtime_available() {
-        eprintln!("SKIP design tool c runtime strict check: C compiler not available");
-        return;
-    }
-
-    let native_out_root = unique_workspace_target_dir("runtime_native_design_c_strict");
-    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
-    let c = run_infra_generated_c(&native_out_root.join("c"));
-
-    match c {
-        RuntimeOutcome::Ran { stdout, .. } => {
-            assert!(
-                stdout.contains("daglang generated c backend"),
-                "generated c design runtime should print backend banner: {stdout}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("design tool c runtime should not skip when C compiler is available: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup strict design c runtime out root");
-}
 
 #[test]
 fn infra_c_runtime_executes_when_cc_and_curl_headers_available() {
@@ -2149,34 +1859,7 @@ fn infra_c_runtime_executes_when_cc_and_curl_headers_available() {
         .expect("failed to cleanup strict infra c runtime out root");
 }
 
-#[test]
-fn sdlc_pipeline_c_runtime_executes_when_cc_and_curl_headers_available() {
-    if !c_runtime_with_curl_headers_available() {
-        eprintln!(
-            "SKIP sdlc pipeline c runtime strict check: C compiler/curl headers not available"
-        );
-        return;
-    }
 
-    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_c_strict");
-    compile_module_for_target("dsl/pipelines/sdlc.dag", "c", &native_out_root.join("c"));
-    let c = run_infra_generated_c(&native_out_root.join("c"));
-
-    match c {
-        RuntimeOutcome::Ran { stdout, .. } => {
-            assert!(
-                stdout.contains("daglang generated c backend"),
-                "generated c sdlc pipeline runtime should print backend banner: {stdout}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("sdlc pipeline c runtime should not skip when C compiler/curl headers are available: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup strict sdlc pipeline c runtime out root");
-}
 
 #[test]
 fn sdlc_control_plane_c_runtime_executes_when_cc_and_curl_headers_available() {
@@ -2214,70 +1897,9 @@ fn sdlc_control_plane_c_runtime_executes_when_cc_and_curl_headers_available() {
         .expect("failed to cleanup strict sdlc control-plane c runtime out root");
 }
 
-#[test]
-fn design_tool_c_asan_runtime_executes_when_cc_available() {
-    if !c_sanitizer_runtime_available(&["-fsanitize=address"]) {
-        eprintln!(
-            "SKIP design tool c asan strict check: C compiler/ASAN runtime not available"
-        );
-        return;
-    }
 
-    let native_out_root = unique_workspace_target_dir("runtime_native_design_c_asan_strict");
-    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
-    let c = run_generated_c_with_asan(&native_out_root.join("c"));
 
-    match c {
-        RuntimeOutcome::Ran { stderr, .. } => {
-            assert!(
-                !stderr.contains("ERROR: AddressSanitizer"),
-                "design c asan strict runtime should not report sanitizer violations: {stderr}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("design tool c asan runtime should not skip when C compiler is available: {reason}");
-        }
-    }
 
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup strict design c asan runtime out root");
-}
-
-#[test]
-fn design_tool_c_asan_ubsan_runtime_executes_when_cc_available() {
-    if !c_sanitizer_runtime_available(&["-fsanitize=address,undefined"]) {
-        eprintln!(
-            "SKIP design tool c asan+ubsan strict check: C compiler/ASAN+UBSAN runtime not available"
-        );
-        return;
-    }
-
-    let native_out_root =
-        unique_workspace_target_dir("runtime_native_design_c_asan_ubsan_strict");
-    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
-    let c = run_generated_c_with_asan_ubsan(&native_out_root.join("c"));
-
-    match c {
-        RuntimeOutcome::Ran { stderr, .. } => {
-            assert!(
-                !stderr.contains("ERROR: AddressSanitizer"),
-                "design c asan+ubsan strict runtime should not report sanitizer violations: {stderr}"
-            );
-            assert!(
-                !stderr.contains("runtime error:"),
-                "design c asan+ubsan strict runtime should not report UBSAN runtime errors: {stderr}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            panic!(
-                "design tool c asan+ubsan runtime should not skip when C compiler is available: {reason}"
-            );
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup strict design c asan+ubsan runtime out root");
-}
 
 #[test]
 fn infra_mips_runtime_executes_when_mips_toolchain_available() {
@@ -2301,31 +1923,7 @@ fn infra_mips_runtime_executes_when_mips_toolchain_available() {
         .expect("failed to cleanup strict infra mips runtime out root");
 }
 
-#[test]
-fn sdlc_pipeline_mips_runtime_executes_when_mips_toolchain_available() {
-    if !mips_runtime_available() {
-        eprintln!("SKIP sdlc pipeline mips runtime strict check: mips toolchain/runtime not available");
-        return;
-    }
 
-    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_mips_strict");
-    compile_module_for_target(
-        "dsl/pipelines/sdlc.dag",
-        "mips",
-        &native_out_root.join("mips"),
-    );
-    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
-
-    match mips {
-        RuntimeOutcome::Ran { .. } => {}
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("sdlc pipeline mips runtime should not skip when toolchain is available: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup strict sdlc pipeline mips runtime out root");
-}
 
 #[test]
 fn sdlc_control_plane_mips_runtime_executes_when_mips_toolchain_available() {
@@ -2356,48 +1954,9 @@ fn sdlc_control_plane_mips_runtime_executes_when_mips_toolchain_available() {
         .expect("failed to cleanup strict sdlc control-plane mips runtime out root");
 }
 
-#[test]
-fn design_tool_mips_runtime_executes_when_mips_toolchain_available() {
-    if !mips_runtime_available() {
-        eprintln!("SKIP design tool mips runtime strict check: mips toolchain/runtime not available");
-        return;
-    }
 
-    let native_out_root = unique_workspace_target_dir("runtime_native_design_mips_strict");
-    compile_module_for_target("dsl/tools/design.dag", "mips", &native_out_root.join("mips"));
-    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
 
-    match mips {
-        RuntimeOutcome::Ran { .. } => {}
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("design tool mips runtime should not skip when toolchain is available: {reason}");
-        }
-    }
 
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup strict design mips runtime out root");
-}
-
-#[test]
-fn sdlc_pipeline_runtime_smoke_mips_emits_runnable_binary_when_available() {
-    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_mips");
-    compile_module_for_target(
-        "dsl/pipelines/sdlc.dag",
-        "mips",
-        &native_out_root.join("mips"),
-    );
-
-    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
-    match mips {
-        RuntimeOutcome::Ran { .. } => {}
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP sdlc pipeline mips runtime smoke: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup native sdlc pipeline mips runtime out root");
-}
 
 #[test]
 fn sdlc_control_plane_runtime_smoke_go_and_c_emit_runnable_binaries() {
@@ -2465,59 +2024,9 @@ fn sdlc_control_plane_runtime_smoke_mips_emits_runnable_binary_when_available() 
         .expect("failed to cleanup native sdlc control-plane mips runtime out root");
 }
 
-#[test]
-fn design_tool_runtime_smoke_go_and_c_emit_runnable_binaries() {
-    let native_out_root = unique_workspace_target_dir("runtime_native_design_tool");
-    compile_module_for_target("dsl/tools/design.dag", "go", &native_out_root.join("go"));
-    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
 
-    let go = run_infra_generated_go(&native_out_root.join("go"));
-    let c = run_infra_generated_c(&native_out_root.join("c"));
 
-    match go {
-        RuntimeOutcome::Ran { stdout, .. } => {
-            assert!(
-                stdout.contains("daglang generated go backend"),
-                "generated go design runtime should print backend banner: {stdout}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP design tool go runtime smoke: {reason}");
-        }
-    }
 
-    match c {
-        RuntimeOutcome::Ran { stdout, .. } => {
-            assert!(
-                stdout.contains("daglang generated c backend"),
-                "generated c design runtime should print backend banner: {stdout}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP design tool c runtime smoke: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup native design runtime out root");
-}
-
-#[test]
-fn design_tool_runtime_smoke_mips_emits_runnable_binary_when_available() {
-    let native_out_root = unique_workspace_target_dir("runtime_native_design_tool_mips");
-    compile_module_for_target("dsl/tools/design.dag", "mips", &native_out_root.join("mips"));
-
-    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
-    match mips {
-        RuntimeOutcome::Ran { .. } => {}
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP design tool mips runtime smoke: {reason}");
-        }
-    }
-
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup native design mips runtime out root");
-}
 
 #[test]
 fn infra_c_runtime_asan_smoke_when_available() {
@@ -2542,28 +2051,7 @@ fn infra_c_runtime_asan_smoke_when_available() {
         .expect("failed to cleanup native infra c asan out root");
 }
 
-#[test]
-fn sdlc_pipeline_c_runtime_asan_smoke_when_available() {
-    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_c_asan");
-    compile_module_for_target("dsl/pipelines/sdlc.dag", "c", &native_out_root.join("c"));
-    match run_generated_c_with_asan(&native_out_root.join("c")) {
-        RuntimeOutcome::Ran { stdout, stderr } => {
-            assert!(
-                stdout.contains("daglang generated c backend"),
-                "generated sdlc pipeline c asan runtime should print backend banner: {stdout}"
-            );
-            assert!(
-                !stderr.contains("ERROR: AddressSanitizer"),
-                "sdlc pipeline c asan smoke should not report sanitizer violations: {stderr}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP sdlc pipeline c asan smoke: {reason}");
-        }
-    }
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup native sdlc pipeline c asan out root");
-}
+
 
 #[test]
 fn sdlc_control_plane_c_runtime_asan_smoke_when_available() {
@@ -2593,28 +2081,7 @@ fn sdlc_control_plane_c_runtime_asan_smoke_when_available() {
         .expect("failed to cleanup native sdlc control-plane c asan out root");
 }
 
-#[test]
-fn design_tool_c_runtime_asan_smoke_when_available() {
-    let native_out_root = unique_workspace_target_dir("runtime_native_design_tool_c_asan");
-    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
-    match run_generated_c_with_asan(&native_out_root.join("c")) {
-        RuntimeOutcome::Ran { stdout, stderr } => {
-            assert!(
-                stdout.contains("daglang generated c backend"),
-                "generated design tool c asan runtime should print backend banner: {stdout}"
-            );
-            assert!(
-                !stderr.contains("ERROR: AddressSanitizer"),
-                "design tool c asan smoke should not report sanitizer violations: {stderr}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP design tool c asan smoke: {reason}");
-        }
-    }
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup native design tool c asan out root");
-}
+
 
 #[test]
 fn infra_c_runtime_asan_ubsan_smoke_when_available() {
@@ -2639,28 +2106,7 @@ fn infra_c_runtime_asan_ubsan_smoke_when_available() {
         .expect("failed to cleanup native infra c asan+ubsan out root");
 }
 
-#[test]
-fn sdlc_pipeline_c_runtime_asan_ubsan_smoke_when_available() {
-    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_c_asan_ubsan");
-    compile_module_for_target("dsl/pipelines/sdlc.dag", "c", &native_out_root.join("c"));
-    match run_generated_c_with_asan_ubsan(&native_out_root.join("c")) {
-        RuntimeOutcome::Ran { stdout, stderr } => {
-            assert!(
-                stdout.contains("daglang generated c backend"),
-                "generated sdlc pipeline c asan+ubsan runtime should print backend banner: {stdout}"
-            );
-            assert!(
-                !stderr.contains("AddressSanitizer") && !stderr.contains("runtime error:"),
-                "sdlc pipeline c asan+ubsan smoke should not report sanitizer violations: {stderr}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP sdlc pipeline c asan+ubsan smoke: {reason}");
-        }
-    }
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup native sdlc pipeline c asan+ubsan out root");
-}
+
 
 #[test]
 fn sdlc_control_plane_c_runtime_asan_ubsan_smoke_when_available() {
@@ -2690,25 +2136,4 @@ fn sdlc_control_plane_c_runtime_asan_ubsan_smoke_when_available() {
         .expect("failed to cleanup native sdlc control-plane c asan+ubsan out root");
 }
 
-#[test]
-fn design_tool_c_runtime_asan_ubsan_smoke_when_available() {
-    let native_out_root = unique_workspace_target_dir("runtime_native_design_tool_c_asan_ubsan");
-    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
-    match run_generated_c_with_asan_ubsan(&native_out_root.join("c")) {
-        RuntimeOutcome::Ran { stdout, stderr } => {
-            assert!(
-                stdout.contains("daglang generated c backend"),
-                "generated design tool c asan+ubsan runtime should print backend banner: {stdout}"
-            );
-            assert!(
-                !stderr.contains("AddressSanitizer") && !stderr.contains("runtime error:"),
-                "design tool c asan+ubsan smoke should not report sanitizer violations: {stderr}"
-            );
-        }
-        RuntimeOutcome::Skipped { reason } => {
-            eprintln!("SKIP design tool c asan+ubsan smoke: {reason}");
-        }
-    }
-    std::fs::remove_dir_all(&native_out_root)
-        .expect("failed to cleanup native design tool c asan+ubsan out root");
-}
+

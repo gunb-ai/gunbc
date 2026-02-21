@@ -5,7 +5,8 @@ mod triplets;
 
 pub use context::{
     build_context, build_context_with_default_roots, check_from_context, check_from_module_graph,
-    compile_from_context, compile_from_context_with_options, compile_resolve_execute_from_context,
+    compile_from_context, compile_from_context_with_options,
+    compile_from_module_graph_with_options, compile_resolve_execute_from_context,
     execute_resolved_dag, resolve_configured_roots, resolve_default_roots,
 };
 pub use daglang_driver::{
@@ -18,7 +19,7 @@ pub use mocks::{
 };
 pub use render::{
     render_canonical_ir_json, render_expand, render_manifest, render_manifest_with_format,
-    render_obligations,
+    render_obligations, render_progress_with_format, render_topology_with_format,
 };
 pub use triplets::render_triplets;
 

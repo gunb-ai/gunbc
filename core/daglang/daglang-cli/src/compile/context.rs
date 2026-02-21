@@ -142,3 +142,19 @@ pub fn compile_resolve_execute_from_context(
         .map_err(|error| CompileError::from(format!("resolve error: {error}")))?;
     execute_resolved_dag(&resolved, mode, input_mocks)
 }
+
+/// Compile from a pre-built module graph, skipping discovery (DL5).
+pub fn compile_from_module_graph_with_options(
+    context: &PipelineContext,
+    module_graph: ModuleGraph,
+    options: CompileOptions,
+) -> Result<CompileOutput, CompileError> {
+    daglang_driver::compile_from_module_graph_with_options(
+        &DriverContext {
+            roots: context.roots.clone(),
+            target_file: context.target_file.clone(),
+        },
+        module_graph,
+        options,
+    )
+}

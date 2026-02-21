@@ -1,4 +1,5 @@
 // Regression tests for fail-closed review credential behavior.
+#![allow(clippy::disallowed_methods)]
 
 use gunbc_ir::WorkspaceLayout;
 use std::path::PathBuf;

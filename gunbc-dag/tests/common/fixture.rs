@@ -23,14 +23,44 @@ impl CliTestContext {
         cmd
     }
 
+    #[allow(dead_code)]
     pub fn path(&self) -> &Path {
         &self.root
     }
 
+    #[allow(dead_code)]
     pub fn join(&self, rel_path: impl AsRef<Path>) -> PathBuf {
         self.root.join(rel_path)
     }
 
+    #[allow(dead_code)]
+    pub fn write_file(&self, rel_path: impl AsRef<Path>, contents: impl AsRef<[u8]>) {
+        let target = self.join(rel_path);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).expect("CliTestContext create_dir_all");
+        }
+        std::fs::write(&target, contents).expect("CliTestContext write file");
+    }
+
+    #[allow(dead_code)]
+    pub fn create_dir_all(&self, rel_path: impl AsRef<Path>) {
+        std::fs::create_dir_all(self.join(rel_path)).expect("CliTestContext create_dir_all");
+    }
+
+    #[allow(dead_code)]
+    pub fn read_to_string(&self, rel_path: impl AsRef<Path>) -> String {
+        std::fs::read_to_string(self.join(rel_path)).expect("CliTestContext read_to_string")
+    }
+
+    #[allow(dead_code)]
+    pub fn remove_dir_all(&self, rel_path: impl AsRef<Path>) {
+        std::fs::remove_dir_all(self.join(rel_path)).expect("CliTestContext remove_dir_all");
+    }
+
+    #[allow(dead_code)]
+    pub fn remove_file(&self, rel_path: impl AsRef<Path>) {
+        std::fs::remove_file(self.join(rel_path)).expect("CliTestContext remove_file");
+    }
 }
 
 impl Drop for CliTestContext {

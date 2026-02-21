@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
+#![allow(clippy::disallowed_methods)]
+use std::path::Path;
 mod common;
 use common::fixture::CliTestContext;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn sdlc_bin() -> &'static str {
     env!("CARGO_BIN_EXE_gunbc-sdlc")

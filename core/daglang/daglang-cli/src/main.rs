@@ -23,7 +23,8 @@ use daglang_cli::compile::{
     build_context, build_context_with_default_roots, check_from_module_graph,
     compile_from_context_with_options, compile_resolve_execute_from_context,
     makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,
-    render_canonical_ir_json, render_expand, render_manifest_with_format, render_obligations,
+    render_canonical_ir_json, render_expand, render_obligations, render_progress_with_format,
+    render_topology_with_format,
     render_triplets, resolve_configured_roots as resolve_configured_roots_from_context,
     resolve_default_roots as resolve_default_roots_from_context, CompileOptions, CompileOutput,
     OutputFormat,
@@ -41,6 +42,7 @@ use serde_json::json;
 mod commands;
 
 const VIZ_USAGE: &str = "viz <file.dag>|--self [--format ascii|mermaid]";
+/// Decision lock (DL8): ASCII is the default viz format. Tests lock this.
 const DEFAULT_VIZ_FORMAT: VizFormat = VizFormat::Ascii;
 
 fn main() {

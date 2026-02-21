@@ -47,13 +47,6 @@ fn azure_resources_file() -> PathBuf {
     workspace_root().join("dsl/infra/azure/resources.dag")
 }
 
-fn expected_makegen_manifest_json_snapshot() -> String {
-    format!(
-        "{}\n",
-        include_str!("snapshots/makegen_manifest.json").trim_end_matches('\n')
-    )
-}
-
 fn expected_makegen_expand_snapshot() -> String {
     format!(
         "{}\n\n",
@@ -6906,11 +6899,11 @@ fn progress_command_json_output_is_deterministic_for_same_input() {
 
     assert_eq!(
         first.stdout, second.stdout,
-        "manifest json output should be byte-stable across repeated runs"
+        "progress json output should be byte-stable across repeated runs"
     );
     assert_eq!(
         first.stderr, second.stderr,
-        "manifest json stderr should be stable across repeated runs"
+        "progress json stderr should be stable across repeated runs"
     );
 }
 
@@ -7082,7 +7075,7 @@ fn progress_command_rejects_unknown_format_flag_value() {
 
     assert!(
         !output.status.success(),
-        "manifest should fail for unsupported format value"
+        "progress should fail for unsupported format value"
     );
     assert_eq!(
         output.status.code(),
@@ -7092,9 +7085,9 @@ fn progress_command_rejects_unknown_format_flag_value() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains(
-            "Usage: daglang manifest <file.dag> [--format text|json] [--emit-collection-nodes]"
+            "Usage: daglang progress <file.dag> [--format text|json] [--emit-collection-nodes]"
         ),
-        "manifest unsupported format should print command usage: {stderr}"
+        "progress unsupported format should print command usage: {stderr}"
     );
 }
 
@@ -7534,7 +7527,7 @@ fn manifest_and_obligations_commands_share_obligation_text_output() {
     assert_eq!(
         obligations_block(&manifest_stdout),
         obligations_stdout,
-        "manifest obligation section should match standalone obligations output"
+        "progress obligation section should match standalone obligations output"
     );
 }
 

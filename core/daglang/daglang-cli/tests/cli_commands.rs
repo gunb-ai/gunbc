@@ -175,7 +175,6 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "infra.gcp.services",
         "infra.spec",
         "pipelines.ci",
-        "pipelines.sdlc",
         "services.cargo",
         "services.gcp.iam",
         "services.gcp.secret_manager",
@@ -198,7 +197,6 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "tools.codegen",
         "tools.dag_viz",
         "tools.deps",
-        "tools.design",
         "tools.docgen",
         "tools.gist",
         "tools.infra",
@@ -250,8 +248,6 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "tools.codegen",
         "tools.dag_viz",
         "tools.deps",
-        "tools.design",
-        "pipelines.sdlc",
         "tools.docgen",
         "tools.gist",
         "examples.deployment",
@@ -1083,7 +1079,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 50 file(s)"),
+        stdout.contains("OK: checked 48 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1112,7 +1108,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(50));
+    assert_eq!(stdout, expected_check_success_stdout(48));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -11547,7 +11543,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 50 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 48 file(s)"),
         "default check should parse full DSL corpus"
     );
 }
@@ -12703,7 +12699,7 @@ fn viz_without_args_exits_nonzero_with_usage_message() {
 
 #[test]
 fn expand_and_manifest_without_required_target_exit_with_usage_message() {
-    for command in ["expand", "manifest"] {
+    for command in ["expand", "progress"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .current_dir(workspace_root())
@@ -12728,7 +12724,7 @@ fn expand_and_manifest_without_required_target_exit_with_usage_message() {
 
 #[test]
 fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
-    for command in ["expand", "manifest"] {
+    for command in ["expand", "progress"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .arg("dsl/tools/makegen.dag")
@@ -12939,7 +12935,7 @@ fn assert_compile_family_command_succeeds(
 
 const COMPILE_FAMILY_COMMANDS: [(&str, &[&str]); 5] = [
     ("expand", &[]),
-    ("manifest", &[]),
+    ("progress", &[]),
     ("compile", &[]),
     ("obligations", &["--format", "json"]),
     ("show-triplets", &["--format", "json"]),
