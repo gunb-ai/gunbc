@@ -109,3 +109,45 @@ fn status_command_fails_closed_without_adc_in_isolated_home() {
 
     std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
 }
+
+#[test]
+fn status_command_succeeds_with_adc_refresh_token_in_isolated_home() {
+    let temp_home = unique_temp_dir("status_with_adc");
+    let adc_path = temp_home
+        .join(".config")
+        .join("gcloud")
+        .join("application_default_credentials.json");
+    if let Some(parent) = adc_path.parent() {
+        std::fs::create_dir_all(parent).expect("create ADC parent directories");
+    }
+    std::fs::write(
+        &adc_path,
+        r#"{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test-refresh-token"}"#,
+    )
+    .expect("write ADC fixture with refresh token");
+
+    let output = Command::new(infra_bin())
+        .arg("status")
+        .arg("--env")
+        .arg("dev")
+        .env("HOME", &temp_home)
+        .output()
+        .expect("run infra status command");
+    assert!(
+        output.status.success(),
+        "infra status should succeed with adc fixture: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("[OK] auth"),
+        "status output should include successful auth section: {stdout}"
+    );
+    assert!(
+        stdout.contains("overall: OK"),
+        "status output should include successful overall health state: {stdout}"
+    );
+
+    std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
+}
