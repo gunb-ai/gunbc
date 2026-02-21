@@ -20,7 +20,7 @@ use gunbc_ir::transport::github::{
 use gunbc_ir::transport::github::IssueLifecycleStage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -1183,9 +1183,50 @@ fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
     if !intent.safety.require_capability_gate {
         return Err("infra safety.require_capability_gate must be true".to_string());
     }
+    if intent.provider != "github" {
+        return Err(format!(
+            "unsupported infra provider `{}`; expected `github`",
+            intent.provider
+        ));
+    }
+    if intent.components.metrics.sink != "stdout" {
+        return Err(format!(
+            "unsupported infra components.metrics.sink `{}`; expected `stdout`",
+            intent.components.metrics.sink
+        ));
+    }
+    if intent.components.claim_store.dsn == intent.components.outcome_ledger.dsn {
+        return Err(
+            "infra components.claim_store.dsn and components.outcome_ledger.dsn must be distinct"
+                .to_string(),
+        );
+    }
     if intent.components.secrets.required_refs.is_empty() {
         return Err(
             "infra components.secrets.required_refs must contain at least one secret reference"
+                .to_string(),
+        );
+    }
+    let mut required_refs = BTreeSet::new();
+    for required_ref in &intent.components.secrets.required_refs {
+        let trimmed = required_ref.trim();
+        if trimmed.is_empty() {
+            return Err(
+                "infra components.secrets.required_refs cannot contain empty references"
+                    .to_string(),
+            );
+        }
+        required_refs.insert(trimmed.to_string());
+    }
+    if !required_refs.contains("github-token") {
+        return Err(
+            "infra components.secrets.required_refs must include `github-token` for provider `github`"
+                .to_string(),
+        );
+    }
+    if !required_refs.contains("openai-api-key") && !required_refs.contains("anthropic-api-key") {
+        return Err(
+            "infra components.secrets.required_refs must include at least one LLM credential reference (`openai-api-key` or `anthropic-api-key`)"
                 .to_string(),
         );
     }

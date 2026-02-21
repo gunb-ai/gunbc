@@ -108,6 +108,7 @@ components:
     credential_policy_profile: "default"
     required_refs:
       - "github-token"
+      - "openai-api-key"
   metrics:
     sink: "stdout"
     namespace: "gunbc.sdlc"
@@ -355,6 +356,54 @@ fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
     assert!(
         stderr.contains("unsupported infra schema_version"),
         "preflight failure should explain unsupported schema version: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token() {
+    let root = unique_temp_dir("invalid_infra_required_refs");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-invalid-required-refs",
+        "intent-20260221-invalid-required-refs",
+        Some(1201),
+    );
+
+    let infra_path = root.join("TODO/infra-intent-template.yaml");
+    let infra_content = std::fs::read_to_string(&infra_path).expect("read infra template");
+    let invalid_refs = infra_content.replace("- \"github-token\"\n", "");
+    std::fs::write(&infra_path, invalid_refs).expect("write invalid required refs");
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before required-ref preflight failure: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run worker with missing github-token reference");
+    assert!(
+        !worker.status.success(),
+        "worker should fail closed when provider-required secret refs are missing"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("must include `github-token`"),
+        "preflight failure should explain missing provider token reference: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
