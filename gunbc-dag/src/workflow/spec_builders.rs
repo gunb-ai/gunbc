@@ -1420,8 +1420,18 @@ pub fn sdlc_workflow_spec_with_registry(
         "sdlc.intake",
         "after",
     ));
-    dag.add_edge(Edge::control("sdlc.intake", "commit", "sdlc.worker", "after"));
-    dag.add_edge(Edge::control("sdlc.worker", "commit", "sdlc.report", "after"));
+    dag.add_edge(Edge::control(
+        "sdlc.intake",
+        "commit",
+        "sdlc.worker",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "sdlc.worker",
+        "commit",
+        "sdlc.report",
+        "after",
+    ));
 
     Ok(WorkflowSpec::new("sdlc", dag, 1))
 }

@@ -101,17 +101,17 @@ mod tests {
             "wf.a",
             required_input_contract(),
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::Aggregate(crate::workflow::schema::AggregateSpec::new(
-                "a",
-            ))),
+            WorkflowUnit::new(WorkflowOp::Aggregate(
+                crate::workflow::schema::AggregateSpec::new("a"),
+            )),
         ));
         dag.add_node(Node::opaque(
             "wf.b",
             required_input_contract(),
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::Aggregate(crate::workflow::schema::AggregateSpec::new(
-                "b",
-            ))),
+            WorkflowUnit::new(WorkflowOp::Aggregate(
+                crate::workflow::schema::AggregateSpec::new("b"),
+            )),
         ));
         dag.add_edge(Edge::control("wf.a", "commit", "wf.b", "after"));
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
@@ -136,9 +136,9 @@ mod tests {
             "wf.only",
             inputs,
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::Aggregate(crate::workflow::schema::AggregateSpec::new(
-                "only",
-            ))),
+            WorkflowUnit::new(WorkflowOp::Aggregate(
+                crate::workflow::schema::AggregateSpec::new("only"),
+            )),
         ));
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
 
@@ -162,9 +162,9 @@ mod tests {
             "wf.only",
             inputs,
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::Aggregate(crate::workflow::schema::AggregateSpec::new(
-                "only",
-            ))),
+            WorkflowUnit::new(WorkflowOp::Aggregate(
+                crate::workflow::schema::AggregateSpec::new("only"),
+            )),
         ));
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
 

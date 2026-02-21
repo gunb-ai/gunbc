@@ -82,3 +82,8 @@ pub fn assert_typed_builder_rejects_invalid_slot<T: Clone>(dag: &gunbc_ir::Dag<T
         "expected typed builder to reject unknown slot for {name}"
     );
 }
+pub mod temp;
+pub use temp::unique_temp_dir;
+
+pub mod json;
+pub use json::ParseJsonOutput;

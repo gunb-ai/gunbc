@@ -118,10 +118,7 @@ pub enum Stmt {
         expr: Expr,
     },
     /// **Tier 0.** Assignment to an existing variable/path: `dest = value;`
-    Assign {
-        dest: Expr,
-        value: Expr,
-    },
+    Assign { dest: Expr, value: Expr },
     /// **Tier 0.** Expression as statement (for side effects like `map.insert(...)`).
     Expr(Expr),
     /// **Tier 0.** An assertion.

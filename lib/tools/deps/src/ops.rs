@@ -754,9 +754,7 @@ verify = "echo test"
             );
 
             let err = execute_generate_scripts(inputs).expect_err("strict mode should fail");
-            assert!(err
-                .to_string()
-                .contains("unknown os: unknown"));
+            assert!(err.to_string().contains("unknown os: unknown"));
         });
     }
 

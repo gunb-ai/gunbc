@@ -1,0 +1,156 @@
+   Compiling daglang-cli v0.1.0 (/home/briansrls/gunbc/core/daglang/daglang-cli)
+warning: unused import: `render_manifest_with_format`
+  --> core/daglang/daglang-cli/src/main.rs:27:5
+   |
+27 |     render_manifest_with_format, r...
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `serde_json::json`
+  --> core/daglang/daglang-cli/src/main.rs:41:5
+   |
+41 | use serde_json::json;
+   |     ^^^^^^^^^^^^^^^^
+
+error[E0425]: cannot find function `parse_viz_args` in this scope
+ --> core/daglang/daglang-cli/src/commands.rs:6:36
+  |
+6 | ... = parse_viz_args(ar...
+  |       ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+ --> core/daglang/daglang-cli/src/commands.rs:6:80
+  |
+6 | ...e| exit_usage(&usag...
+  |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `parse_compile_command_args` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:27:26
+   |
+27 | ... = parse_compile_command_args(
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:33:37
+   |
+33 | ...e| exit_usage(&usa...
+   |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `parse_manifest_command_args` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:45:26
+   |
+45 | ... = parse_manifest_command_args("p...
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:46:41
+   |
+46 | ...e| exit_usage(&usa...
+   |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `parse_output_format` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:58:26
+   |
+58 | ... = parse_output_format("t...
+   |       ^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:59:41
+   |
+59 | ...e| exit_usage(&usa...
+   |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:68:17
+   |
+68 | ...   exit_usage("obl...
+   |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `parse_output_format` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:71:17
+   |
+71 | ...   parse_output_format("o...
+   |       ^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:71:81
+   |
+71 | ...e| exit_usage(&usa...
+   |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:77:17
+   |
+77 | ...   exit_usage("sho...
+   |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `parse_output_format` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:79:26
+   |
+79 | ... = parse_output_format("s...
+   |       ^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:80:41
+   |
+80 | ...e| exit_usage(&usa...
+   |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `parse_modules_args` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:86:17
+   |
+86 | ...   parse_modules_args(ar...
+   |       ^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+  --> core/daglang/daglang-cli/src/commands.rs:86:65
+   |
+86 | ...e| exit_usage(&usa...
+   |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `render_modules_result_json` in this scope
+   --> core/daglang/daglang-cli/src/commands.rs:121:36
+    |
+121 | ...", render_modules_result_json(&r...
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+   --> core/daglang/daglang-cli/src/commands.rs:127:17
+    |
+127 | ...   exit_usage("ch...
+    |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `parse_compile_command_args` in this scope
+   --> core/daglang/daglang-cli/src/commands.rs:192:26
+    |
+192 | ... = parse_compile_command_args(
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+   --> core/daglang/daglang-cli/src/commands.rs:198:37
+    |
+198 | ...e| exit_usage(&us...
+    |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `parse_run_args` in this scope
+   --> core/daglang/daglang-cli/src/commands.rs:257:26
+    |
+257 | ... = parse_run_args(ar...
+    |       ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+   --> core/daglang/daglang-cli/src/commands.rs:259:17
+    |
+259 | ...   exit_usage(
+    |       ^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find function `exit_usage` in this scope
+   --> core/daglang/daglang-cli/src/commands.rs:319:13
+    |
+319 | ...   exit_usage("<c...
+    |       ^^^^^^^^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+warning: `daglang-cli` (bin "daglang") generated 2 warnings
+error: could not compile `daglang-cli` (bin "daglang") due to 23 previous errors; 2 warnings emitted

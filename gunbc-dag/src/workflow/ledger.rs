@@ -21,14 +21,23 @@ pub type RunId = String;
 /// Cached/executed state persisted for planner decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LedgerStatus {
-    CachedHit { previous_run: RunId },
-    Executed { reason: MissReason },
+    CachedHit {
+        previous_run: RunId,
+    },
+    Executed {
+        reason: MissReason,
+    },
     PendingApproval {
         awaiting_since_epoch_ms: u128,
         claim_released: bool,
     },
-    Failed { reason: MissReason, error: String },
-    Skipped { blocked_by: NodeId },
+    Failed {
+        reason: MissReason,
+        error: String,
+    },
+    Skipped {
+        blocked_by: NodeId,
+    },
 }
 
 /// One persisted ledger record per work key.

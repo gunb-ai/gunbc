@@ -39,13 +39,9 @@ pub fn emit_go_service_func(
     match (spec, is_prepare, is_parse) {
         (ServiceOperationSpec::Rest(rest), true, _) => emit_go_rest_prepare(symbol_name, rest),
         (ServiceOperationSpec::Rest(rest), _, true) => emit_go_rest_parse(symbol_name, rest),
-        (ServiceOperationSpec::Shell(shell), true, _) => {
-            emit_go_shell_prepare(symbol_name, shell)
-        }
+        (ServiceOperationSpec::Shell(shell), true, _) => emit_go_shell_prepare(symbol_name, shell),
         (ServiceOperationSpec::Shell(shell), _, true) => emit_go_shell_parse(symbol_name, shell),
-        _ => format!(
-            "func {symbol_name}() {{\n    // generated callable stub\n}}\n"
-        ),
+        _ => format!("func {symbol_name}() {{\n    // generated callable stub\n}}\n"),
     }
 }
 
@@ -100,14 +96,14 @@ fn emit_go_rest_prepare(symbol_name: &str, spec: &RestOperationSpec) -> String {
             out.push_str("    }\n");
         } else {
             // Auto-body from non-path input fields.
-            let body_fields: Vec<&FieldSpec> =
-                spec.input_fields.iter().filter(|f| !f.is_path_param).collect();
+            let body_fields: Vec<&FieldSpec> = spec
+                .input_fields
+                .iter()
+                .filter(|f| !f.is_path_param)
+                .collect();
             out.push_str("    body := map[string]interface{}{\n");
             for field in &body_fields {
-                out.push_str(&format!(
-                    "        \"{name}\": {name},\n",
-                    name = field.name,
-                ));
+                out.push_str(&format!("        \"{name}\": {name},\n", name = field.name,));
             }
             out.push_str("    }\n");
         }
@@ -126,9 +122,7 @@ fn emit_go_rest_prepare(symbol_name: &str, spec: &RestOperationSpec) -> String {
 
     // Extra headers.
     for (key, val) in &spec.headers {
-        out.push_str(&format!(
-            "    req.Header.Set(\"{key}\", \"{val}\")\n"
-        ));
+        out.push_str(&format!("    req.Header.Set(\"{key}\", \"{val}\")\n"));
     }
 
     out.push_str("    return req, nil\n");
@@ -222,9 +216,7 @@ fn emit_go_shell_prepare(symbol_name: &str, spec: &ShellOperationSpec) -> String
 fn emit_go_shell_parse(symbol_name: &str, spec: &ShellOperationSpec) -> String {
     let mut out = String::new();
 
-    out.push_str(&format!(
-        "// {symbol_name} parses shell command output.\n"
-    ));
+    out.push_str(&format!("// {symbol_name} parses shell command output.\n"));
 
     match &spec.output_parsing {
         ShellOutputParsing::TrimStdout => {
@@ -289,9 +281,7 @@ pub fn emit_c_service_func(
     match (spec, is_prepare, is_parse) {
         (ServiceOperationSpec::Rest(rest), true, _) => emit_c_rest_prepare(symbol_name, rest),
         (ServiceOperationSpec::Rest(rest), _, true) => emit_c_rest_parse(symbol_name, rest),
-        (ServiceOperationSpec::Shell(shell), true, _) => {
-            emit_c_shell_prepare(symbol_name, shell)
-        }
+        (ServiceOperationSpec::Shell(shell), true, _) => emit_c_shell_prepare(symbol_name, shell),
         (ServiceOperationSpec::Shell(shell), _, true) => emit_c_shell_parse(symbol_name, shell),
         _ => format!("static void {symbol_name}(void) {{}}\n"),
     }
@@ -538,10 +528,7 @@ fn go_interpolate_path(template: &str, _fields: &[FieldSpec]) -> String {
     if args.is_empty() {
         format!("\"{}\"", template)
     } else {
-        format!(
-            "fmt.Sprintf(\"{format_str}\", {})",
-            args.join(", ")
-        )
+        format!("fmt.Sprintf(\"{format_str}\", {})", args.join(", "))
     }
 }
 
@@ -555,7 +542,7 @@ fn go_convert_value(var: &str, type_id: &str) -> String {
         "Bool" => format!("{var}.(bool)"),
         "Secret" => format!("{var}.(string)"),
         "Bytes" => format!(
-            "func() []byte {{ switch t := {var}.(type) {{ case []byte: return t; case string: return []byte(t); default: return nil }} }}()"
+            "func() []byte {{ switch t := {var}.(type) {{ case []byte: return t; case string: return []byte(t); default: panic(\"expected []byte or string for Bytes field\") }} }}()"
         ),
         _ => var.to_string(),
     }
@@ -766,7 +753,8 @@ mod tests {
         RestOperationSpec {
             endpoint: "https://secretmanager.googleapis.com".to_string(),
             method: "GET".to_string(),
-            path_template: "/v1/projects/{project}/secrets/{secret}/versions/latest:access".to_string(),
+            path_template: "/v1/projects/{project}/secrets/{secret}/versions/latest:access"
+                .to_string(),
             input_fields: vec![
                 FieldSpec {
                     name: "project".to_string(),
@@ -814,8 +802,14 @@ mod tests {
             "service_transport::prepare::llm.Anthropic::Messages",
             &spec,
         );
-        assert!(code.contains("func prepare_anthropic_messages("), "has func");
-        assert!(code.contains("*http.Request, error"), "returns http.Request");
+        assert!(
+            code.contains("func prepare_anthropic_messages("),
+            "has func"
+        );
+        assert!(
+            code.contains("*http.Request, error"),
+            "returns http.Request"
+        );
         assert!(code.contains("https://api.example.com"), "has endpoint");
         assert!(code.contains("/v1/messages"), "has path");
         assert!(code.contains("json.Marshal"), "marshals body");
@@ -833,7 +827,10 @@ mod tests {
             "service_transport::parse::llm.Anthropic::Messages",
             &spec,
         );
-        assert!(code.contains("type parse_anthropic_messagesResult struct"), "has result struct");
+        assert!(
+            code.contains("type parse_anthropic_messagesResult struct"),
+            "has result struct"
+        );
         assert!(code.contains("Content string"), "has Content field");
         assert!(code.contains("Model string"), "has Model field");
         assert!(code.contains("json.Unmarshal"), "unmarshals body");
@@ -852,8 +849,8 @@ mod tests {
             "bytes output field should map to []byte: {code}"
         );
         assert!(
-            code.contains("case []byte: return t; case string: return []byte(t); default: return nil"),
-            "bytes output extraction should use guarded conversion to avoid interface assignment compile errors: {code}"
+            code.contains("case []byte: return t; case string: return []byte(t); default: panic(\"expected []byte or string for Bytes field\") } }()"),
+            "bytes output extraction should enforce strict type safety and fail-fast: {code}"
         );
     }
 
@@ -865,7 +862,10 @@ mod tests {
             "service_transport::prepare::gcp.SecretManager::AccessVersion",
             &spec,
         );
-        assert!(code.contains("fmt.Sprintf"), "uses fmt.Sprintf for path interpolation: {code}");
+        assert!(
+            code.contains("fmt.Sprintf"),
+            "uses fmt.Sprintf for path interpolation: {code}"
+        );
         assert!(code.contains("project"), "references project param");
         assert!(code.contains("secret"), "references secret param");
     }
@@ -906,7 +906,10 @@ mod tests {
             &spec,
         );
         assert!(code.contains("func execute_anthropic_messages"), "has func");
-        assert!(code.contains("interface{}, error"), "returns interface/error");
+        assert!(
+            code.contains("interface{}, error"),
+            "returns interface/error"
+        );
     }
 
     // -- C tests --
@@ -933,7 +936,10 @@ mod tests {
             "service_transport::parse::llm.Anthropic::Messages",
             &spec,
         );
-        assert!(code.contains("content (content/0/text)"), "documents json path: {code}");
+        assert!(
+            code.contains("content (content/0/text)"),
+            "documents json path: {code}"
+        );
         assert!(code.contains("model (model)"), "documents model field");
     }
 
@@ -959,7 +965,10 @@ mod tests {
             "service_transport::prepare::llm.Anthropic::Messages",
             &spec,
         );
-        assert!(code.contains("prepare REST POST"), "has REST method: {code}");
+        assert!(
+            code.contains("prepare REST POST"),
+            "has REST method: {code}"
+        );
         assert!(code.contains("api.example.com"), "has endpoint");
         assert!(code.contains("/v1/messages"), "has path");
         assert!(code.contains("jr $ra"), "returns");
@@ -973,7 +982,10 @@ mod tests {
             "service_transport::prepare::cargo.Build::Build",
             &spec,
         );
-        assert!(code.contains("prepare shell [cargo build]"), "has argv: {code}");
+        assert!(
+            code.contains("prepare shell [cargo build]"),
+            "has argv: {code}"
+        );
         assert!(code.contains("jr $ra"), "returns");
     }
 
@@ -985,6 +997,9 @@ mod tests {
             "service_transport::execute::llm.Anthropic::Messages",
             &spec,
         );
-        assert!(code.contains("execute transport request"), "has description: {code}");
+        assert!(
+            code.contains("execute transport request"),
+            "has description: {code}"
+        );
     }
 }

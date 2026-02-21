@@ -42,7 +42,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             println!("{}", render_expand(&output.lowered_dag));
         }
         "manifest" | "progress-manifest" => {
-            let parsed = parse_manifest_command_args(args[1].as_str(), args)
+            let parsed = parse_progress_command_args(args[1].as_str(), args)
                 .unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit_with_options(
                 cwd,

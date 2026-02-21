@@ -8,9 +8,10 @@ pub mod state;
 pub mod transaction;
 
 pub use artifacts::{
-    canonical_marker, promote_to_canonical_artifact, provisional_marker, upsert_provisional_artifact,
-    content_hash_for_payload, promote_to_canonical_artifact_with_payload, upsert_provisional_artifact_with_payload,
-    ArtifactLedger, ArtifactPayload, ArtifactRecord, ArtifactUpsertOutcome,
+    canonical_marker, content_hash_for_payload, promote_to_canonical_artifact,
+    promote_to_canonical_artifact_with_payload, provisional_marker, upsert_provisional_artifact,
+    upsert_provisional_artifact_with_payload, ArtifactLedger, ArtifactPayload, ArtifactRecord,
+    ArtifactUpsertOutcome,
 };
 pub use claims::{
     claim_slot_key, heartbeat_claim, release_claim, try_acquire_claim, ClaimAcquireResult,

@@ -138,6 +138,20 @@ pub fn compile_from_context_with_options(
     options: CompileOptions,
 ) -> Result<CompileOutput, CompileError> {
     let module_graph = discover_module_graph_for_context(context)?;
+    compile_from_module_graph_with_options(context, module_graph, options)
+}
+
+/// Compile from a pre-built module graph, skipping discovery.
+///
+/// This is the shared compilation path used by both the direct context-based
+/// flow and the pipeline-based flow (DL5). The pipeline handles discovery,
+/// parsing, and module graph construction; this function handles validation,
+/// typechecking, lowering, and emission.
+pub fn compile_from_module_graph_with_options(
+    context: &DriverContext,
+    module_graph: ModuleGraph,
+    options: CompileOptions,
+) -> Result<CompileOutput, CompileError> {
     let callable_scope = callable_scope_for_context(context, &module_graph)?;
     validate_module_path_consistency(
         &module_graph,
@@ -312,6 +326,7 @@ fn discover_target_module_graph_for_context(
                 continue;
             }
             let Some(import_file) = resolve_import_file_path(&context.roots, &import) else {
+                eprintln!("DEBUG: resolve_import_file_path returned None for {:?}", import);
                 continue;
             };
             let Some((dep_index, is_new)) = add_target_module_if_applicable(
@@ -325,6 +340,7 @@ fn discover_target_module_graph_for_context(
                 &mut module_index_by_decl,
             )?
             else {
+                eprintln!("DEBUG: add_target_module_if_applicable returned None for {:?}", import_file);
                 continue;
             };
             dependencies.push(dep_index);
@@ -452,10 +468,14 @@ fn resolve_import_file_path(roots: &[PathBuf], import_path: &[String]) -> Option
         relative.push(segment);
     }
     relative.set_extension("dag");
-    roots
+    let result = roots
         .iter()
         .map(|root| root.join(&relative))
-        .find(|candidate| candidate.is_file())
+        .find(|candidate| candidate.is_file());
+    if result.is_none() {
+        eprintln!("DEBUG: resolve_import_file_path relative={:?} roots={:?} result=None", relative, roots);
+    }
+    result
 }
 
 fn callable_scope_for_context(
@@ -647,16 +667,14 @@ pub fn extract_inline_tests(
             continue; // Module has no inline tests.
         }
 
-        let config =
-            config_resolver(&module.module_path, &module.path).ok_or_else(|| {
-                format!(
-                    "no test emit config for module `{}`",
-                    module.module_path.join(".")
-                )
-            })?;
+        let config = config_resolver(&module.module_path, &module.path).ok_or_else(|| {
+            format!(
+                "no test emit config for module `{}`",
+                module.module_path.join(".")
+            )
+        })?;
 
-        let rust_code =
-            daglang_emit::test_mock_emit::emit_test_mock_file(&test_file, &config);
+        let rust_code = daglang_emit::test_mock_emit::emit_test_mock_file(&test_file, &config);
         generated.push((module.path.clone(), rust_code));
     }
 

@@ -15,39 +15,25 @@ fn review_bin() -> &'static str {
     env!("CARGO_BIN_EXE_gunbc-review")
 }
 
-fn unique_temp_home(label: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "gunbc_review_credentials_{label}_{}_{}",
-        std::process::id(),
-        nanos
-    ))
-}
+mod common;
+use common::fixture::CliTestContext;
 
 fn run_review_without_credentials(provider: &str) -> Output {
-    let temp_home = unique_temp_home(provider);
-    std::fs::create_dir_all(&temp_home).expect("create temp HOME");
-    let missing_adc_path = temp_home.join("missing-adc.json");
+    let ctx = CliTestContext::new(provider, review_bin());
+    let missing_adc_path = ctx.join("missing-adc.json");
 
-    let output = Command::new(review_bin())
+    ctx.command()
         .arg("-r")
         .arg(".")
         .arg("--provider")
         .arg(provider)
         .current_dir(workspace_root())
-        .env("HOME", &temp_home)
         .env("GOOGLE_APPLICATION_CREDENTIALS", &missing_adc_path)
         .env_remove("OPENAI_API_KEY")
         .env_remove("ANTHROPIC_API_KEY")
         .env_remove("GUNBC_CREDENTIAL_POLICY_JSON")
         .output()
-        .expect("run gunbc-review");
-
-    std::fs::remove_dir_all(temp_home).expect("remove temp HOME");
-    output
+        .expect("run gunbc-review")
 }
 
 fn gcloud_available() -> bool {
@@ -59,35 +45,24 @@ fn gcloud_available() -> bool {
 }
 
 fn run_review_with_adc_only(provider: &str) -> Output {
-    let temp_home = unique_temp_home(&format!("{provider}_adc_only"));
-    let adc_path = temp_home
-        .join(".config")
-        .join("gcloud")
-        .join("application_default_credentials.json");
-    if let Some(parent) = adc_path.parent() {
-        std::fs::create_dir_all(parent).expect("create ADC parent directories");
-    }
-    std::fs::write(
+    let ctx = CliTestContext::new(&format!("{provider}_adc_only"), review_bin());
+    let adc_path = ctx.join(".config/gcloud/application_default_credentials.json");
+    ctx.write_file(
         &adc_path,
         r#"{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test-refresh-token"}"#,
-    )
-    .expect("write adc fixture with refresh token");
+    );
 
-    let output = Command::new(review_bin())
+    ctx.command()
         .arg("-r")
         .arg(".")
         .arg("--provider")
         .arg(provider)
         .current_dir(workspace_root())
-        .env("HOME", &temp_home)
         .env_remove("OPENAI_API_KEY")
         .env_remove("ANTHROPIC_API_KEY")
         .env_remove("GUNBC_CREDENTIAL_POLICY_JSON")
         .output()
-        .expect("run gunbc-review with adc-only fixture");
-
-    std::fs::remove_dir_all(temp_home).expect("remove temp HOME");
-    output
+        .expect("run gunbc-review with adc-only fixture")
 }
 
 fn assert_fail_closed_output(provider: &str, output: &Output) {

@@ -325,6 +325,14 @@ struct UnsupportedOp {
     callable: String,
 }
 
+impl UnsupportedOp {
+    fn new(callable: &str) -> Self {
+        Self {
+            callable: callable.to_string(),
+        }
+    }
+}
+
 impl Executable for UnsupportedOp {
     fn execute(
         &self,
@@ -583,7 +591,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
         LoweredOp::Pipeline { module, name, .. } => {
-            resolve_domain(node_id, module, name, outputs, None)
+            Ok(DynOp::new(UnsupportedOp::new(&format!("{module}.{name}",))))
         }
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {

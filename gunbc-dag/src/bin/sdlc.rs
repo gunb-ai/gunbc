@@ -10,17 +10,16 @@
 use gunbc_dag::{
     canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
     promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
-    reconcile_entries,
-    register_retry_failure, release_claim, retry_ready, should_replay_skip, try_acquire_claim,
-    upsert_provisional_artifact_with_payload, ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome,
-    ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
-    validate_stage_transition,
+    reconcile_entries, register_retry_failure, release_claim, retry_ready, should_replay_skip,
+    try_acquire_claim, upsert_provisional_artifact_with_payload, validate_stage_transition,
+    ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger,
+    ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
+use gunbc_ir::transport::github::IssueLifecycleStage;
 use gunbc_ir::transport::github::{
     compare_and_set_stage_label, ensure_sdlc_issue_capabilities, SdlcIssueCapabilities,
 };
-use gunbc_ir::transport::github::IssueLifecycleStage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -496,14 +495,13 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command == SdlcCommand::Worker && intent_path.is_some() {
         return Err("worker does not accept --intent".to_string());
     }
-    if command != SdlcCommand::Worker && command != SdlcCommand::Issue && infra_intent_path.is_some()
+    if command != SdlcCommand::Worker
+        && command != SdlcCommand::Issue
+        && infra_intent_path.is_some()
     {
         return Err("--infra-intent is only valid for worker or issue".to_string());
     }
-    if command != SdlcCommand::Worker
-        && command != SdlcCommand::Issue
-        && emit_pending_exit_code
-    {
+    if command != SdlcCommand::Worker && command != SdlcCommand::Issue && emit_pending_exit_code {
         return Err("--emit-pending-exit-code is only valid for worker or issue".to_string());
     }
     if command == SdlcCommand::AwaitApproval && intake_key.is_none() {
@@ -616,6 +614,9 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
         );
         return Ok(());
     }
+
+    // IM12: capability gate only blocks real mode; dry-run bypasses above.
+    enforce_provider_capability_gate(&intent)?;
 
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
@@ -978,8 +979,7 @@ fn run_worker(
                 let Some(record) = ledger.entries.get(intake_key) else {
                     continue;
                 };
-                if let Some(canonical) =
-                    artifact_ledger.records.get(&canonical_marker(intake_key))
+                if let Some(canonical) = artifact_ledger.records.get(&canonical_marker(intake_key))
                 {
                     if canonical.run_key == record.run_key {
                         replay_skipped.push(intake_key.clone());
@@ -1105,7 +1105,8 @@ fn run_worker(
 }
 
 fn run_await_approval(intake_key: Option<&str>, dry_run: bool) -> Result<(), String> {
-    let intake_key = intake_key.ok_or_else(|| "await-approval requires --intake-key".to_string())?;
+    let intake_key =
+        intake_key.ok_or_else(|| "await-approval requires --intake-key".to_string())?;
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
     let Some(record) = ledger.entries.get_mut(intake_key) else {
@@ -1302,25 +1303,13 @@ fn run_drain(activate: bool, deactivate: bool, dry_run: bool) -> Result<(), Stri
 fn load_intent(path: &Path) -> Result<IntentSheet, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|error| format!("failed to read intent file {}: {error}", path.display()))?;
-    serde_yaml::from_str::<IntentSheet>(&content)
+    serde_yml::from_str::<IntentSheet>(&content)
         .map_err(|error| format!("failed to parse intent YAML {}: {error}", path.display()))
 }
 
-fn validate_intent(intent: &IntentSheet) -> Result<(), String> {
-    require_non_empty("intent_id", &intent.intent_id)?;
-    require_non_empty("title", &intent.title)?;
-    require_non_empty("objective", &intent.objective)?;
-    require_non_empty("provider", &intent.provider)?;
-    require_non_empty("owner", &intent.owner)?;
-    require_non_empty("priority", &intent.priority)?;
-    require_non_empty("idempotency.intake_key", &intent.idempotency.intake_key)?;
-    require_non_empty("idempotency.policy_version", &intent.idempotency.policy_version)?;
-    require_non_empty("update_strategy.comment_mode", &intent.update_strategy.comment_mode)?;
-    require_non_empty(
-        "update_strategy.transition_mode",
-        &intent.update_strategy.transition_mode,
-    )?;
-
+/// IM12: real-mode provider capability gate. Separate from field validation
+/// so dry-run can bypass it.
+fn enforce_provider_capability_gate(intent: &IntentSheet) -> Result<(), String> {
     let capabilities = match intent.provider.as_str() {
         "github" => SdlcIssueCapabilities::github(),
         _ => {
@@ -1335,7 +1324,29 @@ fn validate_intent(intent: &IntentSheet) -> Result<(), String> {
             "provider capability gate failed for `{}`: {error}",
             intent.provider
         )
-    })?;
+    })
+}
+
+fn validate_intent(intent: &IntentSheet) -> Result<(), String> {
+    require_non_empty("intent_id", &intent.intent_id)?;
+    require_non_empty("title", &intent.title)?;
+    require_non_empty("objective", &intent.objective)?;
+    require_non_empty("provider", &intent.provider)?;
+    require_non_empty("owner", &intent.owner)?;
+    require_non_empty("priority", &intent.priority)?;
+    require_non_empty("idempotency.intake_key", &intent.idempotency.intake_key)?;
+    require_non_empty(
+        "idempotency.policy_version",
+        &intent.idempotency.policy_version,
+    )?;
+    require_non_empty(
+        "update_strategy.comment_mode",
+        &intent.update_strategy.comment_mode,
+    )?;
+    require_non_empty(
+        "update_strategy.transition_mode",
+        &intent.update_strategy.transition_mode,
+    )?;
     if intent.update_strategy.comment_mode != "upsert-by-marker" {
         return Err(format!(
             "unsupported update_strategy.comment_mode `{}`; expected `upsert-by-marker`",
@@ -1368,10 +1379,18 @@ fn validate_intent(intent: &IntentSheet) -> Result<(), String> {
 }
 
 fn load_infra_intent(path: &Path) -> Result<InfraIntentSheet, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|error| format!("failed to read infra intent file {}: {error}", path.display()))?;
-    serde_yaml::from_str::<InfraIntentSheet>(&content)
-        .map_err(|error| format!("failed to parse infra intent YAML {}: {error}", path.display()))
+    let content = std::fs::read_to_string(path).map_err(|error| {
+        format!(
+            "failed to read infra intent file {}: {error}",
+            path.display()
+        )
+    })?;
+    serde_yml::from_str::<InfraIntentSheet>(&content).map_err(|error| {
+        format!(
+            "failed to parse infra intent YAML {}: {error}",
+            path.display()
+        )
+    })
 }
 
 fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
@@ -1385,7 +1404,10 @@ fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
         "infra.components.claim_store.backend",
         &intent.components.claim_store.backend,
     )?;
-    require_non_empty("infra.components.claim_store.dsn", &intent.components.claim_store.dsn)?;
+    require_non_empty(
+        "infra.components.claim_store.dsn",
+        &intent.components.claim_store.dsn,
+    )?;
     require_non_empty(
         "infra.components.outcome_ledger.backend",
         &intent.components.outcome_ledger.backend,
@@ -1398,7 +1420,10 @@ fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
         "infra.components.secrets.credential_policy_profile",
         &intent.components.secrets.credential_policy_profile,
     )?;
-    require_non_empty("infra.components.metrics.sink", &intent.components.metrics.sink)?;
+    require_non_empty(
+        "infra.components.metrics.sink",
+        &intent.components.metrics.sink,
+    )?;
     require_non_empty(
         "infra.components.metrics.namespace",
         &intent.components.metrics.namespace,
@@ -1646,11 +1671,15 @@ fn run_git<const N: usize>(args: [&str; N]) -> Result<String, String> {
 }
 
 fn intake_ledger_path() -> PathBuf {
-    PathBuf::from("target").join("sdlc").join("intake-ledger.json")
+    PathBuf::from("target")
+        .join("sdlc")
+        .join("intake-ledger.json")
 }
 
 fn claim_ledger_path() -> PathBuf {
-    PathBuf::from("target").join("sdlc").join("claim-ledger.json")
+    PathBuf::from("target")
+        .join("sdlc")
+        .join("claim-ledger.json")
 }
 
 fn drain_flag_path() -> PathBuf {
@@ -1660,11 +1689,15 @@ fn drain_flag_path() -> PathBuf {
 }
 
 fn artifact_ledger_path() -> PathBuf {
-    PathBuf::from("target").join("sdlc").join("artifact-ledger.json")
+    PathBuf::from("target")
+        .join("sdlc")
+        .join("artifact-ledger.json")
 }
 
 fn run_state_ledger_path() -> PathBuf {
-    PathBuf::from("target").join("sdlc").join("run-state-ledger.json")
+    PathBuf::from("target")
+        .join("sdlc")
+        .join("run-state-ledger.json")
 }
 
 fn execution_report_path() -> PathBuf {
@@ -1770,8 +1803,12 @@ fn load_artifact_ledger(path: &Path) -> Result<ArtifactLedger, String> {
     }
     let content = std::fs::read_to_string(path)
         .map_err(|error| format!("failed to read artifact ledger {}: {error}", path.display()))?;
-    serde_json::from_str::<ArtifactLedger>(&content)
-        .map_err(|error| format!("failed to parse artifact ledger {}: {error}", path.display()))
+    serde_json::from_str::<ArtifactLedger>(&content).map_err(|error| {
+        format!(
+            "failed to parse artifact ledger {}: {error}",
+            path.display()
+        )
+    })
 }
 
 fn save_artifact_ledger(path: &Path, ledger: &ArtifactLedger) -> Result<(), String> {
@@ -1785,18 +1822,30 @@ fn save_artifact_ledger(path: &Path, ledger: &ArtifactLedger) -> Result<(), Stri
     }
     let content = serde_json::to_string_pretty(ledger)
         .map_err(|error| format!("failed to serialize artifact ledger: {error}"))?;
-    std::fs::write(path, content)
-        .map_err(|error| format!("failed to write artifact ledger {}: {error}", path.display()))
+    std::fs::write(path, content).map_err(|error| {
+        format!(
+            "failed to write artifact ledger {}: {error}",
+            path.display()
+        )
+    })
 }
 
 fn load_run_state_ledger(path: &Path) -> Result<RunStateLedger, String> {
     if !path.exists() {
         return Ok(RunStateLedger::default());
     }
-    let content = std::fs::read_to_string(path)
-        .map_err(|error| format!("failed to read run state ledger {}: {error}", path.display()))?;
-    serde_json::from_str::<RunStateLedger>(&content)
-        .map_err(|error| format!("failed to parse run state ledger {}: {error}", path.display()))
+    let content = std::fs::read_to_string(path).map_err(|error| {
+        format!(
+            "failed to read run state ledger {}: {error}",
+            path.display()
+        )
+    })?;
+    serde_json::from_str::<RunStateLedger>(&content).map_err(|error| {
+        format!(
+            "failed to parse run state ledger {}: {error}",
+            path.display()
+        )
+    })
 }
 
 fn save_run_state_ledger(path: &Path, ledger: &RunStateLedger) -> Result<(), String> {
@@ -1810,8 +1859,12 @@ fn save_run_state_ledger(path: &Path, ledger: &RunStateLedger) -> Result<(), Str
     }
     let content = serde_json::to_string_pretty(ledger)
         .map_err(|error| format!("failed to serialize run state ledger: {error}"))?;
-    std::fs::write(path, content)
-        .map_err(|error| format!("failed to write run state ledger {}: {error}", path.display()))
+    std::fs::write(path, content).map_err(|error| {
+        format!(
+            "failed to write run state ledger {}: {error}",
+            path.display()
+        )
+    })
 }
 
 fn save_execution_report(report: &serde_json::Value) -> Result<(), String> {
@@ -1826,8 +1879,12 @@ fn save_execution_report(report: &serde_json::Value) -> Result<(), String> {
     }
     let content = serde_json::to_string_pretty(report)
         .map_err(|error| format!("failed to serialize execution report: {error}"))?;
-    std::fs::write(&path, content)
-        .map_err(|error| format!("failed to write execution report {}: {error}", path.display()))
+    std::fs::write(&path, content).map_err(|error| {
+        format!(
+            "failed to write execution report {}: {error}",
+            path.display()
+        )
+    })
 }
 
 const fn default_stage() -> IssueLifecycleStage {
@@ -1846,7 +1903,9 @@ fn print_help() {
     println!();
     println!("USAGE:");
     println!("    gunbc-sdlc intake --intent <path> [--dry-run]");
-    println!("    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]");
+    println!(
+        "    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]"
+    );
     println!(
         "    gunbc-sdlc issue --issue-id <value> [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]"
     );

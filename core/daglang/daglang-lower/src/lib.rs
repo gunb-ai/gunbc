@@ -3449,10 +3449,8 @@ fn derive_operation_spec(
 
 fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
     let endpoint = annotation_string_arg(&service.annotations, "endpoint").unwrap_or_default();
-    let (method, path_template) = annotation_rest_details(
-        &operation.annotations,
-        &service.annotations,
-    )?;
+    let (method, path_template) =
+        annotation_rest_details(&operation.annotations, &service.annotations)?;
 
     let input_fields = derive_input_fields(&operation.inputs, &path_template);
     let output_fields = derive_output_fields(&operation.outputs);
@@ -3470,14 +3468,8 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     })
 }
 
-fn derive_shell_spec(
-    service: &ServiceDef,
-    operation: &OperationDef,
-) -> Option<ShellOperationSpec> {
-    let argv_template = annotation_shell_argv(
-        &operation.annotations,
-        &service.annotations,
-    )?;
+fn derive_shell_spec(service: &ServiceDef, operation: &OperationDef) -> Option<ShellOperationSpec> {
+    let argv_template = annotation_shell_argv(&operation.annotations, &service.annotations)?;
 
     let input_fields = derive_input_fields_for_shell(&operation.inputs, &argv_template);
     let output_fields = derive_output_fields(&operation.outputs);

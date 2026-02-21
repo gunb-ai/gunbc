@@ -116,7 +116,6 @@ enum HandlerKind {
     FsEnv,
     RenderMakefile,
     Entrypoint,
-    InfraEntrypoint,
     ParamSource,
     LiteralSource,
     RenderPragmaClippyToml,
@@ -138,7 +137,6 @@ impl HandlerKind {
             Self::FsEnv => "FsEnv",
             Self::RenderMakefile => "RenderMakefile",
             Self::Entrypoint => "Entrypoint",
-            Self::InfraEntrypoint => "InfraEntrypoint",
             Self::ParamSource => "ParamSource",
             Self::LiteralSource => "LiteralSource",
             Self::RenderPragmaClippyToml => "RenderPragmaClippyToml",
@@ -278,12 +276,13 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     };
 
     match (module, name) {
-        ("tools.infra", "infra") => Some(HandlerKind::InfraEntrypoint),
-        ("pipelines.sdlc", _) => Some(HandlerKind::ParamSource),
-        ("tools.design", _) => Some(HandlerKind::ParamSource),
         ("shared.dag_util", _) => Some(HandlerKind::ParamSource),
         ("std.patterns", _) => Some(HandlerKind::ParamSource),
         ("std.resources", _) => Some(HandlerKind::ParamSource),
+        ("pipelines.ci", _) => Some(HandlerKind::ParamSource),
+        ("pipelines.sdlc", _) => Some(HandlerKind::ParamSource),
+        ("tools.infra", _) => Some(HandlerKind::ParamSource),
+        ("tools.design", _) => Some(HandlerKind::ParamSource),
         (module, _) if module.starts_with("services.") => Some(HandlerKind::ParamSource),
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
@@ -471,73 +470,6 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     OutputMap::new().bool("written", written).ok()
 "##
         }
-        HandlerKind::InfraEntrypoint => {
-            r##"    let environment = inputs.get("environment")
-        .and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `environment`"))?;
-    let runtime = inputs.get("runtime")
-        .and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `runtime`"))?;
-    let parse_csv_list = |raw: &str| -> Vec<String> {
-        raw.split(',')
-            .map(|value| value.trim())
-            .filter(|value| !value.is_empty())
-            .map(|value| value.to_string())
-            .collect()
-    };
-    let spec_targets = match inputs.get("spec_targets") {
-        Some(value) => value
-            .as_str_list()
-            .or_else(|| value.as_str().map(parse_csv_list))
-            .ok_or_else(|| ExecError::new("invalid input `spec_targets` (expected list or CSV string)"))?,
-        None => return Err(ExecError::new("missing required input `spec_targets`")),
-    };
-    let target = inputs
-        .get("target")
-        .and_then(|value| value.as_str_list().or_else(|| value.as_str().map(parse_csv_list)))
-        .unwrap_or_default();
-    let skip = inputs
-        .get("skip")
-        .and_then(|value| value.as_str_list().or_else(|| value.as_str().map(parse_csv_list)))
-        .unwrap_or_default();
-    let execute = match inputs.get("execute") {
-        Some(value) => value.as_bool().or_else(|| {
-            value.as_str().and_then(|raw| match raw.trim().to_ascii_lowercase().as_str() {
-                "true" | "1" => Some(true),
-                "false" | "0" => Some(false),
-                _ => None,
-            })
-        })
-        .ok_or_else(|| ExecError::new("invalid input `execute` (expected bool or true/false string)"))?,
-        None => return Err(ExecError::new("missing required input `execute`")),
-    };
-    let mut planned_targets = if target.is_empty() {
-        spec_targets.clone()
-    } else {
-        spec_targets
-            .iter()
-            .filter(|item| target.iter().any(|candidate| candidate == *item))
-            .cloned()
-            .collect::<Vec<_>>()
-    };
-    planned_targets.retain(|item| !skip.iter().any(|candidate| candidate == item));
-    let target_count = planned_targets.len() as i64;
-    let applied_count = if execute { target_count } else { 0 };
-    let mode = if execute { "apply" } else { "plan" };
-    let report = format!(
-        "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
-    );
-    OutputMap::new()
-        .str("environment", environment)
-        .str("runtime", runtime)
-        .str("mode", mode)
-        .str_list("planned_targets", planned_targets)
-        .int("target_count", target_count)
-        .int("applied_count", applied_count)
-        .str("report", report)
-        .ok()
-"##
-        }
         HandlerKind::ParamSource => {
             r##"    Ok(inputs)
 "##
@@ -623,21 +555,21 @@ fn handler_body(kind: HandlerKind) -> &'static str {
         HandlerKind::PrepareReadContent => {
             r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
     if path.is_empty() {
-        return OutputMap::new().value("request", Value::Skipped).ok();
+        return Err(ExecError::new("missing required `path` input for prepare_read_content"));
     }
     OutputMap::new().request("request", TransportRequest::File(FileRequest::read(path))).ok()
 "##
         }
         HandlerKind::ExecuteReadContent => {
             r##"    let Some(request) = inputs.get("request").and_then(Value::as_request) else {
-        return OutputMap::new().value("response", Value::Skipped).ok();
+        return Err(ExecError::new("missing required `request` input for execute_read_content"));
     };
     match request {
         TransportRequest::File(fr) => {
             let resp = execute_file_request(&fr);
             OutputMap::new().response("response", TransportResponse::File(resp)).ok()
         }
-        _ => OutputMap::new().value("response", Value::Skipped).ok(),
+        _ => Err(ExecError::new("unsupported transport request kind")),
     }
 "##
         }
@@ -645,13 +577,14 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
     let content = inputs.get("content").and_then(Value::as_str).unwrap_or("");
     if path.is_empty() || content.is_empty() {
-        return OutputMap::new().value("request", Value::Skipped).ok();
+        return Err(ExecError::new("missing required `path` or `content` input for prepare_write_content"));
     }
     OutputMap::new().request("request", TransportRequest::File(FileRequest::write(path, content))).ok()
 "##
         }
         HandlerKind::CompareContent => {
-            r##"    let expected = inputs.get("expected_content").and_then(Value::as_str).unwrap_or("");
+            r##"    let expected = inputs.get("expected_content").and_then(Value::as_str)
+        .ok_or_else(|| ExecError::new("missing required `expected_content` input for compare_content"))?;
     let actual = match inputs.get("response") {
         Some(Value::Response(TransportResponse::File(r))) if r.success => {
             r.content.clone().unwrap_or_default()
@@ -668,7 +601,7 @@ fn handler_body(kind: HandlerKind) -> &'static str {
         return OutputMap::new().value("response", Value::Skipped).ok();
     }
     let Some(request) = inputs.get("request").and_then(Value::as_request) else {
-        return OutputMap::new().value("response", Value::Skipped).ok();
+        return Err(ExecError::new("missing required `request` input for execute_transport"));
     };
     match request {
         TransportRequest::File(fr) => {
@@ -679,12 +612,13 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             }
             OutputMap::new().response("response", TransportResponse::File(resp)).ok()
         }
-        _ => OutputMap::new().value("response", Value::Skipped).ok(),
+        _ => Err(ExecError::new("unsupported transport request kind")),
     }
 "##
         }
         HandlerKind::Collection => {
-            r##"    let items = inputs.get("items").cloned().unwrap_or(Value::Skipped);
+            r##"    let items = inputs.get("items").cloned()
+        .ok_or_else(|| ExecError::new("missing required `items` input for collection"))?;
     OutputMap::new().value("items", items).ok()
 "##
         }
@@ -1785,38 +1719,6 @@ mod tests {
         assert_eq!(
             classify_handler(&service_prepare),
             Some(HandlerKind::ParamSource)
-        );
-    }
-
-    #[test]
-    fn emit_exec_runtime_uses_skipped_fallbacks_for_missing_transport_inputs() {
-        let mut dag = Dag::new();
-        dag.add_node(Node::opaque(
-            "prepare_read_node",
-            vec![Port::scalar("path", "String")],
-            vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Primitive {
-                module: "std.patterns".into(),
-                name: "content_upsert::prepare_read".into(),
-                kind: PrimitiveOpKind::IoPrepareFileRead,
-            },
-        ));
-        dag.add_node(Node::opaque(
-            "execute_read_node",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Primitive {
-                module: "std.patterns".into(),
-                name: "content_upsert::execute_read".into(),
-                kind: PrimitiveOpKind::IoExecuteFileRead,
-            },
-        ));
-
-        let files = emit_exec_runtime(&dag, "pipelines.sdlc").expect("emit should succeed");
-        let main_rs = &files[0].content;
-        assert!(
-            main_rs.contains("Value::Skipped"),
-            "generated runtime should emit skipped fallbacks for missing transport inputs"
         );
     }
 }

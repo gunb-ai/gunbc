@@ -1,4 +1,4 @@
-//! daglang CLI: dag viz, dag expand, dag progress-manifest, dag modules.
+//! daglang CLI: dag viz, dag expand, dag progress, dag modules.
 //!
 //! The development tool for the DSL compiler. Provides visualization
 //! and introspection commands that make every subsequent phase
@@ -8,8 +8,7 @@
 //!
 //! - `daglang viz <file.dag> [--format ascii|mermaid]`: DAG visualization from compiled IR
 //! - `daglang expand <file.dag> [--emit-collection-nodes]`: Show lowered GraphIR (nodes, edges, ports)
-//! - `daglang progress-manifest <file.dag> [--format text|json] [--emit-collection-nodes]`: Show derived ProgressManifest
-//! - `daglang manifest <file.dag> ...`: Backward-compatible alias for `progress-manifest`
+//! - `daglang progress <file.dag> [--format text|json] [--emit-collection-nodes]`: Show progress metrics
 //! - `daglang obligations <file.dag> [--format text|json]`: Show derived test obligations summary
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
@@ -59,11 +58,9 @@ fn main() {
         eprintln!("  expand <file.dag> [--emit-collection-nodes]");
         eprintln!("                      Show lowered GraphIR (nodes/edges/ports)");
         eprintln!(
-            "  progress-manifest <file.dag> [--format text|json] [--emit-collection-nodes]"
+            "  progress <file.dag> [--format text|json] [--emit-collection-nodes]"
         );
-        eprintln!("                      Show derived ProgressManifest");
-        eprintln!("  manifest <file.dag> [--format text|json] [--emit-collection-nodes]");
-        eprintln!("                      Alias for progress-manifest");
+        eprintln!("                      Show progress metrics");
         eprintln!("  obligations <file.dag> [--format text|json]");
         eprintln!("                      Show derived test obligations summary");
         eprintln!("  show-triplets <file.dag> [--format text|json]");
@@ -284,7 +281,7 @@ struct ManifestCommandArgs {
     emit_collection_nodes: bool,
 }
 
-fn parse_compile_command_args(
+pub(crate) fn parse_compile_command_args(
     command: &str,
     args: &[String],
     usage: &str,
@@ -452,14 +449,14 @@ fn parse_codegen_layer(value: &str) -> Option<CodegenLayer> {
     }
 }
 
-fn parse_manifest_command_args(
+pub(crate) fn parse_progress_command_args(
     command: &str,
     args: &[String],
 ) -> Result<ManifestCommandArgs, String> {
     let usage = format!("{command} <file.dag> [--format text|json] [--emit-collection-nodes]");
     if args.is_empty() || args.get(1).map(String::as_str) != Some(command) {
         return Err(format!(
-            "internal error: parse_manifest_command_args expects full `daglang {command} ...` argv"
+            "internal error: parse_progress_command_args expects full `daglang {command} ...` argv"
         ));
     }
     let Some(input) = args.get(2).cloned() else {
@@ -507,7 +504,7 @@ fn parse_manifest_command_args(
     })
 }
 
-fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
+pub(crate) fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
     if args.is_empty() || args.get(1).map(String::as_str) != Some("viz") {
         return Err(
             "internal error: parse_viz_args expects full `daglang viz ...` argv".to_string(),
@@ -555,7 +552,7 @@ fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
     Ok((target, format))
 }
 
-fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat), String> {
+pub(crate) fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat), String> {
     if args.is_empty() || args.get(1).map(String::as_str) != Some("modules") {
         return Err(
             "internal error: parse_modules_args expects full `daglang modules ...` argv"
@@ -596,7 +593,7 @@ fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat),
     Ok((root_arg, format))
 }
 
-fn render_modules_result_json(result: &PipelineResult) -> String {
+pub(crate) fn render_modules_result_json(result: &PipelineResult) -> String {
     let diagnostics = result
         .diagnostics()
         .iter()
@@ -686,7 +683,7 @@ fn diagnostic_kind_label(kind: &DiagnosticKind) -> &'static str {
     }
 }
 
-fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, String> {
+pub(crate) fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, String> {
     if args.len() == 3 {
         return Ok(OutputFormat::Text);
     }
@@ -700,7 +697,7 @@ fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, S
     }
 }
 
-fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
+pub(crate) fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     if args.is_empty() || args.get(1).map(String::as_str) != Some("run") {
         return Err(
             "internal error: parse_run_args expects full `daglang run ...` argv".to_string(),
@@ -792,7 +789,7 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     })
 }
 
-fn exit_usage(command: &str) -> ! {
+pub(crate) fn exit_usage(command: &str) -> ! {
     eprintln!("Usage: daglang {command}");
     std::process::exit(1);
 }
@@ -1449,43 +1446,43 @@ mod tests {
     }
 
     #[test]
-    fn parse_manifest_command_args_accepts_format_and_collection_flag() {
+    fn parse_progress_command_args_accepts_format_and_collection_flag() {
         let args = vec![
             "daglang".to_string(),
-            "manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
             "--emit-collection-nodes".to_string(),
             "--format".to_string(),
             "json".to_string(),
         ];
         let parsed =
-            super::parse_manifest_command_args("manifest", &args).expect("manifest args should parse");
+            super::parse_progress_command_args("progress", &args).expect("progress args should parse");
         assert_eq!(parsed.input, "dsl/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Json));
         assert!(parsed.emit_collection_nodes);
     }
 
     #[test]
-    fn parse_manifest_command_args_accepts_progress_manifest_alias() {
+    fn parse_progress_command_args_parses_correctly() {
         let args = vec![
             "daglang".to_string(),
-            "progress-manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
         ];
-        let parsed = super::parse_manifest_command_args("progress-manifest", &args)
-            .expect("progress-manifest args should parse");
+        let parsed = super::parse_progress_command_args("progress", &args)
+            .expect("progress args should parse");
         assert_eq!(parsed.input, "dsl/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Text));
     }
 
     #[test]
-    fn parse_manifest_command_args_rejects_invalid_shapes() {
+    fn parse_progress_command_args_rejects_invalid_shapes() {
         let usage =
-            "manifest <file.dag> [--format text|json] [--emit-collection-nodes]".to_string();
-        let missing_input = vec!["daglang".to_string(), "manifest".to_string()];
+            "progress <file.dag> [--format text|json] [--emit-collection-nodes]".to_string();
+        let missing_input = vec!["daglang".to_string(), "progress".to_string()];
         let duplicate_format = vec![
             "daglang".to_string(),
-            "manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
             "--format".to_string(),
             "text".to_string(),
@@ -1494,31 +1491,31 @@ mod tests {
         ];
         let duplicate_collection_flag = vec![
             "daglang".to_string(),
-            "manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
             "--emit-collection-nodes".to_string(),
             "--emit-collection-nodes".to_string(),
         ];
         let unknown_flag = vec![
             "daglang".to_string(),
-            "manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
             "--collection".to_string(),
         ];
         assert_eq!(
-            super::parse_manifest_command_args("manifest", &missing_input),
+            super::parse_progress_command_args("progress", &missing_input),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args("manifest", &duplicate_format),
+            super::parse_progress_command_args("progress", &duplicate_format),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args("manifest", &duplicate_collection_flag),
+            super::parse_progress_command_args("progress", &duplicate_collection_flag),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args("manifest", &unknown_flag),
+            super::parse_progress_command_args("progress", &unknown_flag),
             Err(usage)
         );
     }

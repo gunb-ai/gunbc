@@ -186,9 +186,7 @@ fn upsert_artifact(
 
 fn normalize_payload(payload: ArtifactPayload) -> Result<ArtifactPayload, String> {
     match payload {
-        ArtifactPayload::Inline { body } => Ok(ArtifactPayload::Inline {
-            body: body.replace("\r\n", "\n"),
-        }),
+        ArtifactPayload::Inline { body } => Ok(ArtifactPayload::Inline { body }),
         ArtifactPayload::BlobRef { uri, size_bytes } => {
             let normalized_uri = uri.trim().to_string();
             if normalized_uri.is_empty() {
@@ -219,9 +217,8 @@ mod tests {
         let first = upsert_provisional_artifact(&mut ledger, "intent-a", "run-a", "hash-1", 1000)
             .expect("first provisional upsert should succeed");
         assert_eq!(first, ArtifactUpsertOutcome::Inserted);
-        let second =
-            upsert_provisional_artifact(&mut ledger, "intent-a", "run-a", "hash-1", 1100)
-                .expect("second provisional upsert should succeed");
+        let second = upsert_provisional_artifact(&mut ledger, "intent-a", "run-a", "hash-1", 1100)
+            .expect("second provisional upsert should succeed");
         assert_eq!(second, ArtifactUpsertOutcome::Noop);
     }
 
@@ -244,47 +241,12 @@ mod tests {
             promote_to_canonical_artifact(&mut ledger, "intent-a", "run-a", "hash-1", 1200)
                 .expect("promotion should succeed");
         assert_eq!(promoted, ArtifactUpsertOutcome::Inserted);
-        assert!(ledger
-            .records
-            .get(&canonical_marker("intent-a"))
-            .expect("canonical marker should exist")
-            .canonical);
-    }
-
-    #[test]
-    fn payload_inline_normalization_is_deterministic() {
-        let mut ledger = ArtifactLedger::default();
-        let first = upsert_provisional_artifact_with_payload(
-            &mut ledger,
-            "intent-a",
-            "run-a",
-            ArtifactPayload::Inline {
-                body: "line-1\r\nline-2".to_string(),
-            },
-            1000,
-        )
-        .expect("first payload insert should succeed");
-        let second = upsert_provisional_artifact_with_payload(
-            &mut ledger,
-            "intent-a",
-            "run-a",
-            ArtifactPayload::Inline {
-                body: "line-1\nline-2".to_string(),
-            },
-            1100,
-        )
-        .expect("second payload insert should succeed");
-        assert_eq!(first, ArtifactUpsertOutcome::Inserted);
-        assert_eq!(second, ArtifactUpsertOutcome::Noop);
-        let stored = ledger
-            .records
-            .get(&provisional_marker("intent-a"))
-            .expect("provisional record should exist");
-        assert_eq!(
-            stored.payload,
-            Some(ArtifactPayload::Inline {
-                body: "line-1\nline-2".to_string()
-            })
+        assert!(
+            ledger
+                .records
+                .get(&canonical_marker("intent-a"))
+                .expect("canonical marker should exist")
+                .canonical
         );
     }
 

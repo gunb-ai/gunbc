@@ -1,4 +1,6 @@
 use std::path::{Path, PathBuf};
+mod common;
+use common::fixture::CliTestContext;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -190,7 +192,8 @@ fn ensure_git_repo_with_commit(root: &Path) {
 
 #[test]
 fn intake_dry_run_computes_run_key_without_writing_ledger() {
-    let root = unique_temp_dir("dry_run");
+    let ctx = CliTestContext::new("dry_run", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -200,7 +203,7 @@ fn intake_dry_run_computes_run_key_without_writing_ledger() {
         None,
     );
 
-    let output = Command::new(sdlc_bin())
+    let output = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -239,7 +242,8 @@ fn intake_dry_run_computes_run_key_without_writing_ledger() {
 
 #[test]
 fn intake_real_mode_fails_closed_without_git_trace_context() {
-    let root = unique_temp_dir("missing_git_trace");
+    let ctx = CliTestContext::new("missing_git_trace", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file_without_git(
@@ -249,7 +253,7 @@ fn intake_real_mode_fails_closed_without_git_trace_context() {
         None,
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -271,7 +275,8 @@ fn intake_real_mode_fails_closed_without_git_trace_context() {
 
 #[test]
 fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
-    let root = unique_temp_dir("invalid_infra_preflight");
+    let ctx = CliTestContext::new("invalid_infra_preflight", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -282,7 +287,7 @@ fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
     );
     write_infra_intent_template(&root, false);
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -295,7 +300,7 @@ fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -315,7 +320,8 @@ fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
 
 #[test]
 fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
-    let root = unique_temp_dir("invalid_infra_schema_version");
+    let ctx = CliTestContext::new("invalid_infra_schema_version", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -330,7 +336,7 @@ fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
     let invalid_schema = infra_content.replace("schema_version: \"1\"", "schema_version: \"2\"");
     std::fs::write(&infra_path, invalid_schema).expect("write invalid infra schema");
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -343,7 +349,7 @@ fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -363,7 +369,8 @@ fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
 
 #[test]
 fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token() {
-    let root = unique_temp_dir("invalid_infra_required_refs");
+    let ctx = CliTestContext::new("invalid_infra_required_refs", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -378,7 +385,7 @@ fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token
     let invalid_refs = infra_content.replace("- \"github-token\"\n", "");
     std::fs::write(&infra_path, invalid_refs).expect("write invalid required refs");
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -391,7 +398,7 @@ fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -411,10 +418,11 @@ fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token
 
 #[test]
 fn drain_command_toggles_worker_drain_flag() {
-    let root = unique_temp_dir("drain_toggle");
+    let ctx = CliTestContext::new("drain_toggle", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
 
-    let activate = Command::new(sdlc_bin())
+    let activate = ctx.command()
         .arg("drain")
         .arg("--activate")
         .current_dir(&root)
@@ -434,7 +442,7 @@ fn drain_command_toggles_worker_drain_flag() {
         "drain flag file should exist after activation"
     );
 
-    let deactivate = Command::new(sdlc_bin())
+    let deactivate = ctx.command()
         .arg("drain")
         .arg("--deactivate")
         .current_dir(&root)
@@ -458,7 +466,8 @@ fn drain_command_toggles_worker_drain_flag() {
 
 #[test]
 fn worker_real_mode_honors_drain_flag_and_skips_processing() {
-    let root = unique_temp_dir("worker_drain_active");
+    let ctx = CliTestContext::new("worker_drain_active", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -468,7 +477,7 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
         Some(8080),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -481,7 +490,7 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let activate = Command::new(sdlc_bin())
+    let activate = ctx.command()
         .arg("drain")
         .arg("--activate")
         .current_dir(&root)
@@ -493,7 +502,7 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
         String::from_utf8_lossy(&activate.stderr)
     );
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -515,7 +524,8 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
 
 #[test]
 fn worker_real_mode_supports_local_co_located_profile_preflight() {
-    let root = unique_temp_dir("worker_local_co_located_profile");
+    let ctx = CliTestContext::new("worker_local_co_located_profile", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -563,7 +573,7 @@ notes: "local co-located profile fixture"
     std::fs::write(&local_profile_intent_path, local_profile_intent)
         .expect("write local profile infra intent fixture");
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -576,7 +586,7 @@ notes: "local co-located profile fixture"
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .arg("--infra-intent")
         .arg(&local_profile_intent_path)
@@ -598,7 +608,8 @@ notes: "local co-located profile fixture"
 
 #[test]
 fn worker_respects_launch_worker_capacity_from_infra_intent() {
-    let root = unique_temp_dir("worker_launch_capacity");
+    let ctx = CliTestContext::new("worker_launch_capacity", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_a = root.join("intent_a.yaml");
     let intent_b = root.join("intent_b.yaml");
@@ -616,7 +627,7 @@ fn worker_respects_launch_worker_capacity_from_infra_intent() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = Command::new(sdlc_bin())
+        let intake = ctx.command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -668,7 +679,7 @@ notes: "capacity constrained local profile fixture"
     std::fs::write(&constrained_intent_path, constrained_intent)
         .expect("write constrained infra intent fixture");
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .arg("--infra-intent")
         .arg(&constrained_intent_path)
@@ -695,7 +706,8 @@ notes: "capacity constrained local profile fixture"
 
 #[test]
 fn issue_command_filters_worker_scope_by_issue_id() {
-    let root = unique_temp_dir("issue_scope_filter");
+    let ctx = CliTestContext::new("issue_scope_filter", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_a = root.join("intent_a.yaml");
     let intent_b = root.join("intent_b.yaml");
@@ -713,7 +725,7 @@ fn issue_command_filters_worker_scope_by_issue_id() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = Command::new(sdlc_bin())
+        let intake = ctx.command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -727,7 +739,7 @@ fn issue_command_filters_worker_scope_by_issue_id() {
         );
     }
 
-    let issue = Command::new(sdlc_bin())
+    let issue = ctx.command()
         .arg("issue")
         .arg("--issue-id")
         .arg("5001")
@@ -757,7 +769,8 @@ fn issue_command_filters_worker_scope_by_issue_id() {
 
 #[test]
 fn issue_command_reports_unbound_issue_when_issue_id_not_found() {
-    let root = unique_temp_dir("issue_not_found");
+    let ctx = CliTestContext::new("issue_not_found", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -767,7 +780,7 @@ fn issue_command_reports_unbound_issue_when_issue_id_not_found() {
         Some(7007),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -780,7 +793,7 @@ fn issue_command_reports_unbound_issue_when_issue_id_not_found() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let issue = Command::new(sdlc_bin())
+    let issue = ctx.command()
         .arg("issue")
         .arg("--issue-id")
         .arg("7999")
@@ -817,7 +830,8 @@ fn issue_command_reports_unbound_issue_when_issue_id_not_found() {
 
 #[test]
 fn issue_command_real_mode_persists_execution_report() {
-    let root = unique_temp_dir("issue_execution_report");
+    let ctx = CliTestContext::new("issue_execution_report", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -827,7 +841,7 @@ fn issue_command_real_mode_persists_execution_report() {
         Some(7331),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -840,7 +854,7 @@ fn issue_command_real_mode_persists_execution_report() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let issue = Command::new(sdlc_bin())
+    let issue = ctx.command()
         .arg("issue")
         .arg("--issue-id")
         .arg("7331")
@@ -870,7 +884,8 @@ fn issue_command_real_mode_persists_execution_report() {
 
 #[test]
 fn legacy_issue_flag_alias_routes_to_issue_command() {
-    let root = unique_temp_dir("legacy_issue_alias");
+    let ctx = CliTestContext::new("legacy_issue_alias", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -880,7 +895,7 @@ fn legacy_issue_flag_alias_routes_to_issue_command() {
         Some(6420),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -893,7 +908,7 @@ fn legacy_issue_flag_alias_routes_to_issue_command() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let issue = Command::new(sdlc_bin())
+    let issue = ctx.command()
         .arg("--issue")
         .arg("6420")
         .arg("--dry-run")
@@ -915,7 +930,8 @@ fn legacy_issue_flag_alias_routes_to_issue_command() {
 
 #[test]
 fn legacy_issue_equals_alias_routes_to_issue_command() {
-    let root = unique_temp_dir("legacy_issue_equals_alias");
+    let ctx = CliTestContext::new("legacy_issue_equals_alias", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -925,7 +941,7 @@ fn legacy_issue_equals_alias_routes_to_issue_command() {
         Some(6421),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -938,7 +954,7 @@ fn legacy_issue_equals_alias_routes_to_issue_command() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let issue = Command::new(sdlc_bin())
+    let issue = ctx.command()
         .arg("--issue=6421")
         .arg("--dry-run")
         .current_dir(&root)
@@ -959,7 +975,8 @@ fn legacy_issue_equals_alias_routes_to_issue_command() {
 
 #[test]
 fn intake_real_mode_is_idempotent_for_same_intake_key() {
-    let root = unique_temp_dir("idempotent");
+    let ctx = CliTestContext::new("idempotent", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -969,7 +986,7 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         None,
     );
 
-    let first = Command::new(sdlc_bin())
+    let first = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -997,7 +1014,7 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         "trace linkage key should include run-key metadata"
     );
 
-    let second = Command::new(sdlc_bin())
+    let second = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1052,14 +1069,15 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
 
 #[test]
 fn intake_conflict_fails_closed_for_reused_intake_key() {
-    let root = unique_temp_dir("conflict");
+    let ctx = CliTestContext::new("conflict", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_a = root.join("intent_a.yaml");
     let intent_b = root.join("intent_b.yaml");
     write_intent_file(&intent_a, "intent-20260221-a", "intent-20260221-a", None);
     write_intent_file(&intent_b, "intent-20260221-b", "intent-20260221-a", None);
 
-    let first = Command::new(sdlc_bin())
+    let first = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_a)
@@ -1072,7 +1090,7 @@ fn intake_conflict_fails_closed_for_reused_intake_key() {
         String::from_utf8_lossy(&first.stderr)
     );
 
-    let conflict = Command::new(sdlc_bin())
+    let conflict = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_b)
@@ -1094,7 +1112,8 @@ fn intake_conflict_fails_closed_for_reused_intake_key() {
 
 #[test]
 fn worker_dry_run_reports_pending_intake_keys() {
-    let root = unique_temp_dir("worker");
+    let ctx = CliTestContext::new("worker", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -1104,7 +1123,7 @@ fn worker_dry_run_reports_pending_intake_keys() {
         None,
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1117,7 +1136,7 @@ fn worker_dry_run_reports_pending_intake_keys() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .arg("--dry-run")
         .current_dir(&root)
@@ -1157,7 +1176,8 @@ fn worker_dry_run_reports_pending_intake_keys() {
 
 #[test]
 fn worker_real_mode_persists_retry_state_on_claim_conflict() {
-    let root = unique_temp_dir("worker_conflict_retry");
+    let ctx = CliTestContext::new("worker_conflict_retry", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_a = root.join("intent_a.yaml");
     let intent_b = root.join("intent_b.yaml");
@@ -1175,7 +1195,7 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = Command::new(sdlc_bin())
+        let intake = ctx.command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -1189,7 +1209,7 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
         );
     }
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1220,7 +1240,8 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
 
 #[test]
 fn worker_respects_retry_backoff_and_defers_claim_attempts() {
-    let root = unique_temp_dir("worker_retry_backoff");
+    let ctx = CliTestContext::new("worker_retry_backoff", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_a = root.join("intent_a.yaml");
     let intent_b = root.join("intent_b.yaml");
@@ -1238,7 +1259,7 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = Command::new(sdlc_bin())
+        let intake = ctx.command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -1252,7 +1273,7 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
         );
     }
 
-    let first_worker = Command::new(sdlc_bin())
+    let first_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1269,7 +1290,7 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
         "intent-20260221-backoff-b"
     );
 
-    let second_worker = Command::new(sdlc_bin())
+    let second_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1315,7 +1336,8 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
 
 #[test]
 fn worker_real_mode_persists_execution_report_with_metrics() {
-    let root = unique_temp_dir("worker_execution_report");
+    let ctx = CliTestContext::new("worker_execution_report", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -1325,7 +1347,7 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
         Some(6767),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1338,7 +1360,7 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1389,7 +1411,8 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
 
 #[test]
 fn worker_terminalizes_after_retry_budget_exhaustion() {
-    let root = unique_temp_dir("worker_terminalize");
+    let ctx = CliTestContext::new("worker_terminalize", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_a = root.join("intent_a.yaml");
     let intent_b = root.join("intent_b.yaml");
@@ -1407,7 +1430,7 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = Command::new(sdlc_bin())
+        let intake = ctx.command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -1423,7 +1446,7 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
 
     let mut final_payload = serde_json::Value::Null;
     for _ in 0..3 {
-        let worker = Command::new(sdlc_bin())
+        let worker = ctx.command()
             .arg("worker")
             .current_dir(&root)
             .output()
@@ -1475,7 +1498,8 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
 
 #[test]
 fn await_approval_releases_claim_on_next_worker_pass() {
-    let root = unique_temp_dir("await_approval_release");
+    let ctx = CliTestContext::new("await_approval_release", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -1485,7 +1509,7 @@ fn await_approval_releases_claim_on_next_worker_pass() {
         Some(9001),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1498,7 +1522,7 @@ fn await_approval_releases_claim_on_next_worker_pass() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = Command::new(sdlc_bin())
+    let first_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1509,7 +1533,7 @@ fn await_approval_releases_claim_on_next_worker_pass() {
         String::from_utf8_lossy(&first_worker.stderr)
     );
 
-    let await_approval = Command::new(sdlc_bin())
+    let await_approval = ctx.command()
         .arg("await-approval")
         .arg("--intake-key")
         .arg("intent-20260221-await-approval")
@@ -1522,7 +1546,7 @@ fn await_approval_releases_claim_on_next_worker_pass() {
         String::from_utf8_lossy(&await_approval.stderr)
     );
 
-    let second_worker = Command::new(sdlc_bin())
+    let second_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1563,7 +1587,8 @@ fn await_approval_releases_claim_on_next_worker_pass() {
 
 #[test]
 fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
-    let root = unique_temp_dir("worker_pending_exit_code");
+    let ctx = CliTestContext::new("worker_pending_exit_code", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -1573,7 +1598,7 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
         Some(4040),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1586,7 +1611,7 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = Command::new(sdlc_bin())
+    let first_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1597,7 +1622,7 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
         String::from_utf8_lossy(&first_worker.stderr)
     );
 
-    let await_approval = Command::new(sdlc_bin())
+    let await_approval = ctx.command()
         .arg("await-approval")
         .arg("--intake-key")
         .arg("intent-20260221-pending-exit")
@@ -1610,7 +1635,7 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
         String::from_utf8_lossy(&await_approval.stderr)
     );
 
-    let pending_worker = Command::new(sdlc_bin())
+    let pending_worker = ctx.command()
         .arg("worker")
         .arg("--emit-pending-exit-code")
         .current_dir(&root)
@@ -1633,7 +1658,8 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
 
 #[test]
 fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
-    let root = unique_temp_dir("issue_pending_exit_code");
+    let ctx = CliTestContext::new("issue_pending_exit_code", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -1643,7 +1669,7 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
         Some(5050),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1656,7 +1682,7 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = Command::new(sdlc_bin())
+    let first_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1667,7 +1693,7 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
         String::from_utf8_lossy(&first_worker.stderr)
     );
 
-    let await_approval = Command::new(sdlc_bin())
+    let await_approval = ctx.command()
         .arg("await-approval")
         .arg("--intake-key")
         .arg("intent-20260221-issue-pending-exit")
@@ -1680,7 +1706,7 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
         String::from_utf8_lossy(&await_approval.stderr)
     );
 
-    let pending_issue = Command::new(sdlc_bin())
+    let pending_issue = ctx.command()
         .arg("issue")
         .arg("--issue-id")
         .arg("5050")
@@ -1707,7 +1733,8 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
 
 #[test]
 fn transition_enforces_stage_ordering_fail_closed() {
-    let root = unique_temp_dir("transition_order");
+    let ctx = CliTestContext::new("transition_order", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -1717,7 +1744,7 @@ fn transition_enforces_stage_ordering_fail_closed() {
         Some(51),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1730,7 +1757,7 @@ fn transition_enforces_stage_ordering_fail_closed() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let to_design = Command::new(sdlc_bin())
+    let to_design = ctx.command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-transition")
@@ -1748,7 +1775,7 @@ fn transition_enforces_stage_ordering_fail_closed() {
         serde_json::from_slice(&to_design.stdout).expect("transition output should be JSON");
     assert_eq!(to_design_payload["stage_labels_after_cas"][0], "design");
 
-    let invalid = Command::new(sdlc_bin())
+    let invalid = ctx.command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-transition")
@@ -1772,7 +1799,8 @@ fn transition_enforces_stage_ordering_fail_closed() {
 
 #[test]
 fn worker_replay_skips_completed_run_key() {
-    let root = unique_temp_dir("worker_replay_skip");
+    let ctx = CliTestContext::new("worker_replay_skip", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -1782,7 +1810,7 @@ fn worker_replay_skips_completed_run_key() {
         Some(1337),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1795,7 +1823,7 @@ fn worker_replay_skips_completed_run_key() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = Command::new(sdlc_bin())
+    let first_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1809,7 +1837,7 @@ fn worker_replay_skips_completed_run_key() {
         serde_json::from_slice(&first_worker.stdout).expect("first worker output should be JSON");
     assert_eq!(first_payload["executed_runs"][0], "intent-20260221-replay");
 
-    let second_worker = Command::new(sdlc_bin())
+    let second_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1844,7 +1872,8 @@ fn worker_replay_skips_completed_run_key() {
 
 #[test]
 fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
-    let root = unique_temp_dir("worker_heartbeat_claim");
+    let ctx = CliTestContext::new("worker_heartbeat_claim", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -1854,7 +1883,7 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         Some(9090),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1867,7 +1896,7 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = Command::new(sdlc_bin())
+    let first_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1898,7 +1927,7 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         .as_u64()
         .expect("first lease expiry should be numeric");
 
-    let second_worker = Command::new(sdlc_bin())
+    let second_worker = ctx.command()
         .arg("worker")
         .current_dir(&root)
         .output()
@@ -1930,7 +1959,8 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
 
 #[test]
 fn worker_replay_skips_when_canonical_artifact_already_exists() {
-    let root = unique_temp_dir("worker_canonical_replay_skip");
+    let ctx = CliTestContext::new("worker_canonical_replay_skip", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
 
     let intent_path = root.join("intent.yaml");
@@ -1941,7 +1971,7 @@ fn worker_replay_skips_when_canonical_artifact_already_exists() {
         Some(6601),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1972,7 +2002,7 @@ fn worker_replay_skips_when_canonical_artifact_already_exists() {
     )
     .expect("write artifact ledger with canonical marker");
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .arg("--dry-run")
         .current_dir(&root)
@@ -2007,7 +2037,8 @@ fn worker_replay_skips_when_canonical_artifact_already_exists() {
 
 #[test]
 fn worker_metrics_include_stage_specific_llm_cost_units() {
-    let root = unique_temp_dir("worker_llm_cost_units");
+    let ctx = CliTestContext::new("worker_llm_cost_units", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -2017,7 +2048,7 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
         Some(7711),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -2030,7 +2061,7 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let transition = Command::new(sdlc_bin())
+    let transition = ctx.command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-llm-cost")
@@ -2045,7 +2076,7 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
         String::from_utf8_lossy(&transition.stderr)
     );
 
-    let worker = Command::new(sdlc_bin())
+    let worker = ctx.command()
         .arg("worker")
         .arg("--dry-run")
         .current_dir(&root)
@@ -2074,7 +2105,8 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
 
 #[test]
 fn transition_to_accepted_promotes_canonical_artifact() {
-    let root = unique_temp_dir("transition_promote_canonical");
+    let ctx = CliTestContext::new("transition_promote_canonical", sdlc_bin());
+    let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
     write_intent_file(
@@ -2084,7 +2116,7 @@ fn transition_to_accepted_promotes_canonical_artifact() {
         Some(31337),
     );
 
-    let intake = Command::new(sdlc_bin())
+    let intake = ctx.command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -2098,7 +2130,7 @@ fn transition_to_accepted_promotes_canonical_artifact() {
     );
 
     for stage in ["design", "design-review"] {
-        let transition = Command::new(sdlc_bin())
+        let transition = ctx.command()
             .arg("transition")
             .arg("--intake-key")
             .arg("intent-20260221-canonical")
@@ -2114,7 +2146,7 @@ fn transition_to_accepted_promotes_canonical_artifact() {
         );
     }
 
-    let accepted = Command::new(sdlc_bin())
+    let accepted = ctx.command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-canonical")

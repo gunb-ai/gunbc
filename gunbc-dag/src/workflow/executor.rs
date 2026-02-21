@@ -14,8 +14,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use gunbc_ir::{NodeId, PortName, Value};
 
@@ -179,7 +179,10 @@ pub fn execute_workflow_plan(
                 let (success, pending_approval) = match execution_outcome {
                     CommandExecutionOutcome::Success => {
                         persist_executed_entry(workspace_root, node_plan, true, duration_ms);
-                        emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
+                        emit_unit_status(
+                            &node_plan.node_id,
+                            UnitStatus::Executed { success: true },
+                        );
                         (true, false)
                     }
                     CommandExecutionOutcome::PendingApproval => {
@@ -193,7 +196,10 @@ pub fn execute_workflow_plan(
                         failed += 1;
                         has_failure = true;
                         persist_executed_entry(workspace_root, node_plan, false, duration_ms);
-                        emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: false });
+                        emit_unit_status(
+                            &node_plan.node_id,
+                            UnitStatus::Executed { success: false },
+                        );
                         (false, false)
                     }
                 };
@@ -593,7 +599,11 @@ mod tests {
         let mut commands = BTreeMap::new();
         commands.insert(
             NodeId::from("approve"),
-            UnitCommand::new("await approval", "bash", vec!["-lc".into(), "exit 42".into()]),
+            UnitCommand::new(
+                "await approval",
+                "bash",
+                vec!["-lc".into(), "exit 42".into()],
+            ),
         );
 
         let root = std::env::temp_dir().join(format!(

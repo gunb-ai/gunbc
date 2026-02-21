@@ -141,7 +141,10 @@ mod tests {
         let _ = try_acquire_claim(&mut ledger, &key, "worker-a", 1000, 100);
         assert!(heartbeat_claim(&mut ledger, &key, "worker-a", 1080, 250));
         assert_eq!(
-            ledger.claims.get(&key).map(|record| record.lease_expires_at_epoch_ms),
+            ledger
+                .claims
+                .get(&key)
+                .map(|record| record.lease_expires_at_epoch_ms),
             Some(1330)
         );
         assert!(!heartbeat_claim(&mut ledger, &key, "worker-b", 1100, 250));

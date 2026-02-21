@@ -45,7 +45,7 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 cargo_metadata = "0.18"
 toml_edit = "0.22"
-serde_yaml = "0.9.34"
+serde_yml = "0.0.12"
 
 [dev-dependencies]
 gunbc-test = { path = "../core/test" }

@@ -61,12 +61,14 @@ pub struct GitHubIssueRecord {
     pub labels: Vec<String>,
 }
 
-/// Required issue-transport capabilities for SDLC real-mode execution.
+/// Required issue-transport capabilities for SDLC real-mode execution (IM12).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SdlcIssueCapabilities {
     pub issue_read: bool,
     pub issue_comment_upsert: bool,
     pub issue_label_compare_and_set: bool,
+    pub managed_issue_search: bool,
+    pub deterministic_issue_identity: bool,
 }
 
 impl SdlcIssueCapabilities {
@@ -76,6 +78,19 @@ impl SdlcIssueCapabilities {
             issue_read: true,
             issue_comment_upsert: true,
             issue_label_compare_and_set: true,
+            managed_issue_search: true,
+            deterministic_issue_identity: true,
+        }
+    }
+
+    /// Stub capabilities where nothing is available.
+    pub const fn none() -> Self {
+        Self {
+            issue_read: false,
+            issue_comment_upsert: false,
+            issue_label_compare_and_set: false,
+            managed_issue_search: false,
+            deterministic_issue_identity: false,
         }
     }
 }
@@ -100,27 +115,31 @@ pub fn map_github_issue(record: GitHubIssueRecord) -> TrackedIssue {
 /// Resolve lifecycle stage from issue labels. Returns `None` when no stage
 /// label is present.
 pub fn stage_from_labels(labels: &[String]) -> Option<IssueLifecycleStage> {
+    let mut stages = Vec::new();
     let has = |label: &'static str| labels.iter().any(|candidate| candidate == label);
-    // Most advanced stage wins to avoid ambiguity when stale labels linger.
-    if has(IssueLifecycleStage::Closed.as_label()) {
-        return Some(IssueLifecycleStage::Closed);
-    }
-    if has(IssueLifecycleStage::Implementation.as_label()) {
-        return Some(IssueLifecycleStage::Implementation);
-    }
-    if has(IssueLifecycleStage::Accepted.as_label()) {
-        return Some(IssueLifecycleStage::Accepted);
-    }
-    if has(IssueLifecycleStage::DesignReview.as_label()) {
-        return Some(IssueLifecycleStage::DesignReview);
+    if has(IssueLifecycleStage::Idea.as_label()) {
+        stages.push(IssueLifecycleStage::Idea);
     }
     if has(IssueLifecycleStage::Design.as_label()) {
-        return Some(IssueLifecycleStage::Design);
+        stages.push(IssueLifecycleStage::Design);
     }
-    if has(IssueLifecycleStage::Idea.as_label()) {
-        return Some(IssueLifecycleStage::Idea);
+    if has(IssueLifecycleStage::DesignReview.as_label()) {
+        stages.push(IssueLifecycleStage::DesignReview);
     }
-    None
+    if has(IssueLifecycleStage::Accepted.as_label()) {
+        stages.push(IssueLifecycleStage::Accepted);
+    }
+    if has(IssueLifecycleStage::Implementation.as_label()) {
+        stages.push(IssueLifecycleStage::Implementation);
+    }
+    if has(IssueLifecycleStage::Closed.as_label()) {
+        stages.push(IssueLifecycleStage::Closed);
+    }
+
+    if stages.len() > 1 {
+        panic!("issue has multiple conflicting stage labels; reconcile loop cannot proceed without human intervention to fix corrupted state: {:?}", stages);
+    }
+    stages.into_iter().next()
 }
 
 /// Replace lifecycle stage labels with a single canonical stage label while
@@ -145,8 +164,7 @@ pub fn compare_and_set_stage_label(
     expected_stage: IssueLifecycleStage,
     next_stage: IssueLifecycleStage,
 ) -> Result<Vec<String>, String> {
-    let current_stage =
-        stage_from_labels(existing_labels).unwrap_or(IssueLifecycleStage::Idea);
+    let current_stage = stage_from_labels(existing_labels).unwrap_or(IssueLifecycleStage::Idea);
     if current_stage != expected_stage {
         return Err(format!(
             "stage compare-and-set failed: expected `{}`, found `{}`",
@@ -158,6 +176,9 @@ pub fn compare_and_set_stage_label(
 }
 
 /// Validate that provider capabilities satisfy SDLC real-mode requirements.
+///
+/// This gate blocks real-mode execution only; dry-run mode bypasses it so
+/// local development works without a fully-wired provider (IM12).
 pub fn ensure_sdlc_issue_capabilities(capabilities: SdlcIssueCapabilities) -> Result<(), String> {
     let mut missing = Vec::new();
     if !capabilities.issue_read {
@@ -168,6 +189,12 @@ pub fn ensure_sdlc_issue_capabilities(capabilities: SdlcIssueCapabilities) -> Re
     }
     if !capabilities.issue_label_compare_and_set {
         missing.push("issue_label_compare_and_set");
+    }
+    if !capabilities.managed_issue_search {
+        missing.push("managed_issue_search");
+    }
+    if !capabilities.deterministic_issue_identity {
+        missing.push("deterministic_issue_identity");
     }
     if missing.is_empty() {
         return Ok(());
@@ -204,16 +231,14 @@ mod tests {
     }
 
     #[test]
-    fn stage_from_labels_prefers_most_advanced_stage() {
+    #[should_panic(expected = "issue has multiple conflicting stage labels")]
+    fn stage_from_labels_fails_closed_on_multiple_stages() {
         let labels = vec![
             "design".to_string(),
             "accepted".to_string(),
             "priority:M".to_string(),
         ];
-        assert_eq!(
-            stage_from_labels(&labels),
-            Some(IssueLifecycleStage::Accepted)
-        );
+        stage_from_labels(&labels);
     }
 
     #[test]
@@ -260,9 +285,56 @@ mod tests {
             issue_read: true,
             issue_comment_upsert: false,
             issue_label_compare_and_set: false,
+            managed_issue_search: true,
+            deterministic_issue_identity: true,
         })
         .expect_err("missing required capabilities should fail closed");
         assert!(err.contains("issue_comment_upsert"));
         assert!(err.contains("issue_label_compare_and_set"));
+    }
+
+    #[test]
+    fn capability_gate_passes_when_all_capabilities_present() {
+        ensure_sdlc_issue_capabilities(SdlcIssueCapabilities::github())
+            .expect("full github capabilities should pass gate");
+    }
+
+    #[test]
+    fn capability_gate_fails_closed_when_no_capabilities_present() {
+        let err = ensure_sdlc_issue_capabilities(SdlcIssueCapabilities::none())
+            .expect_err("no capabilities should fail closed");
+        assert!(err.contains("issue_read"));
+        assert!(err.contains("issue_comment_upsert"));
+        assert!(err.contains("issue_label_compare_and_set"));
+        assert!(err.contains("managed_issue_search"));
+        assert!(err.contains("deterministic_issue_identity"));
+    }
+
+    #[test]
+    fn capability_gate_fails_closed_when_managed_issue_search_missing() {
+        let err = ensure_sdlc_issue_capabilities(SdlcIssueCapabilities {
+            issue_read: true,
+            issue_comment_upsert: true,
+            issue_label_compare_and_set: true,
+            managed_issue_search: false,
+            deterministic_issue_identity: true,
+        })
+        .expect_err("missing managed_issue_search should fail closed");
+        assert!(err.contains("managed_issue_search"));
+        assert!(!err.contains("issue_read"));
+    }
+
+    #[test]
+    fn capability_gate_fails_closed_when_deterministic_issue_identity_missing() {
+        let err = ensure_sdlc_issue_capabilities(SdlcIssueCapabilities {
+            issue_read: true,
+            issue_comment_upsert: true,
+            issue_label_compare_and_set: true,
+            managed_issue_search: true,
+            deterministic_issue_identity: false,
+        })
+        .expect_err("missing deterministic_issue_identity should fail closed");
+        assert!(err.contains("deterministic_issue_identity"));
+        assert!(!err.contains("managed_issue_search"));
     }
 }

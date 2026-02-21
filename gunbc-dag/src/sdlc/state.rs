@@ -19,11 +19,7 @@ pub enum RunExecutionStatus {
     Failed,
 }
 
-pub fn should_replay_skip(
-    ledger: &RunStateLedger,
-    intake_key: &str,
-    run_key: &str,
-) -> bool {
+pub fn should_replay_skip(ledger: &RunStateLedger, intake_key: &str, run_key: &str) -> bool {
     matches!(
         ledger.entries.get(intake_key),
         Some(RunStateRecord {

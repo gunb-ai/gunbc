@@ -1133,9 +1133,7 @@ fn validate_codegen_dsl_coverage(
 }
 
 fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
-    // CG1 introduces canonical SDLC design modeling in DSL before dedicated
-    // runtime target wiring lands (CG2+). Keep this explicit and fail-closed.
-    ["design"].into_iter().collect()
+    BTreeSet::new()
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {

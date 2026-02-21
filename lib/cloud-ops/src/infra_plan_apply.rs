@@ -192,7 +192,10 @@ pub fn build_infra_apply_dag(
 
     let provision_subdag = provision.map_ops(&mut InfraPlanApplyGraphOp::Cloud);
     let provision_node = builder
-        .add_node_after(Node::subdag("provision", provision_subdag), &runtime_reconcile)
+        .add_node_after(
+            Node::subdag("provision", provision_subdag),
+            &runtime_reconcile,
+        )
         .map_err(|e| format!("failed to build provision node: {e}"))?;
 
     let summary = builder
@@ -254,7 +257,10 @@ fn collect_targets(
             targets.push(service_account);
         }
     }
-    let wif_target = format!("wif:{}:{}", infra_spec.wif.pool_id, infra_spec.wif.provider_id);
+    let wif_target = format!(
+        "wif:{}:{}",
+        infra_spec.wif.pool_id, infra_spec.wif.provider_id
+    );
     if filter.allows(&wif_target) {
         targets.push(wif_target);
     }

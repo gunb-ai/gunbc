@@ -622,7 +622,9 @@ mod tests {
             .get(&NodeId::from("sdlc.worker"))
             .expect("sdlc.worker command");
         assert!(
-            worker.args.contains(&"--emit-pending-exit-code".to_string()),
+            worker
+                .args
+                .contains(&"--emit-pending-exit-code".to_string()),
             "sdlc worker command should surface pending-approval exit code for workflow yield"
         );
     }

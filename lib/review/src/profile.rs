@@ -81,25 +81,13 @@ impl ReviewProfile {
 pub fn coding_review_profile(depth: FermiDepth) -> ReviewProfile {
     let mut criteria = HashMap::new();
 
-    criteria.insert(
-        "coherence".to_string(),
-        coherence_criteria(),
-    );
+    criteria.insert("coherence".to_string(), coherence_criteria());
 
-    criteria.insert(
-        "quality".to_string(),
-        quality_criteria_default(),
-    );
+    criteria.insert("quality".to_string(), quality_criteria_default());
 
-    criteria.insert(
-        "requirements".to_string(),
-        requirements_criteria_default(),
-    );
+    criteria.insert("requirements".to_string(), requirements_criteria_default());
 
-    criteria.insert(
-        "aspirational".to_string(),
-        aspirational_criteria(),
-    );
+    criteria.insert("aspirational".to_string(), aspirational_criteria());
 
     ReviewProfile {
         name: "coding".to_string(),
@@ -299,8 +287,7 @@ fn requirements_criteria_default() -> Criteria {
         checks: vec![
             Check {
                 id: "completeness".to_string(),
-                question: "Is the implementation complete for the stated requirements?"
-                    .to_string(),
+                question: "Is the implementation complete for the stated requirements?".to_string(),
                 examples: vec![
                     "Missing edge cases".to_string(),
                     "Partial implementation".to_string(),
@@ -309,8 +296,7 @@ fn requirements_criteria_default() -> Criteria {
             },
             Check {
                 id: "correctness".to_string(),
-                question: "Does the implementation correctly solve the stated problem?"
-                    .to_string(),
+                question: "Does the implementation correctly solve the stated problem?".to_string(),
                 examples: vec![
                     "Wrong algorithm for the problem".to_string(),
                     "Misunderstood requirements".to_string(),
@@ -405,14 +391,8 @@ mod tests {
             .dimension_depths
             .insert("coherence".to_string(), FermiDepth::L);
 
-        assert_eq!(
-            profile.depth_for(ReviewDimension::Coherence),
-            FermiDepth::L
-        );
-        assert_eq!(
-            profile.depth_for(ReviewDimension::Quality),
-            FermiDepth::M
-        );
+        assert_eq!(profile.depth_for(ReviewDimension::Coherence), FermiDepth::L);
+        assert_eq!(profile.depth_for(ReviewDimension::Quality), FermiDepth::M);
     }
 
     #[test]
@@ -440,8 +420,7 @@ mod tests {
 
     #[test]
     fn test_profile_with_empty_context() {
-        let profile =
-            coding_review_profile_with_context(FermiDepth::M, &ProjectContext::default());
+        let profile = coding_review_profile_with_context(FermiDepth::M, &ProjectContext::default());
         assert!(profile.is_active(ReviewDimension::Quality));
     }
 

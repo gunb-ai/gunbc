@@ -1269,10 +1269,7 @@ impl Parser {
 
     /// Parse a test definition:
     /// `test <name> [: <fixture>] { annotation* (mock | input | expect)* }`
-    fn parse_test_def(
-        &mut self,
-        leading_anns: Vec<Annotation>,
-    ) -> Result<TestDef, ParseError> {
+    fn parse_test_def(&mut self, leading_anns: Vec<Annotation>) -> Result<TestDef, ParseError> {
         self.expect(&TokenKind::Test)?;
         let name = self.expect_ident()?;
         let fixture = if self.eat(&TokenKind::Colon) {

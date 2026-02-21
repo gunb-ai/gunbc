@@ -7,3 +7,6 @@ description = "Import resolution and module graph construction for .dag files"
 
 [dependencies]
 daglang-syntax = { path = "../daglang-syntax" }
+
+[dev-dependencies]
+gunbc-test = { path = "../../test" }

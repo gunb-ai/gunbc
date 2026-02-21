@@ -42,8 +42,9 @@ mod tests {
 
     #[test]
     fn transition_rejects_out_of_order_progression() {
-        let err = validate_stage_transition(IssueLifecycleStage::Design, IssueLifecycleStage::Accepted)
-            .expect_err("design -> accepted should be invalid");
+        let err =
+            validate_stage_transition(IssueLifecycleStage::Design, IssueLifecycleStage::Accepted)
+                .expect_err("design -> accepted should be invalid");
         assert!(err.contains("invalid stage transition"));
     }
 }

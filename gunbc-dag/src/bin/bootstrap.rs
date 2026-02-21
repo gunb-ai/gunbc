@@ -7,9 +7,8 @@
 use gunbc_cli::BinaryArgs;
 use gunbc_dag::resources::{GITIGNORE_OUTPUT_PATH, MAKEFILE_OUTPUT_PATH};
 use gunbc_dag::{
-    freshness_steps_planned, gitignore_resource_def,
-    makefile_resource_def, print_tool_header, run_tool, update_freshness_manifest_if_needed,
-    wire_fs_env_write_mock, RunToolOptions,
+    freshness_steps_planned, gitignore_resource_def, makefile_resource_def, print_tool_header,
+    run_tool, update_freshness_manifest_if_needed, wire_fs_env_write_mock, RunToolOptions,
 };
 use gunbc_exec::{
     compose_with_freshness, execute_and_display_with_result, print_attention, AttentionLevel,
