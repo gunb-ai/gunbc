@@ -191,6 +191,10 @@ fn build_all_ref(unit: &str) -> ProcessUnitRef {
     ProcessUnitRef::new("build_all", unit)
 }
 
+fn sdlc_ref(unit: &str) -> ProcessUnitRef {
+    ProcessUnitRef::new("sdlc", unit)
+}
+
 fn compilation_ref() -> ProcessUnitRef {
     ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT)
 }
@@ -629,6 +633,31 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
         ],
     ));
 
+    // =========================================================================
+    // SDLC workflow units
+    // =========================================================================
+    for spec in [
+        ProcessUnitSpec::new(
+            sdlc_ref("sdlc.intake"),
+            1,
+            vec![
+                UnitClaim::write("file:target"),
+                UnitClaim::read("file:workspace"),
+            ],
+        ),
+        ProcessUnitSpec::new(
+            sdlc_ref("sdlc.worker"),
+            1,
+            vec![
+                UnitClaim::write("file:target"),
+                UnitClaim::read("network:github_issue"),
+            ],
+        ),
+        ProcessUnitSpec::new(sdlc_ref("sdlc.report"), 1, vec![]),
+    ] {
+        registry.register(spec);
+    }
+
     registry
 }
 
@@ -765,6 +794,9 @@ mod tests {
         )));
         // Build-all
         assert!(registry.contains(&ProcessUnitRef::new("build_all", "build_all.build")));
+        // SDLC
+        assert!(registry.contains(&ProcessUnitRef::new("sdlc", "sdlc.intake")));
+        assert!(registry.contains(&ProcessUnitRef::new("sdlc", "sdlc.worker")));
     }
 
     #[test]

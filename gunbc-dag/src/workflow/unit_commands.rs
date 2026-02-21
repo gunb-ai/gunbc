@@ -453,6 +453,52 @@ fn build_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     commands
 }
 
+fn sdlc_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
+    let mut commands = BTreeMap::new();
+    commands.insert(
+        NodeId::from("sdlc.compilation_ensure"),
+        compilation_ensure_command(),
+    );
+    commands.insert(
+        NodeId::from("sdlc.codegen_ensure"),
+        codegen_ensure_command(),
+    );
+    commands.insert(
+        NodeId::from("sdlc.intake"),
+        UnitCommand::cargo(
+            "sdlc intake",
+            vec![
+                "run",
+                "-p",
+                "gunbc-dag",
+                "--bin",
+                "gunbc-sdlc",
+                "--",
+                "intake",
+                "--intent",
+                "TODO/issue-intent-template.yaml",
+            ],
+        ),
+    );
+    commands.insert(
+        NodeId::from("sdlc.worker"),
+        UnitCommand::cargo(
+            "sdlc worker",
+            vec![
+                "run",
+                "-p",
+                "gunbc-dag",
+                "--bin",
+                "gunbc-sdlc",
+                "--",
+                "worker",
+                "--emit-pending-exit-code",
+            ],
+        ),
+    );
+    commands
+}
+
 /// Build command map for a supported workflow name.
 pub fn workflow_unit_commands(
     workflow_name: &str,
@@ -473,6 +519,7 @@ pub fn workflow_unit_commands(
         "dag-viz-recent" => dag_viz_unit_commands("gunbc-dag-viz-recent"),
         "dag-snapshot" => dag_snapshot_unit_commands(),
         "build-all" => build_all_unit_commands(),
+        "sdlc" => sdlc_unit_commands(),
         other => {
             return Err(format!(
                 "workflow '{}' does not support execution mode; use --plan",
@@ -564,5 +611,19 @@ mod tests {
         let snapshot = workflow_unit_commands("gist-snapshot").expect("snapshot");
         assert_eq!(gist.len(), snapshot.len());
         assert!(gist.contains_key(&NodeId::from("gist.gist_create")));
+    }
+
+    #[test]
+    fn workflow_unit_commands_supports_sdlc_flow() {
+        let commands = workflow_unit_commands("sdlc").expect("sdlc");
+        assert!(commands.contains_key(&NodeId::from("sdlc.intake")));
+        assert!(commands.contains_key(&NodeId::from("sdlc.worker")));
+        let worker = commands
+            .get(&NodeId::from("sdlc.worker"))
+            .expect("sdlc.worker command");
+        assert!(
+            worker.args.contains(&"--emit-pending-exit-code".to_string()),
+            "sdlc worker command should surface pending-approval exit code for workflow yield"
+        );
     }
 }
