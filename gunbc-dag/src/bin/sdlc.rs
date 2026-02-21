@@ -1734,6 +1734,23 @@ fn run_ci_validation(branch: &str, dry_run: bool) -> Result<CiValidationResult, 
         });
     }
 
+    // Record the current branch so we can restore it after validation.
+    let original_branch = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .map_err(|e| format!("git rev-parse failed: {e}"))?;
+    let original_branch = String::from_utf8_lossy(&original_branch.stdout).trim().to_string();
+
+    // Checkout the agent branch so CI runs against the correct code.
+    let checkout = Command::new("git")
+        .args(["checkout", branch])
+        .output()
+        .map_err(|e| format!("git checkout {branch} failed: {e}"))?;
+    if !checkout.status.success() {
+        let stderr = String::from_utf8_lossy(&checkout.stderr);
+        return Err(format!("git checkout {branch} failed: {stderr}"));
+    }
+
     let test_output = Command::new("cargo")
         .args(["test", "--workspace", "--quiet"])
         .output()
@@ -1743,6 +1760,11 @@ fn run_ci_validation(branch: &str, dry_run: bool) -> Result<CiValidationResult, 
         .args(["clippy", "--all-targets", "--quiet", "--", "-D", "warnings"])
         .output()
         .map_err(|e| format!("cargo clippy failed to start: {e}"))?;
+
+    // Restore the original branch regardless of CI outcome.
+    let _ = Command::new("git")
+        .args(["checkout", &original_branch])
+        .output();
 
     let tests_passed = test_output.status.success();
     let clippy_passed = clippy_output.status.success();
@@ -1767,8 +1789,6 @@ fn run_ci_validation(branch: &str, dry_run: bool) -> Result<CiValidationResult, 
         let last_lines: String = stderr.lines().rev().take(5).collect::<Vec<_>>().join("\n");
         parts.push(format!("clippy errors: {last_lines}"));
     }
-
-    let _ = branch;
 
     Ok(CiValidationResult {
         success: tests_passed && clippy_passed,
@@ -1830,7 +1850,19 @@ fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
         .trim()
         .trim_end_matches(".git")
         .trim_end_matches('/');
-    let parts: Vec<&str> = cleaned.rsplitn(3, '/').collect();
+    // Handle SSH URLs like git@github.com:org/repo
+    // by normalizing the colon separator to a slash.
+    let normalized = if let Some(colon_pos) = cleaned.find(':') {
+        // Only treat as SSH if there's no "://" (which would be HTTPS).
+        if !cleaned[..colon_pos + 1].ends_with("://") {
+            cleaned.replacen(':', "/", 1)
+        } else {
+            cleaned.to_string()
+        }
+    } else {
+        cleaned.to_string()
+    };
+    let parts: Vec<&str> = normalized.rsplitn(3, '/').collect();
     if parts.len() >= 2 {
         Some((parts[1].to_string(), parts[0].to_string()))
     } else {
