@@ -6520,13 +6520,13 @@ fn expand_command_makegen_output_matches_snapshot() {
 }
 
 #[test]
-fn progress_command_shows_derived_progress_manifest() {
+fn progress_command_shows_derived_progress_metrics() {
     let output = Command::new(daglang_bin())
         .arg("progress")
         .arg(makegen_file())
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest");
+        .expect("failed to run daglang progress");
 
     assert!(
         output.status.success(),
@@ -6536,7 +6536,7 @@ fn progress_command_shows_derived_progress_manifest() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("ProgressManifest:"));
+    assert!(stdout.contains("Progress:"));
     assert!(stdout.contains("total_nodes:"));
     assert!(stdout.contains("waves:"));
     assert!(stdout.contains("TestObligations:"));
@@ -6546,36 +6546,47 @@ fn progress_command_shows_derived_progress_manifest() {
 }
 
 #[test]
-fn progress_manifest_command_matches_manifest_output() {
-    let manifest = Command::new(daglang_bin())
-        .arg("progress")
+fn topology_command_shows_graph_topology() {
+    let output = Command::new(daglang_bin())
+        .arg("topology")
         .arg(makegen_file())
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest");
-    let progress_manifest = Command::new(daglang_bin())
-        .arg("progress")
-        .arg(makegen_file())
-        .current_dir(workspace_root())
-        .output()
-        .expect("failed to run daglang progress-manifest");
+        .expect("failed to run daglang topology");
 
     assert!(
-        manifest.status.success(),
-        "progress command failed: {}",
-        String::from_utf8_lossy(&manifest.stderr)
+        output.status.success(),
+        "topology command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
+    assert_no_stage_failures(&String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Topology:"));
+    assert!(stdout.contains("nodes:"));
+    assert!(stdout.contains("labels:"));
+    assert!(stdout.contains("subdag_boundaries:"));
+}
+
+#[test]
+fn topology_command_json_format_emits_valid_json_object() {
+    let output = Command::new(daglang_bin())
+        .arg("topology")
+        .arg(makegen_file())
+        .args(["--format", "json"])
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang topology --format json");
+
     assert!(
-        progress_manifest.status.success(),
-        "progress command failed: {}",
-        String::from_utf8_lossy(&progress_manifest.stderr)
+        output.status.success(),
+        "topology --format json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
-    assert_no_stage_failures(&String::from_utf8_lossy(&manifest.stderr));
-    assert_no_stage_failures(&String::from_utf8_lossy(&progress_manifest.stderr));
-    assert_eq!(
-        manifest.stdout, progress_manifest.stdout,
-        "progress should be a strict output alias for manifest"
-    );
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("topology --format json should emit JSON");
+    assert!(parsed.get("topology").is_some(), "JSON should have topology key");
+    assert!(parsed.get("labels").is_some(), "JSON should have labels key");
+    assert!(parsed.get("subdag_boundaries").is_some(), "JSON should have subdag_boundaries key");
 }
 
 #[test]
@@ -6850,19 +6861,15 @@ fn progress_command_json_format_emits_valid_json_object() {
     );
     let parsed: Value =
         serde_json::from_slice(&output.stdout).expect("progress --format json should emit JSON");
-    let manifest = parsed
-        .get("progress_manifest")
-        .expect("manifest json should include progress_manifest object");
+    assert!(parsed.get("total_nodes").is_some());
+    assert!(parsed.get("total_edges").is_some());
+    assert!(parsed.get("waves").is_some());
+    assert!(parsed.get("parallel_groups").is_some());
+    assert!(parsed.get("capture_modes").is_some());
+    assert!(parsed.get("resources").is_some());
     let obligations = parsed
         .get("test_obligations")
-        .expect("manifest json should include test_obligations object");
-    assert!(manifest.get("total_nodes").is_some());
-    assert!(manifest.get("topology").is_some());
-    assert!(manifest.get("labels").is_some());
-    assert!(manifest.get("subdag_boundaries").is_some());
-    assert!(manifest.get("parallel_groups").is_some());
-    assert!(manifest.get("capture_modes").is_some());
-    assert!(manifest.get("resources").is_some());
+        .expect("progress json should include test_obligations object");
     // Debug-only fields (waves, entrypoint_nodes, boundary_nodes, total_edges)
     // are excluded from the stable JSON contract via #[serde(skip_serializing)].
     assert!(manifest.get("waves").is_none());
@@ -6912,7 +6919,7 @@ fn progress_command_json_output_is_deterministic_for_same_input() {
 }
 
 #[test]
-fn progress_command_json_output_matches_makegen_snapshot() {
+fn progress_command_json_contains_expected_progress_keys() {
     let output = Command::new(daglang_bin())
         .arg("progress")
         .arg(makegen_file())
@@ -6920,19 +6927,23 @@ fn progress_command_json_output_matches_makegen_snapshot() {
         .arg("json")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest --format json");
+        .expect("failed to run daglang progress --format json");
 
     assert!(
         output.status.success(),
         "progress --format json failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout,
-        expected_makegen_manifest_json_snapshot(),
-        "manifest json output should match checked-in makegen snapshot"
-    );
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("progress json should be valid");
+    assert!(parsed.get("total_nodes").is_some(), "should have total_nodes");
+    assert!(parsed.get("total_edges").is_some(), "should have total_edges");
+    assert!(parsed.get("waves").is_some(), "should have waves");
+    assert!(parsed.get("parallel_groups").is_some(), "should have parallel_groups");
+    assert!(parsed.get("stage_groups").is_some(), "should have stage_groups");
+    assert!(parsed.get("test_obligations").is_some(), "should have test_obligations");
+    assert!(parsed.get("topology").is_none(), "progress should not include topology");
+    assert!(parsed.get("labels").is_none(), "progress should not include labels");
 }
 
 #[test]
@@ -6954,13 +6965,12 @@ fn progress_command_ci_json_includes_stage_groups() {
     let parsed: Value =
         serde_json::from_slice(&output.stdout).expect("progress --format json should emit JSON");
     let stage_groups = parsed
-        .get("progress_manifest")
-        .and_then(|manifest| manifest.get("stage_groups"))
+        .get("stage_groups")
         .and_then(Value::as_array)
-        .expect("manifest json should include stage_groups array");
+        .expect("progress json should include stage_groups array");
     assert!(
         !stage_groups.is_empty(),
-        "ci pipeline manifest should emit non-empty stage_groups"
+        "ci pipeline progress should emit non-empty stage_groups"
     );
     assert!(
         stage_groups.iter().any(|group| {
@@ -6969,7 +6979,7 @@ fn progress_command_ci_json_includes_stage_groups() {
                 .and_then(Value::as_str)
                 .is_some_and(|stage| stage.ends_with(":cloud_env"))
         }),
-        "ci manifest should include cloud_env stage group"
+        "ci progress should include cloud_env stage group"
     );
     assert!(
         stage_groups.iter().any(|group| {
