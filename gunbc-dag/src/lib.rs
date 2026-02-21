@@ -76,12 +76,14 @@ pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
 pub use sdlc::{
-    canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
-    promote_to_canonical_artifact, provisional_marker, reconcile_entries, register_retry_failure,
-    release_claim, retry_ready, should_replay_skip, try_acquire_claim, upsert_provisional_artifact,
-    validate_stage_transition, ArtifactLedger, ArtifactRecord, ArtifactUpsertOutcome,
-    ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction, ReconcileEntry, ReconcilePlan,
-    RetryState, RunExecutionStatus, RunStateLedger, RunStateRecord,
+    canonical_marker, claim_slot_key, content_hash_for_payload, heartbeat_claim,
+    mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
+    promote_to_canonical_artifact_with_payload, provisional_marker, reconcile_entries,
+    register_retry_failure, release_claim, retry_ready, should_replay_skip, try_acquire_claim,
+    upsert_provisional_artifact, upsert_provisional_artifact_with_payload, validate_stage_transition,
+    ArtifactLedger, ArtifactPayload, ArtifactRecord, ArtifactUpsertOutcome, ClaimAcquireResult,
+    ClaimLedger, ClaimRecord, ReconcileAction, ReconcileEntry, ReconcilePlan, RetryState,
+    RunExecutionStatus, RunStateLedger, RunStateRecord,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{

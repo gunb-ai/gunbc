@@ -1998,6 +1998,15 @@ fn transition_to_accepted_promotes_canonical_artifact() {
             .contains_key("sdlc:artifact:canonical:intent-20260221-canonical"),
         "accepted transition should create canonical artifact marker"
     );
+    let canonical_payload = &artifact["records"]["sdlc:artifact:canonical:intent-20260221-canonical"]
+        ["payload"];
+    assert!(
+        canonical_payload["Inline"]["body"]
+            .as_str()
+            .map(|body| !body.is_empty())
+            .unwrap_or(false),
+        "canonical artifact should persist normalized inline payload body"
+    );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }

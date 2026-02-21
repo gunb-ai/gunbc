@@ -9,10 +9,11 @@
 
 use gunbc_dag::{
     claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
-    provisional_marker, reconcile_entries, register_retry_failure, release_claim, retry_ready,
-    should_replay_skip, try_acquire_claim, upsert_provisional_artifact, ArtifactLedger,
-    ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry,
-    RetryState, RunStateLedger, validate_stage_transition,
+    promote_to_canonical_artifact_with_payload, provisional_marker, reconcile_entries,
+    register_retry_failure, release_claim, retry_ready, should_replay_skip, try_acquire_claim,
+    upsert_provisional_artifact_with_payload, ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome,
+    ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
+    validate_stage_transition,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::github::{
@@ -662,14 +663,13 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
     }
 
     save_intake_ledger(&ledger_path, &ledger)?;
-    let design_prompt_hash = gunbc_infra::hash::ContentHash::from_bytes(design_prompt.as_bytes())
-        .as_str()
-        .to_string();
-    let artifact_outcome = upsert_provisional_artifact(
+    let artifact_outcome = upsert_provisional_artifact_with_payload(
         &mut artifacts,
         &intake_key,
         &effective_run_key,
-        &design_prompt_hash,
+        ArtifactPayload::Inline {
+            body: design_prompt.clone(),
+        },
         now,
     )?;
     save_artifact_ledger(&artifact_ledger_path, &artifacts)?;
@@ -1164,13 +1164,22 @@ fn run_transition(
                 provisional.run_key, record.run_key
             ));
         }
-        let outcome = promote_to_canonical_artifact(
-            &mut artifact_ledger,
-            intake_key,
-            &record.run_key,
-            &provisional.content_hash,
-            now,
-        )?;
+        let outcome = match provisional.payload.clone() {
+            Some(payload) => promote_to_canonical_artifact_with_payload(
+                &mut artifact_ledger,
+                intake_key,
+                &record.run_key,
+                payload,
+                now,
+            )?,
+            None => promote_to_canonical_artifact(
+                &mut artifact_ledger,
+                intake_key,
+                &record.run_key,
+                &provisional.content_hash,
+                now,
+            )?,
+        };
         canonical_artifact_status = Some(match outcome {
             ArtifactUpsertOutcome::Inserted => "inserted",
             ArtifactUpsertOutcome::Updated => "updated",
