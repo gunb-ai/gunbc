@@ -1929,6 +1929,83 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
 }
 
 #[test]
+fn worker_replay_skips_when_canonical_artifact_already_exists() {
+    let root = unique_temp_dir("worker_canonical_replay_skip");
+    std::fs::create_dir_all(&root).expect("create temp root");
+
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-canonical-replay",
+        "intent-20260221-canonical-replay",
+        Some(6601),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let artifact_ledger_path = root.join("target/sdlc/artifact-ledger.json");
+    let artifact_raw =
+        std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger after intake");
+    let mut artifact: serde_json::Value =
+        serde_json::from_str(&artifact_raw).expect("parse artifact ledger");
+    let provisional = artifact["records"]["sdlc:artifact:provisional:intent-20260221-canonical-replay"]
+        .clone();
+    let mut canonical = provisional;
+    canonical["marker"] =
+        serde_json::Value::String("sdlc:artifact:canonical:intent-20260221-canonical-replay".to_string());
+    canonical["canonical"] = serde_json::Value::Bool(true);
+    artifact["records"]["sdlc:artifact:canonical:intent-20260221-canonical-replay"] = canonical;
+    std::fs::write(
+        &artifact_ledger_path,
+        serde_json::to_string_pretty(&artifact).expect("serialize artifact ledger"),
+    )
+    .expect("write artifact ledger with canonical marker");
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .arg("--dry-run")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run");
+    assert!(
+        worker.status.success(),
+        "worker should succeed: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert!(
+        payload["replay_skipped"]
+            .as_array()
+            .expect("replay_skipped should be array")
+            .iter()
+            .any(|value| value == "intent-20260221-canonical-replay"),
+        "worker should replay-skip intake with existing canonical artifact"
+    );
+    assert!(
+        payload["replay_skipped_canonical"]
+            .as_array()
+            .expect("replay_skipped_canonical should be array")
+            .iter()
+            .any(|value| value == "intent-20260221-canonical-replay"),
+        "worker should surface canonical-based replay skip attribution"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn worker_metrics_include_stage_specific_llm_cost_units() {
     let root = unique_temp_dir("worker_llm_cost_units");
     std::fs::create_dir_all(&root).expect("create temp root");

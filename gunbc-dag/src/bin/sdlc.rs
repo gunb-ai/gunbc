@@ -8,8 +8,9 @@
 #![allow(clippy::disallowed_methods)] // CLI-owned local ledgers and git metadata probes are intentional entrypoint concerns.
 
 use gunbc_dag::{
-    claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
-    promote_to_canonical_artifact_with_payload, provisional_marker, reconcile_entries,
+    canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
+    promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
+    reconcile_entries,
     register_retry_failure, release_claim, retry_ready, should_replay_skip, try_acquire_claim,
     upsert_provisional_artifact_with_payload, ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome,
     ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
@@ -727,6 +728,8 @@ fn run_worker(
     let mut ledger = load_intake_ledger(&ledger_path)?;
     let claim_ledger_path = claim_ledger_path();
     let mut claim_ledger = load_claim_ledger(&claim_ledger_path)?;
+    let artifact_ledger_path = artifact_ledger_path();
+    let artifact_ledger = load_artifact_ledger(&artifact_ledger_path)?;
     let run_state_path = run_state_ledger_path();
     let mut run_state = load_run_state_ledger(&run_state_path)?;
     let mode = if dry_run { "dry-run" } else { "real" };
@@ -747,6 +750,7 @@ fn run_worker(
             "intake_keys": [],
             "ready_to_run": [],
             "replay_skipped": [],
+            "replay_skipped_canonical": [],
             "executed_runs": [],
             "acquired_claims": [],
             "released_claims": released,
@@ -777,6 +781,7 @@ fn run_worker(
                 "awaiting_approval_count": 0,
                 "claim_conflict_count": 0,
                 "replay_skipped_count": 0,
+                "replay_skipped_canonical_count": 0,
                 "retry_backoff_deferred_count": 0,
                 "capacity_deferred_count": 0,
             },
@@ -826,6 +831,7 @@ fn run_worker(
     let mut claim_conflicts = Vec::new();
     let mut acquired_claims = Vec::new();
     let mut replay_skipped = Vec::new();
+    let mut replay_skipped_canonical = Vec::new();
     let mut executed_runs = Vec::new();
     let mut reconcile_inputs = Vec::new();
     let mut terminal_failures = BTreeMap::new();
@@ -972,6 +978,18 @@ fn run_worker(
                 let Some(record) = ledger.entries.get(intake_key) else {
                     continue;
                 };
+                if let Some(canonical) =
+                    artifact_ledger.records.get(&canonical_marker(intake_key))
+                {
+                    if canonical.run_key == record.run_key {
+                        replay_skipped.push(intake_key.clone());
+                        replay_skipped_canonical.push(intake_key.clone());
+                        if !dry_run {
+                            mark_run_completed(&mut run_state, intake_key, &record.run_key, now);
+                        }
+                        continue;
+                    }
+                }
                 if should_replay_skip(&run_state, intake_key, &record.run_key) {
                     replay_skipped.push(intake_key.clone());
                     continue;
@@ -1026,6 +1044,7 @@ fn run_worker(
         "intake_keys": intake_keys,
         "ready_to_run": ready_to_run,
         "replay_skipped": replay_skipped,
+        "replay_skipped_canonical": replay_skipped_canonical,
         "executed_runs": executed_runs,
         "acquired_claims": acquired_claims,
         "released_claims": released_claims,
@@ -1055,6 +1074,7 @@ fn run_worker(
             "awaiting_approval_count": awaiting_approval.len(),
             "claim_conflict_count": claim_conflicts.len(),
             "replay_skipped_count": replay_skipped.len(),
+            "replay_skipped_canonical_count": replay_skipped_canonical.len(),
             "retry_backoff_deferred_count": skipped_retry_backoff.len(),
             "capacity_deferred_count": skipped_capacity.len(),
         },
