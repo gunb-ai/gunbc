@@ -106,3 +106,115 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 - **P3 (ValueBacking)**: Centralized type→Value backing in core/ir
 - **Architecture Debt A-C**: Infra extraction, mtime fast path, design fixes
 - **25/35 hacks resolved, 18/18 consolidation items §9-15 resolved**
+\n
+## Archived 2026-02-20
+
+### Sprint 2: Review Findings + Polish
+| ID | Task | Status |
+|----|------|--------|
+| R2 | Wildcard resource semantics deferred, use coarse `file` locking | Done 2026-02-20 |
+| R3 | Backend modeling enrichment RFC + IR schema update | Done 2026-02-19 |
+| R4 | Go + C lowerer migration to modeled semantics | Done 2026-02-19 |
+| R5 | MIPS control-flow + allocator fail-closed migration | Done 2026-02-19 |
+| R6 | Holistic backend correctness harness | Done 2026-02-19 |
+| R7 | Typed IAM policy domain model | Done 2026-02-19 |
+| R8 | `MethodMeta` as execution source-of-truth | Done 2026-02-19 |
+| R9 | Fail-closed CLI entrypoint input parsing | Done 2026-02-19 |
+| R10 | Typed REST path-variable binding in `SystemModel` | Done 2026-02-19 |
+| R11 | Strict platform parsing at boundaries | Done 2026-02-19 |
+| R12 | Mock-default seeding by semantic kind | Done 2026-02-19 |
+| P6 | `DeferredCallableOp` → per-module domain ops | Done 2026-02-20 |
+| P12 | Move `resolve_infrastructure()` string-prefix matching up to lowering | Done 2026-02-20 |
+
+### Sprint 5 & 5b: Workflow Execution Models & Minimization
+| ID | Task | Status |
+|----|------|--------|
+| WF1-D | Workflow schema design spec | Done 2026-02-20 |
+| WF1 | Minimum work-unit schema | Done 2026-02-20 |
+| WF2-D | Mutual-exclusion/admission design spec | Done 2026-02-20 |
+| WF2 | Mutual-exclusion claim model | Done 2026-02-20 |
+| WF3-D | Key/ledger causality design spec | Done 2026-02-20 |
+| WF3 | Deterministic materialization keys + miss reasons | Done 2026-02-20 |
+| WF4-D | Downstream coordination design spec | Done 2026-02-20 |
+| WF4 | Downstream coordination contract | Done 2026-02-20 |
+| WF5 | Planner dry-run + execution plan explainability | Done 2026-02-20 |
+| WF10-D | Control-token model | Done 2026-02-19 |
+| WF11-D | Cached `result` persistence | Done 2026-02-19 |
+| WF12-D | Changed-input routing authoritative semantics | Done 2026-02-19 |
+| WF13-D | Conflict commutativity exceptions removed | Done 2026-02-19 |
+| WF14-D | Compilation capability design spec | Done 2026-02-20 |
+| WF15-D | Codegen capability design spec | Done 2026-02-20 |
+| WF16-D | Gist base + mode capability design spec | Done 2026-02-20 |
+| WF19-D | Generator + remaining tool capability design spec | Done 2026-02-20 |
+| WF19 | Generator workflow capability port (bootstrap/makegen/pragma) | Done 2026-02-20 |
+| WF20 | Remaining tool capability port (deps/dag-viz/dag-snapshot) | Done 2026-02-20 |
+| WF21 | Makefile thinning for all tool targets | Done 2026-02-20 |
+| WF22 | Capability minimization verification | Done 2026-02-20 |
+
+### Sprint 6: Modeling Hardening
+| ID | Task | Status |
+|----|------|--------|
+| M7-D | Secret redaction design spec | Done 2026-02-20 |
+| M7 | Secret redaction by default | Done 2026-02-20 |
+| M8-D | `TypeOp::Meta` design spec | Done 2026-02-20 |
+| M8 | Semantically inert metadata op | Done 2026-02-20 |
+| M9-D | Typed dependency marker design spec | Done 2026-02-20 |
+| M9 | Typed dependency markers | Done 2026-02-20 |
+| M10-D | Resource declaration + auto-wiring design spec | Done 2026-02-20 |
+| M10 | Mandatory resource declarations + auto-wiring | Done 2026-02-20 |
+| M11-D | Strict dry-run poisoning design spec | Done 2026-02-20 |
+| M11 | Strict dry-run mode | Done 2026-02-20 |
+| M15-D | Typed package-manager design spec | Done 2026-02-20 |
+| M15 | Typed install planning | Done 2026-02-20 |
+| M16-D | SystemModel/TransportBehavior unification design spec | Done 2026-02-20 |
+| M16 | SystemModel/TransportBehavior unification | Done 2026-02-20 |
+| M17-D | Global flattening + context-free identity design spec | Done 2026-02-20 |
+| M17 | Global flattening + context-free identity | Done 2026-02-20 |
+| M18-D | Single semantic authority/projection design spec | Done 2026-02-20 |
+| M18 | Projection-only surfaces + drift enforcement | Done 2026-02-20 |
+| M19-D | Formal non-redundancy proof design spec | Done 2026-02-20 |
+| M19 | Formal non-redundancy proof harness | Done 2026-02-20 |
+
+### Sprint 7: End-to-End Service Codegen from DSL
+| ID | Task | Status |
+|----|------|--------|
+| SC1 | `ServiceOperationSpec` in the IR | Done 2026-02-20 |
+| SC2 | Generic protocol interpreters (Rust exec-runtime) | Done 2026-02-20 |
+| SC3 | Switch resolver + delete per-service Rust | Done 2026-02-20 |
+| SC4 | LLM provider service definitions | Done 2026-02-20 |
+| SC5 | Multi-language service emission (Go) | Done 2026-02-20 |
+| SC6 | Multi-language service emission (C + MIPS) | Done 2026-02-20 |
+| SC7 | New service smoke test (all languages) | Done 2026-02-20 |
+
+## Archived 2026-02-21
+
+### Workflow Planner Cutover + Universal/Gist Capabilities
+| ID | Task | Status |
+|----|------|--------|
+| WF6 | Port `ci` to workflow planner (`gunbc-workflow ci`) | Done 2026-02-21 |
+| WF7 | Port `test-all` to workflow planner (`gunbc-workflow test-all`) | Done 2026-02-21 |
+| WF8 | Makefile thinning + strict cutover for `ci`/`test-all` | Done 2026-02-21 |
+| WF9 | Latency SLO instrumentation + guardrails for planner workflows | Done 2026-02-21 |
+| WF14 | Universal compilation capability implementation | Done 2026-02-21 |
+| WF15 | Universal codegen capability implementation | Done 2026-02-21 |
+| WF16 | Base gist workflow + snapshot mode | Done 2026-02-21 |
+| WF17 | Gist diff mode augment over base workflow | Done 2026-02-21 |
+| WF18 | Gist recent mode augment over base workflow | Done 2026-02-21 |
+
+### Daglang CLI Hardening
+| ID | Task | Status |
+|----|------|--------|
+| DL1 | `normalize_path_components` root-clamping fix | Done 2026-02-21 |
+| DL2 | Parse-stop diagnostics normalization | Done 2026-02-21 |
+| DL3 | Pipeline DAG/toposort cleanup in daglang CLI | Done 2026-02-21 |
+| DL4 | Unified/explicit `.dag` directory behavior | Done 2026-02-21 |
+
+### Dev Pipeline / Review
+| ID | Task | Status |
+|----|------|--------|
+| W1 | `gunbc review` CLI binary entrypoint | Done 2026-02-21 |
+| W4 | Abstract 4-dimension review DAG | Done 2026-02-21 |
+| W5 | Coding review profile (`AGENT.md` + `clippy.toml` criteria loading) | Done 2026-02-21 |
+| W6 | CI status injection into review context | Done 2026-02-21 |
+| W7 | `gunbc pipeline` daily orchestration command | Done 2026-02-21 |
+| W8 | Pipeline issue-context integration (`--issue`) | Done 2026-02-21 |
