@@ -1,4 +1,4 @@
-# Eliminate Registration Lists: Default-Passthrough Resolver + Inventory Discovery
+# Eliminate Registration Lists: Close the DSL→Runtime Gap
 
 **Status**: PROPOSED
 **Date**: 2026-02-21
@@ -9,47 +9,110 @@
 
 The Rust runtime maintains handwritten registries that duplicate metadata the DSL
 compiler already knows. Today (post-CL1-CL8), adding a new DSL module still
-requires touching Rust code in up to 4 places:
+requires touching Rust code in up to 4 places.
 
-| What you add | Rust code you must also touch |
+**Goal**: Make it so that adding DSL modules/callables/workflows requires **zero**
+Rust registration edits. Drift should be structurally impossible.
+
+## Why can't we "just write DSL" for all of this?
+
+Short answer: **we almost can.** The remaining Rust exists for three reasons,
+only one of which is fundamental.
+
+### What's already DSL-only
+
+**Every tool graph is 100% DSL-compiled at runtime.** There are zero hand-coded
+Rust DAGs. When `build_pragma_graph()` runs, it calls:
+
+```
+dsl/tools/pragma.dag → daglang_driver::compile → Dag<LoweredOp> → resolve → Dag<DynOp>
+```
+
+All graph structure, wiring, and orchestration comes from the DSL. The `emit`
+phase can even generate complete Rust/Go/C source code from the compiled DAG.
+The DSL already expresses:
+- Module dependencies and imports
+- Function signatures (inputs, outputs, types)
+- Graph topology (data flow, parallelism, stages)
+- Resource annotations (`@file(READ/WRITE)`, `@hermetic`, `@mock_response`)
+- Service protocol specs (REST endpoints, shell commands, field mappings)
+- Pipeline stage ordering
+
+### The three reasons Rust code still exists
+
+#### Reason 1: Leaf-node function bodies (temporary — DSL doesn't implement yet)
+
+The DSL declares functions like `fn render_clippy_toml(directives) -> String`
+but the **body** is implemented in Rust (`PragmaOp::RenderClippy`). These are
+pure computations: string templating, list filtering, JSON serialization. The
+DSL has the type system for this, but no expression language for function bodies.
+
+This is a **missing DSL feature**, not an architectural limitation. Evidence:
+- `InfraToolOp` duplicates logic already expressed in `dsl/tools/infra.dag`
+  (match/filter/count) — the DSL CAN express it, but Rust reimplements it
+- `PragmaOp` renders strings from config — expressible with string interpolation
+- `MakegenOp::LoadRegistry` serializes a Rust struct — needs a DSL-side data
+  source or FFI mechanism
+
+**Fix**: Add expression-level DSL support (string ops, list ops, arithmetic).
+This is a language evolution, not an architecture change. Each function body
+migrated from Rust to DSL eliminates one custom `Executable` impl.
+
+#### Reason 2: The resolver (unnecessary — compiler already has the information)
+
+`resolve_lowered_dag()` maps `LoweredOp` (compiler output) to `DynOp`
+(executable). The `LoweredOp` already carries module, name, obligation category,
+and service metadata — everything needed to route. But the resolver maintains
+its own copy of this routing table:
+
+| Registry | What it duplicates |
 |---|---|
-| New `.dag` callable (passthrough) | `PASSTHROUGH_CALLABLES` in `resolve.rs` |
-| New `.dag` callable (custom behavior) | match arm in `resolve_domain()` + new `Executable` impl |
-| New workflow | `TOOL_WORKFLOWS` in `spec_builders.rs` + builder fn |
-| New process unit | `default_process_unit_registry()` in `process_registry.rs` |
+| `PASSTHROUGH_CALLABLES` (30+ entries) | "These callables exist and are passthrough" — compiler already validated this |
+| `resolve_domain()` match arms (6 modules) | "These modules have custom ops" — could be inventory-discovered |
+| `resolve_std_resources()` name match | "These resources exist" — compiler knows from `std/resources.dag` |
 
-**Goal**: Make it so that adding a new DSL module/callable/workflow requires
-**zero** Rust registration edits. The architecture should make drift structurally
-impossible, not just tested-for.
+This is **entirely eliminable** without DSL changes. The compiler proves
+callables exist; the resolver should trust that proof. See Changes 1-2 below.
 
-## Root Cause
+#### Reason 3: Workflow specs are Rust-constructed DAGs (should be DSL pipelines)
 
-The `LoweredOp` enum already carries everything the resolver needs:
+The workflow builders (`gist_workflow_spec`, `bootstrap_workflow_spec`, etc.)
+construct `Dag<WorkflowUnit>` objects in Rust using `dag.add_node()`/
+`dag.add_edge()`. This is the same thing the DSL does — defining graph topology
+— but bypassing the compiler entirely.
 
-```
-LoweredOp::Callable {
-    module: String,                              // "tools.build"
-    name: String,                                // "build_all"
-    obligation: ObligationCategory,              // None, ServiceTransport*, Resource*
-    service_metadata: Option<ServiceCallMetadata>, // REST/Shell specs
-    ...
-}
-```
+Meanwhile, `pipelines/ci.dag` and `pipelines/sdlc.dag` already express
+pipelines in DSL that the compiler handles. The 12 remaining Rust-constructed
+workflows exist because they were written before the DSL pipeline feature was
+mature enough.
 
-The resolver *could* dispatch entirely from this data. It doesn't because the
-current architecture requires an explicit mapping from every `(module, name)`
-pair to a concrete `Executable`. But for ~80% of callables, the `Executable` is
-identical: forward inputs to outputs (passthrough).
+This is a **migration gap**, not a limitation. The DSL's `pipeline` construct
+can express everything the Rust builders do. Evidence: `pipelines/ci.dag` is
+the most complex workflow and it's fully DSL.
 
-## Design
+**Fix**: Migrate workflow builders to `dsl/pipelines/*.dag` files. The process
+unit claims (currently in `process_registry.rs`) can be derived from the DSL's
+`@file(READ/WRITE)` annotations, which already exist but aren't extracted.
+
+### Summary: What blocks "just write DSL"
+
+| Blocker | Category | How many registries it causes | Fix |
+|---|---|---|---|
+| Resolver doesn't trust compiler | Architecture gap | 3 (PASSTHROUGH_CALLABLES, match arms, resource names) | Default-passthrough + inventory (this design) |
+| Workflow specs in Rust | Migration gap | 2 (TOOL_WORKFLOWS, process_registry) | Migrate to DSL pipeline definitions |
+| No function body expressions | Missing DSL feature | 1 (custom Executable impls) | DSL expression language |
+| Leaf-node Rust impls | Fundamental (for now) | 0 (these don't create registries) | Not a registry problem |
+
+The registries are caused by the first two. Neither is fundamental.
+
+## Design: Phase 1 — Resolver trusts compiler (immediate, no DSL changes)
 
 ### Change 1: Default-passthrough resolver (eliminates PASSTHROUGH_CALLABLES)
 
-**Current**: `resolve_domain()` checks custom resolvers, then `PASSTHROUGH_CALLABLES`,
-then returns `unknown_callable` error.
+**Current**: `resolve_domain()` checks custom resolvers, then
+`PASSTHROUGH_CALLABLES`, then returns `unknown_callable` error.
 
-**Proposed**: `resolve_domain()` checks custom resolvers, then service transport,
-then resource lifecycle, then **defaults to passthrough for any remaining callable**.
+**Proposed**: Default to passthrough for any callable the compiler validated.
 
 ```rust
 fn resolve_domain(
@@ -79,24 +142,17 @@ fn resolve_domain(
 }
 ```
 
-**Why this is safe**: The DagLang compiler already validates that every callable
-reference resolves to a declared `fn`/`func` in the target module. If a
-`LoweredOp::Callable` reaches the resolver, the compiler has proven the callable
-exists. Passthrough is correct for any callable without custom side-effect logic
-(I/O, resource acquisition, etc.), and those categories are already handled by
-steps 1-3.
+**Why this is safe**: The DagLang compiler validates every callable reference
+resolves to a declared `fn`/`func`. If `LoweredOp::Callable` reaches the
+resolver, the callable exists. Passthrough is correct for any callable without
+custom side-effect logic, and those are already handled by steps 1-3.
 
-**What this eliminates**: The entire `PASSTHROUGH_CALLABLES` const (9 modules,
-30+ callable names). Adding a new passthrough callable to any DSL module requires
-**zero Rust changes**.
+**What this eliminates**: `PASSTHROUGH_CALLABLES` (9 modules, 30+ names).
+Adding a new passthrough callable requires **zero Rust changes**.
 
 ### Change 2: Inventory-based custom resolver registration (eliminates match arms)
 
-**Current**: `resolve_domain()` has a `match module { ... }` with 6 arms for
-modules with custom `Executable` impls.
-
-**Proposed**: Custom resolvers register themselves via the `inventory` crate
-(same pattern as `#[tool_target]`).
+Custom resolvers register themselves co-located with their `Executable` impls:
 
 ```rust
 // In gunbc-dag/src/pragma/ops.rs:
@@ -105,176 +161,119 @@ inventory::submit!(DomainResolver {
     resolve: resolve_pragma,
 });
 
-fn resolve_pragma(node_id: &str, name: &str, outputs: &[Port]) -> Option<Result<DynOp, ResolveError>> {
+fn resolve_pragma(node_id: &str, name: &str, outputs: &[Port])
+    -> Option<Result<DynOp, ResolveError>>
+{
     match name {
         "render_clippy_toml" => Some(Ok(DynOp::new(PragmaOp::RenderClippy))),
         "pragma" => Some(Ok(DynOp::new(PragmaEntrypointOp))),
-        // ...
         _ => None, // fall through to default passthrough
     }
 }
 ```
 
-The resolver collects all registered `DomainResolver` entries at startup:
+**What this eliminates**: The `match module { ... }` dispatch. Adding a custom
+module means adding the impl + registration in one file — `resolve.rs` never
+needs editing.
+
+Returning `None` for unrecognized callables is the key: even modules with custom
+ops can have passthrough callables mixed in. No need to enumerate every callable.
+
+### Change 3: Structural test assertions (eliminates brittle counts)
+
+Replace `assert_eq!(dag.nodes.len(), 9)` (11+ instances) with:
 
 ```rust
-fn resolve_custom(
-    node_id: &str, module: &str, name: &str, outputs: &[Port],
-) -> Option<Result<DynOp, ResolveError>> {
-    for resolver in inventory::iter::<DomainResolver>() {
-        if resolver.module == module {
-            return (resolver.resolve)(node_id, name, outputs);
-        }
-    }
-    None // no custom resolver → fall through to default passthrough
-}
-```
-
-**What this eliminates**: The `match module { ... }` dispatch in `resolve_domain()`.
-Adding a new module with custom behavior requires only the `Executable` impl and
-an `inventory::submit!` call in the same file — the resolver never needs editing.
-
-**Note**: Individual callable match arms within custom resolvers (e.g.,
-`resolve_pragma`'s 4 arms) are **not** eliminable — they map DSL names to
-specific Rust types, which is inherently manual. But they return `None` for
-unknown names, falling through to passthrough instead of erroring. This means
-even custom-resolver modules can have passthrough callables mixed in.
-
-### Change 3: Inventory-based workflow spec registration (eliminates TOOL_WORKFLOWS)
-
-**Current**: `TOOL_WORKFLOWS` is a 14-entry const array mapping names to builder
-functions.
-
-**Proposed**: Each workflow builder registers itself:
-
-```rust
-// In gunbc-dag/src/workflow/gist.rs:
-inventory::submit!(WorkflowRegistration {
-    canonical_name: "gist",
-    aliases: &[],
-    build: gist_workflow_spec,
-});
-```
-
-Discovery becomes:
-
-```rust
-pub fn all_tool_workflow_names() -> Vec<&'static str> {
-    inventory::iter::<WorkflowRegistration>()
-        .map(|w| w.canonical_name)
-        .collect()
-}
-
-pub fn tool_workflow_spec(name: &str) -> Result<WorkflowSpec, String> {
-    for w in inventory::iter::<WorkflowRegistration>() {
-        if w.canonical_name == name || w.aliases.contains(&name) {
-            return (w.build)();
-        }
-    }
-    Err(format!("unknown tool workflow: '{name}'"))
-}
-```
-
-**What this eliminates**: The `TOOL_WORKFLOWS` const. Adding a new workflow
-requires the builder function + `inventory::submit!` in the same file.
-
-### Change 4: Derive process units from workflow DAGs (eliminates process_registry)
-
-**Current**: `default_process_unit_registry()` has ~80 manual `pu(...)` entries
-mapping process units to resource claims.
-
-**Proposed**: When a `WorkflowSpec` is built, it already contains a `Dag` with
-named nodes. Process units can be derived from the DAG topology:
-
-```rust
-impl WorkflowSpec {
-    /// Derive process units from this workflow's DAG nodes.
-    fn derive_process_units(&self) -> Vec<ProcessUnitSpec> {
-        self.dag.nodes.iter().map(|node| {
-            let claims = derive_claims_from_node(node); // see below
-            pu(&self.name, &node.id.0, claims)
-        }).collect()
-    }
-}
-```
-
-Resource claims can be inferred from node metadata:
-- Nodes with `file:write` resource ports → `UnitClaim::write("file:workspace")`
-- Nodes with `file:read` resource ports → `UnitClaim::read("file:workspace")`
-- Nodes with `network` resource ports → `UnitClaim::write("network:*")`
-- Nodes with `tool:cargo` ports → `UnitClaim::read("tool:cargo")`
-- Pure nodes (no resource ports) → `vec![]`
-
-**What this eliminates**: The entire hand-maintained process unit registry.
-Adding a new workflow node automatically creates a process unit with correct
-resource claims derived from the DAG's resource wiring.
-
-**Fallback**: If claim inference isn't precise enough for some nodes, allow
-explicit `#[process_claim(...)]` annotations in the DSL or on the builder.
-
-### Change 5: Structural test assertions (eliminates brittle counts)
-
-**Current**: 11+ tests assert exact node counts: `assert_eq!(dag.nodes.len(), 9)`
-
-**Proposed**: Replace with structural assertions:
-
-```rust
-// Instead of: assert_eq!(spec.dag.nodes.len(), 9);
-// Use:
 assert!(spec.dag.has_node("gist.branch_resolution"));
-assert!(spec.dag.has_node("gist.credential_resolve"));
-assert!(spec.dag.has_edge_between("gist.branch_resolution", "gist.gist_create"));
-// Or for pure structure validation:
-assert!(spec.dag.is_connected(), "workflow DAG must be connected");
-assert!(spec.dag.has_single_sink(), "workflow DAG must have one terminal node");
+assert!(spec.dag.is_connected());
+assert!(spec.dag.has_single_sink());
 ```
 
-This validates the DAG's **shape** rather than its **size**, so adding a node
-(e.g., a new intermediate step) doesn't break unrelated tests.
+## Design: Phase 2 — Workflows migrate to DSL (medium-term)
 
-## Remaining hardcoded lists (not eliminable)
+### Change 4: Express workflows as DSL pipelines
 
-Some lists are inherently manual because they map DSL concepts to Rust-specific
-behavior that can't be auto-derived:
+The 12 Rust-constructed workflow specs should become `dsl/workflows/*.dag` files,
+compiled and resolved exactly like `pipelines/ci.dag` already is. This
+eliminates:
+- `TOOL_WORKFLOWS` registry (14 entries)
+- `default_process_unit_registry()` (~80 entries)
+- All `*_workflow_spec()` builder functions
 
-| List | Why it stays | Mitigation |
+### Change 5: Derive process unit claims from DSL annotations
+
+The DSL already has `@file(READ, "{path}")` and `@file(WRITE, "{path}")`
+annotations. The compiler's derivation phase (`DerivedArtifacts`) already
+extracts `ResourceUsage` per node. The process unit claims can be generated
+from this:
+
+```
+DSL:     @file(WRITE, "clippy.toml")
+Derived: ResourceUsage { resource: "Filesystem", usage: "Write" }
+Claim:   UnitClaim::write("file:workspace")
+```
+
+This closes the loop: DSL annotations → compiler derivation → process claims.
+No Rust registry needed.
+
+## Design: Phase 3 — DSL function bodies (long-term)
+
+### Change 6: Expression-level DSL support
+
+Add basic expression support to the DSL language:
+- String interpolation / templating
+- List operations (map, filter, join)
+- Arithmetic and comparison
+- Pattern matching
+
+This allows migrating the 5 custom `Executable` modules to pure DSL:
+
+| Module | Current Rust ops | DSL-expressible? |
 |---|---|---|
-| `WorkspaceBinary` enum (12 entries) | Maps binary names to Cargo invocation metadata. Binaries are a build system concept, not a DSL concept. | Already uses single-table macro. Consider deriving from `Cargo.toml` `[[bin]]` in a build script. |
-| `MANUAL_TOOL_DEFS` (2 entries) | `pragma` needs custom `Executable`; `build` has non-standard short_name. | Already documented (CL7). Shrinks as tools move to standard path. |
-| Custom `Executable` impls (5 modules) | By definition, custom behavior requires custom code. | Inventory registration (Change 2) keeps them co-located. |
-| `STANDARD_SYMBOLS` (40 entries) | UI symbols are a presentation concern, not DSL metadata. | Use `const` count assertion: `const _: [(); SYMBOLS.len()] = [(); 40];` |
-| `FORBIDDEN_CALLS` / `ALLOWED_FILES` (guardrails) | Architectural constraints, not DSL metadata. | Fine as-is; changes are intentional. |
+| `tools.pragma` | String rendering from config | Yes, with string interpolation |
+| `tools.makegen` | Registry load + Makefile render | Partially — needs data source for registry |
+| `tools.bootstrap` | Shell request prep + output parsing | Yes, with service transport patterns |
+| `tools.codegen` | Build-time file existence checks | Partially — needs build metadata access |
+| `tools.infra` | Filter/count/format | **Already expressed in DSL** — Rust version is redundant |
 
-## Additional findings from audit
+After Phase 3, the only Rust code is the compiler itself, the executor, and
+the transport adapters. Everything else is DSL.
 
-Beyond the CL1-CL8 items and the changes above, the scanner found:
+## Remaining lists (inherently non-DSL)
 
-| Finding | Location | Recommendation |
-|---|---|---|
-| Mock spec hardcoded paths (`"tools.bootstrap::bootstrap"`) | `ci/graph_mock.rs:76-88` | Derive from `LoweredOp` node IDs in the compiled CI DAG |
-| Hardcoded command counts in workflow unit tests | `unit_commands.rs:541,554` | Same as Change 5: structural assertions |
-| Makefile workflow name dispatch | `makegen/render.rs:230+` | Already uses generated registry; verify coverage |
+| List | Why it stays |
+|---|---|
+| `WorkspaceBinary` (12 entries) | Build system concept (Cargo binary names), not DSL metadata |
+| `STANDARD_SYMBOLS` (40 entries) | UI/presentation concern |
+| `FORBIDDEN_CALLS` (guardrails) | Architectural constraint, not domain metadata |
+
+These are fine — they don't duplicate DSL metadata.
 
 ## Implementation order
 
-| Phase | Changes | Impact | Size |
+| Phase | Changes | Eliminates | Size |
 |---|---|---|---|
-| **Phase 1** | Change 1 (default passthrough) | Eliminates `PASSTHROUGH_CALLABLES`. Zero-touch for new passthrough callables. | S |
-| **Phase 2** | Change 5 (structural test assertions) | Eliminates 13+ brittle count assertions. | S |
-| **Phase 3** | Change 2 (inventory custom resolvers) | Eliminates resolver `match module` dispatch. Co-locates ops with registration. | M |
-| **Phase 4** | Change 3 (inventory workflow specs) | Eliminates `TOOL_WORKFLOWS`. Co-locates builders with registration. | M |
-| **Phase 5** | Change 4 (derived process units) | Eliminates process registry. Requires claim inference logic. | L |
+| **1a** | Default passthrough (Change 1) | `PASSTHROUGH_CALLABLES` | S |
+| **1b** | Structural tests (Change 3) | 13+ brittle count assertions | S |
+| **1c** | Inventory resolvers (Change 2) | `match module` dispatch | M |
+| **2a** | Workflow DSL migration (Change 4) | `TOOL_WORKFLOWS` + builder fns | L |
+| **2b** | Derived claims (Change 5) | `process_registry` (80+ entries) | M |
+| **3** | DSL expressions (Change 6) | Custom `Executable` impls (5 modules) | XL |
 
-Phase 1 is the highest value: it makes the most common operation (adding a DSL
-callable) require zero Rust changes. Phases 2-4 are incremental wins using the
-proven inventory pattern. Phase 5 is the most complex but eliminates the largest
-registry.
+Phase 1a is the highest-value immediate win. Phase 3 is the endgame where
+"just write DSL" becomes literally true.
 
 ## Success criteria
 
-After all phases:
-- Adding a new `.dag` module with only passthrough callables: **0 Rust files touched**
-- Adding a new `.dag` module with custom behavior: **1 Rust file** (the `Executable` impl + inventory registration, co-located)
-- Adding a new workflow: **1 Rust file** (the builder + inventory registration, co-located)
-- Adding a new process unit to a workflow: **0 Rust files** (derived from DAG)
-- Adding a new resource to `std/resources.dag`: **0 Rust files** (already done in CL8)
+**After Phase 1** (Rust-only, no DSL changes):
+- New passthrough callable: **0 Rust files**
+- New custom-behavior module: **1 file** (impl + inventory, co-located)
+- New resource: **0 Rust files** (already done)
+
+**After Phase 2** (workflow migration):
+- New workflow: **1 DSL file** (no Rust)
+- New process unit: **0 files** (derived from DSL annotations)
+
+**After Phase 3** (DSL expressions):
+- New tool with only pure computation: **1 DSL file** (no Rust at all)
+- Rust code only needed for: new transport adapters, new resource handle types
