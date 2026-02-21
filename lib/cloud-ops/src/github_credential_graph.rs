@@ -197,7 +197,7 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "String"),
-                optional("secret_name", "OptionalString"),
+                port("secret_name", "String"),
             ],
             vec![port("config", "CloudSecretConfig")],
             GitHubCredentialGraphOp::Cloud(DynOp::new(CloudOps::BindSecretName)),

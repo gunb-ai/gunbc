@@ -129,46 +129,40 @@ impl Executable for LlmOps {
 fn execute_resolve_auth(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    use gunbc_ir::AuthScheme;
-
     let provider_id = require_str(&inputs, "provider")?;
-    let provider = llm::provider_by_id(provider_id)
-        .ok_or_else(|| ExecError::new(format!("unknown provider '{}'", provider_id)))?;
-
-    let (scheme, header_name) = match &provider.auth_scheme {
-        AuthScheme::Bearer => ("bearer".to_string(), String::new()),
-        AuthScheme::Header { name } => ("header".to_string(), name.clone()),
-        AuthScheme::Basic { .. } => {
-            return Err(ExecError::new(
-                "basic auth is not supported for LLM providers",
-            ))
-        }
-    };
-    let provider_id = provider.id.clone();
-    let fallback_intent = llm::LlmScopeContract::new(provider_id.clone()).credential_intent();
-    let intent_key = format!("llm.{}.chat_completion", provider_id);
-    let bound = bind_credential_intent_policy(&intent_key, &fallback_intent)
-        .or_else(|_| bind_credential_intent_policy("llm.chat_completion", &fallback_intent))
+    if llm::provider_by_id(provider_id).is_none() {
+        return Err(ExecError::new(format!(
+            "unknown provider '{provider_id}'"
+        )));
+    }
+    let base_intent = llm::LlmScopeContract::new(provider_id).credential_intent();
+    let intent_key = format!("llm.{}.chat_completion", base_intent.provider);
+    let bound = bind_credential_intent_policy(&intent_key, &base_intent)
+        .or_else(|_| bind_credential_intent_policy("llm.chat_completion", &base_intent))
         .map_err(|e| ExecError::new(format!("credential policy binding failed: {e}")))?;
     let allow_impersonation = policy_allows_impersonation(bound.impersonation.as_ref());
     let intent = bound.intent;
     intent.validate().map_err(|e| {
         ExecError::new(format!(
             "invalid llm credential contract for '{}': {e}",
-            provider_id
+            intent.provider
         ))
     })?;
-    let mut out = OutputMap::new()
-        .str("service", provider_id)
-        .str("scheme", scheme)
-        .str("header_name", header_name)
+    let secret_name = intent.secret_name.ok_or_else(|| {
+        ExecError::new(format!(
+            "LlmOps::ResolveAuth: secret_name is required for provider '{}'",
+            intent.provider
+        ))
+    })?;
+    OutputMap::new()
+        .str("service", intent.service)
+        .str("secret_name", secret_name)
+        .str("scheme", intent.scheme)
+        .str("header_name", intent.header_name)
         .str_list("required_scopes", intent.required_scopes)
         .bool("interactive_allowed", intent.interactive_allowed)
-        .bool("allow_impersonation", allow_impersonation);
-    if let Some(secret_name) = intent.secret_name {
-        out = out.str("secret_name", secret_name);
-    }
-    out.ok()
+        .bool("allow_impersonation", allow_impersonation)
+        .ok()
 }
 
 /// Build a `ChatRequest` from DAG inputs and convert it to a `RestRequest`.

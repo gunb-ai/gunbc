@@ -55,6 +55,12 @@ fn corpus_covers_all_top_level_item_variants() {
                 Item::InterfaceDef(_) => saw_interface = true,
                 Item::PipelineDef(_) => saw_pipeline = true,
                 Item::TestDef(_) | Item::FixtureDef(_) => {}
+                Item::ProjectDef(_)
+                | Item::FeatureDef(_)
+                | Item::TaskDef(_)
+                | Item::DesignDef(_)
+                | Item::ComponentDef(_)
+                | Item::EnvironmentDef(_) => {}
             }
         }
     }

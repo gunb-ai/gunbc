@@ -78,7 +78,7 @@ pub fn build_chat_completion_graph_with_config(
         vec![port("provider", "String")],
         vec![
             port("service", "String"),
-            optional("secret_name", "OptionalString"),
+            port("secret_name", "String"),
             optional("allow_impersonation", "OptionalBool"),
             port("scheme", "String"),
             port("header_name", "String"),
@@ -95,7 +95,7 @@ pub fn build_chat_completion_graph_with_config(
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "String"),
-                optional("secret_name", "OptionalString"),
+                port("secret_name", "String"),
             ],
             vec![port("config", "CloudSecretConfig")],
             DynOp::new(CloudOps::BindSecretName),

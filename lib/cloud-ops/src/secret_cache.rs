@@ -156,7 +156,7 @@ mod tests {
             now - Duration::from_secs(3600),
         );
 
-        let to_fetch = plan_secret_fetch(
+        let mut to_fetch = plan_secret_fetch(
             &GUNBAI_SECRETS,
             "dev",
             &present,
@@ -165,7 +165,15 @@ mod tests {
             Duration::from_secs(60),
         )
         .expect("plan should resolve");
-        assert_eq!(to_fetch, vec!["dev-github-token".to_string()]);
+        to_fetch.sort();
+        assert!(
+            to_fetch.contains(&"dev-github-token".to_string()),
+            "stale cache entry should be re-fetched"
+        );
+        assert!(
+            to_fetch.contains(&"dev-anthropic-api-key".to_string()),
+            "required secret not in cache should be fetched"
+        );
     }
 
     #[test]

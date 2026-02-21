@@ -256,10 +256,11 @@ pub fn resolve_graph_cloud_config_with_context(
     )))
 }
 
-/// Resolve graph cloud config with compatibility fallback.
+/// Resolve graph cloud config with explicit local-dev fallback.
 ///
 /// When no config source is present at all (`NotConfigured`), this falls back
 /// to `default_local_dev_config()` unless `GUNBC_CLOUD_CONFIG_REQUIRED=1|true`.
+/// The fallback emits a diagnostic message to stderr so it is never silent.
 ///
 /// When a config source **is** present but malformed or references an unknown
 /// namespace (`Invalid`), this always panics -- silently using dev defaults
@@ -274,6 +275,10 @@ pub fn graph_cloud_config() -> CloudSecretConfig {
             if env_truthy(ENV_CONFIG_REQUIRED) {
                 panic!("cloud config resolution failed: {msg}");
             }
+            eprintln!(
+                "cloud config: not configured ({msg}); using dev defaults \
+                 (set GUNBC_CLOUD_CONFIG_REQUIRED=1 to enforce)"
+            );
             default_local_dev_config()
         }
     }

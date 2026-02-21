@@ -1,7 +1,7 @@
 //! Cloud configuration ops.
 
 use gunbc_exec::{
-    optional_str_list_strict, optional_str_strict, require_str, ExecError, Executable, OutputMap,
+    optional_str_list_strict, require_str, ExecError, Executable, OutputMap,
 };
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
 use gunbc_ir::Value;
@@ -12,7 +12,7 @@ use std::collections::HashMap;
 pub enum CloudOps {
     /// Parse a CloudSecretConfig and emit standardized fields.
     ResolveConfig,
-    /// Bind a secret name to the config (default: service).
+    /// Bind an explicit secret name to the config. Requires `secret_name` input.
     BindSecretName,
     /// Validate config and map to GCP-specific inputs.
     MapToGcpInputs { runtime: CloudRuntimeKind },
@@ -74,8 +74,7 @@ impl Executable for CloudOps {
                     .ok_or_else(|| ExecError::new("missing 'config' input"))?;
                 let mut config = CloudSecretConfig::try_from(config_val)
                     .map_err(|e| ExecError::new(format!("invalid cloud config: {e}")))?;
-                let service = require_str(&inputs, "service")?;
-                let secret_name = optional_str_strict(&inputs, "secret_name")?.unwrap_or(service);
+                let secret_name = require_str(&inputs, "secret_name")?;
 
                 config.secret.name = secret_name.to_string();
 

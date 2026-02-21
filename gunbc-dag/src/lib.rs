@@ -81,9 +81,11 @@ pub use sdlc::{
     promote_to_canonical_artifact_with_payload, provisional_marker, reconcile_entries,
     register_retry_failure, release_claim, retry_ready, should_replay_skip, try_acquire_claim,
     upsert_provisional_artifact, upsert_provisional_artifact_with_payload,
-    validate_stage_transition, ArtifactLedger, ArtifactPayload, ArtifactRecord,
-    ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction,
-    ReconcileEntry, ReconcilePlan, RetryState, RunExecutionStatus, RunStateLedger, RunStateRecord,
+    update_agent_pr, update_agent_status, upsert_agent_record, validate_stage_transition,
+    AgentLedger, AgentLedgerRecord, AgentUpsertOutcome, ArtifactLedger, ArtifactPayload,
+    ArtifactRecord, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ClaimRecord,
+    ReconcileAction, ReconcileEntry, ReconcilePlan, RetryState, RunExecutionStatus, RunStateLedger,
+    RunStateRecord,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{

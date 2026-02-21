@@ -403,8 +403,15 @@ fn execute_resolve_auth_contract(
         .validate()
         .map_err(|e| ExecError::new(format!("invalid review credential contract: {e}")))?;
 
+    let secret_name = intent.secret_name.ok_or_else(|| {
+        ExecError::new(format!(
+            "ResolveAuthContract: secret_name is required for service '{}'",
+            intent.service
+        ))
+    })?;
     OutputMap::new()
         .str("service", intent.service)
+        .str("secret_name", secret_name)
         .str("scheme", intent.scheme)
         .str("header_name", intent.header_name)
         .str_list("required_scopes", intent.required_scopes)

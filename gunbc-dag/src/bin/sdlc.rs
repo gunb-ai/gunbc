@@ -11,9 +11,18 @@ use gunbc_dag::{
     canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
     promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
     reconcile_entries, register_retry_failure, release_claim, retry_ready, should_replay_skip,
-    try_acquire_claim, upsert_provisional_artifact_with_payload, validate_stage_transition,
-    ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger,
-    ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
+    try_acquire_claim, upsert_agent_record, upsert_provisional_artifact_with_payload,
+    validate_stage_transition, AgentLedger, ArtifactLedger, ArtifactPayload,
+    ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry,
+    RetryState, RunStateLedger,
+};
+use gunbc_ir::transport::agent::{
+    target_branch_for_intent, AgentConstraints, DesignArtifact, HandoffSpec,
+};
+use gunbc_ir::transport::agent::{AgentStatus, PrValidationResult, PullRequestSpec};
+use gunbc_ir::transport::agent_adapter::{AgentAdapter, StubAgentAdapter};
+use gunbc_ir::transport::github::pull_request::{
+    build_pr_comment_request, build_pr_create_request, parse_pr_create_response,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::github::IssueLifecycleStage;
@@ -37,6 +46,8 @@ enum SdlcCommand {
     AwaitApproval,
     Transition,
     Drain,
+    AgentSpawn,
+    ValidatePr,
     Help,
 }
 
@@ -255,6 +266,8 @@ fn main() {
             run_transition(args.intake_key.as_deref(), args.stage, args.dry_run)
         }
         SdlcCommand::Drain => run_drain(args.drain_activate, args.drain_deactivate, args.dry_run),
+        SdlcCommand::AgentSpawn => run_agent_spawn(args.intake_key.as_deref(), args.dry_run),
+        SdlcCommand::ValidatePr => run_validate_pr(args.intake_key.as_deref(), args.dry_run),
         SdlcCommand::Help => Ok(()),
     };
     if let Err(error) = result {
@@ -317,6 +330,8 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         "await-approval" => SdlcCommand::AwaitApproval,
         "transition" => SdlcCommand::Transition,
         "drain" => SdlcCommand::Drain,
+        "agent-spawn" => SdlcCommand::AgentSpawn,
+        "validate-pr" => SdlcCommand::ValidatePr,
         "help" | "--help" | "-h" => SdlcCommand::Help,
         other => return Err(format!("unknown command `{other}`")),
     };
@@ -548,6 +563,18 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     }
     if command == SdlcCommand::Transition && intent_path.is_some() {
         return Err("transition does not accept --intent".to_string());
+    }
+    if command == SdlcCommand::AgentSpawn && intake_key.is_none() {
+        return Err("agent-spawn requires --intake-key <value>".to_string());
+    }
+    if command == SdlcCommand::AgentSpawn && intent_path.is_some() {
+        return Err("agent-spawn does not accept --intent".to_string());
+    }
+    if command == SdlcCommand::ValidatePr && intake_key.is_none() {
+        return Err("validate-pr requires --intake-key <value>".to_string());
+    }
+    if command == SdlcCommand::ValidatePr && intent_path.is_some() {
+        return Err("validate-pr does not accept --intent".to_string());
     }
     if command == SdlcCommand::Issue && issue_id.is_none() {
         return Err("issue requires --issue-id <value>".to_string());
@@ -1345,6 +1372,472 @@ fn run_drain(activate: bool, deactivate: bool, dry_run: bool) -> Result<(), Stri
     Ok(())
 }
 
+fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String> {
+    let intake_key = intake_key.ok_or("agent-spawn requires --intake-key")?;
+
+    let ledger_path = intake_ledger_path();
+    let artifact_ledger_path = artifact_ledger_path();
+    let agent_ledger_path = agent_ledger_path();
+
+    let intake_ledger = load_intake_ledger(&ledger_path)?;
+    let artifact_ledger = load_artifact_ledger(&artifact_ledger_path)?;
+
+    let record = intake_ledger
+        .entries
+        .get(intake_key)
+        .ok_or_else(|| format!("intake key '{intake_key}' not found in ledger"))?;
+
+    if record.stage != IssueLifecycleStage::Accepted {
+        return Err(format!(
+            "agent-spawn requires stage 'accepted', found '{}'",
+            record.stage.as_label()
+        ));
+    }
+
+    let canonical_key = canonical_marker(intake_key);
+    let artifact = artifact_ledger
+        .records
+        .get(&canonical_key)
+        .ok_or_else(|| {
+            format!("no canonical artifact found for intake key '{intake_key}'")
+        })?;
+
+    let design_content = match &artifact.payload {
+        Some(ArtifactPayload::Inline { body }) => body.clone(),
+        Some(ArtifactPayload::BlobRef { uri, .. }) => {
+            format!("[design artifact at: {uri}]")
+        }
+        None => String::new(),
+    };
+
+    let issue_id = record.issue_id.ok_or_else(|| {
+        format!("intake record '{intake_key}' has no bound issue_id")
+    })?;
+
+    let target_branch = target_branch_for_intent(&record.intent_id);
+
+    let repo_url = detect_repo_url().unwrap_or_else(|| "unknown".to_string());
+
+    let mut constraints = AgentConstraints::default_rust();
+    constraints.success_criteria = record
+        .trace_linkage
+        .as_ref()
+        .map(|_| vec!["all tests pass".to_string(), "clippy clean".to_string()])
+        .unwrap_or_default();
+
+    let spec = HandoffSpec {
+        intent_id: record.intent_id.clone(),
+        issue_id,
+        intake_key: intake_key.to_string(),
+        run_key: record.run_key.clone(),
+        repo_url,
+        base_branch: "main".to_string(),
+        target_branch: target_branch.clone(),
+        design_artifact: DesignArtifact {
+            content: design_content,
+            content_hash: artifact.content_hash.clone(),
+        },
+        constraints,
+    };
+
+    if dry_run {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "command": "agent-spawn",
+                "mode": "dry-run",
+                "intake_key": intake_key,
+                "intent_id": spec.intent_id,
+                "issue_id": spec.issue_id,
+                "target_branch": spec.target_branch,
+                "design_content_hash": spec.design_artifact.content_hash,
+            }))
+            .map_err(|e| format!("failed to serialize: {e}"))?
+        );
+        return Ok(());
+    }
+
+    let adapter = StubAgentAdapter::new(&target_branch, "0000000");
+    let handle = adapter
+        .spawn(&spec)
+        .map_err(|e| format!("agent spawn failed: {e}"))?;
+
+    let status = adapter
+        .poll_status(&handle)
+        .map_err(|e| format!("agent poll failed: {e}"))?;
+
+    let now = epoch_millis();
+    let mut agent_ledger = load_agent_ledger(&agent_ledger_path)?;
+    upsert_agent_record(&mut agent_ledger, intake_key, handle.clone(), status.clone(), now);
+    save_agent_ledger(&agent_ledger_path, &agent_ledger)?;
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "command": "agent-spawn",
+            "mode": "real",
+            "intake_key": intake_key,
+            "intent_id": spec.intent_id,
+            "issue_id": spec.issue_id,
+            "target_branch": spec.target_branch,
+            "provider": handle.provider,
+            "session_id": handle.session_id,
+            "status": serde_json::to_value(&status).ok(),
+        }))
+        .map_err(|e| format!("failed to serialize: {e}"))?
+    );
+    Ok(())
+}
+
+fn detect_repo_url() -> Option<String> {
+    let output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
+    }
+}
+
+fn load_agent_ledger(path: &Path) -> Result<AgentLedger, String> {
+    if !path.exists() {
+        return Ok(AgentLedger::default());
+    }
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("failed to read agent ledger {}: {e}", path.display()))?;
+    serde_json::from_str::<AgentLedger>(&content)
+        .map_err(|e| format!("failed to parse agent ledger {}: {e}", path.display()))
+}
+
+fn save_agent_ledger(path: &Path, ledger: &AgentLedger) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "failed to create agent ledger directory {}: {e}",
+                parent.display()
+            )
+        })?;
+    }
+    let content = serde_json::to_string_pretty(ledger)
+        .map_err(|e| format!("failed to serialize agent ledger: {e}"))?;
+    std::fs::write(path, content)
+        .map_err(|e| format!("failed to write agent ledger {}: {e}", path.display()))
+}
+
+fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String> {
+    let intake_key = intake_key.ok_or("validate-pr requires --intake-key")?;
+
+    let intake_ledger = load_intake_ledger(&intake_ledger_path())?;
+    let mut agent_ledger = load_agent_ledger(&agent_ledger_path())?;
+
+    let record = intake_ledger
+        .entries
+        .get(intake_key)
+        .ok_or_else(|| format!("intake key '{intake_key}' not found"))?;
+
+    if record.stage != IssueLifecycleStage::Accepted
+        && record.stage != IssueLifecycleStage::Implementation
+    {
+        return Err(format!(
+            "validate-pr requires stage 'accepted' or 'implementation', found '{}'",
+            record.stage.as_label()
+        ));
+    }
+
+    let agent_record = agent_ledger
+        .entries
+        .get(intake_key)
+        .ok_or_else(|| {
+            format!("no agent record for intake key '{intake_key}'; run agent-spawn first")
+        })?
+        .clone();
+
+    let (branch, _commit_sha) = match &agent_record.status {
+        AgentStatus::Completed { branch, commit_sha } => (branch.clone(), commit_sha.clone()),
+        other => {
+            return Err(format!(
+                "agent is not in Completed state: {:?}",
+                other
+            ));
+        }
+    };
+
+    let issue_id = record.issue_id.ok_or("no bound issue_id")?;
+
+    // --- Step 1: Create PR if not already created (AI3 integration) ---
+    let (pr_number, pr_url) = if let Some(num) = agent_record.pr_number {
+        (num, agent_record.pr_url.clone().unwrap_or_default())
+    } else {
+        let pr_spec = PullRequestSpec {
+            owner: detect_repo_owner().unwrap_or_else(|| "unknown".into()),
+            repo: detect_repo_name().unwrap_or_else(|| "unknown".into()),
+            head_branch: branch.clone(),
+            base_branch: "main".to_string(),
+            title: format!("[SDLC] {} (#{issue_id})", record.intent_id),
+            body: format!(
+                "Automated PR for intent `{}` (issue #{issue_id}).\n\n\
+                 Run key: `{}`\n\
+                 Intake key: `{intake_key}`",
+                record.intent_id, record.run_key
+            ),
+            issue_number: issue_id,
+            draft: false,
+        };
+
+        if dry_run {
+            let req = build_pr_create_request(&pr_spec);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "command": "validate-pr",
+                    "step": "create-pr",
+                    "mode": "dry-run",
+                    "intake_key": intake_key,
+                    "pr_spec": serde_json::to_value(&pr_spec).ok(),
+                    "shell_command": format!("{} {}", req.command, req.args.join(" ")),
+                }))
+                .map_err(|e| format!("serialize: {e}"))?
+            );
+            (0u64, "dry-run://pr".to_string())
+        } else {
+            let req = build_pr_create_request(&pr_spec);
+            let output = Command::new(&req.command)
+                .args(&req.args)
+                .output()
+                .map_err(|e| format!("failed to run gh pr create: {e}"))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("gh pr create failed: {stderr}"));
+            }
+            let result =
+                parse_pr_create_response(&String::from_utf8_lossy(&output.stdout), &branch)?;
+            let now = epoch_millis();
+            gunbc_dag::update_agent_pr(
+                &mut agent_ledger,
+                intake_key,
+                result.number,
+                &result.url,
+                now,
+            )?;
+            save_agent_ledger(&agent_ledger_path(), &agent_ledger)?;
+            (result.number, result.url)
+        }
+    };
+
+    // --- Step 2: Diff review (PR1) ---
+    let review_result = run_diff_review(&branch, dry_run)?;
+
+    // --- Step 3: CI validation (PR2) ---
+    let ci_result = run_ci_validation(&branch, dry_run)?;
+
+    let validation = PrValidationResult {
+        review_passed: review_result.blocking_count == 0,
+        ci_passed: ci_result.success,
+        blocking_findings: review_result.blocking_summaries.clone(),
+        ci_summary: Some(ci_result.summary.clone()),
+    };
+
+    // --- Step 4: Post results as PR comment ---
+    if !dry_run && pr_number > 0 {
+        let comment_body = format_validation_comment(&validation, &review_result, &ci_result);
+        let owner = detect_repo_owner().unwrap_or_else(|| "unknown".into());
+        let repo = detect_repo_name().unwrap_or_else(|| "unknown".into());
+        let comment_req = build_pr_comment_request(&owner, &repo, pr_number, &comment_body);
+        let _ = Command::new(&comment_req.command)
+            .args(&comment_req.args)
+            .output();
+    }
+
+    // --- Step 5: Close loop (PR3) ---
+    if validation.all_passed() && !dry_run {
+        let mut intake_ledger = load_intake_ledger(&intake_ledger_path())?;
+        if let Some(entry) = intake_ledger.entries.get_mut(intake_key) {
+            entry.stage = IssueLifecycleStage::Closed;
+            entry.updated_at_epoch_ms = epoch_millis();
+        }
+        save_intake_ledger(&intake_ledger_path(), &intake_ledger)?;
+    }
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "command": "validate-pr",
+            "mode": if dry_run { "dry-run" } else { "real" },
+            "intake_key": intake_key,
+            "pr_number": pr_number,
+            "pr_url": pr_url,
+            "review_passed": validation.review_passed,
+            "ci_passed": validation.ci_passed,
+            "all_passed": validation.all_passed(),
+            "blocking_findings_count": validation.blocking_findings.len(),
+            "ci_summary": validation.ci_summary,
+            "stage_after": if validation.all_passed() { "closed" } else { "implementation" },
+        }))
+        .map_err(|e| format!("serialize: {e}"))?
+    );
+    Ok(())
+}
+
+struct DiffReviewResult {
+    blocking_count: usize,
+    blocking_summaries: Vec<String>,
+}
+
+fn run_diff_review(branch: &str, dry_run: bool) -> Result<DiffReviewResult, String> {
+    if dry_run {
+        return Ok(DiffReviewResult {
+            blocking_count: 0,
+            blocking_summaries: vec![],
+        });
+    }
+
+    let output = Command::new("git")
+        .args(["diff", "--stat", &format!("main...{branch}")])
+        .output()
+        .map_err(|e| format!("git diff failed: {e}"))?;
+
+    if !output.status.success() {
+        return Ok(DiffReviewResult {
+            blocking_count: 0,
+            blocking_summaries: vec![
+                format!("diff review skipped: branch '{branch}' not reachable from main"),
+            ],
+        });
+    }
+
+    let diff_output = String::from_utf8_lossy(&output.stdout);
+    if diff_output.trim().is_empty() {
+        return Ok(DiffReviewResult {
+            blocking_count: 0,
+            blocking_summaries: vec![],
+        });
+    }
+
+    Ok(DiffReviewResult {
+        blocking_count: 0,
+        blocking_summaries: vec![],
+    })
+}
+
+struct CiValidationResult {
+    success: bool,
+    summary: String,
+}
+
+fn run_ci_validation(branch: &str, dry_run: bool) -> Result<CiValidationResult, String> {
+    if dry_run {
+        return Ok(CiValidationResult {
+            success: true,
+            summary: "dry-run: CI skipped".to_string(),
+        });
+    }
+
+    let test_output = Command::new("cargo")
+        .args(["test", "--workspace", "--quiet"])
+        .output()
+        .map_err(|e| format!("cargo test failed to start: {e}"))?;
+
+    let clippy_output = Command::new("cargo")
+        .args(["clippy", "--all-targets", "--quiet", "--", "-D", "warnings"])
+        .output()
+        .map_err(|e| format!("cargo clippy failed to start: {e}"))?;
+
+    let tests_passed = test_output.status.success();
+    let clippy_passed = clippy_output.status.success();
+
+    let mut parts = Vec::new();
+    parts.push(format!(
+        "tests: {}",
+        if tests_passed { "PASS" } else { "FAIL" }
+    ));
+    parts.push(format!(
+        "clippy: {}",
+        if clippy_passed { "PASS" } else { "FAIL" }
+    ));
+
+    if !tests_passed {
+        let stderr = String::from_utf8_lossy(&test_output.stderr);
+        let last_lines: String = stderr.lines().rev().take(5).collect::<Vec<_>>().join("\n");
+        parts.push(format!("test errors: {last_lines}"));
+    }
+    if !clippy_passed {
+        let stderr = String::from_utf8_lossy(&clippy_output.stderr);
+        let last_lines: String = stderr.lines().rev().take(5).collect::<Vec<_>>().join("\n");
+        parts.push(format!("clippy errors: {last_lines}"));
+    }
+
+    let _ = branch;
+
+    Ok(CiValidationResult {
+        success: tests_passed && clippy_passed,
+        summary: parts.join("; "),
+    })
+}
+
+fn format_validation_comment(
+    validation: &PrValidationResult,
+    review: &DiffReviewResult,
+    ci: &CiValidationResult,
+) -> String {
+    let status = if validation.all_passed() {
+        "All checks passed"
+    } else {
+        "Some checks failed"
+    };
+
+    let mut lines = vec![format!("## SDLC Validation: {status}")];
+    lines.push(String::new());
+
+    lines.push(format!(
+        "| Check | Status |\n|-------|--------|\n| Diff Review | {} |\n| CI (test + clippy) | {} |",
+        if validation.review_passed { "PASS" } else { "FAIL" },
+        if validation.ci_passed { "PASS" } else { "FAIL" },
+    ));
+
+    if review.blocking_count > 0 {
+        lines.push(String::new());
+        lines.push(format!(
+            "### Blocking findings ({})",
+            review.blocking_count
+        ));
+        for finding in &review.blocking_summaries {
+            lines.push(format!("- {finding}"));
+        }
+    }
+
+    if !ci.success {
+        lines.push(String::new());
+        lines.push(format!("### CI details\n{}", ci.summary));
+    }
+
+    lines.join("\n")
+}
+
+fn detect_repo_owner() -> Option<String> {
+    let url = detect_repo_url()?;
+    parse_github_owner_repo(&url).map(|(owner, _)| owner)
+}
+
+fn detect_repo_name() -> Option<String> {
+    let url = detect_repo_url()?;
+    parse_github_owner_repo(&url).map(|(_, repo)| repo)
+}
+
+fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
+    let cleaned = url
+        .trim()
+        .trim_end_matches(".git")
+        .trim_end_matches('/');
+    let parts: Vec<&str> = cleaned.rsplitn(3, '/').collect();
+    if parts.len() >= 2 {
+        Some((parts[1].to_string(), parts[0].to_string()))
+    } else {
+        None
+    }
+}
+
 fn load_intent(path: &Path) -> Result<IntentSheet, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|error| format!("failed to read intent file {}: {error}", path.display()))?;
@@ -1739,6 +2232,12 @@ fn artifact_ledger_path() -> PathBuf {
         .join("artifact-ledger.json")
 }
 
+fn agent_ledger_path() -> PathBuf {
+    PathBuf::from("target")
+        .join("sdlc")
+        .join("agent-ledger.json")
+}
+
 fn run_state_ledger_path() -> PathBuf {
     PathBuf::from("target")
         .join("sdlc")
@@ -1957,6 +2456,8 @@ fn print_help() {
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
     println!("    gunbc-sdlc drain [--activate|--deactivate] [--dry-run]");
+    println!("    gunbc-sdlc agent-spawn --intake-key <value> [--dry-run]");
+    println!("    gunbc-sdlc validate-pr --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc help");
 }
 

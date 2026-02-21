@@ -1,5 +1,6 @@
 //! SDLC runtime state primitives.
 
+pub mod agent_ledger;
 pub mod artifacts;
 pub mod claims;
 pub mod reconcile;
@@ -22,5 +23,9 @@ pub use retry::{register_retry_failure, retry_ready, RetryState};
 pub use state::{
     mark_run_completed, mark_run_failed, should_replay_skip, RunExecutionStatus, RunStateLedger,
     RunStateRecord,
+};
+pub use agent_ledger::{
+    update_agent_pr, update_agent_status, upsert_agent_record, AgentLedger, AgentLedgerRecord,
+    AgentUpsertOutcome,
 };
 pub use transaction::validate_stage_transition;

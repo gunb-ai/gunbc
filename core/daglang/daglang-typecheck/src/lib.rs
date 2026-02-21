@@ -792,6 +792,13 @@ fn collect_signatures(
             // Test and fixture definitions are handled by the test lowering
             // pass, not the standard typecheck/lower pipeline.
             Item::TestDef(_) | Item::FixtureDef(_) => {}
+            // Project/SDLC blocks are not typechecked yet in this pass
+            Item::ProjectDef(_)
+            | Item::FeatureDef(_)
+            | Item::TaskDef(_)
+            | Item::DesignDef(_)
+            | Item::ComponentDef(_)
+            | Item::EnvironmentDef(_) => {}
         }
     }
 

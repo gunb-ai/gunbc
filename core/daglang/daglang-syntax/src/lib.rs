@@ -83,6 +83,12 @@ pub mod ast {
         PipelineDef(PipelineDef),
         TestDef(TestDef),
         FixtureDef(FixtureDef),
+        ProjectDef(ProjectDef),
+        FeatureDef(FeatureDef),
+        TaskDef(TaskDef),
+        DesignDef(DesignDef),
+        ComponentDef(ComponentDef),
+        EnvironmentDef(EnvironmentDef),
     }
 
     // ── Types ───────────────────────────────────────────────────────
@@ -244,6 +250,44 @@ pub mod ast {
         pub name: String,
         pub body: FuncBody,
         pub after: Vec<String>,
+    }
+
+    // ── SDLC & Infra Blocks ─────────────────────────────────────────
+
+    #[derive(Debug)]
+    pub struct ProjectDef {
+        pub name: String,
+        pub properties: Vec<(String, Expr)>,
+    }
+
+    #[derive(Debug)]
+    pub struct FeatureDef {
+        pub name: String,
+        pub properties: Vec<(String, Expr)>,
+    }
+
+    #[derive(Debug)]
+    pub struct TaskDef {
+        pub name: String,
+        pub properties: Vec<(String, Expr)>,
+    }
+
+    #[derive(Debug)]
+    pub struct DesignDef {
+        pub name: String,
+        pub properties: Vec<(String, Expr)>,
+    }
+
+    #[derive(Debug)]
+    pub struct ComponentDef {
+        pub name: String,
+        pub properties: Vec<(String, Expr)>,
+    }
+
+    #[derive(Debug)]
+    pub struct EnvironmentDef {
+        pub name: String,
+        pub properties: Vec<(String, Expr)>,
     }
 
     // ── Tests ────────────────────────────────────────────────────────

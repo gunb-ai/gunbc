@@ -39,6 +39,8 @@
 //! └── anthropic.rs (Anthropic conversions)
 //! ```
 
+pub mod agent;
+pub mod agent_adapter;
 pub mod behavior;
 pub mod ci;
 pub mod cli;
@@ -60,6 +62,11 @@ pub mod scope;
 pub mod tcp;
 pub mod tool;
 
+pub use agent::{
+    AgentConstraints, AgentError, AgentHandle, AgentStatus, DesignArtifact, HandoffSpec,
+    PrValidationResult, PullRequestResult, PullRequestSpec,
+};
+pub use agent_adapter::{AgentAdapter, StubAgentAdapter};
 pub use behavior::{default_transport_behaviors, FieldRouteSpec, TransportBehavior, TransportKind};
 pub use ci::{
     detect_provider, detect_provider_strict, is_ci, AnnotationLevel, CiProvider, FileLocation,

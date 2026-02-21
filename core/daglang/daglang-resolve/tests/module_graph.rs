@@ -48,6 +48,7 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "services.github.issues",
         "services.llm.anthropic",
         "services.llm.openai",
+        "services.sdlc.control_plane",
         "services.shell",
         "shared.dag_util",
         "shared.gist_modes",
@@ -62,6 +63,7 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "tools.deps",
         "tools.docgen",
         "tools.gist",
+        "tools.infra",
         "tools.makegen",
         "tools.pragma",
         "tools.review",
@@ -92,6 +94,7 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "services.github.issues",
         "services.llm.anthropic",
         "services.llm.openai",
+        "services.sdlc.control_plane",
         "std.resources",
         "std.types",
         "cloud.aws.credential",
@@ -112,6 +115,7 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "tools.docgen",
         "tools.gist",
         "examples.deployment",
+        "tools.infra",
         "tools.makegen",
         "tools.pragma",
         "tools.review",
@@ -125,7 +129,7 @@ fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
 
-    assert_eq!(graph.modules.len(), 46, "expected 46 discovered modules");
+    assert_eq!(graph.modules.len(), 48, "expected 48 discovered modules");
     let mut module_names: Vec<String> = graph
         .modules
         .iter()
@@ -215,6 +219,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("services.github.issues".into(), 0),
         ("services.llm.anthropic".into(), 0),
         ("services.llm.openai".into(), 0),
+        ("services.sdlc.control_plane".into(), 0),
         ("services.shell".into(), 1),
         ("shared.dag_util".into(), 2),
         ("shared.gist_modes".into(), 5),
@@ -229,6 +234,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.deps".into(), 4),
         ("tools.docgen".into(), 2),
         ("tools.gist".into(), 5),
+        ("tools.infra".into(), 0),
         ("tools.makegen".into(), 3),
         ("tools.pragma".into(), 3),
         ("tools.review".into(), 0),

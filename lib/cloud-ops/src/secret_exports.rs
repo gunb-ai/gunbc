@@ -65,14 +65,22 @@ mod tests {
     fn render_direnv_exports_renders_env_lines_for_resolved_values() {
         let mut fetched = BTreeMap::new();
         fetched.insert("dev-github-token".to_string(), "ghp_abc123".to_string());
+        fetched.insert(
+            "dev-anthropic-api-key".to_string(),
+            "sk-ant-test".to_string(),
+        );
 
         let exports =
             render_direnv_exports(&GUNBAI_SECRETS, "dev", &fetched).expect("render exports");
         assert!(exports
             .shell_exports
             .contains("export GITHUB_TOKEN='ghp_abc123'"));
+        assert!(exports
+            .shell_exports
+            .contains("export ANTHROPIC_API_KEY='sk-ant-test'"));
         assert!(exports.missing_required.is_empty());
-        assert_eq!(exports.resolved, vec!["GITHUB_TOKEN".to_string()]);
+        assert!(exports.resolved.contains(&"GITHUB_TOKEN".to_string()));
+        assert!(exports.resolved.contains(&"ANTHROPIC_API_KEY".to_string()));
     }
 
     #[test]
