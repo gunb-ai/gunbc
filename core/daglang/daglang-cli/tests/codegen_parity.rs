@@ -1935,6 +1935,91 @@ fn sdlc_pipeline_go_runtime_executes_when_go_available() {
 }
 
 #[test]
+fn infra_go_runtime_executes_when_go_available() {
+    if !command_exists("go") {
+        eprintln!("SKIP infra go runtime strict check: go toolchain not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_infra_go_strict");
+    compile_module_for_target("dsl/tools/infra.dag", "go", &native_out_root.join("go"));
+    let go = run_infra_generated_go(&native_out_root.join("go"));
+
+    match go {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated go backend"),
+                "generated go infra runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("infra go runtime should not skip when go is available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict infra go runtime out root");
+}
+
+#[test]
+fn sdlc_control_plane_go_runtime_executes_when_go_available() {
+    if !command_exists("go") {
+        eprintln!("SKIP sdlc control-plane go runtime strict check: go toolchain not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_control_plane_go_strict");
+    compile_module_for_target(
+        "dsl/services/sdlc/control_plane.dag",
+        "go",
+        &native_out_root.join("go"),
+    );
+    let go = run_infra_generated_go(&native_out_root.join("go"));
+
+    match go {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated go backend"),
+                "generated go sdlc control-plane runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("sdlc control-plane go runtime should not skip when go is available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict sdlc control-plane go runtime out root");
+}
+
+#[test]
+fn design_tool_go_runtime_executes_when_go_available() {
+    if !command_exists("go") {
+        eprintln!("SKIP design tool go runtime strict check: go toolchain not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_design_go_strict");
+    compile_module_for_target("dsl/tools/design.dag", "go", &native_out_root.join("go"));
+    let go = run_infra_generated_go(&native_out_root.join("go"));
+
+    match go {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated go backend"),
+                "generated go design runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("design tool go runtime should not skip when go is available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict design go runtime out root");
+}
+
+#[test]
 fn sdlc_pipeline_runtime_smoke_mips_emits_runnable_binary_when_available() {
     let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_mips");
     compile_module_for_target(

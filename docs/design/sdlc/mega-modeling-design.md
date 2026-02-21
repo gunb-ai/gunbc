@@ -202,6 +202,7 @@ Conformance evidence classes:
 2. Generated runtime smoke tests:
    1. Rust layer-1 runnable smoke for infra entrypoint.
    2. Go/C/MIPS toolchain-aware smoke for infra + SDLC modules.
+   3. When Go toolchain is available, strict non-skip runtime gates are enforced for infra, design, SDLC pipeline, and SDLC control-plane generated backends.
 3. Differential policy:
    1. Any new SDLC orchestration behavior must land in DSL modules first.
    2. Runtime-only behavior deltas are design-policy violations.
