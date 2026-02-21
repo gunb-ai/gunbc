@@ -1634,6 +1634,92 @@ fn worker_replay_skips_completed_run_key() {
 }
 
 #[test]
+fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
+    let root = unique_temp_dir("worker_heartbeat_claim");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-heartbeat",
+        "intent-20260221-heartbeat",
+        Some(9090),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let first_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run first worker");
+    assert!(
+        first_worker.status.success(),
+        "first worker should succeed: {}",
+        String::from_utf8_lossy(&first_worker.stderr)
+    );
+
+    let claim_ledger_path = root.join("target/sdlc/claim-ledger.json");
+    let first_claim_ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&claim_ledger_path).expect("read first claim ledger"),
+    )
+    .expect("parse first claim ledger");
+    let first_claims = first_claim_ledger["claims"]
+        .as_object()
+        .expect("claims should be object");
+    let (slot_key, first_claim) = first_claims
+        .iter()
+        .next()
+        .expect("first worker should persist claim entry");
+    assert!(
+        slot_key.contains("issue:9090"),
+        "claim slot key should be scoped to requested issue id"
+    );
+    let first_expires_at = first_claim["lease_expires_at_epoch_ms"]
+        .as_u64()
+        .expect("first lease expiry should be numeric");
+
+    let second_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run second worker");
+    assert!(
+        second_worker.status.success(),
+        "second worker should succeed: {}",
+        String::from_utf8_lossy(&second_worker.stderr)
+    );
+    let second_payload: serde_json::Value =
+        serde_json::from_slice(&second_worker.stdout).expect("second worker output should be JSON");
+    assert_eq!(second_payload["replay_skipped"][0], "intent-20260221-heartbeat");
+
+    let second_claim_ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&claim_ledger_path).expect("read second claim ledger"),
+    )
+    .expect("parse second claim ledger");
+    let second_claim = &second_claim_ledger["claims"][slot_key];
+    let second_expires_at = second_claim["lease_expires_at_epoch_ms"]
+        .as_u64()
+        .expect("second lease expiry should be numeric");
+    assert!(
+        second_expires_at >= first_expires_at,
+        "second worker pass should heartbeat and extend/refresh claim lease"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn worker_metrics_include_stage_specific_llm_cost_units() {
     let root = unique_temp_dir("worker_llm_cost_units");
     std::fs::create_dir_all(&root).expect("create temp root");
