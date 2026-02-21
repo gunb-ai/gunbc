@@ -326,7 +326,6 @@ fn discover_target_module_graph_for_context(
                 continue;
             }
             let Some(import_file) = resolve_import_file_path(&context.roots, &import) else {
-                eprintln!("DEBUG: resolve_import_file_path returned None for {:?}", import);
                 continue;
             };
             let Some((dep_index, is_new)) = add_target_module_if_applicable(
@@ -340,7 +339,6 @@ fn discover_target_module_graph_for_context(
                 &mut module_index_by_decl,
             )?
             else {
-                eprintln!("DEBUG: add_target_module_if_applicable returned None for {:?}", import_file);
                 continue;
             };
             dependencies.push(dep_index);
@@ -473,7 +471,6 @@ fn resolve_import_file_path(roots: &[PathBuf], import_path: &[String]) -> Option
         .map(|root| root.join(&relative))
         .find(|candidate| candidate.is_file());
     if result.is_none() {
-        eprintln!("DEBUG: resolve_import_file_path relative={:?} roots={:?} result=None", relative, roots);
     }
     result
 }

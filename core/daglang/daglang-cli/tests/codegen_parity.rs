@@ -114,15 +114,15 @@ fn read_target_manifest(out_dir: &Path, target: &str) -> String {
             manifest_path.display()
         )
     });
-    normalize_manifest_text(&manifest)
+    normalize_progress_text(&manifest)
 }
 
-fn normalize_manifest_text(manifest: &str) -> String {
+fn normalize_progress_text(manifest: &str) -> String {
     manifest
         .lines()
         .filter(|line| {
             let trimmed = line.trim();
-            !trimmed.is_empty() && trimmed != "// progress-manifest"
+            !trimmed.is_empty() && trimmed != "// progress"
         })
         .collect::<Vec<_>>()
         .join("\n")

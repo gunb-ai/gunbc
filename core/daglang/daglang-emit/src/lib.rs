@@ -176,7 +176,7 @@ impl CodegenBackend for RustBackend {
     }
 
     fn emit_progress_manifest(&self, manifest: &str) -> String {
-        format!("// progress-manifest\n{manifest}\n")
+        format!("// progress\n{manifest}\n")
     }
 }
 

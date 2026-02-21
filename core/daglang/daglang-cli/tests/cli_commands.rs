@@ -12698,7 +12698,7 @@ fn viz_without_args_exits_nonzero_with_usage_message() {
 }
 
 #[test]
-fn expand_and_manifest_without_required_target_exit_with_usage_message() {
+fn expand_and_progress_without_required_target_exit_with_usage_message() {
     for command in ["expand", "progress"] {
         let output = Command::new(daglang_bin())
             .arg(command)
@@ -12723,7 +12723,7 @@ fn expand_and_manifest_without_required_target_exit_with_usage_message() {
 }
 
 #[test]
-fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
+fn expand_and_progress_with_extra_args_exit_with_usage_message() {
     for command in ["expand", "progress"] {
         let output = Command::new(daglang_bin())
             .arg(command)

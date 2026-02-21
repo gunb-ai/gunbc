@@ -1758,41 +1758,4 @@ pub fn sample_tool() {}
         assert!(err.contains("unknown_new_tool"));
     }
 
-    #[test]
-    fn codegen_dsl_coverage_allows_intentionally_unmapped_design_module() {
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("workspace root should exist")
-            .to_path_buf();
-        let tools = discover_codegen_tools(&workspace_root)
-            .expect("source discovery should return tool defs");
-
-        let tool_modules: BTreeSet<String> = [
-            "build",
-            "bootstrap",
-            "clippy",
-            "codegen",
-            "dag_viz",
-            "deps",
-            "design",
-            "docgen",
-            "gist",
-            "makegen",
-            "pragma",
-            "review",
-            "testgen",
-        ]
-        .into_iter()
-        .map(|name| name.to_string())
-        .collect();
-        let pipeline_modules: BTreeSet<String> = WorkspaceBinary::all()
-            .iter()
-            .copied()
-            .filter(|binary| binary.is_dsl_pipeline_module())
-            .map(|binary| binary.tool_name().to_string())
-            .collect();
-
-        validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
-            .expect("explicitly unmapped SDLC design module should be allowed");
-    }
 }

@@ -6845,7 +6845,7 @@ fn progress_command_json_format_emits_valid_json_object() {
         .arg("json")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest --format json");
+        .expect("failed to run daglang progress --format json");
 
     assert!(
         output.status.success(),
@@ -6876,10 +6876,10 @@ fn progress_command_json_output_is_deterministic_for_same_input() {
         .arg("json")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run first daglang manifest --format json");
+        .expect("failed to run first daglang progress --format json");
     assert!(
         first.status.success(),
-        "first manifest json run failed: {}",
+        "first progress json run failed: {}",
         String::from_utf8_lossy(&first.stderr)
     );
 
@@ -6890,10 +6890,10 @@ fn progress_command_json_output_is_deterministic_for_same_input() {
         .arg("json")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run second daglang manifest --format json");
+        .expect("failed to run second daglang progress --format json");
     assert!(
         second.status.success(),
-        "second manifest json run failed: {}",
+        "second progress json run failed: {}",
         String::from_utf8_lossy(&second.stderr)
     );
 
@@ -6944,7 +6944,7 @@ fn progress_command_ci_json_includes_stage_groups() {
         .arg("json")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest for CI pipeline");
+        .expect("failed to run daglang progress for CI pipeline");
 
     assert!(
         output.status.success(),
@@ -6977,7 +6977,7 @@ fn progress_command_ci_json_includes_stage_groups() {
                 .and_then(Value::as_str)
                 .is_some_and(|stage| stage.ends_with(":bootstrap_stage"))
         }),
-        "ci manifest should include explicit bootstrap_stage group"
+        "ci progress should include explicit bootstrap_stage group"
     );
 }
 
@@ -6988,7 +6988,7 @@ fn progress_command_ci_text_renders_collapsible_stage_group_sections() {
         .arg(ci_pipeline_file())
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest for ci pipeline");
+        .expect("failed to run daglang progress for ci pipeline");
 
     assert!(
         output.status.success(),
@@ -7012,7 +7012,7 @@ fn progress_command_collection_nodes_renders_scatter_counters() {
         .arg("--emit-collection-nodes")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest with collection nodes");
+        .expect("failed to run daglang progress with collection nodes");
 
     assert!(
         output.status.success(),
@@ -7035,10 +7035,10 @@ fn progress_command_explicit_text_format_matches_default_output() {
         .arg(makegen_file())
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest default format");
+        .expect("failed to run daglang progress default format");
     assert!(
         default_output.status.success(),
-        "default manifest command failed: {}",
+        "default progress command failed: {}",
         String::from_utf8_lossy(&default_output.stderr)
     );
 
@@ -7049,7 +7049,7 @@ fn progress_command_explicit_text_format_matches_default_output() {
         .arg("text")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest --format text");
+        .expect("failed to run daglang progress --format text");
     assert!(
         explicit_text_output.status.success(),
         "progress --format text failed: {}",
@@ -7058,7 +7058,7 @@ fn progress_command_explicit_text_format_matches_default_output() {
 
     assert_eq!(
         default_output.stdout, explicit_text_output.stdout,
-        "explicit text format should match default manifest output"
+        "explicit text format should match default progress output"
     );
 }
 
@@ -7071,7 +7071,7 @@ fn progress_command_rejects_unknown_format_flag_value() {
         .arg("yaml")
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest --format yaml");
+        .expect("failed to run daglang progress --format yaml");
 
     assert!(
         !output.status.success(),
@@ -7080,7 +7080,7 @@ fn progress_command_rejects_unknown_format_flag_value() {
     assert_eq!(
         output.status.code(),
         Some(1),
-        "unsupported manifest format should use usage exit code 1"
+        "unsupported progress format should use usage exit code 1"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -7093,7 +7093,7 @@ fn progress_command_rejects_unknown_format_flag_value() {
 
 #[test]
 fn progress_command_reports_non_zero_transport_and_lifecycle_obligations() {
-    let fixture = unique_temp_file("manifest_obligations");
+    let fixture = unique_temp_file("progress_obligations");
     std::fs::write(
         &fixture,
         r#"module sample.obligations
@@ -7127,7 +7127,7 @@ func run(path: String) -> { body: String } {
         .arg(&fixture)
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest on fixture");
+        .expect("failed to run daglang progress on fixture");
 
     assert!(
         output.status.success(),
@@ -7149,7 +7149,7 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn progress_command_reports_zero_service_param_source_targets_for_literal_args() {
-    let fixture = unique_temp_file("manifest_param_sources_zero");
+    let fixture = unique_temp_file("progress_param_sources_zero");
     std::fs::write(
         &fixture,
         r#"module sample.literal
@@ -7175,7 +7175,7 @@ func run() -> { body: String } {
         .arg(&fixture)
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest on fixture");
+        .expect("failed to run daglang progress on fixture");
 
     assert!(
         output.status.success(),
@@ -7194,7 +7194,7 @@ func run() -> { body: String } {
 
 #[test]
 fn progress_command_interface_only_provides_has_no_release_obligation() {
-    let fixture = unique_temp_file("manifest_interface_provides");
+    let fixture = unique_temp_file("progress_interface_provides");
     std::fs::write(
         &fixture,
         r#"module sample.provides
@@ -7216,7 +7216,7 @@ func run() -> { ok: Bool } provides out: Storage {
         .arg(&fixture)
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest on fixture");
+        .expect("failed to run daglang progress on fixture");
 
     assert!(
         output.status.success(),
@@ -7497,17 +7497,17 @@ fn run() -> Unit { }
 }
 
 #[test]
-fn manifest_and_obligations_commands_share_obligation_text_output() {
-    let manifest_output = Command::new(daglang_bin())
+fn progress_and_obligations_commands_share_obligation_text_output() {
+    let progress_output = Command::new(daglang_bin())
         .arg("progress")
         .arg(makegen_file())
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest");
+        .expect("failed to run daglang progress");
     assert!(
-        manifest_output.status.success(),
+        progress_output.status.success(),
         "progress command failed: {}",
-        String::from_utf8_lossy(&manifest_output.stderr)
+        String::from_utf8_lossy(&progress_output.stderr)
     );
 
     let obligations_output = Command::new(daglang_bin())
@@ -7522,10 +7522,10 @@ fn manifest_and_obligations_commands_share_obligation_text_output() {
         String::from_utf8_lossy(&obligations_output.stderr)
     );
 
-    let manifest_stdout = String::from_utf8_lossy(&manifest_output.stdout);
+    let progress_stdout = String::from_utf8_lossy(&progress_output.stdout);
     let obligations_stdout = String::from_utf8_lossy(&obligations_output.stdout);
     assert_eq!(
-        obligations_block(&manifest_stdout),
+        obligations_block(&progress_stdout),
         obligations_stdout,
         "progress obligation section should match standalone obligations output"
     );
@@ -8305,7 +8305,7 @@ fn expand_command_reports_diagnostics_for_invalid_file() {
 
 #[test]
 fn progress_command_reports_diagnostics_for_invalid_file() {
-    let broken = unique_temp_file("manifest_broken");
+    let broken = unique_temp_file("progress_broken");
     std::fs::write(&broken, "module sample.broken\nfn broken( -> String {")
         .expect("failed to write broken source");
 
@@ -8314,11 +8314,11 @@ fn progress_command_reports_diagnostics_for_invalid_file() {
         .arg(&broken)
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest for broken file");
+        .expect("failed to run daglang progress for broken file");
 
     assert!(
         !output.status.success(),
-        "broken source should fail manifest"
+        "broken source should fail progress"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);
@@ -11188,7 +11188,7 @@ fn expand_command_directory_mode_reports_module_path_mismatch() {
 
 #[test]
 fn progress_command_directory_mode_reports_module_path_mismatch() {
-    let root = unique_temp_dir("manifest_path_mismatch");
+    let root = unique_temp_dir("progress_path_mismatch");
     std::fs::create_dir_all(&root).expect("failed to create temp dir");
     std::fs::write(
         root.join("main.dag"),
@@ -11201,11 +11201,11 @@ fn progress_command_directory_mode_reports_module_path_mismatch() {
         .arg(&root)
         .current_dir(workspace_root())
         .output()
-        .expect("failed to run daglang manifest on mismatch directory");
+        .expect("failed to run daglang progress on mismatch directory");
 
     assert!(
         !output.status.success(),
-        "directory manifest should fail on module path mismatch"
+        "directory progress should fail on module path mismatch"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_stage_failures(&stderr);

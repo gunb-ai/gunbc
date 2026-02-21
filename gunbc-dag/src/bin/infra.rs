@@ -17,10 +17,12 @@ use gunbc_exec::{
 use gunbc_ir::transport::cloud::CloudRuntimeKind;
 use gunbc_ir::types::{value_backing_for_type_id, value_compatible_with_type_id, ValueBacking};
 use gunbc_ir::{detect_entrypoints, Dag, Value};
-use gunbc_lib_cloud_ops::project_spec::{RotationHandler, SecretRequirement, SecretStatus};
+use gunbc_lib_cloud_ops::project_spec::{
+    RotationHandler, SecretRequirement, SecretStatus, GUNBAI_SECRETS,
+};
 use gunbc_lib_cloud_ops::{
-    build_wif_bootstrap_dag, evaluate_health, inspect_login_flow, render_infra_spec_dot,
-    InfraApplyFilter, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC,
+    build_infra_apply_dag, build_wif_bootstrap_dag, evaluate_health, inspect_login_flow,
+    render_infra_spec_dot, InfraApplyFilter, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -176,8 +178,31 @@ fn run_apply(spec: &InfraSpec, args: &InfraCliArgs) -> Result<(), String> {
             orchestration.planned_targets.len()
         ));
     }
+    let dag = build_infra_apply_dag(&GUNBAI_SECRETS, spec, args.runtime, &args.filter())?;
+    let input_mocks = build_entrypoint_input_mocks(&dag, &args.inputs, false)?;
+    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
+        .map_err(|e| format!("apply execution failed: {e}"))?;
+    let apply_summary = log
+        .get("apply_summary")
+        .ok_or_else(|| "apply_summary log entry missing from execution output".to_string())?;
+    let applied_count = apply_summary
+        .outputs
+        .get("applied_count")
+        .and_then(Value::as_int)
+        .ok_or_else(|| "apply_summary.applied_count missing from execution output".to_string())?;
+    if applied_count != orchestration.applied_count {
+        return Err(format!(
+            "compiled infra orchestration/apply mismatch: DSL planned {} apply target(s), apply DAG reported {}",
+            orchestration.applied_count, applied_count
+        ));
+    }
+    let summary = apply_summary
+        .outputs
+        .get("report")
+        .and_then(Value::as_str)
+        .unwrap_or("infra apply completed");
     println!("{}", orchestration.report);
-    println!("infra apply completed");
+    println!("{summary}");
     Ok(())
 }
 

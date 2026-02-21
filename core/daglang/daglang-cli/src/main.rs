@@ -280,7 +280,7 @@ enum CompileOutputFormat {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ManifestCommandArgs {
+struct ProgressCommandArgs {
     input: String,
     format: OutputFormat,
     emit_collection_nodes: bool,
@@ -457,7 +457,7 @@ fn parse_codegen_layer(value: &str) -> Option<CodegenLayer> {
 pub(crate) fn parse_progress_command_args(
     command: &str,
     args: &[String],
-) -> Result<ManifestCommandArgs, String> {
+) -> Result<ProgressCommandArgs, String> {
     let usage = format!("{command} <file.dag> [--format text|json] [--emit-collection-nodes]");
     if args.is_empty() || args.get(1).map(String::as_str) != Some(command) {
         return Err(format!(
@@ -502,7 +502,7 @@ pub(crate) fn parse_progress_command_args(
         }
         return Err(usage.clone());
     }
-    Ok(ManifestCommandArgs {
+    Ok(ProgressCommandArgs {
         input,
         format,
         emit_collection_nodes,

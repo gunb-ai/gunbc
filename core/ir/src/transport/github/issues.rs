@@ -96,9 +96,9 @@ impl SdlcIssueCapabilities {
 }
 
 /// Map a GitHub issue record into canonical tracked-issue form.
-pub fn map_github_issue(record: GitHubIssueRecord) -> TrackedIssue {
-    let stage = stage_from_labels(&record.labels).unwrap_or(IssueLifecycleStage::Idea);
-    TrackedIssue {
+pub fn map_github_issue(record: GitHubIssueRecord) -> Result<TrackedIssue, String> {
+    let stage = stage_from_labels(&record.labels)?.unwrap_or(IssueLifecycleStage::Idea);
+    Ok(TrackedIssue {
         reference: IssueRef {
             owner: record.owner,
             repo: record.repo,
@@ -109,12 +109,12 @@ pub fn map_github_issue(record: GitHubIssueRecord) -> TrackedIssue {
         state: record.state,
         labels: record.labels,
         stage,
-    }
+    })
 }
 
 /// Resolve lifecycle stage from issue labels. Returns `None` when no stage
 /// label is present.
-pub fn stage_from_labels(labels: &[String]) -> Option<IssueLifecycleStage> {
+pub fn stage_from_labels(labels: &[String]) -> Result<Option<IssueLifecycleStage>, String> {
     let mut stages = Vec::new();
     let has = |label: &'static str| labels.iter().any(|candidate| candidate == label);
     if has(IssueLifecycleStage::Idea.as_label()) {
@@ -137,9 +137,9 @@ pub fn stage_from_labels(labels: &[String]) -> Option<IssueLifecycleStage> {
     }
 
     if stages.len() > 1 {
-        panic!("issue has multiple conflicting stage labels; reconcile loop cannot proceed without human intervention to fix corrupted state: {:?}", stages);
+        return Err(format!("issue has multiple conflicting stage labels; reconcile loop cannot proceed without human intervention to fix corrupted state: {:?}", stages));
     }
-    stages.into_iter().next()
+    Ok(stages.into_iter().next())
 }
 
 /// Replace lifecycle stage labels with a single canonical stage label while
@@ -164,7 +164,7 @@ pub fn compare_and_set_stage_label(
     expected_stage: IssueLifecycleStage,
     next_stage: IssueLifecycleStage,
 ) -> Result<Vec<String>, String> {
-    let current_stage = stage_from_labels(existing_labels).unwrap_or(IssueLifecycleStage::Idea);
+    let current_stage = stage_from_labels(existing_labels)?.unwrap_or(IssueLifecycleStage::Idea);
     if current_stage != expected_stage {
         return Err(format!(
             "stage compare-and-set failed: expected `{}`, found `{}`",
@@ -226,19 +226,19 @@ mod tests {
             body: "Details".to_string(),
             state: "open".to_string(),
             labels: vec!["priority:M".to_string()],
-        });
+        }).unwrap();
         assert_eq!(tracked.stage, IssueLifecycleStage::Idea);
     }
 
     #[test]
-    #[should_panic(expected = "issue has multiple conflicting stage labels")]
     fn stage_from_labels_fails_closed_on_multiple_stages() {
         let labels = vec![
             "design".to_string(),
             "accepted".to_string(),
             "priority:M".to_string(),
         ];
-        stage_from_labels(&labels);
+        let err = stage_from_labels(&labels).unwrap_err();
+        assert!(err.contains("issue has multiple conflicting stage labels"));
     }
 
     #[test]
