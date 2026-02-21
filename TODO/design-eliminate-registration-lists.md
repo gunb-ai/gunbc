@@ -1,23 +1,34 @@
-# Eliminate Registration Lists: Close the DSL→Runtime Gap
+# Eliminate Registration Lists: Close the DSL-Runtime Gap
 
 **Status**: PROPOSED
 **Date**: 2026-02-21
 **Track**: Cleanup — eliminate hardcoded metadata duplication
 **Prerequisite**: CL1-CL8 completed (hardcoded lists consolidated)
 
+## Vision
+
+The DSL is the only programming language for tool, workflow, and pipeline logic.
+Rust is infrastructure — compiler, executor, transport adapters — not a fallback
+for "complex" logic. There is no escape hatch. If something can't be written in
+DSL today, that's a missing DSL feature to be fixed, not a reason to write Rust.
+
 ## Problem Statement
 
 The Rust runtime maintains handwritten registries that duplicate metadata the DSL
 compiler already knows. Today (post-CL1-CL8), adding a new DSL module still
-requires touching Rust code in up to 4 places.
+requires touching Rust code in up to 4 places. Worse, 5 modules implement their
+function bodies in Rust — pure computations (string rendering, list filtering,
+JSON construction) that belong in DSL but leak into Rust because the DSL lacks
+expression-level primitives.
 
-**Goal**: Make it so that adding DSL modules/callables/workflows requires **zero**
-Rust registration edits. Drift should be structurally impossible.
+**Goal**: Make it so that adding or modifying any tool, callable, workflow, or
+configuration requires **only DSL changes**. Zero Rust edits. Drift is
+structurally impossible. Rust as escape hatch is eliminated.
 
 ## Why can't we "just write DSL" for all of this?
 
 Short answer: **we almost can.** The remaining Rust exists for three reasons,
-only one of which is fundamental.
+none of which are fundamental.
 
 ### What's already DSL-only
 
@@ -25,7 +36,7 @@ only one of which is fundamental.
 Rust DAGs. When `build_pragma_graph()` runs, it calls:
 
 ```
-dsl/tools/pragma.dag → daglang_driver::compile → Dag<LoweredOp> → resolve → Dag<DynOp>
+dsl/tools/pragma.dag -> daglang_driver::compile -> Dag<LoweredOp> -> resolve -> Dag<DynOp>
 ```
 
 All graph structure, wiring, and orchestration comes from the DSL. The `emit`
@@ -40,7 +51,7 @@ The DSL already expresses:
 
 ### The three reasons Rust code still exists
 
-#### Reason 1: Leaf-node function bodies (temporary — DSL doesn't implement yet)
+#### Reason 1: Leaf-node function bodies (missing DSL feature)
 
 The DSL declares functions like `fn render_clippy_toml(directives) -> String`
 but the **body** is implemented in Rust (`PragmaOp::RenderClippy`). These are
@@ -55,8 +66,7 @@ This is a **missing DSL feature**, not an architectural limitation. Evidence:
   source or FFI mechanism
 
 **Fix**: Add expression-level DSL support (string ops, list ops, arithmetic).
-This is a language evolution, not an architecture change. Each function body
-migrated from Rust to DSL eliminates one custom `Executable` impl.
+See "DSL Language Features Required" below for the complete inventory.
 
 #### Reason 2: The resolver (unnecessary — compiler already has the information)
 
@@ -101,9 +111,176 @@ unit claims (currently in `process_registry.rs`) can be derived from the DSL's
 | Resolver doesn't trust compiler | Architecture gap | 3 (PASSTHROUGH_CALLABLES, match arms, resource names) | Default-passthrough + inventory (this design) |
 | Workflow specs in Rust | Migration gap | 2 (TOOL_WORKFLOWS, process_registry) | Migrate to DSL pipeline definitions |
 | No function body expressions | Missing DSL feature | 1 (custom Executable impls) | DSL expression language |
-| Leaf-node Rust impls | Fundamental (for now) | 0 (these don't create registries) | Not a registry problem |
 
-The registries are caused by the first two. Neither is fundamental.
+None of these are fundamental. All three are fixable.
+
+## DSL Language Features Required
+
+Auditing every custom `Executable` impl (22 op variants across 5 modules)
+reveals the exact language primitives the DSL needs to eliminate Rust as an
+escape hatch. Every computation in these modules is pure — no I/O, no FFI,
+no unsafe — just data transformation between transport boundaries.
+
+### Feature 1: String interpolation and templating
+
+**Used by**: PragmaOp (3 variants), BootstrapOp (4), CodegenOp (5), BuildOp (7)
+
+The most common pattern. Rust uses `format!()`, `write!()`, and string
+concatenation to build output strings from structured inputs.
+
+```
+// Current Rust (pragma/ops.rs):
+format!("# {}\n{}", header.render(), body)
+
+// DSL equivalent:
+let result = "# ${header.render()}\n${body}"
+```
+
+**Required primitives**:
+- `"${expr}"` — interpolation within string literals
+- Multi-line string literals (template blocks)
+- String concatenation (`+` or implicit adjacency)
+
+### Feature 2: String methods
+
+**Used by**: BootstrapOp (parsing shell output), CodegenOp (path normalization)
+
+```
+// Current Rust:
+line.trim()
+line.strip_prefix("crates/")
+path.replace('\\', "/")
+output.lines()
+name.contains('/')
+text.is_empty()
+text.ends_with('/')
+```
+
+**Required primitives**:
+- `.trim()`, `.lines()`, `.split(sep)`
+- `.strip_prefix(s)`, `.strip_suffix(s)`
+- `.replace(old, new)`
+- `.contains(s)`, `.starts_with(s)`, `.ends_with(s)`
+- `.is_empty()`, `.len()`
+
+### Feature 3: List operations
+
+**Used by**: PragmaOp (allowlist rendering), MakegenOp (registry serialization),
+BootstrapOp (crate name extraction), CodegenOp (path verification)
+
+```
+// Current Rust:
+rules.iter().map(|r| r.render()).collect::<Vec<_>>()
+crate_names.sort()
+patterns.dedup()
+expected_paths.iter().all(|p| found.contains(p))
+```
+
+**Required primitives**:
+- `.map(fn)`, `.filter(fn)` — transform/select
+- `.sort()`, `.dedup()` — ordering
+- `.join(sep)` — list to string
+- `.any(fn)`, `.all(fn)` — predicate testing
+- `.len()` — count
+- `.push(item)`, list literal `[a, b, c]`
+- `.contains(item)` — membership
+
+### Feature 4: Pattern matching and conditionals
+
+**Used by**: All 5 modules
+
+```
+// Current Rust:
+match response {
+    TransportResponse::Shell(shell) => ...,
+    _ => Err(...)
+}
+if build_success && !skip_tests { ... }
+```
+
+**Required primitives**:
+- `match expr { pattern => body, ... }` — exhaustive matching
+- `if cond { a } else { b }` — conditional expressions
+- `let ... = ...` — binding with destructuring
+- Boolean operators: `&&`, `||`, `!`
+
+### Feature 5: Integer arithmetic and comparison
+
+**Used by**: CodegenOp (manifest freshness), BuildOp (exit code checking),
+MakegenOp (counting)
+
+```
+// Current Rust:
+testgen_targets.len()
+response.exit_code == 0
+```
+
+**Required primitives**:
+- `+`, `-`, `*`, `/`, `%` — arithmetic
+- `==`, `!=`, `<`, `>`, `<=`, `>=` — comparison
+- Integer literals
+
+### Feature 6: Structured data construction
+
+**Used by**: MakegenOp (JSON building for Makefile rendering)
+
+```
+// Current Rust:
+serde_json::json!({
+    "tools": tools.iter().map(|t| json!({"name": t.short_name})).collect::<Vec<_>>(),
+    "testgen_targets": targets,
+})
+```
+
+**Required primitives**:
+- Object literals: `{ key: value, ... }`
+- Nested construction: objects containing lists containing objects
+- This is close to what the DSL already has for `@mock_response` blocks
+
+### Feature 7: DSL-accessible data sources
+
+**Used by**: MakegenOp, BootstrapOp, CodegenOp, PragmaOp
+
+Currently, pure configuration data is embedded in Rust source files and accessed
+via Rust API calls. This data has no reason to live in Rust — it's declarative
+configuration that belongs in DSL data files.
+
+**Data currently hiding in Rust**:
+
+| Data | Location | Nature |
+|---|---|---|
+| Clippy allowlist rules (8 rules) | `policy/pragma.rs` | Static config: crate selectors, suffix paths, rationales |
+| Dead code allow rules (5 rules) | `policy/pragma.rs` | Static config: crate names, relative paths |
+| Pragma allow lints (3 lints) | `policy/pragma.rs` | Static list of lint IDs |
+| Crate policies (1 entry) | `policy/pragma.rs` | Static config: crate name + policy flags |
+| Tool registry (12 tools) | `gunbc-tool-registry` | Static config: tool names, packages, binaries |
+| Testgen specs | `gunbc-testgen-registry` | Static config: test module names, DAG paths |
+| Build config | `gunbc-makegen` | Static config: cargo commands, feature flags |
+| Gitignore categories (14 categories) | `gunbc-makegen` | Static config: path patterns per category |
+| Codegen path templates | `codegen/ops.rs` | Static config: `target/codegen/bin`, stamp paths |
+| Workspace layout | `gunbc-ir` | Derivable from DSL module structure |
+
+**Required mechanism**:
+- `@data` or `data` blocks in DSL for declaring static configuration
+- `import data from "config/pragma-policy.dag"` — DSL-to-DSL data imports
+- The compiler resolves data references at compile time, not runtime
+
+This eliminates the last category of "I need Rust because the data lives there."
+The data moves to DSL, the logic that consumes it is already expressible with
+Features 1-6 above.
+
+### Coverage matrix: Features vs. modules
+
+| Module | Variants | F1 String | F2 Methods | F3 Lists | F4 Match | F5 Arith | F6 Data | F7 Sources |
+|---|---|---|---|---|---|---|---|---|
+| **pragma** | 3 | YES | YES | YES | YES | - | - | YES |
+| **makegen** | 3 | YES | - | YES | YES | YES | YES | YES |
+| **bootstrap** | 4 | YES | YES | YES | YES | - | - | YES |
+| **codegen** | 5 | YES | YES | YES | YES | YES | - | YES |
+| **build** | 7 | YES | - | - | YES | YES | - | - |
+
+Every module is fully covered by these 7 features. No module requires anything
+beyond basic data transformation primitives.
 
 ## Design: Phase 1 — Resolver trusts compiler (immediate, no DSL changes)
 
@@ -213,41 +390,84 @@ Derived: ResourceUsage { resource: "Filesystem", usage: "Write" }
 Claim:   UnitClaim::write("file:workspace")
 ```
 
-This closes the loop: DSL annotations → compiler derivation → process claims.
+This closes the loop: DSL annotations -> compiler derivation -> process claims.
 No Rust registry needed.
 
-## Design: Phase 3 — DSL function bodies (long-term)
+## Design: Phase 3 — DSL expression language (eliminates Rust escape hatch)
+
+This is the core goal, not an optional long-term aspiration. Phases 1 and 2
+remove registration boilerplate; Phase 3 eliminates the reason Rust is used
+for business logic at all.
 
 ### Change 6: Expression-level DSL support
 
-Add basic expression support to the DSL language:
-- String interpolation / templating
-- List operations (map, filter, join)
-- Arithmetic and comparison
-- Pattern matching
+Add the 7 feature categories documented in "DSL Language Features Required"
+above. This is a language evolution within the existing DagLang compiler —
+the type system, module system, and graph semantics are unchanged.
 
-This allows migrating the 5 custom `Executable` modules to pure DSL:
+### Change 7: Migrate configuration data to DSL data sources
 
-| Module | Current Rust ops | DSL-expressible? |
+Move all static configuration currently embedded in Rust source files into
+DSL data files:
+
+```
+dsl/config/pragma-policy.dag    -- clippy rules, lint policies, crate policies
+dsl/config/tool-registry.dag    -- tool names, packages, binaries
+dsl/config/build.dag            -- cargo commands, feature flags
+dsl/config/codegen-paths.dag    -- path templates, stamp files
+```
+
+The compiler resolves these at compile time. The data is version-controlled,
+diffable, and requires zero Rust knowledge to modify.
+
+### Change 8: Migrate custom Executable impls to DSL function bodies
+
+With Features 1-7 available, each custom module migrates from Rust to DSL:
+
+| Module | Rust ops to migrate | What replaces them |
 |---|---|---|
-| `tools.pragma` | String rendering from config | Yes, with string interpolation |
-| `tools.makegen` | Registry load + Makefile render | Partially — needs data source for registry |
-| `tools.bootstrap` | Shell request prep + output parsing | Yes, with service transport patterns |
-| `tools.codegen` | Build-time file existence checks | Partially — needs build metadata access |
-| `tools.infra` | Filter/count/format | **Already expressed in DSL** — Rust version is redundant |
+| `tools.infra` | Filter/count/format (5 ops) | **Delete** — already redundant with `dsl/tools/infra.dag` |
+| `tools.build` | Boolean cascade + string summary (7 ops) | DSL conditionals + string interpolation |
+| `tools.pragma` | Config rendering (3 ops) | DSL string interpolation + data imports |
+| `tools.bootstrap` | Shell output parsing + crate extraction (4 ops) | DSL string methods + list ops |
+| `tools.codegen` | Path checking + manifest freshness (5 ops) | DSL string methods + conditionals + data sources |
+| `tools.makegen` | Registry load + JSON construction (3 ops) | DSL data sources + structured data literals |
 
-After Phase 3, the only Rust code is the compiler itself, the executor, and
-the transport adapters. Everything else is DSL.
+After this, zero `Executable` impls exist outside the compiler/executor
+infrastructure. The `resolve_custom()` path in Change 1 becomes empty.
+The inventory registrations from Change 2 disappear. The resolver reduces to:
 
-## Remaining lists (inherently non-DSL)
+```rust
+fn resolve_domain(...) -> Result<DynOp, ResolveError> {
+    if module.starts_with("services.") || module.starts_with("workspace.") {
+        return resolve_service_transport(...);
+    }
+    if module == "std.resources" {
+        return resolve_std_resources(name);
+    }
+    // Everything is passthrough. The DSL handles all logic.
+    Ok(DynOp::new(PassthroughOp { ... }))
+}
+```
 
-| List | Why it stays |
-|---|---|
-| `WorkspaceBinary` (12 entries) | Build system concept (Cargo binary names), not DSL metadata |
-| `STANDARD_SYMBOLS` (40 entries) | UI/presentation concern |
-| `FORBIDDEN_CALLS` (guardrails) | Architectural constraint, not domain metadata |
+## What stays in Rust (by design, not by escape hatch)
 
-These are fine — they don't duplicate DSL metadata.
+These are infrastructure concerns, not business logic. They don't duplicate
+DSL metadata and don't grow when tools/workflows are added:
+
+| Component | Why it's Rust | Grows when... |
+|---|---|---|
+| DagLang compiler | Language implementation | New DSL syntax is added |
+| DAG executor | Runtime engine | New execution semantics are added |
+| Transport adapters (Shell, REST, Filesystem) | System boundary / FFI | New transport protocols are added |
+| Resource handle types | Capability system | New resource kinds are added |
+| `WorkspaceBinary` (12 entries) | Build system (Cargo binary names) | New crate binaries are added |
+| `STANDARD_SYMBOLS` (40 entries) | UI/presentation | New display symbols are added |
+| `FORBIDDEN_CALLS` (guardrails) | Architectural constraint | New safety rules are added |
+
+The key distinction: **infrastructure grows with the platform, not with the
+domain.** Adding a new tool, workflow, or pipeline should never require touching
+any of these.
 
 ## Implementation order
 
@@ -258,10 +478,12 @@ These are fine — they don't duplicate DSL metadata.
 | **1c** | Inventory resolvers (Change 2) | `match module` dispatch | M |
 | **2a** | Workflow DSL migration (Change 4) | `TOOL_WORKFLOWS` + builder fns | L |
 | **2b** | Derived claims (Change 5) | `process_registry` (80+ entries) | M |
-| **3** | DSL expressions (Change 6) | Custom `Executable` impls (5 modules) | XL |
+| **3a** | DSL expression language (Change 6) | The escape hatch itself | L |
+| **3b** | Data source migration (Change 7) | Config data in Rust files | M |
+| **3c** | Custom op migration (Change 8) | All 5 custom `Executable` modules (27 ops) | L |
 
-Phase 1a is the highest-value immediate win. Phase 3 is the endgame where
-"just write DSL" becomes literally true.
+Phase 1a is the highest-value immediate win. Phase 3 is where the vision
+is realized: Rust is infrastructure, DSL is everything else.
 
 ## Success criteria
 
@@ -274,6 +496,9 @@ Phase 1a is the highest-value immediate win. Phase 3 is the endgame where
 - New workflow: **1 DSL file** (no Rust)
 - New process unit: **0 files** (derived from DSL annotations)
 
-**After Phase 3** (DSL expressions):
-- New tool with only pure computation: **1 DSL file** (no Rust at all)
+**After Phase 3** (DSL expressions + data migration):
+- New tool of any complexity: **1 DSL file** (no Rust at all)
+- New configuration/policy: **1 DSL data file** (no Rust at all)
 - Rust code only needed for: new transport adapters, new resource handle types
+- Custom `Executable` impls: **0** (down from 27 op variants across 5 modules)
+- The concept of "escape to Rust" no longer exists
