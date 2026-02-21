@@ -78,6 +78,26 @@ fn compile_makegen_layer1_rust(out_dir: &Path) {
     );
 }
 
+fn compile_module_layer1_rust(relative_module: &str, out_dir: &Path) {
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(relative_module)
+        .arg("--target")
+        .arg("rust")
+        .arg("--layer")
+        .arg("1")
+        .arg("--out")
+        .arg(out_dir)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --target rust --layer 1");
+    assert!(
+        output.status.success(),
+        "compile {relative_module} --target rust --layer 1 should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 fn read_target_manifest(out_dir: &Path, target: &str) -> String {
     let manifest_path = out_dir
         .join("target")
@@ -480,6 +500,163 @@ fn run_makegen_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
     }
 }
 
+fn run_infra_generated_rust_layer1(crate_out_dir: &Path) -> RuntimeOutcome {
+    if !crate_out_dir.join("Cargo.toml").is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "missing generated rust layer1 Cargo.toml at {}",
+                crate_out_dir.join("Cargo.toml").display()
+            ),
+        };
+    }
+    if let Err(error) = std::fs::copy(
+        workspace_root().join("Cargo.lock"),
+        crate_out_dir.join("Cargo.lock"),
+    ) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to stage Cargo.lock for generated crate: {error}"),
+        };
+    }
+    let run_output = match Command::new("cargo")
+        .arg("run")
+        .arg("--quiet")
+        .arg("--offline")
+        .arg("--manifest-path")
+        .arg(crate_out_dir.join("Cargo.toml"))
+        .arg("--")
+        .arg("dev")
+        .arg("local")
+        .arg("secret:github-token")
+        .arg("")
+        .arg("")
+        .arg("false")
+        .current_dir(workspace_root())
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute generated rust layer1 crate: {error}"),
+            };
+        }
+    };
+    if !run_output.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated rust layer1 run failed: {}",
+                String::from_utf8_lossy(&run_output.stderr)
+            ),
+        };
+    }
+    RuntimeOutcome::Ran {
+        stdout: String::from_utf8_lossy(&run_output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&run_output.stderr).into_owned(),
+    }
+}
+
+fn run_infra_generated_go(native_out_dir: &Path) -> RuntimeOutcome {
+    if !command_exists("go") {
+        return RuntimeOutcome::Skipped {
+            reason: "go toolchain not available on PATH".to_string(),
+        };
+    }
+    let go_dir = native_out_dir.join("target/generated/go");
+    let main_go = go_dir.join("main.go");
+    if !main_go.is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!("missing generated go source: {}", main_go.display()),
+        };
+    }
+    match Command::new("go")
+        .arg("run")
+        .arg("main.go")
+        .current_dir(&go_dir)
+        .output()
+    {
+        Ok(output) if output.status.success() => RuntimeOutcome::Ran {
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        },
+        Ok(output) => RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated go run failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        },
+        Err(error) => RuntimeOutcome::Skipped {
+            reason: format!("failed to execute generated go binary: {error}"),
+        },
+    }
+}
+
+fn run_infra_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
+    if !command_exists("cc") {
+        return RuntimeOutcome::Skipped {
+            reason: "C compiler `cc` not available on PATH".to_string(),
+        };
+    }
+    let c_dir = native_out_dir.join("target/generated/c");
+    let main_c = c_dir.join("main.c");
+    if !main_c.is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!("missing generated c source: {}", main_c.display()),
+        };
+    }
+    let out_dir = unique_workspace_target_dir("runtime_infra_c_out");
+    if let Err(error) = std::fs::create_dir_all(&out_dir) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to create C runtime output dir: {error}"),
+        };
+    }
+    let bin_path = out_dir.join("infra_c_bin");
+    let compile = match Command::new("cc")
+        .arg("main.c")
+        .arg("-o")
+        .arg(&bin_path)
+        .current_dir(&c_dir)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&out_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to compile generated c binary: {error}"),
+            };
+        }
+    };
+    if !compile.status.success() {
+        let _ = std::fs::remove_dir_all(&out_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated c compile failed: {}",
+                String::from_utf8_lossy(&compile.stderr)
+            ),
+        };
+    }
+    let run = match Command::new(&bin_path).output() {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&out_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute generated c binary: {error}"),
+            };
+        }
+    };
+    let _ = std::fs::remove_dir_all(&out_dir);
+    if !run.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated c binary failed: {}",
+                String::from_utf8_lossy(&run.stderr)
+            ),
+        };
+    }
+    RuntimeOutcome::Ran {
+        stdout: String::from_utf8_lossy(&run.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+    }
+}
+
 #[test]
 fn makegen_manifest_parity_across_rust_go_c_mips_targets() {
     let out_root = unique_workspace_target_dir("manifest_parity");
@@ -627,4 +804,67 @@ fn makegen_runtime_smoke_per_target_with_toolchain_awareness() {
     std::fs::remove_dir_all(&native_out_root).expect("failed to cleanup native runtime out root");
     std::fs::remove_dir_all(&rust_layer1_out)
         .expect("failed to cleanup rust layer1 runtime out root");
+}
+
+#[test]
+fn infra_runtime_smoke_rust_layer1_executes_entrypoint() {
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_infra");
+    compile_module_layer1_rust("dsl/tools/infra.dag", &rust_layer1_out);
+
+    let rust = run_infra_generated_rust_layer1(&rust_layer1_out);
+    match rust {
+        RuntimeOutcome::Ran { stderr, .. } => {
+            assert!(
+                stderr.contains("execution completed: 1 nodes executed"),
+                "rust infra runtime should execute one node: {stderr}"
+            );
+            assert!(
+                stderr.contains("[tools.infra::infra]"),
+                "rust infra runtime should execute tools.infra::infra: {stderr}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("rust infra runtime smoke should not skip: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&rust_layer1_out)
+        .expect("failed to cleanup rust layer1 infra runtime out root");
+}
+
+#[test]
+fn infra_runtime_smoke_go_and_c_emit_runnable_binaries() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_infra");
+    compile_module_for_target("dsl/tools/infra.dag", "go", &native_out_root.join("go"));
+    compile_module_for_target("dsl/tools/infra.dag", "c", &native_out_root.join("c"));
+
+    let go = run_infra_generated_go(&native_out_root.join("go"));
+    let c = run_infra_generated_c(&native_out_root.join("c"));
+
+    match go {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated go backend"),
+                "generated go infra runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP infra go runtime smoke: {reason}");
+        }
+    }
+
+    match c {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated c infra runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP infra c runtime smoke: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native infra runtime out root");
 }

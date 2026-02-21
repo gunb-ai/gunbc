@@ -116,6 +116,7 @@ enum HandlerKind {
     FsEnv,
     RenderMakefile,
     Entrypoint,
+    InfraEntrypoint,
     ParamSource,
     LiteralSource,
     RenderPragmaClippyToml,
@@ -137,6 +138,7 @@ impl HandlerKind {
             Self::FsEnv => "FsEnv",
             Self::RenderMakefile => "RenderMakefile",
             Self::Entrypoint => "Entrypoint",
+            Self::InfraEntrypoint => "InfraEntrypoint",
             Self::ParamSource => "ParamSource",
             Self::LiteralSource => "LiteralSource",
             Self::RenderPragmaClippyToml => "RenderPragmaClippyToml",
@@ -269,6 +271,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     };
 
     match (module, name) {
+        ("tools.infra", "infra") => Some(HandlerKind::InfraEntrypoint),
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(HandlerKind::RenderPragmaAllowlist)
@@ -453,6 +456,73 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             Value::Response(TransportResponse::File(r)) if r.operation == FileOp::Write && r.success))
     }).unwrap_or(false);
     OutputMap::new().bool("written", written).ok()
+"##
+        }
+        HandlerKind::InfraEntrypoint => {
+            r##"    let environment = inputs.get("environment")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ExecError::new("missing required input `environment`"))?;
+    let runtime = inputs.get("runtime")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ExecError::new("missing required input `runtime`"))?;
+    let parse_csv_list = |raw: &str| -> Vec<String> {
+        raw.split(',')
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string())
+            .collect()
+    };
+    let spec_targets = match inputs.get("spec_targets") {
+        Some(value) => value
+            .as_str_list()
+            .or_else(|| value.as_str().map(parse_csv_list))
+            .ok_or_else(|| ExecError::new("invalid input `spec_targets` (expected list or CSV string)"))?,
+        None => return Err(ExecError::new("missing required input `spec_targets`")),
+    };
+    let target = inputs
+        .get("target")
+        .and_then(|value| value.as_str_list().or_else(|| value.as_str().map(parse_csv_list)))
+        .unwrap_or_default();
+    let skip = inputs
+        .get("skip")
+        .and_then(|value| value.as_str_list().or_else(|| value.as_str().map(parse_csv_list)))
+        .unwrap_or_default();
+    let execute = match inputs.get("execute") {
+        Some(value) => value.as_bool().or_else(|| {
+            value.as_str().and_then(|raw| match raw.trim().to_ascii_lowercase().as_str() {
+                "true" | "1" => Some(true),
+                "false" | "0" => Some(false),
+                _ => None,
+            })
+        })
+        .ok_or_else(|| ExecError::new("invalid input `execute` (expected bool or true/false string)"))?,
+        None => return Err(ExecError::new("missing required input `execute`")),
+    };
+    let mut planned_targets = if target.is_empty() {
+        spec_targets.clone()
+    } else {
+        spec_targets
+            .iter()
+            .filter(|item| target.iter().any(|candidate| candidate == *item))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    planned_targets.retain(|item| !skip.iter().any(|candidate| candidate == item));
+    let target_count = planned_targets.len() as i64;
+    let applied_count = if execute { target_count } else { 0 };
+    let mode = if execute { "apply" } else { "plan" };
+    let report = format!(
+        "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
+    );
+    OutputMap::new()
+        .str("environment", environment)
+        .str("runtime", runtime)
+        .str("mode", mode)
+        .str_list("planned_targets", planned_targets)
+        .int("target_count", target_count)
+        .int("applied_count", applied_count)
+        .str("report", report)
+        .ok()
 "##
         }
         HandlerKind::ParamSource => {
