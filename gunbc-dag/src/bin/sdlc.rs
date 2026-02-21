@@ -274,10 +274,40 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         });
     }
 
+    let mut issue_id: Option<u64> = None;
+    let mut idx = 2usize;
     let command = match argv[1].as_str() {
         "intake" => SdlcCommand::Intake,
         "worker" => SdlcCommand::Worker,
         "issue" => SdlcCommand::Issue,
+        "--issue" => {
+            let value = argv
+                .get(2)
+                .ok_or_else(|| "--issue requires an issue id value".to_string())?;
+            if value.starts_with("--") {
+                return Err("--issue requires a non-flag issue id value".to_string());
+            }
+            issue_id = Some(
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("invalid --issue value `{value}` (expected u64)"))?,
+            );
+            idx = 3;
+            SdlcCommand::Issue
+        }
+        token if token.starts_with("--issue=") => {
+            let value = token.trim_start_matches("--issue=");
+            if value.is_empty() {
+                return Err("--issue requires a non-empty issue id value".to_string());
+            }
+            issue_id = Some(
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("invalid --issue value `{value}` (expected u64)"))?,
+            );
+            idx = 2;
+            SdlcCommand::Issue
+        }
         "await-approval" => SdlcCommand::AwaitApproval,
         "transition" => SdlcCommand::Transition,
         "drain" => SdlcCommand::Drain,
@@ -288,13 +318,11 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let mut intent_path: Option<PathBuf> = None;
     let mut infra_intent_path: Option<PathBuf> = None;
     let mut intake_key: Option<String> = None;
-    let mut issue_id: Option<u64> = None;
     let mut stage: Option<IssueLifecycleStage> = None;
     let mut dry_run = false;
     let mut emit_pending_exit_code = false;
     let mut drain_activate = false;
     let mut drain_deactivate = false;
-    let mut idx = 2usize;
     while idx < argv.len() {
         let token = &argv[idx];
         if token == "--dry-run" {
