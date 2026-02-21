@@ -261,6 +261,13 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
                 _ => None,
             };
         }
+        LoweredOp::Callable { name, .. }
+            if name.starts_with("service_transport::prepare::")
+                || name.starts_with("service_transport::parse::")
+                || name.starts_with("service_transport::execute::") =>
+        {
+            return Some(HandlerKind::ParamSource);
+        }
         LoweredOp::Callable { .. } => {}
     }
 
@@ -272,6 +279,12 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
 
     match (module, name) {
         ("tools.infra", "infra") => Some(HandlerKind::InfraEntrypoint),
+        ("pipelines.sdlc", _) => Some(HandlerKind::ParamSource),
+        ("tools.design", _) => Some(HandlerKind::ParamSource),
+        ("shared.dag_util", _) => Some(HandlerKind::ParamSource),
+        ("std.patterns", _) => Some(HandlerKind::ParamSource),
+        ("std.resources", _) => Some(HandlerKind::ParamSource),
+        (module, _) if module.starts_with("services.") => Some(HandlerKind::ParamSource),
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(HandlerKind::RenderPragmaAllowlist)

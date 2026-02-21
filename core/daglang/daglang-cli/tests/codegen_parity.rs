@@ -963,6 +963,39 @@ fn infra_runtime_smoke_rust_layer1_executes_entrypoint() {
 }
 
 #[test]
+fn sdlc_pipeline_layer1_rust_compiles_for_exec_runtime() {
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_sdlc_pipeline");
+    compile_module_layer1_rust("dsl/pipelines/sdlc.dag", &rust_layer1_out);
+    assert!(
+        rust_layer1_out.join("Cargo.toml").is_file(),
+        "rust layer1 compile should emit Cargo.toml for sdlc pipeline"
+    );
+    assert!(
+        rust_layer1_out.join("src/main.rs").is_file(),
+        "rust layer1 compile should emit src/main.rs for sdlc pipeline"
+    );
+    std::fs::remove_dir_all(&rust_layer1_out)
+        .expect("failed to cleanup rust layer1 sdlc pipeline out root");
+}
+
+#[test]
+fn sdlc_control_plane_layer1_rust_compiles_for_exec_runtime() {
+    let rust_layer1_out =
+        unique_workspace_target_dir("runtime_rust_layer1_sdlc_control_plane");
+    compile_module_layer1_rust("dsl/services/sdlc/control_plane.dag", &rust_layer1_out);
+    assert!(
+        rust_layer1_out.join("Cargo.toml").is_file(),
+        "rust layer1 compile should emit Cargo.toml for sdlc control-plane service"
+    );
+    assert!(
+        rust_layer1_out.join("src/main.rs").is_file(),
+        "rust layer1 compile should emit src/main.rs for sdlc control-plane service"
+    );
+    std::fs::remove_dir_all(&rust_layer1_out)
+        .expect("failed to cleanup rust layer1 sdlc control-plane out root");
+}
+
+#[test]
 fn infra_runtime_smoke_go_and_c_emit_runnable_binaries() {
     let native_out_root = unique_workspace_target_dir("runtime_native_infra");
     compile_module_for_target("dsl/tools/infra.dag", "go", &native_out_root.join("go"));
