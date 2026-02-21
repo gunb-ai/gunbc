@@ -454,6 +454,100 @@ fn run_makegen_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
     }
 }
 
+fn run_makegen_generated_c_with_asan_ubsan(native_out_dir: &Path) -> RuntimeOutcome {
+    if !command_exists("gcc") {
+        return RuntimeOutcome::Skipped {
+            reason: "gcc toolchain not available on PATH".to_string(),
+        };
+    }
+
+    let c_dir = native_out_dir.join("target/generated/c");
+    let main_c = c_dir.join("main.c");
+    if !main_c.is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!("missing generated c source: {}", main_c.display()),
+        };
+    }
+
+    let output_dir = unique_workspace_target_dir("runtime_c_makegen_asan_ubsan_out");
+    if let Err(error) = std::fs::create_dir_all(&output_dir) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to create c runtime output dir: {error}"),
+        };
+    }
+    let output_path = output_dir.join("Makefile.generated");
+
+    let app_path = c_dir.join("parity_asan_ubsan_app");
+    let build = match Command::new("gcc")
+        .arg("-std=c11")
+        .arg("-Wall")
+        .arg("-Wextra")
+        .arg("-fsanitize=address,undefined")
+        .arg("-fno-omit-frame-pointer")
+        .arg("-g")
+        .arg("-O1")
+        .arg("-o")
+        .arg(&app_path)
+        .arg(&main_c)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to invoke gcc for generated c source: {error}"),
+            };
+        }
+    };
+    if !build.status.success() {
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated c asan+ubsan compile failed: {}",
+                String::from_utf8_lossy(&build.stderr)
+            ),
+        };
+    }
+
+    let run = match Command::new(&app_path).arg(&output_path).output() {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute generated c binary: {error}"),
+            };
+        }
+    };
+    if !run.status.success() {
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated c asan+ubsan binary exited nonzero: {}",
+                String::from_utf8_lossy(&run.stderr)
+            ),
+        };
+    }
+
+    let generated_content = match std::fs::read_to_string(&output_path) {
+        Ok(content) => content,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!(
+                    "generated c run did not write {}: {error}",
+                    output_path.display()
+                ),
+            };
+        }
+    };
+
+    let _ = std::fs::remove_dir_all(&output_dir);
+    RuntimeOutcome::Ran {
+        stdout: generated_content,
+        stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+    }
+}
+
 fn run_makegen_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
     let toolchain = ToolchainCommands::mips_linux_gnu();
     let emulator = toolchain
@@ -1293,6 +1387,47 @@ fn makegen_runtime_differential_interpreter_vs_generated_native_backends() {
 
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native makegen differential out root");
+}
+
+#[test]
+fn makegen_c_runtime_asan_ubsan_differential_matches_interpreter() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_makegen_c_asan_ubsan_diff");
+    compile_makegen_for_target("c", &native_out_root.join("c"));
+
+    let interpreter = run_makegen_interpreter();
+    let interpreter_makefile = match interpreter {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                stderr.contains("OK: run mode=real"),
+                "interpreter run should report successful execution: {stderr}"
+            );
+            normalize_makefile_text(&stdout)
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("daglang interpreter differential run should not skip: {reason}");
+        }
+    };
+
+    let c = run_makegen_generated_c_with_asan_ubsan(&native_out_root.join("c"));
+    match c {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                !stderr.contains("AddressSanitizer") && !stderr.contains("runtime error:"),
+                "makegen c asan+ubsan differential should not report sanitizer violations: {stderr}"
+            );
+            let c_makefile = normalize_makefile_text(&stdout);
+            assert_eq!(
+                interpreter_makefile, c_makefile,
+                "interpreter runtime differential mismatch: interpreter != c(asan+ubsan)"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP interpreter vs c(asan+ubsan) differential: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native makegen c asan+ubsan differential out root");
 }
 
 #[test]
