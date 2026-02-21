@@ -582,9 +582,9 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline { module, name, .. } => Ok(DynOp::new(UnsupportedOp {
-            callable: format!("Pipeline::{module}::{name}"),
-        })),
+        LoweredOp::Pipeline { module, name, .. } => {
+            resolve_domain(node_id, module, name, outputs, None)
+        }
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
             module,

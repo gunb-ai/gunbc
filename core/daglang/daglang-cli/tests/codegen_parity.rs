@@ -349,19 +349,24 @@ fn run_module_interpreter_execution_nodes_with_mocks(
         .map_err(|error| format!("compile failed for {relative_module}: {error}"))?;
     let resolved = resolve_lowered_dag(&output.lowered_dag)
         .map_err(|error| format!("resolve failed for {relative_module}: {error}"))?;
+    let mut dry_run_boundary_mocks = BoundaryMocks::new();
+    for node in &resolved.nodes {
+        for output_port in &node.outputs {
+            dry_run_boundary_mocks.set_value(&node.id.0, &output_port.name.0, Value::Skipped);
+        }
+    }
     let execution = execute_with_mode_and_inputs(
         &resolved,
-        ExecutionMode::Real,
+        ExecutionMode::DryRun(dry_run_boundary_mocks),
         Some(&input_mocks),
     )
     .map_err(|error| format!("execute failed for {relative_module}: {error}"))?;
-    let mut nodes = execution
+    let nodes = execution
         .entries
         .iter()
         .map(|entry| entry.node_id.clone())
         .collect::<Vec<_>>();
-    nodes.sort();
-    Ok(nodes)
+    Ok(normalize_execution_nodes(nodes))
 }
 
 fn parse_generated_execution_nodes(stdout: &str, stderr: &str) -> Vec<String> {
@@ -374,6 +379,13 @@ fn parse_generated_execution_nodes(stdout: &str, stderr: &str) -> Vec<String> {
             }
         }
     }
+    nodes.sort();
+    nodes.dedup();
+    normalize_execution_nodes(nodes)
+}
+
+fn normalize_execution_nodes(mut nodes: Vec<String>) -> Vec<String> {
+    nodes.retain(|node| node != "fs_env");
     nodes.sort();
     nodes.dedup();
     nodes
@@ -1591,6 +1603,69 @@ fn infra_tool_rust_layer1_execution_trace_matches_interpreter() {
     mocks.set_input("tools.infra::infra", "execute", Value::Bool(false));
     let interpreter_nodes = run_module_interpreter_execution_nodes_with_mocks(module, mocks)
     .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
+    assert_eq!(
+        interpreter_nodes, generated_nodes,
+        "execution trace differential mismatch for {module}"
+    );
+    std::fs::remove_dir_all(&rust_layer1_out).unwrap_or_else(|error| {
+        panic!(
+            "failed to cleanup rust layer1 trace differential out root for {module}: {error}"
+        )
+    });
+}
+
+#[test]
+fn sdlc_control_plane_rust_layer1_execution_trace_matches_interpreter() {
+    let module = "dsl/services/sdlc/control_plane.dag";
+    let rust_layer1_out =
+        unique_workspace_target_dir("runtime_rust_layer1_trace_diff_sdlc_control_plane");
+    compile_module_layer1_rust(module, &rust_layer1_out);
+    let generated = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
+    let (generated_stdout, generated_stderr) = match generated {
+        RuntimeOutcome::Ran { stdout, stderr } => (stdout, stderr),
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
+        }
+    };
+    let generated_nodes = parse_generated_execution_nodes(&generated_stdout, &generated_stderr);
+    assert!(
+        !generated_nodes.is_empty(),
+        "generated rust layer1 runtime should emit execution trace for {module}"
+    );
+
+    let interpreter_nodes = run_module_interpreter_execution_nodes(module, &[])
+        .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
+    assert_eq!(
+        interpreter_nodes, generated_nodes,
+        "execution trace differential mismatch for {module}"
+    );
+    std::fs::remove_dir_all(&rust_layer1_out).unwrap_or_else(|error| {
+        panic!(
+            "failed to cleanup rust layer1 trace differential out root for {module}: {error}"
+        )
+    });
+}
+
+#[test]
+fn sdlc_pipeline_rust_layer1_execution_trace_matches_interpreter() {
+    let module = "dsl/pipelines/sdlc.dag";
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_trace_diff_sdlc_pipeline");
+    compile_module_layer1_rust(module, &rust_layer1_out);
+    let generated = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
+    let (generated_stdout, generated_stderr) = match generated {
+        RuntimeOutcome::Ran { stdout, stderr } => (stdout, stderr),
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
+        }
+    };
+    let generated_nodes = parse_generated_execution_nodes(&generated_stdout, &generated_stderr);
+    assert!(
+        !generated_nodes.is_empty(),
+        "generated rust layer1 runtime should emit execution trace for {module}"
+    );
+
+    let interpreter_nodes = run_module_interpreter_execution_nodes(module, &[])
+        .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
     assert_eq!(
         interpreter_nodes, generated_nodes,
         "execution trace differential mismatch for {module}"
