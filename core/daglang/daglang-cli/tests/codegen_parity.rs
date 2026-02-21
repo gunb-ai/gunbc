@@ -240,6 +240,58 @@ fn run_makegen_generated_rust_layer1(crate_out_dir: &Path) -> RuntimeOutcome {
     }
 }
 
+fn run_makegen_interpreter() -> RuntimeOutcome {
+    let output_dir = unique_workspace_target_dir("runtime_makegen_interpreter_out");
+    if let Err(error) = std::fs::create_dir_all(&output_dir) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to create interpreter runtime output dir: {error}"),
+        };
+    }
+    let generated_path = output_dir.join("Makefile.generated");
+    let run_output = match Command::new(daglang_bin())
+        .arg("run")
+        .arg("--output")
+        .arg(&generated_path)
+        .arg("dsl/tools/makegen.dag")
+        .current_dir(workspace_root())
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute daglang interpreter run: {error}"),
+            };
+        }
+    };
+    if !run_output.status.success() {
+        let stderr = String::from_utf8_lossy(&run_output.stderr).into_owned();
+        let _ = std::fs::remove_dir_all(&output_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!("daglang interpreter run failed: {stderr}"),
+        };
+    }
+    let generated_content = match std::fs::read_to_string(&generated_path) {
+        Ok(content) => content,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&output_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!(
+                    "daglang interpreter run did not write {}: {error}",
+                    generated_path.display()
+                ),
+            };
+        }
+    };
+    let stdout = String::from_utf8_lossy(&run_output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&run_output.stderr).into_owned();
+    let _ = std::fs::remove_dir_all(&output_dir);
+    RuntimeOutcome::Ran {
+        stdout: generated_content,
+        stderr: format!("{stdout}{stderr}"),
+    }
+}
+
 fn run_makegen_generated_go(native_out_dir: &Path) -> RuntimeOutcome {
     if !command_exists("go") {
         return RuntimeOutcome::Skipped {
@@ -1088,6 +1140,43 @@ fn makegen_runtime_smoke_per_target_with_toolchain_awareness() {
     std::fs::remove_dir_all(&native_out_root).expect("failed to cleanup native runtime out root");
     std::fs::remove_dir_all(&rust_layer1_out)
         .expect("failed to cleanup rust layer1 runtime out root");
+}
+
+#[test]
+fn makegen_runtime_differential_interpreter_vs_generated_rust_layer1() {
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_makegen_diff");
+    compile_makegen_layer1_rust(&rust_layer1_out);
+
+    let generated = run_makegen_generated_rust_layer1(&rust_layer1_out);
+    let interpreter = run_makegen_interpreter();
+
+    let generated_makefile = match generated {
+        RuntimeOutcome::Ran { stdout, .. } => normalize_makefile_text(&stdout),
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("generated rust layer1 runtime should not skip in differential test: {reason}");
+        }
+    };
+
+    let interpreter_makefile = match interpreter {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                stderr.contains("OK: run mode=real"),
+                "interpreter run should report successful execution: {stderr}"
+            );
+            normalize_makefile_text(&stdout)
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("daglang interpreter differential run should not skip: {reason}");
+        }
+    };
+
+    assert_eq!(
+        interpreter_makefile, generated_makefile,
+        "interpreter and generated rust layer1 outputs must match exactly for makegen"
+    );
+
+    std::fs::remove_dir_all(&rust_layer1_out)
+        .expect("failed to cleanup rust layer1 makegen differential out root");
 }
 
 #[test]
