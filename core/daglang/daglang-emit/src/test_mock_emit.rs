@@ -41,7 +41,7 @@
 //! ```
 
 use daglang_syntax::ast::{
-    Annotation, Expr, ExpectStmt, FixtureDef, InputDecl, Literal, MockDecl, SourceFile, Item,
+    Annotation, ExpectStmt, Expr, FixtureDef, InputDecl, Item, Literal, MockDecl, SourceFile,
     TestDef,
 };
 use std::collections::BTreeMap;
@@ -90,10 +90,13 @@ impl TestFile {
         for item in &source.items {
             match &item.node {
                 Item::FixtureDef(f) => {
-                    fixtures.insert(f.name.clone(), FixtureDef {
-                        name: f.name.clone(),
-                        mocks: f.mocks.clone(),
-                    });
+                    fixtures.insert(
+                        f.name.clone(),
+                        FixtureDef {
+                            name: f.name.clone(),
+                            mocks: f.mocks.clone(),
+                        },
+                    );
                 }
                 Item::TestDef(t) => {
                     tests.push(TestDef {
@@ -117,7 +120,11 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     let mut out = String::new();
 
     // Header
-    writeln!(out, "//! Generated from inline test blocks — do not edit by hand.").unwrap();
+    writeln!(
+        out,
+        "//! Generated from inline test blocks — do not edit by hand."
+    )
+    .unwrap();
     writeln!(out).unwrap();
     writeln!(out, "use gunbc_test::MockSpec;").unwrap();
     writeln!(out, "use gunbc_ir::Value;").unwrap();
@@ -131,7 +138,7 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
         .filter_map(|t| find_annotation_string(&t.annotations, "rust_mock_helpers"))
         .collect::<Vec<_>>()
         .into_iter()
-        .map(|s| s.leak() as &str)   // Static lifetime for dedup — emitter runs once.
+        .map(|s| s.leak() as &str) // Static lifetime for dedup — emitter runs once.
         .collect();
     if !rust_helpers.is_empty() {
         let mut seen = std::collections::BTreeSet::new();
@@ -197,11 +204,7 @@ fn emit_test_fn(
         _ => "",
     };
 
-    let output_path = format!(
-        "{}/generated_tests_{}.rs",
-        config.output_dir,
-        test.name
-    );
+    let output_path = format!("{}/generated_tests_{}.rs", config.output_dir, test.name);
     let module_name = format!("{}_generated_tests", test.name);
 
     // Normalise builder expression once: strip any trailing .unwrap() / .expect(…)
@@ -209,7 +212,11 @@ fn emit_test_fn(
     let builder_base = config
         .dag_builder
         .strip_suffix(".unwrap()")
-        .or_else(|| config.dag_builder.strip_suffix(".expect(\"graph should build\")"))
+        .or_else(|| {
+            config
+                .dag_builder
+                .strip_suffix(".expect(\"graph should build\")")
+        })
         .unwrap_or(&config.dag_builder);
     let builder_expr = format!("{builder_base}.expect(\"graph should build\")");
 
@@ -220,27 +227,15 @@ fn emit_test_fn(
     )
     .unwrap();
     writeln!(out, "    name = \"{test_name}\",").unwrap();
-    writeln!(
-        out,
-        "    builder = \"{builder_expr}\""
-    )
-    .unwrap();
+    writeln!(out, "    builder = \"{builder_expr}\"").unwrap();
     writeln!(out, ")]").unwrap();
 
     // testgen_target decorator
-    writeln!(
-        out,
-        "#[gunbc_testgen_registry_macros::testgen_target("
-    )
-    .unwrap();
+    writeln!(out, "#[gunbc_testgen_registry_macros::testgen_target(").unwrap();
     writeln!(out, "    name = \"{test_name}\",").unwrap();
     writeln!(out, "    output = \"{output_path}\",").unwrap();
     writeln!(out, "    module = \"{module_name}\",").unwrap();
-    writeln!(
-        out,
-        "    builder = \"{builder_expr}\","
-    )
-    .unwrap();
+    writeln!(out, "    builder = \"{builder_expr}\",").unwrap();
     if let Some(ref sig) = config.signature_fn {
         writeln!(out, "    signature = \"{sig}\",").unwrap();
     }
@@ -252,11 +247,7 @@ fn emit_test_fn(
 
     // Function body
     writeln!(out, "pub fn {fn_name}() -> MockSpec {{").unwrap();
-    writeln!(
-        out,
-        "    let dag = {builder_expr};",
-    )
-    .unwrap();
+    writeln!(out, "    let dag = {builder_expr};",).unwrap();
     writeln!(
         out,
         "    let mut spec = {}(&dag, \"{test_name}\");",
@@ -299,14 +290,20 @@ fn emit_test_fn(
 fn is_transport_response_value(expr: &Expr) -> bool {
     match expr {
         Expr::Call(name, _) => {
-            matches!(name.as_str(), "rest_response" | "shell_response" | "file_response")
+            matches!(
+                name.as_str(),
+                "rest_response" | "shell_response" | "file_response"
+            )
         }
         Expr::Record(name, _) => name.as_deref().is_some_and(|n| {
             matches!(
                 n,
-                "rest_response" | "RestResponse"
-                    | "shell_response" | "ShellResponse"
-                    | "file_response" | "FileResponse"
+                "rest_response"
+                    | "RestResponse"
+                    | "shell_response"
+                    | "ShellResponse"
+                    | "file_response"
+                    | "FileResponse"
             )
         }),
         _ => false,
@@ -462,9 +459,7 @@ fn emit_value_expr(expr: &Expr) -> String {
             }
             format!("Value::Str({}.to_string())", quote_rust_str(&s))
         }
-        Expr::Record(name, fields) => {
-            emit_record_value(name.as_deref(), fields)
-        }
+        Expr::Record(name, fields) => emit_record_value(name.as_deref(), fields),
         Expr::Call(name, args) => {
             match name.as_str() {
                 kind @ ("rest_response" | "shell_response" | "file_response") => {
@@ -484,14 +479,12 @@ fn emit_value_expr(expr: &Expr) -> String {
                 }
             }
         }
-        Expr::Ident(name) => {
-            match name.as_str() {
-                "true" => "Value::Bool(true)".to_string(),
-                "false" => "Value::Bool(false)".to_string(),
-                "none" => "Value::None".to_string(),
-                _ => format!("Value::Str(\"{name}\".to_string())"),
-            }
-        }
+        Expr::Ident(name) => match name.as_str() {
+            "true" => "Value::Bool(true)".to_string(),
+            "false" => "Value::Bool(false)".to_string(),
+            "none" => "Value::None".to_string(),
+            _ => format!("Value::Str(\"{name}\".to_string())"),
+        },
         Expr::List(items) => {
             let values: Vec<String> = items.iter().map(emit_value_expr).collect();
             format!("Value::List(vec![{}])", values.join(", "))
@@ -508,24 +501,22 @@ fn emit_value_expr(expr: &Expr) -> String {
                 json_parts.join(", ")
             )
         }
-        Expr::UnaryOp(op, inner) => {
-            match op {
-                daglang_syntax::ast::UnaryOp::Neg => {
-                    if let Expr::Literal(Literal::Int(n)) = inner.as_ref() {
-                        format!("Value::Int(-{n})")
-                    } else {
-                        emit_value_expr(inner)
-                    }
-                }
-                daglang_syntax::ast::UnaryOp::Not => {
-                    if let Expr::Literal(Literal::Bool(b)) = inner.as_ref() {
-                        format!("Value::Bool({})", !b)
-                    } else {
-                        emit_value_expr(inner)
-                    }
+        Expr::UnaryOp(op, inner) => match op {
+            daglang_syntax::ast::UnaryOp::Neg => {
+                if let Expr::Literal(Literal::Int(n)) = inner.as_ref() {
+                    format!("Value::Int(-{n})")
+                } else {
+                    emit_value_expr(inner)
                 }
             }
-        }
+            daglang_syntax::ast::UnaryOp::Not => {
+                if let Expr::Literal(Literal::Bool(b)) = inner.as_ref() {
+                    format!("Value::Bool({})", !b)
+                } else {
+                    emit_value_expr(inner)
+                }
+            }
+        },
         other => {
             // Fail at compile time in the generated code so unhandled
             // expression variants surface immediately instead of silently
@@ -629,11 +620,10 @@ fn emit_transport_response(kind: &str, fields: TransportFields<'_>) -> String {
 /// becomes `Value::Json(serde_json::json!(...))`.
 fn emit_record_value(name: Option<&str>, fields: &[(String, Expr)]) -> String {
     match name {
-        Some(kind @ ("rest_response" | "RestResponse"
-            | "shell_response" | "ShellResponse"
-            | "file_response" | "FileResponse")) => {
-            emit_transport_response(kind, TransportFields::Named(fields))
-        }
+        Some(
+            kind @ ("rest_response" | "RestResponse" | "shell_response" | "ShellResponse"
+            | "file_response" | "FileResponse"),
+        ) => emit_transport_response(kind, TransportFields::Named(fields)),
         _ => {
             let json_parts: Vec<String> = fields
                 .iter()
@@ -647,7 +637,13 @@ fn emit_record_value(name: Option<&str>, fields: &[(String, Expr)]) -> String {
 
 /// Emit a Rust string literal (properly escaped).
 fn quote_rust_str(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\t', "\\t"))
+    format!(
+        "\"{}\"",
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\t', "\\t")
+    )
 }
 
 /// Emit an integer from an expression.
@@ -795,7 +791,10 @@ test dag_viz_snapshot {
 
         assert_eq!(test_file.tests.len(), 1);
         assert_eq!(test_file.tests[0].inputs.len(), 1);
-        assert_eq!(test_file.tests[0].inputs[0].node_segments, vec!["render_snapshot"]);
+        assert_eq!(
+            test_file.tests[0].inputs[0].node_segments,
+            vec!["render_snapshot"]
+        );
         assert_eq!(test_file.tests[0].inputs[0].port, "topology_json");
     }
 
@@ -819,7 +818,12 @@ test gist_upload_test {
         assert_eq!(test_file.tests[0].mocks[0].port, "response");
         assert_eq!(
             test_file.tests[0].mocks[1].node_segments,
-            vec!["gist_upload", "cloud_credential", "gcp_wif_secret", "parse_set_iam"]
+            vec![
+                "gist_upload",
+                "cloud_credential",
+                "gcp_wif_secret",
+                "parse_set_iam"
+            ]
         );
         assert_eq!(test_file.tests[0].mocks[1].port, "ok");
     }

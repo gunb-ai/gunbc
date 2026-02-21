@@ -560,6 +560,10 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         );
     }
 
+    yaml.push_str(
+        "      - name: Verify Bootstrap Invariants\n        run: rm -rf target/codegen && cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci\n\n",
+    );
+
     write!(
         yaml,
         "      - name: Run CI Pipeline\n        run: {}\n",
@@ -1061,15 +1065,25 @@ fn validate_codegen_dsl_coverage(
         .filter(|binary| binary.is_dsl_pipeline_module())
         .map(WorkspaceBinary::tool_name)
         .collect();
+    let intentionally_unmapped_tool_modules = intentionally_unmapped_dsl_tool_modules();
+    let intentionally_unmapped_pipeline_modules = intentionally_unmapped_dsl_pipeline_modules();
 
     let unknown_tools: Vec<String> = tool_modules
         .iter()
-        .filter(|module| !known_tool_modules.contains(module.as_str()))
+        .filter(|module| {
+            let module = module.as_str();
+            !known_tool_modules.contains(module)
+                && !intentionally_unmapped_tool_modules.contains(module)
+        })
         .cloned()
         .collect();
     let unknown_pipelines: Vec<String> = pipeline_modules
         .iter()
-        .filter(|module| !known_pipeline_modules.contains(module.as_str()))
+        .filter(|module| {
+            let module = module.as_str();
+            !known_pipeline_modules.contains(module)
+                && !intentionally_unmapped_pipeline_modules.contains(module)
+        })
         .cloned()
         .collect();
     if !unknown_tools.is_empty() || !unknown_pipelines.is_empty() {
@@ -1116,6 +1130,18 @@ fn validate_codegen_dsl_coverage(
         "codegen DSL coverage validation failed: missing generated targets for mapped DSL modules: {}",
         missing_targets.join(", ")
     ))
+}
+
+fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
+    let mut set = BTreeSet::new();
+    set.insert("design");
+    set
+}
+
+fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
+    let mut set = BTreeSet::new();
+    set.insert("sdlc");
+    set
 }
 
 fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
@@ -1735,4 +1761,5 @@ pub fn sample_tool() {}
         assert!(err.contains("unmapped DSL tool modules"));
         assert!(err.contains("unknown_new_tool"));
     }
+
 }

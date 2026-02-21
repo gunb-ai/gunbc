@@ -35,35 +35,35 @@
 | Daggen status | Deferred | `needs_daggen()` returns false. Workflow DAGs remain hand-authored in Rust. |
 | SDLC pipeline architecture | Resolved | Issue-centric lifecycle with provider-agnostic types. |
 | SDLC intake/idempotency-first rollout | Resolved | Intake + idempotency contracts are Phase 0 gates before stage automation. |
-| SDLC runtime launch + infra control-plane model | In progress | `IN0-D` opened for stateless worker topology + infra bringup contracts. |
-| SDLC codegen-first objective | In progress | `CG0-D` opened: behavior/modeling in DSL, compiled to Rust/Go/C. |
-| SDLC mega modeling gate | In progress | `MD0-D` is canonical; implementation tasks are downstream. |
+| SDLC runtime launch + infra control-plane model | Resolved (done) | Lane E complete: stateless worker topology, infra plan/apply, preflight gates, drain semantics. |
+| SDLC codegen-first objective | Resolved (done) | Lane F complete: DSL-authored behavior compiled to Rust/Go/C, multi-level conformance harness. `CG1` superseded (SDLC modules are runtime-authored). |
+| SDLC mega modeling gate | Resolved (done) | `MD0-D` approved; all downstream lanes delivered. |
+| Three-layer domain abstraction | Resolved | Pipeline sees domain concepts (Issue, Claim, Outcome); domain interfaces are provider-fungible; infra implementations selected by deployment profile at compile time. See `docs/design/sdlc/e2e-gap-analysis.md`. |
+| Compile-time profile binding | Open | `profile { bind Interface -> Impl }` syntax in DSL. Compiler resolves `uses` declarations via active profile. `--profile` CLI flag. |
 
 ### Archive Update (2026-02-21)
 
 Moved to `TODO/TODONE/tasks-completed.md`:
 
-- `WF6`-`WF9`
-- `WF14`-`WF18`
+- `WF6`-`WF9`, `WF14`-`WF18`
 - `DL1`-`DL4`
-- `W1`
-- `W4`-`W8`
+- `W1`, `W4`-`W8`
+- Lane A (all): `MD0-D`, `IM0-D`, `IM1`-`IM13`, `W9`-`W14`
+- Lane B (all): `W2`, `W3`
+- Lane C (all): `AX1`, `AX2`
+- Lane D (all): `DL5`, `DL6`, `DL7`, `DL8`
+- Lane E (all): `IN0-D`, `IN1`-`IN4`
+- Lane F (all): `CG0-D`, `CG1` (superseded), `CG2`-`CG6`
+- Sprint 10 (all): `AI1`-`AI3`, `PR1`-`PR3`
 
-Active IDs after archive:
+Active IDs after archive: none (all lanes and Sprint 10 complete)
 
-- `IM0-D`
-- `MD0-D`
-- `IM1`, `IM2`, `IM3`, `IM4`, `IM5`, `IM6`, `IM7`, `IM8`, `IM9`, `IM10`, `IM11`, `IM12`, `IM13`
-- `IN0-D`, `IN1`, `IN2`, `IN3`, `IN4`
-- `CG0-D`, `CG1`, `CG2`, `CG3`, `CG4`, `CG5`, `CG6`
-- `W2`, `W3`
-- `W9`, `W10`, `W11`, `W12`, `W13`, `W14`
-- `AX1`, `AX2`
-- `DL5`, `DL6`, `DL7`, `DL8`
+### SDLC Design Checklist (Must Hold) — All Satisfied
 
-### SDLC Design Checklist (Must Hold)
+All 27 design contracts below are implemented and tested. Owner tasks are archived.
 
-These design contracts are required to avoid duplicate issues/updates and non-restartable runs.
+<details>
+<summary>Expand checklist (reference only)</summary>
 
 | Topic | Required Contract | Owner Tasks |
 |---|---|---|
@@ -94,110 +94,120 @@ These design contracts are required to avoid duplicate issues/updates and non-re
 | Artifact storage fungibility | Artifact updates support inline and blob-ref strategies under one idempotent marker contract. | `IM4`, `CG3` |
 | Canonical modeling gate | SDLC implementation tasks are downstream of `docs/design/sdlc/mega-modeling-design.md` sign-off. | `MD0-D` |
 
-### Mega Modeling Gate
-
-`MD0-D` is the canonical SDLC modeling review gate.
-
-1. Canonical doc: `docs/design/sdlc/mega-modeling-design.md`
-2. Rule: all implementation tasks (`IM1+`, `IN1+`, `CG1+`, `W*`) are downstream of `MD0-D` sign-off.
-
-### Tonight Handoff Lanes (Open Work, Shared Design Gate)
-
-Use these lanes to assign workers with minimal overlap. `MD0-D` is the shared upstream design gate; after approval, lanes are independently parallel.
-
-| Lane | Task IDs | Preconditions | Primary Files/Areas | Done When | Verify | Status |
-|---|---|---|---|---|---|---|
-| A: SDLC delivery lane | `MD0-D` -> `IM0-D` -> `IM1` -> `IM2` -> `IM3` -> `IM4` -> `IM5` -> `IM6` -> `IM7` -> `IM8` -> `IM9` -> `IM10` -> `IM11` -> `IM13` -> `W9` -> `IM12` -> `W10` -> `W11` -> `W12` -> `W13` -> `W14` | `MD0-D` approved | `docs/design/sdlc/`, `TODO/`, `core/ir/src/transport/github/`, `lib/`, `gunbc-dag/src/resolve.rs`, `gunbc-dag/src/workflow/`, `gunbc-dag/src/bin/`, `dsl/pipelines/` | intake is idempotent + conflict-safe, stage execution is idempotent/resumable, async pickup is atomic, retry behavior is deterministic with persisted budget, crash reconciliation converges safely (including artifact marker windows), AwaitApproval yields by releasing claim, fail-closed routes are terminalized with user-visible status, signal triggers are durable/idempotent with anti-entropy fallback scans, provider capability gating is enforced, artifact payload/reference contract is implemented, and `gunbc-sdlc` runs issue lifecycle end-to-end in dry-run with metrics while preserving provider-agnostic boundaries | `cargo run -q --release -p gunbc-dag --bin gunbc-sdlc -- intake --intent TODO/issue-intent-template.yaml --dry-run`; `cargo run -q --release -p gunbc-dag --bin gunbc-sdlc -- worker --dry-run`; `cargo run -q --release -p gunbc-dag --bin gunbc-sdlc -- --issue 42 --dry-run` | **OPEN** |
-| B: Review credential certification lane | `W2` -> `W3` | none | `gunbc-dag/src/bin/review.rs`, credential policy wiring, provider selection paths | real-mode review succeeds for Anthropic + OpenAI on same diff; failures are fail-closed with actionable errors | `gunbc-review -r . --provider anthropic`; `gunbc-review -r . --provider openai` | **OPEN** |
-| C: Planner/CI additional lane | `AX1`, `AX2` | none | CI guardrails, makegen registry/tool discovery contracts | bootstrap invariant enforced in CI and registry coupling risk reduced | `make ci` + targeted contract tests | **OPEN** |
-| D: Daglang convergence lane | `DL5`, `DL6`, `DL7`, `DL8` | none | `core/daglang/daglang-cli/` compile/pipeline/ui surfaces | daglang compile/check/model surfaces are consolidated and explicit | `cargo test -p daglang-cli` | **OPEN** |
-| E: Runtime infra/control-plane lane | `MD0-D` -> `IN0-D` -> `IN1` -> `IN2` -> `IN3` -> `IN4` | `MD0-D` approved | `docs/design/sdlc/mega-modeling-design.md`, `TODO/infra-intent-template.yaml`, `gunbc-dag/src/bin/infra.rs`, `lib/cloud-ops/` | SDLC runtime launch is explicitly modeled, deployable ownership and trigger matrix are explicit, infra bringup is intent-driven/idempotent, and worker startup has fail-closed infra preflight semantics for stateless fleet operation | `cargo run -q --release -p gunbc-dag --bin gunbc-infra -- spec --env dev`; `cargo run -q --release -p gunbc-dag --bin gunbc-infra -- plan --env dev`; `cargo run -q --release -p gunbc-dag --bin gunbc-infra -- status --env dev` | **OPEN** |
-| F: Codegen-first SDLC lane | `MD0-D` -> `CG0-D` -> `CG1` -> `CG2` -> `CG3` -> `CG4` -> `CG5` -> `CG6` | `MD0-D` approved | `dsl/pipelines/`, `dsl/tools/`, `dsl/services/`, `dsl/infra/`, `core/daglang/`, `gunbc-dag/src/workspace/subdags/`, generated target test harnesses | SDLC behavior/modeling is DSL-authored, emitted targets (Rust/Go/C) are executable with conformance parity, and Rust hand-written logic is reduced to generic adapters/runtime kernel | `cargo run -q --release -p daglang-cli -- compile dsl/pipelines/sdlc.dag`; `cargo test --workspace`; target-specific emitted artifact smoke checks | **OPEN** |
-
-Handoff rules:
-
-1. One worker owns one lane at a time.
-2. Every PR title begins with primary task ID (example: `[W9] ...`).
-3. Any behavioral change must include/adjust at least one regression test.
-4. If a lane hits unresolved design ambiguity, open/update a `-D` design task first.
+</details>
 
 ---
 
-## Sprint 9: Tool Workflows & SDLC Pipeline (Next Sprint)
+## Delivery Lane Summary
 
-**Goal**: Complete the local AI-assisted SDLC pipeline and operationally certify review credentials, with intake/idempotency guarantees first.
+| Lane | Status | Remaining |
+|------|--------|-----------|
+| A: SDLC delivery | **DONE** | — |
+| B: Review credential | **DONE** | — |
+| C: Planner/CI | **DONE** | — |
+| D: Daglang convergence | **DONE** | — |
+| E: Runtime infra | **DONE** | — |
+| F: Codegen-first SDLC | **DONE** | `CG1` superseded (SDLC modules are runtime-authored) |
 
-### Phase 0: Issue Management Modeling + Intake
+---
 
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **MD0-D** | **SDLC mega modeling design gate**: consolidate canonical abstractions/invariants/layers/conformance and traceability matrix into one review doc. **Design doc**: `docs/design/sdlc/mega-modeling-design.md`. | — | M |
-| **IM0-D** | **SDLC issue abstraction modeling section**: finalize provider-agnostic issue contracts, adapter boundary rules, idempotency keys, comment/label upsert protocol, and commit linkage invariants in `docs/design/sdlc/mega-modeling-design.md`. | MD0-D | M |
-| **IM1** | **Intent sheet contract**: define intent schema and canonical fields (`intent_id`, objective, success criteria, constraints, owner, links), with template under `TODO/`. | IM0-D | S |
-| **IM2** | **Issue intake upsert flow**: add intake command/path that creates or updates one canonical issue per `intent_id` (never duplicate create on rerun). | IM0-D, IM1 | M |
-| **IM3** | **Stage idempotency + resume keying**: define and persist run/stage keys (`issue_id`, `stage`, `input_hash`, `policy_version`) and skip duplicate side effects on replay. | IM0-D, IM2 | M |
-| **IM4** | **Idempotent remote update protocol**: comments/artifacts/labels are upserted/transitioned via deterministic markers and compare-and-set semantics. | IM0-D, IM2 | M |
-| **IM5** | **Commit/update trace linkage**: enforce branch/commit metadata linking changes to `intent_id`, `issue_id`, and run key. | IM3 | S |
-| **IM6** | **Claim/lease abstraction**: implement atomic claim protocol for `(issue_id, stage)` ownership with lease expiry and heartbeat semantics. | IM0-D, IM3 | M |
-| **IM7** | **Async control loop**: implement worker tick loop (`discover -> claim -> execute -> release`) using `IM6`, with bounded retries/backoff, durable trigger handling, and anti-entropy rediscovery scans. | IM6 | M |
-| **IM8** | **Stage transaction executor**: implement fixed step ordering (revalidate -> run key check -> provisional artifact marker upsert -> CAS transition -> canonical marker upsert/confirm -> outcome record) with crash-safe replay behavior. | IM3, IM4, IM7 | M |
-| **IM9** | **Failure taxonomy + retry policy**: encode typed failure classes (`TransportTransient`, `StateConflict`, etc.), persist retry budget/timing state in outcome metadata, and enforce terminal fail-closed behavior for non-retryable outcomes. | IM0-D, IM7 | S |
-| **IM10** | **Intake conflict policy**: implement fail-closed handling for multi-match `intent_id` collisions and deterministic intent->issue upsert resolution. | IM0-D, IM2 | S |
-| **IM11** | **Replay reconciliation loop**: implement deterministic convergence logic for crash windows (`artifact written`, `transition applied`, `ledger missing`), including stale provisional-marker supersession/cleanup by lease generation, and duplicate-intake loser cleanup. | IM3, IM8, IM10 | M |
-| **IM13** | **Artifact payload/reference contract**: implement provider-agnostic artifact model (`Inline` vs `BlobRef`) with deterministic normalization + content-hash equality rules, canonical marker collision policy, and GitHub adapter compatibility. | IM0-D, IM4 | M |
+## Sprint 10: Autonomous Implementation & Agent Integration — **DONE**
 
-### Phase 0.5: Runtime Infrastructure and Launch Modeling
+Archived to `TODO/TODONE/tasks-completed.md`. All 6 tasks (`AI1`-`AI3`, `PR1`-`PR3`) complete.
 
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **IN0-D** | **Runtime/infra control-plane modeling section**: define SDLC launch topology (stateless worker fleet), deployable ownership for each `H*` graph, trigger/signal matrix with idempotency keys, startup/drain semantics, and infra interaction boundaries in `docs/design/sdlc/mega-modeling-design.md`. | MD0-D | M |
-| **IN1** | **Infra intent contract**: define versioned `InfraIntent` schema for runtime dependencies (claim store, outcome ledger, secrets, metrics), with template under `TODO/`. | IN0-D | S |
-| **IN2** | **Infra plan/apply coverage for SDLC runtime**: extend infra plan/apply modeling from secret-only provisioning to required runtime dependencies and drift-aware reconciliation contracts. | IN0-D, IN1 | M |
-| **IN3** | **Worker startup preflight gate**: add fail-closed real-mode startup checks for infra readiness (`status` + required component checks + capability prerequisites). | IN1, IN2 | M |
-| **IN4** | **Stateless deployment profile + drain semantics**: define and implement launch profile contracts for 5-10+ workers, including local co-located profile parity, graceful drain/restart behavior, and operational runbook checks. | IN0-D, IN3 | M |
+---
 
-### Phase 0.6: Codegen-First SDLC Cutover
+## Sprint 11: E2E Scenario Pipeline & Stage Execution — **DONE**
 
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **CG0-D** | **Codegen-first architecture modeling section**: lock boundary that SDLC behavior/modeling is authored in DSL and compiled to Rust/Go/C, with runtime kernel limited to generic engine/adapters in `docs/design/sdlc/mega-modeling-design.md`. | MD0-D | M |
-| **CG1** | **Canonicalize SDLC DSL modules**: move/promote SDLC pipeline + design tool specs into runtime-discovered `dsl/` roots (`dsl/pipelines/sdlc.dag`, `dsl/tools/design.dag`) with equivalent semantics. | CG0-D | M |
-| **CG2** | **Discovery-to-execution cutover for SDLC modules**: remove/manual-minimize per-module Rust mapping for SDLC paths so discovered DSL modules execute via generic runtime wiring. | CG1 | M |
-| **CG3** | **Control-plane DSL resources/services**: model claim lease store and stage outcome ledger as DSL-visible interfaces/resources with CAS/heartbeat/outcome contracts. | CG0-D, IN0-D | M |
-| **CG4** | **Infra intent reconcile in DSL**: express runtime infra intent plan/apply/reconcile flow in DSL and make `gunbc-infra` delegate to compiled DSL orchestration path. | CG3, IN1, IN2 | L |
-| **CG5** | **Generated target entrypoints (Rust/Go/C)**: emit runnable SDLC worker/infra reconcile entrypoints from DSL artifacts for Rust first, then Go/C smoke execution parity; include explicit C adapter/runtime ownership-handle boundary for variable-length payloads; keep interpreter mode as supported non-primary execution option. | CG2, CG4 | L |
-| **CG6** | **Multi-level conformance + backend rotation harness**: add layered conformance suites (DSL, IR, semantic, adapter, e2e parity), C memory-ownership sanitizer coverage, and non-prod backend rotation strategy across generated backends with interpreter differential checks. | CG5 | M |
+**Goal**: Make the SDLC pipeline execute the full stage progression (Idea -> Design -> DesignReview -> Accepted -> Implementation) with stage-based dispatch, concrete execution handlers for each transition, and a scenario intent YAML to drive the E2E test.
 
-### Phase 1: Review Credential Certification
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S11-1** | **Stage-based dispatch**: Refactor worker loop to route by `record.stage` via `execute_stage()` instead of unconditionally calling `execute_stage_idea_to_design`. | — | S | **DONE** |
+| **S11-2** | **Design -> DesignReview handler**: `execute_stage_design_to_review()` extracts canonical design, runs review, persists review artifact, transitions stage label. | S11-1 | M | **DONE** |
+| **S11-3** | **DesignReview -> Accepted handler**: `execute_stage_review_to_accepted()` checks `approved` flag from review artifact, transitions or blocks. | S11-2 | S | **DONE** |
+| **S11-4** | **Accepted -> Implementation handler**: `execute_stage_accepted_to_implementation()` assembles `HandoffSpec`, dispatches to `AgentAdapter`, records in agent ledger. | S11-3 | M | **DONE** |
+| **S11-5** | **Scenario intent YAML**: `TODO/feature-intent-markdown.yaml` with concrete criteria for the markdown report feature. | — | S | **DONE** |
 
-**Credentials & Core Engine:**
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **W2** | **Credential smoke test**: run `gunbc-review` in real mode using `ANTHROPIC_API_KEY` against a small diff and verify structured findings output. | — | S |
-| **W3** | **Multi-provider operational verification**: verify real-mode `--provider openai` and `--provider anthropic` both work with env/policy credentials, with explicit fail-closed errors on missing creds. | W2 | S |
+---
 
-### Phase 2: SDLC Pipeline Delivery
+## Sprint 12: E2E Pipeline Execution — Domain Interface Layer
 
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **W9** | **GitHub Issues transport + adapter**: add issues transport module and provider-agnostic `TrackedIssue` mapping for create/get/update/comment/labels/list, strictly following `IM0-D` adapter boundary contracts and `IM10` intake conflict rules. | IM0-D, IM2, IM10 | M |
-| **IM12** | **Provider capability gate + contract tests**: implement capability checks (`StageCas`, `CommentUpsertByMarker`, `ManagedIssueSearch`, `DeterministicIssueIdentity`) and block real mode when unmet. | IM0-D, W9 | S |
-| **W10** | **DesignOps module**: implement `lib/design-ops/` with `PrepareDesignPrompt` and `ParseDesignResponse`, returning typed design artifacts. | IM1 | M |
-| **W11** | **SDLC resolver wiring**: connect pipeline module to resolver/execution path with typed transport + design ops integration, using `IM3` run keys and `IM8` stage transaction contracts while preserving provider fungibility at orchestration boundaries. | IM0-D, IM8, W9, W10 | M |
-| **W12** | **`gunbc-sdlc` CLI binary**: add entrypoint to run lifecycle for an issue ID with dry-run and real modes, including intake/update flows and async worker loop operations with `IM9` retry-class semantics, `IM11` reconciliation, explicit terminal fail-closed issue updates, `IM12` capability gate enforcement, and local co-located control-loop execution profile for business-logic testing. | IM7, IM8, IM9, IM11, IM12, W11 | M |
-| **W13** | **Approval gates**: extend workflow planner + ledger with asynchronous `AwaitApproval` yield semantics (`PENDING_APPROVAL` persist, claim release, rediscovery-based resume). | IM3, W12 | L |
-| **W14** | **Metrics/monitoring**: record stage duration, LLM cost, and approval latency in SDLC execution report. | W12 | M |
+**Design doc**: [docs/design/sdlc/e2e-gap-analysis.md](../docs/design/sdlc/e2e-gap-analysis.md)
+**Goal**: Introduce the three-layer abstraction model (pipeline domain concepts -> domain interfaces -> infrastructure implementations) with compile-time deployment profile binding, enabling the SDLC pipeline to execute end-to-end without hand-written Rust orchestration or hardcoded transports.
 
-### Phase 3: Additional Parallel Work
+### Phase 1: Domain Interface Layer (Gaps A, B)
 
-| ID | Task | Deps | Size |
-|----|------|------|------|
-| **AX1** | **Bootstrap invariant CI gate**: add CI assertion that bootstrap-safe binaries compile without generated sources. (From deferred open item #2) | — | S |
-| **AX2** | **Registry coupling hardening**: reduce or explicitly contract-test coupling between `default_registry()` and `gunbc_codegen::registry::derive_tool_defs()`. (From deferred open item #3) | — | M |
-| **DL5** | **Unify compile/pipeline overlap**: remove duplicated compile-path logic between `compile.rs` and `pipeline.rs` through one shared context pipeline. | — | M |
-| **DL6** | **Manifest semantics clarity**: rename or split `daglang manifest` so progress vs topology output is unambiguous. | DL5 | S |
-| **DL7** | **Canonical IR CLI surface**: promote canonical IR JSON snapshot flow into `daglang compile --format canonical-json`. | DL5 | S |
-| **DL8** | **Viz default decision**: finalize default output mode for `daglang viz` (ASCII vs Mermaid), document and lock with tests. | — | S |
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S12-1** | **IssueProvider interface**: Define `interface IssueProvider` (discover, get, comment, set_labels, close). Refactor `services/github/issues.dag` into `resource GitHubIssueProvider implements IssueProvider`. Add `StubIssueProvider` for tests. | — | M | |
+| **S12-2** | **ClaimStore interface**: Define `interface ClaimStore` (acquire, heartbeat, release). Implement `FileClaimStore` using `Filesystem` + `Clock`. Add `InMemoryClaimStore` for tests. Replace `services/sdlc/control_plane.dag` claim operations. | — | M | |
+| **S12-3** | **OutcomeLedger interface**: Define `interface OutcomeLedger` (upsert, get). Implement `FileOutcomeLedger` using `Filesystem`. Add `InMemoryOutcomeLedger` for tests. Replace `services/sdlc/control_plane.dag` outcome operations. | S12-2 | S | |
+| **S12-4** | **AgentProvider interface**: Define `interface AgentProvider` (spawn, poll, cancel). Refactor `services/agent/codex.dag` into `resource CodexAgentProvider implements AgentProvider`. Add `StubAgentProvider` for tests. | — | S | |
+| **S12-5** | **Pipeline uses interfaces**: Update `dsl/pipelines/sdlc.dag` and `dsl/funcs/sdlc_worker.dag` to import domain interfaces instead of concrete services. | S12-1, S12-2, S12-3, S12-4 | M | |
+
+### Phase 2: Compile-Time Profile Binding (Gaps C, D)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S12-6** | **Profile syntax in parser**: Add `profile` declaration and `bind` statement to `daglang-syntax` parser. | — | M | |
+| **S12-7** | **Profile resolution in lowering**: When lowering `uses` declarations, resolve via active profile's bindings. Generate transport code for the concrete implementation. | S12-6 | L | |
+| **S12-8** | **`--profile` CLI flag**: Add `--profile` to `daglang compile`. Create `unit_test`, `local`, `cloud_run` profile definitions. | S12-6, S12-7 | S | |
+| **S12-9** | **Credential binding via profile**: Wire `credential: env(...)` and `credential: secret(...)` in profile bindings. Connect to existing `credential_chain` pattern for Secret Manager. | S12-7 | M | |
+
+### Phase 3: Runtime Execution (Gaps F, G)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S12-10** | **SubDag node execution**: Replace `UnsupportedOp` for `SubDag` nodes in `resolve.rs` with recursive DAG resolution and execution. | — | M | |
+| **S12-11** | **Pipeline node execution**: Replace `UnsupportedOp` for `Pipeline` nodes in `resolve.rs` with ordered stage sequence execution. | S12-10 | S | |
+| **S12-12** | **Worker DAG invocation**: Wire `sdlc.rs` worker to load compiled pipeline, resolve via profile, and execute. Replace `mark_run_completed()` placeholder. | S12-5, S12-8, S12-10, S12-11 | M | |
+
+### Phase 4: Stage Completion (Gaps H, I, J)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S12-13** | **Code review stage**: Implement real code review in DSL (PR diff retrieval via `PullRequest.ListFiles`, LLM review, findings as PR comment). | S12-12 | M | |
+| **S12-14** | **Acceptance testing stage**: Implement real acceptance testing in DSL (trigger CI or run `cargo test`/`cargo clippy` via shell service). | S12-12 | M | |
+| **S12-15** | **Agent branch management**: Add git branch creation before `Codex.Spawn`, push after completion, deterministic branch naming (`sdlc/issue-{number}`). | S12-12 | S | |
+| **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during regular sweep. | S12-12 | S | |
+| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time. | S12-8 | S | |
+
+---
+
+## Cleanup: Eliminate Hardcoded Registration Lists
+
+**Goal**: Replace manually maintained lists with discovery/derivation. Every time a new `.dag` module or tool is added, several Rust files require manual updates. These should either be auto-discovered from the filesystem, derived from the compiled DAG metadata, or eliminated entirely.
+
+| ID | Task | Location | Problem | Fix | Size | Status |
+|----|------|----------|---------|-----|------|--------|
+| **CL1** | **Module order test fixture** | `daglang-cli/src/pipeline.rs:773-832` | 58 hardcoded module names in `expected_real_corpus_module_order()`. Breaks every time a `.dag` file is added/removed/renamed. | Replace with filesystem discovery: glob `dsl/**/*.dag`, extract module IDs, sort. The test asserts the compiler discovers the same set, not a hardcoded list. | S | |
+| **CL2** | **Domain resolver dispatch** | `gunbc-dag/src/resolve.rs:625-645` | Match arms manually map `"tools.makegen"`, `"tools.build"`, etc. to resolver functions. New DSL modules require adding a match arm. | The `services.*` branch already uses generic dispatch via `resolve_service_transport()`. Extend this pattern: modules with `ServiceCallMetadata` use generic dispatch; remaining tool modules should derive their op mapping from the DSL definition (callable name -> op enum variant can be generated by a build script or macro from the `.dag` file). | L | |
+| **CL3** | **`domain_passthrough_op!` macros** | `gunbc-dag/src/resolve.rs:136-283` | Each tool module has a handwritten macro invocation mapping callable names to enum variants (e.g., `"aggregate_results" => AggregateResults`). These duplicate information already present in the `.dag` files. | Short term: collapse into a single data-driven registry (map of `(module, callable_name) -> Box<dyn Executable>`). Long term: generate from DSL metadata -- the callable names are in the compiled DAG, so the resolver can look them up dynamically. | M | |
+| **CL4** | **`WorkspaceBinary::ALL` array** | `gunbc-dag/src/binaries.rs:29-42` | 12-element `const ALL` array + match arms in `tool_name()`/`from_tool_name()`. New binaries require three manual edits. | Derive from `Cargo.toml` `[[bin]]` sections or from the filesystem (`gunbc-dag/src/bin/*.rs`). A build script can enumerate binaries and generate the enum. | S | |
+| **CL5** | **`TOOL_WORKFLOWS` registry** | `gunbc-dag/src/workflow/spec_builders.rs:1445-1516` | 14 hardcoded `ToolWorkflowDescriptor` entries. New tool workflows need a manual entry. | Derive from DSL: each `tools.*.dag` that exports an entrypoint `func` is a tool workflow. The workflow spec builder can discover these from compiled DAG metadata instead of a static array. | M | |
+| **CL6** | **Process unit registry** | `gunbc-dag/src/workflow/process_registry.rs:220-298` | Hardcoded CI and test-all workflow unit arrays. New CI steps need manual entries. | Derive from `pipelines/ci.dag`: the CI pipeline stages define the process units. The registry can be generated from the compiled pipeline DAG. | M | |
+| **CL7** | **`MANUAL_TOOL_DEFS`** | `gunbc-dag/src/makegen/registry.rs:1713-1714` | 2 hardcoded manual tool definitions (`pragma`, `build`). | Investigate why these can't use the standard discovery path. If they need special treatment, document why; otherwise fold into the standard tool registry. | S | |
+| **CL8** | **`std.resources` name match** | `gunbc-dag/src/resolve.rs:688-695` | Hardcoded resource names (`"Filesystem"`, `"Network"`, `"Clock"`, `"AuthContext"`). Adding a new resource to `std/resources.dag` requires a Rust match arm. | Derive from the compiled `std/resources.dag` metadata. The resource names are already in the DAG -- the resolver should read them from there. | S | |
+
+### Priority
+
+- **CL1** is the most fragile (58 entries, breaks on any module change). Fix first.
+- **CL2 + CL3** are the largest impact (the resolver is the main bottleneck for adding DSL modules without touching Rust).
+- **CL4-CL8** are smaller wins but compound over time.
+
+### Architectural direction
+
+All of these share a root cause: the Rust runtime has manually duplicated metadata that already exists in the DSL. The fix is always the same pattern: **read the metadata from the compiled DAG** instead of hardcoding it. This aligns with the codegen-first policy (mega design Section 5.3): "New SDLC behavior must be added to DSL/codegen first."
+
+---
+
+## Deferred
+
+| ID | Task | Context | Size | Status |
+|----|------|---------|------|--------|
+| **DG1** | **Daggen (Dynamic DAG Generation)** | `needs_daggen()` returns false. Re-enable to scale the pipeline by dynamically generating steps based on git diffs. | L | **DEFERRED** |
+| **S12-E** | **Multi-worker CAS** | Gap E: Implement `GcsClaimStore` with generation-based CAS (`x-goog-if-generation-match`). Not needed for single-worker local dev. | M | **DEFERRED** |
 
 ---
 

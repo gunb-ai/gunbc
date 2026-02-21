@@ -9,8 +9,9 @@
 
 #![deny(dead_code)]
 
+use gunbc_dag::infra::build_infra_graph;
 use gunbc_exec::{
-    execute, execute_with_mode_and_inputs, print_attention, AttentionLevel, BoundaryMocks,
+    execute_with_mode_and_inputs, print_attention, AttentionLevel, BoundaryMocks, ExecutionLog,
     ExecutionMode,
 };
 use gunbc_ir::transport::cloud::CloudRuntimeKind;
@@ -20,9 +21,8 @@ use gunbc_lib_cloud_ops::project_spec::{
     RotationHandler, SecretRequirement, SecretStatus, GUNBAI_SECRETS,
 };
 use gunbc_lib_cloud_ops::{
-    build_infra_apply_dag, build_infra_plan_dag, build_wif_bootstrap_dag, evaluate_health,
-    inspect_login_flow, render_infra_spec_dot, InfraApplyFilter, InfraSpec, CI_SPEC, DEV_SPEC,
-    PROD_SPEC, TEST_SPEC,
+    build_infra_apply_dag, build_wif_bootstrap_dag, evaluate_health, inspect_login_flow,
+    render_infra_spec_dot, InfraApplyFilter, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -33,6 +33,7 @@ enum InfraCommand {
     Bootstrap,
     Plan,
     Apply,
+    Reconcile,
     Spec,
     Graph,
     Login,
@@ -49,6 +50,14 @@ struct InfraCliArgs {
     skip: Vec<String>,
     inputs: HashMap<String, String>,
     execute: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InfraOrchestrationOutput {
+    planned_targets: Vec<String>,
+    target_count: i64,
+    applied_count: i64,
+    report: String,
 }
 
 impl InfraCliArgs {
@@ -110,10 +119,28 @@ fn run_command(args: InfraCliArgs) -> Result<(), String> {
         }
         InfraCommand::Plan => run_plan(spec, args.runtime, &args.filter()),
         InfraCommand::Apply => run_apply(spec, &args),
+        InfraCommand::Reconcile => run_reconcile(spec, &args),
         InfraCommand::Bootstrap => run_bootstrap(spec, &args),
         InfraCommand::Login => run_login(spec),
         InfraCommand::Status => run_status(spec),
         InfraCommand::Help => Ok(()),
+    }
+}
+
+fn run_reconcile(spec: &InfraSpec, args: &InfraCliArgs) -> Result<(), String> {
+    let report = evaluate_health(spec);
+    if !report.overall_ok {
+        return Err(
+            "cannot reconcile while infra health checks fail; run `gunbc-infra status --env <env>` and remediate first"
+                .to_string(),
+        );
+    }
+    if args.execute {
+        println!("infra reconcile execute mode");
+        run_apply(spec, args)
+    } else {
+        println!("infra reconcile preview (no changes). pass --execute to apply.");
+        run_plan(spec, args.runtime, &args.filter())
     }
 }
 
@@ -122,30 +149,16 @@ fn run_plan(
     runtime: CloudRuntimeKind,
     filter: &InfraApplyFilter,
 ) -> Result<(), String> {
-    let dag = build_infra_plan_dag(&GUNBAI_SECRETS, spec, runtime, filter)?;
-    let log = execute(&dag).map_err(|e| format!("plan execution failed: {e}"))?;
-    let plan = log
-        .get("plan")
-        .ok_or_else(|| "plan log entry missing from execution output".to_string())?;
-
-    let planned_targets = plan
-        .outputs
-        .get("planned_targets")
-        .and_then(Value::as_str_list)
-        .unwrap_or_default();
-    let target_count = plan
-        .outputs
-        .get("target_count")
-        .and_then(Value::as_int)
-        .unwrap_or(planned_targets.len() as i64);
-
-    println!(
-        "infra plan (env={}, runtime={}): {} target(s)",
-        spec.environment,
-        runtime.as_str(),
-        target_count
-    );
-    for target in planned_targets {
+    let orchestration = run_compiled_infra_orchestration(spec, runtime, filter, false)?;
+    if orchestration.target_count != orchestration.planned_targets.len() as i64 {
+        return Err(format!(
+            "compiled infra orchestration target_count mismatch: reported {}, resolved {}",
+            orchestration.target_count,
+            orchestration.planned_targets.len()
+        ));
+    }
+    println!("{}", orchestration.report);
+    for target in &orchestration.planned_targets {
         println!(" - {target}");
     }
     Ok(())
@@ -157,16 +170,38 @@ fn run_apply(spec: &InfraSpec, args: &InfraCliArgs) -> Result<(), String> {
         return run_plan(spec, args.runtime, &args.filter());
     }
 
+    let orchestration = run_compiled_infra_orchestration(spec, args.runtime, &args.filter(), true)?;
+    if orchestration.target_count != orchestration.planned_targets.len() as i64 {
+        return Err(format!(
+            "compiled infra orchestration target_count mismatch: reported {}, resolved {}",
+            orchestration.target_count,
+            orchestration.planned_targets.len()
+        ));
+    }
     let dag = build_infra_apply_dag(&GUNBAI_SECRETS, spec, args.runtime, &args.filter())?;
     let input_mocks = build_entrypoint_input_mocks(&dag, &args.inputs, false)?;
     let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
         .map_err(|e| format!("apply execution failed: {e}"))?;
-
-    let summary = log
+    let apply_summary = log
         .get("apply_summary")
-        .and_then(|entry| entry.outputs.get("report"))
+        .ok_or_else(|| "apply_summary log entry missing from execution output".to_string())?;
+    let applied_count = apply_summary
+        .outputs
+        .get("applied_count")
+        .and_then(Value::as_int)
+        .ok_or_else(|| "apply_summary.applied_count missing from execution output".to_string())?;
+    if applied_count != orchestration.applied_count {
+        return Err(format!(
+            "compiled infra orchestration/apply mismatch: DSL planned {} apply target(s), apply DAG reported {}",
+            orchestration.applied_count, applied_count
+        ));
+    }
+    let summary = apply_summary
+        .outputs
+        .get("report")
         .and_then(Value::as_str)
         .unwrap_or("infra apply completed");
+    println!("{}", orchestration.report);
     println!("{summary}");
     Ok(())
 }
@@ -259,6 +294,95 @@ fn run_status(spec: &InfraSpec) -> Result<(), String> {
     } else {
         Err("one or more health checks failed".to_string())
     }
+}
+
+fn run_compiled_infra_orchestration(
+    spec: &InfraSpec,
+    runtime: CloudRuntimeKind,
+    filter: &InfraApplyFilter,
+    execute_mode: bool,
+) -> Result<InfraOrchestrationOutput, String> {
+    let dag = build_infra_graph()
+        .map_err(|error| format!("failed to build compiled infra DAG: {error}"))?;
+    let mut inputs = HashMap::new();
+    let spec_targets = collect_spec_targets(spec);
+    inputs.insert("environment".to_string(), spec.environment.to_string());
+    inputs.insert("runtime".to_string(), runtime.as_str().to_string());
+    inputs.insert(
+        "spec_targets".to_string(),
+        serde_json::to_string(&spec_targets)
+            .map_err(|error| format!("failed to encode spec_targets input: {error}"))?,
+    );
+    inputs.insert(
+        "target".to_string(),
+        serde_json::to_string(&filter.target)
+            .map_err(|error| format!("failed to encode target filter input: {error}"))?,
+    );
+    inputs.insert(
+        "skip".to_string(),
+        serde_json::to_string(&filter.skip)
+            .map_err(|error| format!("failed to encode skip filter input: {error}"))?,
+    );
+    inputs.insert("__deps".to_string(), "[]".to_string());
+    inputs.insert("execute".to_string(), execute_mode.to_string());
+
+    let input_mocks = build_entrypoint_input_mocks(&dag, &inputs, false)?;
+    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
+        .map_err(|error| format!("compiled infra DAG execution failed: {error}"))?;
+    extract_orchestration_output(&log)
+}
+
+fn collect_spec_targets(spec: &InfraSpec) -> Vec<String> {
+    let mut targets = spec
+        .secrets
+        .iter()
+        .filter(|secret| secret.status == SecretStatus::Active)
+        .map(|secret| format!("secret:{}", secret.secret_id))
+        .collect::<Vec<_>>();
+    targets.extend(
+        spec.service_accounts
+            .iter()
+            .map(|service_account| format!("service-account:{}", service_account.name)),
+    );
+    targets.push(format!("wif:{}:{}", spec.wif.pool_id, spec.wif.provider_id));
+    targets
+}
+
+fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestrationOutput, String> {
+    let entry = log
+        .entries
+        .iter()
+        .find(|entry| entry.outputs.contains_key("planned_targets"))
+        .ok_or_else(|| "compiled infra DAG log missing planned_targets output entry".to_string())?;
+
+    let planned_targets = entry
+        .outputs
+        .get("planned_targets")
+        .and_then(Value::as_str_list)
+        .unwrap_or_default();
+    let target_count = entry
+        .outputs
+        .get("target_count")
+        .and_then(Value::as_int)
+        .unwrap_or(planned_targets.len() as i64);
+    let applied_count = entry
+        .outputs
+        .get("applied_count")
+        .and_then(Value::as_int)
+        .unwrap_or(0);
+    let report = entry
+        .outputs
+        .get("report")
+        .and_then(Value::as_str)
+        .unwrap_or("infra orchestration completed")
+        .to_string();
+
+    Ok(InfraOrchestrationOutput {
+        planned_targets,
+        target_count,
+        applied_count,
+        report,
+    })
 }
 
 fn build_entrypoint_input_mocks<T>(
@@ -412,6 +536,7 @@ fn parse_cli_args(argv: &[String]) -> Result<InfraCliArgs, String> {
         "bootstrap" => InfraCommand::Bootstrap,
         "plan" => InfraCommand::Plan,
         "apply" => InfraCommand::Apply,
+        "reconcile" => InfraCommand::Reconcile,
         "spec" => InfraCommand::Spec,
         "graph" => InfraCommand::Graph,
         "login" => InfraCommand::Login,
@@ -647,6 +772,7 @@ fn print_help() {
     println!("  bootstrap   Build or execute WIF bootstrap DAG");
     println!("  plan        Execute infra planning DAG");
     println!("  apply       Preview or execute infra apply DAG");
+    println!("  reconcile   Health-gated plan/apply convergence flow");
     println!("  spec        Print InfraSpec JSON");
     println!("  graph       Print InfraSpec graph (DOT)");
     println!("  login       Verify ADC + impersonation and print direnv template");
@@ -667,6 +793,9 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_exec::{ExecutionLog, LogEntry};
+    use gunbc_ir::coerce::AppliedCoercion;
+    use gunbc_ir::CoercionKind;
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
@@ -733,6 +862,10 @@ mod tests {
         let status =
             parse_cli_args(&argv(&["gunbc-infra", "status"])).expect("status should parse");
         assert_eq!(status.command, InfraCommand::Status);
+
+        let reconcile =
+            parse_cli_args(&argv(&["gunbc-infra", "reconcile"])).expect("reconcile should parse");
+        assert_eq!(reconcile.command, InfraCommand::Reconcile);
     }
 
     #[test]
@@ -803,5 +936,67 @@ mod tests {
     fn spec_for_env_rejects_unknown() {
         let err = spec_for_env("staging").expect_err("unknown env should fail");
         assert!(err.contains("unknown environment"));
+    }
+
+    #[test]
+    fn collect_spec_targets_includes_runtime_dependencies() {
+        let targets = collect_spec_targets(&DEV_SPEC);
+        assert!(
+            targets.iter().any(|target| target.starts_with("secret:")),
+            "targets should include secret dependencies: {targets:?}"
+        );
+        assert!(
+            targets.contains(&"secret:github-token".to_string()),
+            "dev spec should include active github token secret target"
+        );
+        assert!(
+            targets
+                .iter()
+                .any(|target| target.starts_with("service-account:")),
+            "targets should include service-account dependencies: {targets:?}"
+        );
+        assert!(
+            targets.iter().any(|target| target.starts_with("wif:")),
+            "targets should include wif dependency: {targets:?}"
+        );
+    }
+
+    #[test]
+    fn extract_orchestration_output_reads_reported_fields() {
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "planned_targets".to_string(),
+            Value::List(vec![Value::Str("secret:github-token".to_string())]),
+        );
+        outputs.insert("target_count".to_string(), Value::Int(1));
+        outputs.insert("applied_count".to_string(), Value::Int(1));
+        outputs.insert(
+            "report".to_string(),
+            Value::Str("infra apply (env=dev, runtime=local): 1 target(s)".to_string()),
+        );
+
+        let log = ExecutionLog {
+            entries: vec![LogEntry {
+                node_id: "tools.infra::infra".to_string(),
+                inputs: None,
+                outputs,
+                was_intercepted: false,
+                coercions_applied: vec![AppliedCoercion {
+                    from_node: "src".to_string(),
+                    from_port: "planned_targets".to_string(),
+                    to_port: "planned_targets".to_string(),
+                    kind: CoercionKind::Widen,
+                }],
+            }],
+        };
+
+        let parsed = extract_orchestration_output(&log).expect("orchestration output should parse");
+        assert_eq!(
+            parsed.planned_targets,
+            vec!["secret:github-token".to_string()]
+        );
+        assert_eq!(parsed.target_count, 1);
+        assert_eq!(parsed.applied_count, 1);
+        assert!(parsed.report.contains("infra apply"));
     }
 }

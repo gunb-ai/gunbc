@@ -12,6 +12,7 @@ pub mod dag_viz;
 pub mod deps;
 pub mod docgen;
 pub mod gist;
+pub mod infra;
 pub mod languages;
 pub mod makegen;
 pub mod pragma;
@@ -57,10 +58,12 @@ pub fn build_workspace_dag_from_discovery(
     let mut dag = Dag::new();
     let required_tools = required_dsl_tool_modules();
     let required_pipelines = required_dsl_pipeline_modules();
+    let covered_tools = covered_dsl_tool_modules();
+    let covered_pipelines = covered_dsl_pipeline_modules();
     validate_required("tool", tool_names, &required_tools)?;
     validate_required("pipeline", pipeline_names, &required_pipelines)?;
-    validate_coverage("tool", tool_names, &required_tools)?;
-    validate_coverage("pipeline", pipeline_names, &required_pipelines)?;
+    validate_coverage("tool", tool_names, &covered_tools)?;
+    validate_coverage("pipeline", pipeline_names, &covered_pipelines)?;
     add_discovered_tool_subdags(&mut dag, tool_names)?;
     add_discovered_pipeline_subdags(&mut dag, pipeline_names)?;
 
@@ -193,6 +196,38 @@ fn required_dsl_pipeline_modules() -> BTreeSet<String> {
         .collect()
 }
 
+fn covered_dsl_tool_modules() -> BTreeSet<String> {
+    let mut covered = required_dsl_tool_modules();
+    covered.extend(
+        intentionally_unmapped_dsl_tool_modules()
+            .into_iter()
+            .map(|name| name.to_string()),
+    );
+    covered
+}
+
+fn covered_dsl_pipeline_modules() -> BTreeSet<String> {
+    let mut covered = required_dsl_pipeline_modules();
+    covered.extend(
+        intentionally_unmapped_dsl_pipeline_modules()
+            .into_iter()
+            .map(|name| name.to_string()),
+    );
+    covered
+}
+
+fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
+    let mut set = BTreeSet::new();
+    set.insert("design");
+    set
+}
+
+fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
+    let mut set = BTreeSet::new();
+    set.insert("sdlc");
+    set
+}
+
 fn add_discovered_tool_subdags(
     dag: &mut Dag<WorkspaceOp>,
     tool_names: &BTreeSet<String>,
@@ -224,6 +259,9 @@ fn add_discovered_tool_subdags(
     }
     if tool_names.contains("gist") {
         dag.add_node(gist::build_gist_rust_subdag());
+    }
+    if tool_names.contains("infra") {
+        dag.add_node(infra::build_infra_subdag()?);
     }
     if tool_names.contains("pragma") {
         dag.add_node(pragma::build_pragma_subdag()?);
@@ -266,6 +304,7 @@ mod tests {
         assert!(node_ids.contains(&"dag_viz"));
         assert!(node_ids.contains(&"docgen"));
         assert!(node_ids.contains(&"gist"));
+        assert!(node_ids.contains(&"infra"));
         assert!(node_ids.contains(&"pragma"));
         assert!(node_ids.contains(&"testgen"));
         assert!(node_ids.contains(&"languages"));
@@ -292,6 +331,7 @@ mod tests {
             "dag_viz",
             "docgen",
             "gist",
+            "infra",
             "pragma",
             "review",
             "testgen",
@@ -314,6 +354,7 @@ mod tests {
         assert!(node_ids.contains(&"dag_viz"));
         assert!(node_ids.contains(&"docgen"));
         assert!(node_ids.contains(&"gist"));
+        assert!(node_ids.contains(&"infra"));
         assert!(node_ids.contains(&"pragma"));
         assert!(node_ids.contains(&"testgen"));
     }
@@ -330,6 +371,7 @@ mod tests {
             "dag_viz",
             "docgen",
             "gist",
+            "infra",
             "pragma",
             "review",
             "testgen",
@@ -337,8 +379,10 @@ mod tests {
         .into_iter()
         .map(|name| name.to_string())
         .collect();
-        let pipeline_names: BTreeSet<String> =
-            ["ci"].into_iter().map(|name| name.to_string()).collect();
+        let pipeline_names: BTreeSet<String> = ["ci"]
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect();
 
         let dag = build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
             .expect("pure workspace dag composition should succeed");
@@ -391,6 +435,7 @@ mod tests {
         assert!(discovered.contains("dag_viz"));
         assert!(discovered.contains("docgen"));
         assert!(discovered.contains("gist"));
+        assert!(discovered.contains("infra"));
         assert!(discovered.contains("pragma"));
         assert!(discovered.contains("testgen"));
     }
@@ -470,8 +515,10 @@ mod tests {
 
     #[test]
     fn test_registered_pipeline_subdag_mapping() {
-        let pipeline_names: BTreeSet<String> =
-            ["ci"].into_iter().map(|name| name.to_string()).collect();
+        let pipeline_names: BTreeSet<String> = ["ci"]
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect();
         let mut dag = Dag::new();
         add_discovered_pipeline_subdags(&mut dag, &pipeline_names)
             .expect("registered pipeline mapping should build");

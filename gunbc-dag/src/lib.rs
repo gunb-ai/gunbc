@@ -30,6 +30,7 @@ pub mod docgen;
 pub mod dry_run;
 pub(crate) mod dsl_builder;
 pub mod fs_env;
+pub mod infra;
 pub mod makegen;
 pub mod mock_defaults;
 pub mod policy;
@@ -37,6 +38,7 @@ pub mod pragma;
 pub mod resolve;
 pub mod resolve_service;
 pub mod resources;
+pub mod sdlc;
 pub mod testgen_dag;
 pub mod tool_runner;
 pub mod tool_testgen;
@@ -73,14 +75,26 @@ pub use resolve::{resolve_lowered_dag, ResolveError};
 pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
+pub use sdlc::{
+    canonical_marker, claim_slot_key, content_hash_for_payload, heartbeat_claim,
+    mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
+    promote_to_canonical_artifact_with_payload, provisional_marker, reconcile_entries,
+    register_retry_failure, release_claim, retry_ready, should_replay_skip, try_acquire_claim,
+    upsert_provisional_artifact, upsert_provisional_artifact_with_payload,
+    update_agent_pr, update_agent_status, upsert_agent_record, validate_stage_transition,
+    AgentLedger, AgentLedgerRecord, AgentUpsertOutcome, ArtifactLedger, ArtifactPayload,
+    ArtifactRecord, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ClaimRecord,
+    ReconcileAction, ReconcileEntry, ReconcilePlan, RetryState, RunExecutionStatus, RunStateLedger,
+    RunStateRecord,
+};
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
     freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
     RunToolOptions,
 };
 pub use workflow::{
-    all_tool_workflow_names, append_global_ledger_entry, bootstrap_workflow_spec,
-    bootstrap_workflow_spec_with_registry, build_all_workflow_spec,
+    all_tool_workflow_names, append_global_ledger_entry, append_pending_approval_entry,
+    bootstrap_workflow_spec, bootstrap_workflow_spec_with_registry, build_all_workflow_spec,
     build_all_workflow_spec_with_registry, check_slo, ci_unit_commands, ci_workflow_spec,
     ci_workflow_spec_with_registry, claim_handle_type_id, codegen_key, compilation_key,
     coordination_status, dag_snapshot_workflow_spec, dag_snapshot_workflow_spec_with_registry,
@@ -97,7 +111,8 @@ pub use workflow::{
     plan_workflow, plan_workflow_with_mode, pragma_workflow_spec,
     pragma_workflow_spec_with_registry, project_execute_set, prove_non_redundancy,
     rehydrate_outputs_for_entry, render_execution_report, required_input_contract,
-    required_output_contract, save_global_ledger, store_output_payload, test_all_unit_commands,
+    required_output_contract, save_global_ledger, sdlc_workflow_spec,
+    sdlc_workflow_spec_with_registry, store_output_payload, test_all_unit_commands,
     test_all_workflow_spec, test_all_workflow_spec_with_registry, tool_workflow_spec,
     top_slow_units, validate_conflicting_claims, validate_effectful_claim_declarations,
     validate_projection_equivalence, validate_required_claims, validate_workflow_admission,
@@ -118,8 +133,8 @@ pub use workspace::{
     build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,
     build_clippy_subdag, build_codegen_subdag, build_dag_viz_subdag, build_deps_generate_subdag,
     build_deps_install_subdag, build_docgen_subdag, build_gist_rust_subdag, build_gist_subdag,
-    build_languages_subdag, build_makegen_subdag, build_pragma_subdag, build_testgen_subdag,
-    build_workspace_dag, WorkspaceOp,
+    build_languages_subdag, build_makegen_subdag, build_pragma_subdag, build_infra_subdag,
+    build_testgen_subdag, build_workspace_dag, WorkspaceOp,
 };
 
 // ============================================================================

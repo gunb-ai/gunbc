@@ -537,10 +537,10 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
 
 /// Canonical secret catalog.
 ///
-/// Only includes secrets that gunbc currently needs. Additional secrets
-/// (openai, anthropic, github-app-*) can be added back as needed.
-static KNOWN_SECRETS: [SecretSpec; 1] = [
-    // GitHub PAT — interactive browser rotation
+/// Mirrors `AllSecrets()` from `gunb.ai/tools/secrets/spec/spec.go`.
+/// Secret IDs match the gunb.ai convention so the same GCP Secret Manager
+/// entries are reused across repos.
+static KNOWN_SECRETS: [SecretSpec; 3] = [
     SecretSpec {
         env_name: "GITHUB_TOKEN",
         secret_id: GITHUB_SECRET_ID,
@@ -549,6 +549,24 @@ static KNOWN_SECRETS: [SecretSpec; 1] = [
         scopes: &["repo", "read:org", "gist"],
         rotation: RotationHandler::GitHubPat,
         max_age_days: Some(90),
+    },
+    SecretSpec {
+        env_name: "ANTHROPIC_API_KEY",
+        secret_id: "anthropic-api-key",
+        requirement: SecretRequirement::Required,
+        status: SecretStatus::Active,
+        scopes: &[],
+        rotation: RotationHandler::Manual,
+        max_age_days: None,
+    },
+    SecretSpec {
+        env_name: "OPENAI_API_KEY",
+        secret_id: "openai-api-key",
+        requirement: SecretRequirement::Optional,
+        status: SecretStatus::Active,
+        scopes: &[],
+        rotation: RotationHandler::Manual,
+        max_age_days: None,
     },
 ];
 

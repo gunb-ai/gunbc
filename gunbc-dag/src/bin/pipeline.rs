@@ -61,7 +61,10 @@ fn query_ci_status(pr_number: &str) -> Option<String> {
 
     let mut summary_parts = vec![format!("CI Status for PR #{}", pr_number)];
     for run in &runs {
-        let name = run.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let name = run
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let status = run
             .get("status")
             .and_then(|v| v.as_str())
@@ -80,13 +83,7 @@ fn query_ci_status(pr_number: &str) -> Option<String> {
 #[allow(clippy::disallowed_methods)] // Binary entry point context gathering (not DAG runtime I/O)
 fn query_pr_description(pr_number: &str) -> Option<String> {
     let output = std::process::Command::new("gh")
-        .args([
-            "pr",
-            "view",
-            pr_number,
-            "--json",
-            "title,body",
-        ])
+        .args(["pr", "view", pr_number, "--json", "title,body"])
         .output()
         .ok()?;
 
@@ -107,13 +104,7 @@ fn query_pr_description(pr_number: &str) -> Option<String> {
 #[allow(clippy::disallowed_methods)] // Binary entry point context gathering (not DAG runtime I/O)
 fn query_issue_description(issue_number: &str) -> Option<String> {
     let output = std::process::Command::new("gh")
-        .args([
-            "issue",
-            "view",
-            issue_number,
-            "--json",
-            "title,body",
-        ])
+        .args(["issue", "view", issue_number, "--json", "title,body"])
         .output()
         .ok()?;
 
@@ -160,19 +151,13 @@ fn main() {
     }
 
     let dry_run = parsed.dry_run;
-    let repo_path = parsed
-        .get_string("repo_path")
-        .unwrap_or(".")
-        .to_string();
+    let repo_path = parsed.get_string("repo_path").unwrap_or(".").to_string();
     let base_ref = parsed.get_string("base_ref").map(|s| s.to_string());
     let provider = parsed
         .get_string("provider")
         .unwrap_or("anthropic")
         .to_string();
-    let depth_str = parsed
-        .get_string("depth")
-        .unwrap_or("M")
-        .to_string();
+    let depth_str = parsed.get_string("depth").unwrap_or("M").to_string();
     let pr_number = parsed.get_string("pr").map(|s| s.to_string());
     let issue_number = parsed.get_string("issue").map(|s| s.to_string());
 
@@ -181,7 +166,10 @@ fn main() {
         print_attention(
             AttentionLevel::Error,
             "Unknown provider",
-            &format!("'{}' is not supported. Use 'openai' or 'anthropic'.", provider),
+            &format!(
+                "'{}' is not supported. Use 'openai' or 'anthropic'.",
+                provider
+            ),
         );
         process::exit(1);
     }

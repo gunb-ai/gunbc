@@ -406,9 +406,18 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
         cmd.stderr(Stdio::piped());
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| TransportError::new(format!("failed to spawn: {}", e)))?;
+    let mut child = cmd.spawn().map_err(|error| {
+        let mut message = format!(
+            "failed to spawn command `{}`: {}",
+            request.command, error
+        );
+        if error.kind() == std::io::ErrorKind::NotFound && request.command == "gcloud" {
+            message.push_str(
+                ". `gcloud` CLI is not installed or not on PATH. Install Google Cloud SDK and run `gcloud auth application-default login`.",
+            );
+        }
+        TransportError::new(message)
+    })?;
 
     // Write stdin if provided
     if let Some(ref stdin_data) = request.stdin {
@@ -1031,7 +1040,13 @@ mod tests {
         let request = ShellRequest::new("nonexistent_command_xyz_12345");
         let result = execute_shell(&request);
 
-        assert!(result.is_err(), "nonexistent command should error");
+        let error = result.expect_err("nonexistent command should error");
+        assert!(
+            error
+                .to_string()
+                .contains("failed to spawn command `nonexistent_command_xyz_12345`"),
+            "spawn error should include attempted command for diagnostics: {error}"
+        );
     }
 
     #[test]

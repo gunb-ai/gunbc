@@ -1375,6 +1375,67 @@ pub fn build_all_workflow_spec_with_registry(
     Ok(WorkflowSpec::new("build-all", dag, 1))
 }
 
+/// Build "sdlc" workflow spec.
+pub fn sdlc_workflow_spec() -> Result<WorkflowSpec, String> {
+    sdlc_workflow_spec_with_registry(&default_process_unit_registry())
+}
+
+/// Build "sdlc" workflow spec against an explicit registry.
+pub fn sdlc_workflow_spec_with_registry(
+    registry: &ProcessUnitRegistry,
+) -> Result<WorkflowSpec, String> {
+    let mut dag = Dag::new();
+
+    dag.add_node(invoke_node(
+        "sdlc.compilation_ensure",
+        ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT),
+        registry,
+    )?);
+    dag.add_node(invoke_node(
+        "sdlc.codegen_ensure",
+        ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT),
+        registry,
+    )?);
+    dag.add_node(invoke_node(
+        "sdlc.intake",
+        ProcessUnitRef::new("sdlc", "sdlc.intake"),
+        registry,
+    )?);
+    dag.add_node(invoke_node(
+        "sdlc.worker",
+        ProcessUnitRef::new("sdlc", "sdlc.worker"),
+        registry,
+    )?);
+    dag.add_node(report_node("sdlc.report"));
+
+    dag.add_edge(Edge::control(
+        "sdlc.compilation_ensure",
+        "commit",
+        "sdlc.codegen_ensure",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "sdlc.codegen_ensure",
+        "commit",
+        "sdlc.intake",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "sdlc.intake",
+        "commit",
+        "sdlc.worker",
+        "after",
+    ));
+    dag.add_edge(Edge::control(
+        "sdlc.worker",
+        "commit",
+        "sdlc.report",
+        "after",
+    ));
+
+    Ok(WorkflowSpec::new("sdlc", dag, 1))
+}
+
 struct ToolWorkflowDescriptor {
     canonical_name: &'static str,
     aliases: &'static [&'static str],
@@ -1446,6 +1507,11 @@ const TOOL_WORKFLOWS: &[ToolWorkflowDescriptor] = &[
         canonical_name: "build-all",
         aliases: &["build_all"],
         build: build_all_workflow_spec,
+    },
+    ToolWorkflowDescriptor {
+        canonical_name: "sdlc",
+        aliases: &[],
+        build: sdlc_workflow_spec,
     },
 ];
 
@@ -1659,6 +1725,20 @@ mod tests {
         let spec = build_all_workflow_spec().expect("build-all spec");
         // 2 universal + 1 build + 1 report = 4
         assert_eq!(spec.dag.nodes.len(), 4);
+    }
+
+    #[test]
+    fn sdlc_workflow_builder_is_deterministic() {
+        let a = sdlc_workflow_spec().expect("sdlc spec");
+        let b = sdlc_workflow_spec().expect("sdlc spec");
+        assert_eq!(a.dag.to_ascii("sdlc"), b.dag.to_ascii("sdlc"));
+    }
+
+    #[test]
+    fn sdlc_workflow_has_expected_node_count() {
+        let spec = sdlc_workflow_spec().expect("sdlc spec");
+        // 2 universal + 1 intake + 1 worker + 1 report = 5
+        assert_eq!(spec.dag.nodes.len(), 5);
     }
 
     #[test]

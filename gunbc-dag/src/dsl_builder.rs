@@ -35,9 +35,7 @@ fn compile_lowered(relative_module: &str) -> Result<Dag<daglang_lower::LoweredOp
     Ok(output.lowered_dag)
 }
 
-fn strip_pipeline_nodes(
-    mut dag: Dag<daglang_lower::LoweredOp>,
-) -> Dag<daglang_lower::LoweredOp> {
+fn strip_pipeline_nodes(mut dag: Dag<daglang_lower::LoweredOp>) -> Dag<daglang_lower::LoweredOp> {
     let pipeline_ids: HashSet<String> = dag
         .nodes
         .iter()
@@ -90,6 +88,10 @@ pub(crate) fn build_docgen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/docgen.dag")
 }
 
+pub(crate) fn build_infra_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/infra.dag")
+}
+
 pub(crate) fn build_makegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/makegen.dag")
 }
@@ -135,6 +137,12 @@ mod tests {
     #[test]
     fn builds_docgen_dsl_graph() {
         let dag = build_docgen_graph_dsl().expect("docgen DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_infra_dsl_graph() {
+        let dag = build_infra_graph_dsl().expect("infra DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 

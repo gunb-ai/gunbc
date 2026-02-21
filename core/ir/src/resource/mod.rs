@@ -1092,7 +1092,10 @@ mod tests {
     fn test_normalize_resource_id_non_wildcard_preserved() {
         // Specific file paths must not be coarsened.
         assert_eq!(normalize_resource_id("file:Makefile"), "file:Makefile");
-        assert_eq!(normalize_resource_id("file:src/main.rs"), "file:src/main.rs");
+        assert_eq!(
+            normalize_resource_id("file:src/main.rs"),
+            "file:src/main.rs"
+        );
         // Coarse `file` stays as `file`.
         assert_eq!(normalize_resource_id("file"), "file");
         // Non-file resources unaffected.
@@ -1111,7 +1114,11 @@ mod tests {
             ResourceAccess::write("b", "file:src/main.rs"),
         ];
         let conflicts = detect_conflicts(&dag, &accesses);
-        assert_eq!(conflicts.len(), 1, "coarse file must conflict with specific file path");
+        assert_eq!(
+            conflicts.len(),
+            1,
+            "coarse file must conflict with specific file path"
+        );
     }
 
     #[test]
@@ -1151,13 +1158,21 @@ mod tests {
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(Node::opaque(
             "wildcard",
-            vec![Port::resource("file:*", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource(
+                "file:*",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
             vec![],
             "op_a".to_string(),
         ));
         dag.add_node(Node::opaque(
             "specific",
-            vec![Port::resource("file:out.txt", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::resource(
+                "file:out.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
             vec![],
             "op_b".to_string(),
         ));

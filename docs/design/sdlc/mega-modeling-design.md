@@ -175,6 +175,44 @@ classDiagram
 3. New SDLC behavior must be added to DSL/codegen first.
 4. Interpreter-only behavior additions are disallowed.
 
+### 5.4 Codegen-First Implementation Gate (CG0-D / CG3 / CG4 / CG5 / CG6)
+
+This section records the concrete implementation surface that satisfies the
+codegen-first boundary for SDLC + infra control-plane orchestration.
+
+Canonical DSL modules (authoritative behavior/modeling):
+
+1. `dsl/pipelines/sdlc.dag` — SDLC stage orchestration semantics.
+2. `dsl/tools/design.dag` — typed design/review prompt transforms.
+3. `dsl/services/sdlc/control_plane.dag` — claim lease + stage outcome
+   control-plane service contracts.
+4. `dsl/tools/infra.dag` — infra plan/apply/reconcile orchestration contract.
+
+Runtime delegation invariants:
+
+1. `gunbc-sdlc` and `gunbc-infra` consume compiled DSL module behavior through
+   shared DAG build/resolve paths, not handwritten stage-flow branching.
+2. Workspace discovery/coverage gates fail closed for unmapped DSL modules.
+3. Generated backend conformance must include manifest parity and runnable
+   target smoke across Rust/Go/C/MIPS where toolchains are present.
+
+Conformance evidence classes:
+
+1. Manifest parity tests across Rust/Go/C/MIPS for SDLC and infra modules.
+2. Generated runtime smoke tests:
+   1. Rust layer-1 runnable smoke for infra entrypoint.
+   2. Go/C/MIPS toolchain-aware smoke for infra + SDLC modules.
+   3. When Go and/or MIPS toolchains are available, and when C compiler + curl headers are available for service-transport modules, strict non-skip runtime gates are enforced for infra, design, SDLC pipeline, and SDLC control-plane generated backends.
+   4. When C sanitizer runtimes are available, strict non-skip ASAN and ASAN+UBSAN execution gates are enforced for generated design-tool C backend paths.
+3. Differential policy:
+   1. Any new SDLC orchestration behavior must land in DSL modules first.
+   2. Runtime-only behavior deltas are design-policy violations.
+4. Differential runtime checks:
+   1. Interpreter vs generated-runtime output parity is enforced for `tools.makegen`
+      in `codegen_parity` to keep L5 conformance executable, not aspirational.
+   2. Makegen C backend differential checks additionally run under ASAN+UBSAN.
+   3. Design-tool, infra-tool, SDLC control-plane, and SDLC pipeline Rust Layer-1 execution trace differentials (interpreter vs generated runtime node trace) are enforced in `codegen_parity`.
+
 ## 6. Canonical Contracts
 
 ### 6.1 Interface Operations
@@ -252,6 +290,43 @@ classDiagram
 4. Periodic anti-entropy scans are required; signals may accelerate work discovery but may not be sole correctness source.
 5. Loss of any single signal may delay execution but must not cause missed terminalization or duplicate side effects.
 6. Timer-derived triggers (`RetryDue`, lease expiry, reconcile tick) must be persisted or reconstructable from ledger/claim state.
+
+### 6.7 Runtime Launch Profile and Drain Contract
+
+1. Infra intent input is versioned and fail-closed:
+   1. `schema_version` is required.
+   2. Unsupported schema versions are rejected before worker startup.
+1. Infra intent `runtime_profile` must be explicit and validated fail-closed:
+   1. `stateless-fleet` requires `launch.worker_count` in `[5, 10]`.
+   2. `local-co-located` requires `launch.worker_count = 1`.
+2. Worker loop capacity per pass is bounded by validated `launch.worker_count`; overflow intake keys are deferred and surfaced in execution summary metrics.
+3. Real-mode worker startup must run infra preflight checks before processing any intake.
+4. Worker drain mode is explicit and durable through a persisted drain flag.
+5. When drain is active, worker must:
+   1. stop acquiring new claims,
+   2. release worker-owned claims,
+   3. exit cleanly with machine-readable drain status.
+6. Infra reconciliation is health-gated:
+   1. reconcile preview/execute commands must fail closed while auth/project/service-account/secret health checks are failing.
+   2. healthy reconcile preview reports the same runtime dependency target set as infra plan.
+
+### 6.8 Execution Report Contract
+
+1. Worker execution produces a persisted machine-readable report artifact.
+2. Report includes per-intake metric maps:
+   1. stage duration,
+   2. approval latency,
+   3. retry attempts,
+   4. LLM cost units.
+3. Report includes rolled-up cost units, including aggregate estimated LLM cost.
+4. Report includes rollup summary counters for monitoring ingestion:
+   1. intake total,
+   2. ready/executed/terminalized counts,
+   3. awaiting approval, claim conflict, replay-skip, **canonical-replay-skip**, retry-backoff-deferred, and capacity-deferred counts.
+5. Report includes issue-scope metadata when invoked via issue filter:
+   1. requested `issue_filter`,
+   2. `issue_binding_found` boolean (whether intake mapping exists for that issue id).
+6. Report includes generation timestamp for downstream time-series correlation.
 
 ## 7. Conformance Model (Multi-Level)
 

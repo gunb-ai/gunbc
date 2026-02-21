@@ -101,6 +101,10 @@ pub fn render_execution_report(
     out.push_str(&format!("cache-hits: {}\n", summary.cache_hits));
     out.push_str(&format!("executed: {}\n", summary.executed));
     out.push_str(&format!("failed: {}\n", summary.failed));
+    out.push_str(&format!(
+        "pending-approvals: {}\n",
+        summary.pending_approvals
+    ));
     out.push_str(&format!("skipped: {}\n", summary.skipped));
     out.push_str(&format!(
         "total-duration-ms: {}\n",
@@ -179,6 +183,7 @@ mod tests {
             cache_hits,
             executed,
             failed,
+            pending_approvals: 0,
             skipped: 0,
             results: vec![],
             total_duration_ms: total_ms,
@@ -231,6 +236,7 @@ mod tests {
                 node_id: NodeId::from("fast"),
                 success: true,
                 cached: false,
+                pending_approval: false,
                 duration_ms: 100,
                 miss_reason: Some(MissReason::NoPriorRun),
             },
@@ -238,6 +244,7 @@ mod tests {
                 node_id: NodeId::from("slow"),
                 success: true,
                 cached: false,
+                pending_approval: false,
                 duration_ms: 5_000,
                 miss_reason: Some(MissReason::NoPriorRun),
             },
@@ -245,6 +252,7 @@ mod tests {
                 node_id: NodeId::from("cached"),
                 success: true,
                 cached: true,
+                pending_approval: false,
                 duration_ms: 0,
                 miss_reason: None,
             },

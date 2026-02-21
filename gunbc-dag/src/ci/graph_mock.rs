@@ -2,8 +2,8 @@
 
 use crate::ci::graph::build_ci_graph;
 use crate::resources::MAKEFILE_OUTPUT_PATH;
-use gunbc_test::MockSpec;
 use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_test::MockSpec;
 use gunbc_testgen_registry::iter_dag_specs;
 
 fn ci_generated_tests_path() -> &'static str {

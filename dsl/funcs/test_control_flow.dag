@@ -1,0 +1,13 @@
+// test_control_flow.dag -- Verifies for/if lowering with service calls.
+
+module funcs.test_control_flow
+
+import services.github.issues
+
+func process_issues(owner: String, repo: String) -> { count: Int } {
+    issues = github.Issues.List(owner: owner, repo: repo, labels: "idea")
+    details = for issue in issues.issues {
+        github.Issues.Get(owner: owner, repo: repo, number: issue.number)
+    }
+    return { count: 0 }
+}

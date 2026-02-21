@@ -9,7 +9,12 @@ pub struct Token {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
-    // Keywords
+    Project,
+    Feature,
+    Task,
+    Design,
+    Component,
+    Environment,
     Module,
     Import,
     Type,
@@ -106,6 +111,12 @@ pub enum TokenKind {
 impl TokenKind {
     pub fn desc(&self) -> &'static str {
         match self {
+            Self::Project => "project",
+            Self::Feature => "feature",
+            Self::Task => "task",
+            Self::Design => "design",
+            Self::Component => "component",
+            Self::Environment => "environment",
             Self::Module => "module",
             Self::Import => "import",
             Self::Type => "type",
@@ -523,6 +534,12 @@ impl<'a> Lexer<'a> {
         }
         let text = self.slice(start, self.pos);
         let kind = match text {
+            "project" => TokenKind::Project,
+            "feature" => TokenKind::Feature,
+            "task" => TokenKind::Task,
+            "design" => TokenKind::Design,
+            "component" => TokenKind::Component,
+            "environment" => TokenKind::Environment,
             "module" => TokenKind::Module,
             "import" => TokenKind::Import,
             "type" => TokenKind::Type,

@@ -1,0 +1,252 @@
+// services/github/pull_request.dag -- GitHub Pull Request API.
+//
+// Complements issues.dag for the implementation stage of the SDLC
+// pipeline. Once an agent pushes code, the pipeline creates a PR,
+// requests reviews, and merges on approval.
+//
+// Transport pattern (same as issues.dag, gist.dag):
+//   Pure prepare → REST execute (I/O boundary) → Pure parse
+
+module services.github.pull_request
+
+service github.PullRequest {
+  @endpoint("https://api.github.com")
+  @auth(BearerToken)
+
+  operation Create {
+    input {
+      owner: String
+      repo: String
+      title: String
+      body: String
+      head: String
+      base: String = "main"
+      draft: Bool = false
+    }
+    output {
+      number: Int @json("number")
+      url: String @json("html_url")
+      id: Int @json("id")
+      node_id: String @json("node_id")
+      head_sha: String @json("head.sha")
+    }
+    @rest(POST, "/repos/{owner}/{repo}/pulls")
+    @permissions(["pull_requests:write"])
+    @mock_response(
+      status: 201,
+      body: {
+        "number": 99,
+        "html_url": "https://github.com/{owner}/{repo}/pull/99",
+        "id": 9876543,
+        "node_id": "PR_mock",
+        "head": { "sha": "abc123def456" }
+      }
+    )
+  }
+
+  operation Get {
+    input {
+      owner: String
+      repo: String
+      number: Int
+    }
+    output {
+      number: Int @json("number")
+      title: String @json("title")
+      body: String @json("body")
+      state: String @json("state")
+      url: String @json("html_url")
+      head_sha: String @json("head.sha")
+      base_ref: String @json("base.ref")
+      mergeable: Bool? @json("mergeable")
+      merged: Bool @json("merged")
+    }
+    @rest(GET, "/repos/{owner}/{repo}/pulls/{number}")
+    @permissions(["pull_requests:read"])
+    @mock_response(
+      status: 200,
+      body: {
+        "number": 99,
+        "title": "Mock PR",
+        "body": "Mock PR body",
+        "state": "open",
+        "html_url": "https://github.com/{owner}/{repo}/pull/99",
+        "head": { "sha": "abc123def456" },
+        "base": { "ref": "main" },
+        "mergeable": true,
+        "merged": false
+      }
+    )
+  }
+
+  operation AddComment {
+    input {
+      owner: String
+      repo: String
+      number: Int
+      body: String
+    }
+    output {
+      id: Int @json("id")
+      url: String @json("html_url")
+    }
+    @rest(POST, "/repos/{owner}/{repo}/issues/{number}/comments")
+    @permissions(["pull_requests:write"])
+    @mock_response(
+      status: 201,
+      body: {
+        "id": 888,
+        "html_url": "https://github.com/{owner}/{repo}/pull/99#issuecomment-888"
+      }
+    )
+  }
+
+  operation Merge {
+    input {
+      owner: String
+      repo: String
+      number: Int
+      merge_method: String = "squash"
+      commit_title: String?
+      commit_message: String?
+    }
+    output {
+      merged: Bool @json("merged")
+      sha: String @json("sha")
+      message: String @json("message")
+    }
+    @rest(PUT, "/repos/{owner}/{repo}/pulls/{number}/merge")
+    @permissions(["pull_requests:write"])
+    @mock_response(
+      status: 200,
+      body: {
+        "merged": true,
+        "sha": "merge-sha-mock-001",
+        "message": "Pull Request successfully merged"
+      }
+    )
+  }
+
+  operation ListFiles {
+    input {
+      owner: String
+      repo: String
+      number: Int
+      per_page: Int = 100
+    }
+    output {
+      files: Json
+    }
+    @rest(GET, "/repos/{owner}/{repo}/pulls/{number}/files")
+    @permissions(["pull_requests:read"])
+    @mock_response(
+      status: 200,
+      body: [
+        { "filename": "src/main.rs", "status": "modified", "additions": 10, "deletions": 2 }
+      ]
+    )
+  }
+
+  operation RequestReview {
+    input {
+      owner: String
+      repo: String
+      number: Int
+      reviewers: List<String>?
+      team_reviewers: List<String>?
+    }
+    output {
+      url: String @json("html_url")
+    }
+    @rest(POST, "/repos/{owner}/{repo}/pulls/{number}/requested_reviewers")
+    @permissions(["pull_requests:write"])
+    @mock_response(
+      status: 201,
+      body: {
+        "html_url": "https://github.com/{owner}/{repo}/pull/99"
+      }
+    )
+  }
+
+  operation ListReviews {
+    input {
+      owner: String
+      repo: String
+      number: Int
+    }
+    output {
+      reviews: Json
+    }
+    @rest(GET, "/repos/{owner}/{repo}/pulls/{number}/reviews")
+    @permissions(["pull_requests:read"])
+    @mock_response(
+      status: 200,
+      body: [
+        { "id": 1, "user": { "login": "reviewer" }, "state": "APPROVED", "body": "LGTM" }
+      ]
+    )
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+fixture github_auth {
+    mock cloud_env.config -> { provider: "github", runtime: "local-dev" }
+    mock cloud_env.credential -> { token: "<MOCK_GH_TOKEN>", source_type: "static", scheme: "bearer" }
+}
+
+test create_pr : github_auth {
+    @tier(Unit)
+    @hermetic(true)
+
+    input create/prepare.owner -> "gunb-ai"
+    input create/prepare.repo -> "gunbc"
+    input create/prepare.title -> "feat: implement issue #42"
+    input create/prepare.body -> "Implements the design from issue #42."
+    input create/prepare.head -> "feature/issue-42"
+
+    mock create/execute.response -> rest_response(201, {
+        number: 99,
+        html_url: "https://github.com/gunb-ai/gunbc/pull/99",
+        id: 9876543,
+        node_id: "PR_mock",
+        head: { sha: "abc123def456" }
+    })
+
+    expect result.number == 99
+    expect result.url contains "pull/99"
+}
+
+test merge_pr : github_auth {
+    @tier(Unit)
+    @hermetic(true)
+
+    input merge/prepare.owner -> "gunb-ai"
+    input merge/prepare.repo -> "gunbc"
+    input merge/prepare.number -> 99
+    input merge/prepare.merge_method -> "squash"
+
+    mock merge/execute.response -> rest_response(200, {
+        merged: true,
+        sha: "merge-sha-001",
+        message: "Pull Request successfully merged"
+    })
+
+    expect result.merged == true
+}
+
+test list_pr_files : github_auth {
+    @tier(Unit)
+    @hermetic(true)
+
+    input list_files/prepare.owner -> "gunb-ai"
+    input list_files/prepare.repo -> "gunbc"
+    input list_files/prepare.number -> 99
+
+    mock list_files/execute.response -> rest_response(200, [
+        { filename: "src/main.rs", status: "modified", additions: 10, deletions: 2 },
+        { filename: "tests/test.rs", status: "added", additions: 50, deletions: 0 }
+    ])
+
+    expect result.files is List
+}

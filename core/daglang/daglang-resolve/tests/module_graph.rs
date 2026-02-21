@@ -7,20 +7,9 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
-fn unique_temp_dir(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "daglang_resolve_{name}_{}_{}",
-        std::process::id(),
-        nanos
-    ))
-}
+use gunbc_test::unique_temp_dir;
 
 fn write_file(path: &Path, content: &str) {
     if let Some(parent) = path.parent() {
@@ -38,6 +27,9 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "examples.deployment",
         "examples.integration_tests",
         "examples.rich_types",
+        "funcs.agent_feedback",
+        "funcs.sdlc_worker",
+        "funcs.test_control_flow",
         "infra.aws.config",
         "infra.aws.resources",
         "infra.aws.services",
@@ -48,8 +40,11 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "infra.gcp.config",
         "infra.gcp.resources",
         "infra.gcp.services",
+        "infra.sdlc.deploy",
         "infra.spec",
         "pipelines.ci",
+        "pipelines.sdlc",
+        "services.agent.codex",
         "services.cargo",
         "services.gcp.iam",
         "services.gcp.secret_manager",
@@ -57,8 +52,10 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "services.git",
         "services.github.gist",
         "services.github.issues",
+        "services.github.pull_request",
         "services.llm.anthropic",
         "services.llm.openai",
+        "services.sdlc.control_plane",
         "services.shell",
         "shared.dag_util",
         "shared.gist_modes",
@@ -71,8 +68,10 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "tools.codegen",
         "tools.dag_viz",
         "tools.deps",
+        "tools.design",
         "tools.docgen",
         "tools.gist",
+        "tools.infra",
         "tools.makegen",
         "tools.pragma",
         "tools.review",
@@ -95,14 +94,20 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "infra.gcp.config",
         "infra.gcp.resources",
         "examples.integration_tests",
+        "infra.sdlc.deploy",
+        "services.agent.codex",
         "services.cargo",
         "services.gcp.iam",
         "services.gcp.secret_manager",
         "services.gcp.sts",
         "services.github.gist",
         "services.github.issues",
+        "funcs.test_control_flow",
+        "services.github.pull_request",
         "services.llm.anthropic",
         "services.llm.openai",
+        "services.sdlc.control_plane",
+        "funcs.agent_feedback",
         "std.resources",
         "std.types",
         "cloud.aws.credential",
@@ -120,9 +125,13 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "tools.codegen",
         "tools.dag_viz",
         "tools.deps",
+        "tools.design",
+        "pipelines.sdlc",
+        "funcs.sdlc_worker",
         "tools.docgen",
         "tools.gist",
         "examples.deployment",
+        "tools.infra",
         "tools.makegen",
         "tools.pragma",
         "tools.review",
@@ -136,7 +145,7 @@ fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
 
-    assert_eq!(graph.modules.len(), 46, "expected 46 discovered modules");
+    assert_eq!(graph.modules.len(), 56, "expected 56 discovered modules");
     let mut module_names: Vec<String> = graph
         .modules
         .iter()
@@ -205,6 +214,9 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("examples.deployment".into(), 10),
         ("examples.integration_tests".into(), 2),
         ("examples.rich_types".into(), 0),
+        ("funcs.agent_feedback".into(), 4),
+        ("funcs.sdlc_worker".into(), 5),
+        ("funcs.test_control_flow".into(), 1),
         ("infra.aws.config".into(), 2),
         ("infra.aws.resources".into(), 3),
         ("infra.aws.services".into(), 0),
@@ -215,8 +227,11 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("infra.gcp.config".into(), 2),
         ("infra.gcp.resources".into(), 3),
         ("infra.gcp.services".into(), 0),
+        ("infra.sdlc.deploy".into(), 2),
         ("infra.spec".into(), 1),
         ("pipelines.ci".into(), 10),
+        ("pipelines.sdlc".into(), 5),
+        ("services.agent.codex".into(), 0),
         ("services.cargo".into(), 0),
         ("services.gcp.iam".into(), 0),
         ("services.gcp.secret_manager".into(), 0),
@@ -224,8 +239,10 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("services.git".into(), 1),
         ("services.github.gist".into(), 0),
         ("services.github.issues".into(), 0),
+        ("services.github.pull_request".into(), 0),
         ("services.llm.anthropic".into(), 0),
         ("services.llm.openai".into(), 0),
+        ("services.sdlc.control_plane".into(), 0),
         ("services.shell".into(), 1),
         ("shared.dag_util".into(), 2),
         ("shared.gist_modes".into(), 5),
@@ -238,8 +255,10 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.codegen".into(), 2),
         ("tools.dag_viz".into(), 5),
         ("tools.deps".into(), 4),
+        ("tools.design".into(), 3),
         ("tools.docgen".into(), 2),
         ("tools.gist".into(), 5),
+        ("tools.infra".into(), 0),
         ("tools.makegen".into(), 3),
         ("tools.pragma".into(), 3),
         ("tools.review".into(), 0),

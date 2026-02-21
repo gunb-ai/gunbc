@@ -35,6 +35,7 @@ members = [
     "lib/azure-ops",
     "lib/llm-ops",
     "lib/review",
+    "lib/design-ops",
     "lib/markdown",
     "lib/transport",
     "lib/gcp-ops",

@@ -135,7 +135,7 @@ Each phase is anchored on a canonical workflow from the [scenario inventory](./d
 This means:
 1. **Visualization tooling lands in Phase 0** (before any workflow is compiled)
 2. **Every phase starts by writing the `.dag` file and visualizing it** — confirm the DAG shape, the manifest, the test obligations, and the transport triplets *before* implementing the compiler pass that produces them
-3. **Modeling changes are documented before code** — each phase has a "modeling preview" step: write the `.dag`, run `dag viz` / `dag expand` / `dag manifest`, compare to the existing builder output, identify the gaps, then implement
+3. **Modeling changes are documented before code** — each phase has a "modeling preview" step: write the `.dag`, run `dag viz` / `dag expand` / `dag progress`, compare to the existing builder output, identify the gaps, then implement
 
 This inverts the usual "implement then visualize" flow. You see what you're building before you build it.
 
@@ -155,7 +155,7 @@ This inverts the usual "implement then visualize" flow. You see what you're buil
 | DSL versioning | `dsl_version` in project manifest so semantics can evolve safely |
 | **`dag viz` CLI** | **ASCII DAG visualization from compiled IR (static, pre-execution). Shows nodes, edges, ports, SubDag boundaries, waves.** |
 | **`dag expand` CLI** | **Show lowered GraphIR: every Node, Edge, Port after pattern expansion and lowering.** |
-| **`dag manifest` CLI** | **Show derived ProgressManifest: topology, SubDag boundaries, parallel groups, scatter points, labels.** |
+| **`dag progress` CLI** | **Show derived ProgressManifest: topology, SubDag boundaries, parallel groups, scatter points, labels.** |
 | **`dag modules` CLI** | **Show the discovered module graph: all `.dag` files, their imports, dependency order.** |
 
 **Visualization examples (what Phase 0 should produce)**:
@@ -172,7 +172,7 @@ This inverts the usual "implement then visualize" flow. You see what you're buil
                                          execute_write
 ```
 
-`dag manifest tools/makegen.dag`:
+`dag progress tools/makegen.dag`:
 ```
 ProgressManifest:
   total_nodes: 9
@@ -217,7 +217,7 @@ Edge  render_makefile.String        → prepare_write_makegen.String
 - [x] IR snapshot test passes for at least one compiled `.dag` file — *canonical makegen IR snapshot is checked in and validated by tests.*
 - [x] **`dag viz` produces ASCII graph for at least one `.dag` file** — *ASCII is default; Mermaid remains available via `--format mermaid`.*
 - [x] **`dag expand` produces full node/edge/port listing matching the existing builder IR** — *golden snapshot coverage is in place, including makegen fixtures.*
-- [x] **`dag manifest` produces ProgressManifest matching expected topology** — *manifest contract fields + deterministic JSON output are implemented and tested.*
+- [x] **`dag progress` produces ProgressManifest matching expected topology** — *manifest contract fields + deterministic JSON output are implemented and tested.*
 - [x] **`dag modules` shows the discovered module graph** — *`modules [dir]` runs pipeline to `Report` and prints dependency-ordered module listing*
 
 **Status: Core bridge and Phase-1 proving workflow are complete.** Remaining roadmap work now sits in Phase 2+ language/modeling expansion and additional workflow ports.
@@ -274,13 +274,13 @@ The **ProgressManifest** contract is now aligned: the stable JSON contract inclu
 
 **Goal:** Bring `daglang_derive::ProgressManifest` into exact alignment with the roadmap contract.
 
-**Scope:** `daglang-derive` + `dag manifest` rendering.
+**Scope:** `daglang-derive` + `dag progress` rendering.
 
 | Deliverable | Details |
 |---|---|
 | Manifest struct expansion | Add `topology: Vec<TopologyNode>`, `labels: Map<NodeId, String>`, `subdag_boundaries`, `parallel_groups`, `scatter_points`, `interactive_nodes`, `capture_modes`, optional `stage_groups`, `resources` |
 | Derivation from lowered DAG | Compute depth (wave) and parent for SubDag boundaries; derive labels from DSL identifiers; derive parallel groups (siblings at same depth with no ordering constraints); derive capture modes from annotations/op kinds |
-| `dag manifest` JSON output | Add `--format json` (recommended for stability + snapshot tests); keep pretty text view layered on top of the contract object |
+| `dag progress` JSON output | Add `--format json` (recommended for stability + snapshot tests); keep pretty text view layered on top of the contract object |
 
 **Dependencies:** None. **PR strategy:** Land first — other workstreams consume the contract.
 
@@ -357,7 +357,7 @@ The **ProgressManifest** contract is now aligned: the stable JSON contract inclu
 
 Stack PRs by "API provider → API consumers" to minimize conflicts:
 
-1. **PR 1 (Workstream A skeleton):** new manifest contract structs + `dag manifest` JSON output
+1. **PR 1 (Workstream A skeleton):** new manifest contract structs + `dag progress` JSON output
 2. **PR 2 (Workstream C snapshots):** canonical JSON + snapshot infra using the new manifest
 3. **PR 3 (Workstream B viz/expand):** ASCII viz + expand formatting consuming the manifest
 4. **PR 4 (Workstream E commands):** show-triplets / obligations
@@ -369,7 +369,7 @@ Stack PRs by "API provider → API consumers" to minimize conflicts:
 The bridge is complete when:
 
 - [x] `dag viz` defaults to ASCII and is deterministic
-- [x] `dag manifest` emits the **contract ProgressManifest** (JSON)
+- [x] `dag progress` emits the **contract ProgressManifest** (JSON)
 - [x] IR snapshot tests exist for `tools/makegen.dag`
 - [x] Parity harness can compare compiled makegen vs builder makegen and report diffs
 - [x] `dag obligations` and `dag show-triplets` exist (even if obligations are initially "best effort")
@@ -420,13 +420,13 @@ Meanwhile, the compiler codebase itself has structural debt — impure helpers, 
 | `stage_groups` | `Vec<StageGroup>` | Pipeline stages (Phase 4, stub empty) |
 | `resources` | `HashMap<NodeId, Vec<ResourceUsage>>` | `uses`/`provides` clauses from typed project |
 
-Add `dag manifest --format json` for stable, machine-readable output. Keep the existing text rendering as the default, layered on the contract object.
+Add `dag progress --format json` for stable, machine-readable output. Keep the existing text rendering as the default, layered on the contract object.
 
 **Acceptance criteria**:
 - [x] `ProgressManifest` struct has all contract fields (Phase 3/4 fields can be empty `Vec`s)
 - [x] `derive_artifacts()` populates `topology`, `labels`, `parallel_groups` correctly for makegen
-- [x] `dag manifest tools/makegen.dag` produces the expected 9-node, 6-wave manifest
-- [x] `dag manifest --format json tools/makegen.dag` produces stable, parseable JSON
+- [x] `dag progress tools/makegen.dag` produces the expected 9-node, 6-wave manifest
+- [x] `dag progress --format json tools/makegen.dag` produces stable, parseable JSON
 - [x] All existing tests pass (the struct expansion must be backward-compatible)
 
 ##### Step 2: Parity Infrastructure (Workstream C)
@@ -571,7 +571,7 @@ Centralize the string constants (or better, make classification structural — b
 While touching the CLI, add two standalone commands that are cheap to implement (the data already exists in `derive_artifacts()`):
 
 - `dag show-triplets <file.dag>` — print service call → transport triplet expansion (prepare/execute/parse nodes and edges)
-- `dag obligations <file.dag>` — print the 4-bucket test obligation summary (currently embedded in `dag manifest` output, extract to standalone)
+- `dag obligations <file.dag>` — print the 4-bucket test obligation summary (currently embedded in `dag progress` output, extract to standalone)
 
 **Acceptance criteria**:
 - [x] `ObligationCategory` enum exists with typed variants
@@ -649,7 +649,7 @@ The two workers share the `daglang-cli` crate but touch different files:
 - [x] **Test parity**: existing obligation/testgen model runs against compiled output — same 4 buckets, "DryRun completes" and "transport interceptable" tests pass
 - [x] **Discovery**: `makegen.dag` is auto-discovered without any manual registration
 
-**Corresponds to**: [dsl-design.md Phase 1](./dsl-design.md#phase-1-language-core--module-discovery--progress-manifest), [Appendix A](./dsl-design.md#appendix-a-content-upsert-makegen)
+**Corresponds to**: [dsl-design.md Phase 1](./dsl-design.md#phase-1-language-core--module-discovery--progress/topology), [Appendix A](./dsl-design.md#appendix-a-content-upsert-makegen)
 
 ---
 
@@ -1671,7 +1671,7 @@ The effort lands cleanly when all six criteria are met:
 
 - [x] `core/daglang/` workspace area with crate split: `daglang-syntax`, `daglang-resolve`, `daglang-typecheck`, `daglang-lower`, `daglang-derive`, `daglang-emit`, `daglang-cli`
 - [x] Compiler entrypoint: `compile_from_context()` does discover → typecheck → lower → derive → emit
-- [x] CLI commands: `viz`, `expand`, `manifest`, `obligations`, `show-triplets`, `modules`, `check`, `compile`
+- [x] CLI commands: `viz`, `expand`, `progress`, `topology`, `obligations`, `show-triplets`, `modules`, `check`, `compile`
 - [x] Module graph: filesystem discovery, import resolution, dependency-ordered module listing
 - [x] Parity harness (partial): `compare_topology()` + `compare_makegen_topology()` returning `ParityReport`
 - [x] DSL corpus: `.dag` files for tools, services, pipelines, infra, cloud, examples
@@ -1682,7 +1682,7 @@ The effort lands cleanly when all six criteria are met:
 
 > The #1 structural blocker is the ProgressManifest contract mismatch. Fix this first.
 
-- [x] **Workstream A (Manifest contract):** Expand `ProgressManifest` to match the roadmap contract; add `dag manifest --format json`
+- [x] **Workstream A (Manifest contract):** Expand `ProgressManifest` to match the roadmap contract; add `dag progress --format json`
 - [x] **Workstream C (Parity + snapshots):** Canonical JSON serialization + IR snapshot tests for at least `tools/makegen.dag`
 - [x] **Workstream B (Viz + expand):** ASCII default for `dag viz`; golden tests for `dag expand`
 - [x] **Workstream E (Model preview commands):** `dag show-triplets` and `dag obligations` as standalone commands

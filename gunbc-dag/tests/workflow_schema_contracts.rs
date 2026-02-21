@@ -4,13 +4,13 @@ use std::collections::BTreeSet;
 
 use gunbc_dag::{
     ci_workflow_spec, default_process_unit_registry, has_required_unit_contract,
-    test_all_workflow_spec, ProcessUnitRegistry, WorkflowOp,
+    sdlc_workflow_spec, test_all_workflow_spec, ProcessUnitRegistry, WorkflowOp,
 };
 
 fn assert_workflow_schema_contracts(
     spec: &gunbc_dag::PlannerWorkflowSpec,
     expected_node_prefix: &str,
-    expected_process_namespace: &str,
+    expected_process_namespaces: &[&str],
     registry: &ProcessUnitRegistry,
 ) {
     assert!(
@@ -53,10 +53,12 @@ fn assert_workflow_schema_contracts(
         match &unit.op {
             WorkflowOp::InvokeProcessUnit(process_ref) => {
                 invoke_count += 1;
-                assert_eq!(
-                    process_ref.process_id.0, expected_process_namespace,
-                    "invoke node '{}' should stay in '{}' process namespace",
-                    node.id.0, expected_process_namespace
+                assert!(
+                    expected_process_namespaces.contains(&process_ref.process_id.0.as_str()),
+                    "invoke node '{}' should stay within {:?} process namespaces (found '{}')",
+                    node.id.0,
+                    expected_process_namespaces,
+                    process_ref.process_id.0
                 );
                 assert!(
                     registry.contains(process_ref),
@@ -83,14 +85,21 @@ fn assert_workflow_schema_contracts(
 fn ci_workflow_spec_satisfies_schema_contracts() {
     let spec = ci_workflow_spec().expect("ci workflow spec should build");
     let registry = default_process_unit_registry();
-    assert_workflow_schema_contracts(&spec, "ci.", "ci", &registry);
+    assert_workflow_schema_contracts(&spec, "ci.", &["ci"], &registry);
 }
 
 #[test]
 fn test_all_workflow_spec_satisfies_schema_contracts() {
     let spec = test_all_workflow_spec().expect("test-all workflow spec should build");
     let registry = default_process_unit_registry();
-    assert_workflow_schema_contracts(&spec, "test_all.", "test_all", &registry);
+    assert_workflow_schema_contracts(&spec, "test_all.", &["test_all"], &registry);
+}
+
+#[test]
+fn sdlc_workflow_spec_satisfies_schema_contracts() {
+    let spec = sdlc_workflow_spec().expect("sdlc workflow spec should build");
+    let registry = default_process_unit_registry();
+    assert_workflow_schema_contracts(&spec, "sdlc.", &["sdlc", "compilation", "codegen"], &registry);
 }
 
 #[test]

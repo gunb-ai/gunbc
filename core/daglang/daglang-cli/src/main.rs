@@ -1,4 +1,4 @@
-//! daglang CLI: dag viz, dag expand, dag manifest, dag modules.
+//! daglang CLI: dag viz, dag expand, dag progress, dag topology, dag modules.
 //!
 //! The development tool for the DSL compiler. Provides visualization
 //! and introspection commands that make every subsequent phase
@@ -8,22 +8,26 @@
 //!
 //! - `daglang viz <file.dag> [--format ascii|mermaid]`: DAG visualization from compiled IR
 //! - `daglang expand <file.dag> [--emit-collection-nodes]`: Show lowered GraphIR (nodes, edges, ports)
-//! - `daglang manifest <file.dag> [--format text|json] [--emit-collection-nodes]`: Show derived ProgressManifest
+//! - `daglang progress <file.dag> [--format text|json] [--emit-collection-nodes]`: Show progress metrics
+//! - `daglang topology <file.dag> [--format text|json]`: Show graph topology
 //! - `daglang obligations <file.dag> [--format text|json]`: Show derived test obligations summary
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
-//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]`: Full compilation pipeline
+//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`: Compile + resolve + execute makegen DAG
 
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
-    build_context, check_from_module_graph, compile_from_context_with_options,
-    compile_resolve_execute_from_context, makegen_check_mode_transport_mocks,
-    makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
-    render_manifest_with_format, render_obligations, render_triplets, CompileOptions,
-    CompileOutput, OutputFormat,
+    build_context, build_context_with_default_roots, check_from_module_graph,
+    compile_from_context_with_options, compile_resolve_execute_from_context,
+    makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,
+    render_canonical_ir_json, render_expand, render_obligations, render_progress_with_format,
+    render_topology_with_format,
+    render_triplets, resolve_configured_roots as resolve_configured_roots_from_context,
+    resolve_default_roots as resolve_default_roots_from_context, CompileOptions, CompileOutput,
+    OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
@@ -33,10 +37,13 @@ use daglang_driver::{CodegenLayer, CodegenTarget};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use gunbc_exec::ExecutionMode;
 use gunbc_ir::Value;
-use serde::Deserialize;
 use serde_json::json;
 
 mod commands;
+
+const VIZ_USAGE: &str = "viz <file.dag>|--self [--format ascii|mermaid]";
+/// Decision lock (DL8): ASCII is the default viz format. Tests lock this.
+const DEFAULT_VIZ_FORMAT: VizFormat = VizFormat::Ascii;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -46,12 +53,19 @@ fn main() {
         eprintln!("Usage: daglang <command> [args...]");
         eprintln!();
         eprintln!("Commands:");
-        eprintln!("  viz <file.dag>|--self [--format ascii|mermaid]");
-        eprintln!("                      DAG visualization (default: ascii)");
+        eprintln!("  {VIZ_USAGE}");
+        eprintln!(
+            "                      DAG visualization (default: {})",
+            default_viz_format_label()
+        );
         eprintln!("  expand <file.dag> [--emit-collection-nodes]");
         eprintln!("                      Show lowered GraphIR (nodes/edges/ports)");
-        eprintln!("  manifest <file.dag> [--format text|json] [--emit-collection-nodes]");
-        eprintln!("                      Show derived ProgressManifest");
+        eprintln!(
+            "  progress <file.dag> [--format text|json] [--emit-collection-nodes]"
+        );
+        eprintln!("                      Show progress metrics");
+        eprintln!("  topology <file.dag> [--format text|json]");
+        eprintln!("                      Show graph topology (nodes, depths, labels, boundaries)");
         eprintln!("  obligations <file.dag> [--format text|json]");
         eprintln!("                      Show derived test obligations summary");
         eprintln!("  show-triplets <file.dag> [--format text|json]");
@@ -60,7 +74,7 @@ fn main() {
         eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse + typecheck modules (no lowering)");
         eprintln!(
-            "  compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]"
+            "  compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]"
         );
         eprintln!("                      Full compilation pipeline");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
@@ -85,16 +99,6 @@ struct RunArgs {
     mode: RunMode,
 }
 
-#[derive(Debug, Deserialize)]
-struct DaglangConfig {
-    discovery: Option<DiscoveryConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DiscoveryConfig {
-    roots: Option<Vec<String>>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VizFormat {
     Ascii,
@@ -107,6 +111,13 @@ enum VizTarget {
     CompiledTarget(String),
 }
 
+const fn default_viz_format_label() -> &'static str {
+    match DEFAULT_VIZ_FORMAT {
+        VizFormat::Ascii => "ascii",
+        VizFormat::Mermaid => "mermaid",
+    }
+}
+
 fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     if let Some(path) = arg {
         return path_utils::normalize_cli_path(cwd, &PathBuf::from(path));
@@ -114,32 +125,8 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     path_utils::resolve_default_root(cwd)
 }
 
-#[allow(clippy::disallowed_methods)]
 fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>>, String> {
-    let config_path = cwd.join("daglang.toml");
-    if !config_path.exists() {
-        return Ok(None);
-    }
-    let config_text = std::fs::read_to_string(&config_path)
-        .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
-    let parsed: DaglangConfig = toml::from_str(&config_text)
-        .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?;
-    let Some(discovery) = parsed.discovery else {
-        return Ok(None);
-    };
-    let Some(config_roots) = discovery.roots else {
-        return Ok(None);
-    };
-    if config_roots.is_empty() {
-        return Err("discovery.roots in daglang.toml must not be empty".to_string());
-    }
-    let mut normalized = config_roots
-        .iter()
-        .map(|root| path_utils::normalize_cli_path(cwd, &PathBuf::from(root)))
-        .collect::<Vec<_>>();
-    normalized.sort();
-    normalized.dedup();
-    Ok(Some(normalized))
+    resolve_configured_roots_from_context(cwd)
 }
 
 /// Builds check pipeline context from CLI input.
@@ -160,27 +147,7 @@ fn build_check_pipeline_context_with_default_roots(
     input: Option<&String>,
     default_roots: Option<&[PathBuf]>,
 ) -> Result<PipelineContext, String> {
-    let normalized_input =
-        input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
-    if let Some(ref path) = normalized_input {
-        if let Some(error) = path_utils::check_dag_directory_conflict(path) {
-            return Err(error);
-        }
-    }
-    let (roots, target_file) = match normalized_input {
-        Some(path) if path_utils::is_single_file_target(&path) => {
-            let root = path_utils::resolve_single_file_root(cwd, &path);
-            (vec![root], Some(path))
-        }
-        Some(path) => (vec![path], None),
-        None => (
-            default_roots
-                .map(|roots| roots.to_vec())
-                .unwrap_or_else(|| vec![resolve_root(cwd, None)]),
-            None,
-        ),
-    };
-    Ok(PipelineContext { roots, target_file })
+    build_context_with_default_roots(cwd, input, default_roots)
 }
 
 fn compile_target_or_exit(cwd: &std::path::Path, input: Option<&String>) -> CompileOutput {
@@ -293,10 +260,7 @@ fn run_pipeline_or_exit(context: &PipelineContext, stop: PipelineStop) -> Pipeli
 }
 
 fn resolve_default_roots(cwd: &std::path::Path) -> Result<Vec<PathBuf>, String> {
-    match resolve_configured_roots(cwd)? {
-        Some(config_roots) => Ok(config_roots),
-        None => Ok(vec![resolve_root(cwd, None)]),
-    }
+    resolve_default_roots_from_context(cwd)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -305,17 +269,24 @@ struct CompileCommandArgs {
     emit_collection_nodes: bool,
     target: Option<CodegenTarget>,
     layer: Option<CodegenLayer>,
+    format: CompileOutputFormat,
     out_dir: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompileOutputFormat {
+    Summary,
+    CanonicalJson,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ManifestCommandArgs {
+struct ProgressCommandArgs {
     input: String,
     format: OutputFormat,
     emit_collection_nodes: bool,
 }
 
-fn parse_compile_command_args(
+pub(crate) fn parse_compile_command_args(
     command: &str,
     args: &[String],
     usage: &str,
@@ -330,6 +301,8 @@ fn parse_compile_command_args(
     let mut emit_collection_nodes = false;
     let mut target: Option<CodegenTarget> = None;
     let mut layer: Option<CodegenLayer> = None;
+    let mut format = CompileOutputFormat::Summary;
+    let mut saw_format = false;
     let mut out_dir: Option<String> = None;
     let mut i = 2usize;
     while i < args.len() {
@@ -408,6 +381,25 @@ fn parse_compile_command_args(
             i += 1;
             continue;
         }
+        if token == "--format" {
+            if command != "compile" || saw_format {
+                return Err(usage.to_string());
+            }
+            let value = args.get(i + 1).ok_or_else(|| usage.to_string())?;
+            format = parse_compile_output_format(value).ok_or_else(|| usage.to_string())?;
+            saw_format = true;
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--format=") {
+            if command != "compile" || saw_format {
+                return Err(usage.to_string());
+            }
+            format = parse_compile_output_format(value).ok_or_else(|| usage.to_string())?;
+            saw_format = true;
+            i += 1;
+            continue;
+        }
         if token.starts_with("--") {
             return Err(usage.to_string());
         }
@@ -420,13 +412,28 @@ fn parse_compile_command_args(
     if require_input && input.is_none() {
         return Err(usage.to_string());
     }
+    if command == "compile"
+        && matches!(format, CompileOutputFormat::CanonicalJson)
+        && out_dir.is_some()
+    {
+        return Err(usage.to_string());
+    }
     Ok(CompileCommandArgs {
         input,
         emit_collection_nodes,
         target,
         layer,
+        format,
         out_dir,
     })
+}
+
+fn parse_compile_output_format(value: &str) -> Option<CompileOutputFormat> {
+    match value {
+        "summary" => Some(CompileOutputFormat::Summary),
+        "canonical-json" => Some(CompileOutputFormat::CanonicalJson),
+        _ => None,
+    }
 }
 
 fn parse_codegen_target(value: &str) -> Option<CodegenTarget> {
@@ -447,13 +454,15 @@ fn parse_codegen_layer(value: &str) -> Option<CodegenLayer> {
     }
 }
 
-fn parse_manifest_command_args(args: &[String]) -> Result<ManifestCommandArgs, String> {
-    let usage = "manifest <file.dag> [--format text|json] [--emit-collection-nodes]";
-    if args.is_empty() || args.get(1).map(String::as_str) != Some("manifest") {
-        return Err(
-            "internal error: parse_manifest_command_args expects full `daglang manifest ...` argv"
-                .to_string(),
-        );
+pub(crate) fn parse_progress_command_args(
+    command: &str,
+    args: &[String],
+) -> Result<ProgressCommandArgs, String> {
+    let usage = format!("{command} <file.dag> [--format text|json] [--emit-collection-nodes]");
+    if args.is_empty() || args.get(1).map(String::as_str) != Some(command) {
+        return Err(format!(
+            "internal error: parse_progress_command_args expects full `daglang {command} ...` argv"
+        ));
     }
     let Some(input) = args.get(2).cloned() else {
         return Err(usage.to_string());
@@ -477,61 +486,61 @@ fn parse_manifest_command_args(args: &[String]) -> Result<ManifestCommandArgs, S
         }
         if token == "--format" {
             if saw_format {
-                return Err(usage.to_string());
+                return Err(usage.clone());
             }
             let Some(value) = args.get(i + 1) else {
-                return Err(usage.to_string());
+                return Err(usage.clone());
             };
             format = match value.as_str() {
                 "text" => OutputFormat::Text,
                 "json" => OutputFormat::Json,
-                _ => return Err(usage.to_string()),
+                _ => return Err(usage.clone()),
             };
             saw_format = true;
             i += 2;
             continue;
         }
-        return Err(usage.to_string());
+        return Err(usage.clone());
     }
-    Ok(ManifestCommandArgs {
+    Ok(ProgressCommandArgs {
         input,
         format,
         emit_collection_nodes,
     })
 }
 
-fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
+pub(crate) fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
     if args.is_empty() || args.get(1).map(String::as_str) != Some("viz") {
         return Err(
             "internal error: parse_viz_args expects full `daglang viz ...` argv".to_string(),
         );
     }
     if args.len() == 2 {
-        return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string());
+        return Err(VIZ_USAGE.to_string());
     }
 
     let mut target: Option<VizTarget> = None;
-    let mut format = VizFormat::Ascii;
+    let mut format = DEFAULT_VIZ_FORMAT;
     let mut i = 2usize;
     while i < args.len() {
         let token = &args[i];
         if token == "--format" {
             let value = args
                 .get(i + 1)
-                .ok_or_else(|| "viz <file.dag>|--self [--format ascii|mermaid]".to_string())?;
+                .ok_or_else(|| VIZ_USAGE.to_string())?;
             format = match value.as_str() {
                 "ascii" => VizFormat::Ascii,
                 "mermaid" => VizFormat::Mermaid,
-                _ => return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string()),
+                _ => return Err(VIZ_USAGE.to_string()),
             };
             i += 2;
             continue;
         }
         if token.starts_with("--") && token != "--self" {
-            return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string());
+            return Err(VIZ_USAGE.to_string());
         }
         if target.is_some() {
-            return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string());
+            return Err(VIZ_USAGE.to_string());
         }
         target = Some(if token == "--self" {
             VizTarget::SelfDag
@@ -542,13 +551,13 @@ fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
     }
 
     let Some(target) = target else {
-        return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string());
+        return Err(VIZ_USAGE.to_string());
     };
 
     Ok((target, format))
 }
 
-fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat), String> {
+pub(crate) fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat), String> {
     if args.is_empty() || args.get(1).map(String::as_str) != Some("modules") {
         return Err(
             "internal error: parse_modules_args expects full `daglang modules ...` argv"
@@ -589,7 +598,7 @@ fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat),
     Ok((root_arg, format))
 }
 
-fn render_modules_result_json(result: &PipelineResult) -> String {
+pub(crate) fn render_modules_result_json(result: &PipelineResult) -> String {
     let diagnostics = result
         .diagnostics()
         .iter()
@@ -679,7 +688,7 @@ fn diagnostic_kind_label(kind: &DiagnosticKind) -> &'static str {
     }
 }
 
-fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, String> {
+pub(crate) fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, String> {
     if args.len() == 3 {
         return Ok(OutputFormat::Text);
     }
@@ -693,7 +702,7 @@ fn parse_output_format(command: &str, args: &[String]) -> Result<OutputFormat, S
     }
 }
 
-fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
+pub(crate) fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     if args.is_empty() || args.get(1).map(String::as_str) != Some("run") {
         return Err(
             "internal error: parse_run_args expects full `daglang run ...` argv".to_string(),
@@ -785,7 +794,7 @@ fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     })
 }
 
-fn exit_usage(command: &str) -> ! {
+pub(crate) fn exit_usage(command: &str) -> ! {
     eprintln!("Usage: daglang {command}");
     std::process::exit(1);
 }
@@ -1144,6 +1153,7 @@ mod tests {
         let (target, format) = super::parse_viz_args(&args).expect("viz args should parse");
         assert!(matches!(target, super::VizTarget::SelfDag));
         assert!(matches!(format, super::VizFormat::Ascii));
+        assert_eq!(super::default_viz_format_label(), "ascii");
     }
 
     #[test]
@@ -1240,12 +1250,13 @@ mod tests {
         assert!(parsed.emit_collection_nodes);
         assert!(parsed.target.is_none());
         assert!(parsed.layer.is_none());
+        assert!(matches!(parsed.format, super::CompileOutputFormat::Summary));
         assert!(parsed.out_dir.is_none());
     }
 
     #[test]
     fn parse_compile_command_args_handles_codegen_and_output_flags() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]";
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
         let valid = vec![
             "daglang".to_string(),
             "compile".to_string(),
@@ -1255,6 +1266,13 @@ mod tests {
             "--layer".to_string(),
             "1".to_string(),
             "--out=target/generated/test".to_string(),
+        ];
+        let canonical_json = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+            "canonical-json".to_string(),
         ];
         let duplicate_flag = vec![
             "daglang".to_string(),
@@ -1291,6 +1309,22 @@ mod tests {
             "--layer".to_string(),
             "3".to_string(),
         ];
+        let bad_format = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl".to_string(),
+            "--format".to_string(),
+            "yaml".to_string(),
+        ];
+        let canonical_with_out = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl".to_string(),
+            "--format".to_string(),
+            "canonical-json".to_string(),
+            "--out".to_string(),
+            "target/generated/one".to_string(),
+        ];
         let missing_target = vec!["daglang".to_string(), "compile".to_string()];
 
         let parsed_valid = super::parse_compile_command_args("compile", &valid, usage, false)
@@ -1308,6 +1342,19 @@ mod tests {
             parsed_valid.out_dir.as_deref(),
             Some("target/generated/test")
         );
+        assert!(matches!(
+            parsed_valid.format,
+            super::CompileOutputFormat::Summary
+        ));
+
+        let parsed_canonical =
+            super::parse_compile_command_args("compile", &canonical_json, usage, false)
+                .expect("compile parser should accept canonical-json format");
+        assert!(matches!(
+            parsed_canonical.format,
+            super::CompileOutputFormat::CanonicalJson
+        ));
+        assert!(parsed_canonical.out_dir.is_none());
 
         assert_eq!(
             super::parse_compile_command_args("compile", &duplicate_flag, usage, false),
@@ -1327,6 +1374,14 @@ mod tests {
         );
         assert_eq!(
             super::parse_compile_command_args("compile", &bad_layer, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &bad_format, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &canonical_with_out, usage, false),
             Err(usage.to_string())
         );
         assert_eq!(
@@ -1358,6 +1413,13 @@ mod tests {
             "--out".to_string(),
             "target/generated".to_string(),
         ];
+        let with_format = vec![
+            "daglang".to_string(),
+            "expand".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+            "canonical-json".to_string(),
+        ];
 
         assert_eq!(
             super::parse_compile_command_args("expand", &with_target, usage, true),
@@ -1367,11 +1429,15 @@ mod tests {
             super::parse_compile_command_args("expand", &with_out, usage, true),
             Err(usage.to_string())
         );
+        assert_eq!(
+            super::parse_compile_command_args("expand", &with_format, usage, true),
+            Err(usage.to_string())
+        );
     }
 
     #[test]
     fn parse_compile_command_args_rejects_invalid_shapes() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]";
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
         let unknown_flag = vec![
             "daglang".to_string(),
             "compile".to_string(),
@@ -1385,29 +1451,43 @@ mod tests {
     }
 
     #[test]
-    fn parse_manifest_command_args_accepts_format_and_collection_flag() {
+    fn parse_progress_command_args_accepts_format_and_collection_flag() {
         let args = vec![
             "daglang".to_string(),
-            "manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
             "--emit-collection-nodes".to_string(),
             "--format".to_string(),
             "json".to_string(),
         ];
-        let parsed = super::parse_manifest_command_args(&args).expect("manifest args should parse");
+        let parsed =
+            super::parse_progress_command_args("progress", &args).expect("progress args should parse");
         assert_eq!(parsed.input, "dsl/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Json));
         assert!(parsed.emit_collection_nodes);
     }
 
     #[test]
-    fn parse_manifest_command_args_rejects_invalid_shapes() {
+    fn parse_progress_command_args_parses_correctly() {
+        let args = vec![
+            "daglang".to_string(),
+            "progress".to_string(),
+            "dsl/tools/gist.dag".to_string(),
+        ];
+        let parsed = super::parse_progress_command_args("progress", &args)
+            .expect("progress args should parse");
+        assert_eq!(parsed.input, "dsl/tools/gist.dag");
+        assert!(matches!(parsed.format, super::OutputFormat::Text));
+    }
+
+    #[test]
+    fn parse_progress_command_args_rejects_invalid_shapes() {
         let usage =
-            "manifest <file.dag> [--format text|json] [--emit-collection-nodes]".to_string();
-        let missing_input = vec!["daglang".to_string(), "manifest".to_string()];
+            "progress <file.dag> [--format text|json] [--emit-collection-nodes]".to_string();
+        let missing_input = vec!["daglang".to_string(), "progress".to_string()];
         let duplicate_format = vec![
             "daglang".to_string(),
-            "manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
             "--format".to_string(),
             "text".to_string(),
@@ -1416,31 +1496,31 @@ mod tests {
         ];
         let duplicate_collection_flag = vec![
             "daglang".to_string(),
-            "manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
             "--emit-collection-nodes".to_string(),
             "--emit-collection-nodes".to_string(),
         ];
         let unknown_flag = vec![
             "daglang".to_string(),
-            "manifest".to_string(),
+            "progress".to_string(),
             "dsl/tools/gist.dag".to_string(),
             "--collection".to_string(),
         ];
         assert_eq!(
-            super::parse_manifest_command_args(&missing_input),
+            super::parse_progress_command_args("progress", &missing_input),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args(&duplicate_format),
+            super::parse_progress_command_args("progress", &duplicate_format),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args(&duplicate_collection_flag),
+            super::parse_progress_command_args("progress", &duplicate_collection_flag),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args(&unknown_flag),
+            super::parse_progress_command_args("progress", &unknown_flag),
             Err(usage)
         );
     }

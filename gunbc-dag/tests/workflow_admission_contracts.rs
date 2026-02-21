@@ -3,9 +3,9 @@
 use gunbc_dag::workflow::{WorkflowId, WorkflowSpec};
 use gunbc_dag::{
     ci_workflow_spec, default_process_unit_registry, required_input_contract,
-    required_output_contract, test_all_workflow_spec, validate_workflow_admission, ClaimId,
-    ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, UnitClaim, WorkflowAdmissionError,
-    WorkflowOp, WorkflowUnit,
+    required_output_contract, sdlc_workflow_spec, test_all_workflow_spec,
+    validate_workflow_admission, ClaimId, ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec,
+    UnitClaim, WorkflowAdmissionError, WorkflowOp, WorkflowUnit,
 };
 use gunbc_ir::{AccessMode, Dag, Node, Port};
 
@@ -56,6 +56,10 @@ fn ci_and_test_all_specs_pass_default_admission_validation() {
     let test_all = test_all_workflow_spec().expect("test-all workflow spec");
     validate_workflow_admission(&test_all, &registry)
         .expect("test-all workflow admission should pass");
+
+    let sdlc = sdlc_workflow_spec().expect("sdlc workflow spec");
+    validate_workflow_admission(&sdlc, &registry)
+        .expect("sdlc workflow admission should pass");
 }
 
 #[test]

@@ -20,12 +20,13 @@ pub enum WorkspaceBinary {
     Infra,
     Makegen,
     Pragma,
+    Sdlc,
     Testgen,
 }
 
 impl WorkspaceBinary {
     /// Canonical ordered registry of all workspace binaries.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Build,
         Self::Bootstrap,
         Self::Ci,
@@ -36,6 +37,7 @@ impl WorkspaceBinary {
         Self::Infra,
         Self::Makegen,
         Self::Pragma,
+        Self::Sdlc,
         Self::Testgen,
     ];
 
@@ -57,6 +59,7 @@ impl WorkspaceBinary {
             WorkspaceBinary::Infra => "infra",
             WorkspaceBinary::Makegen => "makegen",
             WorkspaceBinary::Pragma => "pragma",
+            WorkspaceBinary::Sdlc => "sdlc",
             WorkspaceBinary::Testgen => "testgen",
         }
     }
@@ -74,6 +77,7 @@ impl WorkspaceBinary {
             "infra" => Some(Self::Infra),
             "makegen" => Some(Self::Makegen),
             "pragma" => Some(Self::Pragma),
+            "sdlc" => Some(Self::Sdlc),
             "testgen" => Some(Self::Testgen),
             _ => None,
         }
@@ -92,6 +96,7 @@ impl WorkspaceBinary {
             WorkspaceBinary::Infra => "infra",
             WorkspaceBinary::Makegen => "makegen",
             WorkspaceBinary::Pragma => "pragma",
+            WorkspaceBinary::Sdlc => "sdlc",
             WorkspaceBinary::Testgen => "testgen",
         }
     }
@@ -104,7 +109,7 @@ impl WorkspaceBinary {
     /// Whether this binary corresponds to a DSL tool module.
     pub fn is_dsl_tool_module(self) -> bool {
         !self.is_dsl_pipeline_module()
-            && !matches!(self, Self::CodegenDag | Self::DepsConfig | Self::Infra)
+            && !matches!(self, Self::CodegenDag | Self::DepsConfig | Self::Sdlc)
     }
 
     /// Cargo invocation for this workspace binary.

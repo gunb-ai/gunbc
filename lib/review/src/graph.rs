@@ -90,7 +90,7 @@ fn add_cloud_credential_chain(
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "String"),
-                optional("secret_name", "OptionalString"),
+                port("secret_name", "String"),
             ],
             vec![port("config", "CloudSecretConfig")],
             DynOp::new(CloudOps::BindSecretName),
@@ -100,6 +100,10 @@ fn add_cloud_credential_chain(
 
     builder.add_edge(cloud_env.out("config"), bind_secret.in_port("config"))?;
     builder.add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))?;
+    builder.add_edge(
+        resolve_auth.out("secret_name"),
+        bind_secret.in_port("secret_name"),
+    )?;
 
     let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
         cloud_config,
@@ -326,6 +330,7 @@ pub fn build_review_phase_graph_with_config(
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
+                port("secret_name", "String"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -468,6 +473,7 @@ pub fn build_inline_review_graph_with_config(
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
+                port("secret_name", "String"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -699,6 +705,7 @@ pub fn build_diff_review_graph_with_cloud_config(
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
+                port("secret_name", "String"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -913,6 +920,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
+                port("secret_name", "String"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -1125,6 +1133,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
+                port("secret_name", "String"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),

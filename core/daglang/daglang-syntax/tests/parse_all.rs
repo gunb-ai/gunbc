@@ -30,8 +30,8 @@ fn parse_all_golden_dag_files() {
 
     assert_eq!(
         dag_files.len(),
-        46,
-        "expected 46 golden .dag files, found {}",
+        56,
+        "expected 56 golden .dag files, found {}",
         dag_files.len()
     );
 

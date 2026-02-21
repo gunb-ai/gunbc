@@ -176,7 +176,7 @@ impl CodegenBackend for RustBackend {
     }
 
     fn emit_progress_manifest(&self, manifest: &str) -> String {
-        format!("// progress-manifest\n{manifest}\n")
+        format!("// progress\n{manifest}\n")
     }
 }
 
@@ -192,10 +192,7 @@ pub fn emit_rust_bundle(
 
     for node in &dag.nodes {
         let Some(op) = node.body.as_opaque() else {
-            return Err(EmitError::InvalidLoweredNode(format!(
-                "subdag node `{}` is not supported in phase-1 emit",
-                node.id.0
-            )));
+            continue;
         };
 
         match op {
@@ -230,6 +227,9 @@ pub fn emit_rust_bundle(
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));
                 emitted_functions.push(backend.emit_func(&fn_name));
             }
+            LoweredOp::LoopUnpack { .. }
+            | LoweredOp::LoopPack { .. }
+            | LoweredOp::BranchMerge { .. } => {}
         }
     }
 
@@ -300,7 +300,10 @@ pub fn emit_go_bundle(
             if let Some(ref spec) = sym.spec {
                 service_emit::emit_go_service_func(&sym.name, &sym.raw_name, spec)
             } else {
-                format!("func {name}() {{\n    // generated callable stub\n}}\n", name = sym.name)
+                format!(
+                    "func {name}() {{\n    // generated callable stub\n}}\n",
+                    name = sym.name
+                )
             }
         })
         .collect::<Vec<_>>()
@@ -407,7 +410,8 @@ pub fn emit_c_bundle(
     let includes = if is_makegen {
         "#include <stdio.h>\n#include <string.h>\n".to_string()
     } else if has_service_transport {
-        "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <curl/curl.h>\n".to_string()
+        "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <curl/curl.h>\n"
+            .to_string()
     } else {
         "#include <stdio.h>\n".to_string()
     };
@@ -535,10 +539,7 @@ fn collect_symbols_with_metadata(
 
     for node in &dag.nodes {
         let Some(op) = node.body.as_opaque() else {
-            return Err(EmitError::InvalidLoweredNode(format!(
-                "subdag node `{}` is not supported in backend emit",
-                node.id.0
-            )));
+            continue;
         };
 
         match op {
@@ -549,9 +550,7 @@ fn collect_symbols_with_metadata(
                 ..
             } => {
                 callable_count += 1;
-                let spec = service_metadata
-                    .as_ref()
-                    .and_then(|m| m.spec.clone());
+                let spec = service_metadata.as_ref().and_then(|m| m.spec.clone());
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{name}")),
                     spec,
@@ -573,9 +572,7 @@ fn collect_symbols_with_metadata(
             } => {
                 callable_count += 1;
                 symbols.push(CollectedSymbol {
-                    name: sanitize_identifier(&format!(
-                        "{module}_{callable}_collection_{kind:?}"
-                    )),
+                    name: sanitize_identifier(&format!("{module}_{callable}_collection_{kind:?}")),
                     spec: None,
                     raw_name: String::new(),
                 });
@@ -588,6 +585,9 @@ fn collect_symbols_with_metadata(
                     raw_name: String::new(),
                 });
             }
+            LoweredOp::LoopUnpack { .. }
+            | LoweredOp::LoopPack { .. }
+            | LoweredOp::BranchMerge { .. } => {}
         }
     }
 

@@ -5,8 +5,8 @@
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::file_writer::format_diff;
-use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::makegen::build_makegen_graph;
+use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::{
     freshness_steps_planned, makefile_resource_def, print_tool_header, render_justfile, run_tool,
     update_freshness_manifest_if_needed, wire_fs_env_write_mock, RunToolOptions,

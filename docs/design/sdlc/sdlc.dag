@@ -134,7 +134,7 @@ pipeline sdlc {
   // Automatically review the generated design. Posts findings as
   // a comment and transitions label: design → design-review.
 
-  stage design_review [after design] {
+  stage design_review [after design, when design_output != null] {
     review_output = review_design(
         design: design_output.content,
         provider: llm_provider,
@@ -170,7 +170,7 @@ pipeline sdlc {
   //
   // When auto-approved or human-overridden, transition: design-review → accepted.
 
-  stage accept_design [after design_review, when review_output.approved] {
+  stage accept_design [after design_review, when review_output != null && review_output.approved] {
     label_update = Issues.SetLabels(
         owner: repo_owner,
         repo: repo_name,
@@ -191,7 +191,7 @@ pipeline sdlc {
   // Each task becomes a checklist item in the issue body or
   // a linked sub-issue.
 
-  stage plan_implementation [after accept_design] {
+  stage plan_implementation [after accept_design, when design_output != null] {
     impl_plan = generate_implementation_plan(
         design: design_output.content,
         provider: llm_provider,

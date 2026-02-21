@@ -37,9 +37,9 @@ pub use key::{
     WorkIdentity,
 };
 pub use ledger::{
-    append_global_ledger_entry, load_global_ledger, rehydrate_outputs_for_entry,
-    save_global_ledger, store_output_payload, workflow_ledger_paths, LedgerStatus, RunId,
-    RunLedgerEntry, WorkflowLedgerError, WorkflowLedgerPaths,
+    append_global_ledger_entry, append_pending_approval_entry, load_global_ledger,
+    rehydrate_outputs_for_entry, save_global_ledger, store_output_payload, workflow_ledger_paths,
+    LedgerStatus, RunId, RunLedgerEntry, WorkflowLedgerError, WorkflowLedgerPaths,
 };
 pub use planner::{
     explain_plan, plan_workflow, plan_workflow_with_mode, CapabilityAction, CapabilityStatus,
@@ -75,7 +75,8 @@ pub use spec_builders::{
     gist_recent_workflow_spec_with_registry, gist_snapshot_workflow_spec,
     gist_snapshot_workflow_spec_with_registry, gist_workflow_spec,
     gist_workflow_spec_with_registry, makegen_workflow_spec, makegen_workflow_spec_with_registry,
-    pragma_workflow_spec, pragma_workflow_spec_with_registry, test_all_workflow_spec,
-    test_all_workflow_spec_with_registry, tool_workflow_spec,
+    pragma_workflow_spec, pragma_workflow_spec_with_registry, sdlc_workflow_spec,
+    sdlc_workflow_spec_with_registry, test_all_workflow_spec, test_all_workflow_spec_with_registry,
+    tool_workflow_spec,
 };
 pub use unit_commands::{ci_unit_commands, test_all_unit_commands, workflow_unit_commands};

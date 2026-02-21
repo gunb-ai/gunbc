@@ -30,9 +30,7 @@ use daglang_lower::{
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::transport::{
-    FileOp, FileRequest, TransportRequest, TransportResponse,
-};
+use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -170,6 +168,74 @@ domain_passthrough_op! {
     }
 }
 
+#[derive(Debug, Clone)]
+enum InfraToolOp {
+    Infra,
+}
+
+impl Executable for InfraToolOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let environment = inputs
+            .get("environment")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("tools.infra.infra missing `environment` input"))?;
+        let runtime = inputs
+            .get("runtime")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("tools.infra.infra missing `runtime` input"))?;
+        let spec_targets = inputs
+            .get("spec_targets")
+            .and_then(Value::as_str_list)
+            .ok_or_else(|| ExecError::new("tools.infra.infra missing `spec_targets` input"))?;
+        let target = inputs
+            .get("target")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let skip = inputs
+            .get("skip")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let execute = inputs
+            .get("execute")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| ExecError::new("tools.infra.infra missing `execute` input"))?;
+
+        let mut planned_targets: Vec<String> = if target.is_empty() {
+            spec_targets.clone()
+        } else {
+            spec_targets
+                .iter()
+                .filter(|item| target.iter().any(|candidate| candidate == *item))
+                .cloned()
+                .collect()
+        };
+        planned_targets.retain(|item| !skip.iter().any(|candidate| candidate == item));
+
+        let target_count = planned_targets.len() as i64;
+        let applied_count = if execute { target_count } else { 0 };
+        let mode = if execute { "apply" } else { "plan" };
+        let report = format!(
+            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
+        );
+        OutputMap::new()
+            .str("environment", environment)
+            .str("runtime", runtime)
+            .str("mode", mode)
+            .str_list("planned_targets", planned_targets)
+            .int("target_count", target_count)
+            .int("applied_count", applied_count)
+            .str("report", report)
+            .ok()
+    }
+}
+
+fn resolve_infra(node_id: &str, name: &str, _outputs: &[Port]) -> Result<DynOp, ResolveError> {
+    match name {
+        "infra" => Ok(DynOp::new(InfraToolOp::Infra)),
+        _ => Err(unknown_callable(node_id, "tools.infra", name)),
+    }
+}
+
 domain_passthrough_op! {
     PipelineCiOp, "pipelines.ci", resolve_pipeline_ci {
         "ci" => Ci,
@@ -233,6 +299,14 @@ impl Executable for IdentityCallableOp {
 #[derive(Debug, Clone)]
 struct UnsupportedOp {
     callable: String,
+}
+
+impl UnsupportedOp {
+    fn new(callable: &str) -> Self {
+        Self {
+            callable: callable.to_string(),
+        }
+    }
 }
 
 impl Executable for UnsupportedOp {
@@ -365,7 +439,6 @@ impl Executable for PragmaEntrypointOp {
     }
 }
 
-
 /// File-read prepare adapter for DSL content-upsert chains.
 ///
 /// Requires a `path` input. Missing `path` is a wiring bug and returns
@@ -483,19 +556,16 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
     match &node.body {
         NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
-        NodeBody::SubDag(_) => Err(ResolveError {
-            node_id,
-            reason: "SubDag nodes must be lowered before resolution".into(),
-        }),
+        NodeBody::SubDag(_) => Ok(DynOp::new(UnsupportedOp::new("subdag_pattern"))),
     }
 }
 
 fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline { module, name, .. } => Ok(DynOp::new(UnsupportedOp {
-            callable: format!("Pipeline::{module}::{name}"),
-        })),
+        LoweredOp::Pipeline { module, name, .. } => {
+            Ok(DynOp::new(UnsupportedOp::new(&format!("{module}.{name}",))))
+        }
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
             module,
@@ -503,6 +573,11 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             service_metadata,
             ..
         } => resolve_domain(node_id, module, name, outputs, service_metadata.as_deref()),
+        LoweredOp::LoopUnpack { .. }
+        | LoweredOp::LoopPack { .. }
+        | LoweredOp::BranchMerge { .. } => {
+            Ok(DynOp::new(UnsupportedOp::new("pattern_internal")))
+        }
     }
 }
 
@@ -557,6 +632,7 @@ fn resolve_domain(
         "tools.testgen" => resolve_testgen(node_id, name, outputs),
         "tools.clippy" => resolve_clippy(node_id, name, outputs),
         "tools.deps" => resolve_deps(node_id, name, outputs),
+        "tools.infra" => resolve_infra(node_id, name, outputs),
         "pipelines.ci" => resolve_pipeline_ci(node_id, name, outputs),
         "shared.dag_util" => resolve_shared_dag_util(node_id, name, outputs),
         "shared.gist_modes" => resolve_shared_gist_modes(node_id, name, outputs),
@@ -1247,9 +1323,8 @@ mod tests {
             spec: Some(ServiceOperationSpec::Rest(RestOperationSpec {
                 endpoint: "https://secretmanager.googleapis.com".to_string(),
                 method: "GET".to_string(),
-                path_template:
-                    "/v1/projects/{project}/secrets/{secret}/versions/{version}:access"
-                        .to_string(),
+                path_template: "/v1/projects/{project}/secrets/{secret}/versions/{version}:access"
+                    .to_string(),
                 input_fields: vec![
                     FieldSpec {
                         name: "project".to_string(),
@@ -1324,13 +1399,8 @@ mod tests {
             ),
         ];
         for (module, name, metadata, expected_debug) in cases {
-            let node = service_callable_node(
-                name,
-                module,
-                name,
-                ObligationCategory::None,
-                metadata,
-            );
+            let node =
+                service_callable_node(name, module, name, ObligationCategory::None, metadata);
             let result = resolve_node(&node).expect(name);
             assert!(
                 format!("{:?}", result).contains(expected_debug),
@@ -1369,6 +1439,17 @@ mod tests {
         );
         let err = resolve_node(&node).unwrap_err();
         assert!(err.reason.contains("unknown callable"));
+    }
+
+    #[test]
+    fn resolve_infra_callable() {
+        let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
+        let result = resolve_node(&node).expect("infra");
+        assert!(
+            !format!("{:?}", result).contains("UnsupportedOp"),
+            "expected callable resolution for tools.infra.infra, got {:?}",
+            result
+        );
     }
 
     #[test]

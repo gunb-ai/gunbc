@@ -259,7 +259,17 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
                 _ => None,
             };
         }
+        LoweredOp::Callable { name, .. }
+            if name.starts_with("service_transport::prepare::")
+                || name.starts_with("service_transport::parse::")
+                || name.starts_with("service_transport::execute::") =>
+        {
+            return Some(HandlerKind::ParamSource);
+        }
         LoweredOp::Callable { .. } => {}
+        LoweredOp::LoopUnpack { .. }
+        | LoweredOp::LoopPack { .. }
+        | LoweredOp::BranchMerge { .. } => return None,
     }
 
     let (module, name) = match op {
@@ -269,6 +279,12 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     };
 
     match (module, name) {
+        ("shared.dag_util", _) => Some(HandlerKind::ParamSource),
+        ("std.patterns", _) => Some(HandlerKind::ParamSource),
+        ("std.resources", _) => Some(HandlerKind::ParamSource),
+        ("pipelines.ci", _) => Some(HandlerKind::ParamSource),
+        ("tools.infra", _) => Some(HandlerKind::ParamSource),
+        (module, _) if module.starts_with("services.") => Some(HandlerKind::ParamSource),
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(HandlerKind::RenderPragmaAllowlist)
@@ -538,34 +554,38 @@ fn handler_body(kind: HandlerKind) -> &'static str {
 "##
         }
         HandlerKind::PrepareReadContent => {
-            r##"    let path = inputs.get("path").and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `path`"))?;
+            r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
+    if path.is_empty() {
+        return Err(ExecError::new("missing required `path` input for prepare_read_content"));
+    }
     OutputMap::new().request("request", TransportRequest::File(FileRequest::read(path))).ok()
 "##
         }
         HandlerKind::ExecuteReadContent => {
-            r##"    let request = inputs.get("request").and_then(Value::as_request)
-        .ok_or_else(|| ExecError::new("missing required input `request`"))?;
+            r##"    let Some(request) = inputs.get("request").and_then(Value::as_request) else {
+        return Err(ExecError::new("missing required `request` input for execute_read_content"));
+    };
     match request {
         TransportRequest::File(fr) => {
             let resp = execute_file_request(&fr);
             OutputMap::new().response("response", TransportResponse::File(resp)).ok()
         }
-        _ => Err(ExecError::new("only file transport requests are supported")),
+        _ => Err(ExecError::new("unsupported transport request kind")),
     }
 "##
         }
         HandlerKind::PrepareWriteContent => {
-            r##"    let path = inputs.get("path").and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `path`"))?;
-    let content = inputs.get("content").and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `content`"))?;
+            r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
+    let content = inputs.get("content").and_then(Value::as_str).unwrap_or("");
+    if path.is_empty() || content.is_empty() {
+        return Err(ExecError::new("missing required `path` or `content` input for prepare_write_content"));
+    }
     OutputMap::new().request("request", TransportRequest::File(FileRequest::write(path, content))).ok()
 "##
         }
         HandlerKind::CompareContent => {
             r##"    let expected = inputs.get("expected_content").and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `expected_content`"))?;
+        .ok_or_else(|| ExecError::new("missing required `expected_content` input for compare_content"))?;
     let actual = match inputs.get("response") {
         Some(Value::Response(TransportResponse::File(r))) if r.success => {
             r.content.clone().unwrap_or_default()
@@ -581,8 +601,9 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     if skip {
         return OutputMap::new().value("response", Value::Skipped).ok();
     }
-    let request = inputs.get("request").and_then(Value::as_request)
-        .ok_or_else(|| ExecError::new("missing required input `request`"))?;
+    let Some(request) = inputs.get("request").and_then(Value::as_request) else {
+        return Err(ExecError::new("missing required `request` input for execute_transport"));
+    };
     match request {
         TransportRequest::File(fr) => {
             let resp = execute_file_request(&fr);
@@ -592,13 +613,13 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             }
             OutputMap::new().response("response", TransportResponse::File(resp)).ok()
         }
-        _ => Err(ExecError::new("only file transport requests are supported")),
+        _ => Err(ExecError::new("unsupported transport request kind")),
     }
 "##
         }
         HandlerKind::Collection => {
             r##"    let items = inputs.get("items").cloned()
-        .ok_or_else(|| ExecError::new("missing required input `items`"))?;
+        .ok_or_else(|| ExecError::new("missing required `items` input for collection"))?;
     OutputMap::new().value("items", items).ok()
 "##
         }
@@ -1655,5 +1676,36 @@ mod tests {
         assert_eq!(to_snake("RenderMakefile"), "render_makefile");
         assert_eq!(to_snake("PrepareReadContent"), "prepare_read_content");
         assert_eq!(to_snake("ExecuteTransport"), "execute_transport");
+    }
+
+    #[test]
+    fn classify_handler_supports_pattern_and_service_transport_surfaces() {
+        let pattern_callable = LoweredOp::Callable {
+            module: "std.patterns".into(),
+            kind: CallableKind::Pattern,
+            name: "file_content_matches".into(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+        };
+        assert_eq!(
+            classify_handler(&pattern_callable),
+            Some(HandlerKind::ParamSource)
+        );
+
+        let service_prepare = LoweredOp::Callable {
+            module: "services.sdlc.control_plane".into(),
+            kind: CallableKind::Pattern,
+            name: "service_transport::prepare::sdlc.ControlPlane::AcquireStageClaim".into(),
+            obligation: ObligationCategory::ServiceTransportPrepare,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+        };
+        assert_eq!(
+            classify_handler(&service_prepare),
+            Some(HandlerKind::ParamSource)
+        );
     }
 }

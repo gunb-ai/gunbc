@@ -21,10 +21,23 @@ pub type RunId = String;
 /// Cached/executed state persisted for planner decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LedgerStatus {
-    CachedHit { previous_run: RunId },
-    Executed { reason: MissReason },
-    Failed { reason: MissReason, error: String },
-    Skipped { blocked_by: NodeId },
+    CachedHit {
+        previous_run: RunId,
+    },
+    Executed {
+        reason: MissReason,
+    },
+    PendingApproval {
+        awaiting_since_epoch_ms: u128,
+        claim_released: bool,
+    },
+    Failed {
+        reason: MissReason,
+        error: String,
+    },
+    Skipped {
+        blocked_by: NodeId,
+    },
 }
 
 /// One persisted ledger record per work key.
@@ -154,6 +167,20 @@ pub fn append_global_ledger_entry(
     save_global_ledger(workspace_root, &entries)
 }
 
+/// Append a pending-approval ledger entry for async approval-yield flows.
+pub fn append_pending_approval_entry(
+    workspace_root: &Path,
+    mut entry: RunLedgerEntry,
+    awaiting_since_epoch_ms: u128,
+    claim_released: bool,
+) -> Result<(), WorkflowLedgerError> {
+    entry.status = LedgerStatus::PendingApproval {
+        awaiting_since_epoch_ms,
+        claim_released,
+    };
+    append_global_ledger_entry(workspace_root, entry)
+}
+
 fn cas_payload_path(cas_dir: &Path, hash: &str) -> PathBuf {
     cas_dir.join(format!("{hash}.json"))
 }
@@ -281,6 +308,24 @@ mod tests {
 
         let rehydrated = rehydrate_outputs_for_entry(&root, &entry).expect("rehydrate outputs");
         assert_eq!(rehydrated.get(&PortName::from("result")), Some(&payload));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pending_approval_entry_round_trips() {
+        let root = temp_root();
+        let entry = sample_entry();
+        append_pending_approval_entry(&root, entry, 1234, true)
+            .expect("append pending approval should succeed");
+        let loaded = load_global_ledger(&root).expect("load should succeed");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(
+            loaded[0].status,
+            LedgerStatus::PendingApproval {
+                awaiting_since_epoch_ms: 1234,
+                claim_released: true
+            }
+        );
         let _ = fs::remove_dir_all(root);
     }
 }

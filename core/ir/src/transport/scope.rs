@@ -17,7 +17,8 @@ pub struct CredentialIntent {
     pub service: String,
     /// Secret Manager secret ID (without namespace prefix).
     ///
-    /// When `None`, `BindSecretName` falls back to `service`.
+    /// Required: `BindSecretName` will error if this is `None`.
+    /// Must be set via `.with_secret_name()` on every `CredentialIntent`.
     /// Example: `Some("github-token")` for the GitHub PAT stored as
     /// `dev-github-token` in Secret Manager.
     #[serde(skip_serializing_if = "Option::is_none")]

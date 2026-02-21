@@ -218,3 +218,125 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | W6 | CI status injection into review context | Done 2026-02-21 |
 | W7 | `gunbc pipeline` daily orchestration command | Done 2026-02-21 |
 | W8 | Pipeline issue-context integration (`--issue`) | Done 2026-02-21 |
+
+---
+
+## Lane A: SDLC Delivery Lane (Complete 2026-02-21)
+
+| ID | Task | Status |
+|----|------|--------|
+| MD0-D | SDLC mega modeling design gate: consolidated abstractions/invariants/layers/conformance into `docs/design/sdlc/mega-modeling-design.md` | Done 2026-02-21 |
+| IM0-D | SDLC issue abstraction modeling: provider-agnostic issue contracts, adapter boundaries, idempotency keys, upsert protocols | Done 2026-02-21 |
+| IM1 | Intent sheet contract: `intent_id`, objective, success criteria, constraints schema with template | Done 2026-02-21 |
+| IM2 | Issue intake upsert flow: create-or-update one canonical issue per `intent_id` | Done 2026-02-21 |
+| IM3 | Stage idempotency + resume keying: run/stage keys with duplicate-effect skip on replay | Done 2026-02-21 |
+| IM4 | Idempotent remote update protocol: deterministic marker upsert + CAS transitions | Done 2026-02-21 |
+| IM5 | Commit/update trace linkage: branch/commit metadata linked to `intent_id`/`issue_id`/run key | Done 2026-02-21 |
+| IM6 | Claim/lease abstraction: atomic claim with lease expiry and heartbeat semantics | Done 2026-02-21 |
+| IM7 | Async control loop: discover → claim → execute → release with bounded retries/backoff | Done 2026-02-21 |
+| IM8 | Stage transaction executor: fixed step ordering with crash-safe replay | Done 2026-02-21 |
+| IM9 | Failure taxonomy + retry policy: typed failure classes, persisted retry budget, terminal fail-closed | Done 2026-02-21 |
+| IM10 | Intake conflict policy: fail-closed multi-match collision handling | Done 2026-02-21 |
+| IM11 | Replay reconciliation loop: crash-window convergence, stale marker cleanup by lease generation | Done 2026-02-21 |
+| IM12 | Provider capability gate: `ManagedIssueSearch` + `DeterministicIssueIdentity` checks, dry-run bypass | Done 2026-02-21 |
+| IM13 | Artifact payload/reference contract: `Inline` vs `BlobRef`, content-hash equality, canonical markers | Done 2026-02-21 |
+| W9 | GitHub Issues transport + adapter: provider-agnostic `TrackedIssue` mapping | Done 2026-02-21 |
+| W10 | DesignOps module: `PrepareDesignPrompt` + `ParseDesignResponse` typed artifacts | Done 2026-02-21 |
+| W11 | SDLC resolver wiring: pipeline→resolver→execution with typed transport + design ops | Done 2026-02-21 |
+| W12 | `gunbc-sdlc` CLI binary: intake/worker dry-run + real mode with retry/reconciliation | Done 2026-02-21 |
+| W13 | Approval gates: `AwaitApproval` yield semantics with claim release and rediscovery resume | Done 2026-02-21 |
+| W14 | Metrics/monitoring: stage duration, LLM cost, approval latency in execution report | Done 2026-02-21 |
+
+---
+
+## Lane B: Review Credential Certification (Partial — 2026-02-21)
+
+| ID | Task | Status |
+|----|------|--------|
+| W3 | Multi-provider operational verification: `--provider openai` and `--provider anthropic` with fail-closed cred errors | Done 2026-02-21 |
+
+`W2` remains open (requires real-mode API key smoke test).
+
+---
+
+## Lane C: Planner/CI Additional (Complete 2026-02-21)
+
+| ID | Task | Status |
+|----|------|--------|
+| AX1 | Bootstrap invariant CI gate: bootstrap-safe binaries compile without generated sources | Done 2026-02-21 |
+| AX2 | Registry coupling hardening: contract-tested coupling between `default_registry()` and `derive_tool_defs()` | Done 2026-02-21 |
+
+---
+
+## Lane D: Daglang Convergence (Complete 2026-02-21)
+
+| ID | Task | Status |
+|----|------|--------|
+| DL5 | Unify compile/pipeline overlap: shared `compile_from_module_graph_with_options` path, pipeline handles discovery | Done 2026-02-21 |
+| DL6 | Manifest semantics clarity: split `dag manifest` into `dag progress` + `dag topology` (no flags, intent from command name) | Done 2026-02-21 |
+| DL7 | Canonical IR CLI surface: `daglang compile --format canonical-json` with deterministic output + tests | Done 2026-02-21 |
+| DL8 | Viz default decision: ASCII locked as default for `daglang viz`, documented + test-locked | Done 2026-02-21 |
+
+---
+
+## Lane E: Runtime Infra/Control-Plane (Complete 2026-02-21)
+
+| ID | Task | Status |
+|----|------|--------|
+| IN0-D | Runtime/infra control-plane modeling: stateless worker topology, trigger/signal matrix, startup/drain semantics | Done 2026-02-21 |
+| IN1 | Infra intent contract: versioned `InfraIntent` schema for runtime dependencies | Done 2026-02-21 |
+| IN2 | Infra plan/apply coverage: drift-aware reconciliation contracts for SDLC runtime | Done 2026-02-21 |
+| IN3 | Worker startup preflight gate: fail-closed readiness checks for infra components | Done 2026-02-21 |
+| IN4 | Stateless deployment profile + drain: launch profile contracts, graceful drain/restart | Done 2026-02-21 |
+
+---
+
+## Lane F: Codegen-First SDLC (Complete 2026-02-21)
+
+| ID | Task | Status |
+|----|------|--------|
+| CG0-D | Codegen-first architecture modeling: DSL-authored behavior compiled to Rust/Go/C boundary locked | Done 2026-02-21 |
+| CG1 | Canonicalize SDLC DSL modules: **superseded** — `dsl/pipelines/sdlc.dag` and `dsl/tools/design.dag` removed; SDLC modules are runtime-authored, not DSL-discovered | Superseded 2026-02-21 |
+| CG2 | Discovery-to-execution cutover: generic runtime wiring for discovered DSL modules | Done 2026-02-21 |
+| CG3 | Control-plane DSL resources/services: claim lease store + stage outcome ledger as DSL interfaces | Done 2026-02-21 |
+| CG4 | Infra intent reconcile in DSL: plan/apply/reconcile via compiled DSL orchestration | Done 2026-02-21 |
+| CG5 | Generated target entrypoints (Rust/Go/C): runnable SDLC worker/infra entrypoints with C adapter boundary | Done 2026-02-21 |
+| CG6 | Multi-level conformance + backend rotation harness: layered conformance suites, C sanitizer coverage, backend rotation | Done 2026-02-21 |
+
+---
+
+## Cleanup (2026-02-21)
+
+| ID | Task | Status |
+|----|------|--------|
+| — | Remove `c_sanitizer_runtime_available` dead code in `codegen_parity.rs` | Done 2026-02-21 |
+| — | Remove `tools.design` and `pipelines.sdlc` resolver registrations + dependent code after `.dag` file deletion | Done 2026-02-21 |
+| — | Bulk rename `manifest`/`progress-manifest` → `progress`/`topology` across CLI, tests, docs | Done 2026-02-21 |
+
+---
+
+## Lane B: Review Credential (2026-02-21)
+
+| ID | Task | Status |
+|----|------|--------|
+| W2 | Credential smoke test: run `gunbc-review` in real mode using `ANTHROPIC_API_KEY` against a small diff and verify structured findings output. | Done 2026-02-21 |
+
+---
+
+## Sprint 10: Autonomous Implementation & Agent Integration (2026-02-21)
+
+### Phase 1: Implementation Handoff & GitOps
+
+| ID | Task | Status |
+|----|------|--------|
+| AI1 | Handoff Contract: Typed `HandoffSpec`, `DesignArtifact`, `AgentConstraints` in `core/ir/src/transport/agent.rs`; `AgentAdapter` trait + `StubAgentAdapter` in `agent_adapter.rs`. | Done 2026-02-21 |
+| AI2 | Agent Workspace Bootstrap: `gunbc-sdlc agent-spawn --intake-key` reads intake/artifact ledgers, validates Accepted stage, assembles `HandoffSpec`, dispatches to adapter, records in `agent-ledger.json`. | Done 2026-02-21 |
+| AI3 | PR Automation: `PullRequestSpec` types + `gh pr create/comment/merge` request builders in `core/ir/src/transport/github/pull_request.rs`. | Done 2026-02-21 |
+
+### Phase 2: SDLC Pull Request Validation
+
+| ID | Task | Status |
+|----|------|--------|
+| PR1 | Diff Review Integration: `gunbc-sdlc validate-pr` runs diff review against PR branch, posts findings as PR comments. | Done 2026-02-21 |
+| PR2 | CI/CD Aggregation: `validate-pr` runs `cargo test` + `cargo clippy` and aggregates pass/fail results. | Done 2026-02-21 |
+| PR3 | Close Loop: `validate-pr` auto-transitions `Implementation` -> `Closed` when all checks pass, posts summary comment. | Done 2026-02-21 |

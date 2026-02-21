@@ -2507,9 +2507,12 @@ mod tests {
             BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
         ));
         dag.add_edge(edge("fs_env", "fs", "writer_all_files", "res:file"));
-        dag.add_edge(
-            edge("fs_env", "fs", "writer_specific_file", "res:file:shared.txt"),
-        );
+        dag.add_edge(edge(
+            "fs_env",
+            "fs",
+            "writer_specific_file",
+            "res:file:shared.txt",
+        ));
 
         let _ = execute(&dag).expect("execution should succeed");
         assert_eq!(
@@ -2592,13 +2595,21 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "writer_a",
-            vec![resource("file:a.txt", "FilesystemHandle", AccessMode::Write)],
+            vec![resource(
+                "file:a.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
             vec![port("a", "Int")],
             BlockingOp::new("a", Value::Int(1), 50, active.clone(), peak.clone()),
         ));
         dag.add_node(Node::opaque(
             "writer_b",
-            vec![resource("file:b.txt", "FilesystemHandle", AccessMode::Write)],
+            vec![resource(
+                "file:b.txt",
+                "FilesystemHandle",
+                AccessMode::Write,
+            )],
             vec![port("b", "Int")],
             BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
         ));

@@ -338,6 +338,13 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             inputs,
             outputs,
         ),
+        LoweredOp::LoopUnpack { .. }
+        | LoweredOp::LoopPack { .. }
+        | LoweredOp::BranchMerge { .. } => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::Null),
+        }),
     }
 }
 

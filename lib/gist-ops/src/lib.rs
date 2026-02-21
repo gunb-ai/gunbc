@@ -421,20 +421,22 @@ fn execute_gist_resolve_auth(
     let allow_impersonation = policy_allows_impersonation(bound.impersonation.as_ref());
     let intent = bound.intent;
 
-    let mut out = OutputMap::new()
+    let secret_name = intent.secret_name.ok_or_else(|| {
+        ExecError::new(format!(
+            "GistResolveAuth: secret_name is required for service '{}'",
+            intent.service
+        ))
+    })?;
+    OutputMap::new()
         .str("service", intent.service)
+        .str("secret_name", secret_name)
         .str("scheme", intent.scheme)
         .str("header_name", intent.header_name)
         .str_list("required_scopes", intent.required_scopes)
         .bool("interactive_allowed", intent.interactive_allowed)
         .bool("allow_impersonation", allow_impersonation)
-        .int("lifetime_seconds", 3600);
-
-    if let Some(secret_name) = intent.secret_name {
-        out = out.str("secret_name", secret_name);
-    }
-
-    out.ok()
+        .int("lifetime_seconds", 3600)
+        .ok()
 }
 
 // ============================================================================
@@ -510,7 +512,7 @@ pub fn build_gist_upload_subdag(
         vec![],
         vec![
             port("service", "String"),
-            optional("secret_name", "OptionalString"),
+            port("secret_name", "String"),
             optional("allow_impersonation", "OptionalBool"),
             port("scheme", "String"),
             port("header_name", "String"),
@@ -530,7 +532,7 @@ pub fn build_gist_upload_subdag(
         vec![
             port("config", "CloudSecretConfig"),
             port("service", "String"),
-            optional("secret_name", "OptionalString"),
+            port("secret_name", "String"),
         ],
         vec![port("config", "CloudSecretConfig")],
         GistUploadOp::Cloud(DynOp::new(CloudOps::BindSecretName)),

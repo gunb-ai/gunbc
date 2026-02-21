@@ -163,6 +163,9 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "examples.deployment",
         "examples.integration_tests",
         "examples.rich_types",
+        "funcs.agent_feedback",
+        "funcs.sdlc_worker",
+        "funcs.test_control_flow",
         "infra.aws.config",
         "infra.aws.resources",
         "infra.aws.services",
@@ -173,8 +176,11 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "infra.gcp.config",
         "infra.gcp.resources",
         "infra.gcp.services",
+        "infra.sdlc.deploy",
         "infra.spec",
         "pipelines.ci",
+        "pipelines.sdlc",
+        "services.agent.codex",
         "services.cargo",
         "services.gcp.iam",
         "services.gcp.secret_manager",
@@ -182,8 +188,10 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "services.git",
         "services.github.gist",
         "services.github.issues",
+        "services.github.pull_request",
         "services.llm.anthropic",
         "services.llm.openai",
+        "services.sdlc.control_plane",
         "services.shell",
         "shared.dag_util",
         "shared.gist_modes",
@@ -196,8 +204,10 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "tools.codegen",
         "tools.dag_viz",
         "tools.deps",
+        "tools.design",
         "tools.docgen",
         "tools.gist",
+        "tools.infra",
         "tools.makegen",
         "tools.pragma",
         "tools.review",
@@ -220,14 +230,20 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "infra.gcp.config",
         "infra.gcp.resources",
         "examples.integration_tests",
+        "infra.sdlc.deploy",
+        "services.agent.codex",
         "services.cargo",
         "services.gcp.iam",
         "services.gcp.secret_manager",
         "services.gcp.sts",
         "services.github.gist",
         "services.github.issues",
+        "funcs.test_control_flow",
+        "services.github.pull_request",
         "services.llm.anthropic",
         "services.llm.openai",
+        "services.sdlc.control_plane",
+        "funcs.agent_feedback",
         "std.resources",
         "std.types",
         "cloud.aws.credential",
@@ -245,9 +261,13 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "tools.codegen",
         "tools.dag_viz",
         "tools.deps",
+        "tools.design",
+        "pipelines.sdlc",
+        "funcs.sdlc_worker",
         "tools.docgen",
         "tools.gist",
         "examples.deployment",
+        "tools.infra",
         "tools.makegen",
         "tools.pragma",
         "tools.review",
@@ -929,7 +949,11 @@ fn assert_dag_extension_symlink_directory_variants(command: &str) {
             let curdir_link = run_cli(command, &curdir_link_arg, &root);
 
             let expect_success = false;
-            let real_expect_success = if command == "check" { !has_errors } else { true };
+            let real_expect_success = if command == "check" {
+                !has_errors
+            } else {
+                true
+            };
             assert!(
                 real_output.status.success() == real_expect_success,
                 "{test_name}: non-.dag real directory expected success={real_expect_success}, got exit={:?}\nstderr: {}",
@@ -1071,7 +1095,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 46 file(s)"),
+        stdout.contains("OK: checked 56 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1100,7 +1124,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(46));
+    assert_eq!(stdout, expected_check_success_stdout(56));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -11535,7 +11559,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 46 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 56 file(s)"),
         "default check should parse full DSL corpus"
     );
 }
@@ -12690,8 +12714,8 @@ fn viz_without_args_exits_nonzero_with_usage_message() {
 }
 
 #[test]
-fn expand_and_manifest_without_required_target_exit_with_usage_message() {
-    for command in ["expand", "manifest"] {
+fn expand_and_progress_without_required_target_exit_with_usage_message() {
+    for command in ["expand", "progress"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .current_dir(workspace_root())
@@ -12715,8 +12739,8 @@ fn expand_and_manifest_without_required_target_exit_with_usage_message() {
 }
 
 #[test]
-fn expand_and_manifest_with_extra_args_exit_with_usage_message() {
-    for command in ["expand", "manifest"] {
+fn expand_and_progress_with_extra_args_exit_with_usage_message() {
+    for command in ["expand", "progress"] {
         let output = Command::new(daglang_bin())
             .arg(command)
             .arg("dsl/tools/makegen.dag")
@@ -12927,7 +12951,7 @@ fn assert_compile_family_command_succeeds(
 
 const COMPILE_FAMILY_COMMANDS: [(&str, &[&str]); 5] = [
     ("expand", &[]),
-    ("manifest", &[]),
+    ("progress", &[]),
     ("compile", &[]),
     ("obligations", &["--format", "json"]),
     ("show-triplets", &["--format", "json"]),

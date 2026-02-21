@@ -785,14 +785,20 @@ mod tests {
             "infra.gcp.config",
             "infra.gcp.resources",
             "examples.integration_tests",
+            "infra.sdlc.deploy",
+            "services.agent.codex",
             "services.cargo",
             "services.gcp.iam",
             "services.gcp.secret_manager",
             "services.gcp.sts",
             "services.github.gist",
             "services.github.issues",
+            "funcs.test_control_flow",
+            "services.github.pull_request",
             "services.llm.anthropic",
             "services.llm.openai",
+            "services.sdlc.control_plane",
+            "funcs.agent_feedback",
             "std.resources",
             "std.types",
             "cloud.aws.credential",
@@ -810,9 +816,13 @@ mod tests {
             "tools.codegen",
             "tools.dag_viz",
             "tools.deps",
+            "tools.design",
+            "pipelines.sdlc",
+            "funcs.sdlc_worker",
             "tools.docgen",
             "tools.gist",
             "examples.deployment",
+            "tools.infra",
             "tools.makegen",
             "tools.pragma",
             "tools.review",
@@ -1066,7 +1076,7 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 46);
+        assert_eq!(result.parsed_count(), 56);
         assert!(
             result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
@@ -1111,7 +1121,7 @@ mod tests {
         .expect("pipeline should execute");
         assert_eq!(
             result.parsed_count(),
-            46,
+            56,
             "report stop should retain parse-stage file count for real corpus"
         );
     }

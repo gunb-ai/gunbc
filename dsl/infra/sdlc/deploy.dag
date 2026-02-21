@@ -1,0 +1,141 @@
+// infra/sdlc/deploy.dag -- SDLC pipeline deployment spec.
+//
+// Declares the infrastructure resources needed for the SDLC worker:
+//   - GCS bucket for ledger storage
+//   - Cloud Run service for the worker
+//   - Secret Manager secrets for GitHub token
+//   - Service account with appropriate roles
+//
+// Uses the existing infra/gcp/services.dag operations and
+// infra/gcp/config.dag environment configs.
+
+module infra.sdlc.deploy
+
+import infra.gcp.services { Storage, CloudRun, SecretManager, IAM }
+import infra.gcp.config { gcp_dev_config }
+
+fn worker_service_name() -> String {
+  "gunbc-sdlc-worker"
+}
+
+fn ledger_bucket_name(project: String) -> String {
+  "{project}-sdlc-ledger"
+}
+
+fn worker_image(project: String, region: String) -> String {
+  "{region}-docker.pkg.dev/{project}/gunbc/sdlc-worker:latest"
+}
+
+fn worker_sa_email(project: String) -> String {
+  "gunbc-sdlc-worker@{project}.iam.gserviceaccount.com"
+}
+
+// ── Resource declarations ───────────────────────────────────────────
+
+func deploy_ledger_bucket(project: String) -> { name: String } {
+  existing = Storage.GetBucket(name: ledger_bucket_name(project: project))
+
+  if !existing.exists {
+    created = Storage.CreateBucket(
+      project: project,
+      name: ledger_bucket_name(project: project),
+      location: "us-central1",
+      storage_class: "STANDARD",
+      labels: { "managed-by": "gunbc", "component": "sdlc-ledger" }
+    )
+    return { name: created.name }
+  }
+
+  return { name: existing.name }
+}
+
+func deploy_service_account(project: String) -> { email: String } {
+  existing = IAM.GetServiceAccount(
+    project: project,
+    email: worker_sa_email(project: project)
+  )
+
+  if !existing.exists {
+    created = IAM.CreateServiceAccount(
+      project: project,
+      account_id: "gunbc-sdlc-worker",
+      display_name: "gunbc SDLC Worker"
+    )
+    return { email: created.email }
+  }
+
+  return { email: existing.email }
+}
+
+func deploy_worker_service(
+  project: String,
+  region: String
+) -> { name: String, uri: String } {
+  existing = CloudRun.GetService(
+    project: project,
+    region: region,
+    name: worker_service_name()
+  )
+
+  if !existing.exists {
+    created = CloudRun.CreateService(
+      project: project,
+      region: region,
+      name: worker_service_name(),
+      image: worker_image(project: project, region: region),
+      memory: "512Mi",
+      cpu: 1,
+      min_instances: 0,
+      max_instances: 1,
+      env: {
+        "SDLC_LEDGER_DIR": "/data/ledger",
+        "SDLC_REPO_OWNER": "gunb-ai",
+        "SDLC_REPO_NAME": "gunbc"
+      },
+      service_account: worker_sa_email(project: project),
+      labels: { "managed-by": "gunbc", "component": "sdlc-worker" }
+    )
+    return { name: created.name, uri: created.uri }
+  }
+
+  updated = CloudRun.UpdateService(
+    project: project,
+    region: region,
+    name: worker_service_name(),
+    image: worker_image(project: project, region: region),
+    memory: "512Mi",
+    labels: { "managed-by": "gunbc", "component": "sdlc-worker" }
+  )
+  return { name: updated.name, uri: updated.uri }
+}
+
+func deploy_github_secret(project: String) -> { name: String } {
+  existing = SecretManager.GetSecret(
+    project: project,
+    secret: "github-token"
+  )
+
+  if !existing.exists {
+    created = SecretManager.CreateSecret(
+      project: project,
+      secret_id: "github-token"
+    )
+    return { name: created.name }
+  }
+
+  return { name: existing.name }
+}
+
+// ── Full deployment pipeline ────────────────────────────────────────
+
+func deploy_all(
+  project: String,
+  region: String
+) -> { success: Bool } {
+  bucket = deploy_ledger_bucket(project: project)
+  sa = deploy_service_account(project: project)
+  secret = deploy_github_secret(project: project)
+  service = deploy_worker_service(project: project, region: region)
+
+  return { success: true }
+}

@@ -321,6 +321,15 @@ impl ClippyConfig {
                 "git2::Repository::init",
                 "I6: No escape hatches. Git I/O must be in transport layer",
             )
+            // Secret plaintext extraction aliases - enforce approved transport-boundary naming
+            .disallow(
+                "gunbc_ir::value::SecretString::expose",
+                "M7: Use expose_plaintext_for_transport at approved transport boundaries only",
+            )
+            .disallow(
+                "gunbc_ir::transport::credential::Secret::expose",
+                "M7: Use expose_plaintext_for_transport at approved transport boundaries only",
+            )
             // Filesystem types - disallow owning raw file handles outside transport
             .disallow_type(
                 "std::fs::File",
@@ -468,6 +477,22 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
             .iter()
             .filter(|m| !m.path.starts_with("std::fs::") && !m.path.starts_with("std::process::"))
             .collect();
+        let secret_plaintext_methods: Vec<_> = other_methods
+            .iter()
+            .filter(|method| {
+                method.path == "gunbc_ir::value::SecretString::expose"
+                    || method.path == "gunbc_ir::transport::credential::Secret::expose"
+            })
+            .copied()
+            .collect();
+        let generic_other_methods: Vec<_> = other_methods
+            .iter()
+            .filter(|method| {
+                method.path != "gunbc_ir::value::SecretString::expose"
+                    && method.path != "gunbc_ir::transport::credential::Secret::expose"
+            })
+            .copied()
+            .collect();
 
         let mut array = String::from("disallowed-methods = [\n");
 
@@ -503,9 +528,21 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
             }
         }
 
-        if !other_methods.is_empty() {
+        if !generic_other_methods.is_empty() {
             array.push_str("    # Other disallowed methods\n");
-            for method in &other_methods {
+            for method in &generic_other_methods {
+                writeln!(
+                    array,
+                    "    {{ path = \"{}\", reason = \"{}\" }},",
+                    method.path, method.reason
+                )
+                .unwrap();
+            }
+        }
+
+        if !secret_plaintext_methods.is_empty() {
+            array.push_str("    # Secret plaintext extraction aliases — force transport-boundary-only naming.\n");
+            for method in &secret_plaintext_methods {
                 writeln!(
                     array,
                     "    {{ path = \"{}\", reason = \"{}\" }},",
@@ -733,6 +770,11 @@ mod tests {
         // Should contain specific methods
         assert!(toml.contains("std::fs::read"));
         assert!(toml.contains("std::process::Command::new"));
+        assert!(toml.contains(
+            "# Secret plaintext extraction aliases — force transport-boundary-only naming."
+        ));
+        assert!(toml.contains("gunbc_ir::value::SecretString::expose"));
+        assert!(toml.contains("gunbc_ir::transport::credential::Secret::expose"));
         assert!(toml.contains("std::fs::File"));
     }
 

@@ -32,5 +32,4 @@ mod tests {
         let dag = build_bootstrap_graph().expect("bootstrap DSL graph should build");
         assert!(!dag.nodes.is_empty());
     }
-
 }

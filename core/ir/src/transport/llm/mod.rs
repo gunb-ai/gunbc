@@ -107,14 +107,29 @@ impl LlmScopeContract {
 
 impl ScopeContract for LlmScopeContract {
     fn credential_intent(&self) -> CredentialIntent {
-        let provider = provider_by_id(&self.provider_id);
-        let (scheme, header_name) = match provider.as_ref().map(|p| &p.auth_scheme) {
-            Some(crate::AuthScheme::Bearer) => ("bearer", ""),
-            Some(crate::AuthScheme::Header { name }) => ("header", name.as_str()),
-            _ => ("bearer", ""),
+        let provider = provider_by_id(&self.provider_id).unwrap_or_else(|| {
+            panic!(
+                "LlmScopeContract: unknown provider '{}' — \
+                 cannot derive secret_name or auth scheme for unregistered providers",
+                self.provider_id
+            )
+        });
+
+        let (scheme, header_name) = match &provider.auth_scheme {
+            crate::AuthScheme::Bearer => ("bearer", ""),
+            crate::AuthScheme::Header { name } => ("header", name.as_str()),
+            crate::AuthScheme::Basic { .. } => {
+                panic!(
+                    "LlmScopeContract: basic auth is not supported for LLM providers ({})",
+                    self.provider_id
+                )
+            }
         };
 
+        let secret_name = provider.api_key_env.to_lowercase().replace('_', "-");
+
         let mut intent = CredentialIntent::new(&self.provider_id, &self.provider_id, scheme)
+            .with_secret_name(secret_name)
             .with_required_scopes([LlmScope::ChatCompletion.as_str()])
             .with_interactive_allowed(true);
 
@@ -203,6 +218,7 @@ mod tests {
         let intent = LlmScopeContract::openai().credential_intent();
         assert_eq!(intent.provider, "openai");
         assert_eq!(intent.service, "openai");
+        assert_eq!(intent.secret_name, Some("openai-api-key".to_string()));
         assert_eq!(intent.scheme, "bearer");
         assert!(intent.header_name.is_empty());
         assert_eq!(
@@ -218,6 +234,7 @@ mod tests {
         let intent = LlmScopeContract::anthropic().credential_intent();
         assert_eq!(intent.provider, "anthropic");
         assert_eq!(intent.service, "anthropic");
+        assert_eq!(intent.secret_name, Some("anthropic-api-key".to_string()));
         assert_eq!(intent.scheme, "header");
         assert_eq!(intent.header_name, "x-api-key");
         assert_eq!(

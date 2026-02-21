@@ -192,10 +192,7 @@ mod tests {
             .to_string(),
             "source-changed:gunbc-ir"
         );
-        assert_eq!(
-            CompilationMissReason::NeverBuilt.to_string(),
-            "never-built"
-        );
+        assert_eq!(CompilationMissReason::NeverBuilt.to_string(), "never-built");
     }
 
     #[test]
@@ -217,8 +214,7 @@ mod tests {
             new: "1.81.0".to_string(),
         };
         let json = serde_json::to_string(&reason).expect("serialize");
-        let deserialized: CompilationMissReason =
-            serde_json::from_str(&json).expect("deserialize");
+        let deserialized: CompilationMissReason = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(reason, deserialized);
     }
 

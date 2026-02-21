@@ -41,9 +41,9 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             );
             println!("{}", render_expand(&output.lowered_dag));
         }
-        "manifest" => {
-            let parsed =
-                parse_manifest_command_args(args).unwrap_or_else(|usage| exit_usage(&usage));
+        "progress" => {
+            let parsed = parse_progress_command_args(args[1].as_str(), args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit_with_options(
                 cwd,
                 Some(&parsed.input),
@@ -51,7 +51,19 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             );
             println!(
                 "{}",
-                render_manifest_with_format(&output.derived, parsed.format)
+                render_progress_with_format(&output.derived, parsed.format)
+            );
+        }
+        "topology" => {
+            if args.len() != 3 && args.len() != 5 {
+                exit_usage("topology <file.dag> [--format text|json]");
+            }
+            let format =
+                parse_output_format("topology", args).unwrap_or_else(|usage| exit_usage(&usage));
+            let output = compile_target_or_exit(cwd, args.get(2));
+            println!(
+                "{}",
+                render_topology_with_format(&output.derived, format)
             );
         }
         "obligations" => {
@@ -89,9 +101,8 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let roots = if let Some(root) = root_arg {
                 vec![resolve_root(cwd, Some(&root))]
             } else {
-                match resolve_configured_roots(cwd) {
-                    Ok(Some(config_roots)) => config_roots,
-                    Ok(None) => vec![resolve_root(cwd, None)],
+                match resolve_default_roots(cwd) {
+                    Ok(roots) => roots,
                     Err(error) => {
                         eprintln!("{error}");
                         std::process::exit(1);
@@ -184,7 +195,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "compile",
                 args,
-                "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]",
+                "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]",
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
@@ -205,6 +216,15 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 parsed.input.as_ref(),
                 options.clone(),
             );
+            if matches!(parsed.format, CompileOutputFormat::CanonicalJson) {
+                let canonical_json =
+                    render_canonical_ir_json(&output.lowered_dag).unwrap_or_else(|error| {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    });
+                println!("{canonical_json}");
+                return;
+            }
             // For Layer 1 exec-runtime: embed pre-computed handler data files.
             embed_layer1_handler_data(&options, &mut output);
             let written_files = if let Some(out_dir) = normalized_out_dir.as_ref() {

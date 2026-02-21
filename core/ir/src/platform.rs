@@ -287,8 +287,10 @@ impl TargetTriple {
 
     /// Detect a best-effort host triple for the current process.
     pub fn detect_host() -> Self {
-        let arch = Arch::parse(std::env::consts::ARCH).unwrap_or_else(|_| Arch::Other(std::env::consts::ARCH.to_string()));
-        let os = Os::parse(std::env::consts::OS).unwrap_or_else(|_| Os::Other(std::env::consts::OS.to_string()));
+        let arch = Arch::parse(std::env::consts::ARCH)
+            .unwrap_or_else(|_| Arch::Other(std::env::consts::ARCH.to_string()));
+        let os = Os::parse(std::env::consts::OS)
+            .unwrap_or_else(|_| Os::Other(std::env::consts::OS.to_string()));
         let vendor = detect_vendor();
         let env = detect_abi_env();
         Self {
@@ -441,7 +443,8 @@ impl ToolchainCommands {
 
 fn detect_execution_env() -> ExecutionEnv {
     if std::env::var("GUNBC_EXEC_ENV").is_ok() {
-        return ExecutionEnv::parse(&std::env::var("GUNBC_EXEC_ENV").unwrap_or_default()).unwrap_or(ExecutionEnv::Native);
+        return ExecutionEnv::parse(&std::env::var("GUNBC_EXEC_ENV").unwrap_or_default())
+            .unwrap_or(ExecutionEnv::Native);
     }
 
     if std::env::var_os("WSL_DISTRO_NAME").is_some() || std::env::var_os("WSL_INTEROP").is_some() {
@@ -576,6 +579,4 @@ mod tests {
         assert!(ExecutionEnv::parse("unknown_exec").is_err());
         assert!("unknown_exec".parse::<ExecutionEnv>().is_err());
     }
-
-
 }

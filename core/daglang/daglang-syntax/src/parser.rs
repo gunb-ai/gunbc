@@ -208,6 +208,12 @@ impl Parser {
             TokenKind::Type => "type",
             TokenKind::Fn => "fn",
             TokenKind::Func => "func",
+            TokenKind::Project => "project",
+            TokenKind::Feature => "feature",
+            TokenKind::Task => "task",
+            TokenKind::Design => "design",
+            TokenKind::Component => "component",
+            TokenKind::Environment => "environment",
             TokenKind::Pattern => "pattern",
             TokenKind::Service => "service",
             TokenKind::Resource => "resource",
@@ -277,7 +283,13 @@ impl Parser {
                 | TokenKind::Interface
                 | TokenKind::Pipeline
                 | TokenKind::Test
-                | TokenKind::Fixture => return,
+                | TokenKind::Fixture
+                | TokenKind::Project
+                | TokenKind::Feature
+                | TokenKind::Task
+                | TokenKind::Design
+                | TokenKind::Component
+                | TokenKind::Environment => return,
                 _ => {
                     self.advance();
                 }
@@ -491,6 +503,12 @@ impl Parser {
             TokenKind::Pipeline => Item::PipelineDef(self.parse_pipeline_def()?),
             TokenKind::Test => Item::TestDef(self.parse_test_def(leading_anns)?),
             TokenKind::Fixture => Item::FixtureDef(self.parse_fixture_def()?),
+            TokenKind::Project => Item::ProjectDef(self.parse_project_def()?),
+            TokenKind::Feature => Item::FeatureDef(self.parse_feature_def()?),
+            TokenKind::Task => Item::TaskDef(self.parse_task_def()?),
+            TokenKind::Design => Item::DesignDef(self.parse_design_def()?),
+            TokenKind::Component => Item::ComponentDef(self.parse_component_def()?),
+            TokenKind::Environment => Item::EnvironmentDef(self.parse_environment_def()?),
             _ => {
                 return Err(self.err(format!(
                     "expected item declaration, found {}",
@@ -1244,6 +1262,75 @@ impl Parser {
         let body = self.parse_func_body_lossy()?;
         Ok(StageDef { name, body, after })
     }
+    // ── SDLC & Infra Blocks ─────────────────────────────────────────
+
+    fn parse_property_list_until_rbrace(&mut self) -> Result<Vec<(String, Expr)>, ParseError> {
+        let mut props = Vec::new();
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            let name = self.expect_ident()?;
+            self.expect(&TokenKind::Eq)?;
+            let expr = self.parse_expr(0)?;
+            props.push((name, expr));
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        Ok(props)
+    }
+
+    fn parse_project_def(&mut self) -> Result<ProjectDef, ParseError> {
+        self.expect(&TokenKind::Project)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let properties = self.parse_property_list_until_rbrace()?;
+        self.expect(&TokenKind::RBrace)?;
+        Ok(ProjectDef { name, properties })
+    }
+
+    fn parse_feature_def(&mut self) -> Result<FeatureDef, ParseError> {
+        self.expect(&TokenKind::Feature)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let properties = self.parse_property_list_until_rbrace()?;
+        self.expect(&TokenKind::RBrace)?;
+        Ok(FeatureDef { name, properties })
+    }
+
+    fn parse_task_def(&mut self) -> Result<TaskDef, ParseError> {
+        self.expect(&TokenKind::Task)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let properties = self.parse_property_list_until_rbrace()?;
+        self.expect(&TokenKind::RBrace)?;
+        Ok(TaskDef { name, properties })
+    }
+
+    fn parse_design_def(&mut self) -> Result<DesignDef, ParseError> {
+        self.expect(&TokenKind::Design)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let properties = self.parse_property_list_until_rbrace()?;
+        self.expect(&TokenKind::RBrace)?;
+        Ok(DesignDef { name, properties })
+    }
+
+    fn parse_component_def(&mut self) -> Result<ComponentDef, ParseError> {
+        self.expect(&TokenKind::Component)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let properties = self.parse_property_list_until_rbrace()?;
+        self.expect(&TokenKind::RBrace)?;
+        Ok(ComponentDef { name, properties })
+    }
+
+    fn parse_environment_def(&mut self) -> Result<EnvironmentDef, ParseError> {
+        self.expect(&TokenKind::Environment)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let properties = self.parse_property_list_until_rbrace()?;
+        self.expect(&TokenKind::RBrace)?;
+        Ok(EnvironmentDef { name, properties })
+    }
 
     // ── test DSL ───────────────────────────────────────────────────
 
@@ -1269,10 +1356,7 @@ impl Parser {
 
     /// Parse a test definition:
     /// `test <name> [: <fixture>] { annotation* (mock | input | expect)* }`
-    fn parse_test_def(
-        &mut self,
-        leading_anns: Vec<Annotation>,
-    ) -> Result<TestDef, ParseError> {
+    fn parse_test_def(&mut self, leading_anns: Vec<Annotation>) -> Result<TestDef, ParseError> {
         self.expect(&TokenKind::Test)?;
         let name = self.expect_ident()?;
         let fixture = if self.eat(&TokenKind::Colon) {

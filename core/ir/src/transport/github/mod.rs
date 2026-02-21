@@ -18,10 +18,21 @@
 
 pub mod api;
 pub mod cli;
+pub mod issues;
+pub mod pull_request;
 
 // Re-export for convenience
 pub use api::{github_rest_request, GitHubApi, GITHUB_API};
 pub use cli::{gh_cli_commands, gh_cli_request, GHCommand, GH_TOOL};
+pub use issues::{
+    compare_and_set_stage_label, ensure_sdlc_issue_capabilities, map_github_issue, set_stage_label,
+    stage_from_labels, GitHubIssueRecord, IssueLifecycleStage, IssueRef, SdlcIssueCapabilities,
+    TrackedIssue,
+};
+pub use pull_request::{
+    build_pr_comment_request, build_pr_create_request, build_pr_merge_request,
+    parse_pr_create_response,
+};
 
 // ============================================================================
 // Version Constants (single source of truth)
