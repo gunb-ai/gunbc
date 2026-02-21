@@ -37,9 +37,9 @@ pub use key::{
     WorkIdentity,
 };
 pub use ledger::{
-    append_global_ledger_entry, load_global_ledger, rehydrate_outputs_for_entry,
-    save_global_ledger, store_output_payload, workflow_ledger_paths, LedgerStatus, RunId,
-    RunLedgerEntry, WorkflowLedgerError, WorkflowLedgerPaths,
+    append_global_ledger_entry, append_pending_approval_entry, load_global_ledger,
+    rehydrate_outputs_for_entry, save_global_ledger, store_output_payload, workflow_ledger_paths,
+    LedgerStatus, RunId, RunLedgerEntry, WorkflowLedgerError, WorkflowLedgerPaths,
 };
 pub use planner::{
     explain_plan, plan_workflow, plan_workflow_with_mode, CapabilityAction, CapabilityStatus,

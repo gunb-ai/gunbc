@@ -85,7 +85,8 @@ pub use tool_runner::{
     RunToolOptions,
 };
 pub use workflow::{
-    all_tool_workflow_names, append_global_ledger_entry, bootstrap_workflow_spec,
+    all_tool_workflow_names, append_global_ledger_entry, append_pending_approval_entry,
+    bootstrap_workflow_spec,
     bootstrap_workflow_spec_with_registry, build_all_workflow_spec,
     build_all_workflow_spec_with_registry, check_slo, ci_unit_commands, ci_workflow_spec,
     ci_workflow_spec_with_registry, claim_handle_type_id, codegen_key, compilation_key,
