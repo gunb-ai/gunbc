@@ -203,6 +203,7 @@ Conformance evidence classes:
    1. Rust layer-1 runnable smoke for infra entrypoint.
    2. Go/C/MIPS toolchain-aware smoke for infra + SDLC modules.
    3. When Go and/or MIPS toolchains are available, and when C compiler + curl headers are available for service-transport modules, strict non-skip runtime gates are enforced for infra, design, SDLC pipeline, and SDLC control-plane generated backends.
+   4. When C sanitizer runtimes are available, strict non-skip ASAN and ASAN+UBSAN execution gates are enforced for generated design-tool C backend paths.
 3. Differential policy:
    1. Any new SDLC orchestration behavior must land in DSL modules first.
    2. Runtime-only behavior deltas are design-policy violations.
