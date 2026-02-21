@@ -560,6 +560,10 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         );
     }
 
+    yaml.push_str(
+        "      - name: Verify Bootstrap Invariants\n        run: rm -rf target/codegen && cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci\n\n",
+    );
+
     write!(
         yaml,
         "      - name: Run CI Pipeline\n        run: {}\n",
