@@ -175,21 +175,15 @@ fn extract_output_field(
     // Type-specific conversion.
     match field.type_id.as_str() {
         "Secret" => {
-            let s = json_val
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
             Ok(Value::Secret(SecretString::new(s)))
         }
         "Int" => {
-            let n = json_val
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            let n = json_val.and_then(|v| v.as_i64()).unwrap_or(0);
             Ok(Value::Int(n))
         }
         "Bool" => {
-            let b = json_val
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
+            let b = json_val.and_then(|v| v.as_bool()).unwrap_or(false);
             Ok(Value::Bool(b))
         }
         "Bytes" => {
@@ -197,9 +191,11 @@ fn extract_output_field(
             // Tries direct field first, then nested .data path.
             let b64 = json_val
                 .and_then(|v| {
-                    v.as_str()
-                        .map(|s| s.to_string())
-                        .or_else(|| v.get("data").and_then(|d| d.as_str()).map(|s| s.to_string()))
+                    v.as_str().map(|s| s.to_string()).or_else(|| {
+                        v.get("data")
+                            .and_then(|d| d.as_str())
+                            .map(|s| s.to_string())
+                    })
                 })
                 .unwrap_or_default();
             let bytes = base64_decode(&b64)
@@ -214,9 +210,7 @@ fn extract_output_field(
         }
         // String, Url, GistId, NonEmptyStr, etc. → all as String.
         _ => {
-            let s = json_val
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
             if field.is_secret {
                 Ok(Value::Secret(SecretString::new(s)))
             } else {
@@ -275,7 +269,8 @@ impl Executable for GenericShellPrepareOp {
                 ArgvSegment::Literal(s) => {
                     // Handle complex interpolation: e.g., "{base}...{head}"
                     if s.contains('{') {
-                        let interpolated = interpolate_template(s, &inputs, &self.spec.input_fields);
+                        let interpolated =
+                            interpolate_template(s, &inputs, &self.spec.input_fields);
                         argv.push(interpolated);
                     } else {
                         argv.push(s.clone());
@@ -343,9 +338,7 @@ impl Executable for GenericShellParseOp {
                             .first()
                             .map(|f| f.name.as_str())
                             .unwrap_or("success");
-                        OutputMap::new()
-                            .bool(field_name, shell.success())
-                            .ok()
+                        OutputMap::new().bool(field_name, shell.success()).ok()
                     }
 
                     ShellOutputParsing::SplitLines => {
@@ -427,11 +420,7 @@ impl Executable for GenericShellParseOp {
 // ============================================================================
 
 /// Extract an input value as a string, handling Secret and defaults.
-fn input_as_string(
-    inputs: &HashMap<String, Value>,
-    name: &str,
-    default: Option<&str>,
-) -> String {
+fn input_as_string(inputs: &HashMap<String, Value>, name: &str, default: Option<&str>) -> String {
     match inputs.get(name) {
         Some(Value::Str(s)) => s.clone(),
         Some(Value::Secret(secret)) => secret.expose_plaintext_for_transport().to_string(),
@@ -544,7 +533,7 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
         return Ok(Vec::new());
     }
 
-    if sextets.len() % 4 != 0 {
+    if sextets.len() & 3 != 0 {
         return Err("invalid base64 length".to_string());
     }
 
@@ -592,24 +581,20 @@ mod tests {
             endpoint: "https://api.example.com".to_string(),
             method: "POST".to_string(),
             path_template: "/v1/things".to_string(),
-            input_fields: vec![
-                FieldSpec {
-                    name: "name".to_string(),
-                    type_id: "String".to_string(),
-                    default: None,
-                    is_secret: false,
-                    is_path_param: false,
-                },
-            ],
-            output_fields: vec![
-                OutputFieldSpec {
-                    name: "id".to_string(),
-                    type_id: "String".to_string(),
-                    json_path: "id".to_string(),
-                    is_secret: false,
-                    is_raw_body: false,
-                },
-            ],
+            input_fields: vec![FieldSpec {
+                name: "name".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: false,
+            }],
+            output_fields: vec![OutputFieldSpec {
+                name: "id".to_string(),
+                type_id: "String".to_string(),
+                json_path: "id".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
             body_template: None,
             headers: vec![],
         }
@@ -760,10 +745,7 @@ mod tests {
         );
 
         let outputs = op.execute(inputs).unwrap();
-        assert_eq!(
-            outputs.get("id").and_then(Value::as_str),
-            Some("abc-123")
-        );
+        assert_eq!(outputs.get("id").and_then(Value::as_str), Some("abc-123"));
     }
 
     #[test]
@@ -805,7 +787,9 @@ mod tests {
 
         let outputs = op.execute(inputs).unwrap();
         match outputs.get("access_token") {
-            Some(Value::Secret(s)) => assert_eq!(s.expose_plaintext_for_transport(), "ya29.secret-token"),
+            Some(Value::Secret(s)) => {
+                assert_eq!(s.expose_plaintext_for_transport(), "ya29.secret-token")
+            }
             other => panic!("expected Secret, got {other:?}"),
         }
         assert_eq!(outputs.get("expires_in"), Some(&Value::Int(3600)));
@@ -829,10 +813,7 @@ mod tests {
         let outputs = op.execute(inputs).unwrap();
         match outputs.get("payload") {
             Some(Value::List(bytes)) => {
-                let decoded: Vec<u8> = bytes
-                    .iter()
-                    .map(|v| v.as_int().unwrap() as u8)
-                    .collect();
+                let decoded: Vec<u8> = bytes.iter().map(|v| v.as_int().unwrap() as u8).collect();
                 assert_eq!(decoded, b"Hello");
             }
             other => panic!("expected List of bytes, got {other:?}"),
@@ -869,10 +850,7 @@ mod tests {
         );
 
         let outputs = op.execute(inputs).unwrap();
-        assert_eq!(
-            outputs.get("branch").and_then(Value::as_str),
-            Some("main")
-        );
+        assert_eq!(outputs.get("branch").and_then(Value::as_str), Some("main"));
     }
 
     #[test]
