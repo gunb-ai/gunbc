@@ -316,7 +316,7 @@ Conformance evidence classes:
 3. Report includes rollup summary counters for monitoring ingestion:
    1. intake total,
    2. ready/executed/terminalized counts,
-   3. awaiting approval, claim conflict, and replay-skip counts.
+   3. awaiting approval, claim conflict, replay-skip, and retry-backoff-deferred counts.
 4. Report includes generation timestamp for downstream time-series correlation.
 
 ## 7. Conformance Model (Multi-Level)
