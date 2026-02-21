@@ -19,8 +19,29 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 }
 
 fn write_intent_file(path: &Path, intent_id: &str, intake_key: &str, issue_id: Option<u64>) {
+    write_intent_file_with_git(path, intent_id, intake_key, issue_id, true);
+}
+
+fn write_intent_file_without_git(
+    path: &Path,
+    intent_id: &str,
+    intake_key: &str,
+    issue_id: Option<u64>,
+) {
+    write_intent_file_with_git(path, intent_id, intake_key, issue_id, false);
+}
+
+fn write_intent_file_with_git(
+    path: &Path,
+    intent_id: &str,
+    intake_key: &str,
+    issue_id: Option<u64>,
+    initialize_git: bool,
+) {
     let root = path.parent().expect("intent fixture path should have parent");
-    ensure_git_repo_with_commit(root);
+    if initialize_git {
+        ensure_git_repo_with_commit(root);
+    }
     let issue_id_yaml = match issue_id {
         Some(value) => value.to_string(),
         None => "null".to_string(),
@@ -165,6 +186,38 @@ fn intake_dry_run_computes_run_key_without_writing_ledger() {
     assert!(
         !root.join("target/sdlc/artifact-ledger.json").exists(),
         "dry-run intake must not write artifact ledger state"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn intake_real_mode_fails_closed_without_git_trace_context() {
+    let root = unique_temp_dir("missing_git_trace");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file_without_git(
+        &intent_path,
+        "intent-20260221-missing-git",
+        "intent-20260221-missing-git",
+        None,
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake without git metadata");
+    assert!(
+        !intake.status.success(),
+        "intake should fail closed without git trace context"
+    );
+    let stderr = String::from_utf8_lossy(&intake.stderr);
+    assert!(
+        stderr.contains("trace linkage requires git metadata"),
+        "stderr should explain missing git metadata requirement: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
