@@ -151,3 +151,33 @@ fn review_openai_reports_actionable_error_when_gcloud_cli_missing() {
         "failure output should include gcloud installation remediation: {combined}"
     );
 }
+
+#[test]
+fn review_anthropic_reports_actionable_error_when_gcloud_cli_missing() {
+    if gcloud_available() {
+        eprintln!("SKIP: gcloud available on PATH; missing-gcloud scenario not reproducible");
+        return;
+    }
+    let output = run_review_with_adc_only("anthropic");
+    assert!(
+        !output.status.success(),
+        "anthropic review should fail closed when gcloud CLI is missing"
+    );
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        combined.contains("failed to spawn command `gcloud`"),
+        "failure output should identify missing gcloud executable: {combined}"
+    );
+    assert!(
+        combined.contains("Install Google Cloud SDK"),
+        "failure output should include gcloud installation remediation: {combined}"
+    );
+    assert!(
+        combined.contains("provider: anthropic"),
+        "failure output should preserve provider context: {combined}"
+    );
+}
