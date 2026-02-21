@@ -831,6 +831,78 @@ fn run_generated_c_with_asan(native_out_dir: &Path) -> RuntimeOutcome {
     }
 }
 
+fn run_generated_c_with_asan_ubsan(native_out_dir: &Path) -> RuntimeOutcome {
+    if !command_exists("cc") {
+        return RuntimeOutcome::Skipped {
+            reason: "C compiler `cc` not available on PATH".to_string(),
+        };
+    }
+    let c_dir = native_out_dir.join("target/generated/c");
+    let main_c = c_dir.join("main.c");
+    if !main_c.is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!("missing generated c source: {}", main_c.display()),
+        };
+    }
+    let out_dir = unique_workspace_target_dir("runtime_c_asan_ubsan_out");
+    if let Err(error) = std::fs::create_dir_all(&out_dir) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to create C ASAN+UBSAN runtime output dir: {error}"),
+        };
+    }
+    let bin_path = out_dir.join("asan_ubsan_bin");
+    let compile = match Command::new("cc")
+        .arg("main.c")
+        .arg("-fsanitize=address,undefined")
+        .arg("-fno-omit-frame-pointer")
+        .arg("-g")
+        .arg("-O1")
+        .arg("-o")
+        .arg(&bin_path)
+        .current_dir(&c_dir)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&out_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to invoke C compiler for ASAN+UBSAN build: {error}"),
+            };
+        }
+    };
+    if !compile.status.success() {
+        let _ = std::fs::remove_dir_all(&out_dir);
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated c ASAN+UBSAN compile failed: {}",
+                String::from_utf8_lossy(&compile.stderr)
+            ),
+        };
+    }
+    let run = match Command::new(&bin_path).output() {
+        Ok(output) => output,
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&out_dir);
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute generated c ASAN+UBSAN binary: {error}"),
+            };
+        }
+    };
+    let _ = std::fs::remove_dir_all(&out_dir);
+    if !run.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated c ASAN+UBSAN binary failed: {}",
+                String::from_utf8_lossy(&run.stderr)
+            ),
+        };
+    }
+    RuntimeOutcome::Ran {
+        stdout: String::from_utf8_lossy(&run.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+    }
+}
+
 fn run_infra_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
     let toolchain = ToolchainCommands::mips_linux_gnu();
     let emulator = toolchain
@@ -1689,4 +1761,50 @@ fn design_tool_c_runtime_asan_smoke_when_available() {
     }
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native design tool c asan out root");
+}
+
+#[test]
+fn infra_c_runtime_asan_ubsan_smoke_when_available() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_infra_c_asan_ubsan");
+    compile_module_for_target("dsl/tools/infra.dag", "c", &native_out_root.join("c"));
+    match run_generated_c_with_asan_ubsan(&native_out_root.join("c")) {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated infra c asan+ubsan runtime should print backend banner: {stdout}"
+            );
+            assert!(
+                !stderr.contains("AddressSanitizer") && !stderr.contains("runtime error:"),
+                "infra c asan+ubsan smoke should not report sanitizer violations: {stderr}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP infra c asan+ubsan smoke: {reason}");
+        }
+    }
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native infra c asan+ubsan out root");
+}
+
+#[test]
+fn sdlc_pipeline_c_runtime_asan_ubsan_smoke_when_available() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_c_asan_ubsan");
+    compile_module_for_target("dsl/pipelines/sdlc.dag", "c", &native_out_root.join("c"));
+    match run_generated_c_with_asan_ubsan(&native_out_root.join("c")) {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated sdlc pipeline c asan+ubsan runtime should print backend banner: {stdout}"
+            );
+            assert!(
+                !stderr.contains("AddressSanitizer") && !stderr.contains("runtime error:"),
+                "sdlc pipeline c asan+ubsan smoke should not report sanitizer violations: {stderr}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP sdlc pipeline c asan+ubsan smoke: {reason}");
+        }
+    }
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native sdlc pipeline c asan+ubsan out root");
 }
