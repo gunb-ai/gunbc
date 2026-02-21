@@ -831,26 +831,9 @@ impl WorkflowSpec {
     }
 }
 
-// TODO(WF15): When planner path is active, tool targets should not have
-// `ensure-codegen` as a Make prerequisite. Codegen freshness will be resolved
-// by the planner via ledger lookup (keyed unit model), not as a Make dependency.
-// See `docs/design/workflow-minimal-execution-model.md` Section 17 and WF15
-// in `TODO/tasks.md`.
 fn tool_dependency_targets(tool: &ToolInfo, config: &BuildConfig) -> Vec<String> {
-    if config.build_system == BuildSystem::Cargo {
-        let mut deps = Vec::new();
-        if !tool.needs_generated_cli {
-            deps.push("preflight-fix".to_string());
-        }
-        deps.push("ensure-codegen".to_string());
-        deps
-    } else if tool.short_name == "pragma" {
-        vec!["preflight-fix".to_string()]
-    } else if tool.needs_generated_cli {
-        vec!["ensure-codegen".to_string()]
-    } else {
-        vec!["preflight-fix".to_string()]
-    }
+    let _ = (tool, config);
+    Vec::new()
 }
 
 // ============================================================================
@@ -1242,11 +1225,6 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
             .needs(compiled_code_resource_id(), ExecMode::Ensure)
             .needs(verified_artifacts_resource_id(), ExecMode::Ensure)
             .with_fix_variant(vec![FixAlias::FmtFix, FixAlias::LintFix]),
-        // test-all - run all tests regardless of cost (includes XL)
-        MetaTarget::new("test-all", "Run all tests (<=XL)", ConfigField::Test)
-            .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
-            .needs(compiled_code_resource_id(), ExecMode::Ensure)
-            .needs(verified_artifacts_resource_id(), ExecMode::Ensure),
         // test-integration - run integration-oriented test subset.
         MetaTarget::new(
             "test-integration",
@@ -1386,6 +1364,17 @@ pub fn default_core_workflows() -> Vec<WorkflowSpec> {
             "lint-fix: auto-fix lint issues where possible",
             &["pragma"],
         ),
+        // WF8: CI and test-all are thin wrappers over gunbc-workflow planner.
+        WorkflowSpec::core(
+            "ci",
+            "Run CI via workflow planner (typed units, deterministic keying)",
+            &[],
+        ),
+        WorkflowSpec::core(
+            "test-all",
+            "Run all tests via workflow planner (warm-path optimized)",
+            &[],
+        ),
     ]
 }
 
@@ -1516,8 +1505,8 @@ impl ToolRegistry {
     ///
     /// This eliminates manual dual-registration: adding a tool to the codegen
     /// registry with `.invocation()` is sufficient for it to appear in the
-    /// Makefile. Only tools that can't be in the codegen registry (like `ci`,
-    /// which has a handwritten main.rs) are added manually here.
+    /// Makefile. Only tools with handwritten binaries that are intentionally
+    /// outside codegen discovery are added manually here.
     pub fn default_registry() -> Self {
         let mut registry = Self {
             core_workflows: default_core_workflows(),
@@ -1716,21 +1705,13 @@ impl ManualToolDef {
             is_pipeline: false,
         }
     }
-    const fn pipeline(module: &'static str) -> Self {
-        Self {
-            module,
-            is_pipeline: true,
-        }
-    }
 }
 
 /// All manual tool definitions. Adding a new manual tool here automatically
 /// validates its DSL module exists and registers its Makefile target.
-const MANUAL_TOOL_DEFS: &[ManualToolDef] = &[
-    ManualToolDef::pipeline("ci"),
-    ManualToolDef::tool("pragma"),
-    ManualToolDef::tool("build"),
-];
+// WF8: ci is now a core workflow (thin wrapper over gunbc-workflow), not a manual tool.
+const MANUAL_TOOL_DEFS: &[ManualToolDef] =
+    &[ManualToolDef::tool("pragma"), ManualToolDef::tool("build")];
 
 fn validate_required_manual_tool_modules(
     tool_modules: &BTreeSet<String>,
@@ -1762,10 +1743,8 @@ fn manual_workspace_tools_from_dsl_modules(
     tool_modules: &BTreeSet<String>,
     pipeline_modules: &BTreeSet<String>,
 ) -> Vec<ToolInfo> {
+    let _ = pipeline_modules;
     let mut tools = Vec::new();
-    if pipeline_modules.contains("ci") {
-        tools.push(ToolInfo::workspace(WorkspaceBinary::Ci, "Run CI pipeline").manual());
-    }
     if tool_modules.contains("pragma") {
         tools.push(
             ToolInfo::workspace(
@@ -1853,7 +1832,7 @@ mod tests {
     #[test]
     fn test_default_registry_manual_tools_follow_dsl_discovery() {
         let registry = ToolRegistry::default_registry();
-        assert!(registry.tools.iter().any(|t| t.short_name == "ci"));
+        assert!(!registry.tools.iter().any(|t| t.short_name == "ci"));
         assert!(registry.tools.iter().any(|t| t.short_name == "pragma"));
         assert!(registry.tools.iter().any(|t| t.short_name == "build-all"));
     }
@@ -1911,9 +1890,8 @@ mod tests {
     fn test_default_meta_targets() {
         let targets = default_meta_targets();
 
-        // Should have test, test-all, integration/external slices, check, clippy, fmt
+        // Should have test, integration/external slices, check, clippy, fmt.
         assert!(targets.iter().any(|t| t.name == "test"));
-        assert!(targets.iter().any(|t| t.name == "test-all"));
         assert!(targets.iter().any(|t| t.name == "test-integration"));
         assert!(targets.iter().any(|t| t.name == "test-external"));
         assert!(targets.iter().any(|t| t.name == "check"));
@@ -2017,7 +1995,7 @@ mod tests {
         assert_eq!(spec.kind, WorkflowKind::Tool);
         assert_eq!(spec.entrypoints.len(), 1);
         assert_eq!(spec.resources.len(), 0);
-        assert_eq!(spec.deps, vec!["preflight-fix", "ensure-codegen"]);
+        assert!(spec.deps.is_empty());
         assert_eq!(spec.live_secrets, vec!["CI_TOKEN"]);
     }
 
@@ -2331,5 +2309,36 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_all_tools_have_no_make_deps() {
+        let registry = ToolRegistry::default_registry();
+        let config = BuildConfig::cargo();
+        for tool in &registry.tools {
+            let deps = tool_dependency_targets(tool, &config);
+            assert!(
+                deps.is_empty(),
+                "tool '{}' should have no Make prerequisites, found: {:?}",
+                tool.short_name,
+                deps
+            );
+        }
+    }
+
+    #[test]
+    fn test_gist_has_no_make_prerequisites() {
+        let registry = ToolRegistry::default_registry();
+        let config = BuildConfig::cargo();
+        let gist = registry
+            .tools
+            .iter()
+            .find(|t| t.short_name == "gist")
+            .expect("gist should be in registry");
+        let deps = tool_dependency_targets(gist, &config);
+        assert!(
+            deps.is_empty(),
+            "gist should be dispatched by workflow without make prerequisites"
+        );
     }
 }

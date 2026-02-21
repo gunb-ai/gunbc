@@ -56,6 +56,7 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "services.gcp.sts",
         "services.git",
         "services.github.gist",
+        "services.github.issues",
         "services.llm.anthropic",
         "services.llm.openai",
         "services.shell",
@@ -99,6 +100,7 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "services.gcp.secret_manager",
         "services.gcp.sts",
         "services.github.gist",
+        "services.github.issues",
         "services.llm.anthropic",
         "services.llm.openai",
         "std.resources",
@@ -134,7 +136,7 @@ fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
 
-    assert_eq!(graph.modules.len(), 45, "expected 45 discovered modules");
+    assert_eq!(graph.modules.len(), 46, "expected 46 discovered modules");
     let mut module_names: Vec<String> = graph
         .modules
         .iter()
@@ -221,6 +223,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("services.gcp.sts".into(), 0),
         ("services.git".into(), 1),
         ("services.github.gist".into(), 0),
+        ("services.github.issues".into(), 0),
         ("services.llm.anthropic".into(), 0),
         ("services.llm.openai".into(), 0),
         ("services.shell".into(), 1),

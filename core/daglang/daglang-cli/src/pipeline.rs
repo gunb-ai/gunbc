@@ -275,32 +275,21 @@ pub fn build_pipeline_dag() -> Dag<CompilerOp> {
 
 /// Run the compiler pipeline up to the specified stop point.
 ///
-/// The pipeline DAG is constructed and validated (topological order, port
-/// wiring, semantic constraints) as a structural correctness check, but
-/// execution is direct function calls — the DAG does not drive dispatch.
-///
-/// Design intent: the DAG validates that the pipeline structure is sound
-/// (no cycles, ports match, required nodes exist) even though execution
-/// is currently sequential. If the pipeline DAG and direct calls ever
-/// diverge, the validation will catch it at the structure level. When/if
-/// execution moves to a generic DAG executor, this validation stays and
-/// the direct calls below become the executor's dispatch targets.
+/// Pipeline structure (DAG shape, port wiring, semantics) is validated
+/// by dedicated unit tests via [`build_pipeline_dag`],
+/// [`validate_pipeline_semantics`], and [`topological_order`].
+/// Execution is direct function calls in stage order.
 pub fn run_pipeline(
     context: &PipelineContext,
     stop: PipelineStop,
 ) -> Result<PipelineResult, PipelineError> {
-    // Validate pipeline structure (catches cycles, missing nodes, port mismatches).
-    // Execution is direct calls below — see doc comment above.
-    let dag = build_pipeline_dag();
-    validate_pipeline_semantics(&dag)?;
-    topological_order(&dag)?;
-
     let files = discover_files(context)?;
     let (parsed_modules, parse_diagnostics) = parse_files(files, &context.roots);
     let parsed_count = parsed_modules.len();
 
     if matches!(stop, PipelineStop::Parse) {
-        return Ok(PipelineResult::parsed(parse_diagnostics, parsed_count));
+        let diagnostics = diagnostic::normalize_diagnostics(parse_diagnostics);
+        return Ok(PipelineResult::parsed(diagnostics, parsed_count));
     }
 
     let mut diagnostics = parse_diagnostics;
@@ -569,6 +558,7 @@ fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Result<Vec<Vec<String
     Ok(cycle_modules)
 }
 
+#[cfg(test)]
 fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
     let mut node_ids: Vec<String> = dag.nodes.iter().map(|node| node.id.0.clone()).collect();
     node_ids.sort();
@@ -619,6 +609,7 @@ fn topological_order(dag: &Dag<CompilerOp>) -> Result<Vec<String>, String> {
     Ok(order)
 }
 
+#[cfg(test)]
 fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
     let mut seen_node_ids: HashSet<String> = HashSet::new();
     for node in &dag.nodes {

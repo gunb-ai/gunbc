@@ -10,7 +10,7 @@
 //! 1. Blob fetch (for non-inline sources)
 //! 2. LLM call
 
-use gunbc_exec::DynOp;
+use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, BuilderError, Dag, DagBuilder, Node,
@@ -26,9 +26,53 @@ use gunbc_lib_llm_ops::LlmOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
-use crate::{ReviewOps, ReviewPipelineConfig};
+use crate::dimension::{DimensionOps, FermiDepth, ReviewDimension};
+use crate::profile::{coding_review_profile, ReviewProfile};
+use crate::{Criteria, ReviewOps, ReviewPipelineConfig};
+use std::collections::HashMap;
 
 pub type ReviewGraphOp = DynOp;
+
+#[derive(Debug, Clone)]
+enum DimensionGraphConfigOps {
+    LoadLlmConfig {
+        provider: String,
+        model: String,
+    },
+    LoadDimensionConfig {
+        dimension: ReviewDimension,
+        criteria: Criteria,
+        depth: FermiDepth,
+    },
+}
+
+impl Executable for DimensionGraphConfigOps {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, gunbc_ir::Value>,
+    ) -> Result<HashMap<String, gunbc_ir::Value>, ExecError> {
+        match self {
+            Self::LoadLlmConfig { provider, model } => OutputMap::new()
+                .str("provider", provider.clone())
+                .str("model", model.clone())
+                .ok(),
+            Self::LoadDimensionConfig {
+                dimension,
+                criteria,
+                depth,
+            } => {
+                let criteria_json = serde_json::to_value(criteria).map_err(|err| {
+                    ExecError::new(format!("failed to serialize dimension criteria: {err}"))
+                })?;
+                OutputMap::new()
+                    .str("dimension", dimension.as_str())
+                    .str("depth", depth.as_str())
+                    .json("criteria", criteria_json)
+                    .ok()
+            }
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Cloud credential wiring helpers
@@ -974,6 +1018,456 @@ pub fn build_multi_source_review_graph_with_cloud_config(
     Ok(builder.build())
 }
 
+fn merge_input_port_for_dimension(dimension: ReviewDimension) -> &'static str {
+    match dimension {
+        ReviewDimension::Coherence => "coherence_output",
+        ReviewDimension::Quality => "quality_output",
+        ReviewDimension::Requirements => "requirements_output",
+        ReviewDimension::Aspirational => "aspirational_output",
+    }
+}
+
+// ============================================================================
+// Dimension Diff Review Graph (W4)
+// ============================================================================
+
+/// Build a 4-dimension diff review graph with the default coding profile.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "review-diff-dimensions",
+    builder = "build_dimension_diff_review_graph()",
+    returns_result
+)]
+pub fn build_dimension_diff_review_graph() -> Result<Dag<ReviewGraphOp>, BuilderError> {
+    build_dimension_diff_review_graph_with(
+        ReviewPipelineConfig::gunbc_default(),
+        coding_review_profile(FermiDepth::M),
+    )
+}
+
+/// Build a 4-dimension diff review graph with explicit pipeline config + profile.
+pub fn build_dimension_diff_review_graph_with(
+    config: ReviewPipelineConfig,
+    profile: ReviewProfile,
+) -> Result<Dag<ReviewGraphOp>, BuilderError> {
+    build_dimension_diff_review_graph_with_cloud_config(config, profile, graph_cloud_config())
+}
+
+/// Build a 4-dimension diff review graph with explicit cloud config.
+///
+/// Parallel first-wave dimensions: coherence, quality, requirements.
+/// Aspirational runs last and receives prior findings context.
+pub fn build_dimension_diff_review_graph_with_cloud_config(
+    config: ReviewPipelineConfig,
+    profile: ReviewProfile,
+    cloud_config: CloudSecretConfig,
+) -> Result<Dag<ReviewGraphOp>, BuilderError> {
+    let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
+
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        DynOp::new(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
+    let cloud_env = add_cloud_env_node(&mut builder, &cloud_config)?;
+    let default_branch = config.default_branch.clone();
+
+    let diff_triplet = add_transport_triplet_named_with_passthrough(
+        &mut builder,
+        "diff",
+        "prepare_diff",
+        "execute_diff",
+        "parse_diff",
+        vec![
+            optional("base_ref", "OptionalString"),
+            port("repo_path", "String"),
+        ],
+        vec![resource("file", "FilesystemHandle", AccessMode::Read)],
+        vec![],
+        vec![port("diff_files", "Map"), port("stats", "String")],
+        DynOp::new(GitOps::PrepareDiff {
+            base_ref: default_branch,
+            extensions: vec![],
+        }),
+        DynOp::new(GitOps::ParseDiff),
+        DynOp::new(TransportOps::Execute),
+        Some(&fs_env),
+    )?;
+
+    let format_artifact = builder.add_node_after(
+        Node::opaque(
+            "format_artifact",
+            vec![port("diff_files", "Map")],
+            vec![port("artifact", "String")],
+            DynOp::new(ReviewOps::FormatDiffArtifact),
+        ),
+        &diff_triplet,
+    )?;
+
+    let llm_config = builder.add_root_node(Node::opaque(
+        "llm_config",
+        vec![],
+        vec![port("provider", "String"), port("model", "String")],
+        DynOp::new(DimensionGraphConfigOps::LoadLlmConfig {
+            provider: config.provider,
+            model: config.model,
+        }),
+    ))?;
+
+    let resolve_auth = builder.add_node_after(
+        Node::opaque(
+            "resolve_auth",
+            vec![port("provider", "String")],
+            vec![
+                port("service", "String"),
+                port("scheme", "String"),
+                port("header_name", "String"),
+                list("required_scopes", "String"),
+                port("interactive_allowed", "Bool"),
+            ],
+            DynOp::new(ReviewOps::ResolveAuthContract),
+        ),
+        &llm_config,
+    )?;
+    builder.add_edge(llm_config.out("provider"), resolve_auth.in_port("provider"))?;
+
+    let cloud_credential =
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config)?;
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth)?;
+
+    let mut merge_inputs: Vec<(NodeRef<ReviewGraphOp>, &'static str)> = Vec::new();
+    let mut parallel_dimension_outputs: Vec<(ReviewDimension, NodeRef<ReviewGraphOp>)> = Vec::new();
+
+    for &dimension in ReviewDimension::parallel_dimensions() {
+        let Some(criteria) = profile.criteria_for(dimension).cloned() else {
+            continue;
+        };
+        let depth = profile.depth_for(dimension);
+        let prefix = dimension.as_str();
+
+        let dimension_config = builder.add_root_node(Node::opaque(
+            format!("{prefix}_config"),
+            vec![],
+            vec![
+                port("criteria", "Json"),
+                port("dimension", "String"),
+                port("depth", "String"),
+            ],
+            DynOp::new(DimensionGraphConfigOps::LoadDimensionConfig {
+                dimension,
+                criteria,
+                depth,
+            }),
+        ))?;
+
+        let prepare_prompt = builder.add_node_after(
+            Node::opaque(
+                format!("{prefix}_prepare_prompt"),
+                vec![
+                    port("artifact", "String"),
+                    port("criteria", "Json"),
+                    port("dimension", "String"),
+                    port("depth", "String"),
+                    optional("context", "OptionalString"),
+                    optional("prior_findings", "OptionalString"),
+                ],
+                vec![port("question", "String"), port("system_prompt", "String")],
+                DynOp::new(DimensionOps::PrepareDimensionPrompt),
+            ),
+            &format_artifact,
+        )?;
+
+        let llm_triplet = add_transport_triplet_named_with_passthrough(
+            &mut builder,
+            format!("{prefix}_llm").as_str(),
+            format!("prepare_{prefix}_llm").as_str(),
+            format!("execute_{prefix}_llm").as_str(),
+            format!("parse_{prefix}_llm").as_str(),
+            vec![
+                port("content", "String"),
+                port("question", "String"),
+                port("provider", "String"),
+                port("model", "String"),
+                optional("system_prompt", "OptionalString"),
+            ],
+            vec![
+                optional("scope_verified", "OptionalBool"),
+                resource("credential", "Credential", AccessMode::Read),
+            ],
+            vec![port("provider", "String")],
+            vec![port("answer", "String")],
+            DynOp::new(LlmOps::PrepareSimpleRequest),
+            DynOp::new(LlmOps::ParseSimpleResponse),
+            DynOp::new(TransportOps::Execute),
+            Some(&cloud_credential),
+        )?;
+
+        let parse_response = builder.add_node_after(
+            Node::opaque(
+                format!("{prefix}_parse_response"),
+                vec![
+                    port("answer", "String"),
+                    port("criteria", "Json"),
+                    port("dimension", "String"),
+                ],
+                vec![port("output", "Json"), port("errors", "Json")],
+                DynOp::new(DimensionOps::ParseDimensionResponse),
+            ),
+            &llm_triplet,
+        )?;
+
+        builder.add_edge(
+            dimension_config.out("criteria"),
+            prepare_prompt.in_port("criteria"),
+        )?;
+        builder.add_edge(
+            dimension_config.out("criteria"),
+            parse_response.in_port("criteria"),
+        )?;
+        builder.add_edge(
+            dimension_config.out("dimension"),
+            prepare_prompt.in_port("dimension"),
+        )?;
+        builder.add_edge(
+            dimension_config.out("dimension"),
+            parse_response.in_port("dimension"),
+        )?;
+        builder.add_edge(
+            dimension_config.out("depth"),
+            prepare_prompt.in_port("depth"),
+        )?;
+        builder.add_edge(
+            format_artifact.out("artifact"),
+            prepare_prompt.in_port("artifact"),
+        )?;
+        builder.add_edge(
+            format_artifact.out("artifact"),
+            llm_triplet.in_port("content"),
+        )?;
+        builder.add_edge(
+            prepare_prompt.out("question"),
+            llm_triplet.in_port("question"),
+        )?;
+        builder.add_edge(
+            prepare_prompt.out("system_prompt"),
+            llm_triplet.in_port("system_prompt"),
+        )?;
+        builder.add_edge(llm_config.out("provider"), llm_triplet.in_port("provider"))?;
+        builder.add_edge(llm_config.out("model"), llm_triplet.in_port("model"))?;
+        builder.add_edge(
+            cloud_credential.out("credential"),
+            llm_triplet.in_port("res:credential"),
+        )?;
+        builder.add_edge(
+            scope_preflight.out("scope_verified"),
+            llm_triplet.in_port("scope_verified"),
+        )?;
+        builder.add_edge(llm_triplet.out("answer"), parse_response.in_port("answer"))?;
+        merge_inputs.push((
+            parse_response.clone(),
+            merge_input_port_for_dimension(dimension),
+        ));
+
+        parallel_dimension_outputs.push((dimension, parse_response));
+    }
+
+    if let Some(criteria) = profile.criteria_for(ReviewDimension::Aspirational).cloned() {
+        let depth = profile.depth_for(ReviewDimension::Aspirational);
+
+        let prior_node_def = Node::opaque(
+            "format_prior_findings",
+            vec![
+                optional("coherence_output", "OptionalJson"),
+                optional("quality_output", "OptionalJson"),
+                optional("requirements_output", "OptionalJson"),
+            ],
+            vec![port("prior_findings", "String")],
+            DynOp::new(DimensionOps::FormatPriorFindings),
+        );
+
+        let format_prior = if parallel_dimension_outputs.is_empty() {
+            builder.add_root_node(prior_node_def)?
+        } else {
+            let parent_refs: Vec<&NodeRef<ReviewGraphOp>> = parallel_dimension_outputs
+                .iter()
+                .map(|(_, node)| node)
+                .collect();
+            builder.add_node_after_all(prior_node_def, &parent_refs)?
+        };
+
+        for (dimension, node) in &parallel_dimension_outputs {
+            builder.add_edge(
+                node.out("output"),
+                format_prior.in_port(merge_input_port_for_dimension(*dimension)),
+            )?;
+        }
+
+        let aspirational_config = builder.add_root_node(Node::opaque(
+            "aspirational_config",
+            vec![],
+            vec![
+                port("criteria", "Json"),
+                port("dimension", "String"),
+                port("depth", "String"),
+            ],
+            DynOp::new(DimensionGraphConfigOps::LoadDimensionConfig {
+                dimension: ReviewDimension::Aspirational,
+                criteria,
+                depth,
+            }),
+        ))?;
+
+        let aspirational_prepare = builder.add_node_after_all(
+            Node::opaque(
+                "aspirational_prepare_prompt",
+                vec![
+                    port("artifact", "String"),
+                    port("criteria", "Json"),
+                    port("dimension", "String"),
+                    port("depth", "String"),
+                    optional("context", "OptionalString"),
+                    optional("prior_findings", "OptionalString"),
+                ],
+                vec![port("question", "String"), port("system_prompt", "String")],
+                DynOp::new(DimensionOps::PrepareDimensionPrompt),
+            ),
+            &[&format_artifact, &format_prior],
+        )?;
+
+        let aspirational_llm = add_transport_triplet_named_with_passthrough(
+            &mut builder,
+            "aspirational_llm",
+            "prepare_aspirational_llm",
+            "execute_aspirational_llm",
+            "parse_aspirational_llm",
+            vec![
+                port("content", "String"),
+                port("question", "String"),
+                port("provider", "String"),
+                port("model", "String"),
+                optional("system_prompt", "OptionalString"),
+            ],
+            vec![
+                optional("scope_verified", "OptionalBool"),
+                resource("credential", "Credential", AccessMode::Read),
+            ],
+            vec![port("provider", "String")],
+            vec![port("answer", "String")],
+            DynOp::new(LlmOps::PrepareSimpleRequest),
+            DynOp::new(LlmOps::ParseSimpleResponse),
+            DynOp::new(TransportOps::Execute),
+            Some(&aspirational_prepare),
+        )?;
+
+        let aspirational_parse = builder.add_node_after(
+            Node::opaque(
+                "aspirational_parse_response",
+                vec![
+                    port("answer", "String"),
+                    port("criteria", "Json"),
+                    port("dimension", "String"),
+                ],
+                vec![port("output", "Json"), port("errors", "Json")],
+                DynOp::new(DimensionOps::ParseDimensionResponse),
+            ),
+            &aspirational_llm,
+        )?;
+
+        builder.add_edge(
+            aspirational_config.out("criteria"),
+            aspirational_prepare.in_port("criteria"),
+        )?;
+        builder.add_edge(
+            aspirational_config.out("criteria"),
+            aspirational_parse.in_port("criteria"),
+        )?;
+        builder.add_edge(
+            aspirational_config.out("dimension"),
+            aspirational_prepare.in_port("dimension"),
+        )?;
+        builder.add_edge(
+            aspirational_config.out("dimension"),
+            aspirational_parse.in_port("dimension"),
+        )?;
+        builder.add_edge(
+            aspirational_config.out("depth"),
+            aspirational_prepare.in_port("depth"),
+        )?;
+        builder.add_edge(
+            format_artifact.out("artifact"),
+            aspirational_prepare.in_port("artifact"),
+        )?;
+        builder.add_edge(
+            format_prior.out("prior_findings"),
+            aspirational_prepare.in_port("prior_findings"),
+        )?;
+        builder.add_edge(
+            format_artifact.out("artifact"),
+            aspirational_llm.in_port("content"),
+        )?;
+        builder.add_edge(
+            aspirational_prepare.out("question"),
+            aspirational_llm.in_port("question"),
+        )?;
+        builder.add_edge(
+            aspirational_prepare.out("system_prompt"),
+            aspirational_llm.in_port("system_prompt"),
+        )?;
+        builder.add_edge(
+            llm_config.out("provider"),
+            aspirational_llm.in_port("provider"),
+        )?;
+        builder.add_edge(llm_config.out("model"), aspirational_llm.in_port("model"))?;
+        builder.add_edge(
+            cloud_credential.out("credential"),
+            aspirational_llm.in_port("res:credential"),
+        )?;
+        builder.add_edge(
+            scope_preflight.out("scope_verified"),
+            aspirational_llm.in_port("scope_verified"),
+        )?;
+        builder.add_edge(
+            aspirational_llm.out("answer"),
+            aspirational_parse.in_port("answer"),
+        )?;
+        merge_inputs.push((aspirational_parse, "aspirational_output"));
+    }
+
+    builder.add_edge(
+        diff_triplet.out("diff_files"),
+        format_artifact.in_port("diff_files"),
+    )?;
+    builder.add_edge(
+        fs_env.out(FsEnv::WRITE_PORT),
+        diff_triplet.in_port("res:file"),
+    )?;
+
+    let merge_node_def = Node::opaque(
+        "merge_dimensions",
+        vec![
+            optional("coherence_output", "OptionalJson"),
+            optional("quality_output", "OptionalJson"),
+            optional("requirements_output", "OptionalJson"),
+            optional("aspirational_output", "OptionalJson"),
+        ],
+        vec![port("output", "Json"), port("summary", "String")],
+        DynOp::new(DimensionOps::MergeDimensionOutputs),
+    );
+    let merge = if merge_inputs.is_empty() {
+        builder.add_root_node(merge_node_def)?
+    } else {
+        let parent_refs: Vec<&NodeRef<ReviewGraphOp>> =
+            merge_inputs.iter().map(|(node, _)| node).collect();
+        builder.add_node_after_all(merge_node_def, &parent_refs)?
+    };
+    for (source_node, merge_port) in &merge_inputs {
+        builder.add_edge(source_node.out("output"), merge.in_port(*merge_port))?;
+    }
+
+    Ok(builder.build())
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -1169,5 +1663,56 @@ mod tests {
             entrypoints.is_entrypoint_node(&"llm".into()),
             "llm should have content as entrypoint"
         );
+    }
+
+    // ========================================================================
+    // Dimension Diff Review Graph (W4) tests
+    // ========================================================================
+
+    #[test]
+    fn test_dimension_diff_review_graph_boundaries() {
+        let dag = build_dimension_diff_review_graph().unwrap();
+        let boundaries = detect_boundaries(&dag);
+
+        assert!(
+            boundaries.is_boundary_node(&"merge_dimensions".into()),
+            "merge_dimensions should be a boundary (output + summary)"
+        );
+        assert!(
+            boundaries.is_boundary_node(&"diff".into()),
+            "diff stats should remain a boundary"
+        );
+    }
+
+    #[test]
+    fn test_dimension_diff_review_graph_has_dimension_llm_subdags() {
+        let dag = build_dimension_diff_review_graph().unwrap();
+        for node_id in [
+            "coherence_llm",
+            "quality_llm",
+            "requirements_llm",
+            "aspirational_llm",
+        ] {
+            let node = dag
+                .get_node(&node_id.into())
+                .unwrap_or_else(|| panic!("missing subdag node: {}", node_id));
+            assert!(node.is_subdag(), "{} should be a subdag node", node_id);
+        }
+    }
+
+    #[test]
+    fn test_dimension_diff_review_graph_respects_profile_opt_out() {
+        let mut profile = coding_review_profile(FermiDepth::M);
+        profile.dimension_criteria.remove("quality");
+        profile.dimension_criteria.remove("requirements");
+
+        let dag =
+            build_dimension_diff_review_graph_with(ReviewPipelineConfig::gunbc_default(), profile)
+                .expect("dimension graph should build with partial profile");
+
+        assert!(dag.get_node(&"coherence_llm".into()).is_some());
+        assert!(dag.get_node(&"aspirational_llm".into()).is_some());
+        assert!(dag.get_node(&"quality_llm".into()).is_none());
+        assert!(dag.get_node(&"requirements_llm".into()).is_none());
     }
 }

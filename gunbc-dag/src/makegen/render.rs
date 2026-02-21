@@ -13,7 +13,7 @@ use crate::makegen::registry::{
     ToolRegistry, WorkflowSpec,
 };
 use crate::WorkspaceBinary;
-use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
+use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer, Target};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::symbols::{Tier, STANDARD};
@@ -275,6 +275,11 @@ pub(crate) fn core_workflow_body(
         ],
         "fmt-fix" => vec![config.fmt_shell().into()],
         "lint-fix" => vec![config.lint_fix_shell().into()],
+        // WF8: CI and test-all are thin wrappers over workflow planner execution.
+        "ci" => vec!["@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- ci".into()],
+        "test-all" => {
+            vec!["@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- test-all".into()]
+        }
         _ => panic!(
             "missing core workflow body renderer for '{}'",
             workflow.name
@@ -569,30 +574,23 @@ pub(crate) fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow
 }
 
 fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String {
-    let cli_args = render_cli_args(&tool.entrypoints);
+    let _ = config;
+    workflow_tool_command(tool, dry_run)
+}
 
-    let warning_prefix = if config.warnings == Warnings::Deny {
-        "RUSTFLAGS=\"-D warnings\" "
-    } else {
-        ""
-    };
-    let env_prefix = "";
+/// Render a workflow-dispatched tool command.
+///
+/// All tool targets dispatch through `gunbc-workflow` run mode via `cargo run`,
+/// so cold-start clones and stale binaries are handled by Cargo freshness.
+fn workflow_tool_command(tool: &ToolInfo, dry_run: bool) -> String {
+    let base = format!(
+        "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- {}",
+        tool.short_name
+    );
     if dry_run {
-        format!(
-            "@{}{}{} -- --dry-run{}",
-            env_prefix,
-            warning_prefix,
-            tool.invocation.command(),
-            cli_args
-        )
+        format!("{base} --dry-run strict")
     } else {
-        format!(
-            "@{}{}{} --{}",
-            env_prefix,
-            warning_prefix,
-            tool.invocation.command(),
-            cli_args
-        )
+        base
     }
 }
 
@@ -614,31 +612,6 @@ fn build_extra_target(tool: &ToolInfo, extra: &ExtraTarget) -> StructuredBlock {
             .into(),
         ),
     })
-}
-
-/// Render CLI arguments from entrypoint parameters.
-fn render_cli_args(params: &[EntrypointParam]) -> String {
-    if params.is_empty() {
-        return String::new();
-    }
-
-    let args: Vec<String> = params
-        .iter()
-        .map(|p| {
-            if p.repeatable {
-                // $(if $(VAR),$(foreach v,$(VAR),--flag $(v)))
-                format!(
-                    " $(if $({}),$(foreach v,$({}),{} $(v)))",
-                    p.make_var, p.make_var, p.cli_flag
-                )
-            } else {
-                // $(if $(VAR),--flag $(VAR))
-                format!(" $(if $({}),{} $({}))", p.make_var, p.cli_flag, p.make_var)
-            }
-        })
-        .collect();
-
-    args.join("")
 }
 
 #[cfg(test)]
@@ -668,23 +641,25 @@ mod tests {
     }
 
     #[test]
-    fn test_render_makefile_has_cli_args() {
+    fn test_render_makefile_help_mentions_entrypoint_variables() {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        // Should have conditional variable expansion
-        assert!(makefile.contains("$(if $(REPO)"));
-        assert!(makefile.contains("--repo"));
+        assert!(makefile.contains("[REPO="));
+        assert!(
+            !makefile.contains("$(if $(REPO)"),
+            "tool entrypoint args should not be threaded through workflow wrapper commands"
+        );
     }
 
     #[test]
-    fn test_render_makefile_repeatable_cli_args() {
+    fn test_render_makefile_help_mentions_repeatable_entrypoint_variables() {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
         assert!(
-            makefile.contains("$(foreach v,$(EXT),--extensions $(v))"),
-            "repeatable vars should expand into repeated flags"
+            makefile.contains("[EXT=... ...]"),
+            "repeatable vars should be documented in help"
         );
     }
 
@@ -882,21 +857,22 @@ mod tests {
         assert!(
             makefile.contains("RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")
         );
-        // Tool targets use cargo run (dev mode); release build is a freshness step
+        // Tool targets dispatch through workflow binary via cargo run.
         assert!(
-            makefile
-                .contains("RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist --"),
-            "tool targets should use cargo run with RUSTFLAGS"
-        );
-        assert!(
-            makefile.contains("cargo run -p gunbc-gist --bin gunbc-gist -- --dry-run"),
-            "dry-run targets should pass --dry-run to the binary"
+            makefile.contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- gist"),
+            "tool targets should dispatch through gunbc-workflow"
         );
         assert!(
             makefile.contains(
-                "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist-recent --"
+                "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- gist --dry-run strict"
             ),
-            "gist-recent target should use same config resolution as gist"
+            "dry-run targets should pass strict dry-run mode to gunbc-workflow"
+        );
+        assert!(
+            makefile.contains(
+                "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- gist-recent"
+            ),
+            "gist-recent target should dispatch via gunbc-workflow"
         );
     }
 
@@ -1037,20 +1013,17 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        // Tool targets with generated CLI should depend on ensure-codegen only.
-        // Release build is handled by the freshness system inside the binary.
-        let generated_cli_tools: Vec<_> = registry
-            .tools
-            .iter()
-            .filter(|t| t.needs_generated_cli && t.short_name != "pragma")
-            .collect();
-
-        for tool in &generated_cli_tools {
-            let expected = format!("{}: ensure-codegen", tool.short_name);
+        // Tool targets should have no Make prerequisites; freshness is planner-managed.
+        for tool in &registry.tools {
+            let expected = format!("{}:", tool.short_name);
             assert!(
                 makefile.contains(&expected),
-                "tool '{}' should depend on ensure-codegen (minimal). \
-                 Release build is a freshness step inside the binary.",
+                "tool '{}' should exist as a make target",
+                tool.short_name
+            );
+            assert!(
+                !makefile.contains(&format!("{}: ensure-codegen", tool.short_name)),
+                "tool '{}' should not depend on ensure-codegen",
                 tool.short_name
             );
         }
@@ -1069,5 +1042,63 @@ mod tests {
                 "maintenance target '{target}' must depend on lint-upsert for full verification"
             );
         }
+    }
+
+    #[test]
+    fn test_tool_targets_dispatch_via_workflow_binary() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Bootstrap should use workflow run dispatch, no ensure-codegen dep.
+        assert!(
+            makefile
+                .contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- bootstrap"),
+            "bootstrap should dispatch via gunbc-workflow"
+        );
+        assert!(
+            !makefile.contains("bootstrap: ensure-codegen"),
+            "bootstrap should not have ensure-codegen prerequisite"
+        );
+
+        // Pragma should use gunbc-workflow dispatch
+        assert!(
+            makefile
+                .contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- pragma"),
+            "pragma should dispatch via gunbc-workflow"
+        );
+
+        // Gist should also dispatch via workflow (no legacy cargo-run path).
+        assert!(
+            makefile.contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- gist"),
+            "gist should dispatch via gunbc-workflow"
+        );
+        assert!(
+            !makefile.contains("gist: ensure-codegen"),
+            "gist should not have ensure-codegen prerequisite"
+        );
+    }
+
+    #[test]
+    fn test_tool_dry_run_uses_strict_mode() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        assert!(
+            makefile.contains(
+                "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- bootstrap --dry-run strict"
+            ),
+            "bootstrap-dry should dispatch via gunbc-workflow with --dry-run strict"
+        );
+    }
+
+    #[test]
+    fn test_no_tool_target_uses_cargo_run_directly() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        assert!(
+            !makefile.contains("cargo run -p gunbc-gist --bin gunbc-gist"),
+            "tool targets must dispatch through gunbc-workflow"
+        );
     }
 }

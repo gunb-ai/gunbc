@@ -1,7 +1,7 @@
 {
   "module": "tools.gist",
   "path": "tools/gist.dag",
-  "items": 6,
+  "items": 10,
   "dependencies": [
     "services.git",
     "std.patterns",

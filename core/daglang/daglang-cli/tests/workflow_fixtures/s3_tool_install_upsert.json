@@ -1,7 +1,7 @@
 {
   "module": "tools.bootstrap",
   "path": "tools/bootstrap.dag",
-  "items": 3,
+  "items": 4,
   "dependencies": [
     "std.patterns",
     "std.resources",
@@ -17,19 +17,19 @@
     "error_contains": null,
     "expected_json": {
       "dry_run_completion_required": true,
-      "interface_contract_verification_targets": 0,
+      "interface_contract_verification_targets": 2,
       "pure_node_determinism_targets": 14,
       "resource_acquire_targets": 0,
       "resource_provide_targets": 0,
       "resource_release_targets": 0,
       "service_param_source_targets": 3,
-      "service_transport_execute_targets": 1,
-      "service_transport_external_targets": 0,
+      "service_transport_execute_targets": 5,
+      "service_transport_external_targets": 4,
       "service_transport_hermetic_targets": 1,
       "service_transport_idempotent_targets": 0,
       "service_transport_parse_targets": 1,
       "service_transport_permission_scoped_targets": 0,
-      "service_transport_prepare_targets": 1,
+      "service_transport_prepare_targets": 5,
       "service_transport_readonly_targets": 1,
       "total_obligations": 19,
       "transport_execution_targets": 5

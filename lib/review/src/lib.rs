@@ -20,8 +20,10 @@
 //!     → TransportOps::Execute → LlmOps::ParseSimpleResponse → ReviewOps::ParseReviewResponse
 //! ```
 
+pub mod dimension;
 pub mod graph;
 pub mod graph_mock;
+pub mod profile;
 
 use gunbc_exec::{
     optional_str_strict, propagate_skipped, require_json, require_map_str_str, require_str,
@@ -410,7 +412,7 @@ fn execute_resolve_auth_contract(
         .ok()
 }
 
-fn execute_parse_review_response(
+pub(crate) fn execute_parse_review_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     if let Some(result) = propagate_skipped(&inputs, "answer", &["output", "errors"]) {

@@ -1,7 +1,7 @@
 {
   "module": "tools.clippy",
   "path": "tools/clippy.dag",
-  "items": 2,
+  "items": 3,
   "dependencies": [
     "std.patterns",
     "std.resources",

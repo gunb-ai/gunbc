@@ -81,6 +81,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                     eprintln!("{error}");
                     std::process::exit(1);
                 }
+                if let Some(error) = path_utils::check_dag_directory_conflict(&normalized) {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
             }
             let roots = if let Some(root) = root_arg {
                 vec![resolve_root(cwd, Some(&root))]
@@ -132,11 +136,17 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             } else {
                 None
             };
-            let context = build_check_pipeline_context_with_default_roots(
+            let context = match build_check_pipeline_context_with_default_roots(
                 cwd,
                 args.get(2),
                 configured_default_roots.as_deref(),
-            );
+            ) {
+                Ok(context) => context,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            };
             let result = run_pipeline_or_exit(&context, PipelineStop::Build);
             if !result.diagnostics().is_empty() {
                 for diagnostic in result.diagnostics() {
@@ -246,7 +256,13 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                     ExecutionMode::DryRun(makegen_check_mode_transport_mocks(&output_path_str))
                 }
             };
-            let context = build_context(cwd, Some(&parsed.input_path));
+            let context = match build_context(cwd, Some(&parsed.input_path)) {
+                Ok(context) => context,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            };
             let log = match compile_resolve_execute_from_context(&context, mode, Some(&input_mocks))
             {
                 Ok(log) => log,

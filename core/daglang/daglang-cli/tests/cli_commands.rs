@@ -865,13 +865,17 @@ fn assert_dag_extension_directory_variants(command: &str) {
             let trailing = run_cli(command, &trailing_arg, &root);
             let curdir = run_cli(command, &curdir_arg, &root);
 
-            // `modules` succeeds even with broken files (reports diagnostics
-            // in stdout); `check` fails with nonzero exit.
-            let expect_success = if command == "check" {
-                !has_errors
-            } else {
-                true
-            };
+            // Hardening: `.dag` directories are rejected up front for all commands.
+            let expect_success = false;
+            assert!(
+                !plain.status.success(),
+                "{test_name}: plain .dag directory variant should fail"
+            );
+            assert!(
+                String::from_utf8_lossy(&plain.stderr).contains("target is a directory"),
+                "{test_name}: expected explicit .dag directory conflict error, got stderr: {}",
+                String::from_utf8_lossy(&plain.stderr)
+            );
             assert_variant_matches(
                 &plain,
                 &trailing,
@@ -884,14 +888,6 @@ fn assert_dag_extension_directory_variants(command: &str) {
                 &format!("{test_name}/curdir_prefix"),
                 expect_success,
             );
-
-            if !has_errors && command == "check" {
-                assert_eq!(
-                    String::from_utf8_lossy(&plain.stdout),
-                    expected_check_success_stdout(1),
-                    "{test_name}: should parse exactly one file"
-                );
-            }
 
             std::fs::remove_dir_all(root).expect("failed to cleanup");
         }
@@ -932,16 +928,22 @@ fn assert_dag_extension_symlink_directory_variants(command: &str) {
             let real_output = run_cli(command, "real", &root);
             let curdir_link = run_cli(command, &curdir_link_arg, &root);
 
-            let expect_success = if command == "check" {
-                !has_errors
-            } else {
-                true
-            };
-            assert_variant_matches(
-                &real_output,
-                &link_output,
-                &format!("{test_name}/symlink_vs_real"),
-                expect_success,
+            let expect_success = false;
+            let real_expect_success = if command == "check" { !has_errors } else { true };
+            assert!(
+                real_output.status.success() == real_expect_success,
+                "{test_name}: non-.dag real directory expected success={real_expect_success}, got exit={:?}\nstderr: {}",
+                real_output.status.code(),
+                String::from_utf8_lossy(&real_output.stderr)
+            );
+            assert!(
+                !link_output.status.success(),
+                "{test_name}: .dag symlink path should fail"
+            );
+            assert!(
+                String::from_utf8_lossy(&link_output.stderr).contains("target is a directory"),
+                "{test_name}: expected explicit .dag directory conflict error, got stderr: {}",
+                String::from_utf8_lossy(&link_output.stderr)
             );
             assert_variant_matches(
                 &link_output,

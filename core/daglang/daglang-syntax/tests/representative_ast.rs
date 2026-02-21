@@ -97,7 +97,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        45,
+        55,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -171,6 +171,16 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type CodegenTarget",
             "type CodegenBackend",
             "type PragmaDirective",
+            "type IssueLifecycleStage",
+            "type TrackedIssue",
+            "type DesignOutput",
+            "type DesignSections",
+            "type DesignReviewOutput",
+            "type DesignFinding",
+            "type ImplementationPlan",
+            "type ImplementationTask",
+            "type PipelineRun",
+            "type PipelineArtifact",
             "type DocSource",
         ]
     );

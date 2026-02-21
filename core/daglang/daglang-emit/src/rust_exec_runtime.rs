@@ -850,7 +850,7 @@ fn build_exec_runtime_source(
 
 fn build_op_enum_raw(kinds: &BTreeSet<HandlerKind>) -> gunbc_ir::code_ir::Item {
     let mut text = String::new();
-    writeln!(text, "#[derive(Debug, Clone, PartialEq, Eq)]").unwrap();
+    writeln!(text, "#[derive(Debug, Clone, PartialEq)]").unwrap();
     writeln!(text, "enum Op {{").unwrap();
     for kind in kinds {
         if *kind == HandlerKind::LiteralSource {

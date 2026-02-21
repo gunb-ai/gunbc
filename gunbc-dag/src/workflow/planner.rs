@@ -62,6 +62,29 @@ pub struct PlanExplain {
     pub blocked: BTreeMap<NodeId, Vec<BlockedReason>>,
     pub ready: Vec<NodeId>,
     pub critical_path: Vec<NodeId>,
+    /// Per-capability hit/miss/execute status (WF22).
+    /// Maps canonical capability name → action status.
+    pub capability_status: BTreeMap<String, CapabilityStatus>,
+}
+
+/// Per-capability execution status for WF22 observability (WF22).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CapabilityStatus {
+    /// Canonical capability name (e.g., "compilation_ensure", "codegen_ensure").
+    pub capability: String,
+    /// Which workflow node(s) reference this capability.
+    pub node_ids: Vec<NodeId>,
+    /// The resolved action for this capability.
+    pub action: CapabilityAction,
+}
+
+/// Resolved action for a capability unit.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CapabilityAction {
+    /// Capability was a cache hit (no work needed).
+    CachedHit { previous_run: String },
+    /// Capability needs execution (miss reason explains why).
+    Execute { miss_reason: MissReason },
 }
 
 /// Planner errors for WF3 key/ledger path.
@@ -382,12 +405,44 @@ pub fn explain_plan(spec: &WorkflowSpec, plan: &WorkflowPlan) -> PlanExplain {
     let mut execute_set = Vec::new();
     let mut cache_hit_set = Vec::new();
     let mut miss_reasons = BTreeMap::new();
+    let mut capability_status = BTreeMap::new();
+
     for node in &plan.nodes {
+        let canonical_name = node.work_id.unit_id.0.clone();
         match &node.action {
-            PlanAction::CachedHit { .. } => cache_hit_set.push(node.node_id.clone()),
+            PlanAction::CachedHit { previous_run, .. } => {
+                cache_hit_set.push(node.node_id.clone());
+                capability_status
+                    .entry(canonical_name.clone())
+                    .or_insert_with(|| CapabilityStatus {
+                        capability: canonical_name,
+                        node_ids: Vec::new(),
+                        action: CapabilityAction::CachedHit {
+                            previous_run: previous_run.clone(),
+                        },
+                    })
+                    .node_ids
+                    .push(node.node_id.clone());
+            }
             PlanAction::Execute { miss_reason } => {
                 execute_set.push(node.node_id.clone());
                 miss_reasons.insert(node.node_id.clone(), miss_reason.clone());
+                let entry = capability_status
+                    .entry(canonical_name.clone())
+                    .or_insert_with(|| CapabilityStatus {
+                        capability: canonical_name,
+                        node_ids: Vec::new(),
+                        action: CapabilityAction::Execute {
+                            miss_reason: miss_reason.clone(),
+                        },
+                    });
+                entry.node_ids.push(node.node_id.clone());
+                // Execute always wins over CachedHit
+                if matches!(entry.action, CapabilityAction::CachedHit { .. }) {
+                    entry.action = CapabilityAction::Execute {
+                        miss_reason: miss_reason.clone(),
+                    };
+                }
             }
         }
     }
@@ -402,6 +457,7 @@ pub fn explain_plan(spec: &WorkflowSpec, plan: &WorkflowPlan) -> PlanExplain {
         blocked: plan.coordination.blocked.clone(),
         ready: plan.coordination.ready.clone(),
         critical_path,
+        capability_status,
     }
 }
 
