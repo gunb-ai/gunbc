@@ -295,13 +295,14 @@ Conformance evidence classes:
 1. Infra intent `runtime_profile` must be explicit and validated fail-closed:
    1. `stateless-fleet` requires `launch.worker_count` in `[5, 10]`.
    2. `local-co-located` requires `launch.worker_count = 1`.
-2. Real-mode worker startup must run infra preflight checks before processing any intake.
-3. Worker drain mode is explicit and durable through a persisted drain flag.
-4. When drain is active, worker must:
+2. Worker loop capacity per pass is bounded by validated `launch.worker_count`; overflow intake keys are deferred and surfaced in execution summary metrics.
+3. Real-mode worker startup must run infra preflight checks before processing any intake.
+4. Worker drain mode is explicit and durable through a persisted drain flag.
+5. When drain is active, worker must:
    1. stop acquiring new claims,
    2. release worker-owned claims,
    3. exit cleanly with machine-readable drain status.
-5. Infra reconciliation is health-gated:
+6. Infra reconciliation is health-gated:
    1. reconcile preview/execute commands must fail closed while auth/project/service-account/secret health checks are failing.
    2. healthy reconcile preview reports the same runtime dependency target set as infra plan.
 
