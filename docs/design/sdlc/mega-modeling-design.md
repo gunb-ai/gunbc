@@ -205,6 +205,9 @@ Conformance evidence classes:
 3. Differential policy:
    1. Any new SDLC orchestration behavior must land in DSL modules first.
    2. Runtime-only behavior deltas are design-policy violations.
+4. Differential runtime checks:
+   1. Interpreter vs generated-runtime output parity is enforced for `tools.makegen`
+      in `codegen_parity` to keep L5 conformance executable, not aspirational.
 
 ## 6. Canonical Contracts
 
@@ -283,6 +286,18 @@ Conformance evidence classes:
 4. Periodic anti-entropy scans are required; signals may accelerate work discovery but may not be sole correctness source.
 5. Loss of any single signal may delay execution but must not cause missed terminalization or duplicate side effects.
 6. Timer-derived triggers (`RetryDue`, lease expiry, reconcile tick) must be persisted or reconstructable from ledger/claim state.
+
+### 6.7 Runtime Launch Profile and Drain Contract
+
+1. Infra intent `runtime_profile` must be explicit and validated fail-closed:
+   1. `stateless-fleet` requires `launch.worker_count` in `[5, 10]`.
+   2. `local-co-located` requires `launch.worker_count = 1`.
+2. Real-mode worker startup must run infra preflight checks before processing any intake.
+3. Worker drain mode is explicit and durable through a persisted drain flag.
+4. When drain is active, worker must:
+   1. stop acquiring new claims,
+   2. release worker-owned claims,
+   3. exit cleanly with machine-readable drain status.
 
 ## 7. Conformance Model (Multi-Level)
 
