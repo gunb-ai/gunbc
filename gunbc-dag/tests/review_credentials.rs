@@ -50,6 +50,46 @@ fn run_review_without_credentials(provider: &str) -> Output {
     output
 }
 
+fn gcloud_available() -> bool {
+    Command::new("bash")
+        .arg("-lc")
+        .arg("command -v gcloud >/dev/null 2>&1")
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn run_review_with_adc_only(provider: &str) -> Output {
+    let temp_home = unique_temp_home(&format!("{provider}_adc_only"));
+    let adc_path = temp_home
+        .join(".config")
+        .join("gcloud")
+        .join("application_default_credentials.json");
+    if let Some(parent) = adc_path.parent() {
+        std::fs::create_dir_all(parent).expect("create ADC parent directories");
+    }
+    std::fs::write(
+        &adc_path,
+        r#"{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test-refresh-token"}"#,
+    )
+    .expect("write adc fixture with refresh token");
+
+    let output = Command::new(review_bin())
+        .arg("-r")
+        .arg(".")
+        .arg("--provider")
+        .arg(provider)
+        .current_dir(workspace_root())
+        .env("HOME", &temp_home)
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("GUNBC_CREDENTIAL_POLICY_JSON")
+        .output()
+        .expect("run gunbc-review with adc-only fixture");
+
+    std::fs::remove_dir_all(temp_home).expect("remove temp HOME");
+    output
+}
+
 fn assert_fail_closed_output(provider: &str, output: &Output) {
     assert!(
         !output.status.success(),
@@ -84,4 +124,30 @@ fn review_openai_fails_closed_without_credentials() {
 fn review_anthropic_fails_closed_without_credentials() {
     let output = run_review_without_credentials("anthropic");
     assert_fail_closed_output("anthropic", &output);
+}
+
+#[test]
+fn review_openai_reports_actionable_error_when_gcloud_cli_missing() {
+    if gcloud_available() {
+        eprintln!("SKIP: gcloud available on PATH; missing-gcloud scenario not reproducible");
+        return;
+    }
+    let output = run_review_with_adc_only("openai");
+    assert!(
+        !output.status.success(),
+        "openai review should fail closed when gcloud CLI is missing"
+    );
+    let combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        combined.contains("failed to spawn command `gcloud`"),
+        "failure output should identify missing gcloud executable: {combined}"
+    );
+    assert!(
+        combined.contains("Install Google Cloud SDK"),
+        "failure output should include gcloud installation remediation: {combined}"
+    );
 }
