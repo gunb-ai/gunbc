@@ -18,7 +18,11 @@ fn unique_temp_dir(label: &str) -> PathBuf {
     ))
 }
 
-fn write_intent_file(path: &Path, intent_id: &str, intake_key: &str) {
+fn write_intent_file(path: &Path, intent_id: &str, intake_key: &str, issue_id: Option<u64>) {
+    let issue_id_yaml = match issue_id {
+        Some(value) => value.to_string(),
+        None => "null".to_string(),
+    };
     let content = format!(
         r#"intent_id: "{intent_id}"
 title: "Intent {intent_id}"
@@ -47,7 +51,7 @@ update_strategy:
   comment_mode: "upsert-by-marker"
   transition_mode: "compare-and-set"
 tracking:
-  issue_id: null
+  issue_id: {issue_id_yaml}
   run_key: null
 acceptance_tests:
   - "cargo test -q -p gunbc-dag --test sdlc_cli"
@@ -62,7 +66,12 @@ fn intake_dry_run_computes_run_key_without_writing_ledger() {
     let root = unique_temp_dir("dry_run");
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
-    write_intent_file(&intent_path, "intent-20260221-dry-run", "intent-20260221-dry-run");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-dry-run",
+        "intent-20260221-dry-run",
+        None,
+    );
 
     let output = Command::new(sdlc_bin())
         .arg("intake")
@@ -106,6 +115,7 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         &intent_path,
         "intent-20260221-idempotent",
         "intent-20260221-idempotent",
+        None,
     );
 
     let first = Command::new(sdlc_bin())
@@ -163,8 +173,8 @@ fn intake_conflict_fails_closed_for_reused_intake_key() {
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_a = root.join("intent_a.yaml");
     let intent_b = root.join("intent_b.yaml");
-    write_intent_file(&intent_a, "intent-20260221-a", "intent-20260221-a");
-    write_intent_file(&intent_b, "intent-20260221-b", "intent-20260221-a");
+    write_intent_file(&intent_a, "intent-20260221-a", "intent-20260221-a", None);
+    write_intent_file(&intent_b, "intent-20260221-b", "intent-20260221-a", None);
 
     let first = Command::new(sdlc_bin())
         .arg("intake")
@@ -204,7 +214,12 @@ fn worker_dry_run_reports_pending_intake_keys() {
     let root = unique_temp_dir("worker");
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
-    write_intent_file(&intent_path, "intent-20260221-worker", "intent-20260221-worker");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-worker",
+        "intent-20260221-worker",
+        None,
+    );
 
     let intake = Command::new(sdlc_bin())
         .arg("intake")
@@ -240,6 +255,132 @@ fn worker_dry_run_reports_pending_intake_keys() {
             .as_str()
             .expect("first intake key should be string"),
         "intent-20260221-worker"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_real_mode_persists_retry_state_on_claim_conflict() {
+    let root = unique_temp_dir("worker_conflict_retry");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_a = root.join("intent_a.yaml");
+    let intent_b = root.join("intent_b.yaml");
+    write_intent_file(
+        &intent_a,
+        "intent-20260221-worker-a",
+        "intent-20260221-worker-a",
+        Some(4242),
+    );
+    write_intent_file(
+        &intent_b,
+        "intent-20260221-worker-b",
+        "intent-20260221-worker-b",
+        Some(4242),
+    );
+
+    for intent in [&intent_a, &intent_b] {
+        let intake = Command::new(sdlc_bin())
+            .arg("intake")
+            .arg("--intent")
+            .arg(intent)
+            .current_dir(&root)
+            .output()
+            .expect("run intake");
+        assert!(
+            intake.status.success(),
+            "intake should succeed: {}",
+            String::from_utf8_lossy(&intake.stderr)
+        );
+    }
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run worker");
+    assert!(
+        worker.status.success(),
+        "worker should succeed: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(payload["command"], "worker");
+    assert_eq!(payload["mode"], "real");
+    assert_eq!(payload["claim_conflicts"][0], "intent-20260221-worker-b");
+    assert_eq!(payload["acquired_claims"][0], "intent-20260221-worker-a");
+
+    let ledger_path = root.join("target/sdlc/intake-ledger.json");
+    let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
+    let ledger: serde_json::Value =
+        serde_json::from_str(&ledger_raw).expect("parse intake ledger");
+    assert_eq!(
+        ledger["entries"]["intent-20260221-worker-b"]["retry"]["attempts"],
+        1
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_terminalizes_after_retry_budget_exhaustion() {
+    let root = unique_temp_dir("worker_terminalize");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_a = root.join("intent_a.yaml");
+    let intent_b = root.join("intent_b.yaml");
+    write_intent_file(
+        &intent_a,
+        "intent-20260221-term-a",
+        "intent-20260221-term-a",
+        Some(777),
+    );
+    write_intent_file(
+        &intent_b,
+        "intent-20260221-term-b",
+        "intent-20260221-term-b",
+        Some(777),
+    );
+
+    for intent in [&intent_a, &intent_b] {
+        let intake = Command::new(sdlc_bin())
+            .arg("intake")
+            .arg("--intent")
+            .arg(intent)
+            .current_dir(&root)
+            .output()
+            .expect("run intake");
+        assert!(
+            intake.status.success(),
+            "intake should succeed: {}",
+            String::from_utf8_lossy(&intake.stderr)
+        );
+    }
+
+    for _ in 0..3 {
+        let worker = Command::new(sdlc_bin())
+            .arg("worker")
+            .current_dir(&root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    let ledger_path = root.join("target/sdlc/intake-ledger.json");
+    let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
+    let ledger: serde_json::Value =
+        serde_json::from_str(&ledger_raw).expect("parse intake ledger");
+    assert_eq!(
+        ledger["entries"]["intent-20260221-term-b"]["terminalized"],
+        true
+    );
+    assert_eq!(
+        ledger["entries"]["intent-20260221-term-b"]["retry"]["attempts"],
+        3
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");

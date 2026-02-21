@@ -6,11 +6,19 @@
 
 #![deny(dead_code)]
 
+use gunbc_dag::{
+    claim_slot_key, reconcile_entries, register_retry_failure, release_claim, try_acquire_claim,
+    ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry, RetryState,
+};
+use gunbc_ir::transport::github::{ensure_sdlc_issue_capabilities, SdlcIssueCapabilities};
+use gunbc_ir::transport::github::IssueLifecycleStage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use gunbc_ir::transport::github::{ensure_sdlc_issue_capabilities, SdlcIssueCapabilities};
+
+const CLAIM_LEASE_TTL_MS: u128 = 30_000;
+const RETRY_BASE_BACKOFF_MS: u128 = 1_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SdlcCommand {
@@ -87,6 +95,14 @@ struct IntakeRecord {
     run_key: String,
     issue_id: Option<u64>,
     policy_version: String,
+    #[serde(default = "default_stage")]
+    stage: IssueLifecycleStage,
+    #[serde(default)]
+    awaiting_approval: bool,
+    #[serde(default)]
+    terminalized: bool,
+    #[serde(default)]
+    retry: RetryState,
     updated_at_epoch_ms: u128,
 }
 
@@ -248,6 +264,10 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
                     run_key: effective_run_key.clone(),
                     issue_id: intent.tracking.issue_id,
                     policy_version: intent.idempotency.policy_version.clone(),
+                    stage: IssueLifecycleStage::Idea,
+                    awaiting_approval: false,
+                    terminalized: false,
+                    retry: RetryState::default(),
                     updated_at_epoch_ms: now,
                 },
             );
@@ -274,18 +294,127 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
 
 fn run_worker(dry_run: bool) -> Result<(), String> {
     let ledger_path = intake_ledger_path();
-    let ledger = load_intake_ledger(&ledger_path)?;
+    let mut ledger = load_intake_ledger(&ledger_path)?;
+    let claim_ledger_path = claim_ledger_path();
+    let mut claim_ledger = load_claim_ledger(&claim_ledger_path)?;
     let mode = if dry_run { "dry-run" } else { "real" };
+    let now = epoch_millis();
+
     let mut intake_keys: Vec<String> = ledger.entries.keys().cloned().collect();
     intake_keys.sort();
+    let mut skipped_missing_issue = Vec::new();
+    let mut skipped_terminalized = Vec::new();
+    let mut claim_conflicts = Vec::new();
+    let mut acquired_claims = Vec::new();
+    let mut reconcile_inputs = Vec::new();
+
+    for intake_key in &intake_keys {
+        let Some(record) = ledger.entries.get_mut(intake_key) else {
+            continue;
+        };
+        if record.terminalized {
+            skipped_terminalized.push(intake_key.clone());
+            continue;
+        }
+        let Some(issue_id) = record.issue_id else {
+            skipped_missing_issue.push(intake_key.clone());
+            continue;
+        };
+        let claim_slot = claim_slot_key(issue_id, record.stage);
+        let claim_owner = format!("gunbc-sdlc-worker:{intake_key}");
+        let claim_result = try_acquire_claim(
+            &mut claim_ledger,
+            &claim_slot,
+            &claim_owner,
+            now,
+            CLAIM_LEASE_TTL_MS,
+        );
+        match claim_result {
+            ClaimAcquireResult::Conflict { current_owner } => {
+                let has_budget = register_retry_failure(
+                    &mut record.retry,
+                    now,
+                    RETRY_BASE_BACKOFF_MS,
+                    format!("claim conflict with owner `{current_owner}`"),
+                );
+                if !has_budget {
+                    record.terminalized = true;
+                }
+                claim_conflicts.push(intake_key.clone());
+                continue;
+            }
+            ClaimAcquireResult::Acquired
+            | ClaimAcquireResult::AlreadyOwned
+            | ClaimAcquireResult::StaleReclaimed { .. } => {
+                acquired_claims.push(intake_key.clone());
+            }
+        }
+
+        let claim_snapshot = claim_ledger.claims.get(&claim_slot).cloned();
+        reconcile_inputs.push(ReconcileEntry {
+            intake_key: intake_key.clone(),
+            claim_slot,
+            claim_owner: claim_snapshot.as_ref().map(|claim| claim.owner.clone()),
+            claim_expires_at_epoch_ms: claim_snapshot
+                .as_ref()
+                .map(|claim| claim.lease_expires_at_epoch_ms),
+            awaiting_approval: record.awaiting_approval,
+            retry: record.retry.clone(),
+        });
+    }
+
+    let reconcile_plan = reconcile_entries(&reconcile_inputs, now);
+    let mut ready_to_run = Vec::new();
+    let mut released_claims = Vec::new();
+    let mut terminalized = Vec::new();
+    for action in &reconcile_plan.actions {
+        match action {
+            ReconcileAction::ReadyToRun { intake_key } => ready_to_run.push(intake_key.clone()),
+            ReconcileAction::ReleaseClaim {
+                intake_key,
+                claim_slot,
+                owner,
+                ..
+            } => {
+                if release_claim(&mut claim_ledger, claim_slot, owner) {
+                    released_claims.push(intake_key.clone());
+                }
+            }
+            ReconcileAction::Terminalize { intake_key, .. } => {
+                if let Some(record) = ledger.entries.get_mut(intake_key) {
+                    record.terminalized = true;
+                }
+                terminalized.push(intake_key.clone());
+            }
+        }
+    }
+
+    if !dry_run {
+        save_intake_ledger(&ledger_path, &ledger)?;
+        save_claim_ledger(&claim_ledger_path, &claim_ledger)?;
+    }
+
+    let pending_count = intake_keys
+        .len()
+        .saturating_sub(skipped_terminalized.len())
+        .saturating_sub(terminalized.len());
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({
             "command": "worker",
             "mode": mode,
-            "pending_count": intake_keys.len(),
+            "pending_count": pending_count,
             "intake_keys": intake_keys,
+            "ready_to_run": ready_to_run,
+            "acquired_claims": acquired_claims,
+            "released_claims": released_claims,
+            "claim_conflicts": claim_conflicts,
+            "terminalized": terminalized,
+            "skipped_missing_issue": skipped_missing_issue,
+            "skipped_terminalized": skipped_terminalized,
             "ledger_path": ledger_path.display().to_string(),
+            "claim_ledger_path": claim_ledger_path.display().to_string(),
+            "reconcile_actions": reconcile_plan.actions,
         }))
         .map_err(|error| format!("failed to serialize worker output: {error}"))?
     );
@@ -381,6 +510,10 @@ fn intake_ledger_path() -> PathBuf {
     PathBuf::from("target").join("sdlc").join("intake-ledger.json")
 }
 
+fn claim_ledger_path() -> PathBuf {
+    PathBuf::from("target").join("sdlc").join("claim-ledger.json")
+}
+
 fn load_intake_ledger(path: &Path) -> Result<IntakeLedger, String> {
     if !path.exists() {
         return Ok(IntakeLedger::default());
@@ -404,6 +537,35 @@ fn save_intake_ledger(path: &Path, ledger: &IntakeLedger) -> Result<(), String> 
         .map_err(|error| format!("failed to serialize intake ledger: {error}"))?;
     std::fs::write(path, content)
         .map_err(|error| format!("failed to write intake ledger {}: {error}", path.display()))
+}
+
+fn load_claim_ledger(path: &Path) -> Result<ClaimLedger, String> {
+    if !path.exists() {
+        return Ok(ClaimLedger::default());
+    }
+    let content = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read claim ledger {}: {error}", path.display()))?;
+    serde_json::from_str::<ClaimLedger>(&content)
+        .map_err(|error| format!("failed to parse claim ledger {}: {error}", path.display()))
+}
+
+fn save_claim_ledger(path: &Path, ledger: &ClaimLedger) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create claim ledger directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    let content = serde_json::to_string_pretty(ledger)
+        .map_err(|error| format!("failed to serialize claim ledger: {error}"))?;
+    std::fs::write(path, content)
+        .map_err(|error| format!("failed to write claim ledger {}: {error}", path.display()))
+}
+
+const fn default_stage() -> IssueLifecycleStage {
+    IssueLifecycleStage::Idea
 }
 
 fn epoch_millis() -> u128 {

@@ -37,6 +37,7 @@ pub mod pragma;
 pub mod resolve;
 pub mod resolve_service;
 pub mod resources;
+pub mod sdlc;
 pub mod testgen_dag;
 pub mod tool_runner;
 pub mod tool_testgen;
@@ -72,6 +73,11 @@ pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
 pub use resolve::{resolve_lowered_dag, ResolveError};
 pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
+};
+pub use sdlc::{
+    claim_slot_key, reconcile_entries, register_retry_failure, release_claim, retry_ready,
+    try_acquire_claim, ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction,
+    ReconcileEntry, ReconcilePlan, RetryState,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
