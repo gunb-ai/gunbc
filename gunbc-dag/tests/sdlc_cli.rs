@@ -557,3 +557,150 @@ fn transition_enforces_stage_ordering_fail_closed() {
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
+
+#[test]
+fn worker_replay_skips_completed_run_key() {
+    let root = unique_temp_dir("worker_replay_skip");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-replay",
+        "intent-20260221-replay",
+        Some(1337),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let first_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run first worker");
+    assert!(
+        first_worker.status.success(),
+        "first worker should succeed: {}",
+        String::from_utf8_lossy(&first_worker.stderr)
+    );
+    let first_payload: serde_json::Value =
+        serde_json::from_slice(&first_worker.stdout).expect("first worker output should be JSON");
+    assert_eq!(first_payload["executed_runs"][0], "intent-20260221-replay");
+
+    let second_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run second worker");
+    assert!(
+        second_worker.status.success(),
+        "second worker should succeed: {}",
+        String::from_utf8_lossy(&second_worker.stderr)
+    );
+    let second_payload: serde_json::Value =
+        serde_json::from_slice(&second_worker.stdout).expect("second worker output should be JSON");
+    assert_eq!(second_payload["replay_skipped"][0], "intent-20260221-replay");
+    assert_eq!(
+        second_payload["ready_to_run"]
+            .as_array()
+            .expect("ready_to_run should be an array")
+            .len(),
+        0
+    );
+
+    let run_state_path = root.join("target/sdlc/run-state-ledger.json");
+    let run_state_raw = std::fs::read_to_string(&run_state_path).expect("read run state ledger");
+    let run_state: serde_json::Value =
+        serde_json::from_str(&run_state_raw).expect("parse run state ledger");
+    assert_eq!(
+        run_state["entries"]["intent-20260221-replay"]["status"],
+        "Completed"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn transition_to_accepted_promotes_canonical_artifact() {
+    let root = unique_temp_dir("transition_promote_canonical");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-canonical",
+        "intent-20260221-canonical",
+        Some(31337),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    for stage in ["design", "design-review"] {
+        let transition = Command::new(sdlc_bin())
+            .arg("transition")
+            .arg("--intake-key")
+            .arg("intent-20260221-canonical")
+            .arg("--stage")
+            .arg(stage)
+            .current_dir(&root)
+            .output()
+            .expect("run pre-accepted transition");
+        assert!(
+            transition.status.success(),
+            "transition to {stage} should succeed: {}",
+            String::from_utf8_lossy(&transition.stderr)
+        );
+    }
+
+    let accepted = Command::new(sdlc_bin())
+        .arg("transition")
+        .arg("--intake-key")
+        .arg("intent-20260221-canonical")
+        .arg("--stage")
+        .arg("accepted")
+        .current_dir(&root)
+        .output()
+        .expect("run transition to accepted");
+    assert!(
+        accepted.status.success(),
+        "transition to accepted should succeed: {}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let accepted_payload: serde_json::Value =
+        serde_json::from_slice(&accepted.stdout).expect("accepted output should be JSON");
+    assert_eq!(accepted_payload["canonical_artifact_status"], "inserted");
+
+    let artifact_ledger_path = root.join("target/sdlc/artifact-ledger.json");
+    let artifact_raw = std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger");
+    let artifact: serde_json::Value =
+        serde_json::from_str(&artifact_raw).expect("parse artifact ledger");
+    assert!(
+        artifact["records"]
+            .as_object()
+            .expect("artifact records should be object")
+            .contains_key("sdlc:artifact:canonical:intent-20260221-canonical"),
+        "accepted transition should create canonical artifact marker"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}

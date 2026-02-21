@@ -7,9 +7,11 @@
 #![deny(dead_code)]
 
 use gunbc_dag::{
-    claim_slot_key, reconcile_entries, register_retry_failure, release_claim, try_acquire_claim,
-    upsert_provisional_artifact, ArtifactLedger, ArtifactUpsertOutcome, ClaimAcquireResult,
-    ClaimLedger, ReconcileAction, ReconcileEntry, RetryState, validate_stage_transition,
+    claim_slot_key, mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
+    provisional_marker, reconcile_entries, register_retry_failure, release_claim,
+    should_replay_skip, try_acquire_claim, upsert_provisional_artifact, ArtifactLedger,
+    ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry,
+    RetryState, RunStateLedger, validate_stage_transition,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::github::{ensure_sdlc_issue_capabilities, SdlcIssueCapabilities};
@@ -425,6 +427,8 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
     let mut ledger = load_intake_ledger(&ledger_path)?;
     let claim_ledger_path = claim_ledger_path();
     let mut claim_ledger = load_claim_ledger(&claim_ledger_path)?;
+    let run_state_path = run_state_ledger_path();
+    let mut run_state = load_run_state_ledger(&run_state_path)?;
     let mode = if dry_run { "dry-run" } else { "real" };
     let now = epoch_millis();
 
@@ -434,6 +438,8 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
     let mut skipped_terminalized = Vec::new();
     let mut claim_conflicts = Vec::new();
     let mut acquired_claims = Vec::new();
+    let mut replay_skipped = Vec::new();
+    let mut executed_runs = Vec::new();
     let mut reconcile_inputs = Vec::new();
     let mut stage_duration_ms = BTreeMap::new();
     let mut approval_latency_ms = BTreeMap::new();
@@ -510,7 +516,20 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
     let mut terminalized = Vec::new();
     for action in &reconcile_plan.actions {
         match action {
-            ReconcileAction::ReadyToRun { intake_key } => ready_to_run.push(intake_key.clone()),
+            ReconcileAction::ReadyToRun { intake_key } => {
+                let Some(record) = ledger.entries.get(intake_key) else {
+                    continue;
+                };
+                if should_replay_skip(&run_state, intake_key, &record.run_key) {
+                    replay_skipped.push(intake_key.clone());
+                    continue;
+                }
+                ready_to_run.push(intake_key.clone());
+                if !dry_run {
+                    mark_run_completed(&mut run_state, intake_key, &record.run_key, now);
+                    executed_runs.push(intake_key.clone());
+                }
+            }
             ReconcileAction::ReleaseClaim {
                 intake_key,
                 claim_slot,
@@ -524,6 +543,9 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
             ReconcileAction::Terminalize { intake_key, .. } => {
                 if let Some(record) = ledger.entries.get_mut(intake_key) {
                     record.terminalized = true;
+                    if !dry_run {
+                        mark_run_failed(&mut run_state, intake_key, &record.run_key, now);
+                    }
                 }
                 terminalized.push(intake_key.clone());
             }
@@ -533,6 +555,7 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
     if !dry_run {
         save_intake_ledger(&ledger_path, &ledger)?;
         save_claim_ledger(&claim_ledger_path, &claim_ledger)?;
+        save_run_state_ledger(&run_state_path, &run_state)?;
     }
 
     let pending_count = intake_keys
@@ -547,6 +570,8 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
             "pending_count": pending_count,
             "intake_keys": intake_keys,
             "ready_to_run": ready_to_run,
+            "replay_skipped": replay_skipped,
+            "executed_runs": executed_runs,
             "acquired_claims": acquired_claims,
             "released_claims": released_claims,
             "claim_conflicts": claim_conflicts,
@@ -555,6 +580,7 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
             "skipped_terminalized": skipped_terminalized,
             "ledger_path": ledger_path.display().to_string(),
             "claim_ledger_path": claim_ledger_path.display().to_string(),
+            "run_state_path": run_state_path.display().to_string(),
             "reconcile_actions": reconcile_plan.actions,
             "metrics": {
                 "stage_duration_ms": stage_duration_ms,
@@ -616,6 +642,8 @@ fn run_transition(
     let next_stage = next_stage.ok_or_else(|| "transition requires --stage".to_string())?;
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
+    let artifact_ledger_path = artifact_ledger_path();
+    let mut artifact_ledger = load_artifact_ledger(&artifact_ledger_path)?;
     let Some(record) = ledger.entries.get_mut(intake_key) else {
         return Err(format!("unknown intake key `{intake_key}`"));
     };
@@ -627,11 +655,46 @@ fn run_transition(
     let current_stage = record.stage;
     validate_stage_transition(current_stage, next_stage)?;
 
+    let now = epoch_millis();
+    let mut canonical_artifact_status = None;
+    if next_stage == IssueLifecycleStage::Accepted {
+        let provisional = artifact_ledger
+            .records
+            .get(&provisional_marker(intake_key))
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "cannot promote canonical artifact for `{intake_key}`: missing provisional marker"
+                )
+            })?;
+        if provisional.run_key != record.run_key {
+            return Err(format!(
+                "cannot promote canonical artifact for `{intake_key}`: provisional run_key `{}` does not match intake run_key `{}`",
+                provisional.run_key, record.run_key
+            ));
+        }
+        let outcome = promote_to_canonical_artifact(
+            &mut artifact_ledger,
+            intake_key,
+            &record.run_key,
+            &provisional.content_hash,
+            now,
+        )?;
+        canonical_artifact_status = Some(match outcome {
+            ArtifactUpsertOutcome::Inserted => "inserted",
+            ArtifactUpsertOutcome::Updated => "updated",
+            ArtifactUpsertOutcome::Noop => "noop",
+        });
+    }
+
     record.stage = next_stage;
-    record.updated_at_epoch_ms = epoch_millis();
+    record.updated_at_epoch_ms = now;
 
     if !dry_run {
         save_intake_ledger(&ledger_path, &ledger)?;
+        if canonical_artifact_status.is_some() {
+            save_artifact_ledger(&artifact_ledger_path, &artifact_ledger)?;
+        }
     }
 
     println!(
@@ -643,6 +706,8 @@ fn run_transition(
             "from_stage": current_stage.as_label(),
             "to_stage": next_stage.as_label(),
             "ledger_path": ledger_path.display().to_string(),
+            "canonical_artifact_status": canonical_artifact_status,
+            "artifact_ledger_path": artifact_ledger_path.display().to_string(),
         }))
         .map_err(|error| format!("failed to serialize transition output: {error}"))?
     );
@@ -746,6 +811,10 @@ fn artifact_ledger_path() -> PathBuf {
     PathBuf::from("target").join("sdlc").join("artifact-ledger.json")
 }
 
+fn run_state_ledger_path() -> PathBuf {
+    PathBuf::from("target").join("sdlc").join("run-state-ledger.json")
+}
+
 fn load_intake_ledger(path: &Path) -> Result<IntakeLedger, String> {
     if !path.exists() {
         return Ok(IntakeLedger::default());
@@ -819,6 +888,31 @@ fn save_artifact_ledger(path: &Path, ledger: &ArtifactLedger) -> Result<(), Stri
         .map_err(|error| format!("failed to serialize artifact ledger: {error}"))?;
     std::fs::write(path, content)
         .map_err(|error| format!("failed to write artifact ledger {}: {error}", path.display()))
+}
+
+fn load_run_state_ledger(path: &Path) -> Result<RunStateLedger, String> {
+    if !path.exists() {
+        return Ok(RunStateLedger::default());
+    }
+    let content = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read run state ledger {}: {error}", path.display()))?;
+    serde_json::from_str::<RunStateLedger>(&content)
+        .map_err(|error| format!("failed to parse run state ledger {}: {error}", path.display()))
+}
+
+fn save_run_state_ledger(path: &Path, ledger: &RunStateLedger) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create run state ledger directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    let content = serde_json::to_string_pretty(ledger)
+        .map_err(|error| format!("failed to serialize run state ledger: {error}"))?;
+    std::fs::write(path, content)
+        .map_err(|error| format!("failed to write run state ledger {}: {error}", path.display()))
 }
 
 const fn default_stage() -> IssueLifecycleStage {
