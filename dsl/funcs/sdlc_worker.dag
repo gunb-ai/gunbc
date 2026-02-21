@@ -27,7 +27,7 @@ import pipelines.sdlc { has_label }
 // ── Configuration helpers ───────────────────────────────────────────
 
 fn sdlc_labels() -> String {
-  "idea,design,design-review,accepted,implementing,code-review,testing"
+  "idea,design,design-review,accepted,implementing,code-review,testing,done"
 }
 
 fn make_issue_id(owner: String, repo: String, number: Int) -> String {
@@ -121,6 +121,7 @@ func handle_accepted(
   agent = Codex.Spawn(
     prompt: "Implement the design for issue #{number}:\n\n{body}",
     repo_path: ".",
+    branch: "sdlc/issue-{number}",
     approval_mode: "full-auto"
   )
 
@@ -141,6 +142,29 @@ func handle_accepted(
   return { success: agent.started }
 }
 
+func handle_done(
+  owner: String,
+  repo: String,
+  number: Int,
+  run_key: String
+) -> { success: Bool } {
+  comment = Issues.AddComment(
+    owner: owner,
+    repo: repo,
+    number: number,
+    body: "All stages complete. Closing issue."
+  )
+
+  close = Issues.Update(
+    owner: owner,
+    repo: repo,
+    number: number,
+    state: "closed"
+  )
+
+  return { success: true }
+}
+
 // ── Main worker function ────────────────────────────────────────────
 
 func dispatch_sdlc(
@@ -159,31 +183,43 @@ func dispatch_sdlc(
     stage = determine_stage(labels: issue.labels)
     issue_id = make_issue_id(owner: owner, repo: repo, number: issue.number)
 
-    claim = ControlPlane.AcquireStageClaim(
+    // Replay-skip: check if this stage already has a successful outcome.
+    // Only skip on "Success" — failed outcomes should be retried.
+    prior = ControlPlane.GetStageOutcome(
       intake_key: "{owner}/{repo}",
-      issue_id: issue_id,
-      stage: stage,
-      run_key: run_key,
-      claimant: "funcs.sdlc_worker"
+      stage: stage
     )
 
-    if claim.acquired {
-      outcome = ControlPlane.UpsertStageOutcome(
+    if prior.found && prior.outcome_status == "Success" {
+      // Prior success for this stage — skip dispatch.
+      { issue_number: issue.number, stage: stage, action: "replay_skipped" }
+    } else {
+      claim = ControlPlane.AcquireStageClaim(
         intake_key: "{owner}/{repo}",
         issue_id: issue_id,
         stage: stage,
         run_key: run_key,
-        outcome_status: "dispatched",
-        payload_hash: "sha256:worker-dispatch"
+        claimant: "funcs.sdlc_worker"
       )
 
-      release = ControlPlane.ReleaseStageClaim(
-        intake_key: "{owner}/{repo}",
-        issue_id: issue_id,
-        stage: stage,
-        claim_token: claim.claim_token,
-        lease_generation: claim.lease_generation
-      )
+      if claim.acquired {
+        outcome = ControlPlane.UpsertStageOutcome(
+          intake_key: "{owner}/{repo}",
+          issue_id: issue_id,
+          stage: stage,
+          run_key: run_key,
+          outcome_status: "dispatched",
+          payload_hash: "sha256:worker-dispatch"
+        )
+
+        release = ControlPlane.ReleaseStageClaim(
+          intake_key: "{owner}/{repo}",
+          issue_id: issue_id,
+          stage: stage,
+          claim_token: claim.claim_token,
+          lease_generation: claim.lease_generation
+        )
+      }
     }
   }
 

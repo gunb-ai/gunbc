@@ -113,8 +113,15 @@ fn format_ci_comment(result: Json) -> String {
   "## Acceptance Tests: {status}\n\n{result.report}\n\n---\n_Tested by gunbc SDLC pipeline_"
 }
 
+// Composite key for internal ledger/claim operations (not sent to providers).
 fn make_issue_id(owner: String, repo: String, number: Int) -> String {
   "{owner}/{repo}#{number}"
+}
+
+// Provider-facing issue ID. For GitHub, this is the issue number as a string.
+// Profile binding maps this to the concrete service params (owner/repo from config).
+fn provider_issue_id(number: Int) -> String {
+  "{number}"
 }
 
 // D11: Agent branch naming convention.
@@ -149,11 +156,7 @@ pipeline sdlc
   // Stage 1: Discover and fetch current issue state
   stage fetch {
     issue_result = issues.get(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      )
+      id: provider_issue_id(number: default_issue_number())
     )
     current_stage = determine_stage(labels: issue_result.issue.labels)
   }
@@ -184,11 +187,7 @@ pipeline sdlc
 
     // Post artifact as issue comment (idempotent via marker)
     design_comment = issues.comment(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       body: format_design_comment(
         design: design_output.content,
         summary: design_output.summary
@@ -198,11 +197,7 @@ pipeline sdlc
 
     // CAS transition: Idea -> Design via label replacement (INV-4)
     design_labels = issues.set_labels(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Design
@@ -231,11 +226,7 @@ pipeline sdlc
     )
 
     review_comment = issues.comment(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       body: format_review_comment(
         findings: review_output.findings,
         approved: review_output.approved,
@@ -246,11 +237,7 @@ pipeline sdlc
 
     // CAS transition: Design -> DesignReview
     review_labels = issues.set_labels(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: DesignReview
@@ -277,11 +264,7 @@ pipeline sdlc
   // Stage 6: Accept design (gate: review must approve)
   stage accept_design [after record_design_outcome, when review_output.approved] {
     accepted_labels = issues.set_labels(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Accepted
@@ -289,11 +272,7 @@ pipeline sdlc
     )
 
     accept_comment = issues.comment(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       body: "Design approved. Ready for implementation.",
       marker: "sdlc:accepted-artifact"
     )
@@ -304,22 +283,14 @@ pipeline sdlc
   stage implementation [after accept_design] {
     // Post implementation plan as comment
     plan_comment = issues.comment(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       body: format_plan_comment(plan: design_output.content),
       marker: "sdlc:plan-artifact"
     )
 
     // CAS transition: Accepted -> Implementing
     impl_labels = issues.set_labels(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Implementing
@@ -400,11 +371,7 @@ pipeline sdlc
 
     // Post review findings to the issue as well
     cr_issue_comment = issues.comment(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       body: format_code_review_findings(
         files: pr_files.files,
         review_body: code_review_output.summary
@@ -414,11 +381,7 @@ pipeline sdlc
 
     // CAS transition: Implementing -> CodeReview
     cr_labels = issues.set_labels(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: CodeReview
@@ -445,11 +408,7 @@ pipeline sdlc
   stage acceptance [after code_review, when code_review_output.approved] {
     // CAS transition: CodeReview -> Testing
     test_labels = issues.set_labels(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Testing
@@ -464,11 +423,7 @@ pipeline sdlc
 
     // Post test results as issue comment
     ci_comment = issues.comment(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       body: format_test_results(
         test_result: test_result,
         clippy_result: clippy_result
@@ -502,11 +457,7 @@ pipeline sdlc
   // Stage 10: Close (transition: testing -> done, close issue)
   stage close [after acceptance] {
     done_labels = issues.set_labels(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Done
@@ -514,11 +465,7 @@ pipeline sdlc
     )
 
     close_result = issues.close(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      )
+      id: provider_issue_id(number: default_issue_number())
     )
   }
 
@@ -535,11 +482,7 @@ pipeline sdlc
     report_text = format_report(summary: summary, stages: stages)
 
     report_comment = issues.comment(
-      id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
+      id: provider_issue_id(number: default_issue_number()),
       body: report_text,
       marker: "sdlc:final-report"
     )
