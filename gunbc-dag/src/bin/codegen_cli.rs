@@ -389,7 +389,7 @@ fn cmd_cigen(dry_run: bool) {
         .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
         .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
         .with_cargo_env(gunbc_ir::CargoEnv::ci())
-        .with_git(gunbc_ir::GitConfig::new("master"))
+        .with_git(gunbc_ir::GitConfig::default())
         .with_cache(CacheConfig::rust())
         .with_permissions(ci_perms)
         .with_secrets_env(ci_secrets);
