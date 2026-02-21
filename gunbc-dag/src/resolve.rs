@@ -98,7 +98,6 @@ impl Executable for PassthroughOp {
     }
 }
 
-
 /// Simple identity callable adapter for DSL entrypoint wrappers.
 #[derive(Debug, Clone)]
 struct IdentityCallableOp;
@@ -441,14 +440,18 @@ fn resolve_domain(
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
-    // 1. Modules with custom resolvers (non-passthrough behavior).
-    match module {
-        "tools.pragma" => return resolve_pragma(node_id, name),
-        "tools.makegen" => return resolve_makegen(node_id, name),
-        "tools.codegen" => return resolve_codegen(node_id, name),
-        "tools.bootstrap" => return resolve_bootstrap(node_id, name, outputs),
-        "std.resources" => return resolve_std_resources(name),
-        _ => {}
+    // 1. Modules with custom resolvers — return Some for known callables,
+    //    None for unknown (which falls through to passthrough).
+    let custom = match module {
+        "tools.pragma" => resolve_pragma(name),
+        "tools.makegen" => resolve_makegen(name),
+        "tools.codegen" => resolve_codegen(name),
+        "tools.bootstrap" => resolve_bootstrap(name),
+        "std.resources" => Some(resolve_std_resources(name)),
+        _ => None,
+    };
+    if let Some(op) = custom {
+        return Ok(op);
     }
     // 2. Service/workspace modules use generic transport dispatch.
     if module.starts_with("services.") || module.starts_with("workspace.") {
@@ -461,43 +464,43 @@ fn resolve_domain(
     }))
 }
 
-fn resolve_pragma(node_id: &str, name: &str) -> Result<DynOp, ResolveError> {
+fn resolve_pragma(name: &str) -> Option<DynOp> {
     match name {
-        "render_clippy_toml" => Ok(DynOp::new(PragmaOp::RenderClippy)),
-        "render_disallowed_methods_allowlist" => Ok(DynOp::new(PragmaOp::RenderAllowlist)),
-        "render_pragma_lint_policy" => Ok(DynOp::new(PragmaOp::RenderLintPolicy)),
-        "pragma" => Ok(DynOp::new(PragmaEntrypointOp)),
-        _ => Err(unknown_callable(node_id, "tools.pragma", name)),
+        "render_clippy_toml" => Some(DynOp::new(PragmaOp::RenderClippy)),
+        "render_disallowed_methods_allowlist" => Some(DynOp::new(PragmaOp::RenderAllowlist)),
+        "render_pragma_lint_policy" => Some(DynOp::new(PragmaOp::RenderLintPolicy)),
+        "pragma" => Some(DynOp::new(PragmaEntrypointOp)),
+        _ => None,
     }
 }
 
-fn resolve_makegen(node_id: &str, name: &str) -> Result<DynOp, ResolveError> {
+fn resolve_makegen(name: &str) -> Option<DynOp> {
     match name {
-        "load_registry" => Ok(DynOp::new(MakegenOp::LoadRegistry)),
-        "render_makefile" => Ok(DynOp::new(MakegenOp::RenderMakefile)),
-        "makegen" => Ok(DynOp::new(MakegenOp::Entrypoint)),
-        _ => Err(unknown_callable(node_id, "tools.makegen", name)),
+        "load_registry" => Some(DynOp::new(MakegenOp::LoadRegistry)),
+        "render_makefile" => Some(DynOp::new(MakegenOp::RenderMakefile)),
+        "makegen" => Some(DynOp::new(MakegenOp::Entrypoint)),
+        _ => None,
     }
 }
 
-fn resolve_codegen(node_id: &str, name: &str) -> Result<DynOp, ResolveError> {
+fn resolve_codegen(name: &str) -> Option<DynOp> {
     match name {
-        "codegen" => Ok(DynOp::new(IdentityCallableOp)),
-        _ => Err(unknown_callable(node_id, "tools.codegen", name)),
+        "codegen" => Some(DynOp::new(IdentityCallableOp)),
+        _ => None,
     }
 }
 
-fn resolve_bootstrap(node_id: &str, name: &str, _outputs: &[Port]) -> Result<DynOp, ResolveError> {
+fn resolve_bootstrap(name: &str) -> Option<DynOp> {
     match name {
         // The DSL `func bootstrap(...)` wrapper only aggregates upstream values.
-        "bootstrap" => Ok(DynOp::new(IdentityCallableOp)),
-        "render_bootstrap_makefile" => Ok(DynOp::new(BootstrapOp::GenerateMakefile)),
-        "render_bootstrap_gitignore" => Ok(DynOp::new(BootstrapOp::GenerateGitignore)),
-        _ => Err(unknown_callable(node_id, "tools.bootstrap", name)),
+        "bootstrap" => Some(DynOp::new(IdentityCallableOp)),
+        "render_bootstrap_makefile" => Some(DynOp::new(BootstrapOp::GenerateMakefile)),
+        "render_bootstrap_gitignore" => Some(DynOp::new(BootstrapOp::GenerateGitignore)),
+        _ => None,
     }
 }
 
-fn resolve_std_resources(name: &str) -> Result<DynOp, ResolveError> {
+fn resolve_std_resources(name: &str) -> DynOp {
     // Resource lifecycle acquire/release nodes from the DSL resource system.
     // Names follow the pattern: `resource_lifecycle::acquire::ResourceName`
     // or `resource_lifecycle::release::ResourceName`.
@@ -505,15 +508,15 @@ fn resolve_std_resources(name: &str) -> Result<DynOp, ResolveError> {
     // no hardcoded list needed. Adding a new resource to std/resources.dag
     // works without changing resolver code.
     if let Some(resource_name) = name.strip_prefix("resource_lifecycle::acquire::") {
-        return Ok(DynOp::new(ResourceAcquireOp {
+        return DynOp::new(ResourceAcquireOp {
             resource_kind: resource_name.to_string(),
-        }));
+        });
     }
     if name.starts_with("resource_lifecycle::release::") {
-        return Ok(DynOp::new(ResourceReleaseOp));
+        return DynOp::new(ResourceReleaseOp);
     }
     // Other std.resources callables pass through as identity.
-    Ok(DynOp::new(IdentityCallableOp))
+    DynOp::new(IdentityCallableOp)
 }
 
 fn resolve_service_transport(
@@ -726,6 +729,47 @@ mod tests {
                 resource_target: None,
             },
         )
+    }
+
+    // ---- Behavioral assertion helpers ----
+
+    /// Assert a resolved op behaves as passthrough: inputs forwarded,
+    /// declared output ports filled with Skipped when no matching input.
+    fn assert_passthrough_behavior(op: &DynOp) {
+        let mut inputs = HashMap::new();
+        inputs.insert("x".to_string(), Value::Str("hello".to_string()));
+        let outputs = op.execute(inputs).expect("passthrough should succeed");
+        assert_eq!(
+            outputs.get("x").and_then(Value::as_str),
+            Some("hello"),
+            "passthrough should forward inputs"
+        );
+        // Declared output port "out" should be filled with Skipped
+        assert_eq!(
+            outputs.get("out"),
+            Some(&Value::Skipped),
+            "passthrough should fill undeclared output ports with Skipped"
+        );
+    }
+
+    /// Assert a resolved op behaves as identity: inputs == outputs.
+    fn assert_identity_behavior(op: &DynOp) {
+        let mut inputs = HashMap::new();
+        inputs.insert("a".to_string(), Value::Str("v1".to_string()));
+        inputs.insert("b".to_string(), Value::Int(42));
+        let outputs = op.execute(inputs.clone()).expect("identity should succeed");
+        assert_eq!(outputs, inputs, "identity op should return inputs unchanged");
+    }
+
+    /// Assert a resolved op is unsupported: execution fails with error.
+    fn assert_unsupported_behavior(op: &DynOp) {
+        let err = op
+            .execute(HashMap::new())
+            .expect_err("unsupported op should fail on execute");
+        assert!(
+            err.to_string().contains("unsupported operation"),
+            "expected unsupported error, got: {err}"
+        );
     }
 
     fn collection_node(id: &str, kind: CollectionOpKind) -> Node<LoweredOp> {
@@ -951,7 +995,7 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("tools.codegen::codegen");
-        assert!(format!("{:?}", result).contains("IdentityCallableOp"));
+        assert_identity_behavior(&result);
     }
 
     #[test]
@@ -1226,7 +1270,7 @@ mod tests {
     fn resolve_collection_map() {
         let node = collection_node("map_items", CollectionOpKind::Map);
         let result = resolve_node(&node).expect("map");
-        assert!(format!("{:?}", result).contains("UnsupportedOp"));
+        assert_unsupported_behavior(&result);
     }
 
     #[test]
@@ -1238,34 +1282,27 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("unknown modules should default to passthrough");
-        assert!(
-            format!("{:?}", result).contains("PassthroughOp"),
-            "expected PassthroughOp for unknown module, got {:?}",
-            result
-        );
+        assert_passthrough_behavior(&result);
     }
 
     #[test]
-    fn resolve_unknown_callable_fails() {
+    fn resolve_unknown_callable_in_custom_module_falls_through_to_passthrough() {
         let node = callable_node(
             "bad_op",
             "tools.pragma",
             "nonexistent_op",
             ObligationCategory::None,
         );
-        let err = resolve_node(&node).unwrap_err();
-        assert!(err.reason.contains("unknown callable"));
+        let result =
+            resolve_node(&node).expect("unknown callable should fall through to passthrough");
+        assert_passthrough_behavior(&result);
     }
 
     #[test]
     fn resolve_infra_callable_uses_default_passthrough() {
         let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
         let result = resolve_node(&node).expect("infra");
-        assert!(
-            format!("{:?}", result).contains("PassthroughOp"),
-            "tools.infra should use default passthrough, got {:?}",
-            result
-        );
+        assert_passthrough_behavior(&result);
     }
 
     #[test]
