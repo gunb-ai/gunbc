@@ -368,6 +368,7 @@ dependencies = [
  "gunbc-codegen",
  "gunbc-delegate-macros",
  "gunbc-deps",
+ "gunbc-design-ops",
  "gunbc-exec",
  "gunbc-gist",
  "gunbc-infra",
@@ -423,6 +424,13 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+]
+
+[[package]]
+name = "gunbc-design-ops"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

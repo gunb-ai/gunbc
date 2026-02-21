@@ -38,6 +38,7 @@ gunbc-tool-registry = { path = "../core/tool-registry" }
 gunbc-tool-registry-macros = { path = "../core/tool-registry-macros" }
 gunbc-delegate-macros = { path = "../core/delegate-macros" }
 gunbc-lib-review = { path = "../lib/review" }
+gunbc-design-ops = { path = "../lib/design-ops" }
 gunbc-cli = { path = "../core/cli" }
 
 serde_json = { workspace = true }

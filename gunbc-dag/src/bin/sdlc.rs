@@ -10,6 +10,7 @@ use gunbc_dag::{
     claim_slot_key, reconcile_entries, register_retry_failure, release_claim, try_acquire_claim,
     ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry, RetryState,
 };
+use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::github::{ensure_sdlc_issue_capabilities, SdlcIssueCapabilities};
 use gunbc_ir::transport::github::IssueLifecycleStage;
 use serde::{Deserialize, Serialize};
@@ -252,6 +253,12 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
     validate_intent(&intent)?;
 
     let computed_run_key = compute_run_key(&intent);
+    let design_prompt = build_design_prompt(&DesignRequest {
+        title: intent.title.clone(),
+        idea: intent.objective.clone(),
+        context: intent.notes.clone(),
+        acceptance_tests: intent.acceptance_tests.clone(),
+    });
     let effective_run_key = intent
         .tracking
         .run_key
@@ -273,6 +280,7 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
                 "intake_key": intent.idempotency.intake_key,
                 "run_key": effective_run_key,
                 "provider": intent.provider,
+                "design_prompt": design_prompt,
             }))
             .map_err(|error| format!("failed to serialize intake dry-run output: {error}"))?
         );
@@ -332,6 +340,7 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
             "run_key": effective_run_key,
             "idempotent": idempotent,
             "ledger_path": ledger_path.display().to_string(),
+            "design_prompt": design_prompt,
         }))
         .map_err(|error| format!("failed to serialize intake output: {error}"))?
     );
