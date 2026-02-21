@@ -151,3 +151,69 @@ fn status_command_succeeds_with_adc_refresh_token_in_isolated_home() {
 
     std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
 }
+
+#[test]
+fn reconcile_command_fails_closed_when_status_unhealthy() {
+    let temp_home = unique_temp_dir("reconcile_missing_adc");
+    std::fs::create_dir_all(&temp_home).expect("create temp HOME");
+
+    let output = Command::new(infra_bin())
+        .arg("reconcile")
+        .arg("--env")
+        .arg("dev")
+        .env("HOME", &temp_home)
+        .output()
+        .expect("run infra reconcile command");
+    assert!(
+        !output.status.success(),
+        "infra reconcile should fail closed when health checks are unhealthy"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot reconcile while infra health checks fail"),
+        "reconcile should explain health-gated fail-closed behavior: {stderr}"
+    );
+
+    std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
+}
+
+#[test]
+fn reconcile_command_preview_succeeds_when_health_is_ready() {
+    let temp_home = unique_temp_dir("reconcile_with_adc");
+    let adc_path = temp_home
+        .join(".config")
+        .join("gcloud")
+        .join("application_default_credentials.json");
+    if let Some(parent) = adc_path.parent() {
+        std::fs::create_dir_all(parent).expect("create ADC parent directories");
+    }
+    std::fs::write(
+        &adc_path,
+        r#"{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test-refresh-token"}"#,
+    )
+    .expect("write ADC fixture with refresh token");
+
+    let output = Command::new(infra_bin())
+        .arg("reconcile")
+        .arg("--env")
+        .arg("dev")
+        .env("HOME", &temp_home)
+        .output()
+        .expect("run infra reconcile preview command");
+    assert!(
+        output.status.success(),
+        "infra reconcile preview should succeed when health checks pass: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("infra reconcile preview"),
+        "reconcile preview should print mode banner: {stdout}"
+    );
+    assert!(
+        stdout.contains("service-account:gunbai-dev-secrets"),
+        "reconcile preview should include runtime dependency targets from plan: {stdout}"
+    );
+
+    std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
+}

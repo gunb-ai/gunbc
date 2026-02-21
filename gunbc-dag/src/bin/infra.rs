@@ -33,6 +33,7 @@ enum InfraCommand {
     Bootstrap,
     Plan,
     Apply,
+    Reconcile,
     Spec,
     Graph,
     Login,
@@ -118,10 +119,28 @@ fn run_command(args: InfraCliArgs) -> Result<(), String> {
         }
         InfraCommand::Plan => run_plan(spec, args.runtime, &args.filter()),
         InfraCommand::Apply => run_apply(spec, &args),
+        InfraCommand::Reconcile => run_reconcile(spec, &args),
         InfraCommand::Bootstrap => run_bootstrap(spec, &args),
         InfraCommand::Login => run_login(spec),
         InfraCommand::Status => run_status(spec),
         InfraCommand::Help => Ok(()),
+    }
+}
+
+fn run_reconcile(spec: &InfraSpec, args: &InfraCliArgs) -> Result<(), String> {
+    let report = evaluate_health(spec);
+    if !report.overall_ok {
+        return Err(
+            "cannot reconcile while infra health checks fail; run `gunbc-infra status --env <env>` and remediate first"
+                .to_string(),
+        );
+    }
+    if args.execute {
+        println!("infra reconcile execute mode");
+        run_apply(spec, args)
+    } else {
+        println!("infra reconcile preview (no changes). pass --execute to apply.");
+        run_plan(spec, args.runtime, &args.filter())
     }
 }
 
@@ -517,6 +536,7 @@ fn parse_cli_args(argv: &[String]) -> Result<InfraCliArgs, String> {
         "bootstrap" => InfraCommand::Bootstrap,
         "plan" => InfraCommand::Plan,
         "apply" => InfraCommand::Apply,
+        "reconcile" => InfraCommand::Reconcile,
         "spec" => InfraCommand::Spec,
         "graph" => InfraCommand::Graph,
         "login" => InfraCommand::Login,
@@ -752,6 +772,7 @@ fn print_help() {
     println!("  bootstrap   Build or execute WIF bootstrap DAG");
     println!("  plan        Execute infra planning DAG");
     println!("  apply       Preview or execute infra apply DAG");
+    println!("  reconcile   Health-gated plan/apply convergence flow");
     println!("  spec        Print InfraSpec JSON");
     println!("  graph       Print InfraSpec graph (DOT)");
     println!("  login       Verify ADC + impersonation and print direnv template");
@@ -841,6 +862,10 @@ mod tests {
         let status =
             parse_cli_args(&argv(&["gunbc-infra", "status"])).expect("status should parse");
         assert_eq!(status.command, InfraCommand::Status);
+
+        let reconcile = parse_cli_args(&argv(&["gunbc-infra", "reconcile"]))
+            .expect("reconcile should parse");
+        assert_eq!(reconcile.command, InfraCommand::Reconcile);
     }
 
     #[test]
