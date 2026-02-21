@@ -175,6 +175,37 @@ classDiagram
 3. New SDLC behavior must be added to DSL/codegen first.
 4. Interpreter-only behavior additions are disallowed.
 
+### 5.4 Codegen-First Implementation Gate (CG0-D / CG3 / CG4 / CG5 / CG6)
+
+This section records the concrete implementation surface that satisfies the
+codegen-first boundary for SDLC + infra control-plane orchestration.
+
+Canonical DSL modules (authoritative behavior/modeling):
+
+1. `dsl/pipelines/sdlc.dag` — SDLC stage orchestration semantics.
+2. `dsl/tools/design.dag` — typed design/review prompt transforms.
+3. `dsl/services/sdlc/control_plane.dag` — claim lease + stage outcome
+   control-plane service contracts.
+4. `dsl/tools/infra.dag` — infra plan/apply/reconcile orchestration contract.
+
+Runtime delegation invariants:
+
+1. `gunbc-sdlc` and `gunbc-infra` consume compiled DSL module behavior through
+   shared DAG build/resolve paths, not handwritten stage-flow branching.
+2. Workspace discovery/coverage gates fail closed for unmapped DSL modules.
+3. Generated backend conformance must include manifest parity and runnable
+   target smoke across Rust/Go/C/MIPS where toolchains are present.
+
+Conformance evidence classes:
+
+1. Manifest parity tests across Rust/Go/C/MIPS for SDLC and infra modules.
+2. Generated runtime smoke tests:
+   1. Rust layer-1 runnable smoke for infra entrypoint.
+   2. Go/C/MIPS toolchain-aware smoke for infra + SDLC modules.
+3. Differential policy:
+   1. Any new SDLC orchestration behavior must land in DSL modules first.
+   2. Runtime-only behavior deltas are design-policy violations.
+
 ## 6. Canonical Contracts
 
 ### 6.1 Interface Operations
