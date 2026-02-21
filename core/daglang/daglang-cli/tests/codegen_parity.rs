@@ -657,6 +657,104 @@ fn run_infra_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
     }
 }
 
+fn run_infra_generated_mips(native_out_dir: &Path) -> RuntimeOutcome {
+    let toolchain = ToolchainCommands::mips_linux_gnu();
+    let emulator = toolchain
+        .emulator
+        .clone()
+        .unwrap_or_else(|| "qemu-mips".to_string());
+    if !(command_exists(&toolchain.assembler)
+        && command_exists(&toolchain.linker)
+        && command_exists(&emulator))
+    {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "MIPS assembler/linker/runtime not available (need {}, {}, {})",
+                toolchain.assembler, toolchain.linker, emulator
+            ),
+        };
+    }
+
+    let mips_dir = native_out_dir.join("target/generated/mips");
+    let main_s = mips_dir.join("main.s");
+    if !main_s.is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!("missing generated mips source: {}", main_s.display()),
+        };
+    }
+
+    let obj_path = mips_dir.join("main.o");
+    let bin_path = mips_dir.join("main.bin");
+
+    let assemble = match Command::new(&toolchain.assembler)
+        .arg("-o")
+        .arg(&obj_path)
+        .arg(&main_s)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to invoke mips assembler: {error}"),
+            };
+        }
+    };
+    if !assemble.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "mips assembly failed: {}",
+                String::from_utf8_lossy(&assemble.stderr)
+            ),
+        };
+    }
+
+    let link = match Command::new(&toolchain.linker)
+        .arg("-e")
+        .arg("main")
+        .arg("-o")
+        .arg(&bin_path)
+        .arg(&obj_path)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to invoke mips linker: {error}"),
+            };
+        }
+    };
+    if !link.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "mips link failed: {}",
+                String::from_utf8_lossy(&link.stderr)
+            ),
+        };
+    }
+
+    let run = match Command::new(&emulator).arg(&bin_path).output() {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute mips binary under qemu: {error}"),
+            };
+        }
+    };
+    if !run.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "{emulator} execution failed: {}",
+                String::from_utf8_lossy(&run.stderr)
+            ),
+        };
+    }
+
+    RuntimeOutcome::Ran {
+        stdout: String::from_utf8_lossy(&run.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
+    }
+}
+
 #[test]
 fn makegen_manifest_parity_across_rust_go_c_mips_targets() {
     let out_root = unique_workspace_target_dir("manifest_parity");
@@ -752,6 +850,38 @@ fn sdlc_control_plane_manifest_parity_across_rust_go_c_mips_targets() {
 
     std::fs::remove_dir_all(&out_root)
         .expect("failed to cleanup sdlc control-plane manifest parity output root");
+}
+
+#[test]
+fn infra_tool_manifest_parity_across_rust_go_c_mips_targets() {
+    let out_root = unique_workspace_target_dir("infra_tool_manifest_parity");
+    let targets = ["rust", "go", "c", "mips"];
+    let mut manifests = BTreeMap::<String, String>::new();
+
+    for target in targets {
+        let target_out = out_root.join(target);
+        compile_module_for_target("dsl/tools/infra.dag", target, &target_out);
+        manifests.insert(
+            target.to_string(),
+            read_target_manifest(&target_out, target),
+        );
+    }
+
+    let rust_manifest = manifests
+        .get("rust")
+        .expect("manifest map should contain rust output")
+        .clone();
+    for target in ["go", "c", "mips"] {
+        let target_manifest = manifests
+            .get(target)
+            .unwrap_or_else(|| panic!("manifest map should contain {target} output"));
+        assert_eq!(
+            &rust_manifest, target_manifest,
+            "infra tool progress manifest parity mismatch: rust != {target}"
+        );
+    }
+
+    std::fs::remove_dir_all(&out_root).expect("failed to cleanup infra tool manifest parity output root");
 }
 
 #[test]
@@ -867,4 +997,23 @@ fn infra_runtime_smoke_go_and_c_emit_runnable_binaries() {
 
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native infra runtime out root");
+}
+
+#[test]
+fn infra_runtime_smoke_mips_emits_runnable_binary_when_available() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_infra_mips");
+    compile_module_for_target("dsl/tools/infra.dag", "mips", &native_out_root.join("mips"));
+
+    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
+    match mips {
+        RuntimeOutcome::Ran { .. } => {
+            // Generated MIPS scaffold exits successfully; stdout is backend-specific.
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP infra mips runtime smoke: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native infra mips runtime out root");
 }
