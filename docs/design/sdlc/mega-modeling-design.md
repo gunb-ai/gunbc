@@ -289,6 +289,9 @@ Conformance evidence classes:
 
 ### 6.7 Runtime Launch Profile and Drain Contract
 
+1. Infra intent input is versioned and fail-closed:
+   1. `schema_version` is required.
+   2. Unsupported schema versions are rejected before worker startup.
 1. Infra intent `runtime_profile` must be explicit and validated fail-closed:
    1. `stateless-fleet` requires `launch.worker_count` in `[5, 10]`.
    2. `local-co-located` requires `launch.worker_count = 1`.
