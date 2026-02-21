@@ -1,3 +1,4 @@
+schema_version: "1"
 intent_id: "infra-YYYYMMDD-runtime-profile"
 environment: "dev"
 runtime_profile: "stateless-fleet"

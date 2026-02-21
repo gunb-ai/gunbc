@@ -71,6 +71,7 @@ struct IntentSheet {
 
 #[derive(Debug, Clone, Deserialize)]
 struct InfraIntentSheet {
+    schema_version: String,
     intent_id: String,
     environment: String,
     runtime_profile: String,
@@ -1121,6 +1122,7 @@ fn load_infra_intent(path: &Path) -> Result<InfraIntentSheet, String> {
 }
 
 fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
+    require_non_empty("infra.schema_version", &intent.schema_version)?;
     require_non_empty("infra.intent_id", &intent.intent_id)?;
     require_non_empty("infra.environment", &intent.environment)?;
     require_non_empty("infra.runtime_profile", &intent.runtime_profile)?;
@@ -1149,6 +1151,12 @@ fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
         &intent.components.metrics.namespace,
     )?;
     require_non_empty("infra.drift.reconcile_mode", &intent.drift.reconcile_mode)?;
+    if intent.schema_version != "1" {
+        return Err(format!(
+            "unsupported infra schema_version `{}`; expected `1`",
+            intent.schema_version
+        ));
+    }
 
     if intent.components.claim_store.backend != "sqlite" {
         return Err(format!(

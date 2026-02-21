@@ -92,6 +92,7 @@ fn write_infra_intent_template(root: &Path, valid: bool) {
     let heartbeat = if valid { 30 } else { 10 };
     let content = format!(
         r#"intent_id: "infra-20260221-runtime-profile"
+schema_version: "1"
 environment: "dev"
 runtime_profile: "stateless-fleet"
 provider: "github"
@@ -306,6 +307,54 @@ fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
     assert!(
         stderr.contains("lease_ttl_seconds must be >= launch.heartbeat_seconds"),
         "preflight failure should explain invalid launch configuration: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
+    let root = unique_temp_dir("invalid_infra_schema_version");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-invalid-schema",
+        "intent-20260221-invalid-schema",
+        Some(1200),
+    );
+
+    let infra_path = root.join("TODO/infra-intent-template.yaml");
+    let infra_content = std::fs::read_to_string(&infra_path).expect("read infra template");
+    let invalid_schema = infra_content.replace("schema_version: \"1\"", "schema_version: \"2\"");
+    std::fs::write(&infra_path, invalid_schema).expect("write invalid infra schema");
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before schema preflight failure: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run worker with unsupported infra schema");
+    assert!(
+        !worker.status.success(),
+        "worker should fail closed when infra schema_version is unsupported"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("unsupported infra schema_version"),
+        "preflight failure should explain unsupported schema version: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
