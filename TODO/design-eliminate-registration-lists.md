@@ -1,9 +1,10 @@
 # Eliminate Registration Lists: Close the DSL-Runtime Gap
 
-**Status**: PROPOSED
+**Status**: PHASE 1 COMPLETE — Phases 2-3 remain as future work
 **Date**: 2026-02-21
 **Track**: Cleanup — eliminate hardcoded metadata duplication
 **Prerequisite**: CL1-CL8 completed (hardcoded lists consolidated)
+**Completed**: Phase 1a (default passthrough), 1b (behavioral test helpers), 1c (Option-returning resolvers), Phase 0 (InfraToolOp deletion)
 
 ## Vision
 
