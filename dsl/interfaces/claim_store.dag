@@ -1,0 +1,53 @@
+// interfaces/claim_store.dag -- Distributed lock for stage execution.
+//
+// Layer 2 domain interface. Ensures at most one worker processes a
+// given (issue_id, stage) pair at a time. CAS semantics live in the
+// implementation (Layer 3), not here.
+//
+// Source: domain-modeling-comprehensive.md Section 4.2
+// Gap:    e2e-gap-analysis.md Gap B
+
+module interfaces.claim_store
+
+import std.types { NonEmptyStr }
+
+// =========================================================================
+// ClaimStore -- Lease-based mutual exclusion per (issue_id, stage)
+// =========================================================================
+//
+// Implementations:
+//   FileClaimStore      (local JSON files + OS file locking)  -- local profile
+//   GcsClaimStore       (GCS with generation-based CAS)       -- cloud_run profile
+//   InMemoryClaimStore  (HashMap + version counter)           -- unit_test profile
+
+interface ClaimStore {
+
+  capability acquire(
+    issue_id: NonEmptyStr,
+    stage: NonEmptyStr,
+    owner: NonEmptyStr,
+    lease_ttl_ms: Int
+  ) -> { acquired: Bool, conflict: Bool, lease_generation: Int }
+    @contract: acquire(i, s, o, t) => acquired xor conflict
+
+  capability heartbeat(
+    issue_id: NonEmptyStr,
+    stage: NonEmptyStr,
+    owner: NonEmptyStr,
+    generation: Int
+  ) -> { accepted: Bool }
+    @idempotent
+
+  capability release(
+    issue_id: NonEmptyStr,
+    stage: NonEmptyStr,
+    owner: NonEmptyStr,
+    generation: Int
+  ) -> { released: Bool }
+    @idempotent
+
+  // --- Behavioral contracts ----------------------------------------------
+
+  @contract: acquire(i, s, o, t) => acquired xor conflict
+  @contract: release(i, s, o, g) after acquire(i, s, o, t) => { released: true }
+}

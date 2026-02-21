@@ -4,307 +4,234 @@
 // lifecycle stage, its comments carry artifacts (designs, reviews,
 // reports), and its state transitions drive pipeline progression.
 //
-//   idea ──► design ──► design-review ──► accepted
-//                                            |
-//   done ◄── testing ◄── code-review ◄── implementing ◄─┘
+//   sdlc:idea -> sdlc:design -> sdlc:design-review -> sdlc:accepted
+//                                                        |
+//   sdlc:done <- sdlc:testing <- sdlc:code-review <- sdlc:implementing
 //
 // Each stage transition:
-//   1. Reads current issue state
-//   2. Acquires a stage claim (CAS idempotency)
-//   3. Executes stage logic (LLM call, CI run, etc.)
-//   4. Posts artifact as issue comment
-//   5. Updates labels to next stage
-//   6. Records outcome
+//   1. Reads current issue state (via IssueProvider)
+//   2. Acquires a stage claim (via ClaimStore)
+//   3. Executes stage logic (LLM call, agent spawn, CI, etc.)
+//   4. Posts artifact as issue comment (via IssueProvider)
+//   5. Updates labels to next stage (via IssueProvider)
+//   6. Records outcome (via OutcomeLedger)
+//
+// Unlike the CI pipeline (triggered by code push), this pipeline is
+// triggered by issue events (creation, label changes). It can run:
+//   1. End-to-end: idea -> done (full autonomy)
+//   2. Stage-by-stage: triggered per label transition (human-in-loop)
+//   3. Ad-hoc: any single stage invoked on an existing issue
+//
+// DSL-native implementation:
+//   - Uses domain interfaces (Layer 2), not concrete services
+//   - Profile binding selects GitHub vs stub vs GCS implementations
+//   - Per-stage handlers in funcs/sdlc_stages.dag
+//   - Worker dispatch in funcs/sdlc_worker.dag
+//
+// Gap analysis coverage:
+//   Gap A: IssueProvider interface instead of concrete GitHub service
+//   Gap B: ClaimStore + OutcomeLedger interfaces for domain state
+//   Gap C: Profile declarations (bridge via match-based selection)
+//   Gap D: Credential wiring via profile config
+//   Gap F: SubDag execution via stage composition
+//   Gap G: Worker routes by stage (execute_stage dispatcher)
+//   Gap H: All stages have handlers (stubs for code-review, testing)
+//   Gap I: AgentProvider interface with branch management
+//   Gap J: Pipeline parameters via param declarations
 
 module pipelines.sdlc
 
-import services.github.issues { Issues }
-import services.sdlc.control_plane { ControlPlane }
+// --- Interface imports (Layer 2) ------------------------------------------
+// The pipeline works against abstract interfaces. Profile binding
+// selects concrete implementations at compile time.
+
+import interfaces.issue_provider { IssueProvider }
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.agent_provider { AgentProvider }
+
+// --- Tool imports (domain logic) ------------------------------------------
 import tools.design { generate_design, review_design }
+import tools.review { inline_review }
+import pipelines.ci { ci }
 import shared.dag_util { aggregate_results, format_report, stage_result }
+import funcs.sdlc_stages {
+    determine_stage, next_stage_label, execute_stage,
+    label_idea, label_design, label_design_review,
+    label_accepted, label_implementing, label_code_review,
+    label_testing, label_done
+}
+
+// --- Type imports ----------------------------------------------------------
 import std.types {
-    TrackedIssue, IssueLifecycleStage, DesignOutput,
-    DesignFinding, ImplementationPlan, PipelineRun,
-    PipelineArtifact, StageResult, Summary
+    TrackedIssue, IssueLifecycleStage, DesignOutput, DesignReviewOutput,
+    DesignFinding, ImplementationPlan, PipelineRun, PipelineArtifact,
+    StageResult, Summary, StageOutcome, OutcomeStatus, NonEmptyStr
 }
 
-// ── Pipeline defaults ───────────────────────────────────────────────
-// Bound at invocation time (from webhook payload, CLI args, or
-// a polling loop). Using fn helpers because the DSL doesn't have
-// top-level param declarations yet.
+// ── Pipeline parameters ─────────────────────────────────────────────
+// These are bound at invocation time (from webhook payload, CLI args,
+// or a polling loop). Gap J resolution: parameterized instead of hardcoded.
 
-fn default_repo_owner() -> String {
-  "gunb-ai"
-}
+param repo_owner: String               // e.g. "gunb-ai"
+param repo_name: String                // e.g. "gunbc"
+param issue_number: Int                // the issue to process
+param llm_provider: String = "anthropic"
+param llm_model: String = "claude-sonnet-4-20250514"
+param worker_id: String = "pipeline-1" // claim identity
 
-fn default_repo_name() -> String {
-  "gunbc"
-}
+// ── Pipeline ────────────────────────────────────────────────────────
+// The pipeline definition uses interfaces. Each stage handler
+// delegates to funcs/sdlc_stages.dag which also uses interfaces.
+// The concrete implementation is selected by the profile.
 
-fn default_issue_number() -> Int {
-  1
-}
+pipeline sdlc
+  uses issues: IssueProvider
+  uses claims: ClaimStore
+  uses outcomes: OutcomeLedger
+  uses agents: AgentProvider
+{
 
-fn default_llm_provider() -> String {
-  "anthropic"
-}
+  // Stage 1: Fetch current issue state
+  stage fetch {
+    issue_result = issues.get(
+      id: "{issue_number}"
+    )
+    issue = issue_result.issue
+  }
 
-fn default_llm_model() -> String {
-  "claude-sonnet-4-20250514"
+  // Stage 2: Determine current lifecycle stage and acquire claim
+  stage claim [after fetch] {
+    current_stage = determine_stage(labels: issue.labels)
+    issue_id = "{repo_owner}/{repo_name}#{issue_number}"
+    run_key = "sdlc::{issue_id}::{current_stage}::v1"
+
+    acquired = claims.acquire(
+      issue_id: issue_id,
+      stage: current_stage,
+      owner: worker_id,
+      lease_ttl_ms: 30000
+    )
+  }
+
+  // Stage 3: Check for prior outcome (replay-skip)
+  stage replay_check [after claim, when acquired.acquired] {
+    prior = outcomes.get(
+      run_key: run_key,
+      stage: current_stage
+    )
+  }
+
+  // Stage 4: Execute stage-specific logic
+  stage execute [after replay_check, when !prior.found] {
+    stage_outcome = execute_stage(
+      issue_id: issue_id,
+      stage: current_stage,
+      title: issue.title,
+      body: issue.body,
+      run_key: run_key,
+      owner: repo_owner,
+      repo: repo_name,
+      number: issue_number,
+      llm_provider: llm_provider,
+      llm_model: llm_model
+    )
+  }
+
+  // Stage 5: Record outcome in ledger
+  stage record [after execute, when stage_outcome != null] {
+    recorded = outcomes.upsert(
+      run_key: run_key,
+      stage: current_stage,
+      outcome: {
+        run_key: run_key,
+        stage: current_stage,
+        status: match stage_outcome.success {
+          true  => "Success"
+          false => "Failed"
+        },
+        payload: None,
+        error: None,
+        attempt_count: 1,
+        retry_budget_remaining: 2,
+        next_attempt_at: None,
+        created_at: "",
+        updated_at: ""
+      }
+    )
+  }
+
+  // Stage 6: Release claim
+  stage release [after record] {
+    released = claims.release(
+      issue_id: issue_id,
+      stage: current_stage,
+      owner: worker_id,
+      generation: acquired.lease_generation
+    )
+  }
+
+  // Stage 7: Report
+  stage report [after release] {
+    stages = [
+      stage_result(
+        name: "{current_stage}->{stage_outcome.next_stage}",
+        success: stage_outcome.success,
+        stderr: ""
+      )
+    ]
+    summary = aggregate_results(stages: stages)
+    report_text = format_report(summary: summary, stages: stages)
+
+    // Post report as issue comment
+    report_comment = issues.comment(
+      id: issue_id,
+      body: report_text,
+      marker: "sdlc:report:{run_key}"
+    )
+  }
 }
 
 // ── Helper functions ────────────────────────────────────────────────
 
 fn has_label(labels: Json, name: String) -> Bool {
-  labels |> filter(l => l.name == name) |> count() > 0
+    labels |> any(l => l.name == name)
 }
 
 fn format_design_comment(design: String, summary: String) -> String {
-  "## Generated Design\n\n> {summary}\n\n---\n\n{design}\n\n---\n_Generated by gunbc SDLC pipeline_"
+    "## Generated Design\n\n> {summary}\n\n---\n\n{design}\n\n---\n_Generated by gunbc SDLC pipeline_"
 }
 
 fn format_review_comment(findings: Json, approved: Bool, summary: String) -> String {
-  let status = match approved {
-    true  => "APPROVED"
-    false => "CHANGES REQUESTED"
-  }
-  let findings_text = findings
-    |> map(f => "- **{f.check_id}**: {f.observation}")
-    |> join("\n")
-  "## Design Review: {status}\n\n{summary}\n\n### Findings\n\n{findings_text}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
+    let status = match approved {
+        true  => "APPROVED"
+        false => "CHANGES REQUESTED"
+    }
+    let findings_text = findings
+        |> map(f => "- **{f.check_id}**: {f.observation}")
+        |> join("\n")
+    "## Design Review: {status}\n\n{summary}\n\n### Findings\n\n{findings_text}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
 }
 
 fn format_plan_comment(plan: String) -> String {
-  "## Implementation Plan\n\n{plan}\n\n---\n_Generated by gunbc SDLC pipeline_"
+    "## Implementation Plan\n\n{plan}\n\n---\n_Generated by gunbc SDLC pipeline_"
 }
 
 fn format_code_review_comment(review: Json) -> String {
-  "## Code Review\n\n{review.summary}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
+    "## Code Review\n\n{review.summary}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
 }
 
 fn format_ci_comment(result: Json) -> String {
-  let status = match result.success {
-    true  => "PASSED"
-    false => "FAILED"
-  }
-  "## Acceptance Tests: {status}\n\n{result.report}\n\n---\n_Tested by gunbc SDLC pipeline_"
-}
-
-fn make_issue_id(owner: String, repo: String, number: Int) -> String {
-  "{owner}/{repo}#{number}"
-}
-
-// ── Pipeline ────────────────────────────────────────────────────────
-
-pipeline sdlc {
-
-  // Stage 1: Fetch current issue state
-  stage fetch {
-    issue = Issues.Get(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number()
-    )
-  }
-
-  // Stage 2: Acquire claim + generate design
-  stage claim_design [after fetch] {
-    design_claim = ControlPlane.AcquireStageClaim(
-      intake_key: "default-intake",
-      issue_id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
-      stage: "design",
-      run_key: "sdlc::default-run",
-      claimant: "pipelines.sdlc"
-    )
-  }
-
-  // Stage 3: Design generation (LLM call)
-  stage design [after claim_design, when design_claim.acquired && has_label(issue.labels, "idea")] {
-    design_output = generate_design(
-      idea: issue.body,
-      context: issue.title,
-      provider: default_llm_provider(),
-      model: default_llm_model()
-    )
-
-    design_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: format_design_comment(
-        design: design_output.content,
-        summary: design_output.summary
-      )
-    )
-
-    design_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["design"]
-    )
-  }
-
-  // Stage 4: Design review (LLM call)
-  stage design_review [after design] {
-    review_output = review_design(
-      design: design_output.content,
-      provider: default_llm_provider(),
-      model: default_llm_model()
-    )
-
-    review_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: format_review_comment(
-        findings: review_output.findings,
-        approved: review_output.approved,
-        summary: review_output.summary
-      )
-    )
-
-    review_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["design-review"]
-    )
-  }
-
-  // Stage 5: Record design outcome in ledger
-  stage record_design_outcome [after design_review] {
-    design_outcome = ControlPlane.UpsertStageOutcome(
-      intake_key: "default-intake",
-      issue_id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
-      stage: "design-review",
-      run_key: "sdlc::default-run",
-      outcome_status: match review_output.approved {
-        true  => "approved"
-        false => "changes-requested"
-      },
-      retry_attempt: 0,
-      terminal: false,
-      approval_required: !review_output.approved,
-      payload_hash: "sha256:review-output"
-    )
-  }
-
-  // Stage 6: Accept design (gate: review must approve)
-  stage accept_design [after record_design_outcome, when review_output.approved] {
-    accepted_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["accepted"]
-    )
-
-    accept_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: "Design approved. Ready for implementation."
-    )
-  }
-
-  // Stage 7: Plan implementation (transition: accepted -> implementing)
-  stage plan_implementation [after accept_design] {
-    plan_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: format_plan_comment(plan: design_output.content)
-    )
-
-    impl_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["implementing"]
-    )
-  }
-
-  // Stage 8: Code review (transition: implementing -> code-review)
-  stage code_review [after plan_implementation] {
-    review_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: "Code review completed."
-    )
-
-    review_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["code-review"]
-    )
-  }
-
-  // Stage 9: Acceptance testing (transition: code-review -> testing)
-  stage acceptance [after code_review] {
-    test_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["testing"]
-    )
-
-    ci_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: "Acceptance tests completed."
-    )
-  }
-
-  // Stage 10: Close (transition: testing -> done, close issue)
-  stage close [after acceptance] {
-    done_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["done"]
-    )
-
-    close_update = Issues.Update(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      state: "closed"
-    )
-  }
-
-  // Stage 11: Final report
-  stage report [after close] {
-    stages = [
-      stage_result(name: "design",          success: true,                   stderr: ""),
-      stage_result(name: "design-review",   success: review_output.approved, stderr: review_output.summary),
-      stage_result(name: "implementation",  success: true,                   stderr: ""),
-      stage_result(name: "code-review",     success: true,                   stderr: ""),
-      stage_result(name: "acceptance",      success: true,                   stderr: "")
-    ]
-    summary = aggregate_results(stages: stages)
-    report_text = format_report(summary: summary, stages: stages)
-
-    report_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: report_text
-    )
-  }
+    let status = match result.success {
+        true  => "PASSED"
+        false => "FAILED"
+    }
+    "## Acceptance Tests: {status}\n\n{result.report}\n\n---\n_Tested by gunbc SDLC pipeline_"
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
+// The SDLC pipeline composes interfaces + design + review + CI.
+// Tests use auto_mock with stage-by-stage boundary mocks.
 
 test sdlc_idea_to_design {
     @tier(Scenario)
@@ -316,50 +243,93 @@ test sdlc_idea_to_design {
     input repo_name -> "gunbc"
     input issue_number -> 42
 
-    // Mock: issue fetch returns an issue with "idea" label
+    // Mock: issue fetch returns an issue with "sdlc:idea" label
     mock fetch/execute.response -> rest_response(200, {
-        number: 42,
-        title: "Add GitHub Issues integration",
-        body: "We need the SDLC pipeline to create and track issues.",
-        state: "open",
-        labels: [{ name: "idea" }],
-        html_url: "https://github.com/gunb-ai/gunbc/issues/42",
-        user: { login: "test-user" }
+        issue: {
+            id: "42",
+            title: "Add GitHub Issues integration",
+            body: "We need the SDLC pipeline to create and track issues.",
+            stage: "Idea",
+            labels: ["sdlc:idea"],
+            url: "https://github.com/gunb-ai/gunbc/issues/42",
+            author: "test-user",
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:00Z"
+        },
+        found: true
     })
 
     // Mock: claim acquisition succeeds
-    mock claim_design/execute.response -> rest_response(200, {
+    mock claim/execute.response -> rest_response(200, {
         acquired: true,
         conflict: false,
-        lease_generation: 1,
-        lease_expires_at_epoch_ms: 1734000000000,
-        claim_token: "lease-token-1",
-        conflict_reason: null,
-        observed_generation: 1
+        lease_generation: 1
+    })
+
+    // Mock: no prior outcome
+    mock replay_check/execute.response -> rest_response(200, {
+        found: false,
+        outcome: null
     })
 
     // Mock: LLM generates a design
     mock design/llm/execute.response -> rest_response(200, {
-        content: [{ type: "text", text: "## Problem\n\nNeed issue tracking.\n\n## Approach\n\nGitHub Issues API.\n\n## Risks\n\n- Rate limits\n\n## Test Plan\n\nUnit + scenario tests.\n\n## Scope\n\nM" }],
+        content: [{ type: "text", text: "## Problem\n\nNeed issue tracking.\n\n## Approach\n\nGitHub Issues API." }],
         model: "claude-sonnet-4-20250514",
         stop_reason: "end_turn",
         usage: { input_tokens: 100, output_tokens: 200 }
     })
 
     // Mock: comment and label updates succeed
-    mock design/comment/execute.response -> rest_response(201, { id: 100, html_url: "https://github.com/gunb-ai/gunbc/issues/42#issuecomment-100" })
-    mock design/labels/execute.response -> rest_response(200, [{ name: "design" }])
+    mock comment/execute.response -> rest_response(201, { comment_id: "100", ok: true })
+    mock set_labels/execute.response -> rest_response(200, { ok: true })
 
-    // Mock: design review
-    mock design_review/llm/execute.response -> rest_response(200, {
-        content: [{ type: "text", text: "{\"findings\":[],\"summary\":\"Design looks good. No blocking issues.\"}" }],
-        model: "claude-sonnet-4-20250514",
-        stop_reason: "end_turn",
-        usage: { input_tokens: 150, output_tokens: 80 }
+    // Mock: outcome upsert
+    mock record/execute.response -> rest_response(200, { updated: true, previous: null })
+
+    // Mock: claim release
+    mock release/execute.response -> rest_response(200, { released: true })
+
+    expect result is Map
+}
+
+test sdlc_replay_skip {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input repo_owner -> "gunb-ai"
+    input repo_name -> "gunbc"
+    input issue_number -> 42
+
+    mock fetch/execute.response -> rest_response(200, {
+        issue: {
+            id: "42",
+            title: "Already processed",
+            body: "This stage was already done.",
+            stage: "Design",
+            labels: ["sdlc:design"],
+            url: "https://github.com/gunb-ai/gunbc/issues/42",
+            author: "test-user"
+        },
+        found: true
     })
 
-    mock design_review/comment/execute.response -> rest_response(201, { id: 101, html_url: "https://github.com/gunb-ai/gunbc/issues/42#issuecomment-101" })
-    mock design_review/labels/execute.response -> rest_response(200, [{ name: "design-review" }])
+    mock claim/execute.response -> rest_response(200, {
+        acquired: true,
+        conflict: false,
+        lease_generation: 1
+    })
+
+    // Prior outcome exists -> replay-skip
+    mock replay_check/execute.response -> rest_response(200, {
+        found: true,
+        outcome: {
+            run_key: "sdlc::gunb-ai/gunbc#42::design::v1",
+            stage: "design",
+            status: "Success"
+        }
+    })
 
     expect result is Map
 }

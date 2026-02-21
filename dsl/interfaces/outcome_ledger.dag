@@ -1,0 +1,48 @@
+// interfaces/outcome_ledger.dag -- Durable stage execution results.
+//
+// Layer 2 domain interface. The outcome ledger is the source of truth
+// for "what happened." Supports idempotent upsert with content-hash
+// collision detection.
+//
+// Source: domain-modeling-comprehensive.md Section 4.3
+// Gap:    e2e-gap-analysis.md Gap B
+
+module interfaces.outcome_ledger
+
+import std.types { NonEmptyStr, StageOutcome }
+
+// =========================================================================
+// OutcomeLedger -- Persistent stage outcome records
+// =========================================================================
+//
+// Implementations:
+//   FileOutcomeLedger      (local JSON files)   -- local profile
+//   GcsOutcomeLedger       (GCS objects)         -- cloud_run profile
+//   InMemoryOutcomeLedger  (HashMap)             -- unit_test profile
+
+interface OutcomeLedger {
+
+  capability upsert(
+    run_key: NonEmptyStr,
+    stage: NonEmptyStr,
+    outcome: StageOutcome
+  ) -> { updated: Bool, previous: StageOutcome? }
+    @idempotent
+
+  capability get(
+    run_key: NonEmptyStr,
+    stage: NonEmptyStr
+  ) -> { found: Bool, outcome: StageOutcome? }
+    @idempotent @readonly
+
+  capability list_by_issue(
+    issue_id: NonEmptyStr
+  ) -> { outcomes: List<StageOutcome> }
+    @readonly
+
+  // --- Behavioral contracts ----------------------------------------------
+  // Same run_key + stage + matching content_hash = idempotent success.
+  // Same run_key + stage + different content_hash = fail-closed conflict.
+
+  @contract: get(k, s) after upsert(k, s, o) => { found: true }
+}

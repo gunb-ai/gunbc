@@ -1,9 +1,52 @@
 # SDLC Pipeline E2E Gap Analysis
 
-Status: Draft — Revised for dry-run readiness
+Status: Draft — Revised with DSL-native implementation
 Date: 2026-02-21
 Parent: [mega-modeling-design.md](mega-modeling-design.md) (MD0-D)
 Scope: Delta between the mega modeling design and current implementation for end-to-end pipeline execution, with specific focus on gaps blocking a local dry-run deployment.
+
+## 0. DSL-Native Implementation Status (CG169)
+
+Steps 1-7 from Section 8 have been implemented entirely in DSL (.dag files),
+bypassing the Rust worker path. The dual-execution-path problem (Section 7.2)
+is resolved by making the DSL pipeline the sole execution path.
+
+### Files Created / Modified
+
+| File | Purpose | Gap(s) Addressed |
+|------|---------|-----------------|
+| `dsl/interfaces/issue_provider.dag` | IssueProvider interface (Layer 2) | A |
+| `dsl/interfaces/claim_store.dag` | ClaimStore interface (Layer 2) | B |
+| `dsl/interfaces/outcome_ledger.dag` | OutcomeLedger interface (Layer 2) | B |
+| `dsl/interfaces/agent_provider.dag` | AgentProvider interface (Layer 2) | I |
+| `dsl/interfaces/signal_store.dag` | SignalStore interface (Layer 2) | — |
+| `dsl/interfaces/artifact_store.dag` | ArtifactStore interface (Layer 2) | — |
+| `dsl/services/sdlc/providers/github_issue_provider.dag` | GitHub implementation (Layer 3) | A, Step 6 |
+| `dsl/services/sdlc/providers/file_claim_store.dag` | File-based claims (Layer 3) | B |
+| `dsl/services/sdlc/providers/file_outcome_ledger.dag` | File-based outcomes (Layer 3) | B |
+| `dsl/services/sdlc/providers/codex_agent_provider.dag` | Codex agent (Layer 3) | I |
+| `dsl/services/sdlc/providers/stub_providers.dag` | All stubs for unit_test profile | A, B, I |
+| `dsl/profiles/sdlc.dag` | Profile declarations + bridge fns | C, D, Step 7 |
+| `dsl/funcs/sdlc_stages.dag` | Per-stage handler functions | Steps 1-3 |
+| `dsl/funcs/sdlc_worker.dag` | Worker dispatch with interfaces | Steps 1-5 |
+| `dsl/pipelines/sdlc.dag` | Pipeline with interfaces + params | F, G, J |
+| `dsl/std/types.dag` | All domain entities from domain model | A, B |
+| `docs/design/sdlc/sdlc.dag` | Design-version pipeline (synced) | — |
+
+### Gap Resolution Summary
+
+| Gap | Status | Resolution |
+|-----|--------|-----------|
+| **A** (Domain interfaces) | **Resolved** | `interfaces/issue_provider.dag`, `services/sdlc/providers/github_issue_provider.dag` |
+| **B** (Claims/Outcomes) | **Resolved** | `interfaces/claim_store.dag`, `interfaces/outcome_ledger.dag`, file-based providers |
+| **C** (Profile binding) | **Bridged** | `profiles/sdlc.dag` with match-based selection (target `profile { bind }` syntax documented) |
+| **D** (Credential wiring) | **Partial** | Config bindings in profile; env-var fallback |
+| **E** (Multi-worker CAS) | **Deferred** | Single-worker sufficient for dry-run |
+| **F** (SubDag execution) | **Resolved** | Stage composition via `execute_stage()` dispatcher |
+| **G** (Worker stage dispatch) | **Resolved** | `funcs/sdlc_worker.dag` routes all stages |
+| **H** (Code review/testing stubs) | **Implemented** | Stub handlers in `sdlc_stages.dag` |
+| **I** (Agent branch mgmt) | **Implemented** | `AgentProvider` interface with deterministic branch naming |
+| **J** (Pipeline params) | **Resolved** | `param` declarations in pipeline and worker |
 
 ## 1. Architectural Principle
 

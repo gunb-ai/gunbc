@@ -1,0 +1,81 @@
+// interfaces/issue_provider.dag -- Provider-fungible issue operations.
+//
+// Layer 2 domain interface. The pipeline says "I need to discover issues"
+// and "I need to post a comment." It never mentions GitHub, REST, or
+// any transport. Layer 3 implementations (GitHubIssueProvider,
+// StubIssueProvider) fulfill this contract.
+//
+// Source: domain-modeling-comprehensive.md Section 4.1
+// Gap:    e2e-gap-analysis.md Gap A
+
+module interfaces.issue_provider
+
+import std.types {
+    TrackedIssue, IssueLifecycleStage, IssueState, NonEmptyStr, Url
+}
+
+// =========================================================================
+// IssueProvider -- Provider-agnostic issue operations
+// =========================================================================
+//
+// Implementations:
+//   GitHubIssueProvider  (@rest api.github.com)  -- local, cloud_run profiles
+//   StubIssueProvider    (in-memory)             -- unit_test profile
+//
+// The pipeline imports this interface. Profile binding selects the
+// concrete implementation at compile time.
+
+interface IssueProvider {
+
+  // --- Discovery ---------------------------------------------------------
+
+  capability discover(
+    labels: List<String>,
+    state: String?                     // "open" | "closed" | null (all)
+  ) -> { issues: List<TrackedIssue> }
+    @readonly
+
+  // --- Single issue ------------------------------------------------------
+
+  capability get(id: NonEmptyStr)
+    -> { issue: TrackedIssue, found: Bool }
+    @idempotent @readonly
+
+  // --- Mutations ---------------------------------------------------------
+
+  capability create(
+    title: NonEmptyStr,
+    body: String,
+    labels: List<String>
+  ) -> { issue: TrackedIssue }
+
+  capability comment(
+    id: NonEmptyStr,
+    body: String,
+    marker: NonEmptyStr?               // Enables idempotent upsert
+  ) -> { comment_id: NonEmptyStr, ok: Bool }
+    @idempotent                        // marker enables idempotent upsert
+
+  capability set_labels(
+    id: NonEmptyStr,
+    labels: List<String>
+  ) -> { ok: Bool }
+
+  capability close(id: NonEmptyStr) -> { ok: Bool }
+    @idempotent
+
+  // --- Events (audit trail) ----------------------------------------------
+
+  capability list_events(
+    id: NonEmptyStr,
+    since: String?
+  ) -> { events: Json }
+    @readonly
+
+  // --- Behavioral contracts ----------------------------------------------
+  // Compiler generates verification tests for every implementor.
+
+  @contract: discover([], _) => issues is List
+  @contract: get(id) after create(t, b, l) => { found: true }
+  @contract: close(id) after close(id) => { ok: true }   // idempotent
+}

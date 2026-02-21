@@ -1,0 +1,47 @@
+// interfaces/agent_provider.dag -- Provider-fungible agent dispatch.
+//
+// Layer 2 domain interface. The pipeline says "spawn an agent to
+// implement this design." It never mentions Codex, shell commands,
+// or any specific agent runtime.
+//
+// Source: domain-modeling-comprehensive.md Section 4.4
+// Gap:    e2e-gap-analysis.md Gap I (agent branch management)
+
+module interfaces.agent_provider
+
+import std.types { NonEmptyStr, AgentStatus, ApprovalMode }
+
+// =========================================================================
+// AgentProvider -- Agent lifecycle management
+// =========================================================================
+//
+// Implementations:
+//   CodexAgentProvider  (@shell codex)    -- local, cloud_run profiles
+//   StubAgentProvider   (in-memory)       -- unit_test profile
+
+interface AgentProvider {
+
+  capability spawn(
+    prompt: String,
+    repo_path: String,
+    branch: NonEmptyStr,
+    model: String?,
+    timeout_seconds: Int?,
+    approval_mode: String?
+  ) -> { run_id: NonEmptyStr, status: String, started: Bool }
+
+  capability poll(run_id: NonEmptyStr)
+    -> { status: String, finished: Bool, exit_code: Int?, error: String? }
+    @idempotent @readonly
+
+  capability cancel(run_id: NonEmptyStr, reason: String?)
+    -> { cancelled: Bool, final_status: String }
+
+  capability get_result(run_id: NonEmptyStr)
+    -> { status: String, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
+    @readonly
+
+  // --- Behavioral contracts ----------------------------------------------
+
+  @contract: poll(rid) after spawn(p, rp, b, m, t, a) => { finished is Bool }
+}

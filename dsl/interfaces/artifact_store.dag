@@ -1,0 +1,53 @@
+// interfaces/artifact_store.dag -- Artifact storage with two-phase commit.
+//
+// Layer 2 domain interface. Supports both inline and blob-reference
+// payloads. Provisional markers are written before stage CAS;
+// canonical markers are confirmed after.
+//
+// Source: domain-modeling-comprehensive.md Section 4.6
+// Gap:    mega-modeling-design.md Section 6.3
+
+module interfaces.artifact_store
+
+import std.types {
+    NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker
+}
+
+// =========================================================================
+// ArtifactStore -- Artifact lifecycle with two-phase commit
+// =========================================================================
+//
+// Implementations:
+//   InlineArtifactStore  (issue comments / gists)  -- local profile
+//   GcsArtifactStore     (GCS objects)              -- cloud_run profile
+//   InMemoryArtifactStore (HashMap)                 -- unit_test profile
+
+interface ArtifactStore {
+
+  capability store(
+    artifact_id: NonEmptyStr,
+    payload: ArtifactPayload,
+    content_hash: NonEmptyStr
+  ) -> { stored: Bool, conflict: Bool }
+    @contract: store(id, p, h) => stored xor conflict
+    @idempotent                        // same id + same hash = success
+
+  capability retrieve(artifact_id: NonEmptyStr)
+    -> { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
+    @readonly
+
+  capability store_marker(marker: ArtifactMarker)
+    -> { stored: Bool }
+    @idempotent
+
+  capability get_canonical_marker(
+    run_key: NonEmptyStr,
+    artifact_type: ArtifactType
+  ) -> { found: Bool, marker: ArtifactMarker? }
+    @readonly
+
+  // --- Behavioral contracts ----------------------------------------------
+
+  @contract: store(id, p, h) => stored xor conflict
+  @contract: retrieve(id) after store(id, p, h) => { found: true }
+}

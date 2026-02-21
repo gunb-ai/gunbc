@@ -1,0 +1,42 @@
+// interfaces/signal_store.dag -- Durable at-least-once message store.
+//
+// Layer 2 domain interface. Signals accelerate work discovery but are
+// never the sole correctness mechanism. Periodic store-driven scans
+// provide anti-entropy.
+//
+// Source: domain-modeling-comprehensive.md Section 4.5
+// Gap:    mega-modeling-design.md Section 2.1.2
+
+module interfaces.signal_store
+
+import std.types { NonEmptyStr, Signal, SignalType }
+
+// =========================================================================
+// SignalStore -- Durable signal transport
+// =========================================================================
+//
+// Implementations:
+//   FileSignalStore      (local JSON files)    -- local profile
+//   PubSubSignalStore    (GCP Pub/Sub)         -- cloud_run profile
+//   InMemorySignalStore  (VecDeque)            -- unit_test profile
+
+interface SignalStore {
+
+  capability emit(signal: Signal)
+    -> { emitted: Bool }
+    @idempotent                        // dedup by idempotency_key
+
+  capability consume(
+    signal_types: List<String>,
+    limit: Int?
+  ) -> { signals: List<Signal> }
+
+  capability ack(idempotency_key: NonEmptyStr)
+    -> { acked: Bool }
+    @idempotent
+
+  // --- Behavioral contracts ----------------------------------------------
+
+  @contract: consume(ts, _) after emit(s) => signals |> any(sig => sig.idempotency_key == s.idempotency_key)
+  @contract: ack(k) after ack(k) => { acked: true }   // idempotent
+}

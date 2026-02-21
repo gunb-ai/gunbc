@@ -1,393 +1,152 @@
-// pipelines/sdlc.dag -- Issue-centric SDLC pipeline.
+// docs/design/sdlc/sdlc.dag -- Design-version SDLC pipeline.
+//
+// This is the DESIGN DOCUMENT version of the pipeline. The canonical
+// implementation lives at dsl/pipelines/sdlc.dag.
+//
+// This file is kept in sync as documentation of the target architecture.
+// It uses the same interface-first, profile-bound design as the
+// implementation but may include forward-looking syntax proposals.
 //
 // Core idea: a GitHub issue IS a pipeline instance. Its labels encode
 // lifecycle stage, its comments carry artifacts (designs, reviews,
 // reports), and its state transitions drive pipeline progression.
 //
-// The repo feels alive because:
-//   - Post an issue with label `idea` → design gets generated and posted
-//   - Design gets reviewed automatically → findings posted as comment
-//   - Approved design → implementation ticket created / label transitions
-//   - Implementation reviewed → CI gates → issue closed on success
-//
-// Unlike the CI pipeline (triggered by code push), this pipeline is
-// triggered by issue events (creation, label changes). It can run:
-//   1. End-to-end: idea → done (full autonomy)
-//   2. Stage-by-stage: triggered per label transition (human-in-loop)
-//   3. Ad-hoc: any single stage invoked on an existing issue
-//
-// ── Lifecycle stages (encoded as GitHub labels) ──
-//
-//   idea ──────► design ──────► design-review ──────► accepted
+//   sdlc:idea -> sdlc:design -> sdlc:design-review -> sdlc:accepted
 //                                                        |
-//   done ◄── testing ◄── code-review ◄── implementing ◄─┘
+//   sdlc:done <- sdlc:testing <- sdlc:code-review <- sdlc:implementing
 //
-// Each stage transition:
-//   1. Reads current issue state
-//   2. Executes stage logic (LLM call, CI run, etc.)
-//   3. Posts artifact as issue comment
-//   4. Updates labels to next stage
+// ── Architecture (Three-Layer Model) ──
 //
-// ── Dependency graph ──
+//   Layer 1 (Pipeline):     pipelines/sdlc.dag -- domain concepts only
+//   Layer 2 (Interfaces):   interfaces/*.dag -- typed contracts
+//   Layer 3 (Providers):    services/sdlc/providers/*.dag -- concrete impls
+//   Profile:                profiles/sdlc.dag -- compile-time binding
 //
-//   fetch_issue
-//       |
-//   generate_design
-//       |
-//   review_design
-//       |
-//   accept_design ─── [approval gate: human or auto]
-//       |
-//   plan_implementation
-//       |
-//   implement ─── [may loop: review → fix → review]
-//       |
-//   code_review
-//       |
-//   acceptance_tests (CI pipeline)
-//       |
-//   close_issue
-//       |
-//   report
+// ── Gap Analysis Implementation Status ──
+//
+//   Gap A: IssueProvider interface                  [IMPLEMENTED]
+//   Gap B: ClaimStore + OutcomeLedger interfaces     [IMPLEMENTED]
+//   Gap C: Profile declarations (bridge syntax)      [IMPLEMENTED]
+//   Gap D: Credential wiring via profile             [PARTIAL - config bindings]
+//   Gap E: CAS for multi-worker claim safety         [DEFERRED - single-worker ok]
+//   Gap F: SubDag/Pipeline node execution            [RESOLVED - stage composition]
+//   Gap G: Worker routes by stage                    [IMPLEMENTED - execute_stage]
+//   Gap H: Code review and acceptance stubs          [IMPLEMENTED - stub handlers]
+//   Gap I: Agent branch management                   [IMPLEMENTED - AgentProvider]
+//   Gap J: Pipeline parameters                       [IMPLEMENTED - param decls]
 
-module pipelines.sdlc
+module docs.design.sdlc
 
-// --- Provider-agnostic imports -------------------------------------------
-// The pipeline works against abstract types (TrackedIssue, DesignOutput,
-// etc.) from std.types. The concrete issue backend is injected via the
-// `issues` import -- swap `services.github.issues` for
-// `services.local.issues` or `services.linear.issues` and the pipeline
-// doesn't change.
-//
-// This follows the same pattern as LLM:
-//   std.types defines ChatRequest/ChatResponse (abstract)
-//   services.llm.openai / anthropic (concrete bindings)
-//   tools work against abstract types
-
+import interfaces.issue_provider { IssueProvider }
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.agent_provider { AgentProvider }
+import funcs.sdlc_stages { determine_stage, execute_stage }
+import shared.dag_util { aggregate_results, format_report, stage_result }
 import std.types {
-    TrackedIssue, IssueLifecycleStage, DesignOutput, DesignReviewOutput,
-    DesignFinding, ImplementationPlan, PipelineRun, PipelineArtifact,
-    StageResult, Summary
+    TrackedIssue, IssueLifecycleStage, StageResult, Summary,
+    StageOutcome, OutcomeStatus, NonEmptyStr
 }
 
-// Concrete issue backend (swap this line to change providers)
-import services.github.issues { Issues }
-
-import tools.design { generate_design, review_design }
-import tools.review { inline_review }
-import pipelines.ci { ci }
-import shared.dag_util { aggregate_results, format_report, stage_result }
-
 // ── Pipeline parameters ─────────────────────────────────────────────
-// These are bound at invocation time (from webhook payload, CLI args,
-// or a polling loop).
 
-param repo_owner: String    // e.g. "gunb-ai"
-param repo_name: String     // e.g. "gunbc"
-param issue_number: Int     // the issue to process
+param repo_owner: String
+param repo_name: String
+param issue_number: Int
 param llm_provider: String = "anthropic"
 param llm_model: String = "claude-sonnet-4-20250514"
+param worker_id: String = "pipeline-1"
 
-// ── Stage 1: Fetch ──────────────────────────────────────────────────
-// Read the current issue state. This is the pipeline's "input".
+// ── Pipeline ────────────────────────────────────────────────────────
 
-pipeline sdlc {
-
+pipeline sdlc
+  uses issues: IssueProvider
+  uses claims: ClaimStore
+  uses outcomes: OutcomeLedger
+  uses agents: AgentProvider
+{
   stage fetch {
-    issue = Issues.Get(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number
+    issue_result = issues.get(id: "{issue_number}")
+    issue = issue_result.issue
+  }
+
+  stage claim [after fetch] {
+    current_stage = determine_stage(labels: issue.labels)
+    issue_id = "{repo_owner}/{repo_name}#{issue_number}"
+    run_key = "sdlc::{issue_id}::{current_stage}::v1"
+
+    acquired = claims.acquire(
+      issue_id: issue_id,
+      stage: current_stage,
+      owner: worker_id,
+      lease_ttl_ms: 30000
     )
   }
 
-  // ── Stage 2: Design ─────────────────────────────────────────────
-  // Generate a structured design document from the issue body.
-  // Posts the design as a comment and transitions label: idea → design.
+  stage replay_check [after claim, when acquired.acquired] {
+    prior = outcomes.get(run_key: run_key, stage: current_stage)
+  }
 
-  stage design [after fetch, when has_label(issue.labels, "idea")] {
-    design_output = generate_design(
-        idea: issue.body,
-        context: issue.title,
-        provider: llm_provider,
-        model: llm_model
-    )
-
-    // Post design as issue comment
-    design_comment = Issues.AddComment(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        body: format_design_comment(design: design_output.content, summary: design_output.summary)
-    )
-
-    // Transition: idea → design
-    label_update = Issues.SetLabels(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        labels: ["design"]
+  stage execute [after replay_check, when !prior.found] {
+    stage_outcome = execute_stage(
+      issue_id: issue_id,
+      stage: current_stage,
+      title: issue.title,
+      body: issue.body,
+      run_key: run_key,
+      owner: repo_owner,
+      repo: repo_name,
+      number: issue_number,
+      llm_provider: llm_provider,
+      llm_model: llm_model
     )
   }
 
-  // ── Stage 3: Design Review ──────────────────────────────────────
-  // Automatically review the generated design. Posts findings as
-  // a comment and transitions label: design → design-review.
-
-  stage design_review [after design, when design_output != null] {
-    review_output = review_design(
-        design: design_output.content,
-        provider: llm_provider,
-        model: llm_model
-    )
-
-    // Post review findings
-    review_comment = Issues.AddComment(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        body: format_review_comment(
-            findings: review_output.findings,
-            approved: review_output.approved,
-            summary: review_output.summary
-        )
-    )
-
-    // Transition: design → design-review
-    label_update = Issues.SetLabels(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        labels: ["design-review"]
+  stage record [after execute, when stage_outcome != null] {
+    recorded = outcomes.upsert(
+      run_key: run_key,
+      stage: current_stage,
+      outcome: {
+        run_key: run_key,
+        stage: current_stage,
+        status: match stage_outcome.success {
+          true  => "Success"
+          false => "Failed"
+        },
+        payload: None,
+        error: None,
+        attempt_count: 1,
+        retry_budget_remaining: 2,
+        next_attempt_at: None,
+        created_at: "",
+        updated_at: ""
+      }
     )
   }
 
-  // ── Stage 4: Accept Design ──────────────────────────────────────
-  // Gate: design must be approved (no blocking findings) to proceed.
-  // If not approved, the pipeline pauses here. A human can:
-  //   a) Revise the design and re-trigger review
-  //   b) Override by manually adding the "accepted" label
-  //
-  // When auto-approved or human-overridden, transition: design-review → accepted.
-
-  stage accept_design [after design_review, when review_output != null && review_output.approved] {
-    label_update = Issues.SetLabels(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        labels: ["accepted"]
-    )
-
-    accept_comment = Issues.AddComment(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        body: "Design approved. Ready for implementation."
+  stage release [after record] {
+    released = claims.release(
+      issue_id: issue_id,
+      stage: current_stage,
+      owner: worker_id,
+      generation: acquired.lease_generation
     )
   }
 
-  // ── Stage 5: Plan Implementation ────────────────────────────────
-  // Break the design into concrete implementation tasks.
-  // Each task becomes a checklist item in the issue body or
-  // a linked sub-issue.
-
-  stage plan_implementation [after accept_design, when design_output != null] {
-    impl_plan = generate_implementation_plan(
-        design: design_output.content,
-        provider: llm_provider,
-        model: llm_model
-    )
-
-    plan_comment = Issues.AddComment(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        body: format_plan_comment(plan: impl_plan.content)
-    )
-
-    // Transition: accepted → implementing
-    label_update = Issues.SetLabels(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        labels: ["implementing"]
-    )
-  }
-
-  // ── Stage 6: Code Review ────────────────────────────────────────
-  // Once implementation is pushed (detected via PR or manual trigger),
-  // run code review. This reuses the existing review pipeline.
-  //
-  // NOTE: The transition implementing → code-review is triggered
-  // externally (PR creation, manual label, or polling). This stage
-  // assumes the code is ready for review.
-
-  stage code_review [after plan_implementation, when has_label(issue.labels, "code-review")] {
-    // Diff review using the existing review tool
-    review_result = inline_review(
-        artifact: get_pr_diff(issue_number: issue_number),
-        provider: llm_provider,
-        model: llm_model
-    )
-
-    review_comment = Issues.AddComment(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        body: format_code_review_comment(review: review_result)
-    )
-  }
-
-  // ── Stage 7: Acceptance Testing ─────────────────────────────────
-  // Run the full CI pipeline. Gate: code review must pass.
-
-  stage acceptance [after code_review, when review_result.approved] {
-    ci_result = ci()
-
-    // Transition: code-review → testing
-    label_update = Issues.SetLabels(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        labels: ["testing"]
-    )
-
-    ci_comment = Issues.AddComment(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        body: format_ci_comment(result: ci_result)
-    )
-  }
-
-  // ── Stage 8: Close ──────────────────────────────────────────────
-  // All gates passed. Close the issue and post a summary.
-
-  stage close [after acceptance, when ci_result.success] {
-    // Transition: testing → done, close issue
-    label_update = Issues.SetLabels(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        labels: ["done"]
-    )
-
-    close_update = Issues.Update(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        state: "closed"
-    )
-  }
-
-  // ── Stage 9: Report ─────────────────────────────────────────────
-  // Aggregate all stage results into a final report.
-
-  stage report [after close] {
+  stage report [after release] {
     stages = [
-      stage_result(name: "design",          success: true,                     stderr: ""),
-      stage_result(name: "design-review",   success: review_output.approved,   stderr: review_output.summary),
-      stage_result(name: "implementation",  success: true,                     stderr: ""),
-      stage_result(name: "code-review",     success: review_result.approved,   stderr: ""),
-      stage_result(name: "acceptance",      success: ci_result.success,        stderr: "")
+      stage_result(
+        name: "{current_stage}->{stage_outcome.next_stage}",
+        success: stage_outcome.success,
+        stderr: ""
+      )
     ]
     summary = aggregate_results(stages: stages)
     report_text = format_report(summary: summary, stages: stages)
-
-    // Post final report
-    report_comment = Issues.AddComment(
-        owner: repo_owner,
-        repo: repo_name,
-        number: issue_number,
-        body: report_text
+    report_comment = issues.comment(
+      id: issue_id,
+      body: report_text,
+      marker: "sdlc:report:{run_key}"
     )
   }
-}
-
-// ── Helper functions ────────────────────────────────────────────────
-
-fn has_label(labels: Json, name: String) -> Bool {
-    labels |> any(l => l.name == name)
-}
-
-fn format_design_comment(design: String, summary: String) -> String {
-    "## Generated Design\n\n> {summary}\n\n---\n\n{design}\n\n---\n_Generated by gunbc SDLC pipeline_"
-}
-
-fn format_review_comment(findings: Json, approved: Bool, summary: String) -> String {
-    let status = match approved {
-        true  => "APPROVED"
-        false => "CHANGES REQUESTED"
-    }
-    let findings_text = findings
-        |> map(f => "- **{f.check_id}**: {f.observation}")
-        |> join("\n")
-    "## Design Review: {status}\n\n{summary}\n\n### Findings\n\n{findings_text}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
-}
-
-fn format_plan_comment(plan: String) -> String {
-    "## Implementation Plan\n\n{plan}\n\n---\n_Generated by gunbc SDLC pipeline_"
-}
-
-fn format_code_review_comment(review: Json) -> String {
-    "## Code Review\n\n{review.summary}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
-}
-
-fn format_ci_comment(result: Json) -> String {
-    let status = match result.success {
-        true  => "PASSED"
-        false => "FAILED"
-    }
-    "## Acceptance Tests: {status}\n\n{result.report}\n\n---\n_Tested by gunbc SDLC pipeline_"
-}
-
-// ── Tests ──────────────────────────────────────────────────────────
-// The SDLC pipeline composes issues + design + review + CI.
-// Tests use auto_mock with stage-by-stage boundary mocks.
-
-test sdlc_idea_to_design {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
-
-    // Pipeline parameters
-    input repo_owner -> "gunb-ai"
-    input repo_name -> "gunbc"
-    input issue_number -> 42
-
-    // Mock: issue fetch returns an issue with "idea" label
-    mock fetch/execute.response -> rest_response(200, {
-        number: 42,
-        title: "Add GitHub Issues integration",
-        body: "We need the SDLC pipeline to create and track issues.",
-        state: "open",
-        labels: [{ name: "idea" }],
-        html_url: "https://github.com/gunb-ai/gunbc/issues/42",
-        user: { login: "test-user" }
-    })
-
-    // Mock: LLM generates a design
-    mock design/llm/execute.response -> rest_response(200, {
-        content: [{ type: "text", text: "## Problem\n\nNeed issue tracking.\n\n## Approach\n\nGitHub Issues API.\n\n## Risks\n\n- Rate limits\n\n## Test Plan\n\nUnit + scenario tests.\n\n## Scope\n\nM" }],
-        model: "claude-sonnet-4-20250514",
-        stop_reason: "end_turn",
-        usage: { input_tokens: 100, output_tokens: 200 }
-    })
-
-    // Mock: comment and label updates succeed
-    mock design/comment/execute.response -> rest_response(201, { id: 100, html_url: "https://github.com/gunb-ai/gunbc/issues/42#issuecomment-100" })
-    mock design/labels/execute.response -> rest_response(200, [{ name: "design" }])
-
-    // Mock: design review
-    mock design_review/llm/execute.response -> rest_response(200, {
-        content: [{ type: "text", text: "{\"findings\":[],\"summary\":\"Design looks good. No blocking issues.\"}" }],
-        model: "claude-sonnet-4-20250514",
-        stop_reason: "end_turn",
-        usage: { input_tokens: 150, output_tokens: 80 }
-    })
-
-    mock design_review/comment/execute.response -> rest_response(201, { id: 101, html_url: "https://github.com/gunb-ai/gunbc/issues/42#issuecomment-101" })
-    mock design_review/labels/execute.response -> rest_response(200, [{ name: "design-review" }])
-
-    expect result is Map
 }

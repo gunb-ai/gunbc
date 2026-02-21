@@ -430,6 +430,249 @@ type PipelineArtifact {
   url: Url?                     // Link to where it was posted
 }
 
+// --- SDLC Domain Entities (Level 3+4: Products and Coproducts) -----------
+//
+// Canonical domain model from domain-modeling-comprehensive.md.
+// Every entity used by the SDLC pipeline is defined here with full
+// type definitions and cardinality. State machines and invariants
+// are documented in the modeling doc; types here are the structural
+// foundation that the compiler verifies.
+
+// --- Intent Sheet (entry point to SDLC system) ---------------------------
+
+type IntentSheet {
+  intent_id:        NonEmptyStr        // Stable identity, idempotency key
+  intent_version:   Int                // Monotonic version for update detection
+  title:            NonEmptyStr        // Human-readable summary
+  body:             String             // Detailed description (markdown)
+  labels:           List<String>       // Initial labels (e.g., ["sdlc:idea"])
+  owner:            NonEmptyStr        // GitHub owner (org or user)
+  repo:             NonEmptyStr        // GitHub repository name
+  created_at:       String             // When the intent was first submitted
+  metadata:         Json?              // Optional structured metadata
+}
+
+// --- Issue Binding (intent-to-issue mapping) -----------------------------
+
+type IssueBinding {
+  intent_id:        NonEmptyStr        // FK to IntentSheet
+  issue_id:         NonEmptyStr        // Provider-specific issue identifier
+  provider:         NonEmptyStr        // Which provider manages this issue
+  created_at:       String             // When binding was established
+  binding_status:   BindingStatus      // Active | Conflicted | Terminated
+}
+
+type BindingStatus
+  = Active                              // Normal operating state
+  | Conflicted                          // Multiple issues matched intent_id
+  | Terminated                          // Issue lifecycle complete
+
+// --- Issue State (open/closed) -------------------------------------------
+
+type IssueState
+  = Open
+  | Closed
+
+// --- Claim Lease (distributed lock per issue+stage) ----------------------
+
+type ClaimLease {
+  issue_id:         NonEmptyStr
+  stage:            IssueLifecycleStage
+  owner:            NonEmptyStr        // Worker identity (e.g., pod name)
+  generation:       Int                // CAS generation counter
+  acquired_at:      String
+  expires_at:       String             // acquired_at + lease_ttl
+  lease_ttl_ms:     Int                // Lease duration in milliseconds
+}
+
+// --- Stage Run Key (idempotency key for stage execution) -----------------
+
+type StageRunKey {
+  issue_id:         NonEmptyStr
+  stage:            IssueLifecycleStage
+  input_hash:       NonEmptyStr        // Hash of normalized stage inputs
+  policy_version:   NonEmptyStr        // Version of the stage policy
+}
+
+// --- Stage Outcome (durable execution result record) ---------------------
+
+type StageOutcome {
+  run_key:              NonEmptyStr        // FK to StageRunKey
+  stage:                IssueLifecycleStage
+  status:               OutcomeStatus
+  payload:              Json?              // Stage-specific output data
+  error:                String?            // Error details if failed
+  attempt_count:        Int                // How many times attempted
+  retry_budget_remaining: Int              // Remaining retries
+  next_attempt_at:      String?            // When retry is scheduled
+  created_at:           String
+  updated_at:           String
+}
+
+type OutcomeStatus
+  = Success                             // Stage completed successfully
+  | Failed                              // Stage failed (may be retryable)
+  | PendingApproval                     // Waiting for human approval
+  | Skipped                             // Replay detection: prior success
+  | TerminalFailed                      // Retry budget exhausted
+
+// --- Artifact (work output: design, review, code, test report) -----------
+
+type Artifact {
+  artifact_id:      NonEmptyStr        // Deterministic from run_key + artifact_type
+  run_key:          NonEmptyStr        // FK to StageRunKey
+  artifact_type:    ArtifactType
+  payload:          ArtifactPayload    // Inline or blob reference
+  content_hash:     NonEmptyStr        // Hash of normalized payload
+  created_at:       String
+}
+
+type ArtifactType
+  = DesignArtifact                     // Design document (markdown)
+  | DesignReviewArtifact               // Review findings
+  | ImplementationPlanArtifact         // Plan for code changes
+  | CodeDiffArtifact                   // Generated code diff
+  | CodeReviewArtifact                 // Code review findings
+  | TestReportArtifact                 // Test execution results
+  | StageSummaryArtifact               // Human-readable stage summary
+
+type ArtifactPayload
+  = Inline { body: String }
+  | BlobRef { uri: Url, size_bytes: Int }
+
+// --- Artifact Marker (two-phase commit tracking) -------------------------
+
+type ArtifactMarker {
+  run_key:          NonEmptyStr
+  artifact_type:    ArtifactType
+  marker_kind:      MarkerKind
+  content_hash:     NonEmptyStr
+  lease_generation: Int?               // Present for provisional markers
+  created_at:       String
+}
+
+type MarkerKind
+  = Provisional                         // Written before stage CAS
+  | Canonical                           // Written after stage CAS
+
+// --- Signal (at-least-once durable messages) -----------------------------
+
+type Signal {
+  signal_type:      SignalType
+  idempotency_key:  NonEmptyStr        // Deterministic dedup key
+  payload:          Json               // Signal-specific data
+  produced_at:      String
+  consumed_at:      String?            // Null until consumed
+}
+
+type SignalType
+  = IntentSubmitted    { intent_id: NonEmptyStr, intent_version: Int }
+  | WorkReady          { issue_id: NonEmptyStr, stage: IssueLifecycleStage, stage_epoch: Int }
+  | ApprovalGranted    { issue_id: NonEmptyStr, stage: IssueLifecycleStage, approval_epoch: Int }
+  | RetryDue           { issue_id: NonEmptyStr, stage: IssueLifecycleStage, run_key: NonEmptyStr }
+  | LeaseExpired       { issue_id: NonEmptyStr, stage: IssueLifecycleStage, lease_generation: Int }
+  | ReconcileTick      { window_id: NonEmptyStr }
+  | InfraIntentChanged { intent_fingerprint: NonEmptyStr }
+  | TerminalStateReached { issue_id: NonEmptyStr, stage: IssueLifecycleStage, run_key: NonEmptyStr }
+
+// --- Agent Status and Approval Mode --------------------------------------
+
+type AgentStatus
+  = AgentPending                        // Queued but not started
+  | AgentRunning                        // Actively executing
+  | AgentCompleted                      // Finished successfully
+  | AgentFailed                         // Finished with error
+  | AgentCancelled                      // Explicitly cancelled
+  | AgentTimedOut                       // Exceeded timeout
+
+type ApprovalMode
+  = FullAuto                            // No human approval needed
+  | SuggestOnly                         // Agent suggests, human applies
+  | HumanInLoop                         // Human approves each step
+
+// --- Retry Policy --------------------------------------------------------
+
+type RetryPolicy {
+  max_attempts:     Int                // Total attempts (including first). Default: 3
+  backoff_base_ms:  Int                // Base backoff duration. Default: 5000
+  backoff_max_ms:   Int                // Maximum backoff. Default: 60000
+  jitter:           Bool               // Add randomized jitter. Default: true
+}
+
+type FailureClass
+  = Retryable       { reason: String, next_attempt_at: String }
+  | NonRetryable    { reason: String }
+  | Transient       { reason: String }
+
+// --- Infra Intent (versioned desired-state for runtime infrastructure) ---
+
+type InfraIntent {
+  schema_version:       NonEmptyStr    // Fail-closed on unsupported version
+  runtime_profile:      RuntimeProfile
+  launch:               LaunchConfig
+  infra_fingerprint:    NonEmptyStr    // Hash for change detection
+}
+
+type RuntimeProfile
+  = LocalCoLocated                      // Single-process
+  | StatelessFleet                      // Cloud Run or equivalent
+
+type LaunchConfig {
+  worker_count:         Int            // [1] for local, [5..10] for fleet
+  drain_flag_path:      String?        // Path to drain flag file (local)
+  drain_flag_url:       Url?           // URL for drain flag (cloud)
+}
+
+// --- Credential Model (resolved through deployment profile) --------------
+
+type CredentialBinding {
+  intent:       CredentialIntent       // What the credential is for
+  resolution:   CredentialResolution   // How to acquire it
+}
+
+type CredentialIntent
+  = GitHubApi                           // Issues, PRs, comments
+  | AgentExecution                      // Codex API key
+  | LlmApi                             // Anthropic/OpenAI API key
+  | CloudStorageAccess                  // GCS/S3 bucket access
+  | SecretManagerAccess                 // Secret Manager read access
+
+type CredentialResolution
+  = EnvVar { name: NonEmptyStr }
+  | SecretManagerRef { secret_id: NonEmptyStr, project: NonEmptyStr }
+  | WorkloadIdentityRef { service_account: NonEmptyStr, scopes: List<String> }
+
+// --- Execution Metrics (observability per stage run) ---------------------
+
+type ExecutionMetrics {
+  run_key:          NonEmptyStr
+  stage:            IssueLifecycleStage
+  duration_ms:      Int
+  approval_latency_ms: Int?            // Time spent in PENDING_APPROVAL
+  retry_attempts:   Int
+  llm_cost_units:   Float?             // Estimated LLM cost
+  transport_calls:  Int                // Number of external API calls
+  artifacts_stored: Int
+}
+
+// --- Audit Entry (traceability for state mutations) ----------------------
+
+type AuditEntry {
+  timestamp:        String
+  actor:            NonEmptyStr        // Worker ID or system
+  action:           AuditAction
+  entity_type:      NonEmptyStr        // "ClaimLease", "StageOutcome", etc.
+  entity_id:        NonEmptyStr
+  before:           Json?
+  after:            Json?
+}
+
+type AuditAction
+  = Created
+  | Updated
+  | Deleted
+  | TransitionedTo { from_state: String, to_state: String }
+
 // --- Docgen (product with refinement) ----------------------------------
 
 type DocSource {
