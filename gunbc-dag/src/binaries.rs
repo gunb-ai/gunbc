@@ -3,104 +3,72 @@
 //! This is the single source of truth for how repo-local binaries are
 //! invoked via cargo (package + bin name). Centralizing this mapping
 //! prevents drift when binaries move between packages.
+//!
+//! **Adding a new binary**: add one line to the `workspace_binaries!` table
+//! below. The enum variant, `ALL` array, `tool_name()`, `from_tool_name()`,
+//! and `component()` are all derived automatically.
 
 use gunbc_ir::CargoInvocation;
 use gunbc_tool_registry::iter_tool_targets;
 
-/// Repo-local workspace binaries (all live in gunbc-dag).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum WorkspaceBinary {
-    Build,
-    Bootstrap,
-    Ci,
-    Codegen,
-    CodegenDag,
-    DepsConfig,
-    Docgen,
-    Infra,
-    Makegen,
-    Pragma,
-    Sdlc,
-    Testgen,
+/// Generates the `WorkspaceBinary` enum and its core accessors from a single
+/// definition table. Each entry is `VariantName => "tool-name"`.
+macro_rules! workspace_binaries {
+    ( $( $variant:ident => $tool_name:expr ),* $(,)? ) => {
+        /// Repo-local workspace binaries (all live in gunbc-dag).
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum WorkspaceBinary {
+            $( $variant, )*
+        }
+
+        impl WorkspaceBinary {
+            /// Canonical ordered registry of all workspace binaries.
+            pub const ALL: &[Self] = &[ $( Self::$variant, )* ];
+
+            /// Iterate all known workspace binaries.
+            pub fn all() -> &'static [Self] {
+                Self::ALL
+            }
+
+            /// Tool registry name for this binary.
+            pub fn tool_name(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $tool_name, )*
+                }
+            }
+
+            /// Resolve enum variant from tool registry name.
+            pub fn from_tool_name(name: &str) -> Option<Self> {
+                match name {
+                    $( $tool_name => Some(Self::$variant), )*
+                    _ => None,
+                }
+            }
+
+            /// Component name used to compose the binary name.
+            pub fn component(self) -> &'static str {
+                self.tool_name()
+            }
+        }
+    };
+}
+
+workspace_binaries! {
+    Build       => "build",
+    Bootstrap   => "bootstrap",
+    Ci          => "ci",
+    Codegen     => "codegen",
+    CodegenDag  => "codegen-dag",
+    DepsConfig  => "deps-config",
+    Docgen      => "docgen",
+    Infra       => "infra",
+    Makegen     => "makegen",
+    Pragma      => "pragma",
+    Sdlc        => "sdlc",
+    Testgen     => "testgen",
 }
 
 impl WorkspaceBinary {
-    /// Canonical ordered registry of all workspace binaries.
-    pub const ALL: [Self; 12] = [
-        Self::Build,
-        Self::Bootstrap,
-        Self::Ci,
-        Self::Codegen,
-        Self::CodegenDag,
-        Self::DepsConfig,
-        Self::Docgen,
-        Self::Infra,
-        Self::Makegen,
-        Self::Pragma,
-        Self::Sdlc,
-        Self::Testgen,
-    ];
-
-    /// Iterate all known workspace binaries.
-    pub fn all() -> &'static [Self] {
-        &Self::ALL
-    }
-
-    /// Tool registry name for this binary when present.
-    pub fn tool_name(self) -> &'static str {
-        match self {
-            WorkspaceBinary::Build => "build",
-            WorkspaceBinary::Bootstrap => "bootstrap",
-            WorkspaceBinary::Ci => "ci",
-            WorkspaceBinary::Codegen => "codegen",
-            WorkspaceBinary::CodegenDag => "codegen-dag",
-            WorkspaceBinary::DepsConfig => "deps-config",
-            WorkspaceBinary::Docgen => "docgen",
-            WorkspaceBinary::Infra => "infra",
-            WorkspaceBinary::Makegen => "makegen",
-            WorkspaceBinary::Pragma => "pragma",
-            WorkspaceBinary::Sdlc => "sdlc",
-            WorkspaceBinary::Testgen => "testgen",
-        }
-    }
-
-    /// Resolve enum variant from tool registry name.
-    pub fn from_tool_name(name: &str) -> Option<Self> {
-        match name {
-            "build" => Some(Self::Build),
-            "bootstrap" => Some(Self::Bootstrap),
-            "ci" => Some(Self::Ci),
-            "codegen" => Some(Self::Codegen),
-            "codegen-dag" => Some(Self::CodegenDag),
-            "deps-config" => Some(Self::DepsConfig),
-            "docgen" => Some(Self::Docgen),
-            "infra" => Some(Self::Infra),
-            "makegen" => Some(Self::Makegen),
-            "pragma" => Some(Self::Pragma),
-            "sdlc" => Some(Self::Sdlc),
-            "testgen" => Some(Self::Testgen),
-            _ => None,
-        }
-    }
-
-    /// Component name used to compose the binary name.
-    pub fn component(self) -> &'static str {
-        match self {
-            WorkspaceBinary::Build => "build",
-            WorkspaceBinary::Bootstrap => "bootstrap",
-            WorkspaceBinary::Ci => "ci",
-            WorkspaceBinary::Codegen => "codegen",
-            WorkspaceBinary::CodegenDag => "codegen-dag",
-            WorkspaceBinary::DepsConfig => "deps-config",
-            WorkspaceBinary::Docgen => "docgen",
-            WorkspaceBinary::Infra => "infra",
-            WorkspaceBinary::Makegen => "makegen",
-            WorkspaceBinary::Pragma => "pragma",
-            WorkspaceBinary::Sdlc => "sdlc",
-            WorkspaceBinary::Testgen => "testgen",
-        }
-    }
-
     /// Whether this binary corresponds to a DSL pipeline module.
     pub fn is_dsl_pipeline_module(self) -> bool {
         matches!(self, Self::Ci)

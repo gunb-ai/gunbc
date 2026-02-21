@@ -17,9 +17,11 @@
 //! # Adding a new module
 //!
 //! To wire a new `.dag` module:
-//! 1. Add a match arm in `resolve_domain()` for the module path
-//! 2. Map each callable name to its domain op via `DynOp::new(...)`
-//! 3. Infrastructure nodes (content_upsert, fs_env) are handled automatically
+//! - **Passthrough callables** (forward inputs to outputs): add an entry
+//!   to `PASSTHROUGH_CALLABLES` — no new types or functions needed.
+//! - **Custom callables**: add a match arm in `resolve_domain()` for the
+//!   module path and map each callable to its `DynOp`.
+//! - Infrastructure nodes (content_upsert, fs_env) are handled automatically.
 
 use std::collections::HashMap;
 
@@ -80,92 +82,64 @@ fn execute_with_declared_output_passthrough(
     Ok(outputs)
 }
 
-/// Generates a port-forwarding domain op: enum definition, `Executable` impl,
-/// and resolver function — all from a single declaration.
-///
-/// Every variant carries `output_port_names: Vec<String>` and the executor
-/// delegates to `execute_with_declared_output_passthrough`. The resolver maps
-/// DSL callable names to enum variants.
-///
-/// # Example
-///
-/// ```ignore
-/// domain_passthrough_op! {
-///     BuildToolOp, "tools.build", resolve_build {
-///         "build_all" => BuildAll,
-///     }
-/// }
-/// ```
-macro_rules! domain_passthrough_op {
-    (
-        $enum_name:ident, $module:expr, $fn_name:ident {
-            $( $dsl_name:expr => $variant:ident ),* $(,)?
-        }
-    ) => {
-        #[derive(Debug, Clone)]
-        enum $enum_name {
-            $( $variant { output_port_names: Vec<String> }, )*
-        }
+/// Single passthrough op that replaces all `domain_passthrough_op!` macro
+/// instances.  Every registered callable gets the same behavior: forward
+/// all inputs to outputs, filling any declared output port that has no
+/// matching input with `Value::Skipped`.
+#[derive(Debug, Clone)]
+struct PassthroughOp {
+    output_port_names: Vec<String>,
+}
 
-        impl Executable for $enum_name {
-            fn execute(
-                &self,
-                inputs: HashMap<String, Value>,
-            ) -> Result<HashMap<String, Value>, ExecError> {
-                let output_port_names = match self {
-                    $( Self::$variant { output_port_names } )|* => output_port_names,
-                };
-                execute_with_declared_output_passthrough(output_port_names, inputs)
+impl Executable for PassthroughOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
+    }
+}
+
+/// Centralized registry of `(module, &[callable_name])` pairs that use
+/// passthrough dispatch.  Adding a new passthrough callable only requires
+/// appending to this list — no new enum, impl, or resolver function.
+const PASSTHROUGH_CALLABLES: &[(&str, &[&str])] = &[
+    ("tools.build", &["build_all"]),
+    ("tools.clippy", &["clippy_lint"]),
+    ("tools.deps", &["render_deps_toml", "select_platform_deps", "deps_install", "deps_generate"]),
+    ("tools.docgen", &["docgen", "render_ab_workflows_doc"]),
+    ("tools.testgen", &["generate_tests", "testgen"]),
+    ("pipelines.ci", &["ci"]),
+    ("shared.dag_util", &[
+        "aggregate_results", "all_succeeded", "format_report", "stage_result",
+        "skipped_stage", "stage_from_output", "generated_header", "render_and_upsert",
+    ]),
+    ("shared.gist_modes", &[
+        "branch_context", "resolve_recent_base", "gist_filename",
+        "gist_upload", "share_content", "detect_runtime",
+    ]),
+    ("std.patterns", &[
+        "file_content_matches", "classify_files", "read_text_files",
+        "acquire_subject_token", "optional_impersonation", "ensure",
+        "upsert", "content_upsert", "credential_chain", "transaction", "retry",
+    ]),
+];
+
+/// Try to resolve a callable via the passthrough registry.
+fn resolve_passthrough(
+    node_id: &str,
+    module: &str,
+    name: &str,
+    outputs: &[Port],
+) -> Option<Result<DynOp, ResolveError>> {
+    for &(mod_name, callables) in PASSTHROUGH_CALLABLES {
+        if mod_name == module {
+            if callables.contains(&name) {
+                return Some(Ok(DynOp::new(PassthroughOp {
+                    output_port_names: declared_output_names(outputs),
+                })));
             }
+            return Some(Err(unknown_callable(node_id, module, name)));
         }
-
-        fn $fn_name(
-            node_id: &str,
-            name: &str,
-            outputs: &[Port],
-        ) -> Result<DynOp, ResolveError> {
-            let output_port_names = declared_output_names(outputs);
-            match name {
-                $( $dsl_name => Ok(DynOp::new($enum_name::$variant { output_port_names })), )*
-                _ => Err(unknown_callable(node_id, $module, name)),
-            }
-        }
-    };
-}
-
-domain_passthrough_op! {
-    BuildToolOp, "tools.build", resolve_build {
-        "build_all" => BuildAll,
     }
-}
-
-domain_passthrough_op! {
-    DocgenToolOp, "tools.docgen", resolve_docgen {
-        "docgen" => Docgen,
-        "render_ab_workflows_doc" => RenderAbWorkflowsDoc,
-    }
-}
-
-domain_passthrough_op! {
-    TestgenToolOp, "tools.testgen", resolve_testgen {
-        "generate_tests" => GenerateTests,
-        "testgen" => Testgen,
-    }
-}
-
-domain_passthrough_op! {
-    ClippyToolOp, "tools.clippy", resolve_clippy {
-        "clippy_lint" => ClippyLint,
-    }
-}
-
-domain_passthrough_op! {
-    DepsToolOp, "tools.deps", resolve_deps {
-        "render_deps_toml" => RenderDepsToml,
-        "select_platform_deps" => SelectPlatformDeps,
-        "deps_install" => DepsInstall,
-        "deps_generate" => DepsGenerate,
-    }
+    None
 }
 
 #[derive(Debug, Clone)]
@@ -236,52 +210,6 @@ fn resolve_infra(node_id: &str, name: &str, _outputs: &[Port]) -> Result<DynOp, 
     }
 }
 
-domain_passthrough_op! {
-    PipelineCiOp, "pipelines.ci", resolve_pipeline_ci {
-        "ci" => Ci,
-    }
-}
-
-domain_passthrough_op! {
-    SharedDagUtilOp, "shared.dag_util", resolve_shared_dag_util {
-        "aggregate_results" => AggregateResults,
-        "all_succeeded" => AllSucceeded,
-        "format_report" => FormatReport,
-        "stage_result" => StageResult,
-        "skipped_stage" => SkippedStage,
-        "stage_from_output" => StageFromOutput,
-        "generated_header" => GeneratedHeader,
-        "render_and_upsert" => RenderAndUpsert,
-    }
-}
-
-domain_passthrough_op! {
-    SharedGistModesOp, "shared.gist_modes", resolve_shared_gist_modes {
-        "branch_context" => BranchContext,
-        "resolve_recent_base" => ResolveRecentBase,
-        "gist_filename" => GistFilename,
-        "gist_upload" => GistUpload,
-        "share_content" => ShareContent,
-        "detect_runtime" => DetectRuntime,
-    }
-}
-
-domain_passthrough_op! {
-    StdPatternsOp, "std.patterns", resolve_std_patterns {
-        "file_content_matches" => FileContentMatches,
-        "classify_files" => ClassifyFiles,
-        "read_text_files" => ReadTextFiles,
-        "acquire_subject_token" => AcquireSubjectToken,
-        "optional_impersonation" => OptionalImpersonation,
-        "ensure" => Ensure,
-        "upsert" => Upsert,
-        "content_upsert" => ContentUpsert,
-        "credential_chain" => CredentialChain,
-        "transaction" => Transaction,
-        "retry" => Retry,
-    }
-}
-
 /// Simple identity callable adapter for DSL entrypoint wrappers.
 #[derive(Debug, Clone)]
 struct IdentityCallableOp;
@@ -344,9 +272,11 @@ impl Executable for LiteralSourceOp {
 /// Produces a resource handle value appropriate for the resource kind.
 /// In production, these will be real handle acquisitions; for now, they
 /// produce cross-platform default handles for dry-run/test execution.
+/// The `resource_kind` is derived from the DSL callable name — no
+/// hardcoded list of resource names needed in the resolver.
 #[derive(Debug, Clone)]
 struct ResourceAcquireOp {
-    resource_kind: &'static str,
+    resource_kind: String,
 }
 
 impl Executable for ResourceAcquireOp {
@@ -354,7 +284,7 @@ impl Executable for ResourceAcquireOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        let handle: Value = match self.resource_kind {
+        let handle: Value = match self.resource_kind.as_str() {
             "Filesystem" => {
                 filename::FilesystemHandle::cross_platform(filename::Scope::Write).into()
             }
@@ -622,27 +552,25 @@ fn resolve_domain(
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
+    // 1. Modules with custom resolvers (non-passthrough behavior).
     match module {
-        "tools.pragma" => resolve_pragma(node_id, name),
-        "tools.makegen" => resolve_makegen(node_id, name),
-        "tools.build" => resolve_build(node_id, name, outputs),
-        "tools.codegen" => resolve_codegen(node_id, name),
-        "tools.bootstrap" => resolve_bootstrap(node_id, name, outputs),
-        "tools.docgen" => resolve_docgen(node_id, name, outputs),
-        "tools.testgen" => resolve_testgen(node_id, name, outputs),
-        "tools.clippy" => resolve_clippy(node_id, name, outputs),
-        "tools.deps" => resolve_deps(node_id, name, outputs),
-        "tools.infra" => resolve_infra(node_id, name, outputs),
-        "pipelines.ci" => resolve_pipeline_ci(node_id, name, outputs),
-        "shared.dag_util" => resolve_shared_dag_util(node_id, name, outputs),
-        "shared.gist_modes" => resolve_shared_gist_modes(node_id, name, outputs),
-        "std.patterns" => resolve_std_patterns(node_id, name, outputs),
-        "std.resources" => resolve_std_resources(name),
-        _ if module.starts_with("services.") || module.starts_with("workspace.") => {
-            resolve_service_transport(node_id, module, name, service_metadata)
-        }
-        _ => Err(unknown_callable(node_id, module, name)),
+        "tools.pragma" => return resolve_pragma(node_id, name),
+        "tools.makegen" => return resolve_makegen(node_id, name),
+        "tools.codegen" => return resolve_codegen(node_id, name),
+        "tools.bootstrap" => return resolve_bootstrap(node_id, name, outputs),
+        "tools.infra" => return resolve_infra(node_id, name, outputs),
+        "std.resources" => return resolve_std_resources(name),
+        _ => {}
     }
+    // 2. Service/workspace modules use generic transport dispatch.
+    if module.starts_with("services.") || module.starts_with("workspace.") {
+        return resolve_service_transport(node_id, module, name, service_metadata);
+    }
+    // 3. Passthrough registry (replaces per-module domain_passthrough_op! macros).
+    if let Some(result) = resolve_passthrough(node_id, module, name, outputs) {
+        return result;
+    }
+    Err(unknown_callable(node_id, module, name))
 }
 
 fn resolve_pragma(node_id: &str, name: &str) -> Result<DynOp, ResolveError> {
@@ -685,16 +613,12 @@ fn resolve_std_resources(name: &str) -> Result<DynOp, ResolveError> {
     // Resource lifecycle acquire/release nodes from the DSL resource system.
     // Names follow the pattern: `resource_lifecycle::acquire::ResourceName`
     // or `resource_lifecycle::release::ResourceName`.
+    // The resource name is taken directly from the DSL callable —
+    // no hardcoded list needed. Adding a new resource to std/resources.dag
+    // works without changing resolver code.
     if let Some(resource_name) = name.strip_prefix("resource_lifecycle::acquire::") {
-        let kind = match resource_name {
-            "Filesystem" => "Filesystem",
-            "Network" => "Network",
-            "Clock" => "Clock",
-            "AuthContext" => "AuthContext",
-            _ => "unknown",
-        };
         return Ok(DynOp::new(ResourceAcquireOp {
-            resource_kind: kind,
+            resource_kind: resource_name.to_string(),
         }));
     }
     if name.starts_with("resource_lifecycle::release::") {
