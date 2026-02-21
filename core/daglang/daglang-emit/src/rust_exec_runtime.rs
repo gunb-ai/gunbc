@@ -1742,4 +1742,81 @@ mod tests {
         assert_eq!(to_snake("PrepareReadContent"), "prepare_read_content");
         assert_eq!(to_snake("ExecuteTransport"), "execute_transport");
     }
+
+    #[test]
+    fn classify_handler_supports_sdlc_and_service_transport_surfaces() {
+        let sdlc_callable = LoweredOp::Callable {
+            module: "pipelines.sdlc".into(),
+            kind: CallableKind::Fn,
+            name: "default_repo_owner".into(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+        };
+        assert_eq!(
+            classify_handler(&sdlc_callable),
+            Some(HandlerKind::ParamSource)
+        );
+
+        let pattern_callable = LoweredOp::Callable {
+            module: "std.patterns".into(),
+            kind: CallableKind::Pattern,
+            name: "file_content_matches".into(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+        };
+        assert_eq!(
+            classify_handler(&pattern_callable),
+            Some(HandlerKind::ParamSource)
+        );
+
+        let service_prepare = LoweredOp::Callable {
+            module: "services.sdlc.control_plane".into(),
+            kind: CallableKind::Pattern,
+            name: "service_transport::prepare::sdlc.ControlPlane::AcquireStageClaim".into(),
+            obligation: ObligationCategory::ServiceTransportPrepare,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+        };
+        assert_eq!(
+            classify_handler(&service_prepare),
+            Some(HandlerKind::ParamSource)
+        );
+    }
+
+    #[test]
+    fn emit_exec_runtime_uses_skipped_fallbacks_for_missing_transport_inputs() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare_read_node",
+            vec![Port::scalar("path", "String")],
+            vec![Port::scalar("request", "TransportRequest")],
+            LoweredOp::Primitive {
+                module: "std.patterns".into(),
+                name: "content_upsert::prepare_read".into(),
+                kind: PrimitiveOpKind::IoPrepareFileRead,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "execute_read_node",
+            vec![Port::scalar("request", "TransportRequest")],
+            vec![Port::scalar("response", "TransportResponse")],
+            LoweredOp::Primitive {
+                module: "std.patterns".into(),
+                name: "content_upsert::execute_read".into(),
+                kind: PrimitiveOpKind::IoExecuteFileRead,
+            },
+        ));
+
+        let files = emit_exec_runtime(&dag, "pipelines.sdlc").expect("emit should succeed");
+        let main_rs = &files[0].content;
+        assert!(
+            main_rs.contains("Value::Skipped"),
+            "generated runtime should emit skipped fallbacks for missing transport inputs"
+        );
+    }
 }
