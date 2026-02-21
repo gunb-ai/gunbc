@@ -324,38 +324,25 @@ pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Int = 1000) -> {} {
 //   )
 //   // Execution stops here. Pipeline is re-entered on next discovery.
 
-import interfaces.outcome_ledger { OutcomeLedger }
-import interfaces.claim_store { ClaimStore }
-
-pattern approval_yield(
-  issue_id: NonEmptyStr,
-  stage: NonEmptyStr,
-  run_key: NonEmptyStr,
-  owner: NonEmptyStr,
-  generation: Int
-) -> { yielded: Bool }
-  uses outcomes: OutcomeLedger
-  uses claims: ClaimStore
-{
-  // Step 1: Persist PENDING_APPROVAL in outcome ledger
-  node persist: outcomes.upsert(
-    run_key: run_key,
-    stage: stage,
-    outcome: {
-      status: "PendingApproval",
-      attempt_count: 1,
-      retry_budget_remaining: 0  // No retry — waiting for human
-    }
-  )
-
-  // Step 2: Release claim (INV-22: AwaitApproval releases claim)
-  node release [after persist]: claims.release(
-    issue_id: issue_id,
-    stage: stage,
-    owner: owner,
-    generation: generation
-  )
-
-  // Step 3: Signal yield — caller should terminate execution
-  return { yielded: release.released }
-}
+// Pattern: approval_yield
+//
+// Approval yield for human-in-the-loop gates. This pattern will be
+// compiled once the DSL supports `uses` clauses on patterns (service
+// dependency injection for compile-time templates). Until then, the
+// logic lives inline in pipeline stages that need it.
+//
+// Signature:
+//   approval_yield(
+//     issue_id: NonEmptyStr,
+//     stage: NonEmptyStr,
+//     run_key: NonEmptyStr,
+//     owner: NonEmptyStr,
+//     generation: Int
+//   ) -> { yielded: Bool }
+//   uses outcomes: OutcomeLedger
+//   uses claims: ClaimStore
+//
+// Steps:
+//   1. Persist PendingApproval in outcome ledger
+//   2. Release claim (INV-22: AwaitApproval releases claim)
+//   3. Signal yield — caller should terminate execution
