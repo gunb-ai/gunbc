@@ -1506,3 +1506,54 @@ fn sdlc_pipeline_c_runtime_asan_smoke_when_available() {
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native sdlc pipeline c asan out root");
 }
+
+#[test]
+fn sdlc_control_plane_c_runtime_asan_smoke_when_available() {
+    let native_out_root =
+        unique_workspace_target_dir("runtime_native_sdlc_control_plane_c_asan");
+    compile_module_for_target(
+        "dsl/services/sdlc/control_plane.dag",
+        "c",
+        &native_out_root.join("c"),
+    );
+    match run_generated_c_with_asan(&native_out_root.join("c")) {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated sdlc control-plane c asan runtime should print backend banner: {stdout}"
+            );
+            assert!(
+                !stderr.contains("ERROR: AddressSanitizer"),
+                "sdlc control-plane c asan smoke should not report sanitizer violations: {stderr}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP sdlc control-plane c asan smoke: {reason}");
+        }
+    }
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native sdlc control-plane c asan out root");
+}
+
+#[test]
+fn design_tool_c_runtime_asan_smoke_when_available() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_design_tool_c_asan");
+    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
+    match run_generated_c_with_asan(&native_out_root.join("c")) {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated design tool c asan runtime should print backend banner: {stdout}"
+            );
+            assert!(
+                !stderr.contains("ERROR: AddressSanitizer"),
+                "design tool c asan smoke should not report sanitizer violations: {stderr}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP design tool c asan smoke: {reason}");
+        }
+    }
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native design tool c asan out root");
+}
