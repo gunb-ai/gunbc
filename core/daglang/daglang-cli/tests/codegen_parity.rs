@@ -9,7 +9,7 @@ use gunbc_ir::Value;
 use gunbc_ir::WorkspaceLayout;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -149,6 +149,41 @@ fn mips_runtime_available() -> bool {
     command_exists(&toolchain.assembler)
         && command_exists(&toolchain.linker)
         && command_exists(&emulator)
+}
+
+fn c_runtime_available() -> bool {
+    command_exists("cc")
+}
+
+fn c_runtime_with_curl_headers_available() -> bool {
+    if !c_runtime_available() {
+        return false;
+    }
+    let probe_dir = unique_workspace_target_dir("c_runtime_curl_probe");
+    if std::fs::create_dir_all(&probe_dir).is_err() {
+        return false;
+    }
+    let source = probe_dir.join("probe.c");
+    let bin = probe_dir.join("probe_bin");
+    if std::fs::write(
+        &source,
+        "#include <curl/curl.h>\nint main(void) { return 0; }\n",
+    )
+    .is_err()
+    {
+        let _ = std::fs::remove_dir_all(&probe_dir);
+        return false;
+    }
+    let available = Command::new("cc")
+        .arg(&source)
+        .arg("-o")
+        .arg(&bin)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    let _ = std::fs::remove_dir_all(&probe_dir);
+    available
 }
 
 fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
@@ -2028,6 +2063,125 @@ fn design_tool_go_runtime_executes_when_go_available() {
 
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup strict design go runtime out root");
+}
+
+#[test]
+fn design_tool_c_runtime_executes_when_cc_available() {
+    if !c_runtime_available() {
+        eprintln!("SKIP design tool c runtime strict check: C compiler not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_design_c_strict");
+    compile_module_for_target("dsl/tools/design.dag", "c", &native_out_root.join("c"));
+    let c = run_infra_generated_c(&native_out_root.join("c"));
+
+    match c {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated c design runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("design tool c runtime should not skip when C compiler is available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict design c runtime out root");
+}
+
+#[test]
+fn infra_c_runtime_executes_when_cc_and_curl_headers_available() {
+    if !c_runtime_with_curl_headers_available() {
+        eprintln!("SKIP infra c runtime strict check: C compiler/curl headers not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_infra_c_strict");
+    compile_module_for_target("dsl/tools/infra.dag", "c", &native_out_root.join("c"));
+    let c = run_infra_generated_c(&native_out_root.join("c"));
+
+    match c {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated c infra runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("infra c runtime should not skip when C compiler/curl headers are available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict infra c runtime out root");
+}
+
+#[test]
+fn sdlc_pipeline_c_runtime_executes_when_cc_and_curl_headers_available() {
+    if !c_runtime_with_curl_headers_available() {
+        eprintln!(
+            "SKIP sdlc pipeline c runtime strict check: C compiler/curl headers not available"
+        );
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_c_strict");
+    compile_module_for_target("dsl/pipelines/sdlc.dag", "c", &native_out_root.join("c"));
+    let c = run_infra_generated_c(&native_out_root.join("c"));
+
+    match c {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated c sdlc pipeline runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("sdlc pipeline c runtime should not skip when C compiler/curl headers are available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict sdlc pipeline c runtime out root");
+}
+
+#[test]
+fn sdlc_control_plane_c_runtime_executes_when_cc_and_curl_headers_available() {
+    if !c_runtime_with_curl_headers_available() {
+        eprintln!(
+            "SKIP sdlc control-plane c runtime strict check: C compiler/curl headers not available"
+        );
+        return;
+    }
+
+    let native_out_root =
+        unique_workspace_target_dir("runtime_native_sdlc_control_plane_c_strict");
+    compile_module_for_target(
+        "dsl/services/sdlc/control_plane.dag",
+        "c",
+        &native_out_root.join("c"),
+    );
+    let c = run_infra_generated_c(&native_out_root.join("c"));
+
+    match c {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated c sdlc control-plane runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!(
+                "sdlc control-plane c runtime should not skip when C compiler/curl headers are available: {reason}"
+            );
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict sdlc control-plane c runtime out root");
 }
 
 #[test]
