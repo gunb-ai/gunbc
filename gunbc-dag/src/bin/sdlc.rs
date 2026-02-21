@@ -707,6 +707,7 @@ fn run_worker(
         let output = json!({
             "command": command_label,
             "mode": mode,
+            "report_generated_at_epoch_ms": now,
             "issue_filter": issue_filter,
             "pending_count": 0,
             "intake_keys": [],
@@ -731,6 +732,15 @@ fn run_worker(
                 "active": true,
                 "flag_path": drain_flag.display().to_string(),
                 "released_claim_count": released.len(),
+            },
+            "summary": {
+                "intake_total": 0,
+                "ready_to_run_count": 0,
+                "executed_count": 0,
+                "terminalized_count": 0,
+                "awaiting_approval_count": 0,
+                "claim_conflict_count": 0,
+                "replay_skipped_count": 0,
             },
             "metrics": {
                 "stage_duration_ms": {},
@@ -951,6 +961,7 @@ fn run_worker(
         .saturating_sub(terminalized.len());
     let output = json!({
         "command": command_label,
+        "report_generated_at_epoch_ms": now,
         "issue_filter": issue_filter,
         "mode": mode,
         "pending_count": pending_count,
@@ -975,6 +986,15 @@ fn run_worker(
         "drain": {
             "active": false,
             "flag_path": drain_flag.display().to_string(),
+        },
+        "summary": {
+            "intake_total": intake_keys.len(),
+            "ready_to_run_count": ready_to_run.len(),
+            "executed_count": executed_runs.len(),
+            "terminalized_count": terminalized.len(),
+            "awaiting_approval_count": awaiting_approval.len(),
+            "claim_conflict_count": claim_conflicts.len(),
+            "replay_skipped_count": replay_skipped.len(),
         },
         "metrics": {
             "stage_duration_ms": stage_duration_ms,

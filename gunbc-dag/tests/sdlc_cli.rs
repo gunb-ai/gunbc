@@ -1012,6 +1012,15 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
         serde_json::from_str(&report_raw).expect("parse execution report");
     assert_eq!(report["command"], "worker");
     assert!(
+        report["report_generated_at_epoch_ms"]
+            .as_u64()
+            .is_some(),
+        "execution report should include report generation timestamp"
+    );
+    assert_eq!(report["summary"]["intake_total"], 1);
+    assert_eq!(report["summary"]["executed_count"], 1);
+    assert_eq!(report["summary"]["terminalized_count"], 0);
+    assert!(
         report["metrics"]["stage_duration_ms"]
             .as_object()
             .expect("stage_duration metrics should be map")
