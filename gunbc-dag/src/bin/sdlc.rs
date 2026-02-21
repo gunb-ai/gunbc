@@ -140,6 +140,7 @@ struct WorkerPreflightSummary {
     intent_id: String,
     environment: String,
     runtime_profile: String,
+    worker_count: Option<u32>,
     checked_components: Vec<String>,
 }
 
@@ -712,6 +713,7 @@ fn run_worker(
             intent_id: "n/a".to_string(),
             environment: "n/a".to_string(),
             runtime_profile: "n/a".to_string(),
+            worker_count: None,
             checked_components: Vec::new(),
         }
     } else {
@@ -754,6 +756,7 @@ fn run_worker(
             "skipped_missing_issue": [],
             "skipped_terminalized": [],
             "skipped_retry_backoff": [],
+            "skipped_capacity": [],
             "ledger_path": ledger_path.display().to_string(),
             "claim_ledger_path": claim_ledger_path.display().to_string(),
             "run_state_path": run_state_path.display().to_string(),
@@ -774,6 +777,7 @@ fn run_worker(
                 "claim_conflict_count": 0,
                 "replay_skipped_count": 0,
                 "retry_backoff_deferred_count": 0,
+                "capacity_deferred_count": 0,
             },
             "metrics": {
                 "stage_duration_ms": {},
@@ -818,6 +822,7 @@ fn run_worker(
     let mut skipped_missing_issue = Vec::new();
     let mut skipped_terminalized = Vec::new();
     let mut skipped_retry_backoff = Vec::new();
+    let mut skipped_capacity = Vec::new();
     let mut claim_conflicts = Vec::new();
     let mut acquired_claims = Vec::new();
     let mut replay_skipped = Vec::new();
@@ -830,6 +835,11 @@ fn run_worker(
     let mut llm_cost_units = BTreeMap::new();
     let mut claim_acquire_attempts: u64 = 0;
     let mut awaiting_approval = Vec::new();
+    let mut processing_budget = if dry_run {
+        None
+    } else {
+        preflight.worker_count.map(|count| count as usize)
+    };
 
     for intake_key in &intake_keys {
         let Some(record) = ledger.entries.get_mut(intake_key) else {
@@ -865,6 +875,13 @@ fn run_worker(
             skipped_missing_issue.push(intake_key.clone());
             continue;
         };
+        if let Some(remaining) = processing_budget.as_mut() {
+            if *remaining == 0 {
+                skipped_capacity.push(intake_key.clone());
+                continue;
+            }
+            *remaining = remaining.saturating_sub(1);
+        }
         let claim_slot = claim_slot_key(issue_id, record.stage);
         let claim_owner = format!("gunbc-sdlc-worker:{intake_key}");
         claim_acquire_attempts = claim_acquire_attempts.saturating_add(1);
@@ -1018,6 +1035,7 @@ fn run_worker(
         "skipped_missing_issue": skipped_missing_issue,
         "skipped_terminalized": skipped_terminalized,
         "skipped_retry_backoff": skipped_retry_backoff,
+        "skipped_capacity": skipped_capacity,
         "ledger_path": ledger_path.display().to_string(),
         "claim_ledger_path": claim_ledger_path.display().to_string(),
         "run_state_path": run_state_path.display().to_string(),
@@ -1037,6 +1055,7 @@ fn run_worker(
             "claim_conflict_count": claim_conflicts.len(),
             "replay_skipped_count": replay_skipped.len(),
             "retry_backoff_deferred_count": skipped_retry_backoff.len(),
+            "capacity_deferred_count": skipped_capacity.len(),
         },
         "metrics": {
             "stage_duration_ms": stage_duration_ms,
@@ -1503,6 +1522,7 @@ fn run_worker_preflight(intent_path: &Path) -> Result<WorkerPreflightSummary, St
         intent_id: intent.intent_id,
         environment: intent.environment,
         runtime_profile: intent.runtime_profile,
+        worker_count: Some(intent.launch.worker_count),
         checked_components,
     })
 }

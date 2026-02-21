@@ -597,6 +597,103 @@ notes: "local co-located profile fixture"
 }
 
 #[test]
+fn worker_respects_launch_worker_capacity_from_infra_intent() {
+    let root = unique_temp_dir("worker_launch_capacity");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_a = root.join("intent_a.yaml");
+    let intent_b = root.join("intent_b.yaml");
+    write_intent_file(
+        &intent_a,
+        "intent-20260221-capacity-a",
+        "intent-20260221-capacity-a",
+        Some(9101),
+    );
+    write_intent_file(
+        &intent_b,
+        "intent-20260221-capacity-b",
+        "intent-20260221-capacity-b",
+        Some(9102),
+    );
+
+    for intent in [&intent_a, &intent_b] {
+        let intake = Command::new(sdlc_bin())
+            .arg("intake")
+            .arg("--intent")
+            .arg(intent)
+            .current_dir(&root)
+            .output()
+            .expect("run intake");
+        assert!(
+            intake.status.success(),
+            "intake should succeed: {}",
+            String::from_utf8_lossy(&intake.stderr)
+        );
+    }
+
+    let constrained_intent_path = root.join("TODO/infra-intent-constrained.yaml");
+    let constrained_intent = r#"schema_version: "1"
+intent_id: "infra-20260221-capacity"
+environment: "dev"
+runtime_profile: "local-co-located"
+provider: "github"
+policy_version: "1"
+components:
+  claim_store:
+    backend: "sqlite"
+    dsn: "var/sdlc/capacity-claims.db"
+  outcome_ledger:
+    backend: "sqlite"
+    dsn: "var/sdlc/capacity-outcomes.db"
+  secrets:
+    credential_policy_profile: "default"
+    required_refs:
+      - "github-token"
+      - "openai-api-key"
+  metrics:
+    sink: "stdout"
+    namespace: "gunbc.sdlc"
+safety:
+  fail_closed_on_missing_prereqs: true
+  require_capability_gate: true
+launch:
+  worker_count: 1
+  lease_ttl_seconds: 60
+  heartbeat_seconds: 10
+  poll_interval_seconds: 5
+drift:
+  reconcile_mode: "plan-then-apply"
+  reconcile_interval_minutes: 15
+notes: "capacity constrained local profile fixture"
+"#;
+    std::fs::write(&constrained_intent_path, constrained_intent)
+        .expect("write constrained infra intent fixture");
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .arg("--infra-intent")
+        .arg(&constrained_intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run worker with constrained infra intent");
+    assert!(
+        worker.status.success(),
+        "worker should succeed with constrained launch profile: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(payload["preflight"]["worker_count"], 1);
+    assert_eq!(payload["summary"]["capacity_deferred_count"], 1);
+    assert_eq!(
+        payload["skipped_capacity"][0],
+        "intent-20260221-capacity-b",
+        "capacity constrained worker should defer extra intake keys in deterministic order"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn issue_command_filters_worker_scope_by_issue_id() {
     let root = unique_temp_dir("issue_scope_filter");
     std::fs::create_dir_all(&root).expect("create temp root");
