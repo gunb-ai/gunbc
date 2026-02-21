@@ -240,7 +240,7 @@ fn main() {
         ),
         SdlcCommand::Issue => run_worker(
             args.dry_run,
-            false,
+            args.emit_pending_exit_code,
             args.infra_intent_path.as_ref(),
             args.issue_id,
             "issue",
@@ -469,8 +469,11 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     {
         return Err("--infra-intent is only valid for worker or issue".to_string());
     }
-    if command != SdlcCommand::Worker && emit_pending_exit_code {
-        return Err("--emit-pending-exit-code is only valid for worker".to_string());
+    if command != SdlcCommand::Worker
+        && command != SdlcCommand::Issue
+        && emit_pending_exit_code
+    {
+        return Err("--emit-pending-exit-code is only valid for worker or issue".to_string());
     }
     if command == SdlcCommand::AwaitApproval && intake_key.is_none() {
         return Err("await-approval requires --intake-key <value>".to_string());
@@ -1754,7 +1757,9 @@ fn print_help() {
     println!("USAGE:");
     println!("    gunbc-sdlc intake --intent <path> [--dry-run]");
     println!("    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]");
-    println!("    gunbc-sdlc issue --issue-id <value> [--dry-run] [--infra-intent <path>]");
+    println!(
+        "    gunbc-sdlc issue --issue-id <value> [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]"
+    );
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
     println!("    gunbc-sdlc drain [--activate|--deactivate] [--dry-run]");
