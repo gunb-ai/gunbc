@@ -208,6 +208,7 @@ Conformance evidence classes:
 4. Differential runtime checks:
    1. Interpreter vs generated-runtime output parity is enforced for `tools.makegen`
       in `codegen_parity` to keep L5 conformance executable, not aspirational.
+   2. Makegen C backend differential checks additionally run under ASAN+UBSAN.
 
 ## 6. Canonical Contracts
 
