@@ -764,6 +764,9 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_exec::{ExecutionLog, LogEntry};
+    use gunbc_ir::coerce::AppliedCoercion;
+    use gunbc_ir::CoercionKind;
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
@@ -900,5 +903,55 @@ mod tests {
     fn spec_for_env_rejects_unknown() {
         let err = spec_for_env("staging").expect_err("unknown env should fail");
         assert!(err.contains("unknown environment"));
+    }
+
+    #[test]
+    fn collect_spec_targets_includes_only_active_secrets() {
+        let targets = collect_spec_targets(&DEV_SPEC);
+        assert!(
+            targets.iter().all(|target| target.starts_with("secret:")),
+            "all targets should be prefixed secret identifiers: {targets:?}"
+        );
+        assert!(
+            targets.contains(&"secret:github-token".to_string()),
+            "dev spec should include active github token secret target"
+        );
+    }
+
+    #[test]
+    fn extract_orchestration_output_reads_reported_fields() {
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "planned_targets".to_string(),
+            Value::List(vec![Value::Str("secret:github-token".to_string())]),
+        );
+        outputs.insert("target_count".to_string(), Value::Int(1));
+        outputs.insert("applied_count".to_string(), Value::Int(1));
+        outputs.insert(
+            "report".to_string(),
+            Value::Str("infra apply (env=dev, runtime=local): 1 target(s)".to_string()),
+        );
+
+        let log = ExecutionLog {
+            entries: vec![LogEntry {
+                node_id: "tools.infra::infra".to_string(),
+                inputs: None,
+                outputs,
+                was_intercepted: false,
+                coercions_applied: vec![AppliedCoercion {
+                    from_node: "src".to_string(),
+                    from_port: "planned_targets".to_string(),
+                    to_port: "planned_targets".to_string(),
+                    kind: CoercionKind::Widen,
+                }],
+            }],
+        };
+
+        let parsed =
+            extract_orchestration_output(&log).expect("orchestration output should parse");
+        assert_eq!(parsed.planned_targets, vec!["secret:github-token".to_string()]);
+        assert_eq!(parsed.target_count, 1);
+        assert_eq!(parsed.applied_count, 1);
+        assert!(parsed.report.contains("infra apply"));
     }
 }
