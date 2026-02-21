@@ -597,6 +597,113 @@ notes: "local co-located profile fixture"
 }
 
 #[test]
+fn issue_command_filters_worker_scope_by_issue_id() {
+    let root = unique_temp_dir("issue_scope_filter");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_a = root.join("intent_a.yaml");
+    let intent_b = root.join("intent_b.yaml");
+    write_intent_file(
+        &intent_a,
+        "intent-20260221-issue-filter-a",
+        "intent-20260221-issue-filter-a",
+        Some(5001),
+    );
+    write_intent_file(
+        &intent_b,
+        "intent-20260221-issue-filter-b",
+        "intent-20260221-issue-filter-b",
+        Some(5002),
+    );
+
+    for intent in [&intent_a, &intent_b] {
+        let intake = Command::new(sdlc_bin())
+            .arg("intake")
+            .arg("--intent")
+            .arg(intent)
+            .current_dir(&root)
+            .output()
+            .expect("run intake");
+        assert!(
+            intake.status.success(),
+            "intake should succeed: {}",
+            String::from_utf8_lossy(&intake.stderr)
+        );
+    }
+
+    let issue = Command::new(sdlc_bin())
+        .arg("issue")
+        .arg("--issue-id")
+        .arg("5001")
+        .arg("--dry-run")
+        .current_dir(&root)
+        .output()
+        .expect("run issue command");
+    assert!(
+        issue.status.success(),
+        "issue command should succeed: {}",
+        String::from_utf8_lossy(&issue.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
+    assert_eq!(payload["command"], "issue");
+    assert_eq!(payload["issue_filter"], 5001);
+    assert_eq!(payload["pending_count"], 1);
+    assert_eq!(
+        payload["intake_keys"][0],
+        "intent-20260221-issue-filter-a",
+        "issue command should only include entries for requested issue id"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn issue_command_fails_closed_when_issue_id_not_found() {
+    let root = unique_temp_dir("issue_not_found");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-issue-not-found",
+        "intent-20260221-issue-not-found",
+        Some(7007),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let issue = Command::new(sdlc_bin())
+        .arg("issue")
+        .arg("--issue-id")
+        .arg("7999")
+        .arg("--dry-run")
+        .current_dir(&root)
+        .output()
+        .expect("run issue command with missing issue id");
+    assert!(
+        !issue.status.success(),
+        "issue command should fail closed when no matching entries exist"
+    );
+    let stderr = String::from_utf8_lossy(&issue.stderr);
+    assert!(
+        stderr.contains("no intake entries found for issue_id `7999`"),
+        "issue command should explain missing issue mapping: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn intake_real_mode_is_idempotent_for_same_intake_key() {
     let root = unique_temp_dir("idempotent");
     std::fs::create_dir_all(&root).expect("create temp root");

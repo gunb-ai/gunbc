@@ -31,6 +31,7 @@ const RETRY_BASE_BACKOFF_MS: u128 = 1_000;
 enum SdlcCommand {
     Intake,
     Worker,
+    Issue,
     AwaitApproval,
     Transition,
     Drain,
@@ -43,6 +44,7 @@ struct CliArgs {
     intent_path: Option<PathBuf>,
     infra_intent_path: Option<PathBuf>,
     intake_key: Option<String>,
+    issue_id: Option<u64>,
     stage: Option<IssueLifecycleStage>,
     dry_run: bool,
     emit_pending_exit_code: bool,
@@ -232,6 +234,15 @@ fn main() {
             args.dry_run,
             args.emit_pending_exit_code,
             args.infra_intent_path.as_ref(),
+            None,
+            "worker",
+        ),
+        SdlcCommand::Issue => run_worker(
+            args.dry_run,
+            false,
+            args.infra_intent_path.as_ref(),
+            args.issue_id,
+            "issue",
         ),
         SdlcCommand::AwaitApproval => run_await_approval(args.intake_key.as_deref(), args.dry_run),
         SdlcCommand::Transition => {
@@ -253,6 +264,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             intent_path: None,
             infra_intent_path: None,
             intake_key: None,
+            issue_id: None,
             stage: None,
             dry_run: false,
             emit_pending_exit_code: false,
@@ -264,6 +276,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let command = match argv[1].as_str() {
         "intake" => SdlcCommand::Intake,
         "worker" => SdlcCommand::Worker,
+        "issue" => SdlcCommand::Issue,
         "await-approval" => SdlcCommand::AwaitApproval,
         "transition" => SdlcCommand::Transition,
         "drain" => SdlcCommand::Drain,
@@ -274,6 +287,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let mut intent_path: Option<PathBuf> = None;
     let mut infra_intent_path: Option<PathBuf> = None;
     let mut intake_key: Option<String> = None;
+    let mut issue_id: Option<u64> = None;
     let mut stage: Option<IssueLifecycleStage> = None;
     let mut dry_run = false;
     let mut emit_pending_exit_code = false;
@@ -295,6 +309,39 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
                 return Err("duplicate --emit-pending-exit-code flag".to_string());
             }
             emit_pending_exit_code = true;
+            idx += 1;
+            continue;
+        }
+        if token == "--issue-id" {
+            if issue_id.is_some() {
+                return Err("duplicate --issue-id flag".to_string());
+            }
+            let value = argv
+                .get(idx + 1)
+                .ok_or_else(|| "--issue-id requires a value".to_string())?;
+            if value.starts_with("--") {
+                return Err("--issue-id requires a non-flag value".to_string());
+            }
+            issue_id = Some(
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("invalid --issue-id value `{value}` (expected u64)"))?,
+            );
+            idx += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--issue-id=") {
+            if issue_id.is_some() {
+                return Err("duplicate --issue-id flag".to_string());
+            }
+            if value.is_empty() {
+                return Err("--issue-id requires a non-empty value".to_string());
+            }
+            issue_id = Some(
+                value
+                    .parse::<u64>()
+                    .map_err(|_| format!("invalid --issue-id value `{value}` (expected u64)"))?,
+            );
             idx += 1;
             continue;
         }
@@ -417,8 +464,9 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command == SdlcCommand::Worker && intent_path.is_some() {
         return Err("worker does not accept --intent".to_string());
     }
-    if command != SdlcCommand::Worker && infra_intent_path.is_some() {
-        return Err("--infra-intent is only valid for worker".to_string());
+    if command != SdlcCommand::Worker && command != SdlcCommand::Issue && infra_intent_path.is_some()
+    {
+        return Err("--infra-intent is only valid for worker or issue".to_string());
     }
     if command != SdlcCommand::Worker && emit_pending_exit_code {
         return Err("--emit-pending-exit-code is only valid for worker".to_string());
@@ -438,6 +486,21 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command == SdlcCommand::Transition && intent_path.is_some() {
         return Err("transition does not accept --intent".to_string());
     }
+    if command == SdlcCommand::Issue && issue_id.is_none() {
+        return Err("issue requires --issue-id <value>".to_string());
+    }
+    if command == SdlcCommand::Issue && intent_path.is_some() {
+        return Err("issue does not accept --intent".to_string());
+    }
+    if command == SdlcCommand::Issue && intake_key.is_some() {
+        return Err("issue does not accept --intake-key".to_string());
+    }
+    if command == SdlcCommand::Issue && stage.is_some() {
+        return Err("issue does not accept --stage".to_string());
+    }
+    if command != SdlcCommand::Issue && issue_id.is_some() {
+        return Err("--issue-id is only valid for issue".to_string());
+    }
     if command != SdlcCommand::Drain && (drain_activate || drain_deactivate) {
         return Err("--activate/--deactivate are only valid for drain".to_string());
     }
@@ -450,6 +513,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         intent_path,
         infra_intent_path,
         intake_key,
+        issue_id,
         stage,
         dry_run,
         emit_pending_exit_code,
@@ -606,6 +670,8 @@ fn run_worker(
     dry_run: bool,
     emit_pending_exit_code: bool,
     infra_intent_path: Option<&PathBuf>,
+    issue_filter: Option<u64>,
+    command_label: &str,
 ) -> Result<(), String> {
     let preflight = if dry_run {
         WorkerPreflightSummary {
@@ -640,8 +706,9 @@ fn run_worker(
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
-                "command": "worker",
+                "command": command_label,
                 "mode": mode,
+                "issue_filter": issue_filter,
                 "pending_count": 0,
                 "intake_keys": [],
                 "ready_to_run": [],
@@ -685,6 +752,18 @@ fn run_worker(
 
     let mut intake_keys: Vec<String> = ledger.entries.keys().cloned().collect();
     intake_keys.sort();
+    if let Some(issue_id) = issue_filter {
+        intake_keys.retain(|intake_key| {
+            ledger
+                .entries
+                .get(intake_key)
+                .and_then(|record| record.issue_id)
+                == Some(issue_id)
+        });
+        if intake_keys.is_empty() {
+            return Err(format!("no intake entries found for issue_id `{issue_id}`"));
+        }
+    }
     let mut skipped_missing_issue = Vec::new();
     let mut skipped_terminalized = Vec::new();
     let mut claim_conflicts = Vec::new();
@@ -825,7 +904,8 @@ fn run_worker(
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({
-            "command": "worker",
+            "command": command_label,
+            "issue_filter": issue_filter,
             "mode": mode,
             "pending_count": pending_count,
             "intake_keys": intake_keys,
@@ -1578,6 +1658,7 @@ fn print_help() {
     println!("USAGE:");
     println!("    gunbc-sdlc intake --intent <path> [--dry-run]");
     println!("    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]");
+    println!("    gunbc-sdlc issue --issue-id <value> [--dry-run] [--infra-intent <path>]");
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
     println!("    gunbc-sdlc drain [--activate|--deactivate] [--dry-run]");
