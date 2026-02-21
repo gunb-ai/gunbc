@@ -801,6 +801,58 @@ fn issue_command_fails_closed_when_issue_id_not_found() {
 }
 
 #[test]
+fn issue_command_real_mode_persists_execution_report() {
+    let root = unique_temp_dir("issue_execution_report");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-issue-report",
+        "intent-20260221-issue-report",
+        Some(7331),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let issue = Command::new(sdlc_bin())
+        .arg("issue")
+        .arg("--issue-id")
+        .arg("7331")
+        .current_dir(&root)
+        .output()
+        .expect("run issue command");
+    assert!(
+        issue.status.success(),
+        "issue command should succeed: {}",
+        String::from_utf8_lossy(&issue.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
+    assert_eq!(payload["command"], "issue");
+    assert_eq!(payload["execution_report_path"], "target/sdlc/execution-report.json");
+
+    let report_raw = std::fs::read_to_string(root.join("target/sdlc/execution-report.json"))
+        .expect("read issue execution report");
+    let report: serde_json::Value =
+        serde_json::from_str(&report_raw).expect("parse issue execution report");
+    assert_eq!(report["command"], "issue");
+    assert_eq!(report["issue_filter"], 7331);
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn legacy_issue_flag_alias_routes_to_issue_command() {
     let root = unique_temp_dir("legacy_issue_alias");
     std::fs::create_dir_all(&root).expect("create temp root");
