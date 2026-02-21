@@ -137,6 +137,26 @@ pub fn set_stage_label(existing_labels: &[String], stage: IssueLifecycleStage) -
     labels
 }
 
+/// Compare-and-set transition helper for issue stage labels.
+///
+/// Fails closed when the current stage does not match `expected_stage`.
+pub fn compare_and_set_stage_label(
+    existing_labels: &[String],
+    expected_stage: IssueLifecycleStage,
+    next_stage: IssueLifecycleStage,
+) -> Result<Vec<String>, String> {
+    let current_stage =
+        stage_from_labels(existing_labels).unwrap_or(IssueLifecycleStage::Idea);
+    if current_stage != expected_stage {
+        return Err(format!(
+            "stage compare-and-set failed: expected `{}`, found `{}`",
+            expected_stage.as_label(),
+            current_stage.as_label()
+        ));
+    }
+    Ok(set_stage_label(existing_labels, next_stage))
+}
+
 /// Validate that provider capabilities satisfy SDLC real-mode requirements.
 pub fn ensure_sdlc_issue_capabilities(capabilities: SdlcIssueCapabilities) -> Result<(), String> {
     let mut missing = Vec::new();
@@ -207,6 +227,31 @@ mod tests {
             set_stage_label(&labels, IssueLifecycleStage::Accepted),
             vec!["accepted".to_string(), "priority:M".to_string()]
         );
+    }
+
+    #[test]
+    fn compare_and_set_stage_label_fails_closed_on_mismatch() {
+        let labels = vec!["design-review".to_string()];
+        let err = compare_and_set_stage_label(
+            &labels,
+            IssueLifecycleStage::Design,
+            IssueLifecycleStage::Accepted,
+        )
+        .expect_err("mismatched stage should fail compare-and-set");
+        assert!(err.contains("expected `design`"));
+        assert!(err.contains("found `design-review`"));
+    }
+
+    #[test]
+    fn compare_and_set_stage_label_updates_when_expected_matches() {
+        let labels = vec!["design-review".to_string(), "priority:M".to_string()];
+        let next = compare_and_set_stage_label(
+            &labels,
+            IssueLifecycleStage::DesignReview,
+            IssueLifecycleStage::Accepted,
+        )
+        .expect("matching stage should update");
+        assert_eq!(next, vec!["accepted".to_string(), "priority:M".to_string()]);
     }
 
     #[test]

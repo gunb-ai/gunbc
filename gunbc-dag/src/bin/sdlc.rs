@@ -14,7 +14,9 @@ use gunbc_dag::{
     RetryState, RunStateLedger, validate_stage_transition,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
-use gunbc_ir::transport::github::{ensure_sdlc_issue_capabilities, SdlcIssueCapabilities};
+use gunbc_ir::transport::github::{
+    compare_and_set_stage_label, ensure_sdlc_issue_capabilities, SdlcIssueCapabilities,
+};
 use gunbc_ir::transport::github::IssueLifecycleStage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -654,6 +656,11 @@ fn run_transition(
     }
     let current_stage = record.stage;
     validate_stage_transition(current_stage, next_stage)?;
+    let stage_labels_after_cas = compare_and_set_stage_label(
+        &[current_stage.as_label().to_string()],
+        current_stage,
+        next_stage,
+    )?;
 
     let now = epoch_millis();
     let mut canonical_artifact_status = None;
@@ -705,6 +712,7 @@ fn run_transition(
             "intake_key": intake_key,
             "from_stage": current_stage.as_label(),
             "to_stage": next_stage.as_label(),
+            "stage_labels_after_cas": stage_labels_after_cas,
             "ledger_path": ledger_path.display().to_string(),
             "canonical_artifact_status": canonical_artifact_status,
             "artifact_ledger_path": artifact_ledger_path.display().to_string(),

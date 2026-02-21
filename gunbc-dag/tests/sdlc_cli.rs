@@ -535,6 +535,9 @@ fn transition_enforces_stage_ordering_fail_closed() {
         "idea -> design transition should succeed: {}",
         String::from_utf8_lossy(&to_design.stderr)
     );
+    let to_design_payload: serde_json::Value =
+        serde_json::from_slice(&to_design.stdout).expect("transition output should be JSON");
+    assert_eq!(to_design_payload["stage_labels_after_cas"][0], "design");
 
     let invalid = Command::new(sdlc_bin())
         .arg("transition")

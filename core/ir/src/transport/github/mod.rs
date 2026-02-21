@@ -24,8 +24,9 @@ pub mod issues;
 pub use api::{github_rest_request, GitHubApi, GITHUB_API};
 pub use cli::{gh_cli_commands, gh_cli_request, GHCommand, GH_TOOL};
 pub use issues::{
-    ensure_sdlc_issue_capabilities, map_github_issue, set_stage_label, stage_from_labels,
-    GitHubIssueRecord, IssueLifecycleStage, IssueRef, SdlcIssueCapabilities, TrackedIssue,
+    compare_and_set_stage_label, ensure_sdlc_issue_capabilities, map_github_issue,
+    set_stage_label, stage_from_labels, GitHubIssueRecord, IssueLifecycleStage, IssueRef,
+    SdlcIssueCapabilities, TrackedIssue,
 };
 
 // ============================================================================
