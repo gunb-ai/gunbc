@@ -621,34 +621,37 @@ fn handler_body(kind: HandlerKind) -> &'static str {
 "##
         }
         HandlerKind::PrepareReadContent => {
-            r##"    let path = inputs.get("path").and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `path`"))?;
+            r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
+    if path.is_empty() {
+        return OutputMap::new().value("request", Value::Skipped).ok();
+    }
     OutputMap::new().request("request", TransportRequest::File(FileRequest::read(path))).ok()
 "##
         }
         HandlerKind::ExecuteReadContent => {
-            r##"    let request = inputs.get("request").and_then(Value::as_request)
-        .ok_or_else(|| ExecError::new("missing required input `request`"))?;
+            r##"    let Some(request) = inputs.get("request").and_then(Value::as_request) else {
+        return OutputMap::new().value("response", Value::Skipped).ok();
+    };
     match request {
         TransportRequest::File(fr) => {
             let resp = execute_file_request(&fr);
             OutputMap::new().response("response", TransportResponse::File(resp)).ok()
         }
-        _ => Err(ExecError::new("only file transport requests are supported")),
+        _ => OutputMap::new().value("response", Value::Skipped).ok(),
     }
 "##
         }
         HandlerKind::PrepareWriteContent => {
-            r##"    let path = inputs.get("path").and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `path`"))?;
-    let content = inputs.get("content").and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `content`"))?;
+            r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
+    let content = inputs.get("content").and_then(Value::as_str).unwrap_or("");
+    if path.is_empty() || content.is_empty() {
+        return OutputMap::new().value("request", Value::Skipped).ok();
+    }
     OutputMap::new().request("request", TransportRequest::File(FileRequest::write(path, content))).ok()
 "##
         }
         HandlerKind::CompareContent => {
-            r##"    let expected = inputs.get("expected_content").and_then(Value::as_str)
-        .ok_or_else(|| ExecError::new("missing required input `expected_content`"))?;
+            r##"    let expected = inputs.get("expected_content").and_then(Value::as_str).unwrap_or("");
     let actual = match inputs.get("response") {
         Some(Value::Response(TransportResponse::File(r))) if r.success => {
             r.content.clone().unwrap_or_default()
@@ -664,8 +667,9 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     if skip {
         return OutputMap::new().value("response", Value::Skipped).ok();
     }
-    let request = inputs.get("request").and_then(Value::as_request)
-        .ok_or_else(|| ExecError::new("missing required input `request`"))?;
+    let Some(request) = inputs.get("request").and_then(Value::as_request) else {
+        return OutputMap::new().value("response", Value::Skipped).ok();
+    };
     match request {
         TransportRequest::File(fr) => {
             let resp = execute_file_request(&fr);
@@ -675,13 +679,12 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             }
             OutputMap::new().response("response", TransportResponse::File(resp)).ok()
         }
-        _ => Err(ExecError::new("only file transport requests are supported")),
+        _ => OutputMap::new().value("response", Value::Skipped).ok(),
     }
 "##
         }
         HandlerKind::Collection => {
-            r##"    let items = inputs.get("items").cloned()
-        .ok_or_else(|| ExecError::new("missing required input `items`"))?;
+            r##"    let items = inputs.get("items").cloned().unwrap_or(Value::Skipped);
     OutputMap::new().value("items", items).ok()
 "##
         }

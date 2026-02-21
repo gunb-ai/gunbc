@@ -554,6 +554,56 @@ fn run_infra_generated_rust_layer1(crate_out_dir: &Path) -> RuntimeOutcome {
     }
 }
 
+fn run_generated_rust_layer1_with_args(crate_out_dir: &Path, args: &[&str]) -> RuntimeOutcome {
+    if !crate_out_dir.join("Cargo.toml").is_file() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "missing generated rust layer1 Cargo.toml at {}",
+                crate_out_dir.join("Cargo.toml").display()
+            ),
+        };
+    }
+    if let Err(error) = std::fs::copy(
+        workspace_root().join("Cargo.lock"),
+        crate_out_dir.join("Cargo.lock"),
+    ) {
+        return RuntimeOutcome::Skipped {
+            reason: format!("failed to stage Cargo.lock for generated crate: {error}"),
+        };
+    }
+    let mut cmd = Command::new("cargo");
+    cmd.arg("run")
+        .arg("--quiet")
+        .arg("--offline")
+        .arg("--manifest-path")
+        .arg(crate_out_dir.join("Cargo.toml"))
+        .arg("--")
+        .current_dir(workspace_root());
+    for arg in args {
+        cmd.arg(arg);
+    }
+    let run_output = match cmd.output() {
+        Ok(output) => output,
+        Err(error) => {
+            return RuntimeOutcome::Skipped {
+                reason: format!("failed to execute generated rust layer1 crate: {error}"),
+            };
+        }
+    };
+    if !run_output.status.success() {
+        return RuntimeOutcome::Skipped {
+            reason: format!(
+                "generated rust layer1 run failed: {}",
+                String::from_utf8_lossy(&run_output.stderr)
+            ),
+        };
+    }
+    RuntimeOutcome::Ran {
+        stdout: String::from_utf8_lossy(&run_output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&run_output.stderr).into_owned(),
+    }
+}
+
 fn run_infra_generated_go(native_out_dir: &Path) -> RuntimeOutcome {
     if !command_exists("go") {
         return RuntimeOutcome::Skipped {
@@ -993,6 +1043,58 @@ fn sdlc_control_plane_layer1_rust_compiles_for_exec_runtime() {
     );
     std::fs::remove_dir_all(&rust_layer1_out)
         .expect("failed to cleanup rust layer1 sdlc control-plane out root");
+}
+
+#[test]
+fn sdlc_pipeline_runtime_smoke_rust_layer1_executes_entrypoint() {
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_sdlc_pipeline");
+    compile_module_layer1_rust("dsl/pipelines/sdlc.dag", &rust_layer1_out);
+
+    let rust = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
+    match rust {
+        RuntimeOutcome::Ran { stderr, .. } => {
+            assert!(
+                stderr.contains("execution completed: 57 nodes executed"),
+                "rust sdlc pipeline runtime should execute expected node count: {stderr}"
+            );
+            assert!(
+                stderr.contains("[pipelines.sdlc::sdlc]"),
+                "rust sdlc pipeline runtime should execute pipeline entrypoint: {stderr}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("rust sdlc pipeline runtime smoke should not skip: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&rust_layer1_out)
+        .expect("failed to cleanup rust layer1 sdlc pipeline runtime out root");
+}
+
+#[test]
+fn sdlc_control_plane_runtime_smoke_rust_layer1_executes_entrypoint() {
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_sdlc_control_plane");
+    compile_module_layer1_rust("dsl/services/sdlc/control_plane.dag", &rust_layer1_out);
+
+    let rust = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
+    match rust {
+        RuntimeOutcome::Ran { stderr, .. } => {
+            assert!(
+                stderr.contains("execution completed: 15 nodes executed"),
+                "rust sdlc control-plane runtime should execute expected node count: {stderr}"
+            );
+            assert!(
+                stderr.contains("prepare_transport_services_sdlc_control_plane"),
+                "rust sdlc control-plane runtime should execute service transport path: {stderr}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("rust sdlc control-plane runtime smoke should not skip: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&rust_layer1_out)
+        .expect("failed to cleanup rust layer1 sdlc control-plane runtime out root");
 }
 
 #[test]
