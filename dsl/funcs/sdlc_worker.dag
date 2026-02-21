@@ -42,11 +42,14 @@ import std.types {
 
 // All SDLC stage labels for discovery filter
 fn sdlc_discovery_labels() -> String {
-  "sdlc:idea,sdlc:design,sdlc:design-review,sdlc:accepted,sdlc:implementing,sdlc:code-review,sdlc:testing"
+  "sdlc:idea,sdlc:design,sdlc:design-review,sdlc:accepted,sdlc:implementing,sdlc:code-review,sdlc:testing,sdlc:done"
 }
 
-fn make_issue_id(owner: String, repo: String, number: Int) -> String {
-  "{owner}/{repo}#{number}"
+// Returns the issue number as a string for use as the IssueProvider id.
+// The GitHub provider interpolates this into /issues/{id} endpoints,
+// so it must be just the number (not a composite key like "owner/repo#N").
+fn make_issue_id(number: Int) -> String {
+  "{number}"
 }
 
 fn make_run_key(owner: String, repo: String, number: Int, stage: IssueLifecycleStage) -> String {
@@ -86,7 +89,7 @@ func dispatch_sdlc(
   // Step 4a: Discover all open issues with SDLC labels
   discovered = issues.discover(
     labels: ["sdlc:idea", "sdlc:design", "sdlc:design-review", "sdlc:accepted",
-             "sdlc:implementing", "sdlc:code-review", "sdlc:testing"],
+             "sdlc:implementing", "sdlc:code-review", "sdlc:testing", "sdlc:done"],
     state: Open
   )
 
@@ -94,7 +97,7 @@ func dispatch_sdlc(
   results = for issue in discovered.issues {
     // Determine current stage from labels
     stage = determine_stage(labels: issue.labels)
-    issue_id = make_issue_id(owner: owner, repo: repo, number: issue.id)
+    issue_id = make_issue_id(number: issue.id)
     run_key = make_run_key(owner: owner, repo: repo, number: issue.id, stage: stage)
 
     // Step 1: Acquire claim for this (issue_id, stage) pair
@@ -112,8 +115,9 @@ func dispatch_sdlc(
         stage: stage
       )
 
-      if prior.found {
-        // Replay-skip: prior success exists, release claim and skip
+      if prior.found && prior.outcome.status == Success {
+        // Replay-skip: prior SUCCESS exists, release claim and skip.
+        // Failed outcomes are NOT skipped so the worker can retry.
         skip_release = claims.release(
           issue_id: issue_id,
           stage: stage,
@@ -327,13 +331,70 @@ test worker_replay_skips_completed_stage {
         lease_generation: 1
     })
 
-    // Mock: prior outcome exists (replay-skip)
+    // Mock: prior outcome exists with Success status (replay-skip)
     mock get/execute.response -> rest_response(200, {
         found: true,
-        outcome: { run_key: "sdlc::gunb-ai/gunbc#44::design::v1", stage: "design", status: "Success" }
+        outcome: { run_key: "sdlc::gunb-ai/gunbc#44::Design::v1", stage: Design, status: Success }
     })
 
     mock release/execute.response -> rest_response(200, { released: true })
 
     expect result.skipped >= 1
+}
+
+test worker_retries_failed_stage {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input dispatch/prepare.owner -> "gunb-ai"
+    input dispatch/prepare.repo -> "gunbc"
+    input dispatch/prepare.worker_id -> "test-worker-4"
+    input dispatch/prepare.llm_provider -> "anthropic"
+    input dispatch/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    mock discover/execute.response -> rest_response(200, {
+        issues: [
+            {
+                id: "45",
+                title: "Previously failed",
+                body: "This stage failed last time and should be retried.",
+                stage: "Design",
+                labels: ["sdlc:design"],
+                url: "https://github.com/gunb-ai/gunbc/issues/45",
+                author: "test-user",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z"
+            }
+        ]
+    })
+
+    mock acquire/execute.response -> rest_response(200, {
+        acquired: true,
+        conflict: false,
+        lease_generation: 1
+    })
+
+    // Mock: prior outcome exists but with Failed status — should NOT skip
+    mock get/execute.response -> rest_response(200, {
+        found: true,
+        outcome: { run_key: "sdlc::gunb-ai/gunbc#45::Design::v1", stage: Design, status: Failed }
+    })
+
+    // Mock: LLM design generation (retry path)
+    mock design/llm/execute.response -> rest_response(200, {
+        content: [{ type: "text", text: "## Design\n\nRetried design." }],
+        model: "claude-sonnet-4-20250514",
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 200 }
+    })
+
+    mock comment/execute.response -> rest_response(201, { comment_id: "999", ok: true })
+    mock set_labels/execute.response -> rest_response(200, { ok: true })
+    mock upsert/execute.response -> rest_response(200, { updated: true, previous: null })
+    mock release/execute.response -> rest_response(200, { released: true })
+
+    // Should process (retry), NOT skip
+    expect result.processed >= 1
+    expect result.skipped == 0
 }
