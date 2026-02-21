@@ -1180,6 +1180,50 @@ fn makegen_runtime_differential_interpreter_vs_generated_rust_layer1() {
 }
 
 #[test]
+fn makegen_runtime_differential_interpreter_vs_generated_native_backends() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_makegen_diff");
+    compile_makegen_for_target("go", &native_out_root.join("go"));
+    compile_makegen_for_target("c", &native_out_root.join("c"));
+    compile_makegen_for_target("mips", &native_out_root.join("mips"));
+
+    let interpreter = run_makegen_interpreter();
+    let interpreter_makefile = match interpreter {
+        RuntimeOutcome::Ran { stdout, stderr } => {
+            assert!(
+                stderr.contains("OK: run mode=real"),
+                "interpreter run should report successful execution: {stderr}"
+            );
+            normalize_makefile_text(&stdout)
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("daglang interpreter differential run should not skip: {reason}");
+        }
+    };
+
+    let go = run_makegen_generated_go(&native_out_root.join("go"));
+    let c = run_makegen_generated_c(&native_out_root.join("c"));
+    let mips = run_makegen_generated_mips(&native_out_root.join("mips"));
+
+    for (target, outcome) in [("go", go), ("c", c), ("mips", mips)] {
+        match outcome {
+            RuntimeOutcome::Ran { stdout, .. } => {
+                let target_makefile = normalize_makefile_text(&stdout);
+                assert_eq!(
+                    interpreter_makefile, target_makefile,
+                    "interpreter runtime differential mismatch: interpreter != {target}"
+                );
+            }
+            RuntimeOutcome::Skipped { reason } => {
+                eprintln!("SKIP interpreter vs {target} differential: {reason}");
+            }
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native makegen differential out root");
+}
+
+#[test]
 fn infra_runtime_smoke_rust_layer1_executes_entrypoint() {
     let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_infra");
     compile_module_layer1_rust("dsl/tools/infra.dag", &rust_layer1_out);
