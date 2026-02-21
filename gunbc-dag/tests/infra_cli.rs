@@ -1,0 +1,111 @@
+use std::path::PathBuf;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn infra_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_gunbc-infra")
+}
+
+fn unique_temp_dir(label: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "gunbc_infra_cli_{label}_{}_{}",
+        std::process::id(),
+        nanos
+    ))
+}
+
+#[test]
+fn spec_command_emits_structured_json() {
+    let output = Command::new(infra_bin())
+        .arg("spec")
+        .arg("--env")
+        .arg("dev")
+        .output()
+        .expect("run infra spec command");
+    assert!(
+        output.status.success(),
+        "infra spec should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let payload: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("infra spec output should be JSON");
+    assert_eq!(payload["environment"], "dev");
+    assert!(
+        payload["service_accounts"]
+            .as_array()
+            .expect("service_accounts should be array")
+            .iter()
+            .any(|entry| entry["name"] == "gunbai-dev-secrets"),
+        "infra spec should include configured service-account dependencies"
+    );
+    assert_eq!(payload["wif"]["pool_id"], "github-pool");
+}
+
+#[test]
+fn plan_command_reports_runtime_dependency_targets() {
+    let output = Command::new(infra_bin())
+        .arg("plan")
+        .arg("--env")
+        .arg("dev")
+        .output()
+        .expect("run infra plan command");
+    assert!(
+        output.status.success(),
+        "infra plan should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("secret:github-token"),
+        "infra plan should include secret runtime dependency target: {stdout}"
+    );
+    assert!(
+        stdout.contains("service-account:gunbai-dev-secrets"),
+        "infra plan should include service-account runtime dependency target: {stdout}"
+    );
+    assert!(
+        stdout.contains("wif:github-pool:github"),
+        "infra plan should include wif runtime dependency target: {stdout}"
+    );
+}
+
+#[test]
+fn status_command_fails_closed_without_adc_in_isolated_home() {
+    let temp_home = unique_temp_dir("status_missing_adc");
+    std::fs::create_dir_all(&temp_home).expect("create temp HOME");
+
+    let output = Command::new(infra_bin())
+        .arg("status")
+        .arg("--env")
+        .arg("dev")
+        .env("HOME", &temp_home)
+        .output()
+        .expect("run infra status command");
+    assert!(
+        !output.status.success(),
+        "infra status should fail closed without adc in isolated HOME"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stdout.contains("[FAIL] auth"),
+        "status output should include fail-closed auth section: {stdout}"
+    );
+    assert!(
+        stdout.contains("overall: FAIL"),
+        "status output should include failed overall health state: {stdout}"
+    );
+    assert!(
+        stderr.contains("one or more health checks failed"),
+        "status error should explain fail-closed health gate: {stderr}"
+    );
+
+    std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
+}
