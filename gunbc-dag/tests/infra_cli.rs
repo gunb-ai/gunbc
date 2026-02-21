@@ -217,3 +217,40 @@ fn reconcile_command_preview_succeeds_when_health_is_ready() {
 
     std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
 }
+
+#[test]
+fn reconcile_execute_fails_closed_without_required_inputs() {
+    let temp_home = unique_temp_dir("reconcile_execute_missing_inputs");
+    let adc_path = temp_home
+        .join(".config")
+        .join("gcloud")
+        .join("application_default_credentials.json");
+    if let Some(parent) = adc_path.parent() {
+        std::fs::create_dir_all(parent).expect("create ADC parent directories");
+    }
+    std::fs::write(
+        &adc_path,
+        r#"{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test-refresh-token"}"#,
+    )
+    .expect("write ADC fixture with refresh token");
+
+    let output = Command::new(infra_bin())
+        .arg("reconcile")
+        .arg("--env")
+        .arg("dev")
+        .arg("--execute")
+        .env("HOME", &temp_home)
+        .output()
+        .expect("run infra reconcile execute command");
+    assert!(
+        !output.status.success(),
+        "reconcile execute should fail closed without required mutating inputs"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("missing entrypoint input(s)"),
+        "reconcile execute failure should explain required input contract: {stderr}"
+    );
+
+    std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
+}
