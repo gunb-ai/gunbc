@@ -42,8 +42,8 @@ service gcs.ClaimStore : ClaimStore {
   @auth(BearerToken)
 
   config {
-    bucket: String
-    project: String
+    bucket: NonEmptyStr
+    project: NonEmptyStr
   }
 
   operation acquire {
@@ -52,18 +52,17 @@ service gcs.ClaimStore : ClaimStore {
       stage: NonEmptyStr
       owner: NonEmptyStr
       lease_ttl_ms: Int
+      expected_generation: Int = 0   // 0 = create-only; >0 = re-acquire expired lease
     }
     output {
       acquired: Bool
       conflict: Bool
       lease_generation: Int
     }
-    // Upload claim object. Use generation-match: 0 for first acquire
-    // (object must not exist). If a stale lease exists, the caller must
-    // first read the generation, verify expiry, then re-acquire with
-    // the observed generation.
+    // Upload claim object. generation-match: 0 means "create-only" (first acquire).
+    // To re-acquire an expired lease, pass the observed generation.
     @rest(POST, "/upload/storage/v1/b/{config.bucket}/o?uploadType=media&name=claims/{issue_id}/{stage}.json")
-    @header("x-goog-if-generation-match", "{input.expected_generation:0}")
+    @header("x-goog-if-generation-match", "{expected_generation}")
     @header("Content-Type", "application/json")
     @permissions(["storage.objects.create", "storage.objects.get"])
     @error_map({

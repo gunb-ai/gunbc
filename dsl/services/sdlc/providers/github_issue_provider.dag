@@ -11,7 +11,7 @@
 module services.sdlc.providers.github_issue_provider
 
 import interfaces.issue_provider { IssueProvider }
-import std.types { TrackedIssue, NonEmptyStr, Url }
+import std.types { TrackedIssue, IssueState, NonEmptyStr, Url }
 
 // =========================================================================
 // GitHubIssueProvider : IssueProvider
@@ -25,8 +25,8 @@ service github.IssueProvider : IssueProvider {
   @auth(BearerToken)
 
   config {
-    owner: String                      // GitHub org or user
-    repo: String                       // Repository name
+    owner: NonEmptyStr                 // GitHub org or user
+    repo: NonEmptyStr                  // Repository name
   }
 
   // --- Discovery ---------------------------------------------------------
@@ -34,7 +34,7 @@ service github.IssueProvider : IssueProvider {
   operation discover {
     input {
       labels: List<String>
-      state: String?
+      state: IssueState?
     }
     output {
       issues: Json                     // List<TrackedIssue> (provider transforms)

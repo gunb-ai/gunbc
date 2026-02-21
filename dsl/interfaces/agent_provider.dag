@@ -27,21 +27,22 @@ interface AgentProvider {
     branch: NonEmptyStr,
     model: String?,
     timeout_seconds: Int?,
-    approval_mode: String?
-  ) -> { run_id: NonEmptyStr, status: String, started: Bool }
+    approval_mode: ApprovalMode?
+  ) -> { run_id: NonEmptyStr, status: AgentStatus, started: Bool }
 
   capability poll(run_id: NonEmptyStr)
-    -> { status: String, finished: Bool, exit_code: Int?, error: String? }
+    -> { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
     @idempotent @readonly
 
   capability cancel(run_id: NonEmptyStr, reason: String?)
-    -> { cancelled: Bool, final_status: String }
+    -> { cancelled: Bool, final_status: AgentStatus }
 
   capability get_result(run_id: NonEmptyStr)
-    -> { status: String, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
-    @readonly
+    -> { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
+    @idempotent @readonly
 
   // --- Behavioral contracts ----------------------------------------------
 
   @contract: poll(rid) after spawn(p, rp, b, m, t, a) => { finished is Bool }
+  @contract: get_result(rid) after spawn(p, rp, b, m, t, a) => { status is AgentStatus }
 }

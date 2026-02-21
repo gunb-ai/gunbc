@@ -39,7 +39,7 @@ service file.OutcomeLedger : OutcomeLedger {
     }
     output {
       updated: Bool
-      previous: Json?
+      previous: StageOutcome?
     }
     @file(READWRITE, "{config.dir}/{run_key}/{stage}.json")
     @idempotent
@@ -59,7 +59,7 @@ service file.OutcomeLedger : OutcomeLedger {
     }
     output {
       found: Bool
-      outcome: Json?
+      outcome: StageOutcome?
     }
     @file(READ, "{config.dir}/{run_key}/{stage}.json")
     @idempotent @readonly
@@ -74,7 +74,7 @@ service file.OutcomeLedger : OutcomeLedger {
 
   operation list_by_issue {
     input { issue_id: NonEmptyStr }
-    output { outcomes: Json }
+    output { outcomes: List<StageOutcome> }
     @file(READ, "{config.dir}/")
     @readonly
     @mock_response(

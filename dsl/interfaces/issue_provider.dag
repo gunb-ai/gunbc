@@ -31,7 +31,7 @@ interface IssueProvider {
 
   capability discover(
     labels: List<String>,
-    state: String?                     // "open" | "closed" | null (all)
+    state: IssueState?
   ) -> { issues: List<TrackedIssue> }
     @readonly
 

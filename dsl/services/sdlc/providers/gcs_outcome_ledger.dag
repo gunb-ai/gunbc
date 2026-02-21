@@ -35,8 +35,8 @@ service gcs.OutcomeLedger : OutcomeLedger {
   @auth(BearerToken)
 
   config {
-    bucket: String
-    project: String
+    bucket: NonEmptyStr
+    project: NonEmptyStr
   }
 
   operation upsert {

@@ -34,7 +34,7 @@ import interfaces.agent_provider { AgentProvider }
 import funcs.sdlc_stages { determine_stage, execute_stage }
 import shared.dag_util { stage_result, aggregate_results, format_report }
 import std.types {
-    TrackedIssue, IssueLifecycleStage, StageOutcome, OutcomeStatus,
+    TrackedIssue, IssueLifecycleStage, IssueState, StageOutcome, OutcomeStatus,
     StageResult, Summary, NonEmptyStr
 }
 
@@ -49,7 +49,7 @@ fn make_issue_id(owner: String, repo: String, number: Int) -> String {
   "{owner}/{repo}#{number}"
 }
 
-fn make_run_key(owner: String, repo: String, number: Int, stage: String) -> String {
+fn make_run_key(owner: String, repo: String, number: Int, stage: IssueLifecycleStage) -> String {
   "sdlc::{owner}/{repo}#{number}::{stage}::v1"
 }
 
@@ -87,7 +87,7 @@ func dispatch_sdlc(
   discovered = issues.discover(
     labels: ["sdlc:idea", "sdlc:design", "sdlc:design-review", "sdlc:accepted",
              "sdlc:implementing", "sdlc:code-review", "sdlc:testing"],
-    state: "open"
+    state: Open
   )
 
   // Step 4b: Process each discovered issue
@@ -145,10 +145,10 @@ func dispatch_sdlc(
             run_key: run_key,
             stage: stage,
             status: match stage_outcome.success {
-              true  => "Success"
-              false => "Failed"
+              true  => Success
+              false => Failed
             },
-            payload: None,
+            payload: stage_outcome.payload,
             error: None,
             attempt_count: 1,
             retry_budget_remaining: 2,

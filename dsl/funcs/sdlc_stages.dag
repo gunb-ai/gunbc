@@ -28,7 +28,7 @@ import services.github.pull_request { PullRequest }
 import services.cargo { Build }
 import services.llm.anthropic
 import std.types {
-    IssueLifecycleStage, StageOutcome, OutcomeStatus,
+    IssueLifecycleStage, StageOutcome, OutcomeStatus, ApprovalMode,
     NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker, MarkerKind
 }
 
@@ -48,22 +48,22 @@ fn label_terminal()      -> String { "sdlc:terminal-failed" }
 // Returns the most advanced SDLC stage found in the label set.
 // Falls back to "idea" if no sdlc:* label is present.
 
-fn determine_stage(labels: List<String>) -> String {
+fn determine_stage(labels: List<String>) -> IssueLifecycleStage {
   match labels |> any(l => l == label_done()) {
-    true  => "done"
+    true  => Done
     false => match labels |> any(l => l == label_testing()) {
-      true  => "testing"
+      true  => Testing
       false => match labels |> any(l => l == label_code_review()) {
-        true  => "code-review"
+        true  => CodeReview
         false => match labels |> any(l => l == label_implementing()) {
-          true  => "implementing"
+          true  => Implementing
           false => match labels |> any(l => l == label_accepted()) {
-            true  => "accepted"
+            true  => Accepted
             false => match labels |> any(l => l == label_design_review()) {
-              true  => "design-review"
+              true  => DesignReview
               false => match labels |> any(l => l == label_design()) {
-                true  => "design"
-                false => "idea"
+                true  => Design
+                false => Idea
               }
             }
           }
@@ -75,16 +75,16 @@ fn determine_stage(labels: List<String>) -> String {
 
 // ── Next stage mapping ─────────────────────────────────────────────
 
-fn next_stage_label(current: String) -> String {
+fn next_stage_label(current: IssueLifecycleStage) -> String {
   match current {
-    "idea"            => label_design()
-    "design"          => label_design_review()
-    "design-review"   => label_accepted()
-    "accepted"        => label_implementing()
-    "implementing"    => label_code_review()
-    "code-review"     => label_testing()
-    "testing"         => label_done()
-    _                 => label_done()
+    Idea            => label_design()
+    Design          => label_design_review()
+    DesignReview    => label_accepted()
+    Accepted        => label_implementing()
+    Implementing    => label_code_review()
+    CodeReview      => label_testing()
+    Testing         => label_done()
+    Done            => label_done()
   }
 }
 
@@ -103,7 +103,7 @@ fn code_review_user_prompt(title: String, files_summary: String, diff: String) -
 
 func execute_stage(
   issue_id: NonEmptyStr,
-  stage: String,
+  stage: IssueLifecycleStage,
   title: String,
   body: String,
   run_key: NonEmptyStr,
@@ -112,41 +112,40 @@ func execute_stage(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
   uses agents: AgentProvider
 {
   result = match stage {
-    "idea"            => handle_idea_to_design(
+    Idea            => handle_idea_to_design(
                            issue_id: issue_id, title: title, body: body,
                            run_key: run_key, owner: owner, repo: repo,
                            number: number, llm_provider: llm_provider,
                            llm_model: llm_model)
-    "design"          => handle_design_to_review(
+    Design          => handle_design_to_review(
                            issue_id: issue_id, body: body, run_key: run_key,
                            owner: owner, repo: repo, number: number,
                            llm_provider: llm_provider, llm_model: llm_model)
-    "design-review"   => handle_review_to_accepted(
+    DesignReview    => handle_review_to_accepted(
                            issue_id: issue_id, run_key: run_key,
                            owner: owner, repo: repo, number: number)
-    "accepted"        => handle_accepted_to_implementing(
+    Accepted        => handle_accepted_to_implementing(
                            issue_id: issue_id, body: body, run_key: run_key,
                            owner: owner, repo: repo, number: number)
-    "implementing"    => handle_implementing_to_code_review(
+    Implementing    => handle_implementing_to_code_review(
                            issue_id: issue_id, run_key: run_key,
                            owner: owner, repo: repo, number: number)
-    "code-review"     => handle_code_review_to_testing(
+    CodeReview      => handle_code_review_to_testing(
                            issue_id: issue_id, run_key: run_key,
                            owner: owner, repo: repo, number: number,
                            llm_provider: llm_provider, llm_model: llm_model)
-    "testing"         => handle_testing_to_done(
+    Testing         => handle_testing_to_done(
                            issue_id: issue_id, run_key: run_key,
                            owner: owner, repo: repo, number: number)
-    "done"            => handle_done(
+    Done            => handle_done(
                            issue_id: issue_id, run_key: run_key,
                            owner: owner, repo: repo, number: number)
-    _                 => { success: false, next_stage: stage, artifact_posted: false }
   }
 
   return result
@@ -170,7 +169,7 @@ func handle_idea_to_design(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
 {
@@ -195,7 +194,7 @@ func handle_idea_to_design(
     labels: [label_design()]
   )
 
-  return { success: true, next_stage: "design", artifact_posted: comment.ok }
+  return { success: true, next_stage: Design, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 2: Design -> DesignReview ────────────────────────────────
@@ -211,7 +210,7 @@ func handle_design_to_review(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
 {
@@ -241,7 +240,7 @@ func handle_design_to_review(
     labels: [label_design_review()]
   )
 
-  return { success: true, next_stage: "design-review", artifact_posted: comment.ok }
+  return { success: true, next_stage: DesignReview, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 3: DesignReview -> Accepted ──────────────────────────────
@@ -253,7 +252,7 @@ func handle_review_to_accepted(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
 {
   // Post acceptance comment
@@ -269,7 +268,7 @@ func handle_review_to_accepted(
     labels: [label_accepted()]
   )
 
-  return { success: true, next_stage: "accepted", artifact_posted: comment.ok }
+  return { success: true, next_stage: Accepted, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 4: Accepted -> Implementing ──────────────────────────────
@@ -284,7 +283,7 @@ func handle_accepted_to_implementing(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
   uses agents: AgentProvider
 {
@@ -298,7 +297,7 @@ func handle_accepted_to_implementing(
     branch: branch,
     model: None,
     timeout_seconds: 600,
-    approval_mode: "full-auto"
+    approval_mode: FullAuto
   )
 
   // Post dispatch notification
@@ -314,7 +313,7 @@ func handle_accepted_to_implementing(
     labels: [label_implementing()]
   )
 
-  return { success: agent.started, next_stage: "implementing", artifact_posted: comment.ok }
+  return { success: agent.started, next_stage: Implementing, artifact_posted: comment.ok, payload: { "agent_run_id": agent.run_id } }
 }
 
 // ── Stage 5: Implementing -> CodeReview ────────────────────────────
@@ -328,14 +327,24 @@ func handle_implementing_to_code_review(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
   uses agents: AgentProvider
+  uses outcomes: OutcomeLedger
 {
   branch = "sdlc/issue-{number}"
 
-  // Poll agent for completion (the agent should be done by now)
-  agent_status = agents.poll(run_id: "sdlc-{number}")
+  // Retrieve the agent run_id from the prior "accepted" stage outcome.
+  // The worker stores agent_run_id in the outcome payload after spawn.
+  accepted_run_key = "sdlc::{owner}/{repo}#{number}::Accepted::v1"
+  prior_outcome = outcomes.get(
+    run_key: accepted_run_key,
+    stage: Accepted
+  )
+  agent_run_id = prior_outcome.outcome.payload.agent_run_id
+
+  // Poll agent for completion
+  agent_status = agents.poll(run_id: agent_run_id)
 
   // Create PR from agent branch
   pr = PullRequest.Create(
@@ -360,7 +369,7 @@ func handle_implementing_to_code_review(
     labels: [label_code_review()]
   )
 
-  return { success: true, next_stage: "code-review", artifact_posted: comment.ok }
+  return { success: true, next_stage: CodeReview, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 6: CodeReview -> Testing ─────────────────────────────────
@@ -375,7 +384,7 @@ func handle_code_review_to_testing(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
 {
   // Find the PR for this issue (convention: PR head = sdlc/issue-{number})
@@ -441,7 +450,7 @@ func handle_code_review_to_testing(
     labels: [label_testing()]
   )
 
-  return { success: true, next_stage: "testing", artifact_posted: comment.ok }
+  return { success: true, next_stage: Testing, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 7: Testing -> Done ───────────────────────────────────────
@@ -454,7 +463,7 @@ func handle_testing_to_done(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
 {
   // Run cargo test
@@ -496,7 +505,7 @@ func handle_testing_to_done(
     )
   }
 
-  return { success: all_passed, next_stage: match all_passed { true => "done", false => "testing" }, artifact_posted: comment.ok }
+  return { success: all_passed, next_stage: match all_passed { true => Done, false => Testing }, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 8: Done (terminalize, close issue) ───────────────────────
@@ -508,7 +517,7 @@ func handle_done(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: String, artifact_posted: Bool }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
   uses issues: IssueProvider
 {
   // Post final summary
@@ -521,7 +530,7 @@ func handle_done(
   // Close the issue
   closed = issues.close(id: issue_id)
 
-  return { success: closed.ok, next_stage: "done", artifact_posted: comment.ok }
+  return { success: closed.ok, next_stage: Done, artifact_posted: comment.ok, payload: None }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -534,7 +543,7 @@ test stage_dispatch_idea {
     @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
-    input execute/prepare.stage -> "idea"
+    input execute/prepare.stage -> Idea
     input execute/prepare.title -> "Add feature X"
     input execute/prepare.body -> "We need feature X."
     input execute/prepare.run_key -> "test-run-001"
@@ -556,7 +565,7 @@ test stage_dispatch_idea {
     mock labels/execute.response -> rest_response(200, { ok: true })
 
     expect result.success == true
-    expect result.next_stage == "design"
+    expect result.next_stage == Design
 }
 
 test stage_dispatch_design_review {
@@ -565,7 +574,7 @@ test stage_dispatch_design_review {
     @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
-    input execute/prepare.stage -> "design-review"
+    input execute/prepare.stage -> DesignReview
     input execute/prepare.title -> "Add feature X"
     input execute/prepare.body -> "Design content here."
     input execute/prepare.run_key -> "test-run-001"
@@ -579,7 +588,7 @@ test stage_dispatch_design_review {
     mock labels/execute.response -> rest_response(200, { ok: true })
 
     expect result.success == true
-    expect result.next_stage == "accepted"
+    expect result.next_stage == Accepted
 }
 
 test stage_code_review_with_pr_diff {
@@ -588,7 +597,7 @@ test stage_code_review_with_pr_diff {
     @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
-    input execute/prepare.stage -> "code-review"
+    input execute/prepare.stage -> CodeReview
     input execute/prepare.title -> "Add feature X"
     input execute/prepare.body -> "Body"
     input execute/prepare.run_key -> "test-run-001"
@@ -636,7 +645,7 @@ test stage_code_review_with_pr_diff {
     mock labels/execute.response -> rest_response(200, { ok: true })
 
     expect result.success == true
-    expect result.next_stage == "testing"
+    expect result.next_stage == Testing
 }
 
 test stage_testing_cargo_pass {
@@ -645,7 +654,7 @@ test stage_testing_cargo_pass {
     @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
-    input execute/prepare.stage -> "testing"
+    input execute/prepare.stage -> Testing
     input execute/prepare.title -> "Add feature X"
     input execute/prepare.body -> "Body"
     input execute/prepare.run_key -> "test-run-001"
@@ -665,7 +674,7 @@ test stage_testing_cargo_pass {
     mock labels/execute.response -> rest_response(200, { ok: true })
 
     expect result.success == true
-    expect result.next_stage == "done"
+    expect result.next_stage == Done
 }
 
 test stage_testing_cargo_fail {
@@ -674,7 +683,7 @@ test stage_testing_cargo_fail {
     @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
-    input execute/prepare.stage -> "testing"
+    input execute/prepare.stage -> Testing
     input execute/prepare.title -> "Add feature X"
     input execute/prepare.body -> "Body"
     input execute/prepare.run_key -> "test-run-001"
@@ -693,7 +702,7 @@ test stage_testing_cargo_fail {
     mock comment/execute.response -> rest_response(201, { comment_id: "9", ok: true })
 
     expect result.success == false
-    expect result.next_stage == "testing"
+    expect result.next_stage == Testing
 }
 
 test full_stage_chain {
@@ -707,7 +716,7 @@ test full_stage_chain {
     // through: idea -> design -> design-review -> accepted ->
     // implementing -> code-review -> testing -> done
 
-    input execute/prepare.stage -> "idea"
+    input execute/prepare.stage -> Idea
     input execute/prepare.issue_id -> "99"
     input execute/prepare.title -> "Full chain test"
     input execute/prepare.body -> "Test the full stage chain."

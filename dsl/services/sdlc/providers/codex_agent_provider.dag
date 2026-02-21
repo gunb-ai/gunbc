@@ -11,7 +11,7 @@
 module services.sdlc.providers.codex_agent_provider
 
 import interfaces.agent_provider { AgentProvider }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, AgentStatus, ApprovalMode }
 
 // =========================================================================
 // CodexAgentProvider : AgentProvider
@@ -30,16 +30,17 @@ service codex.AgentProvider : AgentProvider {
       branch: NonEmptyStr
       model: String?
       timeout_seconds: Int?
-      approval_mode: String?
+      approval_mode: ApprovalMode?
     }
     output {
       run_id: NonEmptyStr
-      status: String
+      status: AgentStatus
       started: Bool
     }
     @shell(["codex", "exec",
             "--prompt", "{prompt}",
             "--cwd", "{repo_path}",
+            "--branch", "{branch}",
             "--model", "{model ?? 'o4-mini'}",
             "--timeout", "{timeout_seconds ?? 600}",
             "--approval-mode", "{approval_mode ?? 'full-auto'}",
@@ -74,7 +75,7 @@ service codex.AgentProvider : AgentProvider {
 
   operation cancel {
     input { run_id: NonEmptyStr, reason: String? }
-    output { cancelled: Bool, final_status: String }
+    output { cancelled: Bool, final_status: AgentStatus }
     @shell(["codex", "cancel",
             "--run-id", "{run_id}",
             "--reason", "{reason ?? 'pipeline-cancelled'}",

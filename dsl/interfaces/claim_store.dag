@@ -28,7 +28,6 @@ interface ClaimStore {
     owner: NonEmptyStr,
     lease_ttl_ms: Int
   ) -> { acquired: Bool, conflict: Bool, lease_generation: Int }
-    @contract: acquire(i, s, o, t) => acquired xor conflict
 
   capability heartbeat(
     issue_id: NonEmptyStr,
