@@ -497,6 +497,76 @@ fn await_approval_releases_claim_on_next_worker_pass() {
 }
 
 #[test]
+fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
+    let root = unique_temp_dir("worker_pending_exit_code");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-pending-exit",
+        "intent-20260221-pending-exit",
+        Some(4040),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let first_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run first worker");
+    assert!(
+        first_worker.status.success(),
+        "first worker should succeed: {}",
+        String::from_utf8_lossy(&first_worker.stderr)
+    );
+
+    let await_approval = Command::new(sdlc_bin())
+        .arg("await-approval")
+        .arg("--intake-key")
+        .arg("intent-20260221-pending-exit")
+        .current_dir(&root)
+        .output()
+        .expect("run await-approval");
+    assert!(
+        await_approval.status.success(),
+        "await-approval should succeed: {}",
+        String::from_utf8_lossy(&await_approval.stderr)
+    );
+
+    let pending_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .arg("--emit-pending-exit-code")
+        .current_dir(&root)
+        .output()
+        .expect("run worker with pending exit code");
+    assert_eq!(
+        pending_worker.status.code(),
+        Some(42),
+        "worker should exit with pending approval code"
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&pending_worker.stdout).expect("worker output should be JSON");
+    assert_eq!(
+        payload["awaiting_approval"][0],
+        "intent-20260221-pending-exit"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn transition_enforces_stage_ordering_fail_closed() {
     let root = unique_temp_dir("transition_order");
     std::fs::create_dir_all(&root).expect("create temp root");

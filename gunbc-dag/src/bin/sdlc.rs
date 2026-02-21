@@ -42,6 +42,7 @@ struct CliArgs {
     intake_key: Option<String>,
     stage: Option<IssueLifecycleStage>,
     dry_run: bool,
+    emit_pending_exit_code: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -138,7 +139,7 @@ fn main() {
 
     let result = match args.command {
         SdlcCommand::Intake => run_intake(args.intent_path.as_ref(), args.dry_run),
-        SdlcCommand::Worker => run_worker(args.dry_run),
+        SdlcCommand::Worker => run_worker(args.dry_run, args.emit_pending_exit_code),
         SdlcCommand::AwaitApproval => run_await_approval(args.intake_key.as_deref(), args.dry_run),
         SdlcCommand::Transition => {
             run_transition(args.intake_key.as_deref(), args.stage, args.dry_run)
@@ -159,6 +160,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             intake_key: None,
             stage: None,
             dry_run: false,
+            emit_pending_exit_code: false,
         });
     }
 
@@ -175,6 +177,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let mut intake_key: Option<String> = None;
     let mut stage: Option<IssueLifecycleStage> = None;
     let mut dry_run = false;
+    let mut emit_pending_exit_code = false;
     let mut idx = 2usize;
     while idx < argv.len() {
         let token = &argv[idx];
@@ -183,6 +186,14 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
                 return Err("duplicate --dry-run flag".to_string());
             }
             dry_run = true;
+            idx += 1;
+            continue;
+        }
+        if token == "--emit-pending-exit-code" {
+            if emit_pending_exit_code {
+                return Err("duplicate --emit-pending-exit-code flag".to_string());
+            }
+            emit_pending_exit_code = true;
             idx += 1;
             continue;
         }
@@ -264,6 +275,9 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command == SdlcCommand::Worker && intent_path.is_some() {
         return Err("worker does not accept --intent".to_string());
     }
+    if command != SdlcCommand::Worker && emit_pending_exit_code {
+        return Err("--emit-pending-exit-code is only valid for worker".to_string());
+    }
     if command == SdlcCommand::AwaitApproval && intake_key.is_none() {
         return Err("await-approval requires --intake-key <value>".to_string());
     }
@@ -286,6 +300,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         intake_key,
         stage,
         dry_run,
+        emit_pending_exit_code,
     })
 }
 
@@ -424,7 +439,7 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
     Ok(())
 }
 
-fn run_worker(dry_run: bool) -> Result<(), String> {
+fn run_worker(dry_run: bool, emit_pending_exit_code: bool) -> Result<(), String> {
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
     let claim_ledger_path = claim_ledger_path();
@@ -447,6 +462,7 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
     let mut approval_latency_ms = BTreeMap::new();
     let mut retry_attempts = BTreeMap::new();
     let mut claim_acquire_attempts: u64 = 0;
+    let mut awaiting_approval = Vec::new();
 
     for intake_key in &intake_keys {
         let Some(record) = ledger.entries.get_mut(intake_key) else {
@@ -459,6 +475,9 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
         retry_attempts.insert(intake_key.clone(), record.retry.attempts);
         if let Some(since) = record.awaiting_approval_since_epoch_ms {
             approval_latency_ms.insert(intake_key.clone(), now.saturating_sub(since));
+        }
+        if record.awaiting_approval {
+            awaiting_approval.push(intake_key.clone());
         }
         if record.terminalized {
             skipped_terminalized.push(intake_key.clone());
@@ -578,6 +597,7 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
             "released_claims": released_claims,
             "claim_conflicts": claim_conflicts,
             "terminalized": terminalized,
+            "awaiting_approval": awaiting_approval,
             "skipped_missing_issue": skipped_missing_issue,
             "skipped_terminalized": skipped_terminalized,
             "ledger_path": ledger_path.display().to_string(),
@@ -596,6 +616,9 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
         }))
         .map_err(|error| format!("failed to serialize worker output: {error}"))?
     );
+    if emit_pending_exit_code && !awaiting_approval.is_empty() {
+        std::process::exit(42);
+    }
     Ok(())
 }
 
@@ -939,7 +962,7 @@ fn print_help() {
     println!();
     println!("USAGE:");
     println!("    gunbc-sdlc intake --intent <path> [--dry-run]");
-    println!("    gunbc-sdlc worker [--dry-run]");
+    println!("    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code]");
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
     println!("    gunbc-sdlc help");
