@@ -24,6 +24,7 @@ const RETRY_BASE_BACKOFF_MS: u128 = 1_000;
 enum SdlcCommand {
     Intake,
     Worker,
+    AwaitApproval,
     Help,
 }
 
@@ -31,6 +32,7 @@ enum SdlcCommand {
 struct CliArgs {
     command: SdlcCommand,
     intent_path: Option<PathBuf>,
+    intake_key: Option<String>,
     dry_run: bool,
 }
 
@@ -125,6 +127,7 @@ fn main() {
     let result = match args.command {
         SdlcCommand::Intake => run_intake(args.intent_path.as_ref(), args.dry_run),
         SdlcCommand::Worker => run_worker(args.dry_run),
+        SdlcCommand::AwaitApproval => run_await_approval(args.intake_key.as_deref(), args.dry_run),
         SdlcCommand::Help => Ok(()),
     };
     if let Err(error) = result {
@@ -138,6 +141,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         return Ok(CliArgs {
             command: SdlcCommand::Help,
             intent_path: None,
+            intake_key: None,
             dry_run: false,
         });
     }
@@ -145,11 +149,13 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let command = match argv[1].as_str() {
         "intake" => SdlcCommand::Intake,
         "worker" => SdlcCommand::Worker,
+        "await-approval" => SdlcCommand::AwaitApproval,
         "help" | "--help" | "-h" => SdlcCommand::Help,
         other => return Err(format!("unknown command `{other}`")),
     };
 
     let mut intent_path: Option<PathBuf> = None;
+    let mut intake_key: Option<String> = None;
     let mut dry_run = false;
     let mut idx = 2usize;
     while idx < argv.len() {
@@ -187,6 +193,31 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             idx += 1;
             continue;
         }
+        if token == "--intake-key" {
+            if intake_key.is_some() {
+                return Err("duplicate --intake-key flag".to_string());
+            }
+            let value = argv
+                .get(idx + 1)
+                .ok_or_else(|| "--intake-key requires a value".to_string())?;
+            if value.starts_with("--") {
+                return Err("--intake-key requires a non-flag value".to_string());
+            }
+            intake_key = Some(value.clone());
+            idx += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--intake-key=") {
+            if intake_key.is_some() {
+                return Err("duplicate --intake-key flag".to_string());
+            }
+            if value.is_empty() {
+                return Err("--intake-key requires a non-empty value".to_string());
+            }
+            intake_key = Some(value.to_string());
+            idx += 1;
+            continue;
+        }
         return Err(format!("unknown flag `{token}`"));
     }
 
@@ -196,10 +227,17 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command == SdlcCommand::Worker && intent_path.is_some() {
         return Err("worker does not accept --intent".to_string());
     }
+    if command == SdlcCommand::AwaitApproval && intake_key.is_none() {
+        return Err("await-approval requires --intake-key <value>".to_string());
+    }
+    if command == SdlcCommand::AwaitApproval && intent_path.is_some() {
+        return Err("await-approval does not accept --intent".to_string());
+    }
 
     Ok(CliArgs {
         command,
         intent_path,
+        intake_key,
         dry_run,
     })
 }
@@ -421,6 +459,39 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn run_await_approval(intake_key: Option<&str>, dry_run: bool) -> Result<(), String> {
+    let intake_key = intake_key.ok_or_else(|| "await-approval requires --intake-key".to_string())?;
+    let ledger_path = intake_ledger_path();
+    let mut ledger = load_intake_ledger(&ledger_path)?;
+    let Some(record) = ledger.entries.get_mut(intake_key) else {
+        return Err(format!("unknown intake key `{intake_key}`"));
+    };
+    if record.terminalized {
+        return Err(format!(
+            "cannot await approval for terminalized intake key `{intake_key}`"
+        ));
+    }
+    record.awaiting_approval = true;
+    record.updated_at_epoch_ms = epoch_millis();
+
+    if !dry_run {
+        save_intake_ledger(&ledger_path, &ledger)?;
+    }
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "command": "await-approval",
+            "mode": if dry_run { "dry-run" } else { "real" },
+            "intake_key": intake_key,
+            "awaiting_approval": true,
+            "ledger_path": ledger_path.display().to_string(),
+        }))
+        .map_err(|error| format!("failed to serialize await-approval output: {error}"))?
+    );
+    Ok(())
+}
+
 fn load_intent(path: &Path) -> Result<IntentSheet, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|error| format!("failed to read intent file {}: {error}", path.display()))?;
@@ -581,5 +652,6 @@ fn print_help() {
     println!("USAGE:");
     println!("    gunbc-sdlc intake --intent <path> [--dry-run]");
     println!("    gunbc-sdlc worker [--dry-run]");
+    println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc help");
 }

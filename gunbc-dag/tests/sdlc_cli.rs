@@ -385,3 +385,84 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
+
+#[test]
+fn await_approval_releases_claim_on_next_worker_pass() {
+    let root = unique_temp_dir("await_approval_release");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-await-approval",
+        "intent-20260221-await-approval",
+        Some(9001),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let first_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run first worker");
+    assert!(
+        first_worker.status.success(),
+        "first worker should succeed: {}",
+        String::from_utf8_lossy(&first_worker.stderr)
+    );
+
+    let await_approval = Command::new(sdlc_bin())
+        .arg("await-approval")
+        .arg("--intake-key")
+        .arg("intent-20260221-await-approval")
+        .current_dir(&root)
+        .output()
+        .expect("run await-approval");
+    assert!(
+        await_approval.status.success(),
+        "await-approval should succeed: {}",
+        String::from_utf8_lossy(&await_approval.stderr)
+    );
+
+    let second_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run second worker");
+    assert!(
+        second_worker.status.success(),
+        "second worker should succeed: {}",
+        String::from_utf8_lossy(&second_worker.stderr)
+    );
+    let second_payload: serde_json::Value =
+        serde_json::from_slice(&second_worker.stdout).expect("second worker output should be JSON");
+    assert_eq!(
+        second_payload["released_claims"][0],
+        "intent-20260221-await-approval"
+    );
+
+    let claim_ledger_path = root.join("target/sdlc/claim-ledger.json");
+    let claim_ledger_raw = std::fs::read_to_string(&claim_ledger_path).expect("read claim ledger");
+    let claim_ledger: serde_json::Value =
+        serde_json::from_str(&claim_ledger_raw).expect("parse claim ledger");
+    let claims = claim_ledger["claims"]
+        .as_object()
+        .expect("claims should be object");
+    assert!(
+        claims.is_empty(),
+        "awaiting approval should release held claim slot"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
