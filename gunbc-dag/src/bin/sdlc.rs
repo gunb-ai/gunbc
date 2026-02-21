@@ -9,7 +9,7 @@
 
 use gunbc_dag::{
     claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
-    provisional_marker, reconcile_entries, register_retry_failure, release_claim,
+    provisional_marker, reconcile_entries, register_retry_failure, release_claim, retry_ready,
     should_replay_skip, try_acquire_claim, upsert_provisional_artifact, ArtifactLedger,
     ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry,
     RetryState, RunStateLedger, validate_stage_transition,
@@ -753,6 +753,7 @@ fn run_worker(
             "awaiting_approval": [],
             "skipped_missing_issue": [],
             "skipped_terminalized": [],
+            "skipped_retry_backoff": [],
             "ledger_path": ledger_path.display().to_string(),
             "claim_ledger_path": claim_ledger_path.display().to_string(),
             "run_state_path": run_state_path.display().to_string(),
@@ -772,6 +773,7 @@ fn run_worker(
                 "awaiting_approval_count": 0,
                 "claim_conflict_count": 0,
                 "replay_skipped_count": 0,
+                "retry_backoff_deferred_count": 0,
             },
             "metrics": {
                 "stage_duration_ms": {},
@@ -814,6 +816,7 @@ fn run_worker(
     }
     let mut skipped_missing_issue = Vec::new();
     let mut skipped_terminalized = Vec::new();
+    let mut skipped_retry_backoff = Vec::new();
     let mut claim_conflicts = Vec::new();
     let mut acquired_claims = Vec::new();
     let mut replay_skipped = Vec::new();
@@ -851,6 +854,10 @@ fn run_worker(
             if let Some(last_error) = &record.retry.last_error {
                 terminal_failures.insert(intake_key.clone(), last_error.clone());
             }
+            continue;
+        }
+        if !retry_ready(&record.retry, now) {
+            skipped_retry_backoff.push(intake_key.clone());
             continue;
         }
         let Some(issue_id) = record.issue_id else {
@@ -1008,6 +1015,7 @@ fn run_worker(
         "awaiting_approval": awaiting_approval,
         "skipped_missing_issue": skipped_missing_issue,
         "skipped_terminalized": skipped_terminalized,
+        "skipped_retry_backoff": skipped_retry_backoff,
         "ledger_path": ledger_path.display().to_string(),
         "claim_ledger_path": claim_ledger_path.display().to_string(),
         "run_state_path": run_state_path.display().to_string(),
@@ -1026,6 +1034,7 @@ fn run_worker(
             "awaiting_approval_count": awaiting_approval.len(),
             "claim_conflict_count": claim_conflicts.len(),
             "replay_skipped_count": replay_skipped.len(),
+            "retry_backoff_deferred_count": skipped_retry_backoff.len(),
         },
         "metrics": {
             "stage_duration_ms": stage_duration_ms,

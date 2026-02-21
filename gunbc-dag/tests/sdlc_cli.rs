@@ -1010,6 +1010,101 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
 }
 
 #[test]
+fn worker_respects_retry_backoff_and_defers_claim_attempts() {
+    let root = unique_temp_dir("worker_retry_backoff");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_a = root.join("intent_a.yaml");
+    let intent_b = root.join("intent_b.yaml");
+    write_intent_file(
+        &intent_a,
+        "intent-20260221-backoff-a",
+        "intent-20260221-backoff-a",
+        Some(8181),
+    );
+    write_intent_file(
+        &intent_b,
+        "intent-20260221-backoff-b",
+        "intent-20260221-backoff-b",
+        Some(8181),
+    );
+
+    for intent in [&intent_a, &intent_b] {
+        let intake = Command::new(sdlc_bin())
+            .arg("intake")
+            .arg("--intent")
+            .arg(intent)
+            .current_dir(&root)
+            .output()
+            .expect("run intake");
+        assert!(
+            intake.status.success(),
+            "intake should succeed: {}",
+            String::from_utf8_lossy(&intake.stderr)
+        );
+    }
+
+    let first_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run first worker");
+    assert!(
+        first_worker.status.success(),
+        "first worker should succeed: {}",
+        String::from_utf8_lossy(&first_worker.stderr)
+    );
+    let first_payload: serde_json::Value =
+        serde_json::from_slice(&first_worker.stdout).expect("first worker output should be JSON");
+    assert_eq!(
+        first_payload["claim_conflicts"][0],
+        "intent-20260221-backoff-b"
+    );
+
+    let second_worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run second worker");
+    assert!(
+        second_worker.status.success(),
+        "second worker should succeed: {}",
+        String::from_utf8_lossy(&second_worker.stderr)
+    );
+    let second_payload: serde_json::Value =
+        serde_json::from_slice(&second_worker.stdout).expect("second worker output should be JSON");
+    assert_eq!(
+        second_payload["skipped_retry_backoff"][0],
+        "intent-20260221-backoff-b",
+        "second worker should defer conflicted intake while retry backoff is active"
+    );
+    assert_eq!(
+        second_payload["summary"]["retry_backoff_deferred_count"],
+        1,
+        "summary should report deferred backoff count"
+    );
+    assert_eq!(
+        second_payload["claim_conflicts"]
+            .as_array()
+            .expect("claim_conflicts should be array")
+            .len(),
+        0,
+        "second worker should not re-attempt conflicted claim during backoff window"
+    );
+
+    let ledger_path = root.join("target/sdlc/intake-ledger.json");
+    let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
+    let ledger: serde_json::Value =
+        serde_json::from_str(&ledger_raw).expect("parse intake ledger");
+    assert_eq!(
+        ledger["entries"]["intent-20260221-backoff-b"]["retry"]["attempts"],
+        1,
+        "retry attempts should remain stable while backoff defers claim attempts"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn worker_real_mode_persists_execution_report_with_metrics() {
     let root = unique_temp_dir("worker_execution_report");
     std::fs::create_dir_all(&root).expect("create temp root");
@@ -1130,6 +1225,20 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
             String::from_utf8_lossy(&worker.stderr)
         );
         final_payload = serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+        let ledger_path = root.join("target/sdlc/intake-ledger.json");
+        let mut ledger: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&ledger_path).expect("read intake ledger"),
+        )
+        .expect("parse intake ledger");
+        if ledger["entries"]["intent-20260221-term-b"]["terminalized"] != true {
+            ledger["entries"]["intent-20260221-term-b"]["retry"]["next_retry_at_epoch_ms"] =
+                serde_json::Value::Null;
+            std::fs::write(
+                &ledger_path,
+                serde_json::to_string_pretty(&ledger).expect("serialize intake ledger"),
+            )
+            .expect("write intake ledger with forced immediate retry");
+        }
     }
 
     let ledger_path = root.join("target/sdlc/intake-ledger.json");
