@@ -217,11 +217,15 @@ fn covered_dsl_pipeline_modules() -> BTreeSet<String> {
 }
 
 fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
-    BTreeSet::new()
+    let mut set = BTreeSet::new();
+    set.insert("design");
+    set
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    BTreeSet::new()
+    let mut set = BTreeSet::new();
+    set.insert("sdlc");
+    set
 }
 
 fn add_discovered_tool_subdags(

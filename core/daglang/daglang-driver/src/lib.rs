@@ -470,8 +470,7 @@ fn resolve_import_file_path(roots: &[PathBuf], import_path: &[String]) -> Option
         .iter()
         .map(|root| root.join(&relative))
         .find(|candidate| candidate.is_file());
-    if result.is_none() {
-    }
+    let _ = result;
     result
 }
 

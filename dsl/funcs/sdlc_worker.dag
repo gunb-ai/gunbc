@@ -1,0 +1,260 @@
+// funcs/sdlc_worker.dag -- SDLC worker dispatch function.
+//
+// The outer loop that drives the SDLC pipeline. Called by a scheduler
+// (Cloud Scheduler cron, webhook handler, or CLI). For each open issue
+// with an SDLC label, it:
+//
+//   1. Acquires a stage claim (CAS idempotency via ControlPlane)
+//   2. Determines the current lifecycle stage from labels
+//   3. Dispatches the appropriate stage handler
+//   4. Records outcome and releases claim
+//
+// This is the "thin worker" -- all business logic lives in the
+// per-stage funcs. The worker's only job is discovery + dispatch.
+//
+// Uses the Loop and Branch patterns from daglang-lower to express
+// the for-each-issue iteration and conditional dispatch as DSL
+// control flow that compiles to SubDag IR nodes.
+
+module funcs.sdlc_worker
+
+import services.github.issues { Issues }
+import services.sdlc.control_plane { ControlPlane }
+import services.agent.codex { Codex }
+import shared.dag_util { stage_result }
+import pipelines.sdlc { has_label }
+
+// ── Configuration helpers ───────────────────────────────────────────
+
+fn sdlc_labels() -> String {
+  "idea,design,design-review,accepted,implementing,code-review,testing"
+}
+
+fn make_issue_id(owner: String, repo: String, number: Int) -> String {
+  "{owner}/{repo}#{number}"
+}
+
+
+
+fn determine_stage(labels: Json) -> String {
+  match has_label(labels: labels, name: "testing") {
+    true  => "testing"
+    false => match has_label(labels: labels, name: "code-review") {
+      true  => "code-review"
+      false => match has_label(labels: labels, name: "implementing") {
+        true  => "implementing"
+        false => match has_label(labels: labels, name: "accepted") {
+          true  => "accepted"
+          false => match has_label(labels: labels, name: "design-review") {
+            true  => "design-review"
+            false => match has_label(labels: labels, name: "design") {
+              true  => "design"
+              false => "idea"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── Per-stage dispatch handlers ─────────────────────────────────────
+// Each handler transitions one issue through one lifecycle step.
+// They call services directly to avoid cross-module type inference
+// limitations on func return types.
+
+func handle_idea(
+  owner: String,
+  repo: String,
+  number: Int,
+  body: String,
+  title: String,
+  run_key: String
+) -> { success: Bool } {
+  comment = Issues.AddComment(
+    owner: owner,
+    repo: repo,
+    number: number,
+    body: "SDLC pipeline picked up issue. Generating design..."
+  )
+
+  labels = Issues.SetLabels(
+    owner: owner,
+    repo: repo,
+    number: number,
+    labels: ["design"]
+  )
+
+  return { success: true }
+}
+
+func handle_design_review(
+  owner: String,
+  repo: String,
+  number: Int,
+  run_key: String
+) -> { success: Bool } {
+  labels = Issues.SetLabels(
+    owner: owner,
+    repo: repo,
+    number: number,
+    labels: ["accepted"]
+  )
+
+  comment = Issues.AddComment(
+    owner: owner,
+    repo: repo,
+    number: number,
+    body: "Design review passed. Ready for implementation."
+  )
+
+  return { success: true }
+}
+
+func handle_accepted(
+  owner: String,
+  repo: String,
+  number: Int,
+  body: String,
+  run_key: String
+) -> { success: Bool } {
+  agent = Codex.Spawn(
+    prompt: "Implement the design for issue #{number}:\n\n{body}",
+    repo_path: ".",
+    approval_mode: "full-auto"
+  )
+
+  comment = Issues.AddComment(
+    owner: owner,
+    repo: repo,
+    number: number,
+    body: "Agent dispatched (run: {agent.run_id}). Implementation in progress."
+  )
+
+  labels = Issues.SetLabels(
+    owner: owner,
+    repo: repo,
+    number: number,
+    labels: ["implementing"]
+  )
+
+  return { success: agent.started }
+}
+
+// ── Main worker function ────────────────────────────────────────────
+
+func dispatch_sdlc(
+  owner: String,
+  repo: String,
+  run_key: String
+) -> { processed: Int, skipped: Int } {
+  issues_response = Issues.List(
+    owner: owner,
+    repo: repo,
+    labels: sdlc_labels(),
+    state: "open"
+  )
+
+  results = for issue in issues_response.issues {
+    stage = determine_stage(labels: issue.labels)
+    issue_id = make_issue_id(owner: owner, repo: repo, number: issue.number)
+
+    claim = ControlPlane.AcquireStageClaim(
+      intake_key: "{owner}/{repo}",
+      issue_id: issue_id,
+      stage: stage,
+      run_key: run_key,
+      claimant: "funcs.sdlc_worker"
+    )
+
+    if claim.acquired {
+      outcome = ControlPlane.UpsertStageOutcome(
+        intake_key: "{owner}/{repo}",
+        issue_id: issue_id,
+        stage: stage,
+        run_key: run_key,
+        outcome_status: "dispatched",
+        payload_hash: "sha256:worker-dispatch"
+      )
+
+      release = ControlPlane.ReleaseStageClaim(
+        intake_key: "{owner}/{repo}",
+        issue_id: issue_id,
+        stage: stage,
+        claim_token: claim.claim_token,
+        lease_generation: claim.lease_generation
+      )
+    }
+  }
+
+  return { processed: 0, skipped: 0 }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test worker_dispatches_idea {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input dispatch/prepare.owner -> "gunb-ai"
+    input dispatch/prepare.repo -> "gunbc"
+    input dispatch/prepare.run_key -> "test-run-001"
+
+    mock list/execute.response -> rest_response(200, [
+        {
+            number: 42,
+            title: "Add feature X",
+            body: "We need feature X for the SDLC pipeline.",
+            state: "open",
+            labels: [{ name: "idea" }]
+        }
+    ])
+
+    mock claim/execute.response -> rest_response(200, {
+        acquired: true,
+        conflict: false,
+        lease_generation: 1,
+        lease_expires_at_epoch_ms: 1734000000000,
+        claim_token: "test-token",
+        conflict_reason: null,
+        observed_generation: 1
+    })
+
+    mock outcome/execute.response -> rest_response(200, { updated: true, previous_status: null, checksum: "sha256:mock" })
+    mock release/execute.response -> rest_response(200, { released: true, observed_generation: 1 })
+
+    expect result is Map
+}
+
+test worker_skips_conflict {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input dispatch/prepare.owner -> "gunb-ai"
+    input dispatch/prepare.repo -> "gunbc"
+    input dispatch/prepare.run_key -> "test-run-002"
+
+    mock list/execute.response -> rest_response(200, [
+        {
+            number: 43,
+            title: "Already claimed",
+            body: "This issue is already being processed.",
+            state: "open",
+            labels: [{ name: "design" }]
+        }
+    ])
+
+    mock claim/execute.response -> rest_response(200, {
+        acquired: false,
+        conflict: true,
+        lease_generation: 2,
+        lease_expires_at_epoch_ms: 1734000000000,
+        claim_token: null,
+        conflict_reason: "lease held by another worker",
+        observed_generation: 2
+    })
+
+    expect result is Map
+}

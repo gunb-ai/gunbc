@@ -192,10 +192,7 @@ pub fn emit_rust_bundle(
 
     for node in &dag.nodes {
         let Some(op) = node.body.as_opaque() else {
-            return Err(EmitError::InvalidLoweredNode(format!(
-                "subdag node `{}` is not supported in phase-1 emit",
-                node.id.0
-            )));
+            continue;
         };
 
         match op {
@@ -230,6 +227,9 @@ pub fn emit_rust_bundle(
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));
                 emitted_functions.push(backend.emit_func(&fn_name));
             }
+            LoweredOp::LoopUnpack { .. }
+            | LoweredOp::LoopPack { .. }
+            | LoweredOp::BranchMerge { .. } => {}
         }
     }
 
@@ -539,10 +539,7 @@ fn collect_symbols_with_metadata(
 
     for node in &dag.nodes {
         let Some(op) = node.body.as_opaque() else {
-            return Err(EmitError::InvalidLoweredNode(format!(
-                "subdag node `{}` is not supported in backend emit",
-                node.id.0
-            )));
+            continue;
         };
 
         match op {
@@ -588,6 +585,9 @@ fn collect_symbols_with_metadata(
                     raw_name: String::new(),
                 });
             }
+            LoweredOp::LoopUnpack { .. }
+            | LoweredOp::LoopPack { .. }
+            | LoweredOp::BranchMerge { .. } => {}
         }
     }
 

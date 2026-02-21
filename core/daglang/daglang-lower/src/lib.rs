@@ -25,6 +25,8 @@ use daglang_syntax::ast_utils::{
     walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
+use gunbc_ir::patterns::branch::IfBuilder;
+use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::AccessMode;
 use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, Node, Port};
 use serde::Serialize;
@@ -57,6 +59,33 @@ pub enum LoweredOp {
         stages: usize,
         stage_names: Vec<String>,
     },
+    LoopUnpack {
+        input_port: String,
+        element_port: String,
+    },
+    LoopPack {
+        output_port: String,
+    },
+    BranchMerge {
+        output_port: String,
+    },
+}
+
+impl From<PatternOp> for LoweredOp {
+    fn from(op: PatternOp) -> Self {
+        match op {
+            PatternOp::LoopUnpack {
+                input_port,
+                element_port,
+            } => LoweredOp::LoopUnpack {
+                input_port,
+                element_port,
+            },
+            PatternOp::LoopPack { output_port } => LoweredOp::LoopPack { output_port },
+            PatternOp::BranchMerge { output_port } => LoweredOp::BranchMerge { output_port },
+            other => panic!("unsupported PatternOp in daglang lowering: {other:?}"),
+        }
+    }
 }
 
 /// Structural parity report between two DAGs.
@@ -293,7 +322,11 @@ impl LoweredOp {
         match self {
             Self::Callable { obligation, .. } => *obligation,
             Self::Primitive { kind, .. } => kind.obligation_category(),
-            Self::Collection { .. } | Self::Pipeline { .. } => ObligationCategory::None,
+            Self::Collection { .. }
+            | Self::Pipeline { .. }
+            | Self::LoopUnpack { .. }
+            | Self::LoopPack { .. }
+            | Self::BranchMerge { .. } => ObligationCategory::None,
         }
     }
 
@@ -302,7 +335,12 @@ impl LoweredOp {
             Self::Callable {
                 service_metadata, ..
             } => service_metadata.as_deref(),
-            Self::Primitive { .. } | Self::Collection { .. } | Self::Pipeline { .. } => None,
+            Self::Primitive { .. }
+            | Self::Collection { .. }
+            | Self::Pipeline { .. }
+            | Self::LoopUnpack { .. }
+            | Self::LoopPack { .. }
+            | Self::BranchMerge { .. } => None,
         }
     }
 }
@@ -1259,6 +1297,11 @@ mod parity {
                     false,
                     Some(kind.obligation_category()),
                 )
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopUnpack { .. })
+            | gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopPack { .. })
+            | gunbc_ir::node::NodeBody::Opaque(LoweredOp::BranchMerge { .. }) => {
+                "pattern_internal".to_string()
             }
         }
     }
@@ -2913,6 +2956,7 @@ fn add_dependency_edges(
             if emit_collection_nodes {
                 add_collection_pipeline_nodes(builder, &module_name, stmts, target);
             }
+            add_control_flow_pattern_nodes(builder, &module_name, stmts, target);
         }
     }
 }
@@ -2933,6 +2977,162 @@ fn add_collection_pipeline_nodes(
     }
     for (from_node, from_port, to_node, to_port) in plan.edges {
         builder.add_edge(&from_node, &from_port, &to_node, &to_port);
+    }
+}
+
+// ── Control Flow Pattern Lowering (for / if) ───────────────────────
+
+#[derive(Debug)]
+struct ForLoopSite {
+    element_var: String,
+    passthrough: Vec<String>,
+}
+
+#[derive(Debug)]
+struct IfBranchSite {
+    has_else: bool,
+}
+
+fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
+    let mut sites = Vec::new();
+    for stmt in stmts {
+        let expr = match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => expr,
+            Stmt::Return(_) => continue,
+        };
+        if let Expr::For(var, _, passthrough, _) = expr {
+            sites.push(ForLoopSite {
+                element_var: var.clone(),
+                passthrough: passthrough.clone(),
+            });
+        }
+    }
+    sites
+}
+
+fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchSite> {
+    let mut sites = Vec::new();
+    for stmt in stmts {
+        let expr = match stmt {
+            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => expr,
+            Stmt::Return(_) => continue,
+        };
+        if let Expr::If(_, _, else_branch) = expr {
+            sites.push(IfBranchSite {
+                has_else: else_branch.is_some(),
+            });
+        }
+    }
+    sites
+}
+
+fn make_loop_body_dag(
+    module_name: &str,
+    callable_node_id: &str,
+    index: usize,
+    element_var: &str,
+    passthrough: &[String],
+) -> Dag<LoweredOp> {
+    let mut inputs = vec![Port::scalar(element_var, "Any")];
+    for pt in passthrough {
+        inputs.push(Port::scalar(pt.as_str(), "Any"));
+    }
+    let mut dag: Dag<LoweredOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "body_op",
+        inputs,
+        vec![Port::scalar("result", "Any")],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Fn,
+            name: format!("{callable_node_id}::for_{index}_body"),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+        },
+    ));
+    dag
+}
+
+fn make_branch_body_dag(
+    module_name: &str,
+    callable_node_id: &str,
+    index: usize,
+    branch_label: &str,
+) -> Dag<LoweredOp> {
+    let mut dag: Dag<LoweredOp> = Dag::new();
+    dag.add_node(Node::opaque(
+        "op",
+        vec![
+            Port::scalar("input", "Any"),
+            Port::scalar("condition", "Bool"),
+        ],
+        vec![Port::scalar("result", "Any")],
+        LoweredOp::Callable {
+            module: module_name.to_string(),
+            kind: CallableKind::Fn,
+            name: format!("{callable_node_id}::if_{index}_{branch_label}"),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+        },
+    ));
+    dag
+}
+
+fn add_control_flow_pattern_nodes(
+    builder: &mut DagBuilder,
+    module_name: &str,
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+) {
+    let for_sites = detect_for_loops_in_stmts(stmts);
+    for (index, site) in for_sites.iter().enumerate() {
+        let node_id = format!("{}::for_{index}", target.node_id);
+        let body_dag = make_loop_body_dag(
+            module_name,
+            &target.node_id,
+            index,
+            &site.element_var,
+            &site.passthrough,
+        );
+        let loop_node = LoopBuilder::new(node_id.clone())
+            .with_input("items", "Any", Cardinality::ZERO_OR_MORE)
+            .with_element(&site.element_var, "Any")
+            .with_body(body_dag)
+            .with_output("output", "Any")
+            .build();
+        builder.add_node(loop_node);
+        builder.add_edge(&node_id, "output", &target.node_id, "__deps");
+    }
+
+    let if_sites = detect_if_branches_in_stmts(stmts);
+    for (index, site) in if_sites.iter().enumerate() {
+        let node_id = format!("{}::if_{index}", target.node_id);
+
+        if site.has_else {
+            let true_dag =
+                make_branch_body_dag(module_name, &target.node_id, index, "true");
+            let false_dag =
+                make_branch_body_dag(module_name, &target.node_id, index, "false");
+            let branch_node = BranchBuilder::new(node_id.clone())
+                .with_true_branch(true_dag)
+                .with_false_branch(false_dag)
+                .with_output("output", "Any")
+                .build();
+            builder.add_node(branch_node);
+        } else {
+            let then_dag =
+                make_branch_body_dag(module_name, &target.node_id, index, "then");
+            let if_node = IfBuilder::new(node_id.clone())
+                .with_then(then_dag)
+                .with_output("output", "Any")
+                .build();
+            builder.add_node(if_node);
+        }
+        builder.add_edge(&node_id, "output", &target.node_id, "__deps");
     }
 }
 

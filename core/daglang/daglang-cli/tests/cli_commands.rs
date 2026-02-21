@@ -163,6 +163,9 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "examples.deployment",
         "examples.integration_tests",
         "examples.rich_types",
+        "funcs.agent_feedback",
+        "funcs.sdlc_worker",
+        "funcs.test_control_flow",
         "infra.aws.config",
         "infra.aws.resources",
         "infra.aws.services",
@@ -173,8 +176,11 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "infra.gcp.config",
         "infra.gcp.resources",
         "infra.gcp.services",
+        "infra.sdlc.deploy",
         "infra.spec",
         "pipelines.ci",
+        "pipelines.sdlc",
+        "services.agent.codex",
         "services.cargo",
         "services.gcp.iam",
         "services.gcp.secret_manager",
@@ -182,6 +188,7 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "services.git",
         "services.github.gist",
         "services.github.issues",
+        "services.github.pull_request",
         "services.llm.anthropic",
         "services.llm.openai",
         "services.sdlc.control_plane",
@@ -197,6 +204,7 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "tools.codegen",
         "tools.dag_viz",
         "tools.deps",
+        "tools.design",
         "tools.docgen",
         "tools.gist",
         "tools.infra",
@@ -222,15 +230,20 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "infra.gcp.config",
         "infra.gcp.resources",
         "examples.integration_tests",
+        "infra.sdlc.deploy",
+        "services.agent.codex",
         "services.cargo",
         "services.gcp.iam",
         "services.gcp.secret_manager",
         "services.gcp.sts",
         "services.github.gist",
         "services.github.issues",
+        "funcs.test_control_flow",
+        "services.github.pull_request",
         "services.llm.anthropic",
         "services.llm.openai",
         "services.sdlc.control_plane",
+        "funcs.agent_feedback",
         "std.resources",
         "std.types",
         "cloud.aws.credential",
@@ -248,6 +261,9 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "tools.codegen",
         "tools.dag_viz",
         "tools.deps",
+        "tools.design",
+        "pipelines.sdlc",
+        "funcs.sdlc_worker",
         "tools.docgen",
         "tools.gist",
         "examples.deployment",
@@ -1079,7 +1095,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 48 file(s)"),
+        stdout.contains("OK: checked 56 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1108,7 +1124,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(48));
+    assert_eq!(stdout, expected_check_success_stdout(56));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -11543,7 +11559,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 48 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 56 file(s)"),
         "default check should parse full DSL corpus"
     );
 }

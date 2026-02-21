@@ -82,42 +82,52 @@ fn write_infra_intent_template(root: &Path, valid: bool) {
     let lease_ttl = if valid { 120 } else { 5 };
     let heartbeat = if valid { 30 } else { 10 };
     let content = format!(
-        r#"intent_id: "infra-20260221-runtime-profile"
-schema_version: "1"
-environment: "dev"
-runtime_profile: "stateless-fleet"
-provider: "github"
-policy_version: "1"
-components:
-  claim_store:
-    backend: "sqlite"
-    dsn: "var/sdlc/claims.db"
-  outcome_ledger:
-    backend: "sqlite"
-    dsn: "var/sdlc/outcomes.db"
-  secrets:
-    credential_policy_profile: "default"
-    required_refs:
-      - "github-token"
-      - "openai-api-key"
-  metrics:
-    sink: "stdout"
-    namespace: "gunbc.sdlc"
-safety:
-  fail_closed_on_missing_prereqs: true
-  require_capability_gate: true
-launch:
-  worker_count: 5
-  lease_ttl_seconds: {lease_ttl}
-  heartbeat_seconds: {heartbeat}
-  poll_interval_seconds: 15
-drift:
-  reconcile_mode: "plan-then-apply"
-  reconcile_interval_minutes: 60
-notes: "test fixture infra intent"
-"#
+        r#"(
+    schema_version: "1",
+    intent_id: "infra-20260221-runtime-profile",
+    environment: "dev",
+    runtime_profile: "stateless-fleet",
+    provider: "github",
+    policy_version: "1",
+    components: (
+        claim_store: (
+            backend: "sqlite",
+            dsn: "var/sdlc/claims.db",
+        ),
+        outcome_ledger: (
+            backend: "sqlite",
+            dsn: "var/sdlc/outcomes.db",
+        ),
+        secrets: (
+            credential_policy_profile: "default",
+            required_refs: [
+                "github-token",
+                "openai-api-key",
+            ],
+        ),
+        metrics: (
+            sink: "stdout",
+            namespace: "gunbc.sdlc",
+        ),
+    ),
+    safety: (
+        fail_closed_on_missing_prereqs: true,
+        require_capability_gate: true,
+    ),
+    launch: (
+        worker_count: 5,
+        lease_ttl_seconds: {lease_ttl},
+        heartbeat_seconds: {heartbeat},
+        poll_interval_seconds: 15,
+    ),
+    drift: (
+        reconcile_mode: "plan-then-apply",
+        reconcile_interval_minutes: 60,
+    ),
+    notes: Some("test fixture infra intent"),
+)"#
     );
-    std::fs::write(todo_dir.join("infra-intent-template.yaml"), content)
+    std::fs::write(todo_dir.join("infra-intent-template.dag"), content)
         .expect("write infra intent template fixture");
 }
 
@@ -320,7 +330,7 @@ fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
         Some(1200),
     );
 
-    let infra_path = root.join("TODO/infra-intent-template.yaml");
+    let infra_path = root.join("TODO/infra-intent-template.dag");
     let infra_content = std::fs::read_to_string(&infra_path).expect("read infra template");
     let invalid_schema = infra_content.replace("schema_version: \"1\"", "schema_version: \"2\"");
     std::fs::write(&infra_path, invalid_schema).expect("write invalid infra schema");
@@ -369,9 +379,9 @@ fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token
         Some(1201),
     );
 
-    let infra_path = root.join("TODO/infra-intent-template.yaml");
+    let infra_path = root.join("TODO/infra-intent-template.dag");
     let infra_content = std::fs::read_to_string(&infra_path).expect("read infra template");
-    let invalid_refs = infra_content.replace("- \"github-token\"\n", "");
+    let invalid_refs = infra_content.replace("\"github-token\",\n", "");
     std::fs::write(&infra_path, invalid_refs).expect("write invalid required refs");
 
     let intake = ctx.command()

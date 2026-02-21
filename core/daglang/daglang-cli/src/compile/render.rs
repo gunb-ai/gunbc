@@ -45,6 +45,15 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
                 stages,
                 ..
             }) => format!("pipeline {module}.{name} ({stages} stages)"),
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopUnpack { .. }) => {
+                "pattern::LoopUnpack".to_string()
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopPack { .. }) => {
+                "pattern::LoopPack".to_string()
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::BranchMerge { .. }) => {
+                "pattern::BranchMerge".to_string()
+            }
             gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
         };
 

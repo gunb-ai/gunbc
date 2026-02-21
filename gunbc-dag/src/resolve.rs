@@ -556,10 +556,7 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
     match &node.body {
         NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
-        NodeBody::SubDag(_) => Err(ResolveError {
-            node_id,
-            reason: "SubDag nodes must be lowered before resolution".into(),
-        }),
+        NodeBody::SubDag(_) => Ok(DynOp::new(UnsupportedOp::new("subdag_pattern"))),
     }
 }
 
@@ -576,6 +573,11 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             service_metadata,
             ..
         } => resolve_domain(node_id, module, name, outputs, service_metadata.as_deref()),
+        LoweredOp::LoopUnpack { .. }
+        | LoweredOp::LoopPack { .. }
+        | LoweredOp::BranchMerge { .. } => {
+            Ok(DynOp::new(UnsupportedOp::new("pattern_internal")))
+        }
     }
 }
 

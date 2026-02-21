@@ -6,6 +6,15 @@
 //   - atomic claim acquisition
 //   - lease heartbeats/release
 //   - deterministic stage outcome upserts
+//
+// Ledger backend migration path:
+//   Phase 1 (current): JSON files on local disk, stubbed via mock responses
+//   Phase 2: GCS bucket (infra/sdlc/deploy.dag provisions the bucket)
+//   Phase 3: SQLite via @sqlite transport (when supported by daglang-emit)
+//
+// The transport is REST against a local endpoint. In production, this
+// is a sidecar or Cloud Run service that wraps the chosen backend.
+// The DSL pipeline doesn't change when the backend swaps.
 
 module services.sdlc.control_plane
 

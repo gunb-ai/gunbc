@@ -1841,8 +1841,13 @@ fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
 fn load_intent(path: &Path) -> Result<IntentSheet, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|error| format!("failed to read intent file {}: {error}", path.display()))?;
-    serde_yml::from_str::<IntentSheet>(&content)
-        .map_err(|error| format!("failed to parse intent YAML {}: {error}", path.display()))
+    if path.extension().unwrap_or_default() == "yaml" {
+        serde_yml::from_str::<IntentSheet>(&content)
+            .map_err(|error| format!("failed to parse intent YAML {}: {error}", path.display()))
+    } else {
+        ron::from_str::<IntentSheet>(&content)
+            .map_err(|error| format!("failed to parse intent DAG {}: {error}", path.display()))
+    }
 }
 
 /// IM12: real-mode provider capability gate. Separate from field validation
@@ -1923,12 +1928,21 @@ fn load_infra_intent(path: &Path) -> Result<InfraIntentSheet, String> {
             path.display()
         )
     })?;
-    serde_yml::from_str::<InfraIntentSheet>(&content).map_err(|error| {
-        format!(
-            "failed to parse infra intent YAML {}: {error}",
-            path.display()
-        )
-    })
+    if path.extension().unwrap_or_default() == "yaml" {
+        serde_yml::from_str::<InfraIntentSheet>(&content).map_err(|error| {
+            format!(
+                "failed to parse infra intent YAML {}: {error}",
+                path.display()
+            )
+        })
+    } else {
+        ron::from_str::<InfraIntentSheet>(&content).map_err(|error| {
+            format!(
+                "failed to parse infra intent DAG {}: {error}",
+                path.display()
+            )
+        })
+    }
 }
 
 fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
@@ -2251,7 +2265,7 @@ fn execution_report_path() -> PathBuf {
 }
 
 fn default_infra_intent_path() -> PathBuf {
-    PathBuf::from("TODO").join("infra-intent-template.yaml")
+    PathBuf::from("TODO").join("infra-intent-template.dag")
 }
 
 fn estimated_llm_cost_units(stage: IssueLifecycleStage, awaiting_approval: bool) -> u64 {

@@ -267,6 +267,9 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
             return Some(HandlerKind::ParamSource);
         }
         LoweredOp::Callable { .. } => {}
+        LoweredOp::LoopUnpack { .. }
+        | LoweredOp::LoopPack { .. }
+        | LoweredOp::BranchMerge { .. } => return None,
     }
 
     let (module, name) = match op {

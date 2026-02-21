@@ -115,6 +115,20 @@ Archived to `TODO/TODONE/tasks-completed.md`. All 6 tasks (`AI1`-`AI3`, `PR1`-`P
 
 ---
 
+## Sprint 11: E2E Scenario Pipeline & Stage Execution — **DONE**
+
+**Goal**: Make the SDLC pipeline execute the full stage progression (Idea -> Design -> DesignReview -> Accepted -> Implementation) with stage-based dispatch, concrete execution handlers for each transition, and a scenario intent YAML to drive the E2E test.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S11-1** | **Stage-based dispatch**: Refactor worker loop to route by `record.stage` via `execute_stage()` instead of unconditionally calling `execute_stage_idea_to_design`. | — | S | **DONE** |
+| **S11-2** | **Design -> DesignReview handler**: `execute_stage_design_to_review()` extracts canonical design, runs review, persists review artifact, transitions stage label. | S11-1 | M | **DONE** |
+| **S11-3** | **DesignReview -> Accepted handler**: `execute_stage_review_to_accepted()` checks `approved` flag from review artifact, transitions or blocks. | S11-2 | S | **DONE** |
+| **S11-4** | **Accepted -> Implementation handler**: `execute_stage_accepted_to_implementation()` assembles `HandoffSpec`, dispatches to `AgentAdapter`, records in agent ledger. | S11-3 | M | **DONE** |
+| **S11-5** | **Scenario intent YAML**: `TODO/feature-intent-markdown.yaml` with concrete criteria for the markdown report feature. | — | S | **DONE** |
+
+---
+
 ## Deferred
 
 | ID | Task | Context | Size | Status |
