@@ -1017,3 +1017,127 @@ fn infra_runtime_smoke_mips_emits_runnable_binary_when_available() {
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native infra mips runtime out root");
 }
+
+#[test]
+fn sdlc_pipeline_runtime_smoke_go_and_c_emit_runnable_binaries() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline");
+    compile_module_for_target("dsl/pipelines/sdlc.dag", "go", &native_out_root.join("go"));
+    compile_module_for_target("dsl/pipelines/sdlc.dag", "c", &native_out_root.join("c"));
+
+    let go = run_infra_generated_go(&native_out_root.join("go"));
+    let c = run_infra_generated_c(&native_out_root.join("c"));
+
+    match go {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated go backend"),
+                "generated go sdlc pipeline runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP sdlc pipeline go runtime smoke: {reason}");
+        }
+    }
+
+    match c {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated c sdlc pipeline runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP sdlc pipeline c runtime smoke: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native sdlc pipeline runtime out root");
+}
+
+#[test]
+fn sdlc_pipeline_runtime_smoke_mips_emits_runnable_binary_when_available() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_mips");
+    compile_module_for_target(
+        "dsl/pipelines/sdlc.dag",
+        "mips",
+        &native_out_root.join("mips"),
+    );
+
+    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
+    match mips {
+        RuntimeOutcome::Ran { .. } => {}
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP sdlc pipeline mips runtime smoke: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native sdlc pipeline mips runtime out root");
+}
+
+#[test]
+fn sdlc_control_plane_runtime_smoke_go_and_c_emit_runnable_binaries() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_control_plane");
+    compile_module_for_target(
+        "dsl/services/sdlc/control_plane.dag",
+        "go",
+        &native_out_root.join("go"),
+    );
+    compile_module_for_target(
+        "dsl/services/sdlc/control_plane.dag",
+        "c",
+        &native_out_root.join("c"),
+    );
+
+    let go = run_infra_generated_go(&native_out_root.join("go"));
+    let c = run_infra_generated_c(&native_out_root.join("c"));
+
+    match go {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated go backend"),
+                "generated go sdlc control-plane runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP sdlc control-plane go runtime smoke: {reason}");
+        }
+    }
+
+    match c {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated c backend"),
+                "generated c sdlc control-plane runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP sdlc control-plane c runtime smoke: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native sdlc control-plane runtime out root");
+}
+
+#[test]
+fn sdlc_control_plane_runtime_smoke_mips_emits_runnable_binary_when_available() {
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_control_plane_mips");
+    compile_module_for_target(
+        "dsl/services/sdlc/control_plane.dag",
+        "mips",
+        &native_out_root.join("mips"),
+    );
+
+    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
+    match mips {
+        RuntimeOutcome::Ran { .. } => {}
+        RuntimeOutcome::Skipped { reason } => {
+            eprintln!("SKIP sdlc control-plane mips runtime smoke: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup native sdlc control-plane mips runtime out root");
+}
