@@ -10,14 +10,8 @@
 //   cloud_run  -- GCS-based ledgers, real GitHub API, stateless fleet
 //
 // Source: domain-modeling-comprehensive.md Section 5
-// Gap:    e2e-gap-analysis.md Gap C (deployment profile binding)
-//         e2e-gap-analysis.md Gap D (credential wiring via profile)
-//
-// NOTE: The `profile { bind ... }` syntax is the target language feature
-// (Gap C). Until the parser supports it, the match-based provider_for_*
-// functions below serve as the compile-time binding mechanism. The
-// profile declarations below are the canonical definitions that the
-// parser will eventually accept.
+// Gap C: deployment profile binding      [RESOLVED - direct syntax]
+// Gap D: credential wiring via profile   [RESOLVED - secret/env bindings]
 
 module profiles.sdlc
 
@@ -34,113 +28,85 @@ import services.sdlc.providers.file_outcome_ledger as file_outcomes
 import services.sdlc.providers.codex_agent_provider as codex_agent
 import services.sdlc.providers.stub_providers as stubs
 
-import std.types { NonEmptyStr }
-
 // =========================================================================
-// Profile Declarations (target syntax)
+// Profile: unit_test
 // =========================================================================
-//
-// These are the canonical profile definitions. When the parser gains
-// profile/bind support (Gap C), these become executable. Until then,
-// they serve as documentation and the match-based functions below
-// provide the same binding semantics.
+// All stubs, hermetic, deterministic. No credentials needed.
+// Used for: `gunbc run --profile unit_test`
 
-// profile unit_test {
-//   bind IssueProvider      -> stub.IssueProvider
-//   bind ClaimStore         -> stub.ClaimStore
-//   bind OutcomeLedger      -> stub.OutcomeLedger
-//   bind AgentProvider      -> stub.AgentProvider
-//   bind SignalStore        -> stub.SignalStore
-//   bind ArtifactStore      -> stub.ArtifactStore
-// }
-//
-// profile local {
-//   bind IssueProvider      -> github.IssueProvider {
-//       owner: env("SDLC_OWNER", "gunb-ai"),
-//       repo: env("SDLC_REPO", "gunbc")
-//   }
-//   bind ClaimStore         -> file.ClaimStore {
-//       dir: env("SDLC_LEDGER_DIR", "target/sdlc/claims")
-//   }
-//   bind OutcomeLedger      -> file.OutcomeLedger {
-//       dir: env("SDLC_LEDGER_DIR", "target/sdlc/outcomes")
-//   }
-//   bind AgentProvider      -> codex.AgentProvider
-//   bind SignalStore        -> stub.SignalStore    // signals not needed for local dry-run
-//   bind ArtifactStore      -> stub.ArtifactStore  // inline artifacts for local
-// }
-//
-// profile cloud_run {
-//   bind IssueProvider      -> github.IssueProvider {
-//       owner: "gunb-ai", repo: "gunbc",
-//       credential: secret("github-token", project: "gunbai-auto")
-//   }
-//   bind ClaimStore         -> gcs.ClaimStore {
-//       bucket: "gunbai-auto-sdlc-claims", project: "gunbai-auto"
-//   }
-//   bind OutcomeLedger      -> gcs.OutcomeLedger {
-//       bucket: "gunbai-auto-sdlc-outcomes", project: "gunbai-auto"
-//   }
-//   bind AgentProvider      -> codex.AgentProvider {
-//       credential: secret("codex-api-key", project: "gunbai-auto")
-//   }
-//   bind SignalStore        -> pubsub.SignalStore {
-//       topic: "sdlc-signals", subscription: "sdlc-worker",
-//       project: "gunbai-auto"
-//   }
-//   bind ArtifactStore      -> gcs.ArtifactStore {
-//       bucket: "gunbai-auto-sdlc-artifacts", project: "gunbai-auto"
-//   }
-// }
-
-// =========================================================================
-// Profile Enum (runtime-selectable)
-// =========================================================================
-
-type SdlcProfile
-  = UnitTest                            // All stubs, hermetic
-  | Local                               // File-based, real GitHub
-  | CloudRun                            // GCS-based, stateless fleet
-
-// =========================================================================
-// Provider Selection Functions (bridge until profile/bind lands)
-// =========================================================================
-//
-// These functions implement the same binding semantics as the profile
-// declarations above. The pipeline calls these to resolve interfaces
-// to concrete implementations. The `--profile` CLI flag determines
-// which branch executes.
-//
-// Step 7 (gap analysis): transport selection by environment.
-
-fn select_issue_provider(profile: SdlcProfile, owner: String, repo: String) -> IssueProvider {
-  match profile {
-    UnitTest => stubs.stub.IssueProvider
-    Local    => github_issues.github.IssueProvider { owner: owner, repo: repo }
-    CloudRun => github_issues.github.IssueProvider { owner: owner, repo: repo }
-  }
+profile unit_test {
+  bind IssueProvider      -> stubs.stub.IssueProvider
+  bind ClaimStore         -> stubs.stub.ClaimStore
+  bind OutcomeLedger      -> stubs.stub.OutcomeLedger
+  bind AgentProvider      -> stubs.stub.AgentProvider
+  bind SignalStore        -> stubs.stub.SignalStore
+  bind ArtifactStore      -> stubs.stub.ArtifactStore
 }
 
-fn select_claim_store(profile: SdlcProfile) -> ClaimStore {
-  match profile {
-    UnitTest => stubs.stub.ClaimStore
-    Local    => file_claims.file.ClaimStore { dir: "target/sdlc/claims" }
-    CloudRun => stubs.stub.ClaimStore     // placeholder until GcsClaimStore lands
+// =========================================================================
+// Profile: local
+// =========================================================================
+// File-based ledgers, real GitHub API, single-process.
+// Used for: `gunbc run --profile local`
+
+profile local {
+  bind IssueProvider -> github_issues.github.IssueProvider {
+    owner: env("SDLC_OWNER", "gunb-ai")
+    repo: env("SDLC_REPO", "gunbc")
+    credential: env("GITHUB_TOKEN")
   }
+
+  bind ClaimStore -> file_claims.file.ClaimStore {
+    dir: env("SDLC_CLAIMS_DIR", "target/sdlc/claims")
+  }
+
+  bind OutcomeLedger -> file_outcomes.file.OutcomeLedger {
+    dir: env("SDLC_OUTCOMES_DIR", "target/sdlc/outcomes")
+  }
+
+  bind AgentProvider -> codex_agent.codex.AgentProvider {
+    credential: env("CODEX_API_KEY")
+  }
+
+  bind SignalStore -> stubs.stub.SignalStore
+  bind ArtifactStore -> stubs.stub.ArtifactStore
 }
 
-fn select_outcome_ledger(profile: SdlcProfile) -> OutcomeLedger {
-  match profile {
-    UnitTest => stubs.stub.OutcomeLedger
-    Local    => file_outcomes.file.OutcomeLedger { dir: "target/sdlc/outcomes" }
-    CloudRun => stubs.stub.OutcomeLedger  // placeholder until GcsOutcomeLedger lands
-  }
-}
+// =========================================================================
+// Profile: cloud_run
+// =========================================================================
+// GCS-based ledgers, real GitHub API, stateless fleet.
+// Used for: `gunbc run --profile cloud_run`
 
-fn select_agent_provider(profile: SdlcProfile) -> AgentProvider {
-  match profile {
-    UnitTest => stubs.stub.AgentProvider
-    Local    => codex_agent.codex.AgentProvider
-    CloudRun => codex_agent.codex.AgentProvider
+profile cloud_run {
+  bind IssueProvider -> github_issues.github.IssueProvider {
+    owner: "gunb-ai"
+    repo: "gunbc"
+    credential: secret("github-token", project: "gunbai-auto")
+  }
+
+  bind ClaimStore -> file_claims.file.ClaimStore {
+    // TODO: swap for gcs.ClaimStore when GCS provider lands
+    dir: "/tmp/sdlc/claims"
+  }
+
+  bind OutcomeLedger -> file_outcomes.file.OutcomeLedger {
+    // TODO: swap for gcs.OutcomeLedger when GCS provider lands
+    dir: "/tmp/sdlc/outcomes"
+  }
+
+  bind AgentProvider -> codex_agent.codex.AgentProvider {
+    credential: secret("codex-api-key", project: "gunbai-auto")
+  }
+
+  bind SignalStore -> stubs.stub.SignalStore {
+    // TODO: swap for pubsub.SignalStore when PubSub provider lands
+    // topic: "sdlc-signals", subscription: "sdlc-worker",
+    // project: "gunbai-auto"
+  }
+
+  bind ArtifactStore -> stubs.stub.ArtifactStore {
+    // TODO: swap for gcs.ArtifactStore when GCS provider lands
+    // bucket: "gunbai-auto-sdlc-artifacts", project: "gunbai-auto"
   }
 }

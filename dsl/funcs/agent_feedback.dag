@@ -9,15 +9,18 @@
 //   2. On completion: create PR, post results, transition labels
 //   3. On failure/timeout: post error, transition to error state
 //
-// This function is invoked after Codex.Spawn returns a run_id.
+// This function is invoked after AgentProvider.spawn returns a run_id.
 // It's the bridge between "agent dispatched" and "PR ready for review".
+//
+// Uses domain interfaces (Layer 2), not concrete services.
 
 module funcs.agent_feedback
 
-import services.agent.codex { Codex }
-import services.github.issues { Issues }
+import interfaces.issue_provider { IssueProvider }
+import interfaces.agent_provider { AgentProvider }
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
 import services.github.pull_request { PullRequest }
-import services.sdlc.control_plane { ControlPlane }
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -44,10 +47,12 @@ func handle_agent_completion(
   run_id: String,
   branch_name: String,
   run_key: String
-) -> { success: Bool, pr_number: Int } {
-  agent_result = Codex.GetResult(
-    run_id: run_id
-  )
+) -> { success: Bool, pr_number: Int }
+  uses issues: IssueProvider
+  uses agents: AgentProvider
+  uses outcomes: OutcomeLedger
+{
+  agent_result = agents.get_result(run_id: run_id)
 
   pr = PullRequest.Create(
     owner: owner,
@@ -58,34 +63,38 @@ func handle_agent_completion(
     base: "main"
   )
 
-  comment = Issues.AddComment(
-    owner: owner,
-    repo: repo,
-    number: issue_number,
+  comment = issues.comment(
+    id: "{owner}/{repo}#{issue_number}",
     body: format_agent_success_comment(
       run_id: run_id,
       files: agent_result.files_changed
-    )
+    ),
+    marker: "sdlc:agent-complete:{run_key}"
   )
 
-  labels = Issues.SetLabels(
-    owner: owner,
-    repo: repo,
-    number: issue_number,
-    labels: ["code-review"]
+  labels = issues.set_labels(
+    id: "{owner}/{repo}#{issue_number}",
+    labels: ["sdlc:code-review"]
   )
 
-  outcome = ControlPlane.UpsertStageOutcome(
-    intake_key: "{owner}/{repo}",
-    issue_id: "{owner}/{repo}#{issue_number}",
-    stage: "implementing",
+  recorded = outcomes.upsert(
     run_key: run_key,
-    outcome_status: "completed",
-    retry_attempt: 0,
-    payload_hash: "sha256:agent-completion"
+    stage: "implementing",
+    outcome: {
+      run_key: run_key,
+      stage: "implementing",
+      status: "Success",
+      payload: None,
+      error: None,
+      attempt_count: 1,
+      retry_budget_remaining: 2,
+      next_attempt_at: None,
+      created_at: "",
+      updated_at: ""
+    }
   )
 
-  return { success: true, pr_number: 0 }
+  return { success: true, pr_number: pr.number }
 }
 
 // ── Agent failure handler ───────────────────────────────────────────
@@ -97,26 +106,34 @@ func handle_agent_failure(
   run_id: String,
   error_message: String,
   run_key: String
-) -> { success: Bool } {
-  comment = Issues.AddComment(
-    owner: owner,
-    repo: repo,
-    number: issue_number,
+) -> { success: Bool }
+  uses issues: IssueProvider
+  uses outcomes: OutcomeLedger
+{
+  comment = issues.comment(
+    id: "{owner}/{repo}#{issue_number}",
     body: format_agent_failure_comment(
       run_id: run_id,
       error: error_message
-    )
+    ),
+    marker: "sdlc:agent-failed:{run_key}"
   )
 
-  outcome = ControlPlane.UpsertStageOutcome(
-    intake_key: "{owner}/{repo}",
-    issue_id: "{owner}/{repo}#{issue_number}",
-    stage: "implementing",
+  recorded = outcomes.upsert(
     run_key: run_key,
-    outcome_status: "failed",
-    retry_attempt: 0,
-    terminal: false,
-    payload_hash: "sha256:agent-failure"
+    stage: "implementing",
+    outcome: {
+      run_key: run_key,
+      stage: "implementing",
+      status: "Failed",
+      payload: None,
+      error: error_message,
+      attempt_count: 1,
+      retry_budget_remaining: 2,
+      next_attempt_at: None,
+      created_at: "",
+      updated_at: ""
+    }
   )
 
   return { success: false }
@@ -124,15 +141,10 @@ func handle_agent_failure(
 
 // ── Poll loop ───────────────────────────────────────────────────────
 // Polls agent status until terminal. The loop body is a single
-// PollStatus call; the scheduler invokes this repeatedly at
-// configured intervals (e.g. every 30s via Cloud Scheduler or
-// a cron trigger). Each invocation is stateless -- it checks the
-// agent's current status and acts accordingly.
-//
-// This is a "check-and-act" pattern rather than a long-running loop,
-// because the DSL compiles to DAGs that execute and return. The
-// iteration is driven by the external scheduler, not an in-process
-// spin loop.
+// poll call; the scheduler invokes this repeatedly at configured
+// intervals (e.g. every 30s via Cloud Scheduler or a cron trigger).
+// Each invocation is stateless -- it checks the agent's current
+// status and acts accordingly.
 
 func check_agent_status(
   owner: String,
@@ -141,18 +153,18 @@ func check_agent_status(
   run_id: String,
   branch_name: String,
   run_key: String
-) -> { finished: Bool, status: String } {
-  poll = Codex.PollStatus(
-    run_id: run_id
-  )
+) -> { finished: Bool, status: String }
+  uses agents: AgentProvider
+  uses claims: ClaimStore
+{
+  poll = agents.poll(run_id: run_id)
 
   if poll.finished {
-    heartbeat = ControlPlane.HeartbeatStageClaim(
-      intake_key: "{owner}/{repo}",
+    heartbeat = claims.heartbeat(
       issue_id: "{owner}/{repo}#{issue_number}",
       stage: "implementing",
-      claim_token: run_id,
-      lease_generation: 1
+      owner: run_id,
+      generation: 1
     )
   }
 
@@ -188,9 +200,9 @@ test agent_completion_creates_pr : agent_env {
         head: { sha: "abc123" }
     })
 
-    mock comment/execute.response -> rest_response(201, { id: 200, html_url: "https://github.com/gunb-ai/gunbc/issues/42#issuecomment-200" })
-    mock labels/execute.response -> rest_response(200, [{ name: "code-review" }])
-    mock outcome/execute.response -> rest_response(200, { updated: true, previous_status: null, checksum: "sha256:mock" })
+    mock comment/execute.response -> rest_response(201, { id: 200, html_url: "https://github.com/gunb-ai/gunbc/issues/42#issuecomment-200", ok: true })
+    mock labels/execute.response -> rest_response(200, [{ name: "sdlc:code-review" }])
+    mock outcome/execute.response -> rest_response(200, { updated: true, previous: null })
 
     expect result is Map
 }

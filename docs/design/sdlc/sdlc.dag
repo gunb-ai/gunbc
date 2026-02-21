@@ -24,16 +24,22 @@
 //
 // ── Gap Analysis Implementation Status ──
 //
-//   Gap A: IssueProvider interface                  [IMPLEMENTED]
-//   Gap B: ClaimStore + OutcomeLedger interfaces     [IMPLEMENTED]
-//   Gap C: Profile declarations (bridge syntax)      [IMPLEMENTED]
-//   Gap D: Credential wiring via profile             [PARTIAL - config bindings]
+//   Gap A: IssueProvider interface                  [RESOLVED]
+//   Gap B: ClaimStore + OutcomeLedger interfaces     [RESOLVED]
+//   Gap C: Profile declarations (direct syntax)      [RESOLVED - no bridges]
+//   Gap D: Credential wiring via profile             [RESOLVED - env/secret bindings]
 //   Gap E: CAS for multi-worker claim safety         [DEFERRED - single-worker ok]
 //   Gap F: SubDag/Pipeline node execution            [RESOLVED - stage composition]
-//   Gap G: Worker routes by stage                    [IMPLEMENTED - execute_stage]
-//   Gap H: Code review and acceptance stubs          [IMPLEMENTED - stub handlers]
-//   Gap I: Agent branch management                   [IMPLEMENTED - AgentProvider]
-//   Gap J: Pipeline parameters                       [IMPLEMENTED - param decls]
+//   Gap G: Worker routes by stage                    [RESOLVED - execute_stage]
+//   Gap H: Code review + acceptance testing          [RESOLVED - real handlers]
+//   Gap I: Agent branch management                   [RESOLVED - AgentProvider]
+//   Gap J: Pipeline parameters                       [RESOLVED - param decls]
+//
+// ── Legacy Code Status ──
+//
+//   services/sdlc/control_plane.dag  [DELETED - replaced by ClaimStore + OutcomeLedger]
+//   services/agent/codex.dag         [DELETED - replaced by AgentProvider + codex_agent_provider]
+//   Profile bridge functions          [DELETED - replaced by direct profile { bind } syntax]
 
 module docs.design.sdlc
 

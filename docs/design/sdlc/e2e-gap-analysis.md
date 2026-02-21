@@ -1,6 +1,6 @@
 # SDLC Pipeline E2E Gap Analysis
 
-Status: Draft — Revised with DSL-native implementation
+Status: Complete — All gaps resolved (except E deferred), all bridges eliminated
 Date: 2026-02-21
 Parent: [mega-modeling-design.md](mega-modeling-design.md) (MD0-D)
 Scope: Delta between the mega modeling design and current implementation for end-to-end pipeline execution, with specific focus on gaps blocking a local dry-run deployment.
@@ -10,6 +10,15 @@ Scope: Delta between the mega modeling design and current implementation for end
 Steps 1-7 from Section 8 have been implemented entirely in DSL (.dag files),
 bypassing the Rust worker path. The dual-execution-path problem (Section 7.2)
 is resolved by making the DSL pipeline the sole execution path.
+
+All bridge/legacy code has been eliminated:
+- `services/sdlc/control_plane.dag` deleted (replaced by ClaimStore + OutcomeLedger interfaces)
+- `services/agent/codex.dag` deleted (replaced by AgentProvider + codex_agent_provider.dag)
+- Profile bridge functions deleted (replaced by direct `profile { bind }` syntax)
+- `funcs/agent_feedback.dag` migrated to interface-based imports
+- `funcs/test_control_flow.dag` migrated to interface-based imports
+- Code review stage: real PR diff retrieval + LLM review (no longer stub)
+- Acceptance testing stage: real cargo test + clippy (no longer stub)
 
 ### Files Created / Modified
 
@@ -26,12 +35,20 @@ is resolved by making the DSL pipeline the sole execution path.
 | `dsl/services/sdlc/providers/file_outcome_ledger.dag` | File-based outcomes (Layer 3) | B |
 | `dsl/services/sdlc/providers/codex_agent_provider.dag` | Codex agent (Layer 3) | I |
 | `dsl/services/sdlc/providers/stub_providers.dag` | All stubs for unit_test profile | A, B, I |
-| `dsl/profiles/sdlc.dag` | Profile declarations + bridge fns | C, D, Step 7 |
-| `dsl/funcs/sdlc_stages.dag` | Per-stage handler functions | Steps 1-3 |
+| `dsl/profiles/sdlc.dag` | Direct profile { bind } declarations | C, D, Step 7 |
+| `dsl/funcs/sdlc_stages.dag` | Per-stage handlers (real code review + testing) | Steps 1-3, H |
 | `dsl/funcs/sdlc_worker.dag` | Worker dispatch with interfaces | Steps 1-5 |
+| `dsl/funcs/agent_feedback.dag` | Agent feedback loop (interface-based) | I |
 | `dsl/pipelines/sdlc.dag` | Pipeline with interfaces + params | F, G, J |
 | `dsl/std/types.dag` | All domain entities from domain model | A, B |
 | `docs/design/sdlc/sdlc.dag` | Design-version pipeline (synced) | — |
+
+### Files Deleted (Legacy)
+
+| File | Replaced By |
+|------|------------|
+| `dsl/services/sdlc/control_plane.dag` | `interfaces/claim_store.dag` + `interfaces/outcome_ledger.dag` + file-based providers |
+| `dsl/services/agent/codex.dag` | `interfaces/agent_provider.dag` + `services/sdlc/providers/codex_agent_provider.dag` |
 
 ### Gap Resolution Summary
 
@@ -39,13 +56,13 @@ is resolved by making the DSL pipeline the sole execution path.
 |-----|--------|-----------|
 | **A** (Domain interfaces) | **Resolved** | `interfaces/issue_provider.dag`, `services/sdlc/providers/github_issue_provider.dag` |
 | **B** (Claims/Outcomes) | **Resolved** | `interfaces/claim_store.dag`, `interfaces/outcome_ledger.dag`, file-based providers |
-| **C** (Profile binding) | **Bridged** | `profiles/sdlc.dag` with match-based selection (target `profile { bind }` syntax documented) |
-| **D** (Credential wiring) | **Partial** | Config bindings in profile; env-var fallback |
+| **C** (Profile binding) | **Resolved** | `profiles/sdlc.dag` with direct `profile { bind }` syntax (no bridges) |
+| **D** (Credential wiring) | **Resolved** | `env()` and `secret()` bindings in profile declarations |
 | **E** (Multi-worker CAS) | **Deferred** | Single-worker sufficient for dry-run |
 | **F** (SubDag execution) | **Resolved** | Stage composition via `execute_stage()` dispatcher |
 | **G** (Worker stage dispatch) | **Resolved** | `funcs/sdlc_worker.dag` routes all stages |
-| **H** (Code review/testing stubs) | **Implemented** | Stub handlers in `sdlc_stages.dag` |
-| **I** (Agent branch mgmt) | **Implemented** | `AgentProvider` interface with deterministic branch naming |
+| **H** (Code review/testing) | **Resolved** | Real PR diff + LLM review; real cargo test + clippy |
+| **I** (Agent branch mgmt) | **Resolved** | `AgentProvider` interface with deterministic branch naming |
 | **J** (Pipeline params) | **Resolved** | `param` declarations in pipeline and worker |
 
 ## 1. Architectural Principle
@@ -113,13 +130,12 @@ The gap is that Layer 2 (domain interfaces) and the compile-time profile binding
 
 ### 1.2 Existing Domain Services vs Target Architecture
 
-The DSL already has domain-level service definitions that are halfway to the target:
+**Status: RESOLVED.** The concrete services have been replaced by abstract interfaces:
 
-- `services/github/issues.dag` defines `Issues.List`, `Issues.Get`, `Issues.AddComment`, `Issues.SetLabels` -- these are domain operations.
-- `services/agent/codex.dag` defines `Codex.Spawn`, `Codex.PollStatus` -- domain operations.
-- `services/sdlc/control_plane.dag` defines `ControlPlane.AcquireStageClaim` -- domain operations.
+- `services/agent/codex.dag` **DELETED** → replaced by `interfaces/agent_provider.dag` + `services/sdlc/providers/codex_agent_provider.dag`
+- `services/sdlc/control_plane.dag` **DELETED** → replaced by `interfaces/claim_store.dag` + `interfaces/outcome_ledger.dag` + file-based providers
 
-The problem: these are concrete `service` definitions with hardcoded transport (`@rest` to a fixed `@endpoint`, `@shell` with specific commands). They should be abstract `interface` definitions where the transport is resolved by deployment profile. A test profile might satisfy `IssueProvider` with an in-memory stub; a production profile satisfies it with `GitHubIssueProvider`.
+The remaining concrete services (`services/github/issues.dag`, `services/github/pull_request.dag`, `services/cargo.dag`) are Layer 3 implementations used directly by stage handlers. They are NOT imported by the pipeline — the pipeline only uses interfaces. The `IssueProvider` interface wraps issue operations; the code review and testing stages use `PullRequest` and `cargo.Build` directly as they are stage-specific infrastructure.
 
 ## 2. Resource Abstraction Model
 
@@ -149,7 +165,9 @@ The compiler resolves abstract interface bindings via deployment profile at comp
 
 ### Gap A: Domain Services Are Concrete Instead of Abstract Interfaces
 
-**Current state**: `services/github/issues.dag`, `services/sdlc/control_plane.dag`, and `services/agent/codex.dag` are concrete `service` definitions with hardcoded transports (`@rest` to a fixed `@endpoint`, `@shell` with specific commands). The pipeline directly calls these concrete services.
+**Status: RESOLVED.** `interfaces/issue_provider.dag` defines the IssueProvider interface. `services/sdlc/providers/github_issue_provider.dag` implements it. Legacy concrete services (`control_plane.dag`, `codex.dag`) have been deleted.
+
+**Original state**: `services/github/issues.dag`, `services/sdlc/control_plane.dag`, and `services/agent/codex.dag` were concrete `service` definitions with hardcoded transports (`@rest` to a fixed `@endpoint`, `@shell` with specific commands). The pipeline directly called these concrete services.
 
 **Target state**: The mega modeling design Section 6.1 specifies domain operations (`try_acquire_claim`, `discover_ready_issues`, `upsert_comment`, etc.) as provider-fungible contracts. These should be `interface` definitions (Layer 2) that can be satisfied by different implementations (Layer 3) depending on the deployment profile.
 
@@ -191,7 +209,9 @@ The existing `service github.Issues` becomes the implementation body of `GitHubI
 
 ### Gap B: No Domain Interfaces for SDLC State (Claims, Outcomes)
 
-**Current state**: `services/sdlc/control_plane.dag` defines claim/outcome operations as a `service` with `@rest` transport against `http://127.0.0.1:8787`. No server exists behind this endpoint. The actual logic is in hand-written Rust (`sdlc/claims.rs`, `sdlc/state.rs`).
+**Status: RESOLVED.** `interfaces/claim_store.dag` and `interfaces/outcome_ledger.dag` define the domain interfaces. `services/sdlc/providers/file_claim_store.dag` and `file_outcome_ledger.dag` provide file-based implementations. `control_plane.dag` has been deleted.
+
+**Original state**: `services/sdlc/control_plane.dag` defined claim/outcome operations as a `service` with `@rest` transport against `http://127.0.0.1:8787`. No server existed behind this endpoint. The actual logic was in hand-written Rust (`sdlc/claims.rs`, `sdlc/state.rs`).
 
 **Target state**: Claims and outcomes are domain interfaces (per mega design Section 6.1):
 
@@ -239,7 +259,9 @@ The CAS semantics (owner verification, lease expiry, generation tracking) live i
 
 ### Gap C: No Deployment Profile Binding in Compiler
 
-**Current state**: `infra/core.dag` comments say "the provider is selected at compile time via environment config" but the compiler does not implement this. There is no mechanism to declare which concrete implementation satisfies an abstract interface for a given deployment.
+**Status: RESOLVED.** `profiles/sdlc.dag` now uses direct `profile { bind }` syntax. Three profiles defined: `unit_test`, `local`, `cloud_run`.
+
+**Original state**: `infra/core.dag` comments said "the provider is selected at compile time via environment config" but the compiler did not implement this. There was no mechanism to declare which concrete implementation satisfies an abstract interface for a given deployment.
 
 **Target state**: Deployment profiles are DSL-declared, binding domain interfaces to concrete implementations:
 
@@ -278,7 +300,9 @@ During compilation, `daglang compile --profile local` resolves every `uses` decl
 
 ### Gap D: Credential Wiring via Profile
 
-**Current state**: GitHub services declare `@auth(BearerToken)` but no credential intent mapping exists for `github.*`. Codex uses `@shell` with no env-var injection. The `credential_chain` pattern in `std/patterns.dag` covers GCP auth but not GitHub/Codex.
+**Status: RESOLVED.** Profile bindings now include `credential: env("GITHUB_TOKEN")` for local and `credential: secret("github-token", project: "gunbai-auto")` for cloud_run.
+
+**Original state**: GitHub services declared `@auth(BearerToken)` but no credential intent mapping existed for `github.*`. Codex used `@shell` with no env-var injection. The `credential_chain` pattern in `std/patterns.dag` covered GCP auth but not GitHub/Codex.
 
 **Target state**: Credentials are part of the deployment profile:
 
@@ -354,26 +378,25 @@ Specific locations:
 
 ### Gap H: Code Review and Acceptance Testing Stages Are Stubs
 
-**Current state**: Two versions of the pipeline exist with different stub implementations:
-- `dsl/pipelines/sdlc.dag` (compiled pipeline): stages `code_review` and `acceptance` post static comments ("Code review completed.", "Acceptance tests completed.") with no actual logic. No PR diff retrieval, no LLM analysis, no CI execution.
-- `docs/design/sdlc/sdlc.dag` (design-version pipeline): references `inline_review()`, `get_pr_diff()`, and `ci()` which are more realistic but `get_pr_diff()` and `generate_implementation_plan()` are undefined functions.
+**Status: RESOLVED.** `handle_code_review_to_testing` now retrieves PR diff via `PullRequest.Get` + `PullRequest.ListFiles`, sends to LLM for review, and posts findings as PR comment. `handle_testing_to_done` now runs `cargo.Build.Test` + `cargo.Build.Clippy` and only advances to done if all pass.
 
-**Target state**:
-- `code_review`: Call `PullRequest.ListFiles` + `PullRequest.Get` to retrieve diff, send to LLM review service, post findings as PR comment.
-- `acceptance`: Call `shell.Cargo.Test` + `shell.Cargo.Clippy` on PR branch (or trigger CI via GitHub Actions API).
+**Original state**: Two versions of the pipeline existed with different stub implementations:
+- `dsl/pipelines/sdlc.dag` (compiled pipeline): stages `code_review` and `acceptance` posted static comments with no actual logic.
+- `docs/design/sdlc/sdlc.dag` (design-version pipeline): referenced undefined functions.
 
-Both should be DSL `func`s that compose existing service operations.
-
-**Severity**: High. Blocks the full scenario end-to-end.
-**Dry-run impact**: Partially blocking. A dry-run can bypass these stages with stub responses, but the scenario (`TODO/scenario_sdlc.md`) explicitly requires real code review and CI validation. For a minimal dry-run proving the stage progression works, stubs are acceptable; for an E2E scenario dry-run, this blocks.
+**Resolution**:
+- `code_review`: `PullRequest.Get` + `PullRequest.ListFiles` + `llm.Anthropic.Messages` for code review, findings posted as PR comment.
+- `acceptance`: `cargo.Build.Test` + `cargo.Build.Clippy` with pass/fail gating. Only transitions to done on all-green.
 
 ### Gap I: Agent Branch Management and Polling
 
-**Current state**:
-- `run_agent_spawn` (`sdlc.rs:1375`) creates a `HandoffSpec` with a `target_branch` but uses `StubAgentAdapter` which does not actually create a git branch, run an agent, or push code.
-- No git branch is created before `Codex.Spawn` in the DSL pipeline.
-- `agent_ledger` is written but never read back during the worker loop — no polling of in-flight agent runs occurs.
-- The `validate-pr` command (`sdlc.rs`) exists but is separate from the worker loop.
+**Status: RESOLVED.** `AgentProvider` interface with `spawn`, `poll`, `cancel`, `get_result` capabilities. Deterministic branch naming (`sdlc/issue-{number}`). `handle_implementing_to_code_review` creates PR from agent branch.
+
+**Original state**:
+- `run_agent_spawn` (`sdlc.rs:1375`) created a `HandoffSpec` with a `target_branch` but used `StubAgentAdapter` which did not actually create a git branch, run an agent, or push code.
+- No git branch was created before `Codex.Spawn` in the DSL pipeline.
+- `agent_ledger` was written but never read back during the worker loop.
+- The `validate-pr` command (`sdlc.rs`) existed but was separate from the worker loop.
 
 **Target state**:
 - Before `Codex.Spawn`, create a deterministic branch (`sdlc/issue-{number}`) via `shell.Git` service.
@@ -385,9 +408,11 @@ Both should be DSL `func`s that compose existing service operations.
 
 ### Gap J: Pipeline Parameters Are Hardcoded
 
-**Current state**: Two divergent pipelines with different parameterization:
-- `dsl/pipelines/sdlc.dag` (compiled): Uses `fn default_repo_owner() -> String { "gunb-ai" }` and similar `fn` helpers. No `param` declarations. The Rust binary accepts `--issue-id`, `--intake-key` but these values never reach the DSL pipeline.
-- `docs/design/sdlc/sdlc.dag` (design version): Uses `param repo_owner: String` declarations, which is the correct target. But this file is in `docs/design/` and is not the compiled version.
+**Status: RESOLVED.** Both `pipelines/sdlc.dag` and `funcs/sdlc_worker.dag` use `param` declarations. Old `fn default_*()` helpers deleted.
+
+**Original state**: Two divergent pipelines with different parameterization:
+- `dsl/pipelines/sdlc.dag` (compiled): Used `fn default_repo_owner() -> String { "gunb-ai" }` and similar `fn` helpers. No `param` declarations.
+- `docs/design/sdlc/sdlc.dag` (design version): Used `param repo_owner: String` declarations, which was the correct target.
 
 **Target state**: Pipeline inputs are bound from the deployment profile or passed as DAG inputs at execution time. The compiled DAG accepts `owner`, `repo`, `run_key` as top-level inputs.
 
