@@ -717,6 +717,7 @@ fn run_worker(
             "released_claims": released,
             "claim_conflicts": [],
             "terminalized": [],
+            "terminal_failures": {},
             "awaiting_approval": [],
             "skipped_missing_issue": [],
             "skipped_terminalized": [],
@@ -777,6 +778,7 @@ fn run_worker(
     let mut replay_skipped = Vec::new();
     let mut executed_runs = Vec::new();
     let mut reconcile_inputs = Vec::new();
+    let mut terminal_failures = BTreeMap::new();
     let mut stage_duration_ms = BTreeMap::new();
     let mut approval_latency_ms = BTreeMap::new();
     let mut retry_attempts = BTreeMap::new();
@@ -805,6 +807,9 @@ fn run_worker(
         }
         if record.terminalized {
             skipped_terminalized.push(intake_key.clone());
+            if let Some(last_error) = &record.retry.last_error {
+                terminal_failures.insert(intake_key.clone(), last_error.clone());
+            }
             continue;
         }
         let Some(issue_id) = record.issue_id else {
@@ -831,6 +836,14 @@ fn run_worker(
                 );
                 if !has_budget {
                     record.terminalized = true;
+                    terminal_failures.insert(
+                        intake_key.clone(),
+                        record
+                            .retry
+                            .last_error
+                            .clone()
+                            .unwrap_or_else(|| "retry_budget_exhausted".to_string()),
+                    );
                 }
                 claim_conflicts.push(intake_key.clone());
                 continue;
@@ -885,13 +898,14 @@ fn run_worker(
                     released_claims.push(intake_key.clone());
                 }
             }
-            ReconcileAction::Terminalize { intake_key, .. } => {
+            ReconcileAction::Terminalize { intake_key, reason } => {
                 if let Some(record) = ledger.entries.get_mut(intake_key) {
                     record.terminalized = true;
                     if !dry_run {
                         mark_run_failed(&mut run_state, intake_key, &record.run_key, now);
                     }
                 }
+                terminal_failures.insert(intake_key.clone(), reason.clone());
                 terminalized.push(intake_key.clone());
             }
         }
@@ -920,6 +934,7 @@ fn run_worker(
         "released_claims": released_claims,
         "claim_conflicts": claim_conflicts,
         "terminalized": terminalized,
+        "terminal_failures": terminal_failures,
         "awaiting_approval": awaiting_approval,
         "skipped_missing_issue": skipped_missing_issue,
         "skipped_terminalized": skipped_terminalized,

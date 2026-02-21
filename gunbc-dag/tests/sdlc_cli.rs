@@ -1063,6 +1063,7 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
         );
     }
 
+    let mut final_payload = serde_json::Value::Null;
     for _ in 0..3 {
         let worker = Command::new(sdlc_bin())
             .arg("worker")
@@ -1074,6 +1075,7 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
             "worker should succeed: {}",
             String::from_utf8_lossy(&worker.stderr)
         );
+        final_payload = serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
     }
 
     let ledger_path = root.join("target/sdlc/intake-ledger.json");
@@ -1087,6 +1089,13 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
     assert_eq!(
         ledger["entries"]["intent-20260221-term-b"]["retry"]["attempts"],
         3
+    );
+    assert!(
+        final_payload["terminal_failures"]["intent-20260221-term-b"]
+            .as_str()
+            .expect("terminal failure reason should be string")
+            .contains("claim conflict"),
+        "worker output should expose terminal failure reason for exhausted retries"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
