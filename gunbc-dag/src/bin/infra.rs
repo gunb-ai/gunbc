@@ -314,11 +314,19 @@ fn run_compiled_infra_orchestration(
 }
 
 fn collect_spec_targets(spec: &InfraSpec) -> Vec<String> {
-    spec.secrets
+    let mut targets = spec
+        .secrets
         .iter()
         .filter(|secret| secret.status == SecretStatus::Active)
         .map(|secret| format!("secret:{}", secret.secret_id))
-        .collect()
+        .collect::<Vec<_>>();
+    targets.extend(
+        spec.service_accounts
+            .iter()
+            .map(|service_account| format!("service-account:{}", service_account.name)),
+    );
+    targets.push(format!("wif:{}:{}", spec.wif.pool_id, spec.wif.provider_id));
+    targets
 }
 
 fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestrationOutput, String> {
@@ -906,15 +914,25 @@ mod tests {
     }
 
     #[test]
-    fn collect_spec_targets_includes_only_active_secrets() {
+    fn collect_spec_targets_includes_runtime_dependencies() {
         let targets = collect_spec_targets(&DEV_SPEC);
         assert!(
-            targets.iter().all(|target| target.starts_with("secret:")),
-            "all targets should be prefixed secret identifiers: {targets:?}"
+            targets.iter().any(|target| target.starts_with("secret:")),
+            "targets should include secret dependencies: {targets:?}"
         );
         assert!(
             targets.contains(&"secret:github-token".to_string()),
             "dev spec should include active github token secret target"
+        );
+        assert!(
+            targets
+                .iter()
+                .any(|target| target.starts_with("service-account:")),
+            "targets should include service-account dependencies: {targets:?}"
+        );
+        assert!(
+            targets.iter().any(|target| target.starts_with("wif:")),
+            "targets should include wif dependency: {targets:?}"
         );
     }
 
