@@ -742,6 +742,7 @@ fn run_worker(
             "mode": mode,
             "report_generated_at_epoch_ms": now,
             "issue_filter": issue_filter,
+            "issue_binding_found": issue_filter.map(|_| false),
             "pending_count": 0,
             "intake_keys": [],
             "ready_to_run": [],
@@ -807,6 +808,7 @@ fn run_worker(
 
     let mut intake_keys: Vec<String> = ledger.entries.keys().cloned().collect();
     intake_keys.sort();
+    let mut issue_binding_found = None;
     if let Some(issue_id) = issue_filter {
         intake_keys.retain(|intake_key| {
             ledger
@@ -815,9 +817,7 @@ fn run_worker(
                 .and_then(|record| record.issue_id)
                 == Some(issue_id)
         });
-        if intake_keys.is_empty() {
-            return Err(format!("no intake entries found for issue_id `{issue_id}`"));
-        }
+        issue_binding_found = Some(!intake_keys.is_empty());
     }
     let mut skipped_missing_issue = Vec::new();
     let mut skipped_terminalized = Vec::new();
@@ -1020,6 +1020,7 @@ fn run_worker(
         "command": command_label,
         "report_generated_at_epoch_ms": now,
         "issue_filter": issue_filter,
+        "issue_binding_found": issue_binding_found,
         "mode": mode,
         "pending_count": pending_count,
         "intake_keys": intake_keys,

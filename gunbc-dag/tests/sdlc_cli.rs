@@ -744,6 +744,7 @@ fn issue_command_filters_worker_scope_by_issue_id() {
         serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
     assert_eq!(payload["command"], "issue");
     assert_eq!(payload["issue_filter"], 5001);
+    assert_eq!(payload["issue_binding_found"], true);
     assert_eq!(payload["pending_count"], 1);
     assert_eq!(
         payload["intake_keys"][0],
@@ -755,7 +756,7 @@ fn issue_command_filters_worker_scope_by_issue_id() {
 }
 
 #[test]
-fn issue_command_fails_closed_when_issue_id_not_found() {
+fn issue_command_reports_unbound_issue_when_issue_id_not_found() {
     let root = unique_temp_dir("issue_not_found");
     std::fs::create_dir_all(&root).expect("create temp root");
     let intent_path = root.join("intent.yaml");
@@ -788,13 +789,27 @@ fn issue_command_fails_closed_when_issue_id_not_found() {
         .output()
         .expect("run issue command with missing issue id");
     assert!(
-        !issue.status.success(),
-        "issue command should fail closed when no matching entries exist"
+        issue.status.success(),
+        "issue command should still succeed and report unbound issue state: {}",
+        String::from_utf8_lossy(&issue.stderr)
     );
-    let stderr = String::from_utf8_lossy(&issue.stderr);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
     assert!(
-        stderr.contains("no intake entries found for issue_id `7999`"),
-        "issue command should explain missing issue mapping: {stderr}"
+        payload["issue_binding_found"] == false,
+        "issue command should report missing intake binding for requested issue id"
+    );
+    assert_eq!(
+        payload["pending_count"], 0,
+        "missing issue binding should produce empty pending set"
+    );
+    assert_eq!(
+        payload["intake_keys"]
+            .as_array()
+            .expect("intake_keys should be array")
+            .len(),
+        0,
+        "missing issue binding should produce empty intake key list"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
@@ -840,6 +855,7 @@ fn issue_command_real_mode_persists_execution_report() {
     let payload: serde_json::Value =
         serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
     assert_eq!(payload["command"], "issue");
+    assert_eq!(payload["issue_binding_found"], true);
     assert_eq!(payload["execution_report_path"], "target/sdlc/execution-report.json");
 
     let report_raw = std::fs::read_to_string(root.join("target/sdlc/execution-report.json"))
