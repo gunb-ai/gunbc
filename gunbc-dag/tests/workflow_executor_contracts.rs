@@ -6,8 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use gunbc_dag::{
     check_slo, ci_unit_commands, ci_workflow_spec, default_process_unit_registry,
     default_slo_budgets, execute_workflow_plan, explain_plan, plan_workflow,
-    render_execution_report, test_all_unit_commands, test_all_workflow_spec, top_slow_units,
-    ExecutionSummary, MissReason, PlannerInputs, SloBudget, SloResult, UnitResult,
+    render_execution_report, sdlc_workflow_spec, test_all_unit_commands, test_all_workflow_spec,
+    top_slow_units, workflow_unit_commands, ExecutionSummary, MissReason, PlannerInputs,
+    SloBudget, SloResult, UnitResult,
 };
 use gunbc_ir::NodeId;
 
@@ -111,6 +112,44 @@ fn test_all_workflow_dry_run_plans_all_units() {
 fn test_all_unit_commands_map_covers_all_non_report_nodes() {
     let spec = test_all_workflow_spec().expect("test-all spec");
     let commands = test_all_unit_commands();
+    for node in &spec.dag.nodes {
+        if node.id.0.ends_with(".report") {
+            assert!(
+                !commands.contains_key(&node.id),
+                "report node '{}' should not have a command",
+                node.id.0
+            );
+        } else {
+            assert!(
+                commands.contains_key(&node.id),
+                "non-report node '{}' should have a command",
+                node.id.0
+            );
+        }
+    }
+}
+
+#[test]
+fn sdlc_workflow_dry_run_plans_all_units() {
+    let root = temp_root();
+    let spec = sdlc_workflow_spec().expect("sdlc spec");
+    let registry = default_process_unit_registry();
+    let plan = plan_workflow(&spec, &registry, &PlannerInputs::new(), &root).expect("plan");
+
+    let commands = workflow_unit_commands("sdlc").expect("sdlc commands");
+    let summary = execute_workflow_plan(&spec, &plan, &commands, &root, true);
+
+    assert!(summary.success(), "sdlc dry-run should succeed");
+    assert_eq!(summary.total_units, plan.nodes.len());
+    assert_eq!(summary.cache_hits, 0);
+    assert_eq!(summary.pending_approvals, 0);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn sdlc_unit_commands_map_covers_all_non_report_nodes() {
+    let spec = sdlc_workflow_spec().expect("sdlc spec");
+    let commands = workflow_unit_commands("sdlc").expect("sdlc commands");
     for node in &spec.dag.nodes {
         if node.id.0.ends_with(".report") {
             assert!(
