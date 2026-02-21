@@ -793,6 +793,7 @@ mod tests {
             "services.github.issues",
             "services.llm.anthropic",
             "services.llm.openai",
+            "services.sdlc.control_plane",
             "std.resources",
             "std.types",
             "cloud.aws.credential",
@@ -1068,7 +1069,7 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 48);
+        assert_eq!(result.parsed_count(), 49);
         assert!(
             result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
@@ -1113,7 +1114,7 @@ mod tests {
         .expect("pipeline should execute");
         assert_eq!(
             result.parsed_count(),
-            48,
+            49,
             "report stop should retain parse-stage file count for real corpus"
         );
     }
