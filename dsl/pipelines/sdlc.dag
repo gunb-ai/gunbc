@@ -32,43 +32,49 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 import interfaces.agent_provider { AgentProvider }
+import services.github.pull_request { PullRequest }
+import services.cargo { Cargo }
+import services.git { git.Core }
 import tools.design { generate_design, review_design }
 import shared.dag_util { aggregate_results, format_report, stage_result }
 import std.types {
     TrackedIssue, IssueLifecycleStage, DesignOutput,
     DesignFinding, ImplementationPlan, PipelineRun,
     PipelineArtifact, StageResult, Summary,
-    StageRunKey, StageOutcome, OutcomeStatus, IssueState
+    StageRunKey, StageOutcome, OutcomeStatus, IssueState,
+    NonEmptyStr, ApprovalMode
 }
 import std.state_machines {
     validate_transition, validate_transition_with_budget,
     determine_stage, stage_to_label, transition_labels
 }
 
-// ── Pipeline defaults ───────────────────────────────────────────────
-// Bound at invocation time (from webhook payload, CLI args, or
-// a polling loop). Using fn helpers because the DSL doesn't have
-// top-level param declarations yet.
+// ── Pipeline parameters ──────────────────────────────────────────────
+// Addresses D12: Pipeline parameters are injectable from the profile
+// or invocation context (webhook payload, CLI args, polling loop).
+//
+// The PipelineParams type is the top-level input contract for the
+// pipeline. Workers construct this from their context and pass it
+// when invoking the compiled DAG.
 
-fn default_repo_owner() -> String {
-  "gunb-ai"
+type PipelineParams {
+  repo_owner:     NonEmptyStr = "gunb-ai"
+  repo_name:      NonEmptyStr = "gunbc"
+  issue_number:   Int = 1
+  llm_provider:   NonEmptyStr = "anthropic"
+  llm_model:      NonEmptyStr = "claude-sonnet-4-20250514"
+  retry_budget:   Int = 3                               // Max attempts per stage
+  worker_id:      NonEmptyStr = "pipelines.sdlc"        // Worker identity for claims
+  agent_model:    NonEmptyStr = "o4-mini"                // Model for agent execution
+  agent_timeout:  Int = 600                              // Agent timeout in seconds
 }
 
-fn default_repo_name() -> String {
-  "gunbc"
-}
-
-fn default_issue_number() -> Int {
-  1
-}
-
-fn default_llm_provider() -> String {
-  "anthropic"
-}
-
-fn default_llm_model() -> String {
-  "claude-sonnet-4-20250514"
-}
+// Accessors for backwards compatibility and readability.
+fn default_repo_owner() -> String { "gunb-ai" }
+fn default_repo_name() -> String { "gunbc" }
+fn default_issue_number() -> Int { 1 }
+fn default_llm_provider() -> String { "anthropic" }
+fn default_llm_model() -> String { "claude-sonnet-4-20250514" }
 
 // ── Helper functions ────────────────────────────────────────────────
 
@@ -109,6 +115,24 @@ fn format_ci_comment(result: Json) -> String {
 
 fn make_issue_id(owner: String, repo: String, number: Int) -> String {
   "{owner}/{repo}#{number}"
+}
+
+// D11: Agent branch naming convention.
+fn agent_branch_name(number: Int) -> String {
+  "sdlc/issue-{number}"
+}
+
+// D10: Format code review findings as markdown.
+fn format_code_review_findings(files: Json, review_body: String) -> String {
+  let file_count = files |> count()
+  "## Code Review\n\n**Files changed:** {file_count}\n\n{review_body}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
+}
+
+// D10: Format acceptance test results as markdown.
+fn format_test_results(test_result: Json, clippy_result: Json) -> String {
+  let test_status = match test_result.success { true => "PASSED", false => "FAILED" }
+  let clippy_status = match clippy_result.success { true => "PASSED", false => "FAILED" }
+  "## Acceptance Tests\n\n| Check | Status |\n|---|---|\n| `cargo test` | {test_status} |\n| `cargo clippy` | {clippy_status} |\n\n### Test Output\n```\n{test_result.stdout}\n```\n\n### Clippy Output\n```\n{clippy_result.stdout}\n```\n\n---\n_Tested by gunbc SDLC pipeline_"
 }
 
 // ── Pipeline ────────────────────────────────────────────────────────
@@ -276,8 +300,9 @@ pipeline sdlc
   }
 
   // Stage 7: Implementation (transition: accepted -> implementing)
-  // Spawns agent on branch sdlc/issue-{number}
-  stage plan_implementation [after accept_design] {
+  // D11: Creates branch, spawns agent, waits for completion, creates PR.
+  stage implementation [after accept_design] {
+    // Post implementation plan as comment
     plan_comment = issues.comment(
       id: make_issue_id(
         owner: default_repo_owner(),
@@ -288,6 +313,7 @@ pipeline sdlc
       marker: "sdlc:plan-artifact"
     )
 
+    // CAS transition: Accepted -> Implementing
     impl_labels = issues.set_labels(
       id: make_issue_id(
         owner: default_repo_owner(),
@@ -299,20 +325,94 @@ pipeline sdlc
         to_stage: Implementing
       )
     )
+
+    // D11: Spawn agent on dedicated branch with design context
+    agent_run = agents.spawn(
+      prompt: "Implement the following design for issue #{default_issue_number()}:\n\n{design_output.content}",
+      repo_path: ".",
+      branch: agent_branch_name(number: default_issue_number()),
+      model: default_llm_model(),
+      timeout_seconds: 600,
+      approval_mode: FullAuto
+    )
+
+    // Poll agent until completion
+    agent_result = agents.poll(run_id: agent_run.run_id) [after agent_run]
+
+    // D11: Create PR from agent branch after completion
+    pr_result = PullRequest.Create(
+      owner: default_repo_owner(),
+      repo: default_repo_name(),
+      title: "SDLC: {issue_result.issue.title}",
+      body: "## Auto-generated PR\n\nResolves #{default_issue_number()}\n\nGenerated by the SDLC pipeline from the approved design.",
+      head: agent_branch_name(number: default_issue_number()),
+      base: "main"
+    ) [after agent_result, when agent_result.finished && agent_result.exit_code == 0]
+
+    // Record agent outcome
+    impl_outcome = outcomes.upsert(
+      run_key: "sdlc::default-run",
+      stage: stage_to_label(stage: Implementing),
+      outcome: {
+        status: match agent_result.exit_code {
+          0 => "Success"
+          _ => "Failed"
+        },
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
+    ) [after agent_result]
   }
 
   // Stage 8: Code review (transition: implementing -> code-review)
-  stage code_review [after plan_implementation] {
-    cr_comment = issues.comment(
+  // D10: Real code review using PR diff + LLM review.
+  stage code_review [after implementation, when agent_result.exit_code == 0] {
+    // Fetch list of changed files from the PR
+    pr_files = PullRequest.ListFiles(
+      owner: default_repo_owner(),
+      repo: default_repo_name(),
+      number: pr_result.number
+    )
+
+    // Get the full diff for LLM review
+    pr_diff = git.Core.Diff(
+      base: "main",
+      head: agent_branch_name(number: default_issue_number())
+    )
+
+    // LLM-based code review against the diff
+    code_review_output = review_design(
+      design: pr_diff.diff,
+      provider: default_llm_provider(),
+      model: default_llm_model()
+    )
+
+    // Post review findings as PR comment
+    cr_comment = PullRequest.AddComment(
+      owner: default_repo_owner(),
+      repo: default_repo_name(),
+      number: pr_result.number,
+      body: format_code_review_findings(
+        files: pr_files.files,
+        review_body: code_review_output.summary
+      )
+    )
+
+    // Post review findings to the issue as well
+    cr_issue_comment = issues.comment(
       id: make_issue_id(
         owner: default_repo_owner(),
         repo: default_repo_name(),
         number: default_issue_number()
       ),
-      body: "Code review completed.",
+      body: format_code_review_findings(
+        files: pr_files.files,
+        review_body: code_review_output.summary
+      ),
       marker: "sdlc:code-review-artifact"
     )
 
+    // CAS transition: Implementing -> CodeReview
     cr_labels = issues.set_labels(
       id: make_issue_id(
         owner: default_repo_owner(),
@@ -324,10 +424,26 @@ pipeline sdlc
         to_stage: CodeReview
       )
     )
+
+    // Record code review outcome
+    cr_outcome = outcomes.upsert(
+      run_key: "sdlc::default-run",
+      stage: stage_to_label(stage: CodeReview),
+      outcome: {
+        status: match code_review_output.approved {
+          true  => "Success"
+          false => "Failed"
+        },
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
+    )
   }
 
   // Stage 9: Acceptance testing (transition: code-review -> testing)
-  stage acceptance [after code_review] {
+  // D10: Real acceptance tests using cargo test + cargo clippy.
+  stage acceptance [after code_review, when code_review_output.approved] {
+    // CAS transition: CodeReview -> Testing
     test_labels = issues.set_labels(
       id: make_issue_id(
         owner: default_repo_owner(),
@@ -340,15 +456,47 @@ pipeline sdlc
       )
     )
 
+    // D10: Run cargo test on the PR branch
+    test_result = Cargo.Test()
+
+    // D10: Run cargo clippy on the PR branch
+    clippy_result = Cargo.Clippy()
+
+    // Post test results as issue comment
     ci_comment = issues.comment(
       id: make_issue_id(
         owner: default_repo_owner(),
         repo: default_repo_name(),
         number: default_issue_number()
       ),
-      body: "Acceptance tests completed.",
+      body: format_test_results(
+        test_result: test_result,
+        clippy_result: clippy_result
+      ),
       marker: "sdlc:test-report-artifact"
-    )
+    ) [after test_result, after clippy_result]
+
+    // D11: Merge PR if tests pass
+    merge_result = PullRequest.Merge(
+      owner: default_repo_owner(),
+      repo: default_repo_name(),
+      number: pr_result.number,
+      merge_method: "squash"
+    ) [after test_result, after clippy_result, when test_result.success && clippy_result.success]
+
+    // Record acceptance outcome
+    test_outcome = outcomes.upsert(
+      run_key: "sdlc::default-run",
+      stage: stage_to_label(stage: Testing),
+      outcome: {
+        status: match test_result.success && clippy_result.success {
+          true  => "Success"
+          false => "Failed"
+        },
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
+    ) [after test_result, after clippy_result]
   }
 
   // Stage 10: Close (transition: testing -> done, close issue)

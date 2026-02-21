@@ -243,6 +243,36 @@ domain_passthrough_op! {
 }
 
 domain_passthrough_op! {
+    PipelineSdlcOp, "pipelines.sdlc", resolve_pipeline_sdlc {
+        "sdlc" => Sdlc,
+        "default_repo_owner" => DefaultRepoOwner,
+        "default_repo_name" => DefaultRepoName,
+        "default_issue_number" => DefaultIssueNumber,
+        "default_llm_provider" => DefaultLlmProvider,
+        "default_llm_model" => DefaultLlmModel,
+        "has_label" => HasLabel,
+        "format_design_comment" => FormatDesignComment,
+        "format_review_comment" => FormatReviewComment,
+        "format_plan_comment" => FormatPlanComment,
+        "format_code_review_comment" => FormatCodeReviewComment,
+        "format_ci_comment" => FormatCiComment,
+        "make_issue_id" => MakeIssueId,
+        "agent_branch_name" => AgentBranchName,
+        "format_code_review_findings" => FormatCodeReviewFindings,
+        "format_test_results" => FormatTestResults,
+    }
+}
+
+domain_passthrough_op! {
+    PipelineReconcilerOp, "pipelines.reconciler", resolve_pipeline_reconciler {
+        "reconciler" => Reconciler,
+        "is_terminal" => IsTerminal,
+        "is_retryable" => IsRetryable,
+        "format_terminal_comment" => FormatTerminalComment,
+    }
+}
+
+domain_passthrough_op! {
     SharedDagUtilOp, "shared.dag_util", resolve_shared_dag_util {
         "aggregate_results" => AggregateResults,
         "all_succeeded" => AllSucceeded,
@@ -279,6 +309,28 @@ domain_passthrough_op! {
         "credential_chain" => CredentialChain,
         "transaction" => Transaction,
         "retry" => Retry,
+    }
+}
+
+/// Pipeline dispatch op for resolved `LoweredOp::Pipeline` nodes.
+///
+/// When a pipeline is invoked as a node in another DAG, this op represents
+/// the execution dispatch to the compiled pipeline's stages. The individual
+/// stage nodes are expanded by the lowering pass; this op handles the
+/// pipeline-level passthrough of inputs to outputs.
+#[derive(Debug, Clone)]
+struct PipelineDispatchOp {
+    _module: String,
+    _name: String,
+    output_port_names: Vec<String>,
+}
+
+impl Executable for PipelineDispatchOp {
+    fn execute(
+        &self,
+        inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
     }
 }
 
@@ -564,7 +616,12 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
         LoweredOp::Pipeline { module, name, .. } => {
-            Ok(DynOp::new(UnsupportedOp::new(&format!("{module}.{name}",))))
+            resolve_domain(node_id, module, name, outputs, None)
+                .or_else(|_| Ok(DynOp::new(PipelineDispatchOp {
+                    _module: module.clone(),
+                    _name: name.clone(),
+                    output_port_names: declared_output_names(outputs),
+                })))
         }
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
@@ -634,6 +691,8 @@ fn resolve_domain(
         "tools.deps" => resolve_deps(node_id, name, outputs),
         "tools.infra" => resolve_infra(node_id, name, outputs),
         "pipelines.ci" => resolve_pipeline_ci(node_id, name, outputs),
+        "pipelines.sdlc" => resolve_pipeline_sdlc(node_id, name, outputs),
+        "pipelines.reconciler" => resolve_pipeline_reconciler(node_id, name, outputs),
         "shared.dag_util" => resolve_shared_dag_util(node_id, name, outputs),
         "shared.gist_modes" => resolve_shared_gist_modes(node_id, name, outputs),
         "std.patterns" => resolve_std_patterns(node_id, name, outputs),

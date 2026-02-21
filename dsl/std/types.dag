@@ -72,6 +72,43 @@ type FilePath     = String @non_empty                    // ⟦FilePath⟧ = ⟦
 type SemVer       = String @pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr  = String @non_empty                    // ⟦NonEmptyStr⟧ = {s ∈ Σ* | |s| > 0}
 
+// --- Temporal types (Level 1: Refinements for time) -----------------------
+// Addresses deficit D14 from domain-modeling-comprehensive.md §9.
+//
+// Timestamp is an ISO 8601 string (not epoch). Duration is milliseconds.
+// These are refinements, not opaque wrappers — the pipeline can still
+// pass them where String/Int is expected (widening), but String/Int
+// cannot be passed where Timestamp/Duration is expected (narrowing error).
+//
+//   ⟦Timestamp⟧ ⊂ ⟦NonEmptyStr⟧ ⊂ ⟦String⟧
+//   ⟦Duration⟧  ⊂ ⟦Int⟧
+//   ⟦EpochMs⟧   ⊂ ⟦Int⟧
+
+type Timestamp    = String @pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")  // ISO 8601
+type EpochMs      = Int @range(min: 0)                    // Unix epoch milliseconds (non-negative)
+type Duration     = Int @range(min: 0)                    // Duration in milliseconds (non-negative)
+
+// --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
+// Addresses deficit D15 from domain-modeling-comprehensive.md §9.
+//
+// Branded types are structurally identical (all NonEmptyStr) but nominally
+// disjoint. The @brand annotation adds a Brand node to the type's DAG,
+// making set membership check type-aware:
+//   ⟦IssueId⟧ ∩ ⟦IntentId⟧ = ∅   even though both ⊂ ⟦NonEmptyStr⟧
+//
+// This prevents accidental mixups (passing an IntentId where IssueId
+// is expected) at compile time.
+
+type IntentId     = NonEmptyStr @brand("IntentId")        // Stable intent identity
+type IssueId      = NonEmptyStr @brand("IssueId")         // Provider-specific issue ID
+type RunKey       = NonEmptyStr @brand("RunKey")           // Stage execution idempotency key
+type ArtifactId   = NonEmptyStr @brand("ArtifactId")       // Deterministic artifact identity
+type LeaseToken   = NonEmptyStr @brand("LeaseToken")       // Claim lease token
+type WorkerId     = NonEmptyStr @brand("WorkerId")         // Worker/pod identity
+type CommentId    = NonEmptyStr @brand("CommentId")        // Issue comment identity
+type SignalKey    = NonEmptyStr @brand("SignalKey")         // Signal idempotency key
+type ContentHash  = NonEmptyStr @brand("ContentHash")      // Normalized content hash
+
 // --- Git types (refinements of String) ------------------------------------
 type GitRef       = String @non_empty                    // ⟦GitRef⟧ ⊂ ⟦String⟧ (branch name, tag, "HEAD", etc.)
 // Note: CommitSha <: GitRef <: String. A SHA is always a valid ref,

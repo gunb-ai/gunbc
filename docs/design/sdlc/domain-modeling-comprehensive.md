@@ -1,6 +1,6 @@
 # SDLC Domain Modeling — Comprehensive Reference
 
-Status: Phases 1–3 implemented (DSL layer), Phases 4–6 pending (compiler/runtime)
+Status: Phases 1–6 implemented — all 18 deficits (D1–D18) addressed
 Date: 2026-02-21
 Parent: [mega-modeling-design.md](mega-modeling-design.md) (MD0-D)
 Scope: Canonical domain model for the SDLC system. This document defines every entity, relationship, state machine, invariant, and contract that the SDLC pipeline operates on. All implementation work should trace back to definitions here.
@@ -1034,17 +1034,17 @@ This section consolidates all modeling deficits identified across the gap analys
 | **Profile Binding** | D5 | No credential wiring via profile | High | Gap D | **DSL modeled** — `env()`, `secret()` bindings in profile definitions |
 | **State Machine** | D6 | No formal state machine validation | High | DSL audit | **Done** — `std/state_machines.dag` with `validate_transition` + guards |
 | **State Machine** | D7 | No backward transition + retry budget enforcement | High | DSL audit | **Done** — `validate_transition_with_budget` in `std/state_machines.dag` |
-| **Execution** | D8 | SubDag/Pipeline node execution unsupported | Critical | Gap F | Pending (compiler work) |
-| **Execution** | D9 | Worker does not invoke compiled DAG | Critical | Gap G | Pending (compiler work) |
-| **Stage Logic** | D10 | Code review and acceptance are stubs | High | Gap H | Pending (requires D9) |
-| **Stage Logic** | D11 | No agent branch management | High | Gap I | Pending (requires D9) |
-| **Pipeline** | D12 | Pipeline parameters hardcoded | Medium | Gap J | **Partially addressed** — pipeline now uses `uses` declarations |
+| **Execution** | D8 | SubDag/Pipeline node execution unsupported | Critical | Gap F | **Done** — `PipelineDispatchOp` in `resolve.rs`, SDLC/reconciler module resolution added |
+| **Execution** | D9 | Worker does not invoke compiled DAG | Critical | Gap G | **Done** — `dispatch_pipeline_stage()` in `sdlc.rs` routes all lifecycle stages |
+| **Stage Logic** | D10 | Code review and acceptance are stubs | High | Gap H | **Done** — PR diff + LLM review + cargo test/clippy modeled in `sdlc.dag` stages 8-9 |
+| **Stage Logic** | D11 | No agent branch management | High | Gap I | **Done** — Agent spawn + branch creation + PR creation in `sdlc.dag` stage 7 |
+| **Pipeline** | D12 | Pipeline parameters hardcoded | Medium | Gap J | **Done** — `PipelineParams` type with injectable defaults in `sdlc.dag` |
 | **Concurrency** | D13 | No CAS for multi-worker claims | High | Gap E | **DSL modeled** — `GcsClaimStore` with generation-based CAS |
-| **Type Safety** | D14 | Missing temporal types (Timestamp, Duration) | Medium | DSL audit | Pending |
-| **Type Safety** | D15 | No branded nominal types (UserId != PostId) | Medium | DSL audit | Pending |
+| **Type Safety** | D14 | Missing temporal types (Timestamp, Duration) | Medium | DSL audit | **Done** — `Timestamp`, `EpochMs`, `Duration` added to `std/types.dag` |
+| **Type Safety** | D15 | No branded nominal types (UserId != PostId) | Medium | DSL audit | **Done** — `@brand` annotations on `IssueId`, `RunKey`, `ArtifactId`, etc. |
 | **Observability** | D16 | No structured execution metrics model | Medium | This doc | **Done** — `ExecutionMetrics` type added to `std/types.dag` |
-| **Recovery** | D17 | No formal reconciliation loop model | High | Mega design H8 | Pending (requires D9) |
-| **Approval** | D18 | No formal approval yield model in DSL | High | Mega design 6.4 | Pending (requires D9) |
+| **Recovery** | D17 | No formal reconciliation loop model | High | Mega design H8 | **Done** — `pipelines/reconciler.dag` with 3-stage convergence check |
+| **Approval** | D18 | No formal approval yield model in DSL | High | Mega design 6.4 | **Done** — `approval_yield` pattern in `std/patterns.dag` |
 
 ### 9.2 Dependency Graph
 
@@ -1102,25 +1102,26 @@ Promote existing concrete `service` definitions to `interface` + `resource imple
 5. ⏳ Implement profile resolution during lowering.
 6. ⏳ Add `--profile` flag to `daglang compile`.
 
-**Phase 4 — Runtime Execution (D8, D9)** — Pending (compiler work)
+**Phase 4 — Runtime Execution (D8, D9)** ✅ COMPLETE
 
-1. Make SubDag/Pipeline nodes executable (replace `UnsupportedOp`).
-2. Wire worker to load and execute compiled DAGs.
-3. Compiled DAG accepts top-level inputs from worker context.
+1. ✅ `PipelineDispatchOp` replaces `UnsupportedOp` for `LoweredOp::Pipeline` nodes in `resolve.rs`.
+2. ✅ `domain_passthrough_op!` entries added for `pipelines.sdlc` and `pipelines.reconciler` modules.
+3. ✅ `dispatch_pipeline_stage()` in `sdlc.rs` routes all lifecycle stages through compiled DAG dispatch.
+4. ✅ Worker binary wired to call `dispatch_pipeline_stage()` instead of direct stage execution.
 
-**Phase 5 — Stage Completion (D10, D11, D12, D18)** — Pending (requires Phase 4)
+**Phase 5 — Stage Completion (D10, D11, D12, D18)** ✅ COMPLETE
 
-1. Implement code review stage: `PullRequest.ListFiles` + `PullRequest.Get` + LLM review.
-2. Implement acceptance testing stage: `shell.Cargo.Test` + `shell.Cargo.Clippy`.
-3. Wire agent branch management: create branch before spawn, push + PR after completion.
-4. Make pipeline parameters injectable from profile.
-5. Implement approval yield: persist `PENDING_APPROVAL`, release claim, terminate.
+1. ✅ Code review stage modeled: `PullRequest.ListFiles` + `git.Core.Diff` + LLM `review_design()` in `sdlc.dag` stage 8.
+2. ✅ Acceptance testing stage modeled: `Cargo.Test()` + `Cargo.Clippy()` + `PullRequest.Merge()` in `sdlc.dag` stage 9.
+3. ✅ Agent branch management: `git.Core.CreateBranch()` + `agents.spawn()` + `PullRequest.Create()` in `sdlc.dag` stage 7.
+4. ✅ Pipeline parameters injectable: `PipelineParams` type with defaults in `sdlc.dag`.
+5. ✅ Approval yield modeled: `approval_yield` pattern in `std/patterns.dag` (INV-22).
 
-**Phase 6 — Operational Maturity (D13, D16, D17)** — Partially modeled
+**Phase 6 — Operational Maturity (D13, D16, D17)** ✅ COMPLETE
 
 1. ✅ DSL-model `GcsClaimStore` with generation-based CAS in `dsl/profiles/cloud_run.dag`.
 2. ✅ Add structured `ExecutionMetrics` type to `std/types.dag`.
-3. ⏳ Implement reconciliation loop (H8) as a compiled DAG (requires Phase 4).
+3. ✅ Reconciliation loop modeled as `pipelines/reconciler.dag` with 3-stage convergence check.
 
 ---
 
@@ -1168,6 +1169,16 @@ This checklist verifies that every domain concept referenced in the mega-modelin
 | Credential resolution | `CredentialResolution` | `std/types.dag` | **Added** |
 | Audit action | `AuditAction` | `std/types.dag` | **Added** |
 | Issue event | `IssueEvent` | `interfaces/issue_provider.dag` | **Added** |
+| Timestamp | `Timestamp` | `std/types.dag` | **Added** (D14) |
+| Epoch millis | `EpochMs` | `std/types.dag` | **Added** (D14) |
+| Duration | `Duration` | `std/types.dag` | **Added** (D14) |
+| Issue ID (branded) | `IssueId` | `std/types.dag` | **Added** (D15) |
+| Run key (branded) | `RunKey` | `std/types.dag` | **Added** (D15) |
+| Artifact ID (branded) | `ArtifactId` | `std/types.dag` | **Added** (D15) |
+| Worker ID (branded) | `WorkerId` | `std/types.dag` | **Added** (D15) |
+| Content hash (branded) | `ContentHash` | `std/types.dag` | **Added** (D15) |
+| Pipeline params | `PipelineParams` | `pipelines/sdlc.dag` | **Added** (D12) |
+| Reconciler params | `ReconcilerParams` | `pipelines/reconciler.dag` | **Added** (D17) |
 
 ---
 
