@@ -41,9 +41,9 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             );
             println!("{}", render_expand(&output.lowered_dag));
         }
-        "manifest" => {
-            let parsed =
-                parse_manifest_command_args(args).unwrap_or_else(|usage| exit_usage(&usage));
+        "manifest" | "progress-manifest" => {
+            let parsed = parse_manifest_command_args(args[1].as_str(), args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit_with_options(
                 cwd,
                 Some(&parsed.input),
@@ -89,9 +89,8 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let roots = if let Some(root) = root_arg {
                 vec![resolve_root(cwd, Some(&root))]
             } else {
-                match resolve_configured_roots(cwd) {
-                    Ok(Some(config_roots)) => config_roots,
-                    Ok(None) => vec![resolve_root(cwd, None)],
+                match resolve_default_roots(cwd) {
+                    Ok(roots) => roots,
                     Err(error) => {
                         eprintln!("{error}");
                         std::process::exit(1);

@@ -6546,6 +6546,39 @@ fn manifest_command_shows_derived_progress_manifest() {
 }
 
 #[test]
+fn progress_manifest_command_matches_manifest_output() {
+    let manifest = Command::new(daglang_bin())
+        .arg("manifest")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang manifest");
+    let progress_manifest = Command::new(daglang_bin())
+        .arg("progress-manifest")
+        .arg(makegen_file())
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang progress-manifest");
+
+    assert!(
+        manifest.status.success(),
+        "manifest command failed: {}",
+        String::from_utf8_lossy(&manifest.stderr)
+    );
+    assert!(
+        progress_manifest.status.success(),
+        "progress-manifest command failed: {}",
+        String::from_utf8_lossy(&progress_manifest.stderr)
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&manifest.stderr));
+    assert_no_stage_failures(&String::from_utf8_lossy(&progress_manifest.stderr));
+    assert_eq!(
+        manifest.stdout, progress_manifest.stdout,
+        "progress-manifest should be a strict output alias for manifest"
+    );
+}
+
+#[test]
 fn run_command_real_mode_writes_output_file() {
     let output_path = unique_temp_output_file("run_real_mode", "mk");
 

@@ -1,4 +1,4 @@
-//! daglang CLI: dag viz, dag expand, dag manifest, dag modules.
+//! daglang CLI: dag viz, dag expand, dag progress-manifest, dag modules.
 //!
 //! The development tool for the DSL compiler. Provides visualization
 //! and introspection commands that make every subsequent phase
@@ -8,7 +8,8 @@
 //!
 //! - `daglang viz <file.dag> [--format ascii|mermaid]`: DAG visualization from compiled IR
 //! - `daglang expand <file.dag> [--emit-collection-nodes]`: Show lowered GraphIR (nodes, edges, ports)
-//! - `daglang manifest <file.dag> [--format text|json] [--emit-collection-nodes]`: Show derived ProgressManifest
+//! - `daglang progress-manifest <file.dag> [--format text|json] [--emit-collection-nodes]`: Show derived ProgressManifest
+//! - `daglang manifest <file.dag> ...`: Backward-compatible alias for `progress-manifest`
 //! - `daglang obligations <file.dag> [--format text|json]`: Show derived test obligations summary
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
@@ -19,11 +20,13 @@
 use std::path::PathBuf;
 
 use daglang_cli::compile::{
-    build_context, check_from_module_graph, compile_from_context_with_options,
-    compile_resolve_execute_from_context, makegen_check_mode_transport_mocks,
-    makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
-    render_manifest_with_format, render_obligations, render_triplets, render_canonical_ir_json,
-    CompileOptions, CompileOutput, OutputFormat,
+    build_context, build_context_with_default_roots, check_from_module_graph,
+    compile_from_context_with_options, compile_resolve_execute_from_context,
+    makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,
+    render_canonical_ir_json, render_expand, render_manifest_with_format, render_obligations,
+    render_triplets, resolve_configured_roots as resolve_configured_roots_from_context,
+    resolve_default_roots as resolve_default_roots_from_context, CompileOptions, CompileOutput,
+    OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
@@ -33,10 +36,12 @@ use daglang_driver::{CodegenLayer, CodegenTarget};
 use daglang_syntax::diagnostic::DiagnosticKind;
 use gunbc_exec::ExecutionMode;
 use gunbc_ir::Value;
-use serde::Deserialize;
 use serde_json::json;
 
 mod commands;
+
+const VIZ_USAGE: &str = "viz <file.dag>|--self [--format ascii|mermaid]";
+const DEFAULT_VIZ_FORMAT: VizFormat = VizFormat::Ascii;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -46,12 +51,19 @@ fn main() {
         eprintln!("Usage: daglang <command> [args...]");
         eprintln!();
         eprintln!("Commands:");
-        eprintln!("  viz <file.dag>|--self [--format ascii|mermaid]");
-        eprintln!("                      DAG visualization (default: ascii)");
+        eprintln!("  {VIZ_USAGE}");
+        eprintln!(
+            "                      DAG visualization (default: {})",
+            default_viz_format_label()
+        );
         eprintln!("  expand <file.dag> [--emit-collection-nodes]");
         eprintln!("                      Show lowered GraphIR (nodes/edges/ports)");
-        eprintln!("  manifest <file.dag> [--format text|json] [--emit-collection-nodes]");
+        eprintln!(
+            "  progress-manifest <file.dag> [--format text|json] [--emit-collection-nodes]"
+        );
         eprintln!("                      Show derived ProgressManifest");
+        eprintln!("  manifest <file.dag> [--format text|json] [--emit-collection-nodes]");
+        eprintln!("                      Alias for progress-manifest");
         eprintln!("  obligations <file.dag> [--format text|json]");
         eprintln!("                      Show derived test obligations summary");
         eprintln!("  show-triplets <file.dag> [--format text|json]");
@@ -85,16 +97,6 @@ struct RunArgs {
     mode: RunMode,
 }
 
-#[derive(Debug, Deserialize)]
-struct DaglangConfig {
-    discovery: Option<DiscoveryConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DiscoveryConfig {
-    roots: Option<Vec<String>>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VizFormat {
     Ascii,
@@ -107,6 +109,13 @@ enum VizTarget {
     CompiledTarget(String),
 }
 
+const fn default_viz_format_label() -> &'static str {
+    match DEFAULT_VIZ_FORMAT {
+        VizFormat::Ascii => "ascii",
+        VizFormat::Mermaid => "mermaid",
+    }
+}
+
 fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     if let Some(path) = arg {
         return path_utils::normalize_cli_path(cwd, &PathBuf::from(path));
@@ -114,32 +123,8 @@ fn resolve_root(cwd: &std::path::Path, arg: Option<&String>) -> PathBuf {
     path_utils::resolve_default_root(cwd)
 }
 
-#[allow(clippy::disallowed_methods)]
 fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>>, String> {
-    let config_path = cwd.join("daglang.toml");
-    if !config_path.exists() {
-        return Ok(None);
-    }
-    let config_text = std::fs::read_to_string(&config_path)
-        .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
-    let parsed: DaglangConfig = toml::from_str(&config_text)
-        .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?;
-    let Some(discovery) = parsed.discovery else {
-        return Ok(None);
-    };
-    let Some(config_roots) = discovery.roots else {
-        return Ok(None);
-    };
-    if config_roots.is_empty() {
-        return Err("discovery.roots in daglang.toml must not be empty".to_string());
-    }
-    let mut normalized = config_roots
-        .iter()
-        .map(|root| path_utils::normalize_cli_path(cwd, &PathBuf::from(root)))
-        .collect::<Vec<_>>();
-    normalized.sort();
-    normalized.dedup();
-    Ok(Some(normalized))
+    resolve_configured_roots_from_context(cwd)
 }
 
 /// Builds check pipeline context from CLI input.
@@ -160,27 +145,7 @@ fn build_check_pipeline_context_with_default_roots(
     input: Option<&String>,
     default_roots: Option<&[PathBuf]>,
 ) -> Result<PipelineContext, String> {
-    let normalized_input =
-        input.map(|value| path_utils::normalize_cli_path(cwd, &PathBuf::from(value)));
-    if let Some(ref path) = normalized_input {
-        if let Some(error) = path_utils::check_dag_directory_conflict(path) {
-            return Err(error);
-        }
-    }
-    let (roots, target_file) = match normalized_input {
-        Some(path) if path_utils::is_single_file_target(&path) => {
-            let root = path_utils::resolve_single_file_root(cwd, &path);
-            (vec![root], Some(path))
-        }
-        Some(path) => (vec![path], None),
-        None => (
-            default_roots
-                .map(|roots| roots.to_vec())
-                .unwrap_or_else(|| vec![resolve_root(cwd, None)]),
-            None,
-        ),
-    };
-    Ok(PipelineContext { roots, target_file })
+    build_context_with_default_roots(cwd, input, default_roots)
 }
 
 fn compile_target_or_exit(cwd: &std::path::Path, input: Option<&String>) -> CompileOutput {
@@ -293,10 +258,7 @@ fn run_pipeline_or_exit(context: &PipelineContext, stop: PipelineStop) -> Pipeli
 }
 
 fn resolve_default_roots(cwd: &std::path::Path) -> Result<Vec<PathBuf>, String> {
-    match resolve_configured_roots(cwd)? {
-        Some(config_roots) => Ok(config_roots),
-        None => Ok(vec![resolve_root(cwd, None)]),
-    }
+    resolve_default_roots_from_context(cwd)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -490,13 +452,15 @@ fn parse_codegen_layer(value: &str) -> Option<CodegenLayer> {
     }
 }
 
-fn parse_manifest_command_args(args: &[String]) -> Result<ManifestCommandArgs, String> {
-    let usage = "manifest <file.dag> [--format text|json] [--emit-collection-nodes]";
-    if args.is_empty() || args.get(1).map(String::as_str) != Some("manifest") {
-        return Err(
-            "internal error: parse_manifest_command_args expects full `daglang manifest ...` argv"
-                .to_string(),
-        );
+fn parse_manifest_command_args(
+    command: &str,
+    args: &[String],
+) -> Result<ManifestCommandArgs, String> {
+    let usage = format!("{command} <file.dag> [--format text|json] [--emit-collection-nodes]");
+    if args.is_empty() || args.get(1).map(String::as_str) != Some(command) {
+        return Err(format!(
+            "internal error: parse_manifest_command_args expects full `daglang {command} ...` argv"
+        ));
     }
     let Some(input) = args.get(2).cloned() else {
         return Err(usage.to_string());
@@ -520,21 +484,21 @@ fn parse_manifest_command_args(args: &[String]) -> Result<ManifestCommandArgs, S
         }
         if token == "--format" {
             if saw_format {
-                return Err(usage.to_string());
+                return Err(usage.clone());
             }
             let Some(value) = args.get(i + 1) else {
-                return Err(usage.to_string());
+                return Err(usage.clone());
             };
             format = match value.as_str() {
                 "text" => OutputFormat::Text,
                 "json" => OutputFormat::Json,
-                _ => return Err(usage.to_string()),
+                _ => return Err(usage.clone()),
             };
             saw_format = true;
             i += 2;
             continue;
         }
-        return Err(usage.to_string());
+        return Err(usage.clone());
     }
     Ok(ManifestCommandArgs {
         input,
@@ -550,31 +514,31 @@ fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
         );
     }
     if args.len() == 2 {
-        return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string());
+        return Err(VIZ_USAGE.to_string());
     }
 
     let mut target: Option<VizTarget> = None;
-    let mut format = VizFormat::Ascii;
+    let mut format = DEFAULT_VIZ_FORMAT;
     let mut i = 2usize;
     while i < args.len() {
         let token = &args[i];
         if token == "--format" {
             let value = args
                 .get(i + 1)
-                .ok_or_else(|| "viz <file.dag>|--self [--format ascii|mermaid]".to_string())?;
+                .ok_or_else(|| VIZ_USAGE.to_string())?;
             format = match value.as_str() {
                 "ascii" => VizFormat::Ascii,
                 "mermaid" => VizFormat::Mermaid,
-                _ => return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string()),
+                _ => return Err(VIZ_USAGE.to_string()),
             };
             i += 2;
             continue;
         }
         if token.starts_with("--") && token != "--self" {
-            return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string());
+            return Err(VIZ_USAGE.to_string());
         }
         if target.is_some() {
-            return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string());
+            return Err(VIZ_USAGE.to_string());
         }
         target = Some(if token == "--self" {
             VizTarget::SelfDag
@@ -585,7 +549,7 @@ fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), String> {
     }
 
     let Some(target) = target else {
-        return Err("viz <file.dag>|--self [--format ascii|mermaid]".to_string());
+        return Err(VIZ_USAGE.to_string());
     };
 
     Ok((target, format))
@@ -1187,6 +1151,7 @@ mod tests {
         let (target, format) = super::parse_viz_args(&args).expect("viz args should parse");
         assert!(matches!(target, super::VizTarget::SelfDag));
         assert!(matches!(format, super::VizFormat::Ascii));
+        assert_eq!(super::default_viz_format_label(), "ascii");
     }
 
     #[test]
@@ -1493,10 +1458,24 @@ mod tests {
             "--format".to_string(),
             "json".to_string(),
         ];
-        let parsed = super::parse_manifest_command_args(&args).expect("manifest args should parse");
+        let parsed =
+            super::parse_manifest_command_args("manifest", &args).expect("manifest args should parse");
         assert_eq!(parsed.input, "dsl/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Json));
         assert!(parsed.emit_collection_nodes);
+    }
+
+    #[test]
+    fn parse_manifest_command_args_accepts_progress_manifest_alias() {
+        let args = vec![
+            "daglang".to_string(),
+            "progress-manifest".to_string(),
+            "dsl/tools/gist.dag".to_string(),
+        ];
+        let parsed = super::parse_manifest_command_args("progress-manifest", &args)
+            .expect("progress-manifest args should parse");
+        assert_eq!(parsed.input, "dsl/tools/gist.dag");
+        assert!(matches!(parsed.format, super::OutputFormat::Text));
     }
 
     #[test]
@@ -1527,19 +1506,19 @@ mod tests {
             "--collection".to_string(),
         ];
         assert_eq!(
-            super::parse_manifest_command_args(&missing_input),
+            super::parse_manifest_command_args("manifest", &missing_input),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args(&duplicate_format),
+            super::parse_manifest_command_args("manifest", &duplicate_format),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args(&duplicate_collection_flag),
+            super::parse_manifest_command_args("manifest", &duplicate_collection_flag),
             Err(usage.clone())
         );
         assert_eq!(
-            super::parse_manifest_command_args(&unknown_flag),
+            super::parse_manifest_command_args("manifest", &unknown_flag),
             Err(usage)
         );
     }

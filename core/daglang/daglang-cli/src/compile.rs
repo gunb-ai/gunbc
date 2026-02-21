@@ -4,8 +4,9 @@ mod render;
 mod triplets;
 
 pub use context::{
-    build_context, check_from_context, check_from_module_graph, compile_from_context,
-    compile_from_context_with_options, compile_resolve_execute_from_context, execute_resolved_dag,
+    build_context, build_context_with_default_roots, check_from_context, check_from_module_graph,
+    compile_from_context, compile_from_context_with_options, compile_resolve_execute_from_context,
+    execute_resolved_dag, resolve_configured_roots, resolve_default_roots,
 };
 pub use daglang_driver::{
     CheckOutput, CodegenLayer, CodegenTarget, CompileError, CompileOptions, CompileOutput,

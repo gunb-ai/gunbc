@@ -1671,7 +1671,7 @@ The effort lands cleanly when all six criteria are met:
 
 - [x] `core/daglang/` workspace area with crate split: `daglang-syntax`, `daglang-resolve`, `daglang-typecheck`, `daglang-lower`, `daglang-derive`, `daglang-emit`, `daglang-cli`
 - [x] Compiler entrypoint: `compile_from_context()` does discover → typecheck → lower → derive → emit
-- [x] CLI commands: `viz`, `expand`, `manifest`, `obligations`, `show-triplets`, `modules`, `check`, `compile`
+- [x] CLI commands: `viz`, `expand`, `progress-manifest` (with `manifest` alias), `obligations`, `show-triplets`, `modules`, `check`, `compile`
 - [x] Module graph: filesystem discovery, import resolution, dependency-ordered module listing
 - [x] Parity harness (partial): `compare_topology()` + `compare_makegen_topology()` returning `ParityReport`
 - [x] DSL corpus: `.dag` files for tools, services, pipelines, infra, cloud, examples

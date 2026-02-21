@@ -1,4 +1,5 @@
 use gunbc_codegen::derive_tool_defs;
+use gunbc_dag::makegen::ToolRegistry;
 use gunbc_ir::resource::ResourceIo;
 use gunbc_lib_transport::TransportIo;
 use gunbc_tool_registry::iter_tool_targets;
@@ -80,6 +81,40 @@ fn derive_tool_defs_matches_inventory() {
             );
         }
     }
+}
+
+#[test]
+fn makegen_default_registry_matches_codegen_registry_plus_manual_targets() {
+    let derived_with_invocation: HashSet<String> = derive_tool_defs()
+        .into_iter()
+        .filter(|tool| tool.invocation.is_some())
+        .map(|tool| tool.meta.tool_name.to_string())
+        .collect();
+
+    let registry = ToolRegistry::default_registry();
+    let makegen_generated: HashSet<String> = registry
+        .tools
+        .iter()
+        .filter(|tool| tool.needs_generated_cli)
+        .map(|tool| tool.short_name.clone())
+        .collect();
+
+    assert_eq!(
+        makegen_generated, derived_with_invocation,
+        "makegen generated-cli tools must stay in lockstep with codegen derive_tool_defs()"
+    );
+
+    let manual_targets: HashSet<&str> = registry
+        .tools
+        .iter()
+        .filter(|tool| !tool.needs_generated_cli)
+        .map(|tool| tool.short_name.as_str())
+        .collect();
+    let expected_manual: HashSet<&str> = ["build-all", "pragma"].into_iter().collect();
+    assert_eq!(
+        manual_targets, expected_manual,
+        "makegen manual targets must stay explicit and auditable"
+    );
 }
 
 #[test]
