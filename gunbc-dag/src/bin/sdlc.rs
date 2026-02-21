@@ -5,6 +5,7 @@
 //! - worker: summarize pending intake ledger state
 
 #![deny(dead_code)]
+#![allow(clippy::disallowed_methods)] // CLI-owned local ledgers and git metadata probes are intentional entrypoint concerns.
 
 use gunbc_dag::{
     claim_slot_key, mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
