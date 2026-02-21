@@ -30,9 +30,7 @@ use daglang_lower::{
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::transport::{
-    FileOp, FileRequest, TransportRequest, TransportResponse,
-};
+use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -167,6 +165,74 @@ domain_passthrough_op! {
         "select_platform_deps" => SelectPlatformDeps,
         "deps_install" => DepsInstall,
         "deps_generate" => DepsGenerate,
+    }
+}
+
+#[derive(Debug, Clone)]
+enum InfraToolOp {
+    Infra,
+}
+
+impl Executable for InfraToolOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let environment = inputs
+            .get("environment")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("tools.infra.infra missing `environment` input"))?;
+        let runtime = inputs
+            .get("runtime")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("tools.infra.infra missing `runtime` input"))?;
+        let spec_targets = inputs
+            .get("spec_targets")
+            .and_then(Value::as_str_list)
+            .ok_or_else(|| ExecError::new("tools.infra.infra missing `spec_targets` input"))?;
+        let target = inputs
+            .get("target")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let skip = inputs
+            .get("skip")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let execute = inputs
+            .get("execute")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| ExecError::new("tools.infra.infra missing `execute` input"))?;
+
+        let mut planned_targets: Vec<String> = if target.is_empty() {
+            spec_targets.clone()
+        } else {
+            spec_targets
+                .iter()
+                .filter(|item| target.iter().any(|candidate| candidate == *item))
+                .cloned()
+                .collect()
+        };
+        planned_targets.retain(|item| !skip.iter().any(|candidate| candidate == item));
+
+        let target_count = planned_targets.len() as i64;
+        let applied_count = if execute { target_count } else { 0 };
+        let mode = if execute { "apply" } else { "plan" };
+        let report = format!(
+            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
+        );
+        OutputMap::new()
+            .str("environment", environment)
+            .str("runtime", runtime)
+            .str("mode", mode)
+            .str_list("planned_targets", planned_targets)
+            .int("target_count", target_count)
+            .int("applied_count", applied_count)
+            .str("report", report)
+            .ok()
+    }
+}
+
+fn resolve_infra(node_id: &str, name: &str, _outputs: &[Port]) -> Result<DynOp, ResolveError> {
+    match name {
+        "infra" => Ok(DynOp::new(InfraToolOp::Infra)),
+        _ => Err(unknown_callable(node_id, "tools.infra", name)),
     }
 }
 
@@ -389,7 +455,6 @@ impl Executable for PragmaEntrypointOp {
     }
 }
 
-
 /// File-read prepare adapter for DSL content-upsert chains.
 ///
 /// Requires a `path` input. Missing `path` is a wiring bug and returns
@@ -581,6 +646,7 @@ fn resolve_domain(
         "tools.testgen" => resolve_testgen(node_id, name, outputs),
         "tools.clippy" => resolve_clippy(node_id, name, outputs),
         "tools.deps" => resolve_deps(node_id, name, outputs),
+        "tools.infra" => resolve_infra(node_id, name, outputs),
         "tools.design" => resolve_design(node_id, name, outputs),
         "pipelines.ci" => resolve_pipeline_ci(node_id, name, outputs),
         "pipelines.sdlc" => resolve_pipeline_sdlc(node_id, name, outputs),
@@ -1273,9 +1339,8 @@ mod tests {
             spec: Some(ServiceOperationSpec::Rest(RestOperationSpec {
                 endpoint: "https://secretmanager.googleapis.com".to_string(),
                 method: "GET".to_string(),
-                path_template:
-                    "/v1/projects/{project}/secrets/{secret}/versions/{version}:access"
-                        .to_string(),
+                path_template: "/v1/projects/{project}/secrets/{secret}/versions/{version}:access"
+                    .to_string(),
                 input_fields: vec![
                     FieldSpec {
                         name: "project".to_string(),
@@ -1350,13 +1415,8 @@ mod tests {
             ),
         ];
         for (module, name, metadata, expected_debug) in cases {
-            let node = service_callable_node(
-                name,
-                module,
-                name,
-                ObligationCategory::None,
-                metadata,
-            );
+            let node =
+                service_callable_node(name, module, name, ObligationCategory::None, metadata);
             let result = resolve_node(&node).expect(name);
             assert!(
                 format!("{:?}", result).contains(expected_debug),
@@ -1400,6 +1460,7 @@ mod tests {
     #[test]
     fn resolve_sdlc_design_and_pipeline_callables() {
         let cases = [
+            ("tools.infra", "infra"),
             ("tools.design", "generate_design"),
             ("tools.design", "review_design"),
             ("pipelines.sdlc", "sdlc"),
@@ -1409,8 +1470,8 @@ mod tests {
             let node = callable_node(callable, module, callable, ObligationCategory::None);
             let result = resolve_node(&node).expect(callable);
             assert!(
-                format!("{:?}", result).contains("output_port_names"),
-                "expected passthrough op for {module}.{callable}, got {:?}",
+                !format!("{:?}", result).contains("UnsupportedOp"),
+                "expected callable resolution for {module}.{callable}, got {:?}",
                 result
             );
         }

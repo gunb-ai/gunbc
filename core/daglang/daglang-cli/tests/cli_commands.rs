@@ -201,6 +201,7 @@ fn expected_dsl_modules_sorted() -> Vec<&'static str> {
         "tools.design",
         "tools.docgen",
         "tools.gist",
+        "tools.infra",
         "tools.makegen",
         "tools.pragma",
         "tools.review",
@@ -254,6 +255,7 @@ fn expected_real_corpus_module_order() -> Vec<&'static str> {
         "tools.docgen",
         "tools.gist",
         "examples.deployment",
+        "tools.infra",
         "tools.makegen",
         "tools.pragma",
         "tools.review",
@@ -935,7 +937,11 @@ fn assert_dag_extension_symlink_directory_variants(command: &str) {
             let curdir_link = run_cli(command, &curdir_link_arg, &root);
 
             let expect_success = false;
-            let real_expect_success = if command == "check" { !has_errors } else { true };
+            let real_expect_success = if command == "check" {
+                !has_errors
+            } else {
+                true
+            };
             assert!(
                 real_output.status.success() == real_expect_success,
                 "{test_name}: non-.dag real directory expected success={real_expect_success}, got exit={:?}\nstderr: {}",
@@ -1077,7 +1083,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 49 file(s)"),
+        stdout.contains("OK: checked 50 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1106,7 +1112,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(49));
+    assert_eq!(stdout, expected_check_success_stdout(50));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -11541,7 +11547,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 49 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 50 file(s)"),
         "default check should parse full DSL corpus"
     );
 }

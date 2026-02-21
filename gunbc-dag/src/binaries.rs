@@ -108,8 +108,7 @@ impl WorkspaceBinary {
 
     /// Whether this binary corresponds to a DSL tool module.
     pub fn is_dsl_tool_module(self) -> bool {
-        !self.is_dsl_pipeline_module()
-            && !matches!(self, Self::CodegenDag | Self::DepsConfig | Self::Infra)
+        !self.is_dsl_pipeline_module() && !matches!(self, Self::CodegenDag | Self::DepsConfig)
     }
 
     /// Cargo invocation for this workspace binary.

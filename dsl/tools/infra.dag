@@ -1,0 +1,49 @@
+// tools/infra.dag -- Infra plan/apply/reconcile orchestration contracts.
+//
+// CG4: express infra intent reconcile orchestration in DSL so runtime
+// entrypoints can delegate flow semantics to compiled DAG execution.
+
+module tools.infra
+
+func infra(
+  environment: String,
+  runtime: String,
+  spec_targets: List<String>,
+  target: List<String>,
+  skip: List<String>,
+  execute: Bool
+) -> {
+  environment: String,
+  runtime: String,
+  mode: String,
+  planned_targets: List<String>,
+  target_count: Int,
+  applied_count: Int,
+  report: String
+} {
+  targeted = match target |> count() {
+    0 => spec_targets,
+    _ => spec_targets |> filter(item => target |> filter(t => t == item) |> count() > 0)
+  }
+  planned_targets = targeted |> filter(item => skip |> filter(s => s == item) |> count() == 0)
+  target_count = planned_targets |> count()
+  mode = match execute {
+    true => "apply",
+    false => "plan"
+  }
+  applied_count = match execute {
+    true => target_count,
+    false => 0
+  }
+  report = "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
+
+  return {
+    environment: environment,
+    runtime: runtime,
+    mode: mode,
+    planned_targets: planned_targets,
+    target_count: target_count,
+    applied_count: applied_count,
+    report: report
+  }
+}

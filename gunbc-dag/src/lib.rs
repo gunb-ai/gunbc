@@ -30,6 +30,7 @@ pub mod docgen;
 pub mod dry_run;
 pub(crate) mod dsl_builder;
 pub mod fs_env;
+pub mod infra;
 pub mod makegen;
 pub mod mock_defaults;
 pub mod policy;
@@ -75,12 +76,12 @@ pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
 pub use sdlc::{
-    canonical_marker, claim_slot_key, promote_to_canonical_artifact, provisional_marker,
-    reconcile_entries, register_retry_failure, release_claim, retry_ready, try_acquire_claim,
-    upsert_provisional_artifact, ArtifactLedger, ArtifactRecord, ArtifactUpsertOutcome,
+    canonical_marker, claim_slot_key, mark_run_completed, mark_run_failed,
+    promote_to_canonical_artifact, provisional_marker, reconcile_entries, register_retry_failure,
+    release_claim, retry_ready, should_replay_skip, try_acquire_claim, upsert_provisional_artifact,
+    validate_stage_transition, ArtifactLedger, ArtifactRecord, ArtifactUpsertOutcome,
     ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction, ReconcileEntry, ReconcilePlan,
-    RetryState, RunExecutionStatus, RunStateLedger, RunStateRecord, mark_run_completed,
-    mark_run_failed, should_replay_skip, validate_stage_transition,
+    RetryState, RunExecutionStatus, RunStateLedger, RunStateRecord,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
@@ -89,8 +90,7 @@ pub use tool_runner::{
 };
 pub use workflow::{
     all_tool_workflow_names, append_global_ledger_entry, append_pending_approval_entry,
-    bootstrap_workflow_spec,
-    bootstrap_workflow_spec_with_registry, build_all_workflow_spec,
+    bootstrap_workflow_spec, bootstrap_workflow_spec_with_registry, build_all_workflow_spec,
     build_all_workflow_spec_with_registry, check_slo, ci_unit_commands, ci_workflow_spec,
     ci_workflow_spec_with_registry, claim_handle_type_id, codegen_key, compilation_key,
     coordination_status, dag_snapshot_workflow_spec, dag_snapshot_workflow_spec_with_registry,

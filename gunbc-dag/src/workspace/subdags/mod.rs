@@ -12,6 +12,7 @@ pub mod dag_viz;
 pub mod deps;
 pub mod docgen;
 pub mod gist;
+pub mod infra;
 pub mod languages;
 pub mod makegen;
 pub mod pragma;
@@ -258,6 +259,9 @@ fn add_discovered_tool_subdags(
     if tool_names.contains("gist") {
         dag.add_node(gist::build_gist_rust_subdag());
     }
+    if tool_names.contains("infra") {
+        dag.add_node(infra::build_infra_subdag()?);
+    }
     if tool_names.contains("pragma") {
         dag.add_node(pragma::build_pragma_subdag()?);
     }
@@ -303,6 +307,7 @@ mod tests {
         assert!(node_ids.contains(&"dag_viz"));
         assert!(node_ids.contains(&"docgen"));
         assert!(node_ids.contains(&"gist"));
+        assert!(node_ids.contains(&"infra"));
         assert!(node_ids.contains(&"pragma"));
         assert!(node_ids.contains(&"testgen"));
         assert!(node_ids.contains(&"languages"));
@@ -329,6 +334,7 @@ mod tests {
             "dag_viz",
             "docgen",
             "gist",
+            "infra",
             "pragma",
             "review",
             "testgen",
@@ -351,6 +357,7 @@ mod tests {
         assert!(node_ids.contains(&"dag_viz"));
         assert!(node_ids.contains(&"docgen"));
         assert!(node_ids.contains(&"gist"));
+        assert!(node_ids.contains(&"infra"));
         assert!(node_ids.contains(&"pragma"));
         assert!(node_ids.contains(&"testgen"));
     }
@@ -367,6 +374,7 @@ mod tests {
             "dag_viz",
             "docgen",
             "gist",
+            "infra",
             "pragma",
             "review",
             "testgen",
@@ -401,6 +409,7 @@ mod tests {
             "design",
             "docgen",
             "gist",
+            "infra",
             "pragma",
             "review",
             "testgen",
@@ -464,6 +473,7 @@ mod tests {
         assert!(discovered.contains("dag_viz"));
         assert!(discovered.contains("docgen"));
         assert!(discovered.contains("gist"));
+        assert!(discovered.contains("infra"));
         assert!(discovered.contains("pragma"));
         assert!(discovered.contains("testgen"));
     }
