@@ -301,6 +301,9 @@ Conformance evidence classes:
    1. stop acquiring new claims,
    2. release worker-owned claims,
    3. exit cleanly with machine-readable drain status.
+5. Infra reconciliation is health-gated:
+   1. reconcile preview/execute commands must fail closed while auth/project/service-account/secret health checks are failing.
+   2. healthy reconcile preview reports the same runtime dependency target set as infra plan.
 
 ## 7. Conformance Model (Multi-Level)
 
