@@ -1,0 +1,175 @@
+// profiles/local.dag -- Local development deployment profile.
+//
+// Binds domain interfaces to local-first implementations:
+//   - GitHub API for issue management (real network)
+//   - Local JSON files for claims, outcomes, signals
+//   - Issue comments / gists for artifact storage
+//   - Codex CLI for agent execution
+//
+// Profile invariants (INV-20, INV-21):
+//   - Every interface used in the pipeline is bound.
+//   - Profile is compile-time only (no runtime switching).
+//
+// Canonical reference: domain-modeling-comprehensive.md §5.1
+
+module profiles.local
+
+import interfaces.issue_provider { IssueProvider }
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.agent_provider { AgentProvider }
+import interfaces.signal_store { SignalStore }
+import interfaces.artifact_store { ArtifactStore }
+import services.github.issues { github.Issues }
+import services.sdlc.control_plane { sdlc.ControlPlane }
+import services.agent.codex { agent.Codex }
+
+profile local {
+  bind IssueProvider    -> github.Issues {
+    owner: "gunb-ai"
+    repo: "gunbc"
+    credential: env("GITHUB_TOKEN")
+  }
+  bind ClaimStore       -> FileClaimStore {
+    dir: env("SDLC_LEDGER_DIR", "target/sdlc/claims")
+  }
+  bind OutcomeLedger    -> FileOutcomeLedger {
+    dir: env("SDLC_LEDGER_DIR", "target/sdlc/outcomes")
+  }
+  bind AgentProvider    -> agent.Codex {
+    credential: env("CODEX_API_KEY")
+  }
+  bind SignalStore      -> FileSignalStore {
+    dir: env("SDLC_LEDGER_DIR", "target/sdlc/signals")
+  }
+  bind ArtifactStore    -> InlineArtifactStore
+}
+
+// --- File-backed implementations -----------------------------------------
+// These use local JSON files with OS file locking for CAS.
+// The REST sidecar (sdlc.ControlPlane) wraps these for local dev.
+
+service FileClaimStore : ClaimStore {
+  config {
+    dir: String = "target/sdlc/claims"
+  }
+
+  operation acquire {
+    input { issue_id: String, stage: String, owner: String, lease_ttl_ms: Int }
+    output { acquired: Bool, conflict: Bool, lease_generation: Int }
+    @rest(POST, "/v1/sdlc/claims/acquire")
+    @mock_response(status: 200, body: { "acquired": true, "conflict": false, "lease_generation": 1 })
+  }
+
+  operation heartbeat {
+    input { issue_id: String, stage: String, owner: String, generation: Int }
+    output { accepted: Bool }
+    @rest(POST, "/v1/sdlc/claims/heartbeat")
+    @idempotent
+    @mock_response(status: 200, body: { "accepted": true })
+  }
+
+  operation release {
+    input { issue_id: String, stage: String, owner: String, generation: Int }
+    output { released: Bool }
+    @rest(POST, "/v1/sdlc/claims/release")
+    @idempotent
+    @mock_response(status: 200, body: { "released": true })
+  }
+}
+
+service FileOutcomeLedger : OutcomeLedger {
+  config {
+    dir: String = "target/sdlc/outcomes"
+  }
+
+  operation upsert {
+    input { run_key: String, stage: String, outcome: Json }
+    output { updated: Bool, previous: Json? }
+    @rest(PUT, "/v1/sdlc/outcomes/{run_key}/{stage}")
+    @idempotent
+    @mock_response(status: 200, body: { "updated": true, "previous": null })
+  }
+
+  operation get {
+    input { run_key: String, stage: String }
+    output { found: Bool, outcome: Json? }
+    @rest(GET, "/v1/sdlc/outcomes/{run_key}/{stage}")
+    @idempotent @readonly
+    @mock_response(status: 200, body: { "found": false, "outcome": null })
+  }
+
+  operation list_by_issue {
+    input { issue_id: String }
+    output { outcomes: List<Json> }
+    @rest(GET, "/v1/sdlc/outcomes/by-issue/{issue_id}")
+    @readonly
+    @mock_response(status: 200, body: { "outcomes": [] })
+  }
+}
+
+service FileSignalStore : SignalStore {
+  config {
+    dir: String = "target/sdlc/signals"
+  }
+
+  operation emit {
+    input { signal: Json }
+    output { emitted: Bool }
+    @rest(POST, "/v1/sdlc/signals/emit")
+    @idempotent
+    @mock_response(status: 200, body: { "emitted": true })
+  }
+
+  operation consume {
+    input { signal_types: List<String>, limit: Int? }
+    output { signals: List<Json> }
+    @rest(POST, "/v1/sdlc/signals/consume")
+    @mock_response(status: 200, body: { "signals": [] })
+  }
+
+  operation ack {
+    input { idempotency_key: String }
+    output { acked: Bool }
+    @rest(POST, "/v1/sdlc/signals/ack")
+    @idempotent
+    @mock_response(status: 200, body: { "acked": true })
+  }
+}
+
+service InlineArtifactStore : ArtifactStore {
+  // Stores small artifacts inline as issue comments or gists.
+  // For local development only; cloud_run uses GcsArtifactStore.
+
+  operation store {
+    input { artifact_id: String, payload: Json, content_hash: String }
+    output { stored: Bool, conflict: Bool }
+    @rest(POST, "/v1/sdlc/artifacts/store")
+    @idempotent
+    @mock_response(status: 200, body: { "stored": true, "conflict": false })
+  }
+
+  operation retrieve {
+    input { artifact_id: String }
+    output { found: Bool, payload: Json?, content_hash: String? }
+    @rest(GET, "/v1/sdlc/artifacts/{artifact_id}")
+    @readonly
+    @mock_response(status: 200, body: { "found": false, "payload": null, "content_hash": null })
+  }
+
+  operation store_marker {
+    input { marker: Json }
+    output { stored: Bool }
+    @rest(POST, "/v1/sdlc/artifacts/markers")
+    @idempotent
+    @mock_response(status: 200, body: { "stored": true })
+  }
+
+  operation get_canonical_marker {
+    input { run_key: String, artifact_type: String }
+    output { found: Bool, marker: Json? }
+    @rest(GET, "/v1/sdlc/artifacts/markers/{run_key}/{artifact_type}")
+    @readonly
+    @mock_response(status: 200, body: { "found": false, "marker": null })
+  }
+}

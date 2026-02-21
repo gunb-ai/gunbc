@@ -1,0 +1,73 @@
+// interfaces/issue_provider.dag -- Abstract issue management interface.
+//
+// Provider-fungible contract for issue lifecycle management. The SDLC
+// pipeline imports this interface — never concrete implementations.
+//
+// Implementations:
+//   GitHubIssueProvider  (@rest api.github.com)  — local, cloud_run profiles
+//   StubIssueProvider    (in-memory)              — unit_test profile
+//
+// Addresses: Gap A from e2e-gap-analysis.md
+// Canonical reference: domain-modeling-comprehensive.md §4.1
+
+module interfaces.issue_provider
+
+import std.types {
+    TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url
+}
+
+// IssueEvent represents a single event in an issue's history.
+type IssueEvent {
+  event_type:     NonEmptyStr       // "labeled", "unlabeled", "commented", etc.
+  actor:          NonEmptyStr       // Who performed the action
+  timestamp:      String
+  payload:        Json?             // Event-specific data
+}
+
+interface IssueProvider {
+
+  // --- Discovery -----------------------------------------------------------
+
+  capability discover(labels: List<String>, state: IssueState?)
+    -> { issues: List<TrackedIssue> }
+    @contract: discover([], _) => issues is List
+    @readonly
+
+  // --- Single issue --------------------------------------------------------
+
+  capability get(id: NonEmptyStr)
+    -> { issue: TrackedIssue, found: Bool }
+    @idempotent @readonly
+
+  // --- Mutations -----------------------------------------------------------
+
+  capability create(title: NonEmptyStr, body: String, labels: List<String>)
+    -> { issue: TrackedIssue }
+
+  capability comment(id: NonEmptyStr, body: String, marker: NonEmptyStr?)
+    -> { comment_id: NonEmptyStr, ok: Bool }
+    @idempotent  // marker enables idempotent upsert
+
+  capability set_labels(id: NonEmptyStr, labels: List<String>)
+    -> { ok: Bool }
+
+  capability close(id: NonEmptyStr)
+    -> { ok: Bool }
+    @idempotent
+
+  // --- Events (for audit trail) --------------------------------------------
+
+  capability list_events(id: NonEmptyStr, since: String?)
+    -> { events: List<IssueEvent> }
+    @readonly
+
+  // --- Behavioral contracts ------------------------------------------------
+  //
+  // discover: must support label filtering. Empty label list returns all managed issues.
+  // comment with marker: if a comment with the same marker already exists, update it.
+  // set_labels: replaces the full label set (not additive).
+  // close: idempotent — closing an already-closed issue is success.
+
+  @contract: get(id) after create(t, b, l) => { found: true }
+  @contract: close(id) after close(id) => { ok: true }
+}
