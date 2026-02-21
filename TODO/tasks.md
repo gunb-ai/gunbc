@@ -40,6 +40,8 @@
 | SDLC mega modeling gate | Resolved (done) | `MD0-D` approved; all downstream lanes delivered. |
 | Three-layer domain abstraction | Resolved | Pipeline sees domain concepts (Issue, Claim, Outcome); domain interfaces are provider-fungible; infra implementations selected by deployment profile at compile time. See `docs/design/sdlc/e2e-gap-analysis.md`. |
 | Compile-time profile binding | Open | `profile { bind Interface -> Impl }` syntax in DSL. Compiler resolves `uses` declarations via active profile. `--profile` CLI flag. |
+| Dry-run deployment readiness | Open | Rust worker multi-stage dispatch enables local dry-run before compiled DAG path is ready. See Sprint 11.5. |
+| Dual execution path convergence | Open | Rust worker path (scaffolding) vs compiled DAG path (target). Rust worker must not accumulate SDLC sequencing logic beyond what's needed for dry-run. |
 
 ### Archive Update (2026-02-21)
 
@@ -128,6 +130,25 @@ Archived to `TODO/TODONE/tasks-completed.md`. All 6 tasks (`AI1`-`AI3`, `PR1`-`P
 | **S11-3** | **DesignReview -> Accepted handler**: `execute_stage_review_to_accepted()` checks `approved` flag from review artifact, transitions or blocks. | S11-2 | S | **DONE** |
 | **S11-4** | **Accepted -> Implementation handler**: `execute_stage_accepted_to_implementation()` assembles `HandoffSpec`, dispatches to `AgentAdapter`, records in agent ledger. | S11-3 | M | **DONE** |
 | **S11-5** | **Scenario intent YAML**: `TODO/feature-intent-markdown.yaml` with concrete criteria for the markdown report feature. | — | S | **DONE** |
+
+---
+
+## Sprint 11.5: Dry-Run Deployment Readiness
+
+**Design doc**: [docs/design/sdlc/e2e-gap-analysis.md](../docs/design/sdlc/e2e-gap-analysis.md) (Section 7-8)
+**Goal**: Enable a local dry-run deployment where the Rust worker progresses issues through the full stage chain (idea → done) using the existing ledger/claim/reconcile infrastructure. This is the bridge to Sprint 12's compiled-DAG execution path.
+
+**Rationale**: Sprint 12's compiled DAG path requires Gaps A, B, C, F to all be resolved (domain interfaces, profile binding, SubDag/Pipeline execution). The Rust worker already has working ledger/claim/reconcile infrastructure; wiring multi-stage dispatch is the minimum unblocking work for a dry-run.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **DR-1** | **Wire stage dispatch into run_worker**: Replace direct `execute_stage_idea_to_design()` call (`sdlc.rs:1062`) with `execute_stage()` dispatcher that routes by `record.stage`. Sprint 11 delivered the dispatcher and per-stage handlers. | — | S | |
+| **DR-2** | **Add remaining stage handlers**: Implement stub handlers for implementing→code-review, code-review→testing, testing→done, and done→close. Each handler updates `record.stage` and records an outcome. | DR-1 | S | |
+| **DR-3** | **Verify stage ledger advancement**: Ensure each handler updates `record.stage` in the intake ledger so the next worker pass picks up from the correct stage. | DR-1, DR-2 | S | |
+| **DR-4** | **Reconcile pipeline definitions**: Update `dsl/pipelines/sdlc.dag` to use `param` declarations matching the design version in `docs/design/sdlc/sdlc.dag`. Stub undefined functions (`generate_implementation_plan`, `get_pr_diff`). | — | S | |
+| **DR-5** | **Integration test: multi-stage progression**: Test that runs `intake` + 8× `worker` and verifies the intake record reaches `stage: done` with correct execution report. | DR-1, DR-2, DR-3 | M | |
+
+**Verification**: `cargo test --workspace` passes. `gunbc-sdlc intake --intent <path> && gunbc-sdlc worker` repeated 8 times results in a `done` stage with correct JSON report.
 
 ---
 
