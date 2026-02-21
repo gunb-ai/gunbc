@@ -9,6 +9,11 @@ use serde_json::json;
 
 use super::OutputFormat;
 
+pub fn render_canonical_ir_json(dag: &Dag<LoweredOp>) -> Result<String, String> {
+    daglang_lower::canonical_ir_json(dag)
+        .map_err(|error| format!("failed to serialize canonical IR JSON: {error}"))
+}
+
 pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
     let mut out = String::new();
     out.push_str("Nodes:\n");

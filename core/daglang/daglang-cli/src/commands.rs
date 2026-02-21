@@ -184,7 +184,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "compile",
                 args,
-                "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]",
+                "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]",
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
@@ -205,6 +205,15 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 parsed.input.as_ref(),
                 options.clone(),
             );
+            if matches!(parsed.format, CompileOutputFormat::CanonicalJson) {
+                let canonical_json =
+                    render_canonical_ir_json(&output.lowered_dag).unwrap_or_else(|error| {
+                        eprintln!("{error}");
+                        std::process::exit(1);
+                    });
+                println!("{canonical_json}");
+                return;
+            }
             // For Layer 1 exec-runtime: embed pre-computed handler data files.
             embed_layer1_handler_data(&options, &mut output);
             let written_files = if let Some(out_dir) = normalized_out_dir.as_ref() {

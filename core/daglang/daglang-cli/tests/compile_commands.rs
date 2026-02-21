@@ -1598,6 +1598,89 @@ fn compile_command_emits_summary_for_single_file() {
     assert!(stdout.contains("target/generated/rust/main.rs"));
 }
 
+#[test]
+fn compile_command_canonical_json_is_deterministic_for_single_file() {
+    let first = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("canonical-json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first canonical-json compile");
+    let second = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("canonical-json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second canonical-json compile");
+
+    assert!(
+        first.status.success(),
+        "first canonical-json compile failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        second.status.success(),
+        "second canonical-json compile failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&first.stderr));
+    assert_no_stage_failures(&String::from_utf8_lossy(&second.stderr));
+    assert_eq!(
+        first.stdout, second.stdout,
+        "canonical-json compile output must be deterministic across repeated runs"
+    );
+
+    let stdout = String::from_utf8_lossy(&first.stdout);
+    assert!(
+        !stdout.contains("Compiled "),
+        "canonical-json mode should output only canonical IR JSON"
+    );
+    let parsed: Value =
+        serde_json::from_slice(&first.stdout).expect("canonical-json output should be valid JSON");
+    let nodes = parsed
+        .get("nodes")
+        .and_then(Value::as_array)
+        .expect("canonical-json should include nodes array");
+    let edges = parsed
+        .get("edges")
+        .and_then(Value::as_array)
+        .expect("canonical-json should include edges array");
+    assert!(!nodes.is_empty(), "canonical-json nodes array should not be empty");
+    assert!(!edges.is_empty(), "canonical-json edges array should not be empty");
+}
+
+#[test]
+fn compile_command_canonical_json_rejects_out_flag() {
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(makegen_file())
+        .arg("--format")
+        .arg("canonical-json")
+        .arg("--out")
+        .arg("target/generated/canonical")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run canonical-json compile with --out");
+
+    assert!(
+        !output.status.success(),
+        "canonical-json with --out should fail usage validation"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Usage: daglang compile <file.dag|dir>"),
+        "canonical-json with --out should print compile usage: {stderr}"
+    );
+    assert!(
+        stderr.contains("--format summary|canonical-json"),
+        "compile usage should document canonical-json format: {stderr}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn compile_command_accepts_symlink_single_file_target() {

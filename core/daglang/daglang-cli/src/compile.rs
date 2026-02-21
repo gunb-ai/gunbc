@@ -15,7 +15,10 @@ pub use gunbc_exec::DynOp;
 pub use mocks::{
     makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,
 };
-pub use render::{render_expand, render_manifest, render_manifest_with_format, render_obligations};
+pub use render::{
+    render_canonical_ir_json, render_expand, render_manifest, render_manifest_with_format,
+    render_obligations,
+};
 pub use triplets::render_triplets;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

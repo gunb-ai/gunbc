@@ -13,7 +13,7 @@
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
-//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]`: Full compilation pipeline
+//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`: Compile + resolve + execute makegen DAG
 
 use std::path::PathBuf;
@@ -22,8 +22,8 @@ use daglang_cli::compile::{
     build_context, check_from_module_graph, compile_from_context_with_options,
     compile_resolve_execute_from_context, makegen_check_mode_transport_mocks,
     makegen_dry_run_transport_mocks, makegen_entrypoint_mocks, render_expand,
-    render_manifest_with_format, render_obligations, render_triplets, CompileOptions,
-    CompileOutput, OutputFormat,
+    render_manifest_with_format, render_obligations, render_triplets, render_canonical_ir_json,
+    CompileOptions, CompileOutput, OutputFormat,
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
@@ -60,7 +60,7 @@ fn main() {
         eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse + typecheck modules (no lowering)");
         eprintln!(
-            "  compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]"
+            "  compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]"
         );
         eprintln!("                      Full compilation pipeline");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
@@ -305,7 +305,14 @@ struct CompileCommandArgs {
     emit_collection_nodes: bool,
     target: Option<CodegenTarget>,
     layer: Option<CodegenLayer>,
+    format: CompileOutputFormat,
     out_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CompileOutputFormat {
+    Summary,
+    CanonicalJson,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -330,6 +337,8 @@ fn parse_compile_command_args(
     let mut emit_collection_nodes = false;
     let mut target: Option<CodegenTarget> = None;
     let mut layer: Option<CodegenLayer> = None;
+    let mut format = CompileOutputFormat::Summary;
+    let mut saw_format = false;
     let mut out_dir: Option<String> = None;
     let mut i = 2usize;
     while i < args.len() {
@@ -408,6 +417,25 @@ fn parse_compile_command_args(
             i += 1;
             continue;
         }
+        if token == "--format" {
+            if command != "compile" || saw_format {
+                return Err(usage.to_string());
+            }
+            let value = args.get(i + 1).ok_or_else(|| usage.to_string())?;
+            format = parse_compile_output_format(value).ok_or_else(|| usage.to_string())?;
+            saw_format = true;
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--format=") {
+            if command != "compile" || saw_format {
+                return Err(usage.to_string());
+            }
+            format = parse_compile_output_format(value).ok_or_else(|| usage.to_string())?;
+            saw_format = true;
+            i += 1;
+            continue;
+        }
         if token.starts_with("--") {
             return Err(usage.to_string());
         }
@@ -420,13 +448,28 @@ fn parse_compile_command_args(
     if require_input && input.is_none() {
         return Err(usage.to_string());
     }
+    if command == "compile"
+        && matches!(format, CompileOutputFormat::CanonicalJson)
+        && out_dir.is_some()
+    {
+        return Err(usage.to_string());
+    }
     Ok(CompileCommandArgs {
         input,
         emit_collection_nodes,
         target,
         layer,
+        format,
         out_dir,
     })
+}
+
+fn parse_compile_output_format(value: &str) -> Option<CompileOutputFormat> {
+    match value {
+        "summary" => Some(CompileOutputFormat::Summary),
+        "canonical-json" => Some(CompileOutputFormat::CanonicalJson),
+        _ => None,
+    }
 }
 
 fn parse_codegen_target(value: &str) -> Option<CodegenTarget> {
@@ -1240,12 +1283,13 @@ mod tests {
         assert!(parsed.emit_collection_nodes);
         assert!(parsed.target.is_none());
         assert!(parsed.layer.is_none());
+        assert!(matches!(parsed.format, super::CompileOutputFormat::Summary));
         assert!(parsed.out_dir.is_none());
     }
 
     #[test]
     fn parse_compile_command_args_handles_codegen_and_output_flags() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]";
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
         let valid = vec![
             "daglang".to_string(),
             "compile".to_string(),
@@ -1255,6 +1299,13 @@ mod tests {
             "--layer".to_string(),
             "1".to_string(),
             "--out=target/generated/test".to_string(),
+        ];
+        let canonical_json = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+            "canonical-json".to_string(),
         ];
         let duplicate_flag = vec![
             "daglang".to_string(),
@@ -1291,6 +1342,22 @@ mod tests {
             "--layer".to_string(),
             "3".to_string(),
         ];
+        let bad_format = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl".to_string(),
+            "--format".to_string(),
+            "yaml".to_string(),
+        ];
+        let canonical_with_out = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl".to_string(),
+            "--format".to_string(),
+            "canonical-json".to_string(),
+            "--out".to_string(),
+            "target/generated/one".to_string(),
+        ];
         let missing_target = vec!["daglang".to_string(), "compile".to_string()];
 
         let parsed_valid = super::parse_compile_command_args("compile", &valid, usage, false)
@@ -1308,6 +1375,19 @@ mod tests {
             parsed_valid.out_dir.as_deref(),
             Some("target/generated/test")
         );
+        assert!(matches!(
+            parsed_valid.format,
+            super::CompileOutputFormat::Summary
+        ));
+
+        let parsed_canonical =
+            super::parse_compile_command_args("compile", &canonical_json, usage, false)
+                .expect("compile parser should accept canonical-json format");
+        assert!(matches!(
+            parsed_canonical.format,
+            super::CompileOutputFormat::CanonicalJson
+        ));
+        assert!(parsed_canonical.out_dir.is_none());
 
         assert_eq!(
             super::parse_compile_command_args("compile", &duplicate_flag, usage, false),
@@ -1327,6 +1407,14 @@ mod tests {
         );
         assert_eq!(
             super::parse_compile_command_args("compile", &bad_layer, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &bad_format, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &canonical_with_out, usage, false),
             Err(usage.to_string())
         );
         assert_eq!(
@@ -1358,6 +1446,13 @@ mod tests {
             "--out".to_string(),
             "target/generated".to_string(),
         ];
+        let with_format = vec![
+            "daglang".to_string(),
+            "expand".to_string(),
+            "dsl/tools/makegen.dag".to_string(),
+            "--format".to_string(),
+            "canonical-json".to_string(),
+        ];
 
         assert_eq!(
             super::parse_compile_command_args("expand", &with_target, usage, true),
@@ -1367,11 +1462,15 @@ mod tests {
             super::parse_compile_command_args("expand", &with_out, usage, true),
             Err(usage.to_string())
         );
+        assert_eq!(
+            super::parse_compile_command_args("expand", &with_format, usage, true),
+            Err(usage.to_string())
+        );
     }
 
     #[test]
     fn parse_compile_command_args_rejects_invalid_shapes() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--out <dir>|--out=<dir>]";
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
         let unknown_flag = vec![
             "daglang".to_string(),
             "compile".to_string(),
