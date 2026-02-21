@@ -48,11 +48,27 @@ type ReconcilerParams {
 // ── Helper functions ────────────────────────────────────────────────
 
 fn is_terminal(status: String) -> Bool {
-  status == "Success" || status == "TerminalFailed"
+  status == "TerminalFailed"
 }
 
 fn is_retryable(status: String) -> Bool {
   status == "Failed"
+}
+
+fn is_success(status: String) -> Bool {
+  status == "Success"
+}
+
+// Map a stage to its legal backward-transition target for retry.
+// Must match the backward edges in std/state_machines.dag.
+fn retry_target(stage: IssueLifecycleStage) -> IssueLifecycleStage {
+  match stage {
+    DesignReview => Design
+    Implementing => Accepted
+    CodeReview   => Implementing
+    Testing      => Implementing
+    _            => stage  // Stages without backward edges have no retry path
+  }
 }
 
 fn format_terminal_comment(issue_id: String, stage: String, reason: String) -> String {
@@ -130,12 +146,25 @@ pipeline reconciler
               _ => { issue_id: issue.id, action: "none", converged: true }
             }
           }
-          false => match is_retryable(status: ledger_result.outcome.status) {
+          false => match is_success(status: ledger_result.outcome.status) {
+            true => {
+              // Success but still at the same stage label — the label
+              // transition didn't land (worker crash, network failure).
+              // Emit WorkReady to let the worker re-apply the transition.
+              requeue_signal = signals.emit(signal: {
+                signal_type: "WorkReady",
+                idempotency_key: "reconcile-success::{issue.id}::{stage_label}",
+                payload: { issue_id: issue.id, stage: stage_label },
+                produced_at: "now"
+              })
+              { issue_id: issue.id, action: "success_requeued", converged: false }
+            }
+            false => match is_retryable(status: ledger_result.outcome.status) {
             true => {
               // Failed + retryable — check retry budget
               transition = validate_transition_with_budget(
                 from: remote_stage,
-                to: remote_stage,  // retry same stage
+                to: retry_target(stage: remote_stage),
                 retry_budget_remaining: ledger_result.outcome.retry_budget_remaining
               )
               match transition {
@@ -174,6 +203,7 @@ pipeline reconciler
               { issue_id: issue.id, action: "none", converged: true }
             }
           }
+        }
         }
       }
     }

@@ -455,7 +455,8 @@ pipeline sdlc
   }
 
   // Stage 10: Close (transition: testing -> done, close issue)
-  stage close [after acceptance] {
+  // Only close when both cargo test and clippy passed.
+  stage close [after acceptance, when test_result.success && clippy_result.success] {
     done_labels = issues.set_labels(
       id: provider_issue_id(number: default_issue_number()),
       labels: transition_labels(
