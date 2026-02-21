@@ -305,6 +305,20 @@ Conformance evidence classes:
    1. reconcile preview/execute commands must fail closed while auth/project/service-account/secret health checks are failing.
    2. healthy reconcile preview reports the same runtime dependency target set as infra plan.
 
+### 6.8 Execution Report Contract
+
+1. Worker execution produces a persisted machine-readable report artifact.
+2. Report includes per-intake metric maps:
+   1. stage duration,
+   2. approval latency,
+   3. retry attempts,
+   4. LLM cost units.
+3. Report includes rollup summary counters for monitoring ingestion:
+   1. intake total,
+   2. ready/executed/terminalized counts,
+   3. awaiting approval, claim conflict, and replay-skip counts.
+4. Report includes generation timestamp for downstream time-series correlation.
+
 ## 7. Conformance Model (Multi-Level)
 
 ```mermaid
