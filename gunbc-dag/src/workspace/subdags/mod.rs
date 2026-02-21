@@ -222,9 +222,7 @@ fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    // CG1 introduces canonical SDLC pipeline modeling in DSL before dedicated
-    // runtime target wiring lands (CG2+). Keep explicit and fail-closed.
-    ["sdlc"].into_iter().collect()
+    BTreeSet::new()
 }
 
 fn add_discovered_tool_subdags(
@@ -383,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn test_build_workspace_dag_from_discovery_allows_intentionally_unmapped_sdlc_modules() {
+    fn test_build_workspace_dag_from_discovery_allows_intentionally_unmapped_design_module() {
         let tool_names: BTreeSet<String> = [
             "build",
             "makegen",
@@ -402,11 +400,13 @@ mod tests {
         .into_iter()
         .map(|name| name.to_string())
         .collect();
-        let pipeline_names: BTreeSet<String> =
-            ["ci", "sdlc"].into_iter().map(|name| name.to_string()).collect();
+        let pipeline_names: BTreeSet<String> = ["ci", "sdlc"]
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect();
 
         let dag = build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
-            .expect("intentionally unmapped SDLC modules should not fail coverage");
+            .expect("intentionally unmapped SDLC design module should not fail coverage");
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"ci"));
         assert!(node_ids.contains(&"languages"));
@@ -464,6 +464,7 @@ mod tests {
         let discovered =
             discover_dsl_pipeline_names().expect("dsl pipeline discovery should succeed");
         assert!(discovered.contains("ci"));
+        assert!(discovered.contains("sdlc"));
     }
 
     #[test]

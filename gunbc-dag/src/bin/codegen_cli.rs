@@ -1139,9 +1139,7 @@ fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    // CG1 introduces canonical SDLC pipeline modeling in DSL before dedicated
-    // runtime target wiring lands (CG2+). Keep this explicit and fail-closed.
-    ["sdlc"].into_iter().collect()
+    BTreeSet::new()
 }
 
 fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
@@ -1763,7 +1761,7 @@ pub fn sample_tool() {}
     }
 
     #[test]
-    fn codegen_dsl_coverage_allows_intentionally_unmapped_sdlc_modules() {
+    fn codegen_dsl_coverage_allows_intentionally_unmapped_design_module() {
         let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("workspace root should exist")
@@ -1789,15 +1787,14 @@ pub fn sample_tool() {}
         .into_iter()
         .map(|name| name.to_string())
         .collect();
-        let mut pipeline_modules: BTreeSet<String> = WorkspaceBinary::all()
+        let pipeline_modules: BTreeSet<String> = WorkspaceBinary::all()
             .iter()
             .copied()
             .filter(|binary| binary.is_dsl_pipeline_module())
             .map(|binary| binary.tool_name().to_string())
             .collect();
-        pipeline_modules.insert("sdlc".to_string());
 
         validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
-            .expect("explicitly unmapped SDLC modules should be allowed");
+            .expect("explicitly unmapped SDLC design module should be allowed");
     }
 }
