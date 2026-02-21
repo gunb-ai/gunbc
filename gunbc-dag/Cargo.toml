@@ -44,6 +44,7 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 cargo_metadata = "0.18"
 toml_edit = "0.22"
+serde_yaml = "0.9.34"
 
 [dev-dependencies]
 gunbc-test = { path = "../core/test" }
@@ -122,3 +123,7 @@ path = "src/bin/pipeline.rs"
 [[bin]]
 name = "gunbc-workflow"
 path = "src/bin/workflow.rs"
+
+[[bin]]
+name = "gunbc-sdlc"
+path = "src/bin/sdlc.rs"
