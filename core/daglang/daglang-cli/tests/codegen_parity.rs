@@ -5,6 +5,7 @@ use daglang_driver::DriverContext;
 use gunbc_dag::resolve_lowered_dag;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::ToolchainCommands;
+use gunbc_ir::Value;
 use gunbc_ir::WorkspaceLayout;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -295,7 +296,51 @@ fn run_makegen_interpreter() -> RuntimeOutcome {
     }
 }
 
-fn run_module_interpreter_execution_nodes(relative_module: &str) -> Result<Vec<String>, String> {
+fn module_entrypoint_id(relative_module: &str) -> String {
+    let module_name = relative_module
+        .trim_start_matches("dsl/")
+        .trim_end_matches(".dag")
+        .replace('/', ".");
+    let function_name = module_name
+        .rsplit('.')
+        .next()
+        .unwrap_or(module_name.as_str())
+        .to_string();
+    format!("{module_name}::{function_name}")
+}
+
+fn apply_module_entrypoint_inputs(
+    mocks: &mut BoundaryMocks,
+    relative_module: &str,
+    inputs: &[(&str, &str)],
+) {
+    let entrypoint = module_entrypoint_id(relative_module);
+    let entrypoint_dot = entrypoint.replace("::", ".");
+    let module_stub = entrypoint.replace("::", "_").replace('.', "_");
+    for (port, value) in inputs {
+        mocks.set_input(&entrypoint, *port, Value::Str((*value).to_string()));
+        mocks.set_input(&entrypoint_dot, *port, Value::Str((*value).to_string()));
+        mocks.set_input(
+            &format!("param_source_{module_stub}_{port}"),
+            *port,
+            Value::Str((*value).to_string()),
+        );
+    }
+}
+
+fn run_module_interpreter_execution_nodes(
+    relative_module: &str,
+    inputs: &[(&str, &str)],
+) -> Result<Vec<String>, String> {
+    let mut input_mocks = BoundaryMocks::new();
+    apply_module_entrypoint_inputs(&mut input_mocks, relative_module, inputs);
+    run_module_interpreter_execution_nodes_with_mocks(relative_module, input_mocks)
+}
+
+fn run_module_interpreter_execution_nodes_with_mocks(
+    relative_module: &str,
+    input_mocks: BoundaryMocks,
+) -> Result<Vec<String>, String> {
     let context = DriverContext {
         roots: vec![workspace_root().join("dsl")],
         target_file: Some(workspace_root().join(relative_module)),
@@ -304,7 +349,6 @@ fn run_module_interpreter_execution_nodes(relative_module: &str) -> Result<Vec<S
         .map_err(|error| format!("compile failed for {relative_module}: {error}"))?;
     let resolved = resolve_lowered_dag(&output.lowered_dag)
         .map_err(|error| format!("resolve failed for {relative_module}: {error}"))?;
-    let input_mocks = BoundaryMocks::new();
     let execution = execute_with_mode_and_inputs(
         &resolved,
         ExecutionMode::Real,
@@ -1491,8 +1535,62 @@ fn design_tool_rust_layer1_execution_trace_matches_interpreter() {
         "generated rust layer1 runtime should emit execution trace for {module}"
     );
 
-    let interpreter_nodes = run_module_interpreter_execution_nodes(module)
+    let interpreter_nodes = run_module_interpreter_execution_nodes(module, &[])
         .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
+    assert_eq!(
+        interpreter_nodes, generated_nodes,
+        "execution trace differential mismatch for {module}"
+    );
+    std::fs::remove_dir_all(&rust_layer1_out).unwrap_or_else(|error| {
+        panic!(
+            "failed to cleanup rust layer1 trace differential out root for {module}: {error}"
+        )
+    });
+}
+
+#[test]
+fn infra_tool_rust_layer1_execution_trace_matches_interpreter() {
+    let module = "dsl/tools/infra.dag";
+    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_trace_diff_infra");
+    compile_module_layer1_rust(module, &rust_layer1_out);
+    let generated = run_infra_generated_rust_layer1(&rust_layer1_out);
+    let (generated_stdout, generated_stderr) = match generated {
+        RuntimeOutcome::Ran { stdout, stderr } => (stdout, stderr),
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
+        }
+    };
+    let generated_nodes = parse_generated_execution_nodes(&generated_stdout, &generated_stderr);
+    assert!(
+        !generated_nodes.is_empty(),
+        "generated rust layer1 runtime should emit execution trace for {module}"
+    );
+
+    let mut mocks = BoundaryMocks::new();
+    mocks.set_input("tools.infra.infra", "environment", Value::Str("dev".to_string()));
+    mocks.set_input("tools.infra::infra", "environment", Value::Str("dev".to_string()));
+    mocks.set_input("tools.infra.infra", "runtime", Value::Str("local".to_string()));
+    mocks.set_input("tools.infra::infra", "runtime", Value::Str("local".to_string()));
+    mocks.set_input(
+        "tools.infra.infra",
+        "spec_targets",
+        Value::List(vec![Value::Str("secret:github-token".to_string())]),
+    );
+    mocks.set_input(
+        "tools.infra::infra",
+        "spec_targets",
+        Value::List(vec![Value::Str("secret:github-token".to_string())]),
+    );
+    mocks.set_input("tools.infra.infra", "request_token", Value::Str(String::new()));
+    mocks.set_input("tools.infra::infra", "request_token", Value::Str(String::new()));
+    mocks.set_input("tools.infra.infra", "request_url", Value::Str(String::new()));
+    mocks.set_input("tools.infra::infra", "request_url", Value::Str(String::new()));
+    mocks.set_input("tools.infra.infra", "allow_impersonation", Value::Bool(false));
+    mocks.set_input("tools.infra::infra", "allow_impersonation", Value::Bool(false));
+    mocks.set_input("tools.infra.infra", "execute", Value::Bool(false));
+    mocks.set_input("tools.infra::infra", "execute", Value::Bool(false));
+    let interpreter_nodes = run_module_interpreter_execution_nodes_with_mocks(module, mocks)
+    .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
     assert_eq!(
         interpreter_nodes, generated_nodes,
         "execution trace differential mismatch for {module}"

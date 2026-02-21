@@ -209,7 +209,7 @@ Conformance evidence classes:
    1. Interpreter vs generated-runtime output parity is enforced for `tools.makegen`
       in `codegen_parity` to keep L5 conformance executable, not aspirational.
    2. Makegen C backend differential checks additionally run under ASAN+UBSAN.
-   3. Design-tool Rust Layer-1 execution trace differential (interpreter vs generated runtime node trace) is enforced in `codegen_parity`.
+   3. Design-tool and infra-tool Rust Layer-1 execution trace differential (interpreter vs generated runtime node trace) is enforced in `codegen_parity`.
 
 ## 6. Canonical Contracts
 
