@@ -40,6 +40,7 @@ enum SdlcCommand {
 struct CliArgs {
     command: SdlcCommand,
     intent_path: Option<PathBuf>,
+    infra_intent_path: Option<PathBuf>,
     intake_key: Option<String>,
     stage: Option<IssueLifecycleStage>,
     dry_run: bool,
@@ -63,6 +64,76 @@ struct IntentSheet {
     tracking: TrackingState,
     acceptance_tests: Vec<String>,
     notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InfraIntentSheet {
+    intent_id: String,
+    environment: String,
+    runtime_profile: String,
+    provider: String,
+    policy_version: String,
+    components: InfraIntentComponents,
+    safety: InfraIntentSafety,
+    launch: InfraIntentLaunch,
+    drift: InfraIntentDrift,
+    notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InfraIntentComponents {
+    claim_store: InfraIntentStore,
+    outcome_ledger: InfraIntentStore,
+    secrets: InfraIntentSecrets,
+    metrics: InfraIntentMetrics,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InfraIntentStore {
+    backend: String,
+    dsn: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InfraIntentSecrets {
+    credential_policy_profile: String,
+    required_refs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InfraIntentMetrics {
+    sink: String,
+    namespace: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InfraIntentSafety {
+    fail_closed_on_missing_prereqs: bool,
+    require_capability_gate: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InfraIntentLaunch {
+    worker_count: u32,
+    lease_ttl_seconds: u32,
+    heartbeat_seconds: u32,
+    poll_interval_seconds: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct InfraIntentDrift {
+    reconcile_mode: String,
+    reconcile_interval_minutes: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct WorkerPreflightSummary {
+    status: String,
+    intent_path: String,
+    intent_id: String,
+    environment: String,
+    runtime_profile: String,
+    checked_components: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -153,7 +224,11 @@ fn main() {
 
     let result = match args.command {
         SdlcCommand::Intake => run_intake(args.intent_path.as_ref(), args.dry_run),
-        SdlcCommand::Worker => run_worker(args.dry_run, args.emit_pending_exit_code),
+        SdlcCommand::Worker => run_worker(
+            args.dry_run,
+            args.emit_pending_exit_code,
+            args.infra_intent_path.as_ref(),
+        ),
         SdlcCommand::AwaitApproval => run_await_approval(args.intake_key.as_deref(), args.dry_run),
         SdlcCommand::Transition => {
             run_transition(args.intake_key.as_deref(), args.stage, args.dry_run)
@@ -171,6 +246,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         return Ok(CliArgs {
             command: SdlcCommand::Help,
             intent_path: None,
+            infra_intent_path: None,
             intake_key: None,
             stage: None,
             dry_run: false,
@@ -188,6 +264,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     };
 
     let mut intent_path: Option<PathBuf> = None;
+    let mut infra_intent_path: Option<PathBuf> = None;
     let mut intake_key: Option<String> = None;
     let mut stage: Option<IssueLifecycleStage> = None;
     let mut dry_run = false;
@@ -223,6 +300,31 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             }
             intent_path = Some(PathBuf::from(value));
             idx += 2;
+            continue;
+        }
+        if token == "--infra-intent" {
+            if infra_intent_path.is_some() {
+                return Err("duplicate --infra-intent flag".to_string());
+            }
+            let value = argv
+                .get(idx + 1)
+                .ok_or_else(|| "--infra-intent requires a file path".to_string())?;
+            if value.starts_with("--") {
+                return Err("--infra-intent requires a non-flag file path".to_string());
+            }
+            infra_intent_path = Some(PathBuf::from(value));
+            idx += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--infra-intent=") {
+            if infra_intent_path.is_some() {
+                return Err("duplicate --infra-intent flag".to_string());
+            }
+            if value.is_empty() {
+                return Err("--infra-intent requires a non-empty file path".to_string());
+            }
+            infra_intent_path = Some(PathBuf::from(value));
+            idx += 1;
             continue;
         }
         if let Some(value) = token.strip_prefix("--intent=") {
@@ -289,6 +391,9 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command == SdlcCommand::Worker && intent_path.is_some() {
         return Err("worker does not accept --intent".to_string());
     }
+    if command != SdlcCommand::Worker && infra_intent_path.is_some() {
+        return Err("--infra-intent is only valid for worker".to_string());
+    }
     if command != SdlcCommand::Worker && emit_pending_exit_code {
         return Err("--emit-pending-exit-code is only valid for worker".to_string());
     }
@@ -311,6 +416,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     Ok(CliArgs {
         command,
         intent_path,
+        infra_intent_path,
         intake_key,
         stage,
         dry_run,
@@ -462,7 +568,27 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
     Ok(())
 }
 
-fn run_worker(dry_run: bool, emit_pending_exit_code: bool) -> Result<(), String> {
+fn run_worker(
+    dry_run: bool,
+    emit_pending_exit_code: bool,
+    infra_intent_path: Option<&PathBuf>,
+) -> Result<(), String> {
+    let preflight = if dry_run {
+        WorkerPreflightSummary {
+            status: "skipped-dry-run".to_string(),
+            intent_path: default_infra_intent_path().display().to_string(),
+            intent_id: "n/a".to_string(),
+            environment: "n/a".to_string(),
+            runtime_profile: "n/a".to_string(),
+            checked_components: Vec::new(),
+        }
+    } else {
+        let path = infra_intent_path
+            .cloned()
+            .unwrap_or_else(default_infra_intent_path);
+        run_worker_preflight(&path)?
+    };
+
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
     let claim_ledger_path = claim_ledger_path();
@@ -627,6 +753,7 @@ fn run_worker(dry_run: bool, emit_pending_exit_code: bool) -> Result<(), String>
             "claim_ledger_path": claim_ledger_path.display().to_string(),
             "run_state_path": run_state_path.display().to_string(),
             "reconcile_actions": reconcile_plan.actions,
+            "preflight": preflight,
             "metrics": {
                 "stage_duration_ms": stage_duration_ms,
                 "approval_latency_ms": approval_latency_ms,
@@ -836,6 +963,140 @@ fn validate_intent(intent: &IntentSheet) -> Result<(), String> {
     Ok(())
 }
 
+fn load_infra_intent(path: &Path) -> Result<InfraIntentSheet, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read infra intent file {}: {error}", path.display()))?;
+    serde_yaml::from_str::<InfraIntentSheet>(&content)
+        .map_err(|error| format!("failed to parse infra intent YAML {}: {error}", path.display()))
+}
+
+fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
+    require_non_empty("infra.intent_id", &intent.intent_id)?;
+    require_non_empty("infra.environment", &intent.environment)?;
+    require_non_empty("infra.runtime_profile", &intent.runtime_profile)?;
+    require_non_empty("infra.provider", &intent.provider)?;
+    require_non_empty("infra.policy_version", &intent.policy_version)?;
+    require_non_empty(
+        "infra.components.claim_store.backend",
+        &intent.components.claim_store.backend,
+    )?;
+    require_non_empty("infra.components.claim_store.dsn", &intent.components.claim_store.dsn)?;
+    require_non_empty(
+        "infra.components.outcome_ledger.backend",
+        &intent.components.outcome_ledger.backend,
+    )?;
+    require_non_empty(
+        "infra.components.outcome_ledger.dsn",
+        &intent.components.outcome_ledger.dsn,
+    )?;
+    require_non_empty(
+        "infra.components.secrets.credential_policy_profile",
+        &intent.components.secrets.credential_policy_profile,
+    )?;
+    require_non_empty("infra.components.metrics.sink", &intent.components.metrics.sink)?;
+    require_non_empty(
+        "infra.components.metrics.namespace",
+        &intent.components.metrics.namespace,
+    )?;
+    require_non_empty("infra.drift.reconcile_mode", &intent.drift.reconcile_mode)?;
+
+    if intent.components.claim_store.backend != "sqlite" {
+        return Err(format!(
+            "unsupported infra claim_store backend `{}`; expected `sqlite`",
+            intent.components.claim_store.backend
+        ));
+    }
+    if intent.components.outcome_ledger.backend != "sqlite" {
+        return Err(format!(
+            "unsupported infra outcome_ledger backend `{}`; expected `sqlite`",
+            intent.components.outcome_ledger.backend
+        ));
+    }
+    if !intent.safety.fail_closed_on_missing_prereqs {
+        return Err("infra safety.fail_closed_on_missing_prereqs must be true".to_string());
+    }
+    if !intent.safety.require_capability_gate {
+        return Err("infra safety.require_capability_gate must be true".to_string());
+    }
+    if intent.components.secrets.required_refs.is_empty() {
+        return Err(
+            "infra components.secrets.required_refs must contain at least one secret reference"
+                .to_string(),
+        );
+    }
+    if intent.launch.worker_count == 0 {
+        return Err("infra launch.worker_count must be >= 1".to_string());
+    }
+    if intent.launch.heartbeat_seconds == 0 {
+        return Err("infra launch.heartbeat_seconds must be >= 1".to_string());
+    }
+    if intent.launch.lease_ttl_seconds < intent.launch.heartbeat_seconds {
+        return Err(
+            "infra launch.lease_ttl_seconds must be >= launch.heartbeat_seconds".to_string(),
+        );
+    }
+    if intent.launch.poll_interval_seconds == 0 {
+        return Err("infra launch.poll_interval_seconds must be >= 1".to_string());
+    }
+    if intent.drift.reconcile_interval_minutes == 0 {
+        return Err("infra drift.reconcile_interval_minutes must be >= 1".to_string());
+    }
+    if intent.drift.reconcile_mode != "plan-then-apply" {
+        return Err(format!(
+            "unsupported infra drift.reconcile_mode `{}`; expected `plan-then-apply`",
+            intent.drift.reconcile_mode
+        ));
+    }
+    let _ = intent.notes.as_deref();
+    Ok(())
+}
+
+fn run_worker_preflight(intent_path: &Path) -> Result<WorkerPreflightSummary, String> {
+    let intent = load_infra_intent(intent_path)?;
+    validate_infra_intent(&intent)?;
+    ensure_sqlite_store_ready(
+        "components.claim_store.dsn",
+        &intent.components.claim_store.dsn,
+    )?;
+    ensure_sqlite_store_ready(
+        "components.outcome_ledger.dsn",
+        &intent.components.outcome_ledger.dsn,
+    )?;
+
+    let checked_components = vec![
+        "claim_store".to_string(),
+        "outcome_ledger".to_string(),
+        "secrets".to_string(),
+        "metrics".to_string(),
+        "launch".to_string(),
+        "drift".to_string(),
+        "safety".to_string(),
+    ];
+    Ok(WorkerPreflightSummary {
+        status: "ok".to_string(),
+        intent_path: intent_path.display().to_string(),
+        intent_id: intent.intent_id,
+        environment: intent.environment,
+        runtime_profile: intent.runtime_profile,
+        checked_components,
+    })
+}
+
+fn ensure_sqlite_store_ready(field_name: &str, dsn: &str) -> Result<(), String> {
+    if dsn.trim().is_empty() {
+        return Err(format!("infra {field_name} cannot be empty"));
+    }
+    let store_path = PathBuf::from(dsn);
+    let parent = store_path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "infra preflight failed creating parent directory for {field_name} `{}`: {error}",
+            store_path.display()
+        )
+    })?;
+    Ok(())
+}
+
 fn require_non_empty(field_name: &str, value: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         return Err(format!("{field_name} cannot be empty"));
@@ -923,6 +1184,10 @@ fn artifact_ledger_path() -> PathBuf {
 
 fn run_state_ledger_path() -> PathBuf {
     PathBuf::from("target").join("sdlc").join("run-state-ledger.json")
+}
+
+fn default_infra_intent_path() -> PathBuf {
+    PathBuf::from("TODO").join("infra-intent-template.yaml")
 }
 
 fn load_intake_ledger(path: &Path) -> Result<IntakeLedger, String> {
@@ -1041,7 +1306,7 @@ fn print_help() {
     println!();
     println!("USAGE:");
     println!("    gunbc-sdlc intake --intent <path> [--dry-run]");
-    println!("    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code]");
+    println!("    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]");
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
     println!("    gunbc-sdlc help");

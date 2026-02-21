@@ -42,6 +42,7 @@ fn write_intent_file_with_git(
     if initialize_git {
         ensure_git_repo_with_commit(root);
     }
+    write_infra_intent_template(root, true);
     let issue_id_yaml = match issue_id {
         Some(value) => value.to_string(),
         None => "null".to_string(),
@@ -82,6 +83,49 @@ notes: "test fixture"
 "#
     );
     std::fs::write(path, content).expect("write intent fixture");
+}
+
+fn write_infra_intent_template(root: &Path, valid: bool) {
+    let todo_dir = root.join("TODO");
+    std::fs::create_dir_all(&todo_dir).expect("create TODO directory for infra intent");
+    let lease_ttl = if valid { 120 } else { 5 };
+    let heartbeat = if valid { 30 } else { 10 };
+    let content = format!(
+        r#"intent_id: "infra-20260221-runtime-profile"
+environment: "dev"
+runtime_profile: "stateless-fleet"
+provider: "github"
+policy_version: "1"
+components:
+  claim_store:
+    backend: "sqlite"
+    dsn: "var/sdlc/claims.db"
+  outcome_ledger:
+    backend: "sqlite"
+    dsn: "var/sdlc/outcomes.db"
+  secrets:
+    credential_policy_profile: "default"
+    required_refs:
+      - "github-token"
+  metrics:
+    sink: "stdout"
+    namespace: "gunbc.sdlc"
+safety:
+  fail_closed_on_missing_prereqs: true
+  require_capability_gate: true
+launch:
+  worker_count: 5
+  lease_ttl_seconds: {lease_ttl}
+  heartbeat_seconds: {heartbeat}
+  poll_interval_seconds: 15
+drift:
+  reconcile_mode: "plan-then-apply"
+  reconcile_interval_minutes: 60
+notes: "test fixture infra intent"
+"#
+    );
+    std::fs::write(todo_dir.join("infra-intent-template.yaml"), content)
+        .expect("write infra intent template fixture");
 }
 
 fn ensure_git_repo_with_commit(root: &Path) {
@@ -218,6 +262,50 @@ fn intake_real_mode_fails_closed_without_git_trace_context() {
     assert!(
         stderr.contains("trace linkage requires git metadata"),
         "stderr should explain missing git metadata requirement: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
+    let root = unique_temp_dir("invalid_infra_preflight");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-invalid-preflight",
+        "intent-20260221-invalid-preflight",
+        Some(1234),
+    );
+    write_infra_intent_template(&root, false);
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before preflight failure: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run worker with invalid infra preflight");
+    assert!(
+        !worker.status.success(),
+        "worker should fail closed when infra preflight fails"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("lease_ttl_seconds must be >= launch.heartbeat_seconds"),
+        "preflight failure should explain invalid launch configuration: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
