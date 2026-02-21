@@ -75,9 +75,11 @@ pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
 pub use sdlc::{
-    claim_slot_key, reconcile_entries, register_retry_failure, release_claim, retry_ready,
-    try_acquire_claim, ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction,
-    ReconcileEntry, ReconcilePlan, RetryState,
+    canonical_marker, claim_slot_key, promote_to_canonical_artifact, provisional_marker,
+    reconcile_entries, register_retry_failure, release_claim, retry_ready, try_acquire_claim,
+    upsert_provisional_artifact, ArtifactLedger, ArtifactRecord, ArtifactUpsertOutcome,
+    ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction, ReconcileEntry, ReconcilePlan,
+    RetryState,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{

@@ -8,7 +8,8 @@
 
 use gunbc_dag::{
     claim_slot_key, reconcile_entries, register_retry_failure, release_claim, try_acquire_claim,
-    ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry, RetryState,
+    upsert_provisional_artifact, ArtifactLedger, ArtifactUpsertOutcome, ClaimAcquireResult,
+    ClaimLedger, ReconcileAction, ReconcileEntry, RetryState,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::github::{ensure_sdlc_issue_capabilities, SdlcIssueCapabilities};
@@ -289,6 +290,8 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
 
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
+    let artifact_ledger_path = artifact_ledger_path();
+    let mut artifacts = load_artifact_ledger(&artifact_ledger_path)?;
     let now = epoch_millis();
     let intake_key = intent.idempotency.intake_key.clone();
     let mut idempotent = false;
@@ -330,6 +333,22 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
     }
 
     save_intake_ledger(&ledger_path, &ledger)?;
+    let design_prompt_hash = gunbc_infra::hash::ContentHash::from_bytes(design_prompt.as_bytes())
+        .as_str()
+        .to_string();
+    let artifact_outcome = upsert_provisional_artifact(
+        &mut artifacts,
+        &intake_key,
+        &effective_run_key,
+        &design_prompt_hash,
+        now,
+    )?;
+    save_artifact_ledger(&artifact_ledger_path, &artifacts)?;
+    let artifact_status = match artifact_outcome {
+        ArtifactUpsertOutcome::Inserted => "inserted",
+        ArtifactUpsertOutcome::Updated => "updated",
+        ArtifactUpsertOutcome::Noop => "noop",
+    };
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({
@@ -341,6 +360,8 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
             "idempotent": idempotent,
             "ledger_path": ledger_path.display().to_string(),
             "design_prompt": design_prompt,
+            "artifact_ledger_path": artifact_ledger_path.display().to_string(),
+            "artifact_status": artifact_status,
         }))
         .map_err(|error| format!("failed to serialize intake output: {error}"))?
     );
@@ -628,6 +649,10 @@ fn claim_ledger_path() -> PathBuf {
     PathBuf::from("target").join("sdlc").join("claim-ledger.json")
 }
 
+fn artifact_ledger_path() -> PathBuf {
+    PathBuf::from("target").join("sdlc").join("artifact-ledger.json")
+}
+
 fn load_intake_ledger(path: &Path) -> Result<IntakeLedger, String> {
     if !path.exists() {
         return Ok(IntakeLedger::default());
@@ -676,6 +701,31 @@ fn save_claim_ledger(path: &Path, ledger: &ClaimLedger) -> Result<(), String> {
         .map_err(|error| format!("failed to serialize claim ledger: {error}"))?;
     std::fs::write(path, content)
         .map_err(|error| format!("failed to write claim ledger {}: {error}", path.display()))
+}
+
+fn load_artifact_ledger(path: &Path) -> Result<ArtifactLedger, String> {
+    if !path.exists() {
+        return Ok(ArtifactLedger::default());
+    }
+    let content = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read artifact ledger {}: {error}", path.display()))?;
+    serde_json::from_str::<ArtifactLedger>(&content)
+        .map_err(|error| format!("failed to parse artifact ledger {}: {error}", path.display()))
+}
+
+fn save_artifact_ledger(path: &Path, ledger: &ArtifactLedger) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create artifact ledger directory {}: {error}",
+                parent.display()
+            )
+        })?;
+    }
+    let content = serde_json::to_string_pretty(ledger)
+        .map_err(|error| format!("failed to serialize artifact ledger: {error}"))?;
+    std::fs::write(path, content)
+        .map_err(|error| format!("failed to write artifact ledger {}: {error}", path.display()))
 }
 
 const fn default_stage() -> IssueLifecycleStage {

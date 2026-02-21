@@ -102,6 +102,10 @@ fn intake_dry_run_computes_run_key_without_writing_ledger() {
         !root.join("target/sdlc/intake-ledger.json").exists(),
         "dry-run intake must not write ledger state"
     );
+    assert!(
+        !root.join("target/sdlc/artifact-ledger.json").exists(),
+        "dry-run intake must not write artifact ledger state"
+    );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
@@ -133,6 +137,7 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
     let first_payload: serde_json::Value =
         serde_json::from_slice(&first.stdout).expect("first intake output should be JSON");
     assert_eq!(first_payload["idempotent"], false);
+    assert_eq!(first_payload["artifact_status"], "inserted");
 
     let second = Command::new(sdlc_bin())
         .arg("intake")
@@ -149,6 +154,7 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
     let second_payload: serde_json::Value =
         serde_json::from_slice(&second.stdout).expect("second intake output should be JSON");
     assert_eq!(second_payload["idempotent"], true);
+    assert_eq!(second_payload["artifact_status"], "noop");
 
     let ledger_path = root.join("target/sdlc/intake-ledger.json");
     let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
@@ -163,6 +169,15 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         "idempotent re-intake should keep a single ledger record"
     );
     assert!(entries.contains_key("intent-20260221-idempotent"));
+
+    let artifact_ledger_path = root.join("target/sdlc/artifact-ledger.json");
+    let artifact_raw = std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger");
+    let artifact: serde_json::Value =
+        serde_json::from_str(&artifact_raw).expect("artifact ledger should be valid JSON");
+    let records = artifact["records"]
+        .as_object()
+        .expect("artifact records should be an object");
+    assert_eq!(records.len(), 1, "idempotent re-intake should not duplicate artifact markers");
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
