@@ -19,6 +19,8 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 }
 
 fn write_intent_file(path: &Path, intent_id: &str, intake_key: &str, issue_id: Option<u64>) {
+    let root = path.parent().expect("intent fixture path should have parent");
+    ensure_git_repo_with_commit(root);
     let issue_id_yaml = match issue_id {
         Some(value) => value.to_string(),
         None => "null".to_string(),
@@ -59,6 +61,64 @@ notes: "test fixture"
 "#
     );
     std::fs::write(path, content).expect("write intent fixture");
+}
+
+fn ensure_git_repo_with_commit(root: &Path) {
+    if root.join(".git").exists() {
+        return;
+    }
+    let init = Command::new("git")
+        .arg("init")
+        .arg("-q")
+        .current_dir(root)
+        .output()
+        .expect("initialize git repository for test fixture");
+    assert!(
+        init.status.success(),
+        "git init should succeed: {}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    let email = Command::new("git")
+        .args(["config", "user.email", "sdlc-tests@example.com"])
+        .current_dir(root)
+        .output()
+        .expect("configure git user.email");
+    assert!(
+        email.status.success(),
+        "git config user.email should succeed: {}",
+        String::from_utf8_lossy(&email.stderr)
+    );
+    let name = Command::new("git")
+        .args(["config", "user.name", "SDLC Tests"])
+        .current_dir(root)
+        .output()
+        .expect("configure git user.name");
+    assert!(
+        name.status.success(),
+        "git config user.name should succeed: {}",
+        String::from_utf8_lossy(&name.stderr)
+    );
+    std::fs::write(root.join(".git-trace"), "trace-seed\n").expect("write git trace seed file");
+    let add = Command::new("git")
+        .args(["add", ".git-trace"])
+        .current_dir(root)
+        .output()
+        .expect("stage git trace seed file");
+    assert!(
+        add.status.success(),
+        "git add should succeed: {}",
+        String::from_utf8_lossy(&add.stderr)
+    );
+    let commit = Command::new("git")
+        .args(["commit", "-q", "-m", "seed trace metadata"])
+        .current_dir(root)
+        .output()
+        .expect("create initial git commit for trace linkage");
+    assert!(
+        commit.status.success(),
+        "git commit should succeed: {}",
+        String::from_utf8_lossy(&commit.stderr)
+    );
 }
 
 #[test]
@@ -138,6 +198,17 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         serde_json::from_slice(&first.stdout).expect("first intake output should be JSON");
     assert_eq!(first_payload["idempotent"], false);
     assert_eq!(first_payload["artifact_status"], "inserted");
+    assert_eq!(
+        first_payload["trace_linkage"]["intent_id"],
+        "intent-20260221-idempotent"
+    );
+    assert!(
+        first_payload["trace_linkage"]["linkage_key"]
+            .as_str()
+            .expect("linkage key should be string")
+            .contains("run_key="),
+        "trace linkage key should include run-key metadata"
+    );
 
     let second = Command::new(sdlc_bin())
         .arg("intake")
@@ -155,6 +226,10 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         serde_json::from_slice(&second.stdout).expect("second intake output should be JSON");
     assert_eq!(second_payload["idempotent"], true);
     assert_eq!(second_payload["artifact_status"], "noop");
+    assert_eq!(
+        second_payload["trace_linkage"]["intent_id"],
+        "intent-20260221-idempotent"
+    );
 
     let ledger_path = root.join("target/sdlc/intake-ledger.json");
     let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
@@ -169,6 +244,12 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         "idempotent re-intake should keep a single ledger record"
     );
     assert!(entries.contains_key("intent-20260221-idempotent"));
+    assert!(
+        entries["intent-20260221-idempotent"]["trace_linkage"]
+            .as_object()
+            .is_some(),
+        "ledger should persist trace linkage metadata"
+    );
 
     let artifact_ledger_path = root.join("target/sdlc/artifact-ledger.json");
     let artifact_raw = std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger");

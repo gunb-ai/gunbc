@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const CLAIM_LEASE_TTL_MS: u128 = 30_000;
 const RETRY_BASE_BACKOFF_MS: u128 = 1_000;
@@ -117,8 +118,21 @@ struct IntakeRecord {
     #[serde(default)]
     awaiting_approval_since_epoch_ms: Option<u128>,
     #[serde(default)]
+    trace_linkage: Option<TraceLinkage>,
+    #[serde(default)]
     created_at_epoch_ms: u128,
     updated_at_epoch_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TraceLinkage {
+    repo_root: String,
+    branch: String,
+    commit: String,
+    intent_id: String,
+    issue_id: Option<u64>,
+    run_key: String,
+    linkage_key: String,
 }
 
 fn main() {
@@ -340,6 +354,11 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
             "intent tracking.run_key mismatch: expected `{computed_run_key}`, got `{effective_run_key}`"
         ));
     }
+    let trace_linkage = if dry_run {
+        None
+    } else {
+        Some(capture_trace_linkage(&intent, &effective_run_key)?)
+    };
 
     if dry_run {
         println!(
@@ -352,6 +371,7 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
                 "run_key": effective_run_key,
                 "provider": intent.provider,
                 "design_prompt": design_prompt,
+                "trace_linkage_required": true,
             }))
             .map_err(|error| format!("failed to serialize intake dry-run output: {error}"))?
         );
@@ -376,6 +396,7 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
             existing.run_key = effective_run_key.clone();
             existing.issue_id = intent.tracking.issue_id.or(existing.issue_id);
             existing.policy_version = intent.idempotency.policy_version.clone();
+            existing.trace_linkage = trace_linkage.clone();
             if existing.created_at_epoch_ms == 0 {
                 existing.created_at_epoch_ms = now;
             }
@@ -395,6 +416,7 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
                     terminalized: false,
                     retry: RetryState::default(),
                     awaiting_approval_since_epoch_ms: None,
+                    trace_linkage: trace_linkage.clone(),
                     created_at_epoch_ms: now,
                     updated_at_epoch_ms: now,
                 },
@@ -432,6 +454,7 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
             "design_prompt": design_prompt,
             "artifact_ledger_path": artifact_ledger_path.display().to_string(),
             "artifact_status": artifact_status,
+            "trace_linkage": trace_linkage,
         }))
         .map_err(|error| format!("failed to serialize intake output: {error}"))?
     );
@@ -828,6 +851,62 @@ fn compute_run_key(intent: &IntentSheet) -> String {
         intake_key = intent.idempotency.intake_key.trim(),
         policy_version = intent.idempotency.policy_version.trim(),
     )
+}
+
+fn capture_trace_linkage(intent: &IntentSheet, run_key: &str) -> Result<TraceLinkage, String> {
+    let repo_root = run_git(["rev-parse", "--show-toplevel"])?;
+    let branch = run_git(["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let commit = run_git(["rev-parse", "HEAD"])?;
+    if branch == "HEAD" {
+        return Err(
+            "trace linkage requires a named branch (detached HEAD is not supported)".to_string(),
+        );
+    }
+    let issue_label = intent
+        .tracking
+        .issue_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unassigned".to_string());
+    let linkage_key = format!(
+        "intent={};issue={};run_key={};branch={};commit={}",
+        intent.intent_id, issue_label, run_key, branch, commit
+    );
+    Ok(TraceLinkage {
+        repo_root,
+        branch,
+        commit,
+        intent_id: intent.intent_id.clone(),
+        issue_id: intent.tracking.issue_id,
+        run_key: run_key.to_string(),
+        linkage_key,
+    })
+}
+
+fn run_git<const N: usize>(args: [&str; N]) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(args)
+        .output()
+        .map_err(|error| format!("failed to execute git {}: {error}", args.join(" ")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "trace linkage requires git metadata; `git {}` failed: {}",
+            args.join(" "),
+            if stderr.is_empty() {
+                "unknown git error".to_string()
+            } else {
+                stderr
+            }
+        ));
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if value.is_empty() {
+        return Err(format!(
+            "trace linkage requires git metadata; `git {}` returned empty output",
+            args.join(" ")
+        ));
+    }
+    Ok(value)
 }
 
 fn intake_ledger_path() -> PathBuf {
