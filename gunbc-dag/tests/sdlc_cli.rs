@@ -653,6 +653,11 @@ fn worker_dry_run_reports_pending_intake_keys() {
             .contains_key("intent-20260221-worker"),
         "worker output should include per-intake stage duration metrics"
     );
+    assert_eq!(
+        payload["metrics"]["llm_cost_units"]["intent-20260221-worker"],
+        0,
+        "worker output should include per-intake llm_cost_units metrics"
+    );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
@@ -1073,6 +1078,68 @@ fn worker_replay_skips_completed_run_key() {
     assert_eq!(
         run_state["entries"]["intent-20260221-replay"]["status"],
         "Completed"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_metrics_include_stage_specific_llm_cost_units() {
+    let root = unique_temp_dir("worker_llm_cost_units");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-llm-cost",
+        "intent-20260221-llm-cost",
+        Some(7711),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let transition = Command::new(sdlc_bin())
+        .arg("transition")
+        .arg("--intake-key")
+        .arg("intent-20260221-llm-cost")
+        .arg("--stage")
+        .arg("design")
+        .current_dir(&root)
+        .output()
+        .expect("run transition to design");
+    assert!(
+        transition.status.success(),
+        "transition to design should succeed: {}",
+        String::from_utf8_lossy(&transition.stderr)
+    );
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .arg("--dry-run")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run");
+    assert!(
+        worker.status.success(),
+        "worker dry-run should succeed: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(
+        payload["metrics"]["llm_cost_units"]["intent-20260221-llm-cost"],
+        8,
+        "design stage should contribute expected llm cost unit estimate"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");

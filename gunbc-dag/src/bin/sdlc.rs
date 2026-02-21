@@ -668,6 +668,7 @@ fn run_worker(
                     "stage_duration_ms": {},
                     "approval_latency_ms": {},
                     "retry_attempts": {},
+                    "llm_cost_units": {},
                     "cost_units": {
                         "claim_acquire_attempts": 0,
                         "reconcile_actions": 0,
@@ -694,6 +695,7 @@ fn run_worker(
     let mut stage_duration_ms = BTreeMap::new();
     let mut approval_latency_ms = BTreeMap::new();
     let mut retry_attempts = BTreeMap::new();
+    let mut llm_cost_units = BTreeMap::new();
     let mut claim_acquire_attempts: u64 = 0;
     let mut awaiting_approval = Vec::new();
 
@@ -706,6 +708,10 @@ fn run_worker(
             now.saturating_sub(record.updated_at_epoch_ms),
         );
         retry_attempts.insert(intake_key.clone(), record.retry.attempts);
+        llm_cost_units.insert(
+            intake_key.clone(),
+            estimated_llm_cost_units(record.stage, record.awaiting_approval),
+        );
         if let Some(since) = record.awaiting_approval_since_epoch_ms {
             approval_latency_ms.insert(intake_key.clone(), now.saturating_sub(since));
         }
@@ -846,6 +852,7 @@ fn run_worker(
                 "stage_duration_ms": stage_duration_ms,
                 "approval_latency_ms": approval_latency_ms,
                 "retry_attempts": retry_attempts,
+                "llm_cost_units": llm_cost_units,
                 "cost_units": {
                     "claim_acquire_attempts": claim_acquire_attempts,
                     "reconcile_actions": reconcile_plan.actions.len(),
@@ -1374,6 +1381,20 @@ fn run_state_ledger_path() -> PathBuf {
 
 fn default_infra_intent_path() -> PathBuf {
     PathBuf::from("TODO").join("infra-intent-template.yaml")
+}
+
+fn estimated_llm_cost_units(stage: IssueLifecycleStage, awaiting_approval: bool) -> u64 {
+    if awaiting_approval {
+        return 0;
+    }
+    match stage {
+        IssueLifecycleStage::Idea => 0,
+        IssueLifecycleStage::Design => 8,
+        IssueLifecycleStage::DesignReview => 13,
+        IssueLifecycleStage::Accepted => 2,
+        IssueLifecycleStage::Implementation => 5,
+        IssueLifecycleStage::Closed => 0,
+    }
 }
 
 fn load_intake_ledger(path: &Path) -> Result<IntakeLedger, String> {
