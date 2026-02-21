@@ -28,7 +28,7 @@
 //   Gap B: ClaimStore + OutcomeLedger interfaces     [RESOLVED]
 //   Gap C: Profile declarations (direct syntax)      [RESOLVED - no bridges]
 //   Gap D: Credential wiring via profile             [RESOLVED - env/secret bindings]
-//   Gap E: CAS for multi-worker claim safety         [DEFERRED - single-worker ok]
+//   Gap E: CAS for multi-worker claim safety         [RESOLVED - GCS generation CAS]
 //   Gap F: SubDag/Pipeline node execution            [RESOLVED - stage composition]
 //   Gap G: Worker routes by stage                    [RESOLVED - execute_stage]
 //   Gap H: Code review + acceptance testing          [RESOLVED - real handlers]

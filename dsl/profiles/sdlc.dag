@@ -12,6 +12,7 @@
 // Source: domain-modeling-comprehensive.md Section 5
 // Gap C: deployment profile binding      [RESOLVED - direct syntax]
 // Gap D: credential wiring via profile   [RESOLVED - secret/env bindings]
+// Gap E: multi-worker CAS               [RESOLVED - GCS generation-based CAS]
 
 module profiles.sdlc
 
@@ -25,6 +26,8 @@ import interfaces.artifact_store { ArtifactStore }
 import services.sdlc.providers.github_issue_provider as github_issues
 import services.sdlc.providers.file_claim_store as file_claims
 import services.sdlc.providers.file_outcome_ledger as file_outcomes
+import services.sdlc.providers.gcs_claim_store as gcs_claims
+import services.sdlc.providers.gcs_outcome_ledger as gcs_outcomes
 import services.sdlc.providers.codex_agent_provider as codex_agent
 import services.sdlc.providers.stub_providers as stubs
 
@@ -75,7 +78,8 @@ profile local {
 // =========================================================================
 // Profile: cloud_run
 // =========================================================================
-// GCS-based ledgers, real GitHub API, stateless fleet.
+// GCS-based ledgers with generation-based CAS, real GitHub API,
+// stateless multi-worker fleet.
 // Used for: `gunbc run --profile cloud_run`
 
 profile cloud_run {
@@ -85,14 +89,16 @@ profile cloud_run {
     credential: secret("github-token", project: "gunbai-auto")
   }
 
-  bind ClaimStore -> file_claims.file.ClaimStore {
-    // TODO: swap for gcs.ClaimStore when GCS provider lands
-    dir: "/tmp/sdlc/claims"
+  bind ClaimStore -> gcs_claims.gcs.ClaimStore {
+    bucket: "gunbai-auto-sdlc-claims"
+    project: "gunbai-auto"
+    credential: secret("gcs-service-account", project: "gunbai-auto")
   }
 
-  bind OutcomeLedger -> file_outcomes.file.OutcomeLedger {
-    // TODO: swap for gcs.OutcomeLedger when GCS provider lands
-    dir: "/tmp/sdlc/outcomes"
+  bind OutcomeLedger -> gcs_outcomes.gcs.OutcomeLedger {
+    bucket: "gunbai-auto-sdlc-outcomes"
+    project: "gunbai-auto"
+    credential: secret("gcs-service-account", project: "gunbai-auto")
   }
 
   bind AgentProvider -> codex_agent.codex.AgentProvider {
@@ -101,12 +107,9 @@ profile cloud_run {
 
   bind SignalStore -> stubs.stub.SignalStore {
     // TODO: swap for pubsub.SignalStore when PubSub provider lands
-    // topic: "sdlc-signals", subscription: "sdlc-worker",
-    // project: "gunbai-auto"
   }
 
   bind ArtifactStore -> stubs.stub.ArtifactStore {
     // TODO: swap for gcs.ArtifactStore when GCS provider lands
-    // bucket: "gunbai-auto-sdlc-artifacts", project: "gunbai-auto"
   }
 }

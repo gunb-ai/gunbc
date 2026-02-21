@@ -16,9 +16,9 @@ import std.types { NonEmptyStr, StageOutcome }
 // =========================================================================
 //
 // Implementations:
-//   FileOutcomeLedger      (local JSON files)   -- local profile
-//   GcsOutcomeLedger       (GCS objects)         -- cloud_run profile
-//   InMemoryOutcomeLedger  (HashMap)             -- unit_test profile
+//   FileOutcomeLedger      (local JSON files)                         -- local profile
+//   GcsOutcomeLedger       (GCS objects with generation-based CAS)    -- cloud_run profile
+//   stub.OutcomeLedger     (in-memory, deterministic)                 -- unit_test profile
 
 interface OutcomeLedger {
 

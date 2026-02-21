@@ -1,6 +1,6 @@
 # SDLC Pipeline E2E Gap Analysis
 
-Status: Complete — All gaps resolved (except E deferred), all bridges eliminated
+Status: Complete — All gaps A-J resolved, all bridges eliminated
 Date: 2026-02-21
 Parent: [mega-modeling-design.md](mega-modeling-design.md) (MD0-D)
 Scope: Delta between the mega modeling design and current implementation for end-to-end pipeline execution, with specific focus on gaps blocking a local dry-run deployment.
@@ -34,6 +34,8 @@ All bridge/legacy code has been eliminated:
 | `dsl/services/sdlc/providers/file_claim_store.dag` | File-based claims (Layer 3) | B |
 | `dsl/services/sdlc/providers/file_outcome_ledger.dag` | File-based outcomes (Layer 3) | B |
 | `dsl/services/sdlc/providers/codex_agent_provider.dag` | Codex agent (Layer 3) | I |
+| `dsl/services/sdlc/providers/gcs_claim_store.dag` | GCS claims with generation CAS (Layer 3) | E |
+| `dsl/services/sdlc/providers/gcs_outcome_ledger.dag` | GCS outcomes with generation CAS (Layer 3) | E |
 | `dsl/services/sdlc/providers/stub_providers.dag` | All stubs for unit_test profile | A, B, I |
 | `dsl/profiles/sdlc.dag` | Direct profile { bind } declarations | C, D, Step 7 |
 | `dsl/funcs/sdlc_stages.dag` | Per-stage handlers (real code review + testing) | Steps 1-3, H |
@@ -58,7 +60,7 @@ All bridge/legacy code has been eliminated:
 | **B** (Claims/Outcomes) | **Resolved** | `interfaces/claim_store.dag`, `interfaces/outcome_ledger.dag`, file-based providers |
 | **C** (Profile binding) | **Resolved** | `profiles/sdlc.dag` with direct `profile { bind }` syntax (no bridges) |
 | **D** (Credential wiring) | **Resolved** | `env()` and `secret()` bindings in profile declarations |
-| **E** (Multi-worker CAS) | **Deferred** | Single-worker sufficient for dry-run |
+| **E** (Multi-worker CAS) | **Resolved** | `gcs_claim_store.dag` + `gcs_outcome_ledger.dag` with GCS generation-based CAS |
 | **F** (SubDag execution) | **Resolved** | Stage composition via `execute_stage()` dispatcher |
 | **G** (Worker stage dispatch) | **Resolved** | `funcs/sdlc_worker.dag` routes all stages |
 | **H** (Code review/testing) | **Resolved** | Real PR diff + LLM review; real cargo test + clippy |
@@ -333,17 +335,14 @@ The credential resolution is part of the concrete implementation's configuration
 
 ### Gap E: No CAS for Multi-Worker Claim Safety
 
-**Current state**: `ObjectStorage` has `read`, `write`, `delete`, `list`. No conditional write (compare-and-swap).
+**Status: RESOLVED.** `gcs_claim_store.dag` and `gcs_outcome_ledger.dag` implement GCS-backed providers with `x-goog-if-generation-match` headers for compare-and-swap. The `cloud_run` profile now binds to these GCS providers.
 
-**Target state**: The `ClaimStore` implementations for multi-worker deployments (GCS) use provider-specific CAS:
-- GCS: `x-goog-if-generation-match` header on write requests.
-- File: OS-level file locking (single machine only).
-- In-memory: version counter.
+**Implementation**:
+- `gcs.ClaimStore`: acquire uses `x-goog-if-generation-match: 0` (create-only) for first claim, generation match for re-acquire. Heartbeat and release are also generation-conditional. 412 responses map to `{ conflict: true }` / `{ accepted: false }` / `{ released: false }`.
+- `gcs.OutcomeLedger`: upsert with content-hash idempotency, get with 404→`{ found: false }` mapping.
+- All operations include `@error_map` for GCS 412 (precondition failed) and 404 (not found) responses.
 
 CAS stays in the implementation (Layer 3), not the interface (Layer 2). The `ClaimStore.acquire` contract guarantees `acquired xor conflict` regardless of how the implementation achieves it.
-
-**Severity**: High for multi-worker. Not blocking for single-worker local dev.
-**Dry-run impact**: Not blocking. Local dry-run is single-worker. The Rust file-based claim ledger already uses in-process CAS (generation counters in `ClaimLedger`).
 
 ### Gap F: SubDag / Pipeline Node Execution
 

@@ -16,9 +16,9 @@ import std.types { NonEmptyStr }
 // =========================================================================
 //
 // Implementations:
-//   FileClaimStore      (local JSON files + OS file locking)  -- local profile
-//   GcsClaimStore       (GCS with generation-based CAS)       -- cloud_run profile
-//   InMemoryClaimStore  (HashMap + version counter)           -- unit_test profile
+//   FileClaimStore      (local JSON files + OS file locking)            -- local profile
+//   GcsClaimStore       (GCS with x-goog-if-generation-match CAS)      -- cloud_run profile
+//   stub.ClaimStore     (in-memory, deterministic)                      -- unit_test profile
 
 interface ClaimStore {
 
