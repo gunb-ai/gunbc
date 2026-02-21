@@ -3,7 +3,6 @@
 use gunbc_ir::WorkspaceLayout;
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
     WorkspaceLayout::from_env_manifest_dir()
@@ -36,6 +35,7 @@ fn run_review_without_credentials(provider: &str) -> Output {
         .expect("run gunbc-review")
 }
 
+#[allow(clippy::disallowed_methods)]
 fn gcloud_available() -> bool {
     Command::new("bash")
         .arg("-lc")

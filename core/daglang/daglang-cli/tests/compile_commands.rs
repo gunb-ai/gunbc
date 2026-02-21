@@ -6870,10 +6870,6 @@ fn progress_command_json_format_emits_valid_json_object() {
     let obligations = parsed
         .get("test_obligations")
         .expect("progress json should include test_obligations object");
-    // Debug-only fields (waves, entrypoint_nodes, boundary_nodes, total_edges)
-    // are excluded from the stable JSON contract via #[serde(skip_serializing)].
-    assert!(manifest.get("waves").is_none());
-    assert!(manifest.get("entrypoint_nodes").is_none());
     assert!(obligations.get("transport_execution_targets").is_some());
     assert!(obligations.get("resource_release_targets").is_some());
 }

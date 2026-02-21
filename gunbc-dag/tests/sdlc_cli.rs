@@ -8,17 +8,6 @@ fn sdlc_bin() -> &'static str {
     env!("CARGO_BIN_EXE_gunbc-sdlc")
 }
 
-fn unique_temp_dir(label: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "gunbc_sdlc_cli_{label}_{}_{}",
-        std::process::id(),
-        nanos
-    ))
-}
 
 fn write_intent_file(path: &Path, intent_id: &str, intake_key: &str, issue_id: Option<u64>) {
     write_intent_file_with_git(path, intent_id, intake_key, issue_id, true);

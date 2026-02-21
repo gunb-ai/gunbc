@@ -41,7 +41,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             );
             println!("{}", render_expand(&output.lowered_dag));
         }
-        "manifest" | "progress-manifest" => {
+        "progress" => {
             let parsed = parse_progress_command_args(args[1].as_str(), args)
                 .unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit_with_options(
@@ -51,7 +51,19 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             );
             println!(
                 "{}",
-                render_manifest_with_format(&output.derived, parsed.format)
+                render_progress_with_format(&output.derived, parsed.format)
+            );
+        }
+        "topology" => {
+            if args.len() != 3 && args.len() != 5 {
+                exit_usage("topology <file.dag> [--format text|json]");
+            }
+            let format =
+                parse_output_format("topology", args).unwrap_or_else(|usage| exit_usage(&usage));
+            let output = compile_target_or_exit(cwd, args.get(2));
+            println!(
+                "{}",
+                render_topology_with_format(&output.derived, format)
             );
         }
         "obligations" => {

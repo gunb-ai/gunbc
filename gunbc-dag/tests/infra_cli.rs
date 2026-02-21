@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 mod common;
 use common::fixture::CliTestContext;
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn infra_bin() -> &'static str {

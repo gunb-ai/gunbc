@@ -397,7 +397,7 @@ fn apply_module_entrypoint_inputs(
         mocks.set_input(&entrypoint, *port, Value::Str((*value).to_string()));
         mocks.set_input(&entrypoint_dot, *port, Value::Str((*value).to_string()));
         mocks.set_input(
-            &format!("param_source_{module_stub}_{port}"),
+            format!("param_source_{module_stub}_{port}"),
             *port,
             Value::Str((*value).to_string()),
         );

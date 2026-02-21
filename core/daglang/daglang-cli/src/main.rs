@@ -1,4 +1,4 @@
-//! daglang CLI: dag viz, dag expand, dag progress, dag modules.
+//! daglang CLI: dag viz, dag expand, dag progress, dag topology, dag modules.
 //!
 //! The development tool for the DSL compiler. Provides visualization
 //! and introspection commands that make every subsequent phase
@@ -9,6 +9,7 @@
 //! - `daglang viz <file.dag> [--format ascii|mermaid]`: DAG visualization from compiled IR
 //! - `daglang expand <file.dag> [--emit-collection-nodes]`: Show lowered GraphIR (nodes, edges, ports)
 //! - `daglang progress <file.dag> [--format text|json] [--emit-collection-nodes]`: Show progress metrics
+//! - `daglang topology <file.dag> [--format text|json]`: Show graph topology
 //! - `daglang obligations <file.dag> [--format text|json]`: Show derived test obligations summary
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
@@ -61,6 +62,8 @@ fn main() {
             "  progress <file.dag> [--format text|json] [--emit-collection-nodes]"
         );
         eprintln!("                      Show progress metrics");
+        eprintln!("  topology <file.dag> [--format text|json]");
+        eprintln!("                      Show graph topology (nodes, depths, labels, boundaries)");
         eprintln!("  obligations <file.dag> [--format text|json]");
         eprintln!("                      Show derived test obligations summary");
         eprintln!("  show-triplets <file.dag> [--format text|json]");
