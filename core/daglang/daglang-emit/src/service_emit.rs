@@ -554,6 +554,9 @@ fn go_convert_value(var: &str, type_id: &str) -> String {
         "Float" | "f64" => format!("{var}.(float64)"),
         "Bool" => format!("{var}.(bool)"),
         "Secret" => format!("{var}.(string)"),
+        "Bytes" => format!(
+            "func() []byte {{ switch t := {var}.(type) {{ case []byte: return t; case string: return []byte(t); default: return nil }} }}()"
+        ),
         _ => var.to_string(),
     }
 }
@@ -759,6 +762,48 @@ mod tests {
         }
     }
 
+    fn sample_rest_with_bytes_output() -> RestOperationSpec {
+        RestOperationSpec {
+            endpoint: "https://secretmanager.googleapis.com".to_string(),
+            method: "GET".to_string(),
+            path_template: "/v1/projects/{project}/secrets/{secret}/versions/latest:access".to_string(),
+            input_fields: vec![
+                FieldSpec {
+                    name: "project".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: true,
+                },
+                FieldSpec {
+                    name: "secret".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: true,
+                },
+            ],
+            output_fields: vec![
+                OutputFieldSpec {
+                    name: "payload".to_string(),
+                    type_id: "Bytes".to_string(),
+                    json_path: "payload".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                },
+                OutputFieldSpec {
+                    name: "name".to_string(),
+                    type_id: "String".to_string(),
+                    json_path: "name".to_string(),
+                    is_secret: false,
+                    is_raw_body: false,
+                },
+            ],
+            body_template: None,
+            headers: vec![],
+        }
+    }
+
     // -- Go tests --
 
     #[test]
@@ -792,6 +837,24 @@ mod tests {
         assert!(code.contains("Content string"), "has Content field");
         assert!(code.contains("Model string"), "has Model field");
         assert!(code.contains("json.Unmarshal"), "unmarshals body");
+    }
+
+    #[test]
+    fn go_rest_parse_bytes_field_uses_type_safe_conversion() {
+        let spec = ServiceOperationSpec::Rest(sample_rest_with_bytes_output());
+        let code = emit_go_service_func(
+            "parse_secret_access",
+            "service_transport::parse::gcp.SecretManager::AccessVersion",
+            &spec,
+        );
+        assert!(
+            code.contains("Payload []byte"),
+            "bytes output field should map to []byte: {code}"
+        );
+        assert!(
+            code.contains("case []byte: return t; case string: return []byte(t); default: return nil"),
+            "bytes output extraction should use guarded conversion to avoid interface assignment compile errors: {code}"
+        );
     }
 
     #[test]

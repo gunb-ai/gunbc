@@ -1908,6 +1908,33 @@ fn sdlc_pipeline_runtime_smoke_go_and_c_emit_runnable_binaries() {
 }
 
 #[test]
+fn sdlc_pipeline_go_runtime_executes_when_go_available() {
+    if !command_exists("go") {
+        eprintln!("SKIP sdlc pipeline go runtime strict check: go toolchain not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_go_strict");
+    compile_module_for_target("dsl/pipelines/sdlc.dag", "go", &native_out_root.join("go"));
+    let go = run_infra_generated_go(&native_out_root.join("go"));
+
+    match go {
+        RuntimeOutcome::Ran { stdout, .. } => {
+            assert!(
+                stdout.contains("daglang generated go backend"),
+                "generated go sdlc pipeline runtime should print backend banner: {stdout}"
+            );
+        }
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("sdlc pipeline go runtime should not skip when go is available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict sdlc pipeline go runtime out root");
+}
+
+#[test]
 fn sdlc_pipeline_runtime_smoke_mips_emits_runnable_binary_when_available() {
     let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_mips");
     compile_module_for_target(
