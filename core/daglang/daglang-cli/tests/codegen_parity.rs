@@ -36,10 +36,10 @@ fn unique_workspace_target_dir(name: &str) -> PathBuf {
     ))
 }
 
-fn compile_makegen_for_target(target: &str, out_dir: &Path) {
+fn compile_module_for_target(relative_module: &str, target: &str, out_dir: &Path) {
     let output = Command::new(daglang_bin())
         .arg("compile")
-        .arg("dsl/tools/makegen.dag")
+        .arg(relative_module)
         .arg("--target")
         .arg(target)
         .arg("--out")
@@ -49,9 +49,13 @@ fn compile_makegen_for_target(target: &str, out_dir: &Path) {
         .expect("failed to run daglang compile for codegen parity");
     assert!(
         output.status.success(),
-        "compile --target {target} should succeed: {}",
+        "compile {relative_module} --target {target} should succeed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn compile_makegen_for_target(target: &str, out_dir: &Path) {
+    compile_module_for_target("dsl/tools/makegen.dag", target, out_dir);
 }
 
 fn compile_makegen_layer1_rust(out_dir: &Path) {
@@ -506,6 +510,38 @@ fn makegen_manifest_parity_across_rust_go_c_mips_targets() {
     }
 
     std::fs::remove_dir_all(&out_root).expect("failed to cleanup manifest parity output root");
+}
+
+#[test]
+fn sdlc_manifest_parity_across_rust_go_c_mips_targets() {
+    let out_root = unique_workspace_target_dir("sdlc_manifest_parity");
+    let targets = ["rust", "go", "c", "mips"];
+    let mut manifests = BTreeMap::<String, String>::new();
+
+    for target in targets {
+        let target_out = out_root.join(target);
+        compile_module_for_target("dsl/pipelines/sdlc.dag", target, &target_out);
+        manifests.insert(
+            target.to_string(),
+            read_target_manifest(&target_out, target),
+        );
+    }
+
+    let rust_manifest = manifests
+        .get("rust")
+        .expect("manifest map should contain rust output")
+        .clone();
+    for target in ["go", "c", "mips"] {
+        let target_manifest = manifests
+            .get(target)
+            .unwrap_or_else(|| panic!("manifest map should contain {target} output"));
+        assert_eq!(
+            &rust_manifest, target_manifest,
+            "sdlc progress manifest parity mismatch: rust != {target}"
+        );
+    }
+
+    std::fs::remove_dir_all(&out_root).expect("failed to cleanup sdlc manifest parity output root");
 }
 
 #[test]
