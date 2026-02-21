@@ -545,6 +545,39 @@ fn sdlc_manifest_parity_across_rust_go_c_mips_targets() {
 }
 
 #[test]
+fn sdlc_control_plane_manifest_parity_across_rust_go_c_mips_targets() {
+    let out_root = unique_workspace_target_dir("sdlc_control_plane_manifest_parity");
+    let targets = ["rust", "go", "c", "mips"];
+    let mut manifests = BTreeMap::<String, String>::new();
+
+    for target in targets {
+        let target_out = out_root.join(target);
+        compile_module_for_target("dsl/services/sdlc/control_plane.dag", target, &target_out);
+        manifests.insert(
+            target.to_string(),
+            read_target_manifest(&target_out, target),
+        );
+    }
+
+    let rust_manifest = manifests
+        .get("rust")
+        .expect("manifest map should contain rust output")
+        .clone();
+    for target in ["go", "c", "mips"] {
+        let target_manifest = manifests
+            .get(target)
+            .unwrap_or_else(|| panic!("manifest map should contain {target} output"));
+        assert_eq!(
+            &rust_manifest, target_manifest,
+            "sdlc control-plane progress manifest parity mismatch: rust != {target}"
+        );
+    }
+
+    std::fs::remove_dir_all(&out_root)
+        .expect("failed to cleanup sdlc control-plane manifest parity output root");
+}
+
+#[test]
 fn makegen_runtime_smoke_per_target_with_toolchain_awareness() {
     let native_out_root = unique_workspace_target_dir("runtime_native");
     let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1");
