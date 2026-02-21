@@ -171,8 +171,32 @@ domain_passthrough_op! {
 }
 
 domain_passthrough_op! {
+    DesignToolOp, "tools.design", resolve_design {
+        "design_system_prompt" => DesignSystemPrompt,
+        "review_system_prompt" => ReviewSystemPrompt,
+        "design_user_prompt" => DesignUserPrompt,
+        "review_user_prompt" => ReviewUserPrompt,
+        "summarize_design" => SummarizeDesign,
+        "generate_design" => GenerateDesign,
+        "review_design" => ReviewDesign,
+    }
+}
+
+domain_passthrough_op! {
     PipelineCiOp, "pipelines.ci", resolve_pipeline_ci {
         "ci" => Ci,
+    }
+}
+
+domain_passthrough_op! {
+    PipelineSdlcOp, "pipelines.sdlc", resolve_pipeline_sdlc {
+        "default_repo_owner" => DefaultRepoOwner,
+        "default_repo_name" => DefaultRepoName,
+        "default_issue_number" => DefaultIssueNumber,
+        "has_label" => HasLabel,
+        "format_design_comment" => FormatDesignComment,
+        "format_review_comment" => FormatReviewComment,
+        "sdlc" => Sdlc,
     }
 }
 
@@ -557,7 +581,9 @@ fn resolve_domain(
         "tools.testgen" => resolve_testgen(node_id, name, outputs),
         "tools.clippy" => resolve_clippy(node_id, name, outputs),
         "tools.deps" => resolve_deps(node_id, name, outputs),
+        "tools.design" => resolve_design(node_id, name, outputs),
         "pipelines.ci" => resolve_pipeline_ci(node_id, name, outputs),
+        "pipelines.sdlc" => resolve_pipeline_sdlc(node_id, name, outputs),
         "shared.dag_util" => resolve_shared_dag_util(node_id, name, outputs),
         "shared.gist_modes" => resolve_shared_gist_modes(node_id, name, outputs),
         "std.patterns" => resolve_std_patterns(node_id, name, outputs),
@@ -1369,6 +1395,25 @@ mod tests {
         );
         let err = resolve_node(&node).unwrap_err();
         assert!(err.reason.contains("unknown callable"));
+    }
+
+    #[test]
+    fn resolve_sdlc_design_and_pipeline_callables() {
+        let cases = [
+            ("tools.design", "generate_design"),
+            ("tools.design", "review_design"),
+            ("pipelines.sdlc", "sdlc"),
+            ("pipelines.sdlc", "format_review_comment"),
+        ];
+        for (module, callable) in cases {
+            let node = callable_node(callable, module, callable, ObligationCategory::None);
+            let result = resolve_node(&node).expect(callable);
+            assert!(
+                format!("{:?}", result).contains("output_port_names"),
+                "expected passthrough op for {module}.{callable}, got {:?}",
+                result
+            );
+        }
     }
 
     #[test]
