@@ -280,9 +280,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         ("std.patterns", _) => Some(HandlerKind::ParamSource),
         ("std.resources", _) => Some(HandlerKind::ParamSource),
         ("pipelines.ci", _) => Some(HandlerKind::ParamSource),
-        ("pipelines.sdlc", _) => Some(HandlerKind::ParamSource),
         ("tools.infra", _) => Some(HandlerKind::ParamSource),
-        ("tools.design", _) => Some(HandlerKind::ParamSource),
         (module, _) if module.starts_with("services.") => Some(HandlerKind::ParamSource),
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
@@ -1678,21 +1676,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_handler_supports_sdlc_and_service_transport_surfaces() {
-        let sdlc_callable = LoweredOp::Callable {
-            module: "pipelines.sdlc".into(),
-            kind: CallableKind::Fn,
-            name: "default_repo_owner".into(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-        };
-        assert_eq!(
-            classify_handler(&sdlc_callable),
-            Some(HandlerKind::ParamSource)
-        );
-
+    fn classify_handler_supports_pattern_and_service_transport_surfaces() {
         let pattern_callable = LoweredOp::Callable {
             module: "std.patterns".into(),
             kind: CallableKind::Pattern,

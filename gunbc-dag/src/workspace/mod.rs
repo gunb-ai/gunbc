@@ -19,5 +19,5 @@ pub use subdags::gist::{build_gist_rust_subdag, build_gist_subdag};
 pub use subdags::languages::build_languages_subdag;
 pub use subdags::makegen::build_makegen_subdag;
 pub use subdags::pragma::build_pragma_subdag;
-pub use subdags::sdlc::build_sdlc_subdag;
+pub use subdags::infra::build_infra_subdag;
 pub use subdags::testgen::build_testgen_subdag;

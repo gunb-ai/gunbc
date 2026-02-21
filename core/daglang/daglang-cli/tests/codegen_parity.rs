@@ -186,36 +186,6 @@ fn c_runtime_with_curl_headers_available() -> bool {
     available
 }
 
-fn c_sanitizer_runtime_available(flags: &[&str]) -> bool {
-    if !c_runtime_available() {
-        return false;
-    }
-    let probe_dir = unique_workspace_target_dir("c_runtime_sanitizer_probe");
-    if std::fs::create_dir_all(&probe_dir).is_err() {
-        return false;
-    }
-    let source = probe_dir.join("probe.c");
-    let bin = probe_dir.join("probe_bin");
-    if std::fs::write(&source, "int main(void) { return 0; }\n").is_err() {
-        let _ = std::fs::remove_dir_all(&probe_dir);
-        return false;
-    }
-    let mut command = Command::new("cc");
-    command.arg(&source);
-    for flag in flags {
-        command.arg(flag);
-    }
-    let available = command
-        .arg("-o")
-        .arg(&bin)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    let _ = std::fs::remove_dir_all(&probe_dir);
-    available
-}
-
 fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
     main_rs
         .lines()

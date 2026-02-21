@@ -16,7 +16,6 @@ pub mod infra;
 pub mod languages;
 pub mod makegen;
 pub mod pragma;
-pub mod sdlc;
 pub mod testgen;
 
 use crate::workspace::WorkspaceOp;
@@ -218,9 +217,7 @@ fn covered_dsl_pipeline_modules() -> BTreeSet<String> {
 }
 
 fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
-    // CG1 introduces canonical SDLC design modeling in DSL before dedicated
-    // runtime target wiring lands (CG2+). Keep explicit and fail-closed.
-    ["design"].into_iter().collect()
+    BTreeSet::new()
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
@@ -278,9 +275,6 @@ fn add_discovered_pipeline_subdags(
     if pipeline_names.contains("ci") {
         dag.add_node(ci::build_ci_subdag()?);
     }
-    if pipeline_names.contains("sdlc") {
-        dag.add_node(sdlc::build_sdlc_subdag()?);
-    }
     Ok(())
 }
 
@@ -303,7 +297,6 @@ mod tests {
         assert!(node_ids.contains(&"bootstrap"));
         assert!(node_ids.contains(&"codegen"));
         assert!(node_ids.contains(&"ci"));
-        assert!(node_ids.contains(&"sdlc"));
         assert!(node_ids.contains(&"dag_viz"));
         assert!(node_ids.contains(&"docgen"));
         assert!(node_ids.contains(&"gist"));
@@ -382,7 +375,7 @@ mod tests {
         .into_iter()
         .map(|name| name.to_string())
         .collect();
-        let pipeline_names: BTreeSet<String> = ["ci", "sdlc"]
+        let pipeline_names: BTreeSet<String> = ["ci"]
             .into_iter()
             .map(|name| name.to_string())
             .collect();
@@ -392,41 +385,6 @@ mod tests {
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"build"));
         assert!(node_ids.contains(&"ci"));
-        assert!(node_ids.contains(&"sdlc"));
-        assert!(node_ids.contains(&"languages"));
-    }
-
-    #[test]
-    fn test_build_workspace_dag_from_discovery_allows_intentionally_unmapped_design_module() {
-        let tool_names: BTreeSet<String> = [
-            "build",
-            "makegen",
-            "clippy",
-            "deps",
-            "bootstrap",
-            "codegen",
-            "dag_viz",
-            "design",
-            "docgen",
-            "gist",
-            "infra",
-            "pragma",
-            "review",
-            "testgen",
-        ]
-        .into_iter()
-        .map(|name| name.to_string())
-        .collect();
-        let pipeline_names: BTreeSet<String> = ["ci", "sdlc"]
-            .into_iter()
-            .map(|name| name.to_string())
-            .collect();
-
-        let dag = build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
-            .expect("intentionally unmapped SDLC design module should not fail coverage");
-        let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
-        assert!(node_ids.contains(&"ci"));
-        assert!(node_ids.contains(&"sdlc"));
         assert!(node_ids.contains(&"languages"));
     }
 
@@ -483,7 +441,6 @@ mod tests {
         let discovered =
             discover_dsl_pipeline_names().expect("dsl pipeline discovery should succeed");
         assert!(discovered.contains("ci"));
-        assert!(discovered.contains("sdlc"));
     }
 
     #[test]
@@ -554,7 +511,7 @@ mod tests {
 
     #[test]
     fn test_registered_pipeline_subdag_mapping() {
-        let pipeline_names: BTreeSet<String> = ["ci", "sdlc"]
+        let pipeline_names: BTreeSet<String> = ["ci"]
             .into_iter()
             .map(|name| name.to_string())
             .collect();
@@ -564,6 +521,5 @@ mod tests {
 
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"ci"));
-        assert!(node_ids.contains(&"sdlc"));
     }
 }

@@ -80,10 +80,6 @@ pub(crate) fn build_ci_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("pipelines/ci.dag")
 }
 
-pub(crate) fn build_sdlc_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("pipelines/sdlc.dag")
-}
-
 pub(crate) fn build_codegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/codegen.dag")
 }
@@ -157,18 +153,6 @@ mod tests {
         assert!(
             !dag.nodes.iter().any(|node| node.id.0 == "pipelines.ci::ci"),
             "runtime CI graph should not include pipeline metadata nodes"
-        );
-    }
-
-    #[test]
-    fn builds_sdlc_dsl_graph() {
-        let dag = build_sdlc_graph_dsl().expect("sdlc DSL graph should resolve");
-        assert!(!dag.nodes.is_empty());
-        assert!(
-            !dag.nodes
-                .iter()
-                .any(|node| node.id.0 == "pipelines.sdlc::sdlc"),
-            "runtime SDLC graph should not include pipeline metadata nodes"
         );
     }
 }

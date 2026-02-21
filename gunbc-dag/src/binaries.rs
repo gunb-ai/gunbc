@@ -103,12 +103,13 @@ impl WorkspaceBinary {
 
     /// Whether this binary corresponds to a DSL pipeline module.
     pub fn is_dsl_pipeline_module(self) -> bool {
-        matches!(self, Self::Ci | Self::Sdlc)
+        matches!(self, Self::Ci)
     }
 
     /// Whether this binary corresponds to a DSL tool module.
     pub fn is_dsl_tool_module(self) -> bool {
-        !self.is_dsl_pipeline_module() && !matches!(self, Self::CodegenDag | Self::DepsConfig)
+        !self.is_dsl_pipeline_module()
+            && !matches!(self, Self::CodegenDag | Self::DepsConfig | Self::Sdlc)
     }
 
     /// Cargo invocation for this workspace binary.

@@ -52,6 +52,7 @@ struct CliArgs {
     emit_pending_exit_code: bool,
     drain_activate: bool,
     drain_deactivate: bool,
+    worker_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -237,6 +238,7 @@ fn main() {
             args.dry_run,
             args.emit_pending_exit_code,
             args.infra_intent_path.as_ref(),
+            args.worker_id.as_deref(),
             None,
             "worker",
         ),
@@ -244,6 +246,7 @@ fn main() {
             args.dry_run,
             args.emit_pending_exit_code,
             args.infra_intent_path.as_ref(),
+            args.worker_id.as_deref(),
             args.issue_id,
             "issue",
         ),
@@ -273,6 +276,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             emit_pending_exit_code: false,
             drain_activate: false,
             drain_deactivate: false,
+            worker_id: None,
         });
     }
 
@@ -325,6 +329,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let mut emit_pending_exit_code = false;
     let mut drain_activate = false;
     let mut drain_deactivate = false;
+    let mut worker_id: Option<String> = None;
     while idx < argv.len() {
         let token = &argv[idx];
         if token == "--dry-run" {
@@ -486,6 +491,31 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             idx += 1;
             continue;
         }
+        if token == "--worker-id" {
+            if worker_id.is_some() {
+                return Err("duplicate --worker-id flag".to_string());
+            }
+            let value = argv
+                .get(idx + 1)
+                .ok_or_else(|| "--worker-id requires a value".to_string())?;
+            if value.starts_with("--") {
+                return Err("--worker-id requires a non-flag value".to_string());
+            }
+            worker_id = Some(value.clone());
+            idx += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--worker-id=") {
+            if worker_id.is_some() {
+                return Err("duplicate --worker-id flag".to_string());
+            }
+            if value.is_empty() {
+                return Err("--worker-id requires a non-empty value".to_string());
+            }
+            worker_id = Some(value.to_string());
+            idx += 1;
+            continue;
+        }
         return Err(format!("unknown flag `{token}`"));
     }
 
@@ -552,6 +582,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         emit_pending_exit_code,
         drain_activate,
         drain_deactivate,
+        worker_id,
     })
 }
 
@@ -705,6 +736,7 @@ fn run_worker(
     dry_run: bool,
     emit_pending_exit_code: bool,
     infra_intent_path: Option<&PathBuf>,
+    worker_id: Option<&str>,
     issue_filter: Option<u64>,
     command_label: &str,
 ) -> Result<(), String> {
@@ -735,6 +767,9 @@ fn run_worker(
     let mut run_state = load_run_state_ledger(&run_state_path)?;
     let mode = if dry_run { "dry-run" } else { "real" };
     let now = epoch_millis();
+    let worker_id_str = worker_id
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| std::env::var("SDLC_WORKER_ID").unwrap_or_else(|_| format!("worker-{}-{}", std::process::id(), now)));
 
     let drain_flag = drain_flag_path();
     let drain_active = !dry_run && drain_flag.exists();
@@ -890,7 +925,7 @@ fn run_worker(
             *remaining = remaining.saturating_sub(1);
         }
         let claim_slot = claim_slot_key(issue_id, record.stage);
-        let claim_owner = format!("gunbc-sdlc-worker:{intake_key}");
+        let claim_owner = format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
         claim_acquire_attempts = claim_acquire_attempts.saturating_add(1);
         let claim_result = try_acquire_claim(
             &mut claim_ledger,
@@ -976,7 +1011,7 @@ fn run_worker(
     for action in &reconcile_plan.actions {
         match action {
             ReconcileAction::ReadyToRun { intake_key } => {
-                let Some(record) = ledger.entries.get(intake_key) else {
+                let Some(record) = ledger.entries.get_mut(intake_key) else {
                     continue;
                 };
                 if let Some(canonical) = artifact_ledger.records.get(&canonical_marker(intake_key))
@@ -996,8 +1031,18 @@ fn run_worker(
                 }
                 ready_to_run.push(intake_key.clone());
                 if !dry_run {
-                    mark_run_completed(&mut run_state, intake_key, &record.run_key, now);
-                    executed_runs.push(intake_key.clone());
+                    let transport = StubIssueTransport;
+                    if let Err(e) = execute_stage_idea_to_design(intake_key, record, &transport) {
+                        let has_budget = register_retry_failure(&mut record.retry, now, RETRY_BASE_BACKOFF_MS, e.clone());
+                        if !has_budget {
+                            record.terminalized = true;
+                            terminal_failures.insert(intake_key.clone(), e);
+                            terminalized.push(intake_key.clone());
+                        }
+                    } else {
+                        mark_run_completed(&mut run_state, intake_key, &record.run_key, now);
+                        executed_runs.push(intake_key.clone());
+                    }
                 }
             }
             ReconcileAction::ReleaseClaim {
@@ -1913,4 +1958,34 @@ fn print_help() {
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
     println!("    gunbc-sdlc drain [--activate|--deactivate] [--dry-run]");
     println!("    gunbc-sdlc help");
+}
+
+trait IssueTransport {
+    fn upsert_comment(&self, issue_id: u64, marker: &str, body: &str) -> Result<(), String>;
+    fn compare_and_set_stage_label(&self, issue_id: u64, from: IssueLifecycleStage, to: IssueLifecycleStage) -> Result<bool, String>;
+}
+
+struct StubIssueTransport;
+
+impl IssueTransport for StubIssueTransport {
+    fn upsert_comment(&self, _issue_id: u64, _marker: &str, _body: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn compare_and_set_stage_label(&self, _issue_id: u64, _from: IssueLifecycleStage, _to: IssueLifecycleStage) -> Result<bool, String> {
+        Ok(true)
+    }
+}
+
+fn execute_stage_idea_to_design(
+    _intake_key: &str,
+    record: &IntakeRecord,
+    transport: &dyn IssueTransport,
+) -> Result<(), String> {
+    if let Some(issue_id) = record.issue_id {
+        if record.stage == IssueLifecycleStage::Idea {
+            transport.upsert_comment(issue_id, "design-marker", "Generated design prompt")?;
+            transport.compare_and_set_stage_label(issue_id, IssueLifecycleStage::Idea, IssueLifecycleStage::Design)?;
+        }
+    }
+    Ok(())
 }

@@ -290,7 +290,7 @@ fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
     );
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker with invalid infra preflight");
@@ -339,7 +339,7 @@ fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
     );
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker with unsupported infra schema");
@@ -388,7 +388,7 @@ fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token
     );
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker with missing github-token reference");
@@ -492,7 +492,7 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
     );
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker under drain");
@@ -576,7 +576,7 @@ notes: "local co-located profile fixture"
     );
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .arg("--infra-intent")
         .arg(&local_profile_intent_path)
         .current_dir(&root)
@@ -669,7 +669,7 @@ notes: "capacity constrained local profile fixture"
         .expect("write constrained infra intent fixture");
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .arg("--infra-intent")
         .arg(&constrained_intent_path)
         .current_dir(&root)
@@ -1126,7 +1126,7 @@ fn worker_dry_run_reports_pending_intake_keys() {
     );
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .arg("--dry-run")
         .current_dir(&root)
         .output()
@@ -1199,7 +1199,7 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
     }
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker");
@@ -1263,7 +1263,7 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
     }
 
     let first_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1280,7 +1280,7 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
     );
 
     let second_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run second worker");
@@ -1350,7 +1350,7 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
     );
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker");
@@ -1436,7 +1436,7 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
     let mut final_payload = serde_json::Value::Null;
     for _ in 0..3 {
         let worker = ctx.command()
-            .arg("worker")
+            .arg("worker").arg("--worker-id").arg("test-worker-id")
             .current_dir(&root)
             .output()
             .expect("run worker");
@@ -1512,7 +1512,7 @@ fn await_approval_releases_claim_on_next_worker_pass() {
     );
 
     let first_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1536,7 +1536,7 @@ fn await_approval_releases_claim_on_next_worker_pass() {
     );
 
     let second_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run second worker");
@@ -1601,7 +1601,7 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
     );
 
     let first_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1625,7 +1625,7 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
     );
 
     let pending_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .arg("--emit-pending-exit-code")
         .current_dir(&root)
         .output()
@@ -1672,7 +1672,7 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
     );
 
     let first_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1813,7 +1813,7 @@ fn worker_replay_skips_completed_run_key() {
     );
 
     let first_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1827,7 +1827,7 @@ fn worker_replay_skips_completed_run_key() {
     assert_eq!(first_payload["executed_runs"][0], "intent-20260221-replay");
 
     let second_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run second worker");
@@ -1886,7 +1886,7 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
     );
 
     let first_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1917,7 +1917,7 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         .expect("first lease expiry should be numeric");
 
     let second_worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run second worker");
@@ -1992,7 +1992,7 @@ fn worker_replay_skips_when_canonical_artifact_already_exists() {
     .expect("write artifact ledger with canonical marker");
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .arg("--dry-run")
         .current_dir(&root)
         .output()
@@ -2066,7 +2066,7 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
     );
 
     let worker = ctx.command()
-        .arg("worker")
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
         .arg("--dry-run")
         .current_dir(&root)
         .output()
@@ -2172,6 +2172,49 @@ fn transition_to_accepted_promotes_canonical_artifact() {
             .map(|body| !body.is_empty())
             .unwrap_or(false),
         "canonical artifact should persist normalized inline payload body"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_executes_idea_to_design_stage() {
+    let ctx = CliTestContext::new("worker_executes_idea_to_design", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-idea-to-design",
+        "intent-idea-to-design",
+        Some(42),
+    );
+
+    let intake = ctx.command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(intake.status.success(), "intake should succeed: {}", String::from_utf8_lossy(&intake.stderr));
+
+    let worker = ctx.command()
+        .arg("worker").arg("--worker-id").arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run worker");
+    assert!(worker.status.success(), "worker should succeed: {}", String::from_utf8_lossy(&worker.stderr));
+
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert!(
+        payload["executed_runs"]
+            .as_array()
+            .expect("executed_runs should be array")
+            .iter()
+            .any(|value| value == "intent-idea-to-design"),
+        "worker should execute the idea->design stage"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
