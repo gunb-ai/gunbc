@@ -13,15 +13,21 @@
 //
 // Transport: @shell (CLI subprocess)
 // Auth: inherits from environment (CODEX_API_KEY or equivalent)
+//
+// Implements: interfaces.agent_provider.AgentProvider
+// Profiles: local, cloud_run
 
 module services.agent.codex
 
-service agent.Codex {
+import interfaces.agent_provider { AgentProvider }
+
+service agent.Codex : AgentProvider {
 
   operation Spawn {
     input {
       prompt: String
       repo_path: String = "."
+      branch: String
       model: String = "o4-mini"
       timeout_seconds: Int = 600
       approval_mode: String = "full-auto"
@@ -34,6 +40,7 @@ service agent.Codex {
     @shell(["codex", "exec",
             "--prompt", "{prompt}",
             "--cwd", "{repo_path}",
+            "--branch", "{branch}",
             "--model", "{model}",
             "--timeout", "{timeout_seconds}",
             "--approval-mode", "{approval_mode}",
@@ -131,6 +138,7 @@ test spawn_agent {
 
     input spawn/prepare.prompt -> "Implement the feature described in issue #42"
     input spawn/prepare.repo_path -> "/tmp/test-repo"
+    input spawn/prepare.branch -> "sdlc/issue-42"
 
     mock spawn/execute.response -> shell_response(0, "{\"run_id\":\"codex-run-001\",\"status\":\"running\",\"started\":true}")
 

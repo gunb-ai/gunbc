@@ -14,10 +14,15 @@
 //   Pure prepare → REST execute (I/O boundary) → Pure parse
 //
 // Follows: services/github/gist.dag (same endpoint, auth, conventions)
+//
+// Implements: interfaces.issue_provider.IssueProvider
+// Profiles: local, cloud_run
 
 module services.github.issues
 
-service github.Issues {
+import interfaces.issue_provider { IssueProvider }
+
+service github.Issues : IssueProvider {
   @endpoint("https://api.github.com")
   @auth(BearerToken)
 

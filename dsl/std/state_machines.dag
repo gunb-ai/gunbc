@@ -1,0 +1,212 @@
+// std/state_machines.dag -- State machine validation and transition rules.
+//
+// Formalizes the IssueLifecycleStage state machine from
+// domain-modeling-comprehensive.md §3.4, including:
+//   - Legal transition validation
+//   - Retry budget enforcement
+//   - Label encoding/decoding
+//   - Forward-only and backward transition classification
+//
+// Addresses: Deficits D6 (formal state machine validation) and
+//            D7 (backward transition + retry budget enforcement)
+//
+// Invariants enforced:
+//   INV-4: Forward-only transitions within a single claimed execution
+//   INV-5: Backward transitions require retry budget decrement
+//   INV-6: Labels are authoritative for stage
+
+module std.state_machines
+
+import std.types {
+    IssueLifecycleStage, RetryPolicy, OutcomeStatus, NonEmptyStr
+}
+
+// --- Stage ordinal mapping -----------------------------------------------
+// Maps each stage to a numeric position for forward/backward determination.
+// Forward transitions have to_ordinal > from_ordinal.
+// Backward transitions have to_ordinal < from_ordinal.
+
+fn stage_ordinal(stage: IssueLifecycleStage) -> Int {
+  match stage {
+    Idea           => 0
+    Design         => 1
+    DesignReview   => 2
+    Accepted       => 3
+    Implementing   => 4
+    CodeReview     => 5
+    Testing        => 6
+    Done           => 7
+    TerminalFailed => 8
+  }
+}
+
+// --- Transition validation -----------------------------------------------
+// Returns true if the transition from -> to is legal per the state machine.
+//
+// Legal forward transitions:
+//   Idea -> Design, Design -> DesignReview, DesignReview -> Accepted,
+//   Accepted -> Implementing, Implementing -> CodeReview,
+//   CodeReview -> Testing, Testing -> Done
+//
+// Legal backward transitions (require retry budget):
+//   DesignReview -> Design, CodeReview -> Implementing,
+//   Testing -> Implementing, Implementing -> Accepted
+//
+// Terminal transitions (from any non-terminal state):
+//   Any -> TerminalFailed
+
+fn validate_transition(from: IssueLifecycleStage, to: IssueLifecycleStage) -> Bool {
+  // Terminal states are terminal (INV-15)
+  match from {
+    Done           => false
+    TerminalFailed => false
+    _ => match to {
+      // Any state can transition to TerminalFailed
+      TerminalFailed => true
+      // Legal forward transitions
+      _ => is_legal_forward(from: from, to: to) || is_legal_backward(from: from, to: to)
+    }
+  }
+}
+
+// Check if a transition is a legal forward transition.
+fn is_legal_forward(from: IssueLifecycleStage, to: IssueLifecycleStage) -> Bool {
+  match from {
+    Idea         => to == Design
+    Design       => to == DesignReview
+    DesignReview => to == Accepted
+    Accepted     => to == Implementing
+    Implementing => to == CodeReview
+    CodeReview   => to == Testing
+    Testing      => to == Done
+    _            => false
+  }
+}
+
+// Check if a transition is a legal backward transition (retry path).
+// Backward transitions require retry budget decrement (INV-5).
+fn is_legal_backward(from: IssueLifecycleStage, to: IssueLifecycleStage) -> Bool {
+  match from {
+    DesignReview => to == Design         // Review requests changes
+    CodeReview   => to == Implementing   // Review requests changes
+    Testing      => to == Implementing   // Tests fail
+    Implementing => to == Accepted       // Agent fails
+    _            => false
+  }
+}
+
+// Determine if a transition requires retry budget decrement.
+fn requires_retry_budget(from: IssueLifecycleStage, to: IssueLifecycleStage) -> Bool {
+  is_legal_backward(from: from, to: to)
+}
+
+// Validate a transition with retry budget enforcement.
+// Returns the transition result: success, terminal (budget exhausted), or invalid.
+type TransitionResult
+  = TransitionAllowed { to: IssueLifecycleStage, budget_remaining: Int }
+  | TransitionTerminal { reason: String }
+  | TransitionInvalid { from: IssueLifecycleStage, to: IssueLifecycleStage, reason: String }
+
+fn validate_transition_with_budget(
+  from: IssueLifecycleStage,
+  to: IssueLifecycleStage,
+  retry_budget_remaining: Int
+) -> TransitionResult {
+  match validate_transition(from: from, to: to) {
+    false => TransitionInvalid {
+      from: from,
+      to: to,
+      reason: "Illegal transition from {from} to {to}"
+    }
+    true => match requires_retry_budget(from: from, to: to) {
+      true => match retry_budget_remaining > 0 {
+        true  => TransitionAllowed { to: to, budget_remaining: retry_budget_remaining - 1 }
+        false => TransitionTerminal { reason: "Retry budget exhausted for {from} -> {to}" }
+      }
+      false => TransitionAllowed { to: to, budget_remaining: retry_budget_remaining }
+    }
+  }
+}
+
+// --- Label encoding/decoding ---------------------------------------------
+// Stage <-> label string mapping. Labels are the authoritative source
+// for stage determination (INV-6).
+
+fn stage_to_label(stage: IssueLifecycleStage) -> String {
+  match stage {
+    Idea           => "sdlc:idea"
+    Design         => "sdlc:design"
+    DesignReview   => "sdlc:design-review"
+    Accepted       => "sdlc:accepted"
+    Implementing   => "sdlc:implementing"
+    CodeReview     => "sdlc:code-review"
+    Testing        => "sdlc:testing"
+    Done           => "sdlc:done"
+    TerminalFailed => "sdlc:terminal-failed"
+  }
+}
+
+fn label_to_stage(label: String) -> IssueLifecycleStage? {
+  match label {
+    "sdlc:idea"            => Idea
+    "sdlc:design"          => Design
+    "sdlc:design-review"   => DesignReview
+    "sdlc:accepted"        => Accepted
+    "sdlc:implementing"    => Implementing
+    "sdlc:code-review"     => CodeReview
+    "sdlc:testing"         => Testing
+    "sdlc:done"            => Done
+    "sdlc:terminal-failed" => TerminalFailed
+    _                      => None
+  }
+}
+
+// Determine the current stage from a list of labels.
+// If multiple sdlc:* labels exist, uses the most advanced stage (highest ordinal).
+// If no sdlc:* label exists, returns Idea (default).
+fn determine_stage(labels: List<String>) -> IssueLifecycleStage {
+  let sdlc_stages = labels
+    |> filter_map(l => label_to_stage(label: l))
+
+  match sdlc_stages |> count() {
+    0 => Idea
+    _ => sdlc_stages
+      |> max_by(s => stage_ordinal(stage: s))
+  }
+}
+
+// Compute the labels for a stage transition: remove old sdlc:* labels,
+// add the new stage label. Preserves non-sdlc labels.
+fn transition_labels(
+  current_labels: List<String>,
+  to_stage: IssueLifecycleStage
+) -> List<String> {
+  let non_sdlc = current_labels |> filter(l => !starts_with(l, "sdlc:"))
+  non_sdlc |> append(stage_to_label(stage: to_stage))
+}
+
+// --- Stage-specific transition guards ------------------------------------
+// Each transition has a guard condition that must be satisfied.
+
+type TransitionGuard {
+  from:           IssueLifecycleStage
+  to:             IssueLifecycleStage
+  guard_name:     NonEmptyStr
+  side_effects:   List<String>        // Description of side effects
+}
+
+fn transition_guards() -> List<TransitionGuard> {
+  [
+    TransitionGuard { from: Idea,         to: Design,       guard_name: "claim_acquired",      side_effects: ["Set label sdlc:design"] },
+    TransitionGuard { from: Design,       to: DesignReview, guard_name: "design_generated",    side_effects: ["Set label sdlc:design-review", "Post design comment"] },
+    TransitionGuard { from: DesignReview, to: Accepted,     guard_name: "review_passes",       side_effects: ["Set label sdlc:accepted"] },
+    TransitionGuard { from: DesignReview, to: Design,       guard_name: "review_changes",      side_effects: ["Set label sdlc:design", "Increment retry count"] },
+    TransitionGuard { from: Accepted,     to: Implementing, guard_name: "agent_spawned",       side_effects: ["Set label sdlc:implementing", "Create branch"] },
+    TransitionGuard { from: Implementing, to: CodeReview,   guard_name: "agent_complete",      side_effects: ["Set label sdlc:code-review"] },
+    TransitionGuard { from: Implementing, to: Accepted,     guard_name: "agent_fails_retry",   side_effects: ["Set label sdlc:accepted", "Increment retry count"] },
+    TransitionGuard { from: CodeReview,   to: Testing,      guard_name: "review_approves",     side_effects: ["Set label sdlc:testing"] },
+    TransitionGuard { from: CodeReview,   to: Implementing, guard_name: "review_changes_code", side_effects: ["Set label sdlc:implementing"] },
+    TransitionGuard { from: Testing,      to: Done,         guard_name: "tests_pass",          side_effects: ["Set label sdlc:done", "Close issue"] },
+    TransitionGuard { from: Testing,      to: Implementing, guard_name: "tests_fail_retry",    side_effects: ["Set label sdlc:implementing"] }
+  ]
+}
