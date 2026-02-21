@@ -15,6 +15,7 @@ pub mod gist;
 pub mod languages;
 pub mod makegen;
 pub mod pragma;
+pub mod sdlc;
 pub mod testgen;
 
 use crate::workspace::WorkspaceOp;
@@ -273,6 +274,9 @@ fn add_discovered_pipeline_subdags(
     if pipeline_names.contains("ci") {
         dag.add_node(ci::build_ci_subdag()?);
     }
+    if pipeline_names.contains("sdlc") {
+        dag.add_node(sdlc::build_sdlc_subdag()?);
+    }
     Ok(())
 }
 
@@ -295,6 +299,7 @@ mod tests {
         assert!(node_ids.contains(&"bootstrap"));
         assert!(node_ids.contains(&"codegen"));
         assert!(node_ids.contains(&"ci"));
+        assert!(node_ids.contains(&"sdlc"));
         assert!(node_ids.contains(&"dag_viz"));
         assert!(node_ids.contains(&"docgen"));
         assert!(node_ids.contains(&"gist"));
@@ -369,14 +374,17 @@ mod tests {
         .into_iter()
         .map(|name| name.to_string())
         .collect();
-        let pipeline_names: BTreeSet<String> =
-            ["ci"].into_iter().map(|name| name.to_string()).collect();
+        let pipeline_names: BTreeSet<String> = ["ci", "sdlc"]
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect();
 
         let dag = build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
             .expect("pure workspace dag composition should succeed");
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"build"));
         assert!(node_ids.contains(&"ci"));
+        assert!(node_ids.contains(&"sdlc"));
         assert!(node_ids.contains(&"languages"));
     }
 
@@ -409,6 +417,7 @@ mod tests {
             .expect("intentionally unmapped SDLC design module should not fail coverage");
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"ci"));
+        assert!(node_ids.contains(&"sdlc"));
         assert!(node_ids.contains(&"languages"));
     }
 
@@ -535,13 +544,16 @@ mod tests {
 
     #[test]
     fn test_registered_pipeline_subdag_mapping() {
-        let pipeline_names: BTreeSet<String> =
-            ["ci"].into_iter().map(|name| name.to_string()).collect();
+        let pipeline_names: BTreeSet<String> = ["ci", "sdlc"]
+            .into_iter()
+            .map(|name| name.to_string())
+            .collect();
         let mut dag = Dag::new();
         add_discovered_pipeline_subdags(&mut dag, &pipeline_names)
             .expect("registered pipeline mapping should build");
 
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"ci"));
+        assert!(node_ids.contains(&"sdlc"));
     }
 }

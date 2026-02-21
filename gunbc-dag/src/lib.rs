@@ -128,8 +128,8 @@ pub use workspace::{
     build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,
     build_clippy_subdag, build_codegen_subdag, build_dag_viz_subdag, build_deps_generate_subdag,
     build_deps_install_subdag, build_docgen_subdag, build_gist_rust_subdag, build_gist_subdag,
-    build_languages_subdag, build_makegen_subdag, build_pragma_subdag, build_testgen_subdag,
-    build_workspace_dag, WorkspaceOp,
+    build_languages_subdag, build_makegen_subdag, build_pragma_subdag, build_sdlc_subdag,
+    build_testgen_subdag, build_workspace_dag, WorkspaceOp,
 };
 
 // ============================================================================
