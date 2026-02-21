@@ -31,6 +31,16 @@ pub enum ArtifactUpsertOutcome {
     Noop,
 }
 
+struct ArtifactUpsertSpec {
+    marker: String,
+    intake_key: String,
+    run_key: String,
+    content_hash: String,
+    payload: Option<ArtifactPayload>,
+    canonical: bool,
+    now_epoch_ms: u128,
+}
+
 pub fn provisional_marker(intake_key: &str) -> String {
     format!("sdlc:artifact:provisional:{intake_key}")
 }
@@ -48,13 +58,15 @@ pub fn upsert_provisional_artifact(
 ) -> Result<ArtifactUpsertOutcome, String> {
     upsert_artifact(
         ledger,
-        &provisional_marker(intake_key),
-        intake_key,
-        run_key,
-        content_hash,
-        None,
-        false,
-        now_epoch_ms,
+        ArtifactUpsertSpec {
+            marker: provisional_marker(intake_key),
+            intake_key: intake_key.to_string(),
+            run_key: run_key.to_string(),
+            content_hash: content_hash.to_string(),
+            payload: None,
+            canonical: false,
+            now_epoch_ms,
+        },
     )
 }
 
@@ -69,13 +81,15 @@ pub fn upsert_provisional_artifact_with_payload(
     let content_hash = content_hash_for_payload(&normalized);
     upsert_artifact(
         ledger,
-        &provisional_marker(intake_key),
-        intake_key,
-        run_key,
-        &content_hash,
-        Some(normalized),
-        false,
-        now_epoch_ms,
+        ArtifactUpsertSpec {
+            marker: provisional_marker(intake_key),
+            intake_key: intake_key.to_string(),
+            run_key: run_key.to_string(),
+            content_hash,
+            payload: Some(normalized),
+            canonical: false,
+            now_epoch_ms,
+        },
     )
 }
 
@@ -88,13 +102,15 @@ pub fn promote_to_canonical_artifact(
 ) -> Result<ArtifactUpsertOutcome, String> {
     upsert_artifact(
         ledger,
-        &canonical_marker(intake_key),
-        intake_key,
-        run_key,
-        content_hash,
-        None,
-        true,
-        now_epoch_ms,
+        ArtifactUpsertSpec {
+            marker: canonical_marker(intake_key),
+            intake_key: intake_key.to_string(),
+            run_key: run_key.to_string(),
+            content_hash: content_hash.to_string(),
+            payload: None,
+            canonical: true,
+            now_epoch_ms,
+        },
     )
 }
 
@@ -109,62 +125,60 @@ pub fn promote_to_canonical_artifact_with_payload(
     let content_hash = content_hash_for_payload(&normalized);
     upsert_artifact(
         ledger,
-        &canonical_marker(intake_key),
-        intake_key,
-        run_key,
-        &content_hash,
-        Some(normalized),
-        true,
-        now_epoch_ms,
+        ArtifactUpsertSpec {
+            marker: canonical_marker(intake_key),
+            intake_key: intake_key.to_string(),
+            run_key: run_key.to_string(),
+            content_hash,
+            payload: Some(normalized),
+            canonical: true,
+            now_epoch_ms,
+        },
     )
 }
 
 fn upsert_artifact(
     ledger: &mut ArtifactLedger,
-    marker: &str,
-    intake_key: &str,
-    run_key: &str,
-    content_hash: &str,
-    payload: Option<ArtifactPayload>,
-    canonical: bool,
-    now_epoch_ms: u128,
+    spec: ArtifactUpsertSpec,
 ) -> Result<ArtifactUpsertOutcome, String> {
-    if let Some(existing) = ledger.records.get(marker) {
-        if existing.run_key != run_key && existing.canonical {
-            if existing.content_hash == content_hash {
+    if let Some(existing) = ledger.records.get(&spec.marker) {
+        if existing.run_key != spec.run_key && existing.canonical {
+            if existing.content_hash == spec.content_hash {
                 return Ok(ArtifactUpsertOutcome::Noop);
             }
             return Err(format!(
                 "artifact marker collision on `{marker}`: existing canonical run_key `{}` conflicts with `{run_key}`",
-                existing.run_key
+                existing.run_key,
+                marker = spec.marker,
+                run_key = spec.run_key
             ));
         }
     }
 
     let next = ArtifactRecord {
-        marker: marker.to_string(),
-        intake_key: intake_key.to_string(),
-        run_key: run_key.to_string(),
-        content_hash: content_hash.to_string(),
-        payload,
-        canonical,
-        updated_at_epoch_ms: now_epoch_ms,
+        marker: spec.marker.clone(),
+        intake_key: spec.intake_key,
+        run_key: spec.run_key,
+        content_hash: spec.content_hash,
+        payload: spec.payload,
+        canonical: spec.canonical,
+        updated_at_epoch_ms: spec.now_epoch_ms,
     };
-    match ledger.records.get(marker) {
+    match ledger.records.get(&spec.marker) {
         None => {
-            ledger.records.insert(marker.to_string(), next);
+            ledger.records.insert(spec.marker, next);
             Ok(ArtifactUpsertOutcome::Inserted)
         }
         Some(existing)
-            if existing.run_key == run_key
-                && existing.content_hash == content_hash
+            if existing.run_key == next.run_key
+                && existing.content_hash == next.content_hash
                 && existing.payload == next.payload
-                && existing.canonical == canonical =>
+                && existing.canonical == next.canonical =>
         {
             Ok(ArtifactUpsertOutcome::Noop)
         }
         Some(_) => {
-            ledger.records.insert(marker.to_string(), next);
+            ledger.records.insert(spec.marker, next);
             Ok(ArtifactUpsertOutcome::Updated)
         }
     }
