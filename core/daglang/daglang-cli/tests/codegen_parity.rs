@@ -140,6 +140,17 @@ fn command_exists(name: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+fn mips_runtime_available() -> bool {
+    let toolchain = ToolchainCommands::mips_linux_gnu();
+    let emulator = toolchain
+        .emulator
+        .clone()
+        .unwrap_or_else(|| "qemu-mips".to_string());
+    command_exists(&toolchain.assembler)
+        && command_exists(&toolchain.linker)
+        && command_exists(&emulator)
+}
+
 fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
     main_rs
         .lines()
@@ -2017,6 +2028,105 @@ fn design_tool_go_runtime_executes_when_go_available() {
 
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup strict design go runtime out root");
+}
+
+#[test]
+fn infra_mips_runtime_executes_when_mips_toolchain_available() {
+    if !mips_runtime_available() {
+        eprintln!("SKIP infra mips runtime strict check: mips toolchain/runtime not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_infra_mips_strict");
+    compile_module_for_target("dsl/tools/infra.dag", "mips", &native_out_root.join("mips"));
+    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
+
+    match mips {
+        RuntimeOutcome::Ran { .. } => {}
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("infra mips runtime should not skip when toolchain is available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict infra mips runtime out root");
+}
+
+#[test]
+fn sdlc_pipeline_mips_runtime_executes_when_mips_toolchain_available() {
+    if !mips_runtime_available() {
+        eprintln!("SKIP sdlc pipeline mips runtime strict check: mips toolchain/runtime not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_sdlc_pipeline_mips_strict");
+    compile_module_for_target(
+        "dsl/pipelines/sdlc.dag",
+        "mips",
+        &native_out_root.join("mips"),
+    );
+    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
+
+    match mips {
+        RuntimeOutcome::Ran { .. } => {}
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("sdlc pipeline mips runtime should not skip when toolchain is available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict sdlc pipeline mips runtime out root");
+}
+
+#[test]
+fn sdlc_control_plane_mips_runtime_executes_when_mips_toolchain_available() {
+    if !mips_runtime_available() {
+        eprintln!("SKIP sdlc control-plane mips runtime strict check: mips toolchain/runtime not available");
+        return;
+    }
+
+    let native_out_root =
+        unique_workspace_target_dir("runtime_native_sdlc_control_plane_mips_strict");
+    compile_module_for_target(
+        "dsl/services/sdlc/control_plane.dag",
+        "mips",
+        &native_out_root.join("mips"),
+    );
+    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
+
+    match mips {
+        RuntimeOutcome::Ran { .. } => {}
+        RuntimeOutcome::Skipped { reason } => {
+            panic!(
+                "sdlc control-plane mips runtime should not skip when toolchain is available: {reason}"
+            );
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict sdlc control-plane mips runtime out root");
+}
+
+#[test]
+fn design_tool_mips_runtime_executes_when_mips_toolchain_available() {
+    if !mips_runtime_available() {
+        eprintln!("SKIP design tool mips runtime strict check: mips toolchain/runtime not available");
+        return;
+    }
+
+    let native_out_root = unique_workspace_target_dir("runtime_native_design_mips_strict");
+    compile_module_for_target("dsl/tools/design.dag", "mips", &native_out_root.join("mips"));
+    let mips = run_infra_generated_mips(&native_out_root.join("mips"));
+
+    match mips {
+        RuntimeOutcome::Ran { .. } => {}
+        RuntimeOutcome::Skipped { reason } => {
+            panic!("design tool mips runtime should not skip when toolchain is available: {reason}");
+        }
+    }
+
+    std::fs::remove_dir_all(&native_out_root)
+        .expect("failed to cleanup strict design mips runtime out root");
 }
 
 #[test]
