@@ -14,13 +14,15 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::time::Instant;
 
 use gunbc_ir::{NodeId, PortName, Value};
 
 use super::key::MissReason;
 use super::ledger::{
-    append_global_ledger_entry, store_output_payload, LedgerStatus, RunLedgerEntry,
+    append_global_ledger_entry, append_pending_approval_entry, store_output_payload, LedgerStatus,
+    RunLedgerEntry,
 };
 use super::planner::{NodePlan, PlanAction, WorkflowPlan};
 use super::schema::WorkflowSpec;
@@ -53,6 +55,7 @@ pub struct UnitResult {
     pub node_id: NodeId,
     pub success: bool,
     pub cached: bool,
+    pub pending_approval: bool,
     pub duration_ms: u64,
     pub miss_reason: Option<MissReason>,
 }
@@ -65,6 +68,7 @@ pub struct ExecutionSummary {
     pub cache_hits: usize,
     pub executed: usize,
     pub failed: usize,
+    pub pending_approvals: usize,
     pub skipped: usize,
     pub results: Vec<UnitResult>,
     pub total_duration_ms: u64,
@@ -73,9 +77,11 @@ pub struct ExecutionSummary {
 impl ExecutionSummary {
     /// Whether the entire workflow succeeded (no failures).
     pub fn success(&self) -> bool {
-        self.failed == 0
+        self.failed == 0 && self.pending_approvals == 0
     }
 }
+
+const PENDING_APPROVAL_EXIT_CODE: i32 = 42;
 
 /// Execute a workflow plan, running only units marked `Execute`.
 ///
@@ -96,6 +102,7 @@ pub fn execute_workflow_plan(
     let mut cache_hits = 0usize;
     let mut executed = 0usize;
     let mut failed = 0usize;
+    let mut pending_approvals = 0usize;
     let mut skipped = 0usize;
     let mut has_failure = false;
 
@@ -107,6 +114,7 @@ pub fn execute_workflow_plan(
                     node_id: node_plan.node_id.clone(),
                     success: true,
                     cached: true,
+                    pending_approval: false,
                     duration_ms: 0,
                     miss_reason: None,
                 });
@@ -120,6 +128,7 @@ pub fn execute_workflow_plan(
                         node_id: node_plan.node_id.clone(),
                         success: false,
                         cached: false,
+                        pending_approval: false,
                         duration_ms: 0,
                         miss_reason: Some(miss_reason.clone()),
                     });
@@ -136,6 +145,7 @@ pub fn execute_workflow_plan(
                         node_id: node_plan.node_id.clone(),
                         success: true,
                         cached: false,
+                        pending_approval: false,
                         duration_ms: 0,
                         miss_reason: Some(miss_reason.clone()),
                     });
@@ -153,6 +163,7 @@ pub fn execute_workflow_plan(
                         node_id: node_plan.node_id.clone(),
                         success: true,
                         cached: false,
+                        pending_approval: false,
                         duration_ms: 0,
                         miss_reason: Some(miss_reason.clone()),
                     });
@@ -161,22 +172,37 @@ pub fn execute_workflow_plan(
 
                 emit_unit_status(&node_plan.node_id, UnitStatus::Running(&cmd.label));
                 let unit_start = Instant::now();
-                let success = run_unit_command(cmd);
+                let execution_outcome = run_unit_command(cmd);
                 let duration_ms = unit_start.elapsed().as_millis() as u64;
                 executed += 1;
 
-                if !success {
-                    failed += 1;
-                    has_failure = true;
-                }
-
-                persist_executed_entry(workspace_root, node_plan, success, duration_ms);
-                emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success });
+                let (success, pending_approval) = match execution_outcome {
+                    CommandExecutionOutcome::Success => {
+                        persist_executed_entry(workspace_root, node_plan, true, duration_ms);
+                        emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
+                        (true, false)
+                    }
+                    CommandExecutionOutcome::PendingApproval => {
+                        pending_approvals += 1;
+                        has_failure = true;
+                        persist_pending_approval_entry(workspace_root, node_plan, duration_ms);
+                        emit_unit_status(&node_plan.node_id, UnitStatus::PendingApproval);
+                        (false, true)
+                    }
+                    CommandExecutionOutcome::Failure => {
+                        failed += 1;
+                        has_failure = true;
+                        persist_executed_entry(workspace_root, node_plan, false, duration_ms);
+                        emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: false });
+                        (false, false)
+                    }
+                };
 
                 results.push(UnitResult {
                     node_id: node_plan.node_id.clone(),
                     success,
                     cached: false,
+                    pending_approval,
                     duration_ms,
                     miss_reason: Some(miss_reason.clone()),
                 });
@@ -191,6 +217,7 @@ pub fn execute_workflow_plan(
         cache_hits,
         executed,
         failed,
+        pending_approvals,
         skipped,
         results,
         total_duration_ms,
@@ -198,13 +225,23 @@ pub fn execute_workflow_plan(
 }
 
 /// Run a shell command, inheriting stdout/stderr. Returns true on success.
-fn run_unit_command(cmd: &UnitCommand) -> bool {
+enum CommandExecutionOutcome {
+    Success,
+    PendingApproval,
+    Failure,
+}
+
+fn run_unit_command(cmd: &UnitCommand) -> CommandExecutionOutcome {
     let result = Command::new(&cmd.program).args(&cmd.args).status();
     match result {
-        Ok(status) => status.success(),
+        Ok(status) if status.success() => CommandExecutionOutcome::Success,
+        Ok(status) if status.code() == Some(PENDING_APPROVAL_EXIT_CODE) => {
+            CommandExecutionOutcome::PendingApproval
+        }
+        Ok(_) => CommandExecutionOutcome::Failure,
         Err(error) => {
             eprintln!("  error: failed to spawn '{}': {}", cmd.program, error);
-            false
+            CommandExecutionOutcome::Failure
         }
     }
 }
@@ -284,11 +321,39 @@ fn persist_skipped_entry(workspace_root: &Path, node_plan: &NodePlan) {
     }
 }
 
+/// Persist a ledger entry for a unit yielding pending approval.
+fn persist_pending_approval_entry(workspace_root: &Path, node_plan: &NodePlan, duration_ms: u64) {
+    let awaiting_since_epoch_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let entry = RunLedgerEntry {
+        exec_node_id: node_plan.node_id.clone(),
+        work_id: node_plan.work_id.clone(),
+        key: node_plan.key.clone(),
+        status: LedgerStatus::PendingApproval {
+            awaiting_since_epoch_ms,
+            claim_released: false,
+        },
+        output_hashes: BTreeMap::new(),
+        duration_ms,
+    };
+    if let Err(error) =
+        append_pending_approval_entry(workspace_root, entry, awaiting_since_epoch_ms, false)
+    {
+        eprintln!(
+            "  warning: failed to persist pending approval entry for '{}': {}",
+            node_plan.node_id.0, error
+        );
+    }
+}
+
 enum UnitStatus<'a> {
     CachedHit,
     Running(&'a str),
     Executed { success: bool },
     DryRun(&'a str),
+    PendingApproval,
     Skipped,
 }
 
@@ -313,6 +378,12 @@ fn emit_unit_status(node_id: &NodeId, status: UnitStatus<'_>) {
         }
         UnitStatus::DryRun(label) => {
             println!("  [dry] {} ({})", node_id.0, label);
+        }
+        UnitStatus::PendingApproval => {
+            println!("  [await] {} (pending approval)", node_id.0);
+            if is_ci {
+                println!("::endgroup::");
+            }
         }
         UnitStatus::Skipped => {
             println!("  [skip] {} (blocked by upstream failure)", node_id.0);
@@ -502,5 +573,50 @@ mod tests {
         assert_eq!(summary.total_units, 2);
         assert_eq!(summary.cache_hits, 1);
         assert_eq!(summary.executed, 1);
+    }
+
+    #[test]
+    fn pending_approval_exit_code_persists_pending_status() {
+        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
+        let plan = WorkflowPlan {
+            nodes: vec![make_node_plan(
+                "approve",
+                PlanAction::Execute {
+                    miss_reason: MissReason::NoPriorRun,
+                },
+            )],
+            coordination: CoordinationStatus {
+                ready: vec![],
+                blocked: BTreeMap::new(),
+            },
+        };
+        let mut commands = BTreeMap::new();
+        commands.insert(
+            NodeId::from("approve"),
+            UnitCommand::new("await approval", "bash", vec!["-lc".into(), "exit 42".into()]),
+        );
+
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-executor-pending-approval-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+
+        let summary = execute_workflow_plan(&spec, &plan, &commands, &root, false);
+        assert_eq!(summary.pending_approvals, 1);
+        assert_eq!(summary.failed, 0);
+        assert!(!summary.success());
+
+        let entries =
+            crate::workflow::ledger::load_global_ledger(&root).expect("load workflow ledger");
+        assert_eq!(entries.len(), 1);
+        assert!(matches!(
+            entries[0].status,
+            LedgerStatus::PendingApproval { .. }
+        ));
+        let _ = std::fs::remove_dir_all(root);
     }
 }
