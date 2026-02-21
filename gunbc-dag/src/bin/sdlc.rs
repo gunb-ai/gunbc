@@ -33,6 +33,7 @@ enum SdlcCommand {
     Worker,
     AwaitApproval,
     Transition,
+    Drain,
     Help,
 }
 
@@ -45,6 +46,8 @@ struct CliArgs {
     stage: Option<IssueLifecycleStage>,
     dry_run: bool,
     emit_pending_exit_code: bool,
+    drain_activate: bool,
+    drain_deactivate: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -233,6 +236,7 @@ fn main() {
         SdlcCommand::Transition => {
             run_transition(args.intake_key.as_deref(), args.stage, args.dry_run)
         }
+        SdlcCommand::Drain => run_drain(args.drain_activate, args.drain_deactivate, args.dry_run),
         SdlcCommand::Help => Ok(()),
     };
     if let Err(error) = result {
@@ -251,6 +255,8 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             stage: None,
             dry_run: false,
             emit_pending_exit_code: false,
+            drain_activate: false,
+            drain_deactivate: false,
         });
     }
 
@@ -259,6 +265,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         "worker" => SdlcCommand::Worker,
         "await-approval" => SdlcCommand::AwaitApproval,
         "transition" => SdlcCommand::Transition,
+        "drain" => SdlcCommand::Drain,
         "help" | "--help" | "-h" => SdlcCommand::Help,
         other => return Err(format!("unknown command `{other}`")),
     };
@@ -269,6 +276,8 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let mut stage: Option<IssueLifecycleStage> = None;
     let mut dry_run = false;
     let mut emit_pending_exit_code = false;
+    let mut drain_activate = false;
+    let mut drain_deactivate = false;
     let mut idx = 2usize;
     while idx < argv.len() {
         let token = &argv[idx];
@@ -285,6 +294,22 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
                 return Err("duplicate --emit-pending-exit-code flag".to_string());
             }
             emit_pending_exit_code = true;
+            idx += 1;
+            continue;
+        }
+        if token == "--activate" {
+            if drain_activate {
+                return Err("duplicate --activate flag".to_string());
+            }
+            drain_activate = true;
+            idx += 1;
+            continue;
+        }
+        if token == "--deactivate" {
+            if drain_deactivate {
+                return Err("duplicate --deactivate flag".to_string());
+            }
+            drain_deactivate = true;
             idx += 1;
             continue;
         }
@@ -412,6 +437,12 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command == SdlcCommand::Transition && intent_path.is_some() {
         return Err("transition does not accept --intent".to_string());
     }
+    if command != SdlcCommand::Drain && (drain_activate || drain_deactivate) {
+        return Err("--activate/--deactivate are only valid for drain".to_string());
+    }
+    if drain_activate && drain_deactivate {
+        return Err("drain command cannot use --activate and --deactivate together".to_string());
+    }
 
     Ok(CliArgs {
         command,
@@ -421,6 +452,8 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         stage,
         dry_run,
         emit_pending_exit_code,
+        drain_activate,
+        drain_deactivate,
     })
 }
 
@@ -598,6 +631,56 @@ fn run_worker(
     let mode = if dry_run { "dry-run" } else { "real" };
     let now = epoch_millis();
 
+    let drain_flag = drain_flag_path();
+    let drain_active = !dry_run && drain_flag.exists();
+    if drain_active {
+        let released = release_worker_owned_claims_for_drain(&mut claim_ledger);
+        save_claim_ledger(&claim_ledger_path, &claim_ledger)?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "command": "worker",
+                "mode": mode,
+                "pending_count": 0,
+                "intake_keys": [],
+                "ready_to_run": [],
+                "replay_skipped": [],
+                "executed_runs": [],
+                "acquired_claims": [],
+                "released_claims": released,
+                "claim_conflicts": [],
+                "terminalized": [],
+                "awaiting_approval": [],
+                "skipped_missing_issue": [],
+                "skipped_terminalized": [],
+                "ledger_path": ledger_path.display().to_string(),
+                "claim_ledger_path": claim_ledger_path.display().to_string(),
+                "run_state_path": run_state_path.display().to_string(),
+                "reconcile_actions": [],
+                "preflight": preflight,
+                "drain": {
+                    "active": true,
+                    "flag_path": drain_flag.display().to_string(),
+                    "released_claim_count": released.len(),
+                },
+                "metrics": {
+                    "stage_duration_ms": {},
+                    "approval_latency_ms": {},
+                    "retry_attempts": {},
+                    "cost_units": {
+                        "claim_acquire_attempts": 0,
+                        "reconcile_actions": 0,
+                    }
+                }
+            }))
+            .map_err(|error| format!("failed to serialize worker drain output: {error}"))?
+        );
+        if emit_pending_exit_code {
+            std::process::exit(0);
+        }
+        return Ok(());
+    }
+
     let mut intake_keys: Vec<String> = ledger.entries.keys().cloned().collect();
     intake_keys.sort();
     let mut skipped_missing_issue = Vec::new();
@@ -754,6 +837,10 @@ fn run_worker(
             "run_state_path": run_state_path.display().to_string(),
             "reconcile_actions": reconcile_plan.actions,
             "preflight": preflight,
+            "drain": {
+                "active": false,
+                "flag_path": drain_flag.display().to_string(),
+            },
             "metrics": {
                 "stage_duration_ms": stage_duration_ms,
                 "approval_latency_ms": approval_latency_ms,
@@ -895,6 +982,69 @@ fn run_transition(
     Ok(())
 }
 
+fn run_drain(activate: bool, deactivate: bool, dry_run: bool) -> Result<(), String> {
+    let flag_path = drain_flag_path();
+    let action = if activate {
+        "activate"
+    } else if deactivate {
+        "deactivate"
+    } else {
+        "status"
+    };
+
+    let mut active = flag_path.exists();
+    if action == "activate" {
+        if !dry_run {
+            if let Some(parent) = flag_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|error| {
+                    format!(
+                        "failed to create drain flag directory {}: {error}",
+                        parent.display()
+                    )
+                })?;
+            }
+            std::fs::write(&flag_path, format!("activated_at_ms={}\n", epoch_millis())).map_err(
+                |error| {
+                    format!(
+                        "failed to activate drain flag at {}: {error}",
+                        flag_path.display()
+                    )
+                },
+            )?;
+            active = true;
+        } else {
+            active = true;
+        }
+    } else if action == "deactivate" {
+        if !dry_run {
+            if flag_path.exists() {
+                std::fs::remove_file(&flag_path).map_err(|error| {
+                    format!(
+                        "failed to deactivate drain flag at {}: {error}",
+                        flag_path.display()
+                    )
+                })?;
+            }
+            active = false;
+        } else {
+            active = false;
+        }
+    }
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "command": "drain",
+            "mode": if dry_run { "dry-run" } else { "real" },
+            "action": action,
+            "active": active,
+            "flag_path": flag_path.display().to_string(),
+        }))
+        .map_err(|error| format!("failed to serialize drain output: {error}"))?
+    );
+    Ok(())
+}
+
 fn load_intent(path: &Path) -> Result<IntentSheet, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|error| format!("failed to read intent file {}: {error}", path.display()))?;
@@ -1026,6 +1176,28 @@ fn validate_infra_intent(intent: &InfraIntentSheet) -> Result<(), String> {
     }
     if intent.launch.worker_count == 0 {
         return Err("infra launch.worker_count must be >= 1".to_string());
+    }
+    match intent.runtime_profile.as_str() {
+        "stateless-fleet" => {
+            if !(5..=10).contains(&intent.launch.worker_count) {
+                return Err(
+                    "infra runtime_profile `stateless-fleet` requires launch.worker_count between 5 and 10".to_string(),
+                );
+            }
+        }
+        "local-co-located" => {
+            if intent.launch.worker_count != 1 {
+                return Err(
+                    "infra runtime_profile `local-co-located` requires launch.worker_count = 1"
+                        .to_string(),
+                );
+            }
+        }
+        other => {
+            return Err(format!(
+                "unsupported infra runtime_profile `{other}`; expected `stateless-fleet` or `local-co-located`"
+            ));
+        }
     }
     if intent.launch.heartbeat_seconds == 0 {
         return Err("infra launch.heartbeat_seconds must be >= 1".to_string());
@@ -1178,6 +1350,12 @@ fn claim_ledger_path() -> PathBuf {
     PathBuf::from("target").join("sdlc").join("claim-ledger.json")
 }
 
+fn drain_flag_path() -> PathBuf {
+    PathBuf::from("target")
+        .join("sdlc")
+        .join("worker-drain.flag")
+}
+
 fn artifact_ledger_path() -> PathBuf {
     PathBuf::from("target").join("sdlc").join("artifact-ledger.json")
 }
@@ -1238,6 +1416,29 @@ fn save_claim_ledger(path: &Path, ledger: &ClaimLedger) -> Result<(), String> {
         .map_err(|error| format!("failed to serialize claim ledger: {error}"))?;
     std::fs::write(path, content)
         .map_err(|error| format!("failed to write claim ledger {}: {error}", path.display()))
+}
+
+fn release_worker_owned_claims_for_drain(ledger: &mut ClaimLedger) -> Vec<String> {
+    let mut released_intake_keys = Vec::new();
+    let slots_to_remove: Vec<String> = ledger
+        .claims
+        .iter()
+        .filter_map(|(slot, record)| {
+            record
+                .owner
+                .strip_prefix("gunbc-sdlc-worker:")
+                .map(|intake_key| {
+                    released_intake_keys.push(intake_key.to_string());
+                    slot.clone()
+                })
+        })
+        .collect();
+    for slot in slots_to_remove {
+        ledger.claims.remove(&slot);
+    }
+    released_intake_keys.sort();
+    released_intake_keys.dedup();
+    released_intake_keys
 }
 
 fn load_artifact_ledger(path: &Path) -> Result<ArtifactLedger, String> {
@@ -1309,5 +1510,6 @@ fn print_help() {
     println!("    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]");
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
+    println!("    gunbc-sdlc drain [--activate|--deactivate] [--dry-run]");
     println!("    gunbc-sdlc help");
 }

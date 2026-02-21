@@ -312,6 +312,110 @@ fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
 }
 
 #[test]
+fn drain_command_toggles_worker_drain_flag() {
+    let root = unique_temp_dir("drain_toggle");
+    std::fs::create_dir_all(&root).expect("create temp root");
+
+    let activate = Command::new(sdlc_bin())
+        .arg("drain")
+        .arg("--activate")
+        .current_dir(&root)
+        .output()
+        .expect("activate drain flag");
+    assert!(
+        activate.status.success(),
+        "drain activate should succeed: {}",
+        String::from_utf8_lossy(&activate.stderr)
+    );
+    let activate_payload: serde_json::Value =
+        serde_json::from_slice(&activate.stdout).expect("activate output should be JSON");
+    assert_eq!(activate_payload["command"], "drain");
+    assert_eq!(activate_payload["active"], true);
+    assert!(
+        root.join("target/sdlc/worker-drain.flag").exists(),
+        "drain flag file should exist after activation"
+    );
+
+    let deactivate = Command::new(sdlc_bin())
+        .arg("drain")
+        .arg("--deactivate")
+        .current_dir(&root)
+        .output()
+        .expect("deactivate drain flag");
+    assert!(
+        deactivate.status.success(),
+        "drain deactivate should succeed: {}",
+        String::from_utf8_lossy(&deactivate.stderr)
+    );
+    let deactivate_payload: serde_json::Value =
+        serde_json::from_slice(&deactivate.stdout).expect("deactivate output should be JSON");
+    assert_eq!(deactivate_payload["active"], false);
+    assert!(
+        !root.join("target/sdlc/worker-drain.flag").exists(),
+        "drain flag file should be removed after deactivation"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_real_mode_honors_drain_flag_and_skips_processing() {
+    let root = unique_temp_dir("worker_drain_active");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-drain",
+        "intent-20260221-drain",
+        Some(8080),
+    );
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker drain test");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before drain test: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let activate = Command::new(sdlc_bin())
+        .arg("drain")
+        .arg("--activate")
+        .current_dir(&root)
+        .output()
+        .expect("activate drain");
+    assert!(
+        activate.status.success(),
+        "drain activate should succeed: {}",
+        String::from_utf8_lossy(&activate.stderr)
+    );
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .current_dir(&root)
+        .output()
+        .expect("run worker under drain");
+    assert!(
+        worker.status.success(),
+        "worker should succeed under active drain mode: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(payload["command"], "worker");
+    assert_eq!(payload["drain"]["active"], true);
+    assert_eq!(payload["acquired_claims"].as_array().map(|v| v.len()), Some(0));
+    assert_eq!(payload["pending_count"], 0);
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn intake_real_mode_is_idempotent_for_same_intake_key() {
     let root = unique_temp_dir("idempotent");
     std::fs::create_dir_all(&root).expect("create temp root");
