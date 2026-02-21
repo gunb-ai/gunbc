@@ -313,11 +313,12 @@ Conformance evidence classes:
    2. approval latency,
    3. retry attempts,
    4. LLM cost units.
-3. Report includes rollup summary counters for monitoring ingestion:
+3. Report includes rolled-up cost units, including aggregate estimated LLM cost.
+4. Report includes rollup summary counters for monitoring ingestion:
    1. intake total,
    2. ready/executed/terminalized counts,
    3. awaiting approval, claim conflict, replay-skip, and retry-backoff-deferred counts.
-4. Report includes generation timestamp for downstream time-series correlation.
+5. Report includes generation timestamp for downstream time-series correlation.
 
 ## 7. Conformance Model (Multi-Level)
 
