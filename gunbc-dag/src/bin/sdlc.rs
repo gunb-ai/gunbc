@@ -783,6 +783,7 @@ fn run_worker(
                 "cost_units": {
                     "claim_acquire_attempts": 0,
                     "reconcile_actions": 0,
+                    "llm_estimated_total_units": 0,
                 }
             }
         });
@@ -997,6 +998,7 @@ fn run_worker(
         .len()
         .saturating_sub(skipped_terminalized.len())
         .saturating_sub(terminalized.len());
+    let llm_estimated_total_units: u64 = llm_cost_units.values().copied().sum();
     let output = json!({
         "command": command_label,
         "report_generated_at_epoch_ms": now,
@@ -1044,6 +1046,7 @@ fn run_worker(
             "cost_units": {
                 "claim_acquire_attempts": claim_acquire_attempts,
                 "reconcile_actions": reconcile_plan.actions.len(),
+                "llm_estimated_total_units": llm_estimated_total_units,
             }
         }
     });

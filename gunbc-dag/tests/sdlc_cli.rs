@@ -1777,6 +1777,11 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
         8,
         "design stage should contribute expected llm cost unit estimate"
     );
+    assert_eq!(
+        payload["metrics"]["cost_units"]["llm_estimated_total_units"],
+        8,
+        "cost unit summary should include total estimated llm units"
+    );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
