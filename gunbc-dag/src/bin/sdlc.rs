@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use gunbc_ir::transport::github::{ensure_sdlc_issue_capabilities, SdlcIssueCapabilities};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SdlcCommand {
@@ -313,12 +314,21 @@ fn validate_intent(intent: &IntentSheet) -> Result<(), String> {
         &intent.update_strategy.transition_mode,
     )?;
 
-    if intent.provider != "github" {
-        return Err(format!(
-            "unsupported provider `{}`; only `github` is supported",
+    let capabilities = match intent.provider.as_str() {
+        "github" => SdlcIssueCapabilities::github(),
+        _ => {
+            return Err(format!(
+                "unsupported provider `{}`; only `github` is supported",
+                intent.provider
+            ))
+        }
+    };
+    ensure_sdlc_issue_capabilities(capabilities).map_err(|error| {
+        format!(
+            "provider capability gate failed for `{}`: {error}",
             intent.provider
-        ));
-    }
+        )
+    })?;
     if intent.update_strategy.comment_mode != "upsert-by-marker" {
         return Err(format!(
             "unsupported update_strategy.comment_mode `{}`; expected `upsert-by-marker`",
