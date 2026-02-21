@@ -254,3 +254,54 @@ fn reconcile_execute_fails_closed_without_required_inputs() {
 
     std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
 }
+
+#[test]
+fn reconcile_execute_fails_closed_on_invalid_cloud_config_input() {
+    let temp_home = unique_temp_dir("reconcile_execute_invalid_config");
+    let adc_path = temp_home
+        .join(".config")
+        .join("gcloud")
+        .join("application_default_credentials.json");
+    if let Some(parent) = adc_path.parent() {
+        std::fs::create_dir_all(parent).expect("create ADC parent directories");
+    }
+    std::fs::write(
+        &adc_path,
+        r#"{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test-refresh-token"}"#,
+    )
+    .expect("write ADC fixture with refresh token");
+
+    let output = Command::new(infra_bin())
+        .arg("reconcile")
+        .arg("--env")
+        .arg("dev")
+        .arg("--execute")
+        .arg("--input")
+        .arg("allow_impersonation=false")
+        .arg("--input")
+        .arg("interactive_allowed=false")
+        .arg("--input")
+        .arg("lifetime_seconds=3600")
+        .arg("--input")
+        .arg("request_token=dummy")
+        .arg("--input")
+        .arg("request_url=https://example.com")
+        .arg("--input")
+        .arg("secret_value=dummy")
+        .arg("--input")
+        .arg("config={}")
+        .env("HOME", &temp_home)
+        .output()
+        .expect("run infra reconcile execute command with invalid config");
+    assert!(
+        !output.status.success(),
+        "reconcile execute should fail closed on invalid cloud config input"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid CloudSecretConfig json"),
+        "reconcile execute failure should explain invalid cloud config contract: {stderr}"
+    );
+
+    std::fs::remove_dir_all(temp_home).expect("cleanup temp HOME");
+}
