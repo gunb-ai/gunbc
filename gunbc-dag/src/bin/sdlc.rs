@@ -8,7 +8,7 @@
 #![allow(clippy::disallowed_methods)] // CLI-owned local ledgers and git metadata probes are intentional entrypoint concerns.
 
 use gunbc_dag::{
-    claim_slot_key, mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
+    claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
     provisional_marker, reconcile_entries, register_retry_failure, release_claim,
     should_replay_skip, try_acquire_claim, upsert_provisional_artifact, ArtifactLedger,
     ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry,
@@ -848,9 +848,37 @@ fn run_worker(
                 claim_conflicts.push(intake_key.clone());
                 continue;
             }
-            ClaimAcquireResult::Acquired
-            | ClaimAcquireResult::AlreadyOwned
-            | ClaimAcquireResult::StaleReclaimed { .. } => {
+            ClaimAcquireResult::Acquired | ClaimAcquireResult::StaleReclaimed { .. } => {
+                acquired_claims.push(intake_key.clone());
+            }
+            ClaimAcquireResult::AlreadyOwned => {
+                if !heartbeat_claim(
+                    &mut claim_ledger,
+                    &claim_slot,
+                    &claim_owner,
+                    now,
+                    CLAIM_LEASE_TTL_MS,
+                ) {
+                    let has_budget = register_retry_failure(
+                        &mut record.retry,
+                        now,
+                        RETRY_BASE_BACKOFF_MS,
+                        "claim heartbeat failed for existing owner".to_string(),
+                    );
+                    if !has_budget {
+                        record.terminalized = true;
+                        terminal_failures.insert(
+                            intake_key.clone(),
+                            record
+                                .retry
+                                .last_error
+                                .clone()
+                                .unwrap_or_else(|| "retry_budget_exhausted".to_string()),
+                        );
+                    }
+                    claim_conflicts.push(intake_key.clone());
+                    continue;
+                }
                 acquired_claims.push(intake_key.clone());
             }
         }

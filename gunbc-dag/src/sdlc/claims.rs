@@ -74,6 +74,22 @@ pub fn release_claim(ledger: &mut ClaimLedger, slot_key: &str, owner: &str) -> b
     }
 }
 
+pub fn heartbeat_claim(
+    ledger: &mut ClaimLedger,
+    slot_key: &str,
+    owner: &str,
+    now_epoch_ms: u128,
+    lease_ttl_ms: u128,
+) -> bool {
+    match ledger.claims.get_mut(slot_key) {
+        Some(record) if record.owner == owner => {
+            record.lease_expires_at_epoch_ms = now_epoch_ms.saturating_add(lease_ttl_ms);
+            true
+        }
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +132,18 @@ mod tests {
         assert!(!release_claim(&mut ledger, &key, "worker-b"));
         assert!(release_claim(&mut ledger, &key, "worker-a"));
         assert!(!ledger.claims.contains_key(&key));
+    }
+
+    #[test]
+    fn heartbeat_claim_extends_owner_lease() {
+        let mut ledger = ClaimLedger::default();
+        let key = claim_slot_key(2, IssueLifecycleStage::Implementation);
+        let _ = try_acquire_claim(&mut ledger, &key, "worker-a", 1000, 100);
+        assert!(heartbeat_claim(&mut ledger, &key, "worker-a", 1080, 250));
+        assert_eq!(
+            ledger.claims.get(&key).map(|record| record.lease_expires_at_epoch_ms),
+            Some(1330)
+        );
+        assert!(!heartbeat_claim(&mut ledger, &key, "worker-b", 1100, 250));
     }
 }
