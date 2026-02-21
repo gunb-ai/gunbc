@@ -514,6 +514,89 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
 }
 
 #[test]
+fn worker_real_mode_supports_local_co_located_profile_preflight() {
+    let root = unique_temp_dir("worker_local_co_located_profile");
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-local-profile",
+        "intent-20260221-local-profile",
+        Some(9901),
+    );
+
+    let local_profile_intent_path = root.join("TODO/infra-intent-local.yaml");
+    let local_profile_intent = r#"schema_version: "1"
+intent_id: "infra-20260221-local-profile"
+environment: "dev"
+runtime_profile: "local-co-located"
+provider: "github"
+policy_version: "1"
+components:
+  claim_store:
+    backend: "sqlite"
+    dsn: "var/sdlc/local-claims.db"
+  outcome_ledger:
+    backend: "sqlite"
+    dsn: "var/sdlc/local-outcomes.db"
+  secrets:
+    credential_policy_profile: "default"
+    required_refs:
+      - "github-token"
+      - "openai-api-key"
+  metrics:
+    sink: "stdout"
+    namespace: "gunbc.sdlc"
+safety:
+  fail_closed_on_missing_prereqs: true
+  require_capability_gate: true
+launch:
+  worker_count: 1
+  lease_ttl_seconds: 60
+  heartbeat_seconds: 10
+  poll_interval_seconds: 5
+drift:
+  reconcile_mode: "plan-then-apply"
+  reconcile_interval_minutes: 15
+notes: "local co-located profile fixture"
+"#;
+    std::fs::write(&local_profile_intent_path, local_profile_intent)
+        .expect("write local profile infra intent fixture");
+
+    let intake = Command::new(sdlc_bin())
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before local profile worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = Command::new(sdlc_bin())
+        .arg("worker")
+        .arg("--infra-intent")
+        .arg(&local_profile_intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run worker with local profile infra intent");
+    assert!(
+        worker.status.success(),
+        "worker should succeed for local co-located profile preflight: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(payload["preflight"]["status"], "ok");
+    assert_eq!(payload["preflight"]["runtime_profile"], "local-co-located");
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn intake_real_mode_is_idempotent_for_same_intake_key() {
     let root = unique_temp_dir("idempotent");
     std::fs::create_dir_all(&root).expect("create temp root");
