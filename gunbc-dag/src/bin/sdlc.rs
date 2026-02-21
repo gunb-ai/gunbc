@@ -9,7 +9,7 @@
 use gunbc_dag::{
     claim_slot_key, reconcile_entries, register_retry_failure, release_claim, try_acquire_claim,
     upsert_provisional_artifact, ArtifactLedger, ArtifactUpsertOutcome, ClaimAcquireResult,
-    ClaimLedger, ReconcileAction, ReconcileEntry, RetryState,
+    ClaimLedger, ReconcileAction, ReconcileEntry, RetryState, validate_stage_transition,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::github::{ensure_sdlc_issue_capabilities, SdlcIssueCapabilities};
@@ -27,6 +27,7 @@ enum SdlcCommand {
     Intake,
     Worker,
     AwaitApproval,
+    Transition,
     Help,
 }
 
@@ -35,6 +36,7 @@ struct CliArgs {
     command: SdlcCommand,
     intent_path: Option<PathBuf>,
     intake_key: Option<String>,
+    stage: Option<IssueLifecycleStage>,
     dry_run: bool,
 }
 
@@ -134,6 +136,9 @@ fn main() {
         SdlcCommand::Intake => run_intake(args.intent_path.as_ref(), args.dry_run),
         SdlcCommand::Worker => run_worker(args.dry_run),
         SdlcCommand::AwaitApproval => run_await_approval(args.intake_key.as_deref(), args.dry_run),
+        SdlcCommand::Transition => {
+            run_transition(args.intake_key.as_deref(), args.stage, args.dry_run)
+        }
         SdlcCommand::Help => Ok(()),
     };
     if let Err(error) = result {
@@ -148,6 +153,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             command: SdlcCommand::Help,
             intent_path: None,
             intake_key: None,
+            stage: None,
             dry_run: false,
         });
     }
@@ -156,12 +162,14 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         "intake" => SdlcCommand::Intake,
         "worker" => SdlcCommand::Worker,
         "await-approval" => SdlcCommand::AwaitApproval,
+        "transition" => SdlcCommand::Transition,
         "help" | "--help" | "-h" => SdlcCommand::Help,
         other => return Err(format!("unknown command `{other}`")),
     };
 
     let mut intent_path: Option<PathBuf> = None;
     let mut intake_key: Option<String> = None;
+    let mut stage: Option<IssueLifecycleStage> = None;
     let mut dry_run = false;
     let mut idx = 2usize;
     while idx < argv.len() {
@@ -224,6 +232,25 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             idx += 1;
             continue;
         }
+        if token == "--stage" {
+            if stage.is_some() {
+                return Err("duplicate --stage flag".to_string());
+            }
+            let value = argv
+                .get(idx + 1)
+                .ok_or_else(|| "--stage requires a value".to_string())?;
+            stage = Some(parse_stage(value)?);
+            idx += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--stage=") {
+            if stage.is_some() {
+                return Err("duplicate --stage flag".to_string());
+            }
+            stage = Some(parse_stage(value)?);
+            idx += 1;
+            continue;
+        }
         return Err(format!("unknown flag `{token}`"));
     }
 
@@ -239,13 +266,37 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command == SdlcCommand::AwaitApproval && intent_path.is_some() {
         return Err("await-approval does not accept --intent".to_string());
     }
+    if command == SdlcCommand::Transition && intake_key.is_none() {
+        return Err("transition requires --intake-key <value>".to_string());
+    }
+    if command == SdlcCommand::Transition && stage.is_none() {
+        return Err("transition requires --stage <idea|design|design-review|accepted|implementation|closed>".to_string());
+    }
+    if command == SdlcCommand::Transition && intent_path.is_some() {
+        return Err("transition does not accept --intent".to_string());
+    }
 
     Ok(CliArgs {
         command,
         intent_path,
         intake_key,
+        stage,
         dry_run,
     })
+}
+
+fn parse_stage(value: &str) -> Result<IssueLifecycleStage, String> {
+    match value {
+        "idea" => Ok(IssueLifecycleStage::Idea),
+        "design" => Ok(IssueLifecycleStage::Design),
+        "design-review" => Ok(IssueLifecycleStage::DesignReview),
+        "accepted" => Ok(IssueLifecycleStage::Accepted),
+        "implementation" => Ok(IssueLifecycleStage::Implementation),
+        "closed" => Ok(IssueLifecycleStage::Closed),
+        _ => Err(format!(
+            "invalid stage `{value}`; expected one of: idea, design, design-review, accepted, implementation, closed"
+        )),
+    }
 }
 
 fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String> {
@@ -556,6 +607,48 @@ fn run_await_approval(intake_key: Option<&str>, dry_run: bool) -> Result<(), Str
     Ok(())
 }
 
+fn run_transition(
+    intake_key: Option<&str>,
+    next_stage: Option<IssueLifecycleStage>,
+    dry_run: bool,
+) -> Result<(), String> {
+    let intake_key = intake_key.ok_or_else(|| "transition requires --intake-key".to_string())?;
+    let next_stage = next_stage.ok_or_else(|| "transition requires --stage".to_string())?;
+    let ledger_path = intake_ledger_path();
+    let mut ledger = load_intake_ledger(&ledger_path)?;
+    let Some(record) = ledger.entries.get_mut(intake_key) else {
+        return Err(format!("unknown intake key `{intake_key}`"));
+    };
+    if record.terminalized {
+        return Err(format!(
+            "cannot transition terminalized intake key `{intake_key}`"
+        ));
+    }
+    let current_stage = record.stage;
+    validate_stage_transition(current_stage, next_stage)?;
+
+    record.stage = next_stage;
+    record.updated_at_epoch_ms = epoch_millis();
+
+    if !dry_run {
+        save_intake_ledger(&ledger_path, &ledger)?;
+    }
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "command": "transition",
+            "mode": if dry_run { "dry-run" } else { "real" },
+            "intake_key": intake_key,
+            "from_stage": current_stage.as_label(),
+            "to_stage": next_stage.as_label(),
+            "ledger_path": ledger_path.display().to_string(),
+        }))
+        .map_err(|error| format!("failed to serialize transition output: {error}"))?
+    );
+    Ok(())
+}
+
 fn load_intent(path: &Path) -> Result<IntentSheet, String> {
     let content = std::fs::read_to_string(path)
         .map_err(|error| format!("failed to read intent file {}: {error}", path.display()))?;
@@ -746,5 +839,6 @@ fn print_help() {
     println!("    gunbc-sdlc intake --intent <path> [--dry-run]");
     println!("    gunbc-sdlc worker [--dry-run]");
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
+    println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
     println!("    gunbc-sdlc help");
 }

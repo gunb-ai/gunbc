@@ -79,7 +79,7 @@ pub use sdlc::{
     reconcile_entries, register_retry_failure, release_claim, retry_ready, try_acquire_claim,
     upsert_provisional_artifact, ArtifactLedger, ArtifactRecord, ArtifactUpsertOutcome,
     ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction, ReconcileEntry, ReconcilePlan,
-    RetryState,
+    RetryState, validate_stage_transition,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
