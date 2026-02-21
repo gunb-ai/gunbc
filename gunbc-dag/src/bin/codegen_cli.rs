@@ -1061,15 +1061,25 @@ fn validate_codegen_dsl_coverage(
         .filter(|binary| binary.is_dsl_pipeline_module())
         .map(WorkspaceBinary::tool_name)
         .collect();
+    let intentionally_unmapped_tool_modules = intentionally_unmapped_dsl_tool_modules();
+    let intentionally_unmapped_pipeline_modules = intentionally_unmapped_dsl_pipeline_modules();
 
     let unknown_tools: Vec<String> = tool_modules
         .iter()
-        .filter(|module| !known_tool_modules.contains(module.as_str()))
+        .filter(|module| {
+            let module = module.as_str();
+            !known_tool_modules.contains(module)
+                && !intentionally_unmapped_tool_modules.contains(module)
+        })
         .cloned()
         .collect();
     let unknown_pipelines: Vec<String> = pipeline_modules
         .iter()
-        .filter(|module| !known_pipeline_modules.contains(module.as_str()))
+        .filter(|module| {
+            let module = module.as_str();
+            !known_pipeline_modules.contains(module)
+                && !intentionally_unmapped_pipeline_modules.contains(module)
+        })
         .cloned()
         .collect();
     if !unknown_tools.is_empty() || !unknown_pipelines.is_empty() {
@@ -1116,6 +1126,18 @@ fn validate_codegen_dsl_coverage(
         "codegen DSL coverage validation failed: missing generated targets for mapped DSL modules: {}",
         missing_targets.join(", ")
     ))
+}
+
+fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
+    // CG1 introduces canonical SDLC design modeling in DSL before dedicated
+    // runtime target wiring lands (CG2+). Keep this explicit and fail-closed.
+    ["design"].into_iter().collect()
+}
+
+fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
+    // CG1 introduces canonical SDLC pipeline modeling in DSL before dedicated
+    // runtime target wiring lands (CG2+). Keep this explicit and fail-closed.
+    ["sdlc"].into_iter().collect()
 }
 
 fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
@@ -1734,5 +1756,44 @@ pub fn sample_tool() {}
             .expect_err("unknown tool module must fail coverage validation");
         assert!(err.contains("unmapped DSL tool modules"));
         assert!(err.contains("unknown_new_tool"));
+    }
+
+    #[test]
+    fn codegen_dsl_coverage_allows_intentionally_unmapped_sdlc_modules() {
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root should exist")
+            .to_path_buf();
+        let tools = discover_codegen_tools(&workspace_root)
+            .expect("source discovery should return tool defs");
+
+        let tool_modules: BTreeSet<String> = [
+            "build",
+            "bootstrap",
+            "clippy",
+            "codegen",
+            "dag_viz",
+            "deps",
+            "design",
+            "docgen",
+            "gist",
+            "makegen",
+            "pragma",
+            "review",
+            "testgen",
+        ]
+        .into_iter()
+        .map(|name| name.to_string())
+        .collect();
+        let mut pipeline_modules: BTreeSet<String> = WorkspaceBinary::all()
+            .iter()
+            .copied()
+            .filter(|binary| binary.is_dsl_pipeline_module())
+            .map(|binary| binary.tool_name().to_string())
+            .collect();
+        pipeline_modules.insert("sdlc".to_string());
+
+        validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
+            .expect("explicitly unmapped SDLC modules should be allowed");
     }
 }

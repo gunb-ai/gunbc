@@ -57,10 +57,12 @@ pub fn build_workspace_dag_from_discovery(
     let mut dag = Dag::new();
     let required_tools = required_dsl_tool_modules();
     let required_pipelines = required_dsl_pipeline_modules();
+    let covered_tools = covered_dsl_tool_modules();
+    let covered_pipelines = covered_dsl_pipeline_modules();
     validate_required("tool", tool_names, &required_tools)?;
     validate_required("pipeline", pipeline_names, &required_pipelines)?;
-    validate_coverage("tool", tool_names, &required_tools)?;
-    validate_coverage("pipeline", pipeline_names, &required_pipelines)?;
+    validate_coverage("tool", tool_names, &covered_tools)?;
+    validate_coverage("pipeline", pipeline_names, &covered_pipelines)?;
     add_discovered_tool_subdags(&mut dag, tool_names)?;
     add_discovered_pipeline_subdags(&mut dag, pipeline_names)?;
 
@@ -191,6 +193,38 @@ fn required_dsl_pipeline_modules() -> BTreeSet<String> {
         .filter(|binary| binary.is_dsl_pipeline_module())
         .map(|binary| binary.tool_name().to_string())
         .collect()
+}
+
+fn covered_dsl_tool_modules() -> BTreeSet<String> {
+    let mut covered = required_dsl_tool_modules();
+    covered.extend(
+        intentionally_unmapped_dsl_tool_modules()
+            .into_iter()
+            .map(|name| name.to_string()),
+    );
+    covered
+}
+
+fn covered_dsl_pipeline_modules() -> BTreeSet<String> {
+    let mut covered = required_dsl_pipeline_modules();
+    covered.extend(
+        intentionally_unmapped_dsl_pipeline_modules()
+            .into_iter()
+            .map(|name| name.to_string()),
+    );
+    covered
+}
+
+fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
+    // CG1 introduces canonical SDLC design modeling in DSL before dedicated
+    // runtime target wiring lands (CG2+). Keep explicit and fail-closed.
+    ["design"].into_iter().collect()
+}
+
+fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
+    // CG1 introduces canonical SDLC pipeline modeling in DSL before dedicated
+    // runtime target wiring lands (CG2+). Keep explicit and fail-closed.
+    ["sdlc"].into_iter().collect()
 }
 
 fn add_discovered_tool_subdags(
@@ -344,6 +378,36 @@ mod tests {
             .expect("pure workspace dag composition should succeed");
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"build"));
+        assert!(node_ids.contains(&"ci"));
+        assert!(node_ids.contains(&"languages"));
+    }
+
+    #[test]
+    fn test_build_workspace_dag_from_discovery_allows_intentionally_unmapped_sdlc_modules() {
+        let tool_names: BTreeSet<String> = [
+            "build",
+            "makegen",
+            "clippy",
+            "deps",
+            "bootstrap",
+            "codegen",
+            "dag_viz",
+            "design",
+            "docgen",
+            "gist",
+            "pragma",
+            "review",
+            "testgen",
+        ]
+        .into_iter()
+        .map(|name| name.to_string())
+        .collect();
+        let pipeline_names: BTreeSet<String> =
+            ["ci", "sdlc"].into_iter().map(|name| name.to_string()).collect();
+
+        let dag = build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
+            .expect("intentionally unmapped SDLC modules should not fail coverage");
+        let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"ci"));
         assert!(node_ids.contains(&"languages"));
     }

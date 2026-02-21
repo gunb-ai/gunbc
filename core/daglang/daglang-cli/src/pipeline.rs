@@ -810,6 +810,8 @@ mod tests {
             "tools.codegen",
             "tools.dag_viz",
             "tools.deps",
+            "tools.design",
+            "pipelines.sdlc",
             "tools.docgen",
             "tools.gist",
             "examples.deployment",
@@ -1066,7 +1068,7 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 46);
+        assert_eq!(result.parsed_count(), 48);
         assert!(
             result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
@@ -1111,7 +1113,7 @@ mod tests {
         .expect("pipeline should execute");
         assert_eq!(
             result.parsed_count(),
-            46,
+            48,
             "report stop should retain parse-stage file count for real corpus"
         );
     }

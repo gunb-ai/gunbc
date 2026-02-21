@@ -5,13 +5,13 @@ use gunbc_ir::{to_bridge_json, Cardinality, Value};
 use std::collections::{BTreeMap, HashMap};
 
 #[test]
-fn test_makefile_cli_args_match_entrypoints() {
+fn test_makefile_help_exposes_entrypoints_without_direct_cli_wiring() {
     let registry = ToolRegistry::default_registry();
     let makefile = render_makefile(&registry);
 
     for tool in &registry.tools {
         for param in &tool.entrypoints {
-            let expected = if param.repeatable {
+            let disallowed_cli_wiring = if param.repeatable {
                 format!(
                     "$(if $({}),$(foreach v,$({}),{} $(v)))",
                     param.make_var, param.make_var, param.cli_flag
@@ -23,12 +23,21 @@ fn test_makefile_cli_args_match_entrypoints() {
                 )
             };
 
+            let expected_help_fragment = format!("[{}=", param.make_var);
+
             assert!(
-                makefile.contains(&expected),
-                "Makefile missing CLI arg wiring for {}.{}: expected `{}`",
+                makefile.contains(&expected_help_fragment),
+                "Makefile help missing entrypoint variable for {}.{}: expected fragment `{}`",
                 tool.short_name,
                 param.port_name,
-                expected
+                expected_help_fragment
+            );
+            assert!(
+                !makefile.contains(&disallowed_cli_wiring),
+                "Makefile should not thread workflow entrypoint vars into direct CLI args for {}.{}: disallowed `{}`",
+                tool.short_name,
+                param.port_name,
+                disallowed_cli_wiring
             );
         }
     }
