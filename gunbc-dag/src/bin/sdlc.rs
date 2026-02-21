@@ -105,6 +105,10 @@ struct IntakeRecord {
     terminalized: bool,
     #[serde(default)]
     retry: RetryState,
+    #[serde(default)]
+    awaiting_approval_since_epoch_ms: Option<u128>,
+    #[serde(default)]
+    created_at_epoch_ms: u128,
     updated_at_epoch_ms: u128,
 }
 
@@ -291,6 +295,9 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
             existing.run_key = effective_run_key.clone();
             existing.issue_id = intent.tracking.issue_id.or(existing.issue_id);
             existing.policy_version = intent.idempotency.policy_version.clone();
+            if existing.created_at_epoch_ms == 0 {
+                existing.created_at_epoch_ms = now;
+            }
             existing.updated_at_epoch_ms = now;
             idempotent = true;
         }
@@ -306,6 +313,8 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
                     awaiting_approval: false,
                     terminalized: false,
                     retry: RetryState::default(),
+                    awaiting_approval_since_epoch_ms: None,
+                    created_at_epoch_ms: now,
                     updated_at_epoch_ms: now,
                 },
             );
@@ -345,11 +354,23 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
     let mut claim_conflicts = Vec::new();
     let mut acquired_claims = Vec::new();
     let mut reconcile_inputs = Vec::new();
+    let mut stage_duration_ms = BTreeMap::new();
+    let mut approval_latency_ms = BTreeMap::new();
+    let mut retry_attempts = BTreeMap::new();
+    let mut claim_acquire_attempts: u64 = 0;
 
     for intake_key in &intake_keys {
         let Some(record) = ledger.entries.get_mut(intake_key) else {
             continue;
         };
+        stage_duration_ms.insert(
+            intake_key.clone(),
+            now.saturating_sub(record.updated_at_epoch_ms),
+        );
+        retry_attempts.insert(intake_key.clone(), record.retry.attempts);
+        if let Some(since) = record.awaiting_approval_since_epoch_ms {
+            approval_latency_ms.insert(intake_key.clone(), now.saturating_sub(since));
+        }
         if record.terminalized {
             skipped_terminalized.push(intake_key.clone());
             continue;
@@ -360,6 +381,7 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
         };
         let claim_slot = claim_slot_key(issue_id, record.stage);
         let claim_owner = format!("gunbc-sdlc-worker:{intake_key}");
+        claim_acquire_attempts = claim_acquire_attempts.saturating_add(1);
         let claim_result = try_acquire_claim(
             &mut claim_ledger,
             &claim_slot,
@@ -453,6 +475,15 @@ fn run_worker(dry_run: bool) -> Result<(), String> {
             "ledger_path": ledger_path.display().to_string(),
             "claim_ledger_path": claim_ledger_path.display().to_string(),
             "reconcile_actions": reconcile_plan.actions,
+            "metrics": {
+                "stage_duration_ms": stage_duration_ms,
+                "approval_latency_ms": approval_latency_ms,
+                "retry_attempts": retry_attempts,
+                "cost_units": {
+                    "claim_acquire_attempts": claim_acquire_attempts,
+                    "reconcile_actions": reconcile_plan.actions.len(),
+                }
+            }
         }))
         .map_err(|error| format!("failed to serialize worker output: {error}"))?
     );
@@ -472,6 +503,9 @@ fn run_await_approval(intake_key: Option<&str>, dry_run: bool) -> Result<(), Str
         ));
     }
     record.awaiting_approval = true;
+    if record.awaiting_approval_since_epoch_ms.is_none() {
+        record.awaiting_approval_since_epoch_ms = Some(epoch_millis());
+    }
     record.updated_at_epoch_ms = epoch_millis();
 
     if !dry_run {

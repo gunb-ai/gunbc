@@ -256,6 +256,13 @@ fn worker_dry_run_reports_pending_intake_keys() {
             .expect("first intake key should be string"),
         "intent-20260221-worker"
     );
+    assert!(
+        payload["metrics"]["stage_duration_ms"]
+            .as_object()
+            .expect("stage_duration metrics should be map")
+            .contains_key("intent-20260221-worker"),
+        "worker output should include per-intake stage duration metrics"
+    );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
@@ -450,6 +457,13 @@ fn await_approval_releases_claim_on_next_worker_pass() {
     assert_eq!(
         second_payload["released_claims"][0],
         "intent-20260221-await-approval"
+    );
+    assert!(
+        second_payload["metrics"]["approval_latency_ms"]
+            .as_object()
+            .expect("approval latency metrics should be map")
+            .contains_key("intent-20260221-await-approval"),
+        "worker metrics should include approval latency for awaiting approval entries"
     );
 
     let claim_ledger_path = root.join("target/sdlc/claim-ledger.json");
