@@ -14,180 +14,264 @@ The mega modeling design (Section 2.1.3, Section 5) establishes:
 3. **Adapters are generic** (Section 5.1): lease/claim store adapter, outcome ledger adapter.
 4. **Deployment split is a transport concern** (Section 2.1.3, rule 3): DSL semantics unchanged across local/cloud.
 
-The DSL infrastructure layer already implements the dependency injection mechanism:
+### 1.1 Three-Layer Abstraction
 
-- `infra/core.dag` defines abstract interfaces (`ObjectStorage`, `SecretStore`, `Compute`, `Queue`, `Identity`).
-- `infra/gcp/resources.dag` provides concrete GCP implementations (`GcsBucket implements ObjectStorage`, etc.).
-- Business logic declares `uses store: ObjectStorage(...)` and the provider is resolved at compile time via environment config.
-
-**The control plane should follow this pattern exactly.** The workflow declares abstract resource needs (claim store, outcome ledger). The deployment profile (local, cloud-run, unit-test) binds the concrete implementation at compile time.
-
-## 2. Resource Abstraction Model
+The pipeline operates at three distinct abstraction layers. Business logic never sees infrastructure.
 
 ```mermaid
 flowchart TD
-    subgraph workflow [SDLC Workflow — DSL]
-        AcquireClaim["acquire_claim\nuses store: ClaimStore"]
-        UpsertOutcome["upsert_outcome\nuses store: OutcomeLedger"]
-        GetOutcome["get_outcome\nuses store: OutcomeLedger"]
+    subgraph pipeline [Layer 1 — Pipeline DSL: domain concepts only]
+        P1["Issues.discover(labels)"]
+        P2["Claims.acquire(issue_id, stage)"]
+        P3["Outcomes.record(intake_key, stage, result)"]
+        P4["Agent.spawn(spec)"]
     end
 
-    subgraph abstract [Abstract Interfaces — infra/core.dag]
-        ClaimStoreIface["interface ClaimStore\nextends ObjectStorage\n+ cas_write capability"]
-        OutcomeLedgerIface["interface OutcomeLedger\nextends ObjectStorage"]
+    subgraph domain [Layer 2 — Domain Interfaces: typed contracts]
+        Issues["interface IssueProvider\ndiscover, get, comment,\nset_labels, close"]
+        Claims["interface ClaimStore\nacquire, heartbeat, release"]
+        Outcomes["interface OutcomeLedger\nupsert, get"]
+        Agents["interface AgentProvider\nspawn, poll, cancel"]
     end
 
-    subgraph local [Local Profile]
-        FileStore["resource LocalFileStore\nimplements ClaimStore\n@file transport"]
+    subgraph infra [Layer 3 — Infrastructure Implementations: deployment-selected]
+        GH["GitHubIssueProvider\n@rest api.github.com"]
+        GCS_C["GcsClaimStore\nuses GcsBucket"]
+        File_C["FileClaimStore\nuses Filesystem"]
+        Mem_C["InMemoryClaimStore\ntest only"]
+        Codex["CodexAgentProvider\n@shell codex exec"]
+        Stub["StubAgentProvider\ntest only"]
     end
 
-    subgraph gcp [GCP Profile]
-        GCSStore["resource GcsBucket\nimplements ClaimStore\n@rest transport + generation CAS"]
-    end
-
-    subgraph test [Test Profile]
-        MemStore["resource InMemoryStore\nimplements ClaimStore\nin-process, deterministic"]
-    end
-
-    AcquireClaim --> ClaimStoreIface
-    UpsertOutcome --> OutcomeLedgerIface
-    GetOutcome --> OutcomeLedgerIface
-    ClaimStoreIface --> FileStore
-    ClaimStoreIface --> GCSStore
-    ClaimStoreIface --> MemStore
-    OutcomeLedgerIface --> FileStore
+    P1 --> Issues
+    P2 --> Claims
+    P3 --> Outcomes
+    P4 --> Agents
+    Issues --> GH
+    Claims --> GCS_C
+    Claims --> File_C
+    Claims --> Mem_C
+    Agents --> Codex
+    Agents --> Stub
 ```
 
-### 2.1 Binding Resolution Order
+**Layer 1 (Pipeline)**: Pure domain operations. The pipeline says "I have an issue" and "I need a claim." It never mentions `ObjectStorage`, `GcsBucket`, `Filesystem`, `@rest`, or any transport.
 
-The compiler resolves abstract resource bindings via deployment profile:
+**Layer 2 (Domain Interfaces)**: Typed contracts that define what operations exist on each domain concept (mega design Section 6.1: `try_acquire_claim`, `discover_ready_issues`, `upsert_comment`, `compare_and_set_stage`). These are the provider-fungible contracts from the mega modeling design.
 
-1. **Unit test**: `@hermetic` profile. All stores are in-memory. Clock is deterministic (seeded from `run_id`, per `std/resources.dag`).
-2. **Local dev**: `local-co-located` profile. Stores are `@file` transport to `$SDLC_LEDGER_DIR`. Single-process, no CAS needed.
-3. **Cloud Run (dev)**: `stateless-fleet` profile in `gunbai-auto`. Stores are `GcsBucket` with generation-based CAS. Secrets from Secret Manager.
-4. **Cloud Run (prod)**: `stateless-fleet` profile in `gunbai-prod`. Same as dev but with stricter IAM and separate GCS buckets.
+**Layer 3 (Infrastructure)**: Concrete implementations selected by deployment profile. `GitHubIssueProvider` happens to use `@rest` against `api.github.com`. `GcsClaimStore` happens to use `GcsBucket` which implements `ObjectStorage`. `FileClaimStore` happens to use the `Filesystem` resource. These are implementation details.
+
+The DSL infrastructure layer (`infra/core.dag`) already implements the Layer 3 pattern:
+- `ObjectStorage`, `SecretStore`, `Compute`, `Queue`, `Identity` are abstract infrastructure interfaces.
+- `GcsBucket implements ObjectStorage`, `ManagedSecret implements SecretStore`, etc.
+- "Business logic writes `uses store: ObjectStorage(...)` and the provider is selected at compile time via environment config."
+
+The gap is that Layer 2 (domain interfaces) and the compile-time profile binding mechanism do not exist yet.
+
+### 1.2 Existing Domain Services vs Target Architecture
+
+The DSL already has domain-level service definitions that are halfway to the target:
+
+- `services/github/issues.dag` defines `Issues.List`, `Issues.Get`, `Issues.AddComment`, `Issues.SetLabels` -- these are domain operations.
+- `services/agent/codex.dag` defines `Codex.Spawn`, `Codex.PollStatus` -- domain operations.
+- `services/sdlc/control_plane.dag` defines `ControlPlane.AcquireStageClaim` -- domain operations.
+
+The problem: these are concrete `service` definitions with hardcoded transport (`@rest` to a fixed `@endpoint`, `@shell` with specific commands). They should be abstract `interface` definitions where the transport is resolved by deployment profile. A test profile might satisfy `IssueProvider` with an in-memory stub; a production profile satisfies it with `GitHubIssueProvider`.
+
+## 2. Resource Abstraction Model
+
+### 2.1 Binding Resolution by Deployment Profile
+
+The compiler resolves abstract interface bindings via deployment profile at compile time:
+
+1. **Unit test** (`@hermetic`): All domain interfaces bind to in-memory/deterministic implementations. Clock is seeded from `run_id` (per `std/resources.dag`). No external I/O.
+2. **Local dev** (`local-co-located`): `IssueProvider` binds to `GitHubIssueProvider` (real GitHub API). `ClaimStore`/`OutcomeLedger` bind to `FileClaimStore` (JSON files in `$SDLC_LEDGER_DIR`). Single-process.
+3. **Cloud Run dev** (`stateless-fleet` in `gunbai-auto`): `ClaimStore`/`OutcomeLedger` bind to `GcsClaimStore` (GCS with generation-based CAS). Credentials from Secret Manager via `credential_chain` pattern.
+4. **Cloud Run prod** (`stateless-fleet` in `gunbai-prod`): Same as dev with stricter IAM and separate GCS buckets.
 
 ### 2.2 What Exists vs What Is Missing
 
-| Component | Designed | DSL Contract | Concrete Impl | Compile-Time Binding |
-|-----------|----------|-------------|---------------|---------------------|
-| ObjectStorage interface | Yes (`infra/core.dag`) | Yes (read/write/delete/list) | GCS (`infra/gcp/resources.dag`) | **Missing** |
-| ClaimStore interface | In mega design (Section 6.1) | **Missing** | Rust only (`sdlc/claims.rs`) | **Missing** |
-| OutcomeLedger interface | In mega design (Section 6.1) | **Missing** | Rust only (`sdlc/state.rs`) | **Missing** |
-| SecretStore interface | Yes (`infra/core.dag`) | Yes (read_value/write_value) | GCP (`ManagedSecret`) | **Missing** |
-| Clock resource | Yes (`std/resources.dag`) | Yes (`now()`) | Runtime clock | Yes (`@hermetic` for tests) |
-| Filesystem resource | Yes (`std/resources.dag`) | Yes (read/write) | File I/O | Yes (auto-wired) |
+| Component | Designed | Layer 2 Interface | Layer 3 Impl | Profile Binding |
+|-----------|----------|-------------------|--------------|-----------------|
+| Issue operations | Mega design 6.1 | **Missing** (concrete `service` only) | GitHub `@rest` exists | **Missing** |
+| Claim operations | Mega design 6.1 | **Missing** (concrete `service` only) | Rust only (`sdlc/claims.rs`) | **Missing** |
+| Outcome operations | Mega design 6.1 | **Missing** (concrete `service` only) | Rust only (`sdlc/state.rs`) | **Missing** |
+| Agent operations | Mega design implied | **Missing** (concrete `service` only) | `@shell` exists | **Missing** |
+| ObjectStorage | `infra/core.dag` | Yes (infra-level) | GCS, S3, Azure | **Missing** |
+| SecretStore | `infra/core.dag` | Yes (infra-level) | GCP `ManagedSecret` | **Missing** |
+| Clock resource | `std/resources.dag` | Yes | Runtime clock | Yes (`@hermetic`) |
+| Filesystem resource | `std/resources.dag` | Yes | File I/O | Yes (auto-wired) |
 
 ## 3. Gap Catalog
 
-### Gap A: Control Plane Is a REST Service Instead of Abstract Resource Functions
+### Gap A: Domain Services Are Concrete Instead of Abstract Interfaces
 
-**Current state**: `services/sdlc/control_plane.dag` defines a `service` with `@rest` transport against `http://127.0.0.1:8787`. This requires an HTTP server to exist.
+**Current state**: `services/github/issues.dag`, `services/sdlc/control_plane.dag`, and `services/agent/codex.dag` are concrete `service` definitions with hardcoded transports (`@rest` to a fixed `@endpoint`, `@shell` with specific commands). The pipeline directly calls these concrete services.
 
-**Target state**: Control plane operations become `func`s that `uses store: ClaimStore` and `uses store: OutcomeLedger`. No HTTP server. The workflow calls these functions directly. The concrete store implementation is injected at compile time.
+**Target state**: The mega modeling design Section 6.1 specifies domain operations (`try_acquire_claim`, `discover_ready_issues`, `upsert_comment`, etc.) as provider-fungible contracts. These should be `interface` definitions (Layer 2) that can be satisfied by different implementations (Layer 3) depending on the deployment profile.
 
-**What changes**:
-- Replace `service sdlc.ControlPlane` with `func acquire_claim(...)`, `func heartbeat_claim(...)`, `func release_claim(...)`, `func upsert_outcome(...)`, `func get_outcome(...)`.
-- Each func uses `ObjectStorage` capabilities (or a `ClaimStore` extension with CAS).
-- Remove `@endpoint`, `@rest` annotations from control plane.
-
-**Severity**: Critical. Without this, the pipeline cannot execute (no server behind the REST endpoint).
-
-### Gap B: No ClaimStore / OutcomeLedger Abstract Interfaces
-
-**Current state**: `infra/core.dag` defines `ObjectStorage` but not SDLC-specific claim/outcome stores. The mega modeling design (Section 6.1) specifies `try_acquire_claim`, `heartbeat_claim`, `release_claim`, `record_stage_outcome` as canonical interface operations but they have no DSL interface definition.
-
-**Target state**: New interfaces in `infra/core.dag` (or `dsl/sdlc/stores.dag`):
+Example of the target architecture for issues:
 
 ```
-interface ClaimStore extends ObjectStorage {
-  capability try_acquire(key: NonEmptyStr, owner: NonEmptyStr, lease_ttl_ms: Int)
-    -> { acquired: Bool, conflict: Bool, lease_generation: Int }
-    @contract: try_acquire(k, o, t) => acquired xor conflict
+// Layer 2: domain interface (pipeline sees this)
+interface IssueProvider {
+  capability discover(labels: List<String>) -> { issues: List<Issue> }
+    @contract: discover([]) => issues is List
+  capability get(id: NonEmptyStr) -> { issue: Issue, found: Bool }
+    @idempotent @readonly
+  capability comment(id: NonEmptyStr, body: String) -> { ok: Bool }
+    @idempotent
+  capability set_labels(id: NonEmptyStr, labels: List<String>) -> { ok: Bool }
+  capability close(id: NonEmptyStr) -> { ok: Bool }
+}
 
-  capability heartbeat(key: NonEmptyStr, owner: NonEmptyStr, generation: Int)
+// Layer 3: concrete implementation (deployment profile selects this)
+resource GitHubIssueProvider implements IssueProvider {
+  config { owner: String, repo: String }
+  // capabilities map to @rest calls against api.github.com
+}
+
+resource StubIssueProvider implements IssueProvider {
+  // in-memory, for unit tests
+}
+```
+
+The existing `service github.Issues` becomes the implementation body of `GitHubIssueProvider`. The pipeline imports `IssueProvider`, not `github.Issues`.
+
+**What changes**:
+- Promote each domain service to an `interface`.
+- Move existing concrete `service` definitions into `resource ... implements ...` blocks.
+- Pipeline imports domain interfaces, not concrete services.
+
+**Severity**: Critical. This is the foundation for compile-time DI and testability.
+
+### Gap B: No Domain Interfaces for SDLC State (Claims, Outcomes)
+
+**Current state**: `services/sdlc/control_plane.dag` defines claim/outcome operations as a `service` with `@rest` transport against `http://127.0.0.1:8787`. No server exists behind this endpoint. The actual logic is in hand-written Rust (`sdlc/claims.rs`, `sdlc/state.rs`).
+
+**Target state**: Claims and outcomes are domain interfaces (per mega design Section 6.1):
+
+```
+// Layer 2: domain interface
+interface ClaimStore {
+  capability acquire(issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, lease_ttl_ms: Int)
+    -> { acquired: Bool, conflict: Bool, lease_generation: Int }
+    @contract: acquire(i, s, o, t) => acquired xor conflict
+
+  capability heartbeat(issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int)
     -> { accepted: Bool }
     @idempotent
 
-  capability release(key: NonEmptyStr, owner: NonEmptyStr, generation: Int)
+  capability release(issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int)
     -> { released: Bool }
     @idempotent
 }
 
-interface OutcomeLedger extends ObjectStorage {
-  capability upsert(key: NonEmptyStr, outcome: Json)
+interface OutcomeLedger {
+  capability upsert(intake_key: NonEmptyStr, stage: NonEmptyStr, outcome: Json)
     -> { updated: Bool, previous: Json? }
     @idempotent
 
-  capability get(key: NonEmptyStr)
+  capability get(intake_key: NonEmptyStr, stage: NonEmptyStr)
     -> { found: Bool, outcome: Json? }
     @idempotent @readonly
 }
 ```
 
+Layer 3 implementations:
+- `FileClaimStore` uses `Filesystem` resource + `Clock` for lease expiry (local dev).
+- `GcsClaimStore` uses `GcsBucket` with generation-based conditional writes (Cloud Run).
+- `InMemoryClaimStore` for unit tests.
+
+The CAS semantics (owner verification, lease expiry, generation tracking) live in the implementation, not the interface. The pipeline just says `Claims.acquire(...)` and gets back `acquired: Bool`.
+
 **What changes**:
-- Define `ClaimStore` and `OutcomeLedger` interfaces.
-- Implement for local (`LocalClaimStore` using `@file` + `Clock`), GCP (`GcsClaimStore` using GCS conditional writes), and test (`InMemoryClaimStore`).
-- The CAS semantics live in the implementation, not the workflow.
+- Replace `service sdlc.ControlPlane` with `interface ClaimStore` + `interface OutcomeLedger`.
+- Implement `FileClaimStore`, `GcsClaimStore`, `InMemoryClaimStore`.
+- No HTTP server needed. No REST transport for control plane.
 
-**Severity**: Critical. Prerequisite for Gap A.
+**Severity**: Critical. Without this, the pipeline cannot manage claims (no server behind the REST endpoint).
 
-### Gap C: No CAS Capability on ObjectStorage
+### Gap C: No Deployment Profile Binding in Compiler
 
-**Current state**: `ObjectStorage` has `read`, `write`, `delete`, `list`. No conditional write (compare-and-swap).
+**Current state**: `infra/core.dag` comments say "the provider is selected at compile time via environment config" but the compiler does not implement this. There is no mechanism to declare which concrete implementation satisfies an abstract interface for a given deployment.
 
-**Target state**: Either:
-1. Add `cas_write` capability to `ObjectStorage` (generic CAS).
-2. Or keep CAS in the `ClaimStore` interface only (domain-specific CAS).
-
-For GCS, this maps to `x-goog-if-generation-match` header on write requests. For local files, this maps to file locking or generation tracking. For in-memory, this is a simple version counter.
-
-**Recommendation**: Keep CAS in `ClaimStore` (option 2). Not all object stores need CAS, and the claim semantics (owner, lease, expiry) are domain-specific.
-
-**Severity**: High for multi-worker. Not blocking for single-worker local dev.
-
-### Gap D: No Deployment Profile Binding in Compiler
-
-**Current state**: The comment in `infra/core.dag` says "the provider is selected at compile time via environment config" but the compiler does not implement this. There is no mechanism to say "in this deployment profile, `ClaimStore` is `GcsBucket`" and have the compiler wire it.
-
-**Target state**: Deployment profiles are DSL-declared:
+**Target state**: Deployment profiles are DSL-declared, binding domain interfaces to concrete implementations:
 
 ```
+profile unit_test {
+  bind IssueProvider -> StubIssueProvider
+  bind ClaimStore -> InMemoryClaimStore
+  bind OutcomeLedger -> InMemoryOutcomeLedger
+  bind AgentProvider -> StubAgentProvider
+}
+
 profile local {
-  bind ClaimStore -> LocalFileStore { dir: env("SDLC_LEDGER_DIR", "target/sdlc") }
-  bind OutcomeLedger -> LocalFileStore { dir: env("SDLC_LEDGER_DIR", "target/sdlc") }
-  bind SecretStore -> EnvVarSecret
+  bind IssueProvider -> GitHubIssueProvider { owner: "gunb-ai", repo: "gunbc" }
+  bind ClaimStore -> FileClaimStore { dir: env("SDLC_LEDGER_DIR", "target/sdlc") }
+  bind OutcomeLedger -> FileOutcomeLedger { dir: env("SDLC_LEDGER_DIR", "target/sdlc") }
+  bind AgentProvider -> CodexAgentProvider
 }
 
 profile cloud_run {
-  bind ClaimStore -> GcsBucket { name: "gunbai-auto-sdlc-claims", project: "gunbai-auto" }
-  bind OutcomeLedger -> GcsBucket { name: "gunbai-auto-sdlc-outcomes", project: "gunbai-auto" }
-  bind SecretStore -> ManagedSecret { project: "gunbai-auto" }
-}
-
-profile unit_test {
-  bind ClaimStore -> InMemoryStore
-  bind OutcomeLedger -> InMemoryStore
-  bind SecretStore -> StaticSecret { value: "test-token" }
+  bind IssueProvider -> GitHubIssueProvider { owner: "gunb-ai", repo: "gunbc" }
+  bind ClaimStore -> GcsClaimStore { bucket: "gunbai-auto-sdlc-claims", project: "gunbai-auto" }
+  bind OutcomeLedger -> GcsOutcomeLedger { bucket: "gunbai-auto-sdlc-outcomes", project: "gunbai-auto" }
+  bind AgentProvider -> CodexAgentProvider
 }
 ```
 
-**What changes**: Compiler needs `profile` declaration support and `bind` resolution during lowering. When lowering a `uses store: ClaimStore` declaration, the compiler looks up the active profile's binding and generates transport code for the concrete implementation.
+During compilation, `daglang compile --profile local` resolves every `uses` declaration to the profile's binding, generating the appropriate transport code for that concrete implementation.
 
-**Severity**: High. This is the compile-time DI mechanism. Without it, the abstract interfaces are design-only.
+**What changes**:
+- Parser: add `profile` declaration and `bind` statement syntax.
+- Lowering: when encountering `uses issues: IssueProvider`, look up the active profile's binding and lower to the concrete resource's transport code.
+- CLI: add `--profile` flag to `daglang compile`.
 
-### Gap E: Credential Wiring for External Services
+**Severity**: Critical. This is the compile-time DI mechanism. Without it, abstract interfaces cannot be resolved to concrete implementations.
 
-**Current state**: GitHub services declare `@auth(BearerToken)` but no credential intent mapping exists for `github.*`. Codex service uses `@shell` with no env-var injection. The `credential_chain` pattern in `std/patterns.dag` covers GCP auth but not GitHub/Codex.
+### Gap D: Credential Wiring via Profile
 
-**Target state**: Credentials are resources, resolved via deployment profile:
-- `local` profile: `GITHUB_TOKEN` from env var, `CODEX_API_KEY` from env var.
-- `cloud_run` profile: Both from Secret Manager via `credential_chain` pattern.
-- `unit_test` profile: Static test tokens.
+**Current state**: GitHub services declare `@auth(BearerToken)` but no credential intent mapping exists for `github.*`. Codex uses `@shell` with no env-var injection. The `credential_chain` pattern in `std/patterns.dag` covers GCP auth but not GitHub/Codex.
 
-This is a special case of Gap D (deployment profile binding) applied to `SecretStore`.
+**Target state**: Credentials are part of the deployment profile:
+
+```
+profile local {
+  bind IssueProvider -> GitHubIssueProvider {
+    credential: env("GITHUB_TOKEN")  // direct env var
+  }
+  bind AgentProvider -> CodexAgentProvider {
+    credential: env("CODEX_API_KEY")
+  }
+}
+
+profile cloud_run {
+  bind IssueProvider -> GitHubIssueProvider {
+    credential: secret("github-token", project: "gunbai-auto")  // Secret Manager
+  }
+  bind AgentProvider -> CodexAgentProvider {
+    credential: secret("codex-api-key", project: "gunbai-auto")
+  }
+}
+```
+
+The credential resolution is part of the concrete implementation's configuration, not something the pipeline knows about. `GitHubIssueProvider` internally uses `credential_chain` to acquire the token; the profile just tells it where to find the secret.
 
 **Severity**: High. Blocks any real external API calls.
+
+### Gap E: No CAS for Multi-Worker Claim Safety
+
+**Current state**: `ObjectStorage` has `read`, `write`, `delete`, `list`. No conditional write (compare-and-swap).
+
+**Target state**: The `ClaimStore` implementations for multi-worker deployments (GCS) use provider-specific CAS:
+- GCS: `x-goog-if-generation-match` header on write requests.
+- File: OS-level file locking (single machine only).
+- In-memory: version counter.
+
+CAS stays in the implementation (Layer 3), not the interface (Layer 2). The `ClaimStore.acquire` contract guarantees `acquired xor conflict` regardless of how the implementation achieves it.
+
+**Severity**: High for multi-worker. Not blocking for single-worker local dev.
 
 ### Gap F: SubDag / Pipeline Node Execution
 
@@ -245,50 +329,54 @@ Both should be DSL `func`s that compose existing service operations.
 
 ```mermaid
 flowchart TD
-    B["Gap B: ClaimStore/OutcomeLedger\ninterfaces"] --> A["Gap A: Control plane\nas resource functions"]
-    D["Gap D: Deployment profile\nbinding in compiler"] --> A
-    D --> E["Gap E: Credential\nwiring"]
-    A --> G["Gap G: Worker invokes\ncompiled DAG"]
-    F["Gap F: SubDag/Pipeline\nnode execution"] --> G
-    E --> G
+    A["Gap A: Domain services\nbecome interfaces"] --> B["Gap B: ClaimStore +\nOutcomeLedger interfaces"]
+    A --> Pipeline["Pipeline imports\ninterfaces not services"]
+    C["Gap C: Deployment profile\nbinding in compiler"] --> Pipeline
+    C --> D["Gap D: Credential\nwiring via profile"]
+    B --> Pipeline
+    F["Gap F: SubDag/Pipeline\nnode execution"] --> G["Gap G: Worker invokes\ncompiled DAG"]
+    Pipeline --> G
+    D --> G
     G --> H["Gap H: Code review +\nacceptance stubs"]
     G --> I["Gap I: Agent branch\nmanagement + polling"]
     G --> J["Gap J: Pipeline\nparameters"]
-    C["Gap C: CAS on\nObjectStorage"] -.->|"multi-worker only"| B
+    E["Gap E: CAS for\nmulti-worker"] -.->|"multi-worker only"| B
 ```
 
-Critical path: **B -> A -> G** (with F and D as parallel prerequisites for G).
+Critical path: **A -> B -> C -> G** (with F as a parallel prerequisite for G).
 
-## 5. GCP Resource Requirements
+## 5. GCP Resource Requirements (Cloud Run Profile)
 
-Once Gaps A-E are resolved, the pipeline needs these GCP resources in `gunbai-auto`:
+These are Layer 3 resources that the `cloud_run` deployment profile binds to domain interfaces:
 
-| Resource | Service | Purpose | DSL Declaration |
-|----------|---------|---------|-----------------|
-| `gunbai-auto-sdlc-claims` | GCS | Claim lease storage | `GcsBucket` in deployment profile |
-| `gunbai-auto-sdlc-outcomes` | GCS | Stage outcome ledger | `GcsBucket` in deployment profile |
-| `github-token` | Secret Manager | GitHub API auth | `ManagedSecret` in deployment profile |
-| `codex-api-key` | Secret Manager | Codex agent auth | `ManagedSecret` in deployment profile |
-| `anthropic-api-key` | Secret Manager | LLM design/review | `ManagedSecret` in deployment profile |
-| `gunbc-sdlc-worker` | Cloud Run | Worker compute | `CloudRunService` in `infra/sdlc/deploy.dag` |
-| `gunbc-sdlc-worker@` | IAM | Worker identity | `GcpServiceAccount` |
-| `gunbc-sdlc-scheduler@` | IAM | Scheduler identity | `GcpServiceAccount` |
-| `gunbc-sdlc-trigger` | Cloud Scheduler | Cron trigger (*/5 * * * *) | Needs DSL service definition |
-| `gunbc` | Artifact Registry | Container images | Needs DSL resource definition |
+| Domain Interface | GCP Resource | Service | Project |
+|-----------------|-------------|---------|---------|
+| `ClaimStore` | `gunbai-auto-sdlc-claims` | GCS | `gunbai-auto` |
+| `OutcomeLedger` | `gunbai-auto-sdlc-outcomes` | GCS | `gunbai-auto` |
+| `IssueProvider` credential | `github-token` | Secret Manager | `gunbai-auto` |
+| `AgentProvider` credential | `codex-api-key` | Secret Manager | `gunbai-auto` |
+| LLM credential | `anthropic-api-key` | Secret Manager | `gunbai-auto` |
+| Worker compute | `gunbc-sdlc-worker` | Cloud Run | `gunbai-auto` |
+| Worker identity | `gunbc-sdlc-worker@` | IAM | `gunbai-auto` |
+| Scheduler identity | `gunbc-sdlc-scheduler@` | IAM | `gunbai-auto` |
+| Cron trigger | `gunbc-sdlc-trigger` | Cloud Scheduler | `gunbai-auto` |
+| Container images | `gunbc` | Artifact Registry | `gunbai-auto` |
+
+The `local` profile uses none of these GCP resources. It binds `ClaimStore` -> local files, `OutcomeLedger` -> local files, credentials -> env vars.
 
 ## 6. Implementation Priority
 
-**Phase 1 -- Abstract resource layer (Gaps B, D)**:
-Define `ClaimStore` and `OutcomeLedger` interfaces. Implement deployment profile binding in the compiler. This unlocks compile-time DI for all downstream work.
+**Phase 1 -- Domain interface layer (Gaps A, B)**:
+Promote existing concrete `service` definitions to `interface` + `resource implements` pairs. Define `IssueProvider`, `ClaimStore`, `OutcomeLedger`, `AgentProvider` interfaces. Move `github.Issues` into `GitHubIssueProvider implements IssueProvider`. Write `FileClaimStore`, `FileOutcomeLedger` implementations. Pipeline imports interfaces.
 
-**Phase 2 -- Control plane as functions (Gap A)**:
-Rewrite `control_plane.dag` from `service` to `func`s that use the abstract store interfaces.
+**Phase 2 -- Compile-time profile binding (Gap C, D)**:
+Add `profile` declaration and `bind` syntax to the parser. Implement profile resolution during lowering. Add `--profile` flag to `daglang compile`. Wire credential resolution through profiles.
 
-**Phase 3 -- Runtime execution (Gaps F, G, E)**:
-Make SubDag/Pipeline nodes executable. Wire the worker to load and execute compiled DAGs. Wire credentials via deployment profile.
+**Phase 3 -- Runtime execution (Gaps F, G)**:
+Make SubDag/Pipeline nodes executable (replace `UnsupportedOp`). Wire the worker to load and execute compiled DAGs.
 
 **Phase 4 -- Stage completion (Gaps H, I, J)**:
-Fill in the stub stages (code review, acceptance). Wire agent branch management and polling. Make pipeline parameters injectable.
+Fill in stub stages (code review, acceptance). Wire agent branch management and polling. Make pipeline parameters injectable from profile.
 
-**Phase 5 -- Multi-worker safety (Gap C)**:
-Add CAS capability to `ClaimStore` for GCS (generation-based conditional writes). Not needed for single-worker local dev.
+**Phase 5 -- Multi-worker safety (Gap E)**:
+Implement `GcsClaimStore` with generation-based CAS for the `cloud_run` profile. Not needed for single-worker local dev.

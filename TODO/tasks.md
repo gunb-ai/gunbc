@@ -38,6 +38,8 @@
 | SDLC runtime launch + infra control-plane model | Resolved (done) | Lane E complete: stateless worker topology, infra plan/apply, preflight gates, drain semantics. |
 | SDLC codegen-first objective | Resolved (done) | Lane F complete: DSL-authored behavior compiled to Rust/Go/C, multi-level conformance harness. `CG1` superseded (SDLC modules are runtime-authored). |
 | SDLC mega modeling gate | Resolved (done) | `MD0-D` approved; all downstream lanes delivered. |
+| Three-layer domain abstraction | Resolved | Pipeline sees domain concepts (Issue, Claim, Outcome); domain interfaces are provider-fungible; infra implementations selected by deployment profile at compile time. See `docs/design/sdlc/e2e-gap-analysis.md`. |
+| Compile-time profile binding | Open | `profile { bind Interface -> Impl }` syntax in DSL. Compiler resolves `uses` declarations via active profile. `--profile` CLI flag. |
 
 ### Archive Update (2026-02-21)
 
@@ -129,11 +131,83 @@ Archived to `TODO/TODONE/tasks-completed.md`. All 6 tasks (`AI1`-`AI3`, `PR1`-`P
 
 ---
 
+## Sprint 12: E2E Pipeline Execution — Domain Interface Layer
+
+**Design doc**: [docs/design/sdlc/e2e-gap-analysis.md](../docs/design/sdlc/e2e-gap-analysis.md)
+**Goal**: Introduce the three-layer abstraction model (pipeline domain concepts -> domain interfaces -> infrastructure implementations) with compile-time deployment profile binding, enabling the SDLC pipeline to execute end-to-end without hand-written Rust orchestration or hardcoded transports.
+
+### Phase 1: Domain Interface Layer (Gaps A, B)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S12-1** | **IssueProvider interface**: Define `interface IssueProvider` (discover, get, comment, set_labels, close). Refactor `services/github/issues.dag` into `resource GitHubIssueProvider implements IssueProvider`. Add `StubIssueProvider` for tests. | — | M | |
+| **S12-2** | **ClaimStore interface**: Define `interface ClaimStore` (acquire, heartbeat, release). Implement `FileClaimStore` using `Filesystem` + `Clock`. Add `InMemoryClaimStore` for tests. Replace `services/sdlc/control_plane.dag` claim operations. | — | M | |
+| **S12-3** | **OutcomeLedger interface**: Define `interface OutcomeLedger` (upsert, get). Implement `FileOutcomeLedger` using `Filesystem`. Add `InMemoryOutcomeLedger` for tests. Replace `services/sdlc/control_plane.dag` outcome operations. | S12-2 | S | |
+| **S12-4** | **AgentProvider interface**: Define `interface AgentProvider` (spawn, poll, cancel). Refactor `services/agent/codex.dag` into `resource CodexAgentProvider implements AgentProvider`. Add `StubAgentProvider` for tests. | — | S | |
+| **S12-5** | **Pipeline uses interfaces**: Update `dsl/pipelines/sdlc.dag` and `dsl/funcs/sdlc_worker.dag` to import domain interfaces instead of concrete services. | S12-1, S12-2, S12-3, S12-4 | M | |
+
+### Phase 2: Compile-Time Profile Binding (Gaps C, D)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S12-6** | **Profile syntax in parser**: Add `profile` declaration and `bind` statement to `daglang-syntax` parser. | — | M | |
+| **S12-7** | **Profile resolution in lowering**: When lowering `uses` declarations, resolve via active profile's bindings. Generate transport code for the concrete implementation. | S12-6 | L | |
+| **S12-8** | **`--profile` CLI flag**: Add `--profile` to `daglang compile`. Create `unit_test`, `local`, `cloud_run` profile definitions. | S12-6, S12-7 | S | |
+| **S12-9** | **Credential binding via profile**: Wire `credential: env(...)` and `credential: secret(...)` in profile bindings. Connect to existing `credential_chain` pattern for Secret Manager. | S12-7 | M | |
+
+### Phase 3: Runtime Execution (Gaps F, G)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S12-10** | **SubDag node execution**: Replace `UnsupportedOp` for `SubDag` nodes in `resolve.rs` with recursive DAG resolution and execution. | — | M | |
+| **S12-11** | **Pipeline node execution**: Replace `UnsupportedOp` for `Pipeline` nodes in `resolve.rs` with ordered stage sequence execution. | S12-10 | S | |
+| **S12-12** | **Worker DAG invocation**: Wire `sdlc.rs` worker to load compiled pipeline, resolve via profile, and execute. Replace `mark_run_completed()` placeholder. | S12-5, S12-8, S12-10, S12-11 | M | |
+
+### Phase 4: Stage Completion (Gaps H, I, J)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **S12-13** | **Code review stage**: Implement real code review in DSL (PR diff retrieval via `PullRequest.ListFiles`, LLM review, findings as PR comment). | S12-12 | M | |
+| **S12-14** | **Acceptance testing stage**: Implement real acceptance testing in DSL (trigger CI or run `cargo test`/`cargo clippy` via shell service). | S12-12 | M | |
+| **S12-15** | **Agent branch management**: Add git branch creation before `Codex.Spawn`, push after completion, deterministic branch naming (`sdlc/issue-{number}`). | S12-12 | S | |
+| **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during regular sweep. | S12-12 | S | |
+| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time. | S12-8 | S | |
+
+---
+
+## Cleanup: Eliminate Hardcoded Registration Lists
+
+**Goal**: Replace manually maintained lists with discovery/derivation. Every time a new `.dag` module or tool is added, several Rust files require manual updates. These should either be auto-discovered from the filesystem, derived from the compiled DAG metadata, or eliminated entirely.
+
+| ID | Task | Location | Problem | Fix | Size | Status |
+|----|------|----------|---------|-----|------|--------|
+| **CL1** | **Module order test fixture** | `daglang-cli/src/pipeline.rs:773-832` | 58 hardcoded module names in `expected_real_corpus_module_order()`. Breaks every time a `.dag` file is added/removed/renamed. | Replace with filesystem discovery: glob `dsl/**/*.dag`, extract module IDs, sort. The test asserts the compiler discovers the same set, not a hardcoded list. | S | |
+| **CL2** | **Domain resolver dispatch** | `gunbc-dag/src/resolve.rs:625-645` | Match arms manually map `"tools.makegen"`, `"tools.build"`, etc. to resolver functions. New DSL modules require adding a match arm. | The `services.*` branch already uses generic dispatch via `resolve_service_transport()`. Extend this pattern: modules with `ServiceCallMetadata` use generic dispatch; remaining tool modules should derive their op mapping from the DSL definition (callable name -> op enum variant can be generated by a build script or macro from the `.dag` file). | L | |
+| **CL3** | **`domain_passthrough_op!` macros** | `gunbc-dag/src/resolve.rs:136-283` | Each tool module has a handwritten macro invocation mapping callable names to enum variants (e.g., `"aggregate_results" => AggregateResults`). These duplicate information already present in the `.dag` files. | Short term: collapse into a single data-driven registry (map of `(module, callable_name) -> Box<dyn Executable>`). Long term: generate from DSL metadata -- the callable names are in the compiled DAG, so the resolver can look them up dynamically. | M | |
+| **CL4** | **`WorkspaceBinary::ALL` array** | `gunbc-dag/src/binaries.rs:29-42` | 12-element `const ALL` array + match arms in `tool_name()`/`from_tool_name()`. New binaries require three manual edits. | Derive from `Cargo.toml` `[[bin]]` sections or from the filesystem (`gunbc-dag/src/bin/*.rs`). A build script can enumerate binaries and generate the enum. | S | |
+| **CL5** | **`TOOL_WORKFLOWS` registry** | `gunbc-dag/src/workflow/spec_builders.rs:1445-1516` | 14 hardcoded `ToolWorkflowDescriptor` entries. New tool workflows need a manual entry. | Derive from DSL: each `tools.*.dag` that exports an entrypoint `func` is a tool workflow. The workflow spec builder can discover these from compiled DAG metadata instead of a static array. | M | |
+| **CL6** | **Process unit registry** | `gunbc-dag/src/workflow/process_registry.rs:220-298` | Hardcoded CI and test-all workflow unit arrays. New CI steps need manual entries. | Derive from `pipelines/ci.dag`: the CI pipeline stages define the process units. The registry can be generated from the compiled pipeline DAG. | M | |
+| **CL7** | **`MANUAL_TOOL_DEFS`** | `gunbc-dag/src/makegen/registry.rs:1713-1714` | 2 hardcoded manual tool definitions (`pragma`, `build`). | Investigate why these can't use the standard discovery path. If they need special treatment, document why; otherwise fold into the standard tool registry. | S | |
+| **CL8** | **`std.resources` name match** | `gunbc-dag/src/resolve.rs:688-695` | Hardcoded resource names (`"Filesystem"`, `"Network"`, `"Clock"`, `"AuthContext"`). Adding a new resource to `std/resources.dag` requires a Rust match arm. | Derive from the compiled `std/resources.dag` metadata. The resource names are already in the DAG -- the resolver should read them from there. | S | |
+
+### Priority
+
+- **CL1** is the most fragile (58 entries, breaks on any module change). Fix first.
+- **CL2 + CL3** are the largest impact (the resolver is the main bottleneck for adding DSL modules without touching Rust).
+- **CL4-CL8** are smaller wins but compound over time.
+
+### Architectural direction
+
+All of these share a root cause: the Rust runtime has manually duplicated metadata that already exists in the DSL. The fix is always the same pattern: **read the metadata from the compiled DAG** instead of hardcoding it. This aligns with the codegen-first policy (mega design Section 5.3): "New SDLC behavior must be added to DSL/codegen first."
+
+---
+
 ## Deferred
 
 | ID | Task | Context | Size | Status |
 |----|------|---------|------|--------|
 | **DG1** | **Daggen (Dynamic DAG Generation)** | `needs_daggen()` returns false. Re-enable to scale the pipeline by dynamically generating steps based on git diffs. | L | **DEFERRED** |
+| **S12-E** | **Multi-worker CAS** | Gap E: Implement `GcsClaimStore` with generation-based CAS (`x-goog-if-generation-match`). Not needed for single-worker local dev. | M | **DEFERRED** |
 
 ---
 
