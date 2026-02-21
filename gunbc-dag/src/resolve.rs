@@ -1,4 +1,4 @@
-//! Central resolver: `LoweredOp` → `DynOp` via existing domain ops.
+//! Central resolver: `LoweredOp` -> `DynOp` via existing domain ops.
 //!
 //! Maps each lowered operation from a compiled `.dag` file to its concrete
 //! `Executable` implementation, wrapped in `DynOp`. This eliminates the need
@@ -17,8 +17,9 @@
 //! # Adding a new module
 //!
 //! To wire a new `.dag` module:
-//! - **Passthrough callables** (forward inputs to outputs): add an entry
-//!   to `PASSTHROUGH_CALLABLES` — no new types or functions needed.
+//! - **Passthrough callables** (forward inputs to outputs): no Rust changes
+//!   needed — the resolver defaults to passthrough for any callable the
+//!   compiler validated.
 //! - **Custom callables**: add a match arm in `resolve_domain()` for the
 //!   module path and map each callable to its `DynOp`.
 //! - Infrastructure nodes (content_upsert, fs_env) are handled automatically.
@@ -97,118 +98,6 @@ impl Executable for PassthroughOp {
     }
 }
 
-/// Centralized registry of `(module, &[callable_name])` pairs that use
-/// passthrough dispatch.  Adding a new passthrough callable only requires
-/// appending to this list — no new enum, impl, or resolver function.
-const PASSTHROUGH_CALLABLES: &[(&str, &[&str])] = &[
-    ("tools.build", &["build_all"]),
-    ("tools.clippy", &["clippy_lint"]),
-    ("tools.deps", &["render_deps_toml", "select_platform_deps", "deps_install", "deps_generate"]),
-    ("tools.docgen", &["docgen", "render_ab_workflows_doc"]),
-    ("tools.testgen", &["generate_tests", "testgen"]),
-    ("pipelines.ci", &["ci"]),
-    ("shared.dag_util", &[
-        "aggregate_results", "all_succeeded", "format_report", "stage_result",
-        "skipped_stage", "stage_from_output", "generated_header", "render_and_upsert",
-    ]),
-    ("shared.gist_modes", &[
-        "branch_context", "resolve_recent_base", "gist_filename",
-        "gist_upload", "share_content", "detect_runtime",
-    ]),
-    ("std.patterns", &[
-        "file_content_matches", "classify_files", "read_text_files",
-        "acquire_subject_token", "optional_impersonation", "ensure",
-        "upsert", "content_upsert", "credential_chain", "transaction", "retry",
-    ]),
-];
-
-/// Try to resolve a callable via the passthrough registry.
-fn resolve_passthrough(
-    node_id: &str,
-    module: &str,
-    name: &str,
-    outputs: &[Port],
-) -> Option<Result<DynOp, ResolveError>> {
-    for &(mod_name, callables) in PASSTHROUGH_CALLABLES {
-        if mod_name == module {
-            if callables.contains(&name) {
-                return Some(Ok(DynOp::new(PassthroughOp {
-                    output_port_names: declared_output_names(outputs),
-                })));
-            }
-            return Some(Err(unknown_callable(node_id, module, name)));
-        }
-    }
-    None
-}
-
-#[derive(Debug, Clone)]
-enum InfraToolOp {
-    Infra,
-}
-
-impl Executable for InfraToolOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let environment = inputs
-            .get("environment")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("tools.infra.infra missing `environment` input"))?;
-        let runtime = inputs
-            .get("runtime")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("tools.infra.infra missing `runtime` input"))?;
-        let spec_targets = inputs
-            .get("spec_targets")
-            .and_then(Value::as_str_list)
-            .ok_or_else(|| ExecError::new("tools.infra.infra missing `spec_targets` input"))?;
-        let target = inputs
-            .get("target")
-            .and_then(Value::as_str_list)
-            .unwrap_or_default();
-        let skip = inputs
-            .get("skip")
-            .and_then(Value::as_str_list)
-            .unwrap_or_default();
-        let execute = inputs
-            .get("execute")
-            .and_then(Value::as_bool)
-            .ok_or_else(|| ExecError::new("tools.infra.infra missing `execute` input"))?;
-
-        let mut planned_targets: Vec<String> = if target.is_empty() {
-            spec_targets.clone()
-        } else {
-            spec_targets
-                .iter()
-                .filter(|item| target.iter().any(|candidate| candidate == *item))
-                .cloned()
-                .collect()
-        };
-        planned_targets.retain(|item| !skip.iter().any(|candidate| candidate == item));
-
-        let target_count = planned_targets.len() as i64;
-        let applied_count = if execute { target_count } else { 0 };
-        let mode = if execute { "apply" } else { "plan" };
-        let report = format!(
-            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
-        );
-        OutputMap::new()
-            .str("environment", environment)
-            .str("runtime", runtime)
-            .str("mode", mode)
-            .str_list("planned_targets", planned_targets)
-            .int("target_count", target_count)
-            .int("applied_count", applied_count)
-            .str("report", report)
-            .ok()
-    }
-}
-
-fn resolve_infra(node_id: &str, name: &str, _outputs: &[Port]) -> Result<DynOp, ResolveError> {
-    match name {
-        "infra" => Ok(DynOp::new(InfraToolOp::Infra)),
-        _ => Err(unknown_callable(node_id, "tools.infra", name)),
-    }
-}
 
 /// Simple identity callable adapter for DSL entrypoint wrappers.
 #[derive(Debug, Clone)]
@@ -558,7 +447,6 @@ fn resolve_domain(
         "tools.makegen" => return resolve_makegen(node_id, name),
         "tools.codegen" => return resolve_codegen(node_id, name),
         "tools.bootstrap" => return resolve_bootstrap(node_id, name, outputs),
-        "tools.infra" => return resolve_infra(node_id, name, outputs),
         "std.resources" => return resolve_std_resources(name),
         _ => {}
     }
@@ -566,11 +454,11 @@ fn resolve_domain(
     if module.starts_with("services.") || module.starts_with("workspace.") {
         return resolve_service_transport(node_id, module, name, service_metadata);
     }
-    // 3. Passthrough registry (replaces per-module domain_passthrough_op! macros).
-    if let Some(result) = resolve_passthrough(node_id, module, name, outputs) {
-        return result;
-    }
-    Err(unknown_callable(node_id, module, name))
+    // 3. Default: passthrough. The compiler validated this callable exists.
+    //    If it compiled, it's resolvable. No registry needed.
+    Ok(DynOp::new(PassthroughOp {
+        output_port_names: declared_output_names(outputs),
+    }))
 }
 
 fn resolve_pragma(node_id: &str, name: &str) -> Result<DynOp, ResolveError> {
@@ -1342,15 +1230,19 @@ mod tests {
     }
 
     #[test]
-    fn resolve_unknown_module_fails_closed() {
+    fn resolve_unknown_module_defaults_to_passthrough() {
         let node = callable_node(
             "unknown_op",
             "tools.unknown",
             "do_something",
             ObligationCategory::None,
         );
-        let err = resolve_node(&node).expect_err("unknown modules should fail closed");
-        assert!(err.reason.contains("unknown callable"));
+        let result = resolve_node(&node).expect("unknown modules should default to passthrough");
+        assert!(
+            format!("{:?}", result).contains("PassthroughOp"),
+            "expected PassthroughOp for unknown module, got {:?}",
+            result
+        );
     }
 
     #[test]
@@ -1366,12 +1258,12 @@ mod tests {
     }
 
     #[test]
-    fn resolve_infra_callable() {
+    fn resolve_infra_callable_uses_default_passthrough() {
         let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
         let result = resolve_node(&node).expect("infra");
         assert!(
-            !format!("{:?}", result).contains("UnsupportedOp"),
-            "expected callable resolution for tools.infra.infra, got {:?}",
+            format!("{:?}", result).contains("PassthroughOp"),
+            "tools.infra should use default passthrough, got {:?}",
             result
         );
     }
