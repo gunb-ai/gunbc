@@ -3089,6 +3089,16 @@ fn validate_type_expr(
                 }
             }
         }
+        TypeExpr::Record(fields) => {
+            for field in fields {
+                errors.extend(validate_type_expr(
+                    &field.ty,
+                    known_types,
+                    generic_arity_registry,
+                    &format!("{context}.{}", field.name),
+                ));
+            }
+        }
     }
     errors
 }

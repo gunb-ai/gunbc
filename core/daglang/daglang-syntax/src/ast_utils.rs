@@ -41,6 +41,7 @@ pub fn resource_type_name(resource_type: &TypeExpr) -> String {
     match resource_type {
         TypeExpr::Named(name) | TypeExpr::Generic(name, _) => canonical_resource_type_name(name),
         TypeExpr::Optional(inner) | TypeExpr::Annotated(inner, _) => resource_type_name(inner),
+        TypeExpr::Record(_) => "Record".to_string(),
     }
 }
 
