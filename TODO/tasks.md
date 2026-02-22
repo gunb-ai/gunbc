@@ -43,7 +43,7 @@
 | Dry-run deployment readiness | Resolved (done) | Rust worker multi-stage dispatch now supports local dry-run progression through terminal `closed` state. See Sprint 11.5. |
 | Dual execution path convergence | Open | Rust worker path (scaffolding) vs compiled DAG path (target). Rust worker must not accumulate SDLC sequencing logic beyond what's needed for dry-run. |
 
-### Archive Update (2026-02-21)
+### Archive Update (2026-02-22)
 
 Moved to `TODO/TODONE/tasks-completed.md`:
 
@@ -56,9 +56,12 @@ Moved to `TODO/TODONE/tasks-completed.md`:
 - Lane D (all): `DL5`, `DL6`, `DL7`, `DL8`
 - Lane E (all): `IN0-D`, `IN1`-`IN4`
 - Lane F (all): `CG0-D`, `CG1` (superseded), `CG2`-`CG6`
+- Lane G (all): `WM-1`-`WM-9`
+- Lane H (all): `EX-1`-`EX-15`
 - Sprint 10 (all): `AI1`-`AI3`, `PR1`-`PR3`
-
-Active IDs after archive: none (all lanes and Sprint 10 complete)
+- Sprint 11 (all): `S11-1`-`S11-5`
+- Sprint 11.5 (all): `DR-1`-`DR-5`
+- Cleanup (all): `CL1`, `CL4`, `CL7` + Phase 1 resolver-trusts-compiler
 
 ### SDLC Design Checklist (Must Hold) — All Satisfied
 
@@ -109,49 +112,146 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | C: Planner/CI | **DONE** | — |
 | D: Daglang convergence | **DONE** | — |
 | E: Runtime infra | **DONE** | — |
-| F: Codegen-first SDLC | **DONE** | `CG1` superseded (SDLC modules are runtime-authored) |
+| F: Codegen-first SDLC | **DONE** | — |
 | G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **DONE** | — |
-| I: Type system enforcement | **ACTIVE** | TS-1..TS-1d, TS-2..TS-7 (237 port updates, 3 deletions, 2 test fixes) |
+| I: Type system enforcement | **ACTIVE** | TS-1..TS-1d, TS-2..TS-5, TS-7 (237 port updates, 3 deletions, 1 test fix) |
+| J: Compiler test fix + pipeline execution | **ACTIVE** | J-0..J-4, TS-6 (4 test fixes, deps freshness, SDLC dry-run) |
 
 ---
 
-## Sprint 10: Autonomous Implementation & Agent Integration — **DONE**
+## Lane I: Type System Enforcement — Hard Cutover
 
-Archived to `TODO/TODONE/tasks-completed.md`. All 6 tasks (`AI1`-`AI3`, `PR1`-`PR3`) complete.
+**Context**: Set-theoretic types-as-DAGs migration (Phases 1-6) substantially complete. IR foundation, DSL type compilation, TypeRegistry wiring, Bytes support, lattice boundary witnesses, and cross-product test generation all implemented. This lane completes the migration by eliminating every legacy escape hatch: `PortType::Any` catch-all, `types_match()` string heuristic, `canonical_type_name()` ad-hoc normalization, and `Option<TypeRegistry>` soft bypass. After this lane, every type mismatch is a compile error.
 
----
+**Audit baseline** (2026-02-21): 237 `port(..., "String")` calls across 9 graph files. `types_match()` at 2 call sites + 14 `canonical_type_name()` call sites across 2 crates. `PortType::Any` catch-all at 2 sites in `port_type.rs`. `Option<TypeRegistry>` in `codegen.rs`.
 
-## Sprint 11: E2E Scenario Pipeline & Stage Execution — **DONE**
+**Mutual exclusivity**: Lane I touches `lib/*/src/graph.rs` files and `core/` compiler/IR crates. Lane J does NOT touch any of these files.
 
-**Goal**: Make the SDLC pipeline execute the full stage progression (Idea -> Design -> DesignReview -> Accepted -> Implementation) with stage-based dispatch, concrete execution handlers for each transition, and a scenario intent YAML to drive the E2E test.
+### Phase I-A: Port type propagation (all graph builders)
+
+Every `port(..., "String")` that should be a domain type must be updated before the `PortType::Any` catch-all can be removed. The strict path (`try_parse_port_type`) already recognizes domain types — graph builders just aren't using them.
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **S11-1** | **Stage-based dispatch**: Refactor worker loop to route by `record.stage` via `execute_stage()` instead of unconditionally calling `execute_stage_idea_to_design`. | — | S | **DONE** |
-| **S11-2** | **Design -> DesignReview handler**: `execute_stage_design_to_review()` extracts canonical design, runs review, persists review artifact, transitions stage label. | S11-1 | M | **DONE** |
-| **S11-3** | **DesignReview -> Accepted handler**: `execute_stage_review_to_accepted()` checks `approved` flag from review artifact, transitions or blocks. | S11-2 | S | **DONE** |
-| **S11-4** | **Accepted -> Implementation handler**: `execute_stage_accepted_to_implementation()` assembles `HandoffSpec`, dispatches to `AgentAdapter`, records in agent ledger. | S11-3 | M | **DONE** |
-| **S11-5** | **Scenario intent YAML**: `TODO/feature-intent-markdown.yaml` with concrete criteria for the markdown report feature. | — | S | **DONE** |
+| **TS-1** | **GCP credential port types** | 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports (`access_token`, `subject_token`, `client_secret`, `refresh_token`) → `Secret`. Identity ports (`service_account`) → `GcpServiceAccountEmail`. Project ports → `GcpProjectId`. Audience ports → `NonEmptyString`. Requires registering `OptionalSecret` if any port is optional. 2 duplicate graph functions share these ports. | — | L | |
+| **TS-1b** | **Cloud-ops port types** | 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). Same credential/identity patterns as TS-1. | TS-1 | M | |
+| **TS-1c** | **Review + LLM port types** | `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). Ports like `provider`, `model`, `content`, `question`, `answer` → `NonEmptyString` or domain types. `secret_name` → `SecretName`. `scheme`/`header_name` → `NonEmptyString`. | — | L | |
+| **TS-1d** | **Remaining graph port types** | `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). Smaller scope, same patterns. | — | S | |
 
----
+**Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1 (shares credential type decisions).
 
-## Sprint 11.5: Dry-Run Deployment Readiness
+### Phase I-B: Delete legacy type comparison
 
-**Design doc**: [docs/design/sdlc/e2e-gap-analysis.md](../docs/design/sdlc/e2e-gap-analysis.md) (Section 7-8)
-**Goal**: Enable a local dry-run deployment where the Rust worker progresses issues through the full stage chain (idea → closed) using the existing ledger/claim/reconcile infrastructure. This is the bridge to Sprint 12's compiled-DAG execution path.
-
-**Rationale**: Sprint 12's compiled DAG path requires Gaps A, B, C, F to all be resolved (domain interfaces, profile binding, SubDag/Pipeline execution). The Rust worker already has working ledger/claim/reconcile infrastructure; wiring multi-stage dispatch is the minimum unblocking work for a dry-run.
+`types_match()` (daglang-typecheck line 2555) creates a fresh `TypeRegistry::with_core_types()` on every call, never sees domain types, and falls back to short-name suffix matching (`rsplit('.').next()`) which can produce false positives (`foo.Bar` matches `baz.Bar`). `canonical_type_name()` (daglang-syntax/ast_utils.rs line 27) strips generic parameters via `split('<').next()` — loses type parameter information entirely. Both must be replaced by `TypeRegistry::is_compatible()` with a registry threaded through the context.
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **DR-1** | **Wire stage dispatch into run_worker**: Replace direct `execute_stage_idea_to_design()` call with stage-based dispatch (`dispatch_pipeline_stage`) routed by `record.stage`. | — | S | **DONE** |
-| **DR-2** | **Add remaining stage handlers**: Complete stage routing/handlers for design→design-review, approval gate at design-review, accepted→implementation, and implementation→closed. | DR-1 | S | **DONE** |
-| **DR-3** | **Verify stage ledger advancement**: Ensure stage handlers persist `record.stage` updates in the intake ledger so the next worker pass resumes from the correct stage. | DR-1, DR-2 | S | **DONE** |
-| **DR-4** | **Reconcile pipeline definitions**: Update `dsl/pipelines/sdlc.dag` to use `param` declarations matching the design version in `docs/design/sdlc/sdlc.dag`; stub undefined functions (`generate_implementation_plan`, `get_pr_diff`). | — | S | **DONE** |
-| **DR-5** | **Integration test: multi-stage progression**: Test intake + repeated worker passes (with explicit approval transition) and verify the intake record reaches terminal `stage: closed`. | DR-1, DR-2, DR-3 | M | **DONE** |
+| **TS-7** | **Delete `types_match()` and `canonical_type_name()`** | **Delete** `types_match()` (2 call sites: line 2227 in `infer_record_literal_type()`, line 2536 in `push_type_mismatch_if_needed()`). Add `TypeRegistry` as a field on the type checker context; replace both call sites with `registry.is_compatible()`. **Delete** `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). The 8 call sites in daglang-lower (`insert_canonical_names`, `is_known_uses_type`, interface resolution at lines 600/611/4592/4608/4801/4815/4841/4851) need `TypeId`-based lookups instead of string splitting. Also delete `resolve_record_fields()` suffix matching (line 2583 `rsplit('.').next()`) — replace with registry lookup. | TS-1..TS-1d | M | |
 
-**Verification**: `cargo test --workspace` passes. `gunbc-sdlc` intake + worker progression (with explicit approval transition) reaches terminal `closed` stage with expected JSON output.
+### Phase I-C: Hard cutover — delete escape hatches
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-3** | **Make TypeRegistry non-optional** | `without_type_registry()` already deleted from builder. Remaining: change `type_registry: Option<TypeRegistry>` → `type_registry: TypeRegistry` in `core/codegen/src/testgen/codegen.rs` (line 235). Audit for any other `Option<TypeRegistry>` patterns. All callers must supply a registry. | TS-7 | S | |
+| **TS-4** | **Delete PortType::Any catch-all** | Remove `_ => PortType::Any` in `parse_known_type()` (port_type.rs line 158). Remove `try_parse_port_type(s).unwrap_or(PortType::Any)` (line 216). Delete `From<&str> for PortType` impl that silently degrades unknowns to `Any` (line 141). Update `value_backing_for_type_id()` in `types.rs` (line 876, `PortType::Any =>` residual catch-all). Update `system_model.rs` (line 875, `PortType::Any => "gunbc_ir::Value"`). Either delete `PortType::Any` variant entirely or keep it as a non-wildcard (compatibility layer already restricts it — `Any` only matches `Any` per tests at line 230-234). | TS-1..TS-1d, TS-7 | M | |
+
+### Phase I-D: Annotation processing
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-5** | **Process all annotations in typecheck** | `validate_type_expr` in daglang-typecheck skips non-`@range` annotations. Handle: `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types { ... }` → extension→encoding map in TypeRegistry. | — | L | |
+
+### Phase I-E: Test infrastructure
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-2** | **Regenerate CI generated tests** | 2197 CI generated tests fail at runtime (`invalid 'items' input: expected StringList`). Pre-existing issue from collection dispatch changes. `CollectionDispatchOp` expects `StringList` format but mocks produce plain strings. Fix mock generation in `test_gen.rs` (`typed_mock_for_response` catch-all at line 155 returns `"mock-response"` for unknown types — should produce typed witnesses). | — | M | |
+
+### Dependency graph
+
+```
+TS-1 ──┐
+TS-1b ─┤ (TS-1b depends on TS-1 for type decisions)
+TS-1c ─┼──→ TS-7 ──→ TS-3 ──→ (done)
+TS-1d ─┘          └──→ TS-4 ──→ (done)
+
+TS-5 ──→ (independent, can parallel with any phase)
+TS-2 ──→ (independent, can parallel with any phase)
+```
+
+### Files touched
+
+| File | Changes |
+|------|---------|
+| `lib/gcp-ops/src/graph.rs` | 62 port type updates (TS-1) |
+| `lib/cloud-ops/src/*.rs` | 49 port type updates across 4 files (TS-1b) |
+| `lib/review/src/graph.rs` | 102 port type updates (TS-1c) |
+| `lib/llm-ops/src/graph.rs` | 13 port type updates (TS-1c) |
+| `lib/aws-ops/src/graph.rs` | 3 port type updates (TS-1d) |
+| `lib/azure-ops/src/graph.rs` | 3 port type updates (TS-1d) |
+| `lib/tools/gist/src/graph.rs` | 6 port type updates (TS-1d) |
+| `lib/tools/deps/src/graph.rs` | 1 port type update (TS-1d) |
+| `gunbc-dag/src/testgen_dag/graph.rs` | 1 port type update (TS-1d) |
+| `core/daglang/daglang-typecheck/src/lib.rs` | **Delete** `types_match()`, replace 2 call sites (TS-7). Annotation handling (TS-5) |
+| `core/daglang/daglang-syntax/src/ast_utils.rs` | **Delete** `canonical_type_name()` (TS-7) |
+| `core/daglang/daglang-lower/src/lib.rs` | Replace 8 `canonical_type_name()` call sites with TypeId lookups (TS-7) |
+| `core/ir/src/port_type.rs` | **Delete** `_ => PortType::Any` catch-all, restrict/remove `PortType::Any` (TS-4) |
+| `core/ir/src/types.rs` | Update `PortType::Any` arm in `value_backing_for_type_id()` (TS-4) |
+| `core/ir/src/system_model.rs` | Update `PortType::Any` arm (TS-4) |
+| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3) |
+| `core/daglang/daglang-emit/src/test_gen.rs` | Fix mock generation catch-all (TS-2) |
+
+### Verification
+
+1. `cargo build --workspace` — all crates compile with no `PortType::Any` fallback
+2. `cargo test --workspace` — all tests pass including regenerated CI tests
+3. `cargo clippy --all-targets -- -D warnings` — no warnings
+4. Grep confirms: zero `types_match` call sites, zero `canonical_type_name` call sites, zero `Option<TypeRegistry>` patterns, zero `PortType::Any` catch-all arms
+
+---
+
+## Lane J: Compiler Test Fix + Pipeline Execution
+
+**Context**: Last 2 sessions fixed testgen (27/27 targets), codegen (fresh), and workspace compilation. Four pre-existing test failures remain in `daglang-cli`, deps generated tests are stale, workspace subdag mapping is incomplete, and the SDLC pipeline hasn't been exercised end-to-end in dry-run mode. This lane clears all test failures and validates the SDLC pipeline.
+
+**Mutual exclusivity**: Lane J touches `core/daglang/daglang-cli/` tests, `lib/tools/deps/` tests, `gunbc-dag/` workspace/sdlc, and `dsl/pipelines/`. Lane I does NOT touch any of these files.
+
+### Step 0: Commit & PR baseline
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **J-0** | **Commit & PR current session changes** | Package all changes from last 2 sessions: resolve_config boundary mocks (4 graph_mock.rs files), HandlerKind variants (daglang-emit), TypeExpr::Record fixes (daglang-syntax, daglang-typecheck), credential_lifecycle.rs, workflow catalog, resolve.rs. Run `cargo clippy --workspace` before committing. Create PR against main. | — | S | |
+
+### Phase J-A: Test green
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **J-1** | **Fix 4 failing daglang-cli makegen tests** | In `core/daglang/daglang-cli/src/compile/tests.rs`: `resolve_lowered_dag_maps_makegen_nodes_to_dyn_ops` assertion fails on `LoadRegistry` op debug format. 3 `compile_resolve_execute_makegen` tests also fail. Likely a `DynOp` display/debug format mismatch after the HandlerKind changes. | J-0 | S | |
+| **J-2** | **Deps generated test freshness** | `lib/tools/deps/src/generated_tests.rs` has stale `FileResponse` struct (missing `bytes` field). Regenerate with `cargo run --bin gunbc-testgen`. Verify with `cargo test -p gunbc-deps`. | J-0 | S | |
+| **TS-6** | **Workspace subdag mapping for reconciler/sdlc** | 2 workspace subdag tests fail: "unmapped DSL pipeline modules: reconciler, sdlc". Add module mappings in workspace subdag discovery or explicit exclusions. | J-0 | S | |
+
+### Phase J-B: SDLC pipeline execution
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **J-3** | **SDLC end-to-end dry-run** | Execute `dsl/pipelines/sdlc.dag` (555 lines) with `unit_test` profile. Use embedded test `sdlc_idea_to_design` (full mock chain). Verify all stages execute. Also run `dsl/pipelines/reconciler.dag` test `reconciler_converged_issues`. | J-1, J-2, TS-6 | M | |
+| **J-4** | **Validate testgen + codegen freshness** | After all fixes, run full `cargo run --bin gunbc-testgen` and `cargo run --bin gunbc-codegen` to confirm all generated outputs are fresh. Run `cargo test --workspace` for final green. | J-3 | S | |
+
+### Files touched
+
+| File | Changes |
+|------|---------|
+| `core/daglang/daglang-cli/src/compile/tests.rs` | Fix 4 makegen test assertions (J-1) |
+| `lib/tools/deps/src/generated_tests.rs` | Regenerate from testgen (J-2) |
+| `gunbc-dag/src/` (workspace subdag) | Add reconciler/sdlc module mappings (TS-6) |
+
+### Verification
+
+1. `cargo test --workspace` — 224/224 pass (0 failures)
+2. `cargo run --bin gunbc-testgen` — all 27 targets fresh
+3. `cargo run --bin gunbc-codegen` — all outputs fresh
+4. SDLC dry-run produces expected stage progression output
 
 ---
 
@@ -196,183 +296,6 @@ Archived to `TODO/TODONE/tasks-completed.md`. All 6 tasks (`AI1`-`AI3`, `PR1`-`P
 | **S12-15** | **Agent branch management**: Add git branch creation before `Codex.Spawn`, push after completion, deterministic branch naming (`sdlc/issue-{number}`). | S12-12 | S | |
 | **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during regular sweep. | S12-12 | S | |
 | **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time. | S12-8 | S | |
-
----
-
-## Cleanup: Eliminate Hardcoded Registration Lists
-
-**Design doc**: [TODO/design-eliminate-registration-lists.md](design-eliminate-registration-lists.md)
-**Goal**: Replace manually maintained lists with discovery/derivation. Every time a new `.dag` module or tool is added, several Rust files require manual updates. These should either be auto-discovered from the filesystem, derived from the compiled DAG metadata, or eliminated entirely.
-
-### Phase 1 — Resolver trusts compiler — **DONE**
-
-Implemented: default-passthrough resolver, `Option`-returning inventory resolvers, `InfraToolOp` deletion, behavioral test helpers. See design doc for details. CL2, CL3, CL8 are resolved.
-
-### Phase 1 Remaining (small items)
-
-| ID | Task | Location | Problem | Fix | Size | Status |
-|----|------|----------|---------|-----|------|--------|
-| **CL1** | **Module order test fixture** | `daglang-cli/src/pipeline.rs` | 58 hardcoded module names in `expected_real_corpus_module_order()`. Breaks every time a `.dag` file is added/removed/renamed. | Replace with filesystem discovery: glob `dsl/**/*.dag`, extract module IDs, sort. The test asserts the compiler discovers the same set, not a hardcoded list. | S | **DONE** |
-| **CL4** | **`WorkspaceBinary::ALL` array** | `gunbc-dag/src/binaries.rs` | 12-element `const ALL` array + match arms. New binaries require three manual edits. | Derive from `Cargo.toml` `[[bin]]` sections or from the filesystem. | S | **DONE** |
-| **CL7** | **`MANUAL_TOOL_DEFS`** | `gunbc-dag/src/makegen/registry.rs` | 2 hardcoded manual tool definitions (`pragma`, `build`). | Investigate why these can't use the standard discovery path. Fold in or document. | S | **DONE** |
-
-### Lane G: Workflow DSL Migration (Phase 2)
-
-**Design doc**: [TODO/design-eliminate-registration-lists.md](design-eliminate-registration-lists.md) — Changes 4-5
-**Goal**: Migrate 14 Rust-constructed workflow specs to DSL pipeline files. Eliminate `TOOL_WORKFLOWS` (14 entries), workflow builder functions (16 functions), and `process_registry` (69 hardcoded entries).
-**Prerequisite**: None (independent of Phase 3).
-
-**Context**: `dsl/pipelines/ci.dag` (126 lines), `dsl/pipelines/sdlc.dag` (552 lines), and `dsl/pipelines/reconciler.dag` (258 lines) already demonstrate the target format. Each workflow is a `pipeline` with `stage` declarations, `[after ...]` dependencies, and `[when ...]` conditional guards.
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **WM-1** | **Migrate `build-all` workflow to DSL**: Simplest workflow (1 core unit). Create `dsl/workflows/build-all.dag`. Verify the compiled DAG matches the Rust-constructed spec structurally. | — | S | **DONE** |
-| **WM-2** | **Migrate `makegen` workflow to DSL**: 4 process units. Create `dsl/workflows/makegen.dag`. | — | S | **DONE** |
-| **WM-3** | **Migrate `bootstrap` workflow to DSL**: 5 process units. Create `dsl/workflows/bootstrap.dag`. | — | M | **DONE** |
-| **WM-4** | **Migrate `pragma` workflow to DSL**: 7 process units, most complex single-tool workflow. Create `dsl/workflows/pragma.dag`. | — | M | **DONE** |
-| **WM-5** | **Migrate `deps` workflow to DSL**: 8 process units. Create `dsl/workflows/deps.dag`. | — | M | **DONE** |
-| **WM-6** | **Migrate `gist` workflow family to DSL**: 3 variants (`gist-snapshot`, `gist-diff`, `gist-recent`) sharing 9 process units. Create `dsl/workflows/gist.dag` with parameterized mode. | — | M | **DONE** |
-| **WM-7** | **Migrate `dag-viz` workflow family to DSL**: 3 variants (`dag-viz`, `dag-viz-diff`, `dag-viz-recent`) + `dag-snapshot`. 6-7 process units each. Create `dsl/workflows/dag-viz.dag`. | — | M | **DONE** |
-| **WM-8** | **Derive process unit claims from DSL annotations**: The DSL already has `@file(READ/WRITE)` annotations and the compiler extracts `ResourceUsage`. Generate `UnitClaim` entries from compiled pipeline metadata instead of the hardcoded 69-entry `default_process_unit_registry()`. | WM-1..WM-7 | M | **DONE** |
-| **WM-9** | **Delete Rust workflow builders**: Remove `TOOL_WORKFLOWS` registry, all `*_workflow_spec()` builder functions, and `default_process_unit_registry()`. Wire workspace subdag discovery to load compiled DSL workflows. | WM-8 | M | **DONE** |
-
-**Parallelism**: WM-1 through WM-7 are fully independent — each workflow can be migrated by a separate worker. WM-8 and WM-9 depend on all migrations completing.
-
-### Lane H: DSL Expression Language (Phase 3)
-
-**Design doc**: [TODO/design-eliminate-registration-lists.md](design-eliminate-registration-lists.md) — Changes 6-11
-**Goal**: Make the existing DSL expression features usable in function bodies so that all 22 custom tool op variants (across 5 modules) can be expressed in DSL. After this lane, zero tool `Executable` impls exist outside compiler/executor infrastructure. Rust is no longer an escape hatch for business logic.
-
-**Principle**: Fix the data model first, then add minimal expression support. Most "string manipulation" disappears when data is properly structured. See design doc "DSL Language Features Required" for the full analysis.
-
-**Key finding**: The parser already supports 21 expression types including `if/else`, `match`, `for`, all binary ops (+, -, *, /, %, ==, !=, <, >, <=, >=, &&, ||), unary ops (!, -), list/map/record literals, string interpolation, lambdas, and pipe operators. The gap is in the **lowering and execution path** — ensuring these expressions compile to executable operations when used in function bodies. The compiler pipeline is: parser (2.8k LOC) → resolve → typecheck → lower (7.5k LOC) → emit (1.2k LOC+).
-
-#### Phase 3a: Structured data at boundaries (eliminates ~45% of custom ops)
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **EX-1** | **Structured transport responses**: Extend service call declarations with `@parse` annotations so the transport layer parses shell output into typed records. Eliminates all ad-hoc `.lines()/.trim()/.strip_prefix()` parsing in bootstrap (4 ops) and codegen (2 ops). | — | M | **DONE** |
-| **EX-2** | **Structured path and glob types**: Make `FilePath` a proper structured type with segments (not a string alias). Add `GlobPattern` type. Path construction, joining, and pattern building become type-safe operations. Eliminates all path string manipulation in pragma and codegen (~8 string ops). | — | M | **DONE** |
-| **EX-3** | **DSL data source declarations**: Add `data` blocks in DSL for declaring static typed configuration. Move clippy allowlist rules (8), dead code rules (5), allow lints (3), tool registry (12 tools), gitignore categories (14), and codegen path templates from Rust into `dsl/config/*.dag` files. Compiler resolves data references at compile time. No `dsl/config/` directory exists yet — create it. | — | M | **DONE** |
-
-#### Phase 3b: Expression lowering (the real gap)
-
-The parser has the syntax. The gap is making it executable. These tasks focus on the **lowering pass** (`daglang-lower/src/lib.rs`, 7.5k LOC) and **execution runtime** — ensuring parsed expressions in function bodies lower to `LoweredOp` nodes that the resolver can execute.
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **EX-4** | **Lower collection method calls**: Parser has `List`, `Pipe`, `Lambda`, `Call`. Lowering must generate executable nodes for `.map(fn)`, `.filter(fn)`, `.sort()`, `.dedup()`, `.any(fn)`, `.all(fn)`, `.len()`, `.contains(item)`, `.join(sep)` when used in function bodies. Verify existing `CollectionOp` / `MapOp` / `FilterOp` etc. in `core/exec` are wired through. | — | M | **DONE** |
-| **EX-5** | **Lower control flow in function bodies**: Parser has `If`, `Match`, `For`, `Let`, `BinOp`, `UnaryOp`. Verify the lowering pass emits correct `LoweredOp` graph structures for branching, iteration, and variable bindings within `fn` bodies. Existing `BranchOp`, `GuardOp`, `LoopOp` in `core/exec` may already cover this. | — | M | **DONE** |
-| **EX-6** | **Lower string interpolation and formatting**: Parser has `StringInterp` with `Literal`/`Expr` parts. Ensure lowering emits nodes that evaluate interpolated expressions and concatenate results. This is the bridge to structured rendering. | — | S | **DONE** |
-| **EX-7** | **Structured document rendering**: Add `render` functions producing typed document trees (`TextFile`/`Document`). Sections, lines, comments, and blank lines are structural blocks. Rendering engine handles formatting. Replaces all `format!()`/`write!()`/`.push_str()` in pragma (3 ops), makegen (2 ops), build (1 op), docgen (1 op). | EX-5, EX-6 | L | **DONE** |
-| **EX-8** | **End-to-end function body test**: Write a `.dag` file with a `fn` that uses `if/else`, `match`, `for`, list ops, string interpolation, and record construction in its body. Compile, resolve, and execute it. This is the integration gate proving the full pipeline works before migrating real ops. | EX-4, EX-5, EX-6 | S | **DONE** |
-
-#### Phase 3c: Custom op migration (the payoff — 22 ops across 5 modules)
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **EX-9** | **Migrate `tools.pragma` ops to DSL**: 3 ops (RenderClippy, RenderAllowlist, RenderLintPolicy). Depends on structured rendering (EX-7) and data sources (EX-3). | EX-3, EX-7 | M | **DONE** |
-| **EX-10** | **Migrate `tools.makegen` ops to DSL**: 3 ops (LoadRegistry, RenderMakefile, Entrypoint). Depends on data sources (EX-3) and rendering (EX-7). | EX-3, EX-7 | M | **DONE** |
-| **EX-11** | **Migrate `tools.bootstrap` ops to DSL**: 4 ops (PrepareScanWorkspace, ParseScanResult, GenerateMakefile, GenerateGitignore). Depends on structured transport (EX-1) and collections (EX-4). | EX-1, EX-4 | M | **DONE** |
-| **EX-12** | **Migrate `tools.codegen` ops to DSL**: 5 ops (PrepareCodegenExists, ParseCodegenExists, PrepareCodegenCommand, ParseCodegenResult, PrepareStampWrite). Depends on structured transport (EX-1), structured paths (EX-2), and control flow (EX-5). | EX-1, EX-2, EX-5 | M | **DONE** |
-| **EX-13** | **Migrate `tools.build` ops to DSL**: 7 ops (PrepareBuild, ParseBuild, PrepareTest, ParseTest, PrepareClippy, ParseClippy, Summary). Depends on control flow (EX-5) and rendering (EX-7). | EX-5, EX-7 | M | **DONE** |
-| **EX-14** | **Migrate remaining ops (ci, docgen, testgen, dag-viz) to DSL**: ~24 additional ops beyond the 5 core modules. These follow the same patterns as EX-9 through EX-13. Can be parallelized per module. | EX-1..EX-8 | L | **DONE** |
-| **EX-15** | **Delete custom resolver path**: After all custom ops are migrated, the `resolve_domain` match arms for custom modules become empty. Remove them — `resolve_domain` reduces to service transport + default passthrough. | EX-9..EX-14 | S | **DONE** |
-
-**Parallelism**: EX-1, EX-2, EX-3 are fully independent (data model fixes). EX-4, EX-5, EX-6 are independent of each other (lowering path work). EX-9 through EX-14 are independent per module once their expression dependencies are met — each module can be migrated by a separate worker. EX-8 is the integration gate before any migration begins.
-
-**Success criteria**: After Lane H, adding a tool of any complexity requires **1 DSL file** and **0 Rust changes**. Custom tool `Executable` impls drop from 22 to 0 (46 total impls including infrastructure ops that stay in Rust by design).
-
----
-
-## Lane I: Type System Enforcement — Hard Cutover
-
-**Context**: Set-theoretic types-as-DAGs migration (Phases 1-6) substantially complete. IR foundation, DSL type compilation, TypeRegistry wiring, Bytes support, lattice boundary witnesses, and cross-product test generation all implemented. This lane completes the migration by eliminating every legacy escape hatch: `PortType::Any` catch-all, `types_match()` string heuristic, `canonical_type_name()` ad-hoc normalization, and `Option<TypeRegistry>` soft bypass. After this lane, every type mismatch is a compile error.
-
-**Audit baseline** (2026-02-21): 237 `port(..., "String")` calls across 9 graph files. `types_match()` at 2 call sites + 14 `canonical_type_name()` call sites across 2 crates. `PortType::Any` catch-all at 2 sites in `port_type.rs`. `Option<TypeRegistry>` in `codegen.rs`.
-
-### Phase I-A: Port type propagation (all graph builders)
-
-Every `port(..., "String")` that should be a domain type must be updated before the `PortType::Any` catch-all can be removed. The strict path (`try_parse_port_type`) already recognizes domain types — graph builders just aren't using them.
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **TS-1** | **GCP credential port types** | 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports (`access_token`, `subject_token`, `client_secret`, `refresh_token`) → `Secret`. Identity ports (`service_account`) → `GcpServiceAccountEmail`. Project ports → `GcpProjectId`. Audience ports → `NonEmptyString`. Requires registering `OptionalSecret` if any port is optional. 2 duplicate graph functions share these ports. | — | L | |
-| **TS-1b** | **Cloud-ops port types** | 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). Same credential/identity patterns as TS-1. | TS-1 | M | |
-| **TS-1c** | **Review + LLM port types** | `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). Ports like `provider`, `model`, `content`, `question`, `answer` → `NonEmptyString` or domain types. `secret_name` → `SecretName`. `scheme`/`header_name` → `NonEmptyString`. | — | L | |
-| **TS-1d** | **Remaining graph port types** | `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). Smaller scope, same patterns. | — | S | |
-
-**Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1 (shares credential type decisions).
-
-### Phase I-B: Delete legacy type comparison
-
-`types_match()` (daglang-typecheck line 2555) creates a fresh `TypeRegistry::with_core_types()` on every call, never sees domain types, and falls back to short-name suffix matching (`rsplit('.').next()`) which can produce false positives (`foo.Bar` matches `baz.Bar`). `canonical_type_name()` (daglang-syntax/ast_utils.rs line 27) strips generic parameters via `split('<').next()` — loses type parameter information entirely. Both must be replaced by `TypeRegistry::is_compatible()` with a registry threaded through the context.
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **TS-7** | **Delete `types_match()` and `canonical_type_name()`** | **Delete** `types_match()` (2 call sites: line 2227 in `infer_record_literal_type()`, line 2536 in `push_type_mismatch_if_needed()`). Add `TypeRegistry` as a field on the type checker context; replace both call sites with `registry.is_compatible()`. **Delete** `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). The 8 call sites in daglang-lower (`insert_canonical_names`, `is_known_uses_type`, interface resolution at lines 600/611/4592/4608/4801/4815/4841/4851) need `TypeId`-based lookups instead of string splitting. Also delete `resolve_record_fields()` suffix matching (line 2583 `rsplit('.').next()`) — replace with registry lookup. | TS-1..TS-1d | M | |
-
-### Phase I-C: Hard cutover — delete escape hatches
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **TS-3** | **Make TypeRegistry non-optional** | `without_type_registry()` already deleted from builder. Remaining: change `type_registry: Option<TypeRegistry>` → `type_registry: TypeRegistry` in `core/codegen/src/testgen/codegen.rs` (line 235). Audit for any other `Option<TypeRegistry>` patterns. All callers must supply a registry. | TS-7 | S | |
-| **TS-4** | **Delete PortType::Any catch-all** | Remove `_ => PortType::Any` in `parse_known_type()` (port_type.rs line 158). Remove `try_parse_port_type(s).unwrap_or(PortType::Any)` (line 216). Delete `From<&str> for PortType` impl that silently degrades unknowns to `Any` (line 141). Update `value_backing_for_type_id()` in `types.rs` (line 876, `PortType::Any =>` residual catch-all). Update `system_model.rs` (line 875, `PortType::Any => "gunbc_ir::Value"`). Either delete `PortType::Any` variant entirely or keep it as a non-wildcard (compatibility layer already restricts it — `Any` only matches `Any` per tests at line 230-234). | TS-1..TS-1d, TS-7 | M | |
-
-### Phase I-D: Annotation processing
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **TS-5** | **Process all annotations in typecheck** | `validate_type_expr` in daglang-typecheck skips non-`@range` annotations. Handle: `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types { ... }` → extension→encoding map in TypeRegistry. | — | L | |
-
-### Phase I-E: Test infrastructure
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **TS-2** | **Regenerate CI generated tests** | 2197 CI generated tests fail at runtime (`invalid 'items' input: expected StringList`). Pre-existing issue from collection dispatch changes. `CollectionDispatchOp` expects `StringList` format but mocks produce plain strings. Fix mock generation in `test_gen.rs` (`typed_mock_for_response` catch-all at line 155 returns `"mock-response"` for unknown types — should produce typed witnesses). | — | M | |
-| **TS-6** | **Workspace subdag mapping for reconciler/sdlc** | 2 workspace subdag tests fail: "unmapped DSL pipeline modules: reconciler, sdlc". Add module mappings in workspace subdag discovery or explicit exclusions. Pre-existing. | — | S | |
-
-### Dependency graph
-
-```
-TS-1 ──┐
-TS-1b ─┤ (TS-1b depends on TS-1 for type decisions)
-TS-1c ─┼──→ TS-7 ──→ TS-3 ──→ (done)
-TS-1d ─┘          └──→ TS-4 ──→ (done)
-
-TS-5 ──→ (independent, can parallel with any phase)
-TS-2 ──→ (independent, can parallel with any phase)
-TS-6 ──→ (independent, can parallel with any phase)
-```
-
-### Files touched
-
-| File | Changes |
-|------|---------|
-| `lib/gcp-ops/src/graph.rs` | 62 port type updates (TS-1) |
-| `lib/cloud-ops/src/*.rs` | 49 port type updates across 4 files (TS-1b) |
-| `lib/review/src/graph.rs` | 102 port type updates (TS-1c) |
-| `lib/llm-ops/src/graph.rs` | 13 port type updates (TS-1c) |
-| `lib/aws-ops/src/graph.rs` | 3 port type updates (TS-1d) |
-| `lib/azure-ops/src/graph.rs` | 3 port type updates (TS-1d) |
-| `lib/tools/gist/src/graph.rs` | 6 port type updates (TS-1d) |
-| `lib/tools/deps/src/graph.rs` | 1 port type update (TS-1d) |
-| `gunbc-dag/src/testgen_dag/graph.rs` | 1 port type update (TS-1d) |
-| `core/daglang/daglang-typecheck/src/lib.rs` | **Delete** `types_match()`, replace 2 call sites (TS-7). Annotation handling (TS-5) |
-| `core/daglang/daglang-syntax/src/ast_utils.rs` | **Delete** `canonical_type_name()` (TS-7) |
-| `core/daglang/daglang-lower/src/lib.rs` | Replace 8 `canonical_type_name()` call sites with TypeId lookups (TS-7) |
-| `core/ir/src/port_type.rs` | **Delete** `_ => PortType::Any` catch-all, restrict/remove `PortType::Any` (TS-4) |
-| `core/ir/src/types.rs` | Update `PortType::Any` arm in `value_backing_for_type_id()` (TS-4) |
-| `core/ir/src/system_model.rs` | Update `PortType::Any` arm (TS-4) |
-| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3) |
-| `core/daglang/daglang-emit/src/test_gen.rs` | Fix mock generation catch-all (TS-2) |
-
-### Verification
-
-1. `cargo build --workspace` — all crates compile with no `PortType::Any` fallback
-2. `cargo test --workspace` — all tests pass including regenerated CI tests
-3. `cargo clippy --all-targets -- -D warnings` — no warnings
-4. Grep confirms: zero `types_match` call sites, zero `canonical_type_name` call sites, zero `Option<TypeRegistry>` patterns, zero `PortType::Any` catch-all arms
 
 ---
 
