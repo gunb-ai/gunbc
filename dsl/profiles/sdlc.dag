@@ -58,3 +58,30 @@ import interfaces.artifact_store { ArtifactStore }
 //   AgentProvider   -> codex_agent.codex.AgentProvider
 //   SignalStore     -> stubs.stub.SignalStore   (TODO: pubsub)
 //   ArtifactStore   -> stubs.stub.ArtifactStore (TODO: gcs)
+
+profile unit_test {
+  bind IssueProvider -> stub.IssueProvider
+  bind ClaimStore -> stub.ClaimStore
+  bind OutcomeLedger -> stub.OutcomeLedger
+  bind AgentProvider -> stub.AgentProvider
+  bind SignalStore -> stub.SignalStore
+  bind ArtifactStore -> stub.ArtifactStore
+}
+
+profile local {
+  bind IssueProvider -> github.Issues
+  bind ClaimStore -> file.ClaimStore
+  bind OutcomeLedger -> file.OutcomeLedger
+  bind AgentProvider -> codex.AgentProvider
+  bind SignalStore -> stub.SignalStore
+  bind ArtifactStore -> stub.ArtifactStore
+}
+
+profile cloud_run {
+  bind IssueProvider -> github.Issues
+  bind ClaimStore -> gcs.ClaimStore
+  bind OutcomeLedger -> gcs.OutcomeLedger
+  bind AgentProvider -> codex.AgentProvider
+  bind SignalStore -> stub.SignalStore
+  bind ArtifactStore -> stub.ArtifactStore
+}
