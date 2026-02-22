@@ -223,7 +223,9 @@ fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    BTreeSet::new()
+    // Pipeline modules intentionally excluded from workspace DAG composition until
+    // compiled profile binding + runtime execution are wired end-to-end.
+    ["reconciler", "sdlc"].into_iter().collect()
 }
 
 fn add_discovered_tool_subdags(
