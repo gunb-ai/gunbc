@@ -31,7 +31,10 @@
 //!
 //! Mock specs are in `graph_mock.rs` for test generation.
 
-pub mod graph;
+mod dsl_graph;
+pub mod graph {
+    pub use super::dsl_graph::*;
+}
 pub mod graph_mock;
 
 // Re-export public API

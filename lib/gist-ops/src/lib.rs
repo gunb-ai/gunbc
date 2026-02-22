@@ -499,8 +499,8 @@ pub fn build_gist_upload_subdag(
         vec![],
         vec![
             port("config", "CloudSecretConfig"),
-            optional("request_url", "OptionalString"),
-            optional("request_token", "OptionalString"),
+            optional("request_url", "Url"),
+            optional("request_token", "Secret"),
         ],
         GistUploadOp::Cloud(DynOp::new(CloudOps::ConstCloudConfig {
             config: config.clone(),

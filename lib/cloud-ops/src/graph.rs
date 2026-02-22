@@ -182,13 +182,13 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         vec![port("config", "CloudSecretConfig")],
         vec![
             port("provider", "Platform"),
-            port("runtime", "String"),
+            port("runtime", "NonEmptyString"),
             port("audience", "NonEmptyString"),
             port("project_or_account", "GcpProjectId"),
             port("secret", "GcpSecretId"),
-            optional("version", "OptionalString"),
-            optional("service_account_or_role", "OptionalString"),
-            optional("impersonate_account_or_role", "OptionalString"),
+            optional("version", "GcpSecretVersion"),
+            optional("service_account_or_role", "GcpServiceAccountEmail"),
+            optional("impersonate_account_or_role", "GcpServiceAccountEmail"),
         ],
         DynOp::new(CloudOps::ResolveConfig),
     ))?;
@@ -196,7 +196,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
     let mut map_outputs = vec![
         port("project", "GcpProjectId"),
         port("secret", "GcpSecretId"),
-        optional("version", "OptionalString"),
+        optional("version", "GcpSecretVersion"),
         port("service_account", "GcpServiceAccountEmail"),
         port("scheme", "NonEmptyString"),
         optional("header_name", "OptionalString"),
@@ -214,8 +214,8 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         map_outputs.push(port("audience", "NonEmptyString"));
     }
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
-        map_outputs.push(optional("request_url", "OptionalString"));
-        map_outputs.push(optional("request_token", "OptionalString"));
+        map_outputs.push(optional("request_url", "Url"));
+        map_outputs.push(optional("request_token", "Secret"));
     }
 
     let map_inputs = builder.add_node_after(
@@ -223,13 +223,13 @@ fn build_cloud_secret_manager_credential_graph_gcp(
             "map_gcp_inputs",
             vec![
                 port("provider", "Platform"),
-                port("runtime", "String"),
+                port("runtime", "NonEmptyString"),
                 port("audience", "NonEmptyString"),
                 port("project_or_account", "GcpProjectId"),
                 port("secret", "GcpSecretId"),
-                optional("version", "OptionalString"),
-                optional("service_account_or_role", "OptionalString"),
-                optional("impersonate_account_or_role", "OptionalString"),
+                optional("version", "GcpSecretVersion"),
+                optional("service_account_or_role", "GcpServiceAccountEmail"),
+                optional("impersonate_account_or_role", "GcpServiceAccountEmail"),
                 // Pass-through inputs for the GCP graph.
                 port("scheme", "NonEmptyString"),
                 optional("header_name", "OptionalString"),
@@ -241,8 +241,8 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                 // (parent graphs always wire it), but only OUTPUT for
                 // non-LocalDev runtimes where it gets wired to the GCP sub-DAG.
                 optional("interactive_allowed", "OptionalBool"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
+                optional("request_url", "Url"),
+                optional("request_token", "Secret"),
             ],
             map_outputs,
             DynOp::new(CloudOps::MapToGcpInputs { runtime }),
@@ -342,13 +342,13 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         vec![port("config", "CloudSecretConfig")],
         vec![
             port("provider", "Platform"),
-            port("runtime", "String"),
+            port("runtime", "NonEmptyString"),
             port("audience", "NonEmptyString"),
             port("project_or_account", "GcpProjectId"),
             port("secret", "GcpSecretId"),
-            optional("version", "OptionalString"),
-            optional("service_account_or_role", "OptionalString"),
-            optional("impersonate_account_or_role", "OptionalString"),
+            optional("version", "GcpSecretVersion"),
+            optional("service_account_or_role", "GcpServiceAccountEmail"),
+            optional("impersonate_account_or_role", "GcpServiceAccountEmail"),
         ],
         DynOp::new(CloudOps::ResolveConfig),
     ))?;
@@ -357,7 +357,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         port("project", "GcpProjectId"),
         port("secret", "GcpSecretId"),
         port("service_account", "GcpServiceAccountEmail"),
-        optional("version", "OptionalString"),
+        optional("version", "GcpSecretVersion"),
         optional("allow_impersonation", "OptionalBool"),
         optional("lifetime_seconds", "OptionalInt"),
     ];
@@ -367,8 +367,8 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         map_outputs.push(port("audience", "NonEmptyString"));
     }
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
-        map_outputs.push(optional("request_url", "OptionalString"));
-        map_outputs.push(optional("request_token", "OptionalString"));
+        map_outputs.push(optional("request_url", "Url"));
+        map_outputs.push(optional("request_token", "Secret"));
     }
 
     let map_inputs = builder.add_node_after(
@@ -376,18 +376,18 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
             "map_gcp_secret_inputs",
             vec![
                 port("provider", "Platform"),
-                port("runtime", "String"),
+                port("runtime", "NonEmptyString"),
                 port("audience", "NonEmptyString"),
                 port("project_or_account", "GcpProjectId"),
                 port("secret", "GcpSecretId"),
-                optional("version", "OptionalString"),
-                optional("service_account_or_role", "OptionalString"),
-                optional("impersonate_account_or_role", "OptionalString"),
+                optional("version", "GcpSecretVersion"),
+                optional("service_account_or_role", "GcpServiceAccountEmail"),
+                optional("impersonate_account_or_role", "GcpServiceAccountEmail"),
                 optional("allow_impersonation", "OptionalBool"),
                 optional("lifetime_seconds", "OptionalInt"),
                 optional("interactive_allowed", "OptionalBool"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
+                optional("request_url", "Url"),
+                optional("request_token", "Secret"),
             ],
             map_outputs,
             DynOp::new(CloudOps::MapToGcpSecretInputs { runtime }),

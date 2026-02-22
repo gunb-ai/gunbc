@@ -71,7 +71,7 @@ pub use makegen::{
     BuildConfig, MakegenGraphOp, MakegenOp, WorkflowKind, WorkflowSpec,
 };
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
-pub use resolve::{resolve_lowered_dag, ResolveError};
+pub use resolve::{resolve_lowered_dag, resolve_lowered_dag_flat, ResolveError};
 pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };

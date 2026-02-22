@@ -167,8 +167,8 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
         vec![],
         vec![
             port("config", "CloudSecretConfig"),
-            optional("request_url", "OptionalString"),
-            optional("request_token", "OptionalString"),
+            optional("request_url", "Url"),
+            optional("request_token", "Secret"),
         ],
         GitHubCredentialGraphOp::Cloud(DynOp::new(CloudOps::ConstCloudConfig {
             config: config.clone(),
@@ -181,9 +181,9 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
         vec![],
         vec![
             port("service", "NonEmptyString"),
-            port("secret_name", "GcpSecretId"),
+            port("secret_name", "SecretName"),
             port("scheme", "NonEmptyString"),
-            port("header_name", "String"),
+            port("header_name", "NonEmptyString"),
             list("required_scopes", "NonEmptyString"),
             port("interactive_allowed", "Bool"),
         ],
@@ -197,7 +197,7 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "NonEmptyString"),
-                port("secret_name", "GcpSecretId"),
+                port("secret_name", "SecretName"),
             ],
             vec![port("config", "CloudSecretConfig")],
             GitHubCredentialGraphOp::Cloud(DynOp::new(CloudOps::BindSecretName)),

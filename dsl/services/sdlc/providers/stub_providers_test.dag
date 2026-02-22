@@ -1,0 +1,10 @@
+module services.sdlc.providers.stub_providers_test
+import services.sdlc.providers.stub_providers { stub.IssueProvider }
+
+test stub_get_test {
+    @tier(Unit)
+    @hermetic(true)
+
+    input get/prepare.id -> "123"
+    expect result.found == true
+}

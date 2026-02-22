@@ -114,7 +114,7 @@ pub fn build_infra_plan_dag(
             vec![],
             vec![
                 port("environment", "NonEmptyString"),
-                list("planned_targets", "String"),
+                list("planned_targets", "NonEmptyString"),
                 port("target_count", "Int"),
             ],
             InfraPlanApplyGraphOp::Infra(InfraPlanApplyOps::BuildPlan {
@@ -161,7 +161,7 @@ pub fn build_infra_apply_dag(
             vec![],
             vec![
                 port("environment", "NonEmptyString"),
-                list("planned_targets", "String"),
+                list("planned_targets", "NonEmptyString"),
                 port("target_count", "Int"),
             ],
             InfraPlanApplyGraphOp::Infra(InfraPlanApplyOps::BuildPlan {
@@ -178,7 +178,7 @@ pub fn build_infra_apply_dag(
                 vec![],
                 vec![
                     port("environment", "NonEmptyString"),
-                    list("reconciled_targets", "String"),
+                    list("reconciled_targets", "NonEmptyString"),
                     port("reconciled_count", "Int"),
                 ],
                 InfraPlanApplyGraphOp::Infra(InfraPlanApplyOps::ReconcileRuntimeDependencies {

@@ -1,0 +1,66 @@
+// services/sdlc/providers/gcs_artifact_store.dag
+//
+// Layer 3 concrete implementation: GcsArtifactStore implements ArtifactStore.
+//
+// Uses GCS objects.
+
+module services.sdlc.providers.gcs_artifact_store
+
+import interfaces.artifact_store { ArtifactStore }
+import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }
+
+service gcs.ArtifactStore : ArtifactStore {
+
+  config {
+    bucket: String
+    project_id: String
+  }
+
+  operation store {
+    input { artifact_id: NonEmptyStr, payload: ArtifactPayload, content_hash: NonEmptyStr }
+    output { stored: Bool, conflict: Bool }
+    @gcp_storage(WRITE, "gs://{config.bucket}/{artifact_id}")
+    @idempotent
+    @mock_response(status: 0, body: { "stored": true, "conflict": false })
+  }
+
+  operation retrieve {
+    input { artifact_id: NonEmptyStr }
+    output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
+    @gcp_storage(READ, "gs://{config.bucket}/{artifact_id}")
+    @mock_response(status: 0, body: { "found": false, "payload": null, "content_hash": null })
+  }
+
+  operation store_marker {
+    input { marker: ArtifactMarker }
+    output { stored: Bool }
+    @gcp_storage(WRITE, "gs://{config.bucket}/markers/{marker.run_key}/{marker.artifact_type}.json")
+    @idempotent
+    @mock_response(status: 0, body: { "stored": true })
+  }
+
+  operation get_canonical_marker {
+    input { run_key: NonEmptyStr, artifact_type: ArtifactType }
+    output { found: Bool, marker: ArtifactMarker? }
+    @gcp_storage(READ, "gs://{config.bucket}/markers/canonical/{run_key}/{artifact_type}.json")
+    @mock_response(status: 0, body: { "found": false, "marker": null })
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test gcs_artifact_store_store {
+    @tier(Unit)
+    @hermetic(true)
+
+    input store/prepare.artifact_id -> "art-1"
+    input store/prepare.payload -> "{}"
+    input store/prepare.content_hash -> "hash-1"
+
+    mock store/execute.response -> gcp_response(0, {
+        stored: true,
+        conflict: false
+    })
+
+    expect result.stored == true
+}

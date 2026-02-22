@@ -751,7 +751,7 @@ fn add_idempotent_stage(
     let prepare = builder.add_node_after(
         Node::opaque(
             format!("prepare_{}", stage_name).as_str(),
-            vec![port("prev_ok", "Bool"), port("access_token", "String")],
+            vec![port("prev_ok", "Bool"), port("access_token", "Secret")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             InfraBootstrapGraphOp::Bootstrap(prepare_op),
         ),
@@ -777,7 +777,7 @@ fn add_idempotent_stage(
             format!("check_{}", stage_name).as_str(),
             vec![
                 port("response", "TransportResponse"),
-                port("access_token", "String"),
+                port("access_token", "Secret"),
             ],
             vec![
                 port("request", "TransportRequest"),
@@ -847,8 +847,8 @@ pub fn build_wif_bootstrap_dag(
     let context = builder
         .add_root_node(Node::opaque(
             "context",
-            vec![port("access_token", "String")],
-            vec![port("access_token", "String")],
+            vec![port("access_token", "Secret")],
+            vec![port("access_token", "Secret")],
             InfraBootstrapGraphOp::Bootstrap(InfraBootstrapOps::PassAccessToken),
         ))
         .map_err(|err| format!("failed to add context node: {err}"))?;
@@ -857,7 +857,7 @@ pub fn build_wif_bootstrap_dag(
         .add_node_after(
             Node::opaque(
                 "enable_apis",
-                vec![port("access_token", "String")],
+                vec![port("access_token", "Secret")],
                 vec![port("ok", "Bool"), port("note", "NonEmptyString")],
                 InfraBootstrapGraphOp::Bootstrap(InfraBootstrapOps::EnableApis {
                     project: infra_spec.config.secrets_project.to_string(),

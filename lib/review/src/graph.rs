@@ -90,7 +90,7 @@ fn add_cloud_credential_chain(
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "NonEmptyString"),
-                port("secret_name", "GcpSecretId"),
+                port("secret_name", "SecretName"),
             ],
             vec![port("config", "CloudSecretConfig")],
             DynOp::new(CloudOps::BindSecretName),
@@ -183,8 +183,8 @@ fn add_cloud_env_node(
         vec![],
         vec![
             port("config", "CloudSecretConfig"),
-            optional("request_url", "OptionalString"),
-            optional("request_token", "OptionalString"),
+            optional("request_url", "Url"),
+            optional("request_token", "Secret"),
         ],
         DynOp::new(CloudOps::ConstCloudConfig {
             config: cloud_config.clone(),
@@ -307,11 +307,11 @@ pub fn build_review_phase_graph_with_config(
     let prepare_prompt = builder.add_root_node(Node::opaque(
         "prepare_prompt",
         vec![
-            port("artifact", "String"),
+            port("artifact", "NonEmptyString"),
             port("criteria", "Json"),
             optional("context", "OptionalString"),
         ],
-        vec![port("question", "String"), port("system_prompt", "String")],
+        vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
         DynOp::new(ReviewOps::PrepareReviewPrompt),
     ))?;
 
@@ -327,10 +327,10 @@ pub fn build_review_phase_graph_with_config(
             vec![
                 port("service", "NonEmptyString"),
                 port("scheme", "NonEmptyString"),
-                port("header_name", "String"),
+                port("header_name", "NonEmptyString"),
                 list("required_scopes", "NonEmptyString"),
                 port("interactive_allowed", "Bool"),
-                port("secret_name", "GcpSecretId"),
+                port("secret_name", "SecretName"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -351,7 +351,7 @@ pub fn build_review_phase_graph_with_config(
         "parse_llm",
         vec![
             port("content", "NonEmptyString"),
-            port("question", "String"),
+            port("question", "NonEmptyString"),
             port("provider", "NonEmptyString"),
             port("model", "NonEmptyString"),
             optional("system_prompt", "OptionalString"),
@@ -361,7 +361,7 @@ pub fn build_review_phase_graph_with_config(
             resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("provider", "NonEmptyString")],
-        vec![port("answer", "String")],
+        vec![port("answer", "NonEmptyString")],
         DynOp::new(LlmOps::PrepareSimpleRequest),
         DynOp::new(LlmOps::ParseSimpleResponse),
         DynOp::new(TransportOps::Execute),
@@ -380,7 +380,7 @@ pub fn build_review_phase_graph_with_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![port("answer", "String"), port("criteria", "Json")],
+            vec![port("answer", "NonEmptyString"), port("criteria", "Json")],
             vec![port("output", "Json"), port("errors", "Json")],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
@@ -454,11 +454,11 @@ pub fn build_inline_review_graph_with_config(
     let prepare_prompt = builder.add_root_node(Node::opaque(
         "prepare_prompt",
         vec![
-            port("artifact", "String"),
+            port("artifact", "NonEmptyString"),
             port("criteria", "Json"),
             optional("context", "OptionalString"),
         ],
-        vec![port("question", "String"), port("system_prompt", "String")],
+        vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
         DynOp::new(ReviewOps::PrepareReviewPrompt),
     ))?;
 
@@ -470,10 +470,10 @@ pub fn build_inline_review_graph_with_config(
             vec![
                 port("service", "NonEmptyString"),
                 port("scheme", "NonEmptyString"),
-                port("header_name", "String"),
+                port("header_name", "NonEmptyString"),
                 list("required_scopes", "NonEmptyString"),
                 port("interactive_allowed", "Bool"),
-                port("secret_name", "GcpSecretId"),
+                port("secret_name", "SecretName"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -494,7 +494,7 @@ pub fn build_inline_review_graph_with_config(
         "parse_llm",
         vec![
             port("content", "NonEmptyString"),
-            port("question", "String"),
+            port("question", "NonEmptyString"),
             port("provider", "NonEmptyString"),
             port("model", "NonEmptyString"),
             optional("system_prompt", "OptionalString"),
@@ -504,7 +504,7 @@ pub fn build_inline_review_graph_with_config(
             resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("provider", "NonEmptyString")],
-        vec![port("answer", "String")],
+        vec![port("answer", "NonEmptyString")],
         DynOp::new(LlmOps::PrepareSimpleRequest),
         DynOp::new(LlmOps::ParseSimpleResponse),
         DynOp::new(TransportOps::Execute),
@@ -519,7 +519,7 @@ pub fn build_inline_review_graph_with_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![port("answer", "String"), port("criteria", "Json")],
+            vec![port("answer", "NonEmptyString"), port("criteria", "Json")],
             vec![port("output", "Json"), port("errors", "Json")],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
@@ -649,7 +649,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
-        vec![port("diff_files", "Map"), port("stats", "String")],
+        vec![port("diff_files", "Map"), port("stats", "NonEmptyString")],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
@@ -681,11 +681,11 @@ pub fn build_diff_review_graph_with_cloud_config(
         Node::opaque(
             "prepare_prompt",
             vec![
-                port("artifact", "String"),
+                port("artifact", "NonEmptyString"),
                 port("criteria", "Json"),
                 optional("context", "OptionalString"),
             ],
-            vec![port("question", "String"), port("system_prompt", "String")],
+            vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
             DynOp::new(ReviewOps::PrepareReviewPrompt),
         ),
         &format_artifact,
@@ -702,10 +702,10 @@ pub fn build_diff_review_graph_with_cloud_config(
             vec![
                 port("service", "NonEmptyString"),
                 port("scheme", "NonEmptyString"),
-                port("header_name", "String"),
+                port("header_name", "NonEmptyString"),
                 list("required_scopes", "NonEmptyString"),
                 port("interactive_allowed", "Bool"),
-                port("secret_name", "GcpSecretId"),
+                port("secret_name", "SecretName"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -725,7 +725,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         "parse_llm",
         vec![
             port("content", "NonEmptyString"),
-            port("question", "String"),
+            port("question", "NonEmptyString"),
             port("provider", "NonEmptyString"),
             port("model", "NonEmptyString"),
             optional("system_prompt", "OptionalString"),
@@ -735,7 +735,7 @@ pub fn build_diff_review_graph_with_cloud_config(
             resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("provider", "NonEmptyString")],
-        vec![port("answer", "String")],
+        vec![port("answer", "NonEmptyString")],
         DynOp::new(LlmOps::PrepareSimpleRequest),
         DynOp::new(LlmOps::ParseSimpleResponse),
         DynOp::new(TransportOps::Execute),
@@ -753,7 +753,7 @@ pub fn build_diff_review_graph_with_cloud_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![port("answer", "String"), port("criteria", "Json")],
+            vec![port("answer", "NonEmptyString"), port("criteria", "Json")],
             vec![port("output", "Json"), port("errors", "Json")],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
@@ -900,11 +900,11 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         Node::opaque(
             "prepare_prompt",
             vec![
-                port("artifact", "String"),
+                port("artifact", "NonEmptyString"),
                 port("criteria", "Json"),
                 optional("context", "OptionalString"),
             ],
-            vec![port("question", "String"), port("system_prompt", "String")],
+            vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
             DynOp::new(ReviewOps::PrepareReviewPrompt),
         ),
         &config_node,
@@ -917,10 +917,10 @@ pub fn build_multi_source_review_graph_with_cloud_config(
             vec![
                 port("service", "NonEmptyString"),
                 port("scheme", "NonEmptyString"),
-                port("header_name", "String"),
+                port("header_name", "NonEmptyString"),
                 list("required_scopes", "NonEmptyString"),
                 port("interactive_allowed", "Bool"),
-                port("secret_name", "GcpSecretId"),
+                port("secret_name", "SecretName"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -940,7 +940,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         "parse_llm",
         vec![
             port("content", "NonEmptyString"),
-            port("question", "String"),
+            port("question", "NonEmptyString"),
             port("provider", "NonEmptyString"),
             port("model", "NonEmptyString"),
             optional("system_prompt", "OptionalString"),
@@ -950,7 +950,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
             resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("provider", "NonEmptyString")],
-        vec![port("answer", "String")],
+        vec![port("answer", "NonEmptyString")],
         DynOp::new(LlmOps::PrepareSimpleRequest),
         DynOp::new(LlmOps::ParseSimpleResponse),
         DynOp::new(TransportOps::Execute),
@@ -964,7 +964,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![port("answer", "String"), port("criteria", "Json")],
+            vec![port("answer", "NonEmptyString"), port("criteria", "Json")],
             vec![port("output", "Json"), port("errors", "Json")],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
@@ -1093,7 +1093,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
-        vec![port("diff_files", "Map"), port("stats", "String")],
+        vec![port("diff_files", "Map"), port("stats", "NonEmptyString")],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
@@ -1133,10 +1133,10 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             vec![
                 port("service", "NonEmptyString"),
                 port("scheme", "NonEmptyString"),
-                port("header_name", "String"),
+                port("header_name", "NonEmptyString"),
                 list("required_scopes", "NonEmptyString"),
                 port("interactive_allowed", "Bool"),
-                port("secret_name", "GcpSecretId"),
+                port("secret_name", "SecretName"),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -1163,8 +1163,8 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             vec![],
             vec![
                 port("criteria", "Json"),
-                port("dimension", "String"),
-                port("depth", "String"),
+                port("dimension", "NonEmptyString"),
+                port("depth", "NonEmptyString"),
             ],
             DynOp::new(DimensionGraphConfigOps::LoadDimensionConfig {
                 dimension,
@@ -1177,14 +1177,14 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 format!("{prefix}_prepare_prompt"),
                 vec![
-                    port("artifact", "String"),
+                    port("artifact", "NonEmptyString"),
                     port("criteria", "Json"),
-                    port("dimension", "String"),
-                    port("depth", "String"),
+                    port("dimension", "NonEmptyString"),
+                    port("depth", "NonEmptyString"),
                     optional("context", "OptionalString"),
                     optional("prior_findings", "OptionalString"),
                 ],
-                vec![port("question", "String"), port("system_prompt", "String")],
+                vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
                 DynOp::new(DimensionOps::PrepareDimensionPrompt),
             ),
             &format_artifact,
@@ -1198,7 +1198,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             format!("parse_{prefix}_llm").as_str(),
             vec![
                 port("content", "NonEmptyString"),
-                port("question", "String"),
+                port("question", "NonEmptyString"),
                 port("provider", "NonEmptyString"),
                 port("model", "NonEmptyString"),
                 optional("system_prompt", "OptionalString"),
@@ -1208,7 +1208,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                 resource("credential", "Credential", AccessMode::Read),
             ],
             vec![port("provider", "NonEmptyString")],
-            vec![port("answer", "String")],
+            vec![port("answer", "NonEmptyString")],
             DynOp::new(LlmOps::PrepareSimpleRequest),
             DynOp::new(LlmOps::ParseSimpleResponse),
             DynOp::new(TransportOps::Execute),
@@ -1219,9 +1219,9 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 format!("{prefix}_parse_response"),
                 vec![
-                    port("answer", "String"),
+                    port("answer", "NonEmptyString"),
                     port("criteria", "Json"),
-                    port("dimension", "String"),
+                    port("dimension", "NonEmptyString"),
                 ],
                 vec![port("output", "Json"), port("errors", "Json")],
                 DynOp::new(DimensionOps::ParseDimensionResponse),
@@ -1294,7 +1294,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                 optional("quality_output", "OptionalJson"),
                 optional("requirements_output", "OptionalJson"),
             ],
-            vec![port("prior_findings", "String")],
+            vec![port("prior_findings", "NonEmptyString")],
             DynOp::new(DimensionOps::FormatPriorFindings),
         );
 
@@ -1320,8 +1320,8 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             vec![],
             vec![
                 port("criteria", "Json"),
-                port("dimension", "String"),
-                port("depth", "String"),
+                port("dimension", "NonEmptyString"),
+                port("depth", "NonEmptyString"),
             ],
             DynOp::new(DimensionGraphConfigOps::LoadDimensionConfig {
                 dimension: ReviewDimension::Aspirational,
@@ -1334,14 +1334,14 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 "aspirational_prepare_prompt",
                 vec![
-                    port("artifact", "String"),
+                    port("artifact", "NonEmptyString"),
                     port("criteria", "Json"),
-                    port("dimension", "String"),
-                    port("depth", "String"),
+                    port("dimension", "NonEmptyString"),
+                    port("depth", "NonEmptyString"),
                     optional("context", "OptionalString"),
                     optional("prior_findings", "OptionalString"),
                 ],
-                vec![port("question", "String"), port("system_prompt", "String")],
+                vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
                 DynOp::new(DimensionOps::PrepareDimensionPrompt),
             ),
             &[&format_artifact, &format_prior],
@@ -1355,7 +1355,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             "parse_aspirational_llm",
             vec![
                 port("content", "NonEmptyString"),
-                port("question", "String"),
+                port("question", "NonEmptyString"),
                 port("provider", "NonEmptyString"),
                 port("model", "NonEmptyString"),
                 optional("system_prompt", "OptionalString"),
@@ -1365,7 +1365,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                 resource("credential", "Credential", AccessMode::Read),
             ],
             vec![port("provider", "NonEmptyString")],
-            vec![port("answer", "String")],
+            vec![port("answer", "NonEmptyString")],
             DynOp::new(LlmOps::PrepareSimpleRequest),
             DynOp::new(LlmOps::ParseSimpleResponse),
             DynOp::new(TransportOps::Execute),
@@ -1376,9 +1376,9 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 "aspirational_parse_response",
                 vec![
-                    port("answer", "String"),
+                    port("answer", "NonEmptyString"),
                     port("criteria", "Json"),
-                    port("dimension", "String"),
+                    port("dimension", "NonEmptyString"),
                 ],
                 vec![port("output", "Json"), port("errors", "Json")],
                 DynOp::new(DimensionOps::ParseDimensionResponse),
@@ -1463,7 +1463,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             optional("requirements_output", "OptionalJson"),
             optional("aspirational_output", "OptionalJson"),
         ],
-        vec![port("output", "Json"), port("summary", "String")],
+        vec![port("output", "Json"), port("summary", "NonEmptyString")],
         DynOp::new(DimensionOps::MergeDimensionOutputs),
     );
     let merge = if merge_inputs.is_empty() {

@@ -69,19 +69,19 @@ profile unit_test {
 }
 
 profile local {
-  bind IssueProvider -> github.Issues
+  bind IssueProvider -> github.IssueProvider
   bind ClaimStore -> file.ClaimStore
   bind OutcomeLedger -> file.OutcomeLedger
   bind AgentProvider -> codex.AgentProvider
-  bind SignalStore -> stub.SignalStore
-  bind ArtifactStore -> stub.ArtifactStore
+  bind SignalStore -> file.SignalStore
+  bind ArtifactStore -> inline.ArtifactStore
 }
 
 profile cloud_run {
-  bind IssueProvider -> github.Issues
+  bind IssueProvider -> github.IssueProvider
   bind ClaimStore -> gcs.ClaimStore
   bind OutcomeLedger -> gcs.OutcomeLedger
   bind AgentProvider -> codex.AgentProvider
-  bind SignalStore -> stub.SignalStore
-  bind ArtifactStore -> stub.ArtifactStore
+  bind SignalStore -> gcp.PubSubSignalStore
+  bind ArtifactStore -> gcs.ArtifactStore
 }

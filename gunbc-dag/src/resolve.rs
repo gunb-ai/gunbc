@@ -922,7 +922,7 @@ fn resolve_domain(
     }
 
     // 4. Fail closed for unknown callables.
-    Err(unknown_callable(node_id, module, name))
+    Err(unknown_callable(node_id, module, name)).inspect_err(|_| println!("DEBUG: module={}, name={}", module, name))
 }
 
 fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
@@ -954,34 +954,41 @@ fn resolve_tools_pragma(name: &str) -> Option<DynOp> {
     Some(DynOp::new(op))
 }
 
-fn resolve_passthrough_entrypoint(module: &str, name: &str, outputs: &[Port]) -> Option<DynOp> {
-    // Explicit allowlist only. Unknown modules/callables fail closed.
-    let is_passthrough = matches!(
-        (module, name),
-        ("tools.build", "build")
-            | ("tools.ci", "ci")
-            | ("tools.clippy", "clippy")
-            | ("tools.codegen", "codegen")
-            | ("tools.dag_viz", "dag_viz")
-            | ("tools.deps", "deps")
-            | ("tools.docgen", "docgen")
-            | ("tools.gist", "gist")
-            | ("tools.makegen", "makegen")
-            | ("tools.review", "review")
-            | ("tools.testgen", "testgen")
-            | ("pipelines.ci", "ci")
-            | ("workflows.bootstrap", "bootstrap")
-            | ("workflows.build_all", "build_all")
-            | ("workflows.ci", "ci")
-            | ("workflows.dag_viz", "dag_viz")
-            | ("workflows.deps", "deps")
-            | ("workflows.gist", "gist")
-            | ("workflows.makegen", "makegen")
-            | ("workflows.pragma", "pragma")
-            | ("workflows.sdlc", "sdlc")
-            | ("workflows.test_all", "test_all")
+fn resolve_passthrough_entrypoint(module: &str, _name: &str, outputs: &[Port]) -> Option<DynOp> {
+    // Explicit module allowlist only. Unknown modules fail closed.
+    // These DSL modules are composed from lowered primitives/services; callable
+    // wrappers are resolved as passthrough adapters.
+    let is_passthrough_module = matches!(
+        module,
+        "tools.bootstrap"
+            | "tools.build"
+            | "tools.ci"
+            | "tools.clippy"
+            | "tools.codegen"
+            | "tools.dag_viz"
+            | "tools.deps"
+            | "tools.docgen"
+            | "tools.gist"
+            | "tools.infra"
+            | "tools.makegen"
+            | "tools.pragma"
+            | "tools.review"
+            | "tools.testgen"
+            | "pipelines.ci"
+            | "workflows.bootstrap"
+            | "workflows.build_all"
+            | "workflows.ci"
+            | "workflows.dag_viz"
+            | "workflows.deps"
+            | "workflows.gist"
+            | "workflows.makegen"
+            | "workflows.pragma"
+            | "workflows.sdlc"
+            | "workflows.test_all"
+            | "shared.dag_util"
+            | "std.patterns"
     );
-    if !is_passthrough {
+    if !is_passthrough_module {
         return None;
     }
     Some(DynOp::new(PassthroughOp {
@@ -1051,7 +1058,7 @@ fn resolve_service_transport(
         }
     }
 
-    Err(unknown_callable(node_id, module, name))
+    Err(unknown_callable(node_id, module, name)).inspect_err(|_| println!("DEBUG: module={}, name={}", module, name))
 }
 
 // ============================================================================
@@ -1908,10 +1915,10 @@ mod tests {
     }
 
     #[test]
-    fn resolve_unknown_callable_in_custom_module_fails_closed() {
+    fn resolve_unknown_callable_in_non_passthrough_module_fails_closed() {
         let node = callable_node(
             "bad_op",
-            "tools.pragma",
+            "domain.pragma",
             "nonexistent_op",
             ObligationCategory::None,
         );
@@ -2273,6 +2280,87 @@ mod tests {
                 .unwrap_or_default()
                 .contains("disallowed-methods"),
             "subdag should execute pragma render and produce clippy policy output"
+        );
+    }
+
+    #[test]
+    fn resolve_lowered_dag_flat_handles_pipeline_and_subdag_together() {
+        // Build a DAG with both a Pipeline node and a SubDag node.
+        // Flat resolution should convert SubDag → Opaque(SubDagExecutorOp)
+        // while Pipeline remains Opaque(PipelineDispatchOp).
+
+        let mut inner_subdag: Dag<LoweredOp> = Dag::new();
+        inner_subdag.add_node(Node::opaque(
+            "inner_render",
+            vec![],
+            vec![Port::new("return", "String")],
+            LoweredOp::Callable {
+                module: "tools.pragma".to_string(),
+                kind: CallableKind::Fn,
+                name: "render_clippy_toml".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        let mut dag: Dag<LoweredOp> = Dag::new();
+
+        // Pipeline node (opaque metadata)
+        dag.add_node(Node::opaque(
+            "pipeline::ci",
+            vec![Port::new("stage", "String")],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines".to_string(),
+                name: "ci".to_string(),
+                stages: 2,
+                stage_names: vec!["build".to_string(), "test".to_string()],
+            },
+        ));
+
+        // SubDag node (structural container → should become SubDagExecutorOp)
+        dag.add_node(Node {
+            id: "stage_body".into(),
+            inputs: vec![],
+            outputs: vec![Port::new("return", "String")],
+            body: NodeBody::SubDag(inner_subdag),
+            examples: vec![],
+            log_detail: None,
+        });
+
+        let resolved =
+            resolve_lowered_dag_flat(&dag).expect("flat resolution with mixed nodes");
+        assert_eq!(resolved.nodes.len(), 2);
+
+        // All nodes must be Opaque after flat resolution
+        for node in &resolved.nodes {
+            assert!(
+                matches!(node.body, NodeBody::Opaque(_)),
+                "node `{}` should be Opaque after flat resolution",
+                node.id.0
+            );
+        }
+
+        // Pipeline node should be PipelineDispatchOp
+        let pipeline_node = resolved
+            .get_node(&"pipeline::ci".into())
+            .expect("pipeline node should exist");
+        let pipeline_debug = format!("{:?}", pipeline_node.body);
+        assert!(
+            pipeline_debug.contains("PipelineDispatchOp"),
+            "pipeline node should be PipelineDispatchOp, got: {pipeline_debug}"
+        );
+
+        // SubDag node should be SubDagExecutorOp
+        let subdag_node = resolved
+            .get_node(&"stage_body".into())
+            .expect("subdag node should exist");
+        let subdag_debug = format!("{:?}", subdag_node.body);
+        assert!(
+            subdag_debug.contains("SubDagExecutorOp"),
+            "subdag node should be SubDagExecutorOp, got: {subdag_debug}"
         );
     }
 }

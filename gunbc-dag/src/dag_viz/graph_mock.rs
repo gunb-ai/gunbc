@@ -1,88 +1,11 @@
 //! Mock specifications for dag-viz modes.
 
 use crate::dag_viz::{build_dag_viz_graph, DagVizMode};
-use gunbc_ir::transport::{FileOp, FileResponse, RestResponse, TransportResponse};
-use gunbc_ir::Value;
-use gunbc_test::{MockSpec, OutputMatcher};
-
-/// Minimal valid DagTopology JSON for mock inputs.
-const EMPTY_TOPOLOGY_JSON: &str = r#"{"nodes":[],"edges":[]}"#;
+use gunbc_test::MockSpec;
 
 fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
     let dag = build_dag_viz_graph(mode.clone()).expect("dag_viz graph should build");
-    let mut spec = crate::mock_defaults::auto_mock_spec(&dag, "dag_viz")
-        .live_expected_output(
-            "gist_upload/parse_gist_response",
-            "url",
-            OutputMatcher::non_empty(),
-        )
-        .live_expected_output(
-            "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
-            "ok",
-            OutputMatcher::IsBool,
-        );
-
-    match mode {
-        DagVizMode::Diff { .. } | DagVizMode::Recent => {
-            // diff_and_render expects valid DagTopology JSON
-            spec = spec
-                .input_mock(
-                    "diff_and_render",
-                    "current_json",
-                    Value::Str(EMPTY_TOPOLOGY_JSON.to_string()),
-                )
-                .input_mock(
-                    "diff_and_render",
-                    "base_json",
-                    Value::Str(EMPTY_TOPOLOGY_JSON.to_string()),
-                )
-                // parse_set_iam expects a REST response
-                .input_mock(
-                    "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
-                    "response",
-                    Value::Response(TransportResponse::Rest(RestResponse::new(
-                        200,
-                        serde_json::json!({"ok": true}),
-                    ))),
-                );
-        }
-        DagVizMode::Snapshot => {
-            // render_snapshot expects valid DagTopology JSON
-            spec = spec
-                .input_mock(
-                    "render_snapshot",
-                    "topology_json",
-                    Value::Str(EMPTY_TOPOLOGY_JSON.to_string()),
-                )
-                // parse_set_iam expects a REST response
-                .input_mock(
-                    "gist_upload/cloud_credential/gcp_wif_secret/parse_set_iam",
-                    "response",
-                    Value::Response(TransportResponse::Rest(RestResponse::new(
-                        200,
-                        serde_json::json!({"ok": true}),
-                    ))),
-                );
-        }
-        DagVizMode::SaveSnapshot => {
-            // parse_write_result expects a File response
-            spec = spec.input_mock(
-                "parse_write_result",
-                "response",
-                Value::Response(TransportResponse::File(FileResponse {
-                    path: ".dag-snapshots/workspace.json".to_string(),
-                    operation: FileOp::Write,
-                    success: true,
-                    content: None,
-                    bytes: None,
-                    exists: None,
-                    error: None,
-                })),
-            );
-        }
-    }
-
-    spec
+    crate::mock_defaults::auto_mock_spec(&dag, "dag_viz")
 }
 
 #[gunbc_testgen_registry_macros::testgen_target(

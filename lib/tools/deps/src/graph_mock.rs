@@ -103,27 +103,23 @@ pub fn deps_mock_spec() -> MockSpec {
         // Boundary: parse_manifest outputs (terminal)
         .boundary_int("load_manifest/parse_manifest", "dep_count", 1)
         .expect("parse_manifest dep_count should match type")
-        .boundary(
-            "load_manifest/parse_manifest",
-            "dep_names",
-            Value::str_list(vec!["ripgrep".into()]),
-        )
+        .boundary_str("load_manifest/parse_manifest", "dep_names", "ripgrep")
         .expect("parse_manifest dep_names should match type")
         .boundary_str("load_manifest/parse_manifest", "manifest_path", "deps.toml")
         .expect("parse_manifest manifest_path should match type")
         // Boundary: generate_scripts outputs (terminal)
-        .boundary(
+        .boundary_str(
             "generate_scripts",
-            "already_installed",
-            Value::str_list(vec!["ripgrep".into()]),
+            "install_script",
+            "cargo install ripgrep",
         )
+        .expect("generate_scripts install_script should match type")
+        .boundary_str("generate_scripts", "already_installed", "ripgrep")
         .expect("generate_scripts already_installed should match type")
-        .boundary(
-            "generate_scripts",
-            "needs_install",
-            Value::str_list(vec!["ripgrep".into()]),
-        )
+        .boundary_str("generate_scripts", "needs_install", "ripgrep")
         .expect("generate_scripts needs_install should match type")
+        .boundary_str("generate_scripts", "install_script", "cargo install ripgrep")
+        .expect("generate_scripts install_script should match type")
         .boundary_str("generate_scripts", "platform", "linux")
         .expect("generate_scripts platform should match type")
         // Boundary: parse_execute_result outputs (terminal)

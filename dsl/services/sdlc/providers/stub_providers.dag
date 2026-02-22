@@ -234,3 +234,58 @@ service stub.ArtifactStore : ArtifactStore {
     @mock_response(status: 0, body: { "found": false, "marker": null })
   }
 }
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test stub_issue_provider_get {
+    @tier(Unit)
+    @hermetic(true)
+
+    input get/prepare.id -> "123"
+
+    expect result.found == true
+}
+
+test stub_issue_provider_comment {
+    @tier(Unit)
+    @hermetic(true)
+
+    input comment/prepare.id -> "42"
+    input comment/prepare.body -> "Test comment"
+    input comment/prepare.marker -> "marker"
+
+    expect result.ok == true
+    expect result.comment_id == "stub-comment-1"
+}
+
+test stub_issue_provider_close {
+    @tier(Unit)
+    @hermetic(true)
+
+    input close/prepare.id -> "42"
+
+    expect result.ok == true
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test stub_issue_provider_get {
+    @tier(Unit)
+    @hermetic(true)
+
+    input get/prepare.id -> "42"
+
+    expect result.found == true
+    expect result.issue.id == "42"
+}
+
+test stub_issue_provider_comment {
+    @tier(Unit)
+    @hermetic(true)
+
+    input comment/prepare.id -> "42"
+    input comment/prepare.body -> "hello"
+
+    expect result.ok == true
+    expect result.comment_id == "stub-comment-1"
+}

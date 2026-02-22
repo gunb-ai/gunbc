@@ -64,8 +64,8 @@ pub fn build_chat_completion_graph_with_config(
         vec![],
         vec![
             port("config", "CloudSecretConfig"),
-            optional("request_url", "OptionalString"),
-            optional("request_token", "OptionalString"),
+            optional("request_url", "Url"),
+            optional("request_token", "Secret"),
         ],
         DynOp::new(CloudOps::ConstCloudConfig {
             config: cloud_config.clone(),
@@ -78,10 +78,10 @@ pub fn build_chat_completion_graph_with_config(
         vec![port("provider", "NonEmptyString")],
         vec![
             port("service", "NonEmptyString"),
-            port("secret_name", "GcpSecretId"),
+            port("secret_name", "SecretName"),
             optional("allow_impersonation", "OptionalBool"),
             port("scheme", "NonEmptyString"),
-            port("header_name", "String"),
+            port("header_name", "NonEmptyString"),
             list("required_scopes", "NonEmptyString"),
             port("interactive_allowed", "Bool"),
         ],
@@ -95,7 +95,7 @@ pub fn build_chat_completion_graph_with_config(
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "NonEmptyString"),
-                port("secret_name", "GcpSecretId"),
+                port("secret_name", "SecretName"),
             ],
             vec![port("config", "CloudSecretConfig")],
             DynOp::new(CloudOps::BindSecretName),

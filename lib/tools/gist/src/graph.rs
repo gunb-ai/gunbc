@@ -507,7 +507,7 @@ fn build_snapshot_acquire(
         Node::opaque(
             "render_markdown",
             vec![port("contents", "Map")],
-            vec![scalar("markdown", "String")],
+            vec![scalar("markdown", "NonEmptyString")],
             DynOp::new(MarkdownOp::RenderCodeSnapshot),
         ),
         &collect_file_contents,
@@ -566,9 +566,9 @@ fn build_diff_acquire(
             "render_markdown",
             vec![
                 port("diff_files", "Map"),
-                optional("stats", "OptionalString"),
+                optional("stats", "NonEmptyString"),
             ],
-            vec![scalar("markdown", "String")],
+            vec![scalar("markdown", "NonEmptyString")],
             DynOp::new(MarkdownOp::RenderDiffSnapshot),
         ),
         &diff,
@@ -653,9 +653,9 @@ fn build_recent_acquire(
             "render_markdown",
             vec![
                 port("diff_files", "Map"),
-                optional("stats", "OptionalString"),
+                optional("stats", "NonEmptyString"),
             ],
-            vec![scalar("markdown", "String")],
+            vec![scalar("markdown", "NonEmptyString")],
             DynOp::new(MarkdownOp::RenderDiffSnapshot),
         ),
         &diff,

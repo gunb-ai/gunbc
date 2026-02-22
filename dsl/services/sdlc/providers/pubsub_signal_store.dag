@@ -1,0 +1,72 @@
+// services/sdlc/providers/pubsub_signal_store.dag
+//
+// Layer 3 concrete implementation: PubSubSignalStore implements SignalStore.
+//
+// Uses GCP Pub/Sub for distributed signal delivery.
+
+module services.sdlc.providers.pubsub_signal_store
+
+import interfaces.signal_store { SignalStore }
+import std.types { NonEmptyStr, Signal, SignalType }
+
+service gcp.PubSubSignalStore : SignalStore {
+
+  config {
+    project_id: String
+    topic: String
+    subscription: String
+  }
+
+  operation emit {
+    input { signal: Signal }
+    output { emitted: Bool }
+    @gcp_pubsub(PUBLISH, "{config.topic}")
+    @idempotent
+    @mock_response(
+      status: 0,
+      body: { "emitted": true }
+    )
+  }
+
+  operation consume {
+    input { signal_types: List<SignalType>, limit: Int? }
+    output { signals: List<Signal> }
+    @gcp_pubsub(PULL, "{config.subscription}")
+    @mock_response(
+      status: 0,
+      body: { "signals": [] }
+    )
+  }
+
+  operation ack {
+    input { idempotency_key: NonEmptyStr }
+    output { acked: Bool }
+    @gcp_pubsub(ACK, "{config.subscription}")
+    @idempotent
+    @mock_response(
+      status: 0,
+      body: { "acked": true }
+    )
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test pubsub_signal_store_emit {
+    @tier(Unit)
+    @hermetic(true)
+
+    input emit/prepare.signal -> {
+        signal_type: ReconcileTick { window_id: "w-1" },
+        idempotency_key: "sig-1",
+        payload: {},
+        produced_at: "2026-01-01T00:00:00Z",
+        consumed_at: null
+    }
+
+    mock emit/execute.response -> gcp_response(0, {
+        emitted: true
+    })
+
+    expect result.emitted == true
+}

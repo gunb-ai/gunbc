@@ -31,16 +31,16 @@ pub fn deps_signature() -> WorkflowSignature {
         .with_input("manifest_path", "FilePath", Cardinality::ONE)
         // Outputs - boundary outputs from terminal nodes
         .with_output("dep_count", "Int", Cardinality::ONE)
-        .with_output("dep_names", "StringList", Cardinality::ZERO_OR_MORE)
+        .with_output("dep_names", "NonEmptyString", Cardinality::ZERO_OR_MORE)
         .with_output("manifest_path", "FilePath", Cardinality::ONE)
-        .with_output("already_installed", "StringList", Cardinality::ZERO_OR_MORE)
-        .with_output("needs_install", "StringList", Cardinality::ZERO_OR_MORE)
-        .with_output("platform", "String", Cardinality::ONE)
+        .with_output("already_installed", "NonEmptyString", Cardinality::ZERO_OR_MORE)
+        .with_output("needs_install", "NonEmptyString", Cardinality::ZERO_OR_MORE)
+        .with_output("platform", "Platform", Cardinality::ONE)
         .with_output("executed", "Bool", Cardinality::ONE)
         .with_output("success", "Bool", Cardinality::ONE)
-        .with_output("script", "String", Cardinality::ONE)
-        .with_output("stdout", "String", Cardinality::ONE)
-        .with_output("stderr", "String", Cardinality::ONE)
+        .with_output("script", "NonEmptyString", Cardinality::ONE)
+        .with_output("stdout", "NonEmptyString", Cardinality::ONE)
+        .with_output("stderr", "NonEmptyString", Cardinality::ONE)
 }
 
 /// Build the deps graph with explicit transport nodes.
@@ -91,9 +91,9 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         vec![port("manifest_path", "FilePath")],
         vec![
             scalar("dep_count", "Int"),
-            list("dep_names", "StringList"),
+            list("dep_names", "NonEmptyString"),
             scalar("manifest_path", "FilePath"),
-            scalar("manifest_content", "String"), // Pass content to GenerateScripts
+            scalar("manifest_content", "NonEmptyString"), // Pass content to GenerateScripts
         ],
         DynOp::new(DepsOp::PrepareLoadManifest),
         DynOp::new(DepsOp::ParseManifest),
@@ -110,14 +110,14 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         Node::opaque(
             "generate_scripts",
             vec![
-                scalar("manifest_content", "String"), // Receives content, not path
+                scalar("manifest_content", "NonEmptyString"), // Receives content, not path
                 resource("platform", "Platform", AccessMode::Read), // Platform acquired at boundary
             ],
             vec![
-                scalar("install_script", "String"),
-                list("already_installed", "StringList"),
-                list("needs_install", "StringList"),
-                scalar("platform", "String"),
+                scalar("install_script", "NonEmptyString"),
+                list("already_installed", "NonEmptyString"),
+                list("needs_install", "NonEmptyString"),
+                scalar("platform", "Platform"),
             ],
             DynOp::new(DepsOp::GenerateScripts),
         ),
@@ -135,15 +135,15 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "prepare_execute_installs",
         "execute_installs",
         "parse_execute_result",
-        vec![scalar("install_script", "String")],
+        vec![scalar("install_script", "NonEmptyString")],
         vec![resource("file", "FilesystemHandle", AccessMode::Write)],
-        vec![scalar("script", "String")],
+        vec![scalar("script", "NonEmptyString")],
         vec![
             scalar("executed", "Bool"),
             scalar("success", "Bool"),
-            scalar("script", "String"),
-            scalar("stdout", "String"),
-            scalar("stderr", "String"),
+            scalar("script", "NonEmptyString"),
+            scalar("stdout", "NonEmptyString"),
+            scalar("stderr", "NonEmptyString"),
         ],
         DynOp::new(DepsOp::PrepareExecuteInstalls),
         DynOp::new(DepsOp::ParseExecuteResult),
@@ -206,7 +206,7 @@ pub fn deps_generate_signature() -> WorkflowSignature {
         .with_output("content", "NonEmptyString", Cardinality::ONE)
         // Informational outputs from load_tool_registry
         .with_output("tool_count", "Int", Cardinality::ONE)
-        .with_output("tool_names", "String", Cardinality::ONE_OR_MORE)
+        .with_output("tool_names", "NonEmptyString", Cardinality::ONE_OR_MORE)
 }
 
 /// Build the deps generate graph.

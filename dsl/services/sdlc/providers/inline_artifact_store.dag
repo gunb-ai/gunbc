@@ -1,0 +1,61 @@
+// services/sdlc/providers/inline_artifact_store.dag
+//
+// Layer 3 concrete implementation: InlineArtifactStore implements ArtifactStore.
+//
+// Uses issue comments / gists for artifact storage. Local profile.
+
+module services.sdlc.providers.inline_artifact_store
+
+import interfaces.artifact_store { ArtifactStore }
+import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }
+
+service inline.ArtifactStore : ArtifactStore {
+
+  operation store {
+    input { artifact_id: NonEmptyStr, payload: ArtifactPayload, content_hash: NonEmptyStr }
+    output { stored: Bool, conflict: Bool }
+    @exec("gunbc-gist", ["create", "--file", "{artifact_id}", "--content", "{payload}"])
+    @idempotent
+    @mock_response(status: 0, body: { "stored": true, "conflict": false })
+  }
+
+  operation retrieve {
+    input { artifact_id: NonEmptyStr }
+    output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
+    @exec("gunbc-gist", ["read", "--id", "{artifact_id}"])
+    @mock_response(status: 0, body: { "found": false, "payload": null, "content_hash": null })
+  }
+
+  operation store_marker {
+    input { marker: ArtifactMarker }
+    output { stored: Bool }
+    @exec("gunbc-gist", ["store-marker", "--marker", "{marker}"])
+    @idempotent
+    @mock_response(status: 0, body: { "stored": true })
+  }
+
+  operation get_canonical_marker {
+    input { run_key: NonEmptyStr, artifact_type: ArtifactType }
+    output { found: Bool, marker: ArtifactMarker? }
+    @exec("gunbc-gist", ["get-canonical-marker", "--run-key", "{run_key}", "--type", "{artifact_type}"])
+    @mock_response(status: 0, body: { "found": false, "marker": null })
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test inline_artifact_store_store {
+    @tier(Unit)
+    @hermetic(true)
+
+    input store/prepare.artifact_id -> "art-1"
+    input store/prepare.payload -> "{}"
+    input store/prepare.content_hash -> "hash-1"
+
+    mock store/execute.response -> exec_response(0, {
+        stored: true,
+        conflict: false
+    })
+
+    expect result.stored == true
+}

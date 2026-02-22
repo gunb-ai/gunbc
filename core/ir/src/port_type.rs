@@ -186,6 +186,7 @@ fn try_parse_port_type(s: &str) -> Option<PortType> {
         "FilePath"
         | "Path"
         | "TextFilePath"
+        | "SecretName"
         | "Url"
         | "Email"
         | "NonEmptyString"
@@ -300,6 +301,7 @@ mod tests {
         assert_eq!(PortType::from("Platform"), PortType::String);
         assert_eq!(PortType::from("Url"), PortType::String);
         assert_eq!(PortType::from("GcpProjectId"), PortType::String);
+        assert_eq!(PortType::from("SecretName"), PortType::String);
 
         // Bytes-backed domain types
         assert_eq!(PortType::from("BinaryFilePath"), PortType::Bytes);
