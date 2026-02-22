@@ -112,7 +112,7 @@ func execute_stage(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
   uses agents: AgentProvider
@@ -151,6 +151,7 @@ func execute_stage(
   return {
     success: result.success,
     next_stage: result.next_stage,
+    awaiting_approval: result.awaiting_approval,
     artifact_posted: result.artifact_posted,
     payload: result.payload
   }
@@ -174,7 +175,7 @@ func handle_idea_to_design(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
 {
@@ -199,7 +200,7 @@ func handle_idea_to_design(
     labels: [label_design()]
   )
 
-  return { success: true, next_stage: Design, artifact_posted: comment.ok, payload: None }
+  return { success: true, next_stage: Design, awaiting_approval: false, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 2: Design -> DesignReview ────────────────────────────────
@@ -215,7 +216,7 @@ func handle_design_to_review(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
 {
@@ -245,7 +246,7 @@ func handle_design_to_review(
     labels: [label_design_review()]
   )
 
-  return { success: true, next_stage: DesignReview, artifact_posted: comment.ok, payload: None }
+  return { success: true, next_stage: DesignReview, awaiting_approval: false, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 3: DesignReview -> Accepted ──────────────────────────────
@@ -257,7 +258,7 @@ func handle_review_to_accepted(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
 {
   // Post acceptance comment
@@ -273,7 +274,7 @@ func handle_review_to_accepted(
     labels: [label_accepted()]
   )
 
-  return { success: true, next_stage: Accepted, artifact_posted: comment.ok, payload: None }
+  return { success: true, next_stage: Accepted, awaiting_approval: true, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 4: Accepted -> Implementing ──────────────────────────────
@@ -288,7 +289,7 @@ func handle_accepted_to_implementing(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses agents: AgentProvider
 {
@@ -321,6 +322,7 @@ func handle_accepted_to_implementing(
   return {
     success: agent.started,
     next_stage: Implementing,
+    awaiting_approval: false,
     artifact_posted: comment.ok,
     payload: None
   }
@@ -337,7 +339,7 @@ func handle_implementing_to_code_review(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses agents: AgentProvider
   uses outcomes: OutcomeLedger
@@ -379,7 +381,7 @@ func handle_implementing_to_code_review(
     labels: [label_code_review()]
   )
 
-  return { success: true, next_stage: CodeReview, artifact_posted: comment.ok, payload: None }
+  return { success: true, next_stage: CodeReview, awaiting_approval: false, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 6: CodeReview -> Testing ─────────────────────────────────
@@ -394,7 +396,7 @@ func handle_code_review_to_testing(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
 {
   // Find the PR for this issue (convention: PR head = sdlc/issue-{number})
@@ -460,7 +462,7 @@ func handle_code_review_to_testing(
     labels: [label_testing()]
   )
 
-  return { success: true, next_stage: Testing, artifact_posted: comment.ok, payload: None }
+  return { success: true, next_stage: Testing, awaiting_approval: false, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 7: Testing -> Done ───────────────────────────────────────
@@ -473,7 +475,7 @@ func handle_testing_to_done(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
 {
   // Run cargo test
@@ -515,7 +517,7 @@ func handle_testing_to_done(
     )
   }
 
-  return { success: all_passed, next_stage: match all_passed { true => Done, false => Testing }, artifact_posted: comment.ok, payload: None }
+  return { success: all_passed, next_stage: match all_passed { true => Done, false => Testing }, awaiting_approval: false, artifact_posted: comment.ok, payload: None }
 }
 
 // ── Stage 8: Done (terminalize, close issue) ───────────────────────
@@ -527,7 +529,7 @@ func handle_done(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, awaiting_approval: Bool, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
 {
   // Post final summary
@@ -540,7 +542,7 @@ func handle_done(
   // Close the issue
   closed = issues.close(id: issue_id)
 
-  return { success: closed.ok, next_stage: Done, artifact_posted: comment.ok, payload: None }
+  return { success: closed.ok, next_stage: Done, awaiting_approval: false, artifact_posted: comment.ok, payload: None }
 }
 
 // ═══════════════════════════════════════════════════════════════════

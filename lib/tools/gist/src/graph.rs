@@ -295,7 +295,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
 pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
     let mut sig = WorkflowSignature::new()
         .with_input("repo_path", "FilePath", Cardinality::ONE)
-        .with_output("url", "String", Cardinality::ONE)
+        .with_output("url", "Url", Cardinality::ONE)
         // cloud_credential subdag exposes ok from IAM ensure chain (LocalDev only)
         .with_output("ok", "Bool", Cardinality::ONE)
         // cloud_credential subdag also surfaces lease metadata.
@@ -492,7 +492,10 @@ fn build_snapshot_acquire(
     let collect_file_contents = builder.add_node_after(
         Node::opaque(
             "collect_file_contents",
-            vec![list("filenames", "FilePath"), list("contents_list", "String")],
+            vec![
+                list("filenames", "FilePath"),
+                list("contents_list", "String"),
+            ],
             vec![port("contents", "Map")],
             DynOp::new(CollectFileContentsOp),
         ),
@@ -545,7 +548,7 @@ fn build_diff_acquire(
             optional("base_ref", "OptionalString"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![port("diff_files", "Map"), scalar("stats", "String")],
+        vec![port("diff_files", "Map"), scalar("stats", "NonEmptyString")],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: base_ref.to_string(),
             extensions,
@@ -632,7 +635,7 @@ fn build_recent_acquire(
             optional("base_ref", "OptionalString"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![port("diff_files", "Map"), scalar("stats", "String")],
+        vec![port("diff_files", "Map"), scalar("stats", "NonEmptyString")],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: "HEAD".to_string(),
             extensions,
@@ -983,8 +986,8 @@ mod tests {
 
         let body = build_read_file_body_dag();
         let node: Node<GistGraphOp> = LoopBuilder::new("read_files_loop")
-            .with_input("files", "String", Cardinality::ZERO_OR_MORE)
-            .with_element("filename", "String")
+            .with_input("files", "FilePath", Cardinality::ZERO_OR_MORE)
+            .with_element("filename", "FilePath")
             .with_body(body)
             .with_output("contents", "String")
             .build();

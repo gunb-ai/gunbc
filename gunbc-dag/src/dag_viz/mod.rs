@@ -36,6 +36,16 @@ pub mod graph_mock;
 
 // Re-export public API
 pub use graph::{build_dag_viz_graph, dag_viz_signature, DagVizGraphOp, DagVizMode};
+use gunbc_exec::DynOp;
+use gunbc_ir::{BuilderError, Dag};
+
+/// DSL-backed dag_viz graph builder used by tool target registration.
+///
+/// Mode selection is encoded in the lowered DSL module; this wrapper keeps the
+/// existing builder call shape expected by generated CLIs.
+pub fn build_dag_viz_graph_dsl(_mode: DagVizMode) -> Result<Dag<DynOp>, BuilderError> {
+    crate::dsl_builder::build_dag_viz_graph_dsl()
+}
 
 // ============================================================================
 // Tool Target Registrations
@@ -45,9 +55,9 @@ pub use graph::{build_dag_viz_graph, dag_viz_signature, DagVizGraphOp, DagVizMod
     name = "dag-viz",
     crate_name = "gunbc-dag",
     description = "Visualize DAG topology as interactive HTML",
-    builder = "build_dag_viz_graph",
+    builder = "build_dag_viz_graph_dsl",
     args = "DagVizMode::Snapshot",
-    import = "use gunbc_dag::dag_viz::{build_dag_viz_graph, DagVizMode};",
+    import = "use gunbc_dag::dag_viz::{build_dag_viz_graph_dsl, DagVizMode};",
     mock_spec = "gunbc_dag::dag_viz::graph_mock::dag_viz_snapshot_mock_spec()",
     package = "dag",
     binary = "dag-viz",
@@ -62,9 +72,9 @@ pub fn dag_viz_snapshot_tool() {}
     name = "dag-viz-diff",
     crate_name = "gunbc-dag",
     description = "Visualize DAG topology diff vs base branch",
-    builder = "build_dag_viz_graph",
+    builder = "build_dag_viz_graph_dsl",
     args = "DagVizMode::Diff { base_ref: base_ref.clone() }",
-    import = "use gunbc_dag::dag_viz::{build_dag_viz_graph, DagVizMode};",
+    import = "use gunbc_dag::dag_viz::{build_dag_viz_graph_dsl, DagVizMode};",
     mock_spec = "gunbc_dag::dag_viz::graph_mock::dag_viz_diff_mock_spec()",
     package = "dag",
     binary = "dag-viz-diff",
@@ -79,9 +89,9 @@ pub fn dag_viz_diff_tool() {}
     name = "dag-viz-recent",
     crate_name = "gunbc-dag",
     description = "Visualize DAG topology changes from last 3 days",
-    builder = "build_dag_viz_graph",
+    builder = "build_dag_viz_graph_dsl",
     args = "DagVizMode::Recent",
-    import = "use gunbc_dag::dag_viz::{build_dag_viz_graph, DagVizMode};",
+    import = "use gunbc_dag::dag_viz::{build_dag_viz_graph_dsl, DagVizMode};",
     mock_spec = "gunbc_dag::dag_viz::graph_mock::dag_viz_recent_mock_spec()",
     package = "dag",
     binary = "dag-viz-recent",
@@ -96,9 +106,9 @@ pub fn dag_viz_recent_tool() {}
     name = "dag-snapshot",
     crate_name = "gunbc-dag",
     description = "Save DAG topology snapshot to .dag-snapshots/workspace.json",
-    builder = "build_dag_viz_graph",
+    builder = "build_dag_viz_graph_dsl",
     args = "DagVizMode::SaveSnapshot",
-    import = "use gunbc_dag::dag_viz::{build_dag_viz_graph, DagVizMode};",
+    import = "use gunbc_dag::dag_viz::{build_dag_viz_graph_dsl, DagVizMode};",
     mock_spec = "gunbc_dag::dag_viz::graph_mock::dag_viz_save_snapshot_mock_spec()",
     package = "dag",
     binary = "dag-snapshot",

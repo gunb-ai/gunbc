@@ -203,7 +203,7 @@ pub fn deps_generate_signature() -> WorkflowSignature {
         // Outputs from execute_transport (boundary)
         .with_output("response", "TransportResponse", Cardinality::ONE)
         .with_output("written_path", "FilePath", Cardinality::ONE)
-        .with_output("content", "String", Cardinality::ONE)
+        .with_output("content", "NonEmptyString", Cardinality::ONE)
         // Informational outputs from load_tool_registry
         .with_output("tool_count", "Int", Cardinality::ONE)
         .with_output("tool_names", "String", Cardinality::ONE_OR_MORE)
@@ -288,7 +288,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             vec![
                 port("response", "TransportResponse"),
                 port("written_path", "FilePath"),
-                port("content", "String"),
+                port("content", "NonEmptyString"),
             ],
             DynOp::new(TransportOps::Execute),
         ),

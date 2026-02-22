@@ -171,6 +171,11 @@ mod tests {
     fn workspace_binary_table_matches_cargo_manifest_bins() {
         let non_workspace_dispatch_bins: BTreeSet<&str> = BTreeSet::from([
             // DSL/runtime dispatches these through shared tool-family modules.
+            "deps",
+            "gist",
+            "gist-diff",
+            "gist-recent",
+            // DSL/runtime dispatches these through shared tool-family modules.
             "dag-viz",
             "dag-viz-diff",
             "dag-viz-recent",

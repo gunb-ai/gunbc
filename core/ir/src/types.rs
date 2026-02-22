@@ -1310,7 +1310,10 @@ mod tests {
             &Value::Str("linux".into())
         ));
         let mut credential_map = BTreeMap::new();
-        credential_map.insert("token".to_string(), Value::Secret(crate::SecretString::new("tok")));
+        credential_map.insert(
+            "token".to_string(),
+            Value::Secret(crate::SecretString::new("tok")),
+        );
         credential_map.insert("scheme".to_string(), Value::Str("bearer".into()));
         credential_map.insert("source_type".to_string(), Value::Str("static".into()));
         credential_map.insert(

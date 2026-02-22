@@ -2482,7 +2482,11 @@ impl Parser {
             };
             self.expect(&TokenKind::FatArrow)?;
             let body = self.parse_expr(0)?;
-            arms.push(MatchArm { pattern, guard, body });
+            arms.push(MatchArm {
+                pattern,
+                guard,
+                body,
+            });
             self.eat(&TokenKind::Comma);
         }
         self.expect(&TokenKind::RBrace)?;
@@ -2774,7 +2778,9 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
         match &sf.items[2].node {
             Item::FnDef(f) => {
                 assert!(!f.body.lossy);
-                assert!(matches!(f.body.stmts.first(), Some(Stmt::Expr(Expr::Match(_, arms))) if arms.len() == 2));
+                assert!(
+                    matches!(f.body.stmts.first(), Some(Stmt::Expr(Expr::Match(_, arms))) if arms.len() == 2)
+                );
             }
             other => panic!("expected FnDef, got {other:?}"),
         }

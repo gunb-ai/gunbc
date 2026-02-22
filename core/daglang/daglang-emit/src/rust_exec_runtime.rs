@@ -78,8 +78,7 @@ pub fn emit_exec_runtime_with_config(
     output_dir: Option<&Path>,
     config: &EmitConfig,
 ) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
-    let classified =
-        classify_nodes_with_config(dag, config.allow_unimplemented_passthrough)?;
+    let classified = classify_nodes_with_config(dag, config.allow_unimplemented_passthrough)?;
     let handler_kinds = collect_handler_kinds(&classified);
     let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
     let main_rs = crate::render_rust::render_rust_source(&source);
@@ -213,12 +212,8 @@ fn classify_nodes_with_config(
 
         if handler == HandlerKind::UnimplementedPassthrough && !allow_unimplemented_passthrough {
             let (module, name) = match op {
-                LoweredOp::Callable { module, name, .. } => {
-                    (module.as_str(), name.as_str())
-                }
-                LoweredOp::Pipeline { module, name, .. } => {
-                    (module.as_str(), name.as_str())
-                }
+                LoweredOp::Callable { module, name, .. } => (module.as_str(), name.as_str()),
+                LoweredOp::Pipeline { module, name, .. } => (module.as_str(), name.as_str()),
                 _ => ("unknown", "unknown"),
             };
             return Err(ExecRuntimeError::UnresolvableNode {

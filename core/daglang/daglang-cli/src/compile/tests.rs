@@ -449,15 +449,12 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
         },
     ));
 
-    // Unknown callables now resolve to PassthroughOp (the compiler validated
-    // the callable exists; if it compiled, it's resolvable without a registry entry).
-    let resolved =
-        resolve_lowered_dag(&dag).expect("unknown callables should resolve to passthrough");
-    assert_eq!(resolved.nodes.len(), 1);
-    let debug = format!("{:?}", resolved.nodes[0].body);
+    let error = resolve_lowered_dag(&dag).expect_err("unknown callables should fail closed");
     assert!(
-        debug.contains("PassthroughOp"),
-        "unexpected op debug: {debug}"
+        error
+            .to_string()
+            .contains("unknown callable `sample.module.unknown`"),
+        "unexpected resolve error: {error}"
     );
 }
 

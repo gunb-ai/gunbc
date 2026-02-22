@@ -45,6 +45,9 @@ use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 // Force-link crates so inventory-driven `tool_target` registrations are retained.
 // The `_` alias makes the side-effect-only intent explicit.
+use gunbc_clippy as _;
+use gunbc_deps as _;
+use gunbc_gist as _;
 use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 
@@ -1162,10 +1165,14 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     let output_dir = codegen_bin_dir();
 
     struct BinRegistration {
-        tool_name: String,
-        bin_name: String,
         cargo_toml_path: PathBuf,
         doc: DocumentMut,
+        entries: Vec<BinRegistrationEntry>,
+    }
+
+    struct BinRegistrationEntry {
+        tool_name: String,
+        bin_name: String,
         rel_path: String,
     }
 
@@ -1198,6 +1205,24 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
         };
 
         let cargo_toml_path = crate_dir.join("Cargo.toml");
+        let bin_abs_path = output_dir
+            .join(tool.meta.tool_name.as_ref())
+            .join("main.rs");
+        let rel_path = normalize_path(&relative_path(crate_dir, &bin_abs_path));
+        let entry = BinRegistrationEntry {
+            tool_name: tool.meta.tool_name.to_string(),
+            bin_name: inv.binary.clone(),
+            rel_path,
+        };
+
+        if let Some(existing) = registrations
+            .iter_mut()
+            .find(|reg| reg.cargo_toml_path == cargo_toml_path)
+        {
+            existing.entries.push(entry);
+            continue;
+        }
+
         let cargo_content = match io.read_file(&cargo_toml_path) {
             Ok(bytes) => match String::from_utf8(bytes) {
                 Ok(c) => c,
@@ -1235,17 +1260,10 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
             }
         };
 
-        let bin_abs_path = output_dir
-            .join(tool.meta.tool_name.as_ref())
-            .join("main.rs");
-        let rel_path = normalize_path(&relative_path(crate_dir, &bin_abs_path));
-
         registrations.push(BinRegistration {
-            tool_name: tool.meta.tool_name.to_string(),
-            bin_name: inv.binary.clone(),
             cargo_toml_path,
             doc,
-            rel_path,
+            entries: vec![entry],
         });
     }
 
@@ -1301,49 +1319,59 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     println!("  Registering binary targets...");
 
     for reg in &mut registrations {
-        match ensure_bin_entry(&mut reg.doc, &reg.bin_name, &reg.rel_path) {
-            Ok(false) => {
-                println!(
-                    "  [{}] {} (already registered)",
-                    reg.tool_name,
-                    reg.cargo_toml_path.display()
-                );
-            }
-            Ok(true) => match writer.write_if_changed(&reg.cargo_toml_path, reg.doc.to_string()) {
-                Ok(result) => {
-                    let status = if dry_run {
-                        "dry-run"
-                    } else if result.changed {
-                        "registered"
-                    } else {
-                        "unchanged"
-                    };
+        let mut changed = false;
+        for entry in &reg.entries {
+            match ensure_bin_entry(&mut reg.doc, &entry.bin_name, &entry.rel_path) {
+                Ok(false) => {
                     println!(
-                        "  [{}] {} → {} ({})",
-                        reg.tool_name,
-                        reg.bin_name,
-                        reg.cargo_toml_path.display(),
-                        status
+                        "  [{}] {} (already registered)",
+                        entry.tool_name,
+                        reg.cargo_toml_path.display()
+                    );
+                }
+                Ok(true) => {
+                    changed = true;
+                    println!(
+                        "  [{}] {} → {} (pending write)",
+                        entry.tool_name,
+                        entry.bin_name,
+                        reg.cargo_toml_path.display()
                     );
                 }
                 Err(e) => {
                     errors.push(format!(
-                        "[{}] could not write {}: {}",
-                        reg.tool_name,
+                        "[{}] could not update {}: {}",
+                        entry.tool_name,
                         reg.cargo_toml_path.display(),
                         e
                     ));
                 }
-            },
+            }
+        }
+
+        if !changed {
+            continue;
+        }
+
+        match writer.write_if_changed(&reg.cargo_toml_path, reg.doc.to_string()) {
+            Ok(result) => {
+                let status = if dry_run {
+                    "dry-run"
+                } else if result.changed {
+                    "registered"
+                } else {
+                    "unchanged"
+                };
+                println!("  [manifest] {} ({})", reg.cargo_toml_path.display(), status);
+            }
             Err(e) => {
                 errors.push(format!(
-                    "[{}] could not update {}: {}",
-                    reg.tool_name,
+                    "could not write {}: {}",
                     reg.cargo_toml_path.display(),
                     e
                 ));
             }
-        }
+        };
     }
 
     if !errors.is_empty() {
@@ -1763,5 +1791,4 @@ pub fn sample_tool() {}
         assert!(err.contains("unmapped DSL tool modules"));
         assert!(err.contains("unknown_new_tool"));
     }
-
 }

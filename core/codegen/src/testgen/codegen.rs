@@ -231,8 +231,8 @@ pub struct TestGenerator<'a, T> {
     signature_fn: Option<String>,
     /// CLI entrypoints for contract test generation: (tool_name, entrypoints).
     cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
-    /// Optional type registry for contract-derived witness values.
-    type_registry: Option<TypeRegistry>,
+    /// Type registry for contract-derived witness values.
+    type_registry: TypeRegistry,
 }
 
 struct ProbeObserverBundle {
@@ -257,7 +257,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             mock_spec_fn: None,
             signature_fn: None,
             cli_entrypoints: None,
-            type_registry: Some(TypeRegistry::with_core_types()),
+            type_registry: TypeRegistry::with_core_types(),
         }
     }
 
@@ -303,7 +303,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
     /// Set a type registry for contract-derived witness values.
     pub fn with_type_registry(mut self, registry: TypeRegistry) -> Self {
-        self.type_registry = Some(registry);
+        self.type_registry = registry;
         self
     }
 
@@ -2000,7 +2000,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         type_id,
                         *cardinality,
                         count,
-                        self.type_registry.as_ref(),
+                        Some(&self.type_registry),
                     );
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "cardinality coverage tests");
 
@@ -3468,9 +3468,9 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
 
             let value = if port.has_guard() {
-                select_guard_value(port, self.type_registry.as_ref())
+                select_guard_value(port, Some(&self.type_registry))
             } else {
-                required_value_for_port(port, self.type_registry.as_ref())
+                required_value_for_port(port, Some(&self.type_registry))
             };
 
             match value {

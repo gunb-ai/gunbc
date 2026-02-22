@@ -24,8 +24,8 @@ use daglang_cli::compile::{
     compile_from_context_with_options, compile_resolve_execute_from_context,
     makegen_check_mode_transport_mocks, makegen_dry_run_transport_mocks, makegen_entrypoint_mocks,
     render_canonical_ir_json, render_expand, render_obligations, render_progress_with_format,
-    render_topology_with_format,
-    render_triplets, resolve_configured_roots as resolve_configured_roots_from_context,
+    render_topology_with_format, render_triplets,
+    resolve_configured_roots as resolve_configured_roots_from_context,
     resolve_default_roots as resolve_default_roots_from_context, CompileOptions, CompileOutput,
     OutputFormat,
 };
@@ -576,9 +576,7 @@ pub(crate) fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), 
     while i < args.len() {
         let token = &args[i];
         if token == "--format" {
-            let value = args
-                .get(i + 1)
-                .ok_or_else(|| VIZ_USAGE.to_string())?;
+            let value = args.get(i + 1).ok_or_else(|| VIZ_USAGE.to_string())?;
             format = match value.as_str() {
                 "ascii" => VizFormat::Ascii,
                 "mermaid" => VizFormat::Mermaid,
@@ -608,7 +606,9 @@ pub(crate) fn parse_viz_args(args: &[String]) -> Result<(VizTarget, VizFormat), 
     Ok((target, format))
 }
 
-pub(crate) fn parse_modules_args(args: &[String]) -> Result<(Option<String>, OutputFormat), String> {
+pub(crate) fn parse_modules_args(
+    args: &[String],
+) -> Result<(Option<String>, OutputFormat), String> {
     if args.is_empty() || args.get(1).map(String::as_str) != Some("modules") {
         return Err(
             "internal error: parse_modules_args expects full `daglang modules ...` argv"
@@ -1556,8 +1556,8 @@ mod tests {
             "--format".to_string(),
             "json".to_string(),
         ];
-        let parsed =
-            super::parse_progress_command_args("progress", &args).expect("progress args should parse");
+        let parsed = super::parse_progress_command_args("progress", &args)
+            .expect("progress args should parse");
         assert_eq!(parsed.input, "dsl/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Json));
         assert!(parsed.emit_collection_nodes);

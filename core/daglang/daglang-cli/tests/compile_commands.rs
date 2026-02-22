@@ -1642,8 +1642,14 @@ fn compile_command_canonical_json_is_deterministic_for_single_file() {
         .get("edges")
         .and_then(Value::as_array)
         .expect("canonical-json should include edges array");
-    assert!(!nodes.is_empty(), "canonical-json nodes array should not be empty");
-    assert!(!edges.is_empty(), "canonical-json edges array should not be empty");
+    assert!(
+        !nodes.is_empty(),
+        "canonical-json nodes array should not be empty"
+    );
+    assert!(
+        !edges.is_empty(),
+        "canonical-json edges array should not be empty"
+    );
 }
 
 #[test]
@@ -6577,9 +6583,18 @@ fn topology_command_json_format_emits_valid_json_object() {
     );
     let parsed: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("topology --format json should emit JSON");
-    assert!(parsed.get("topology").is_some(), "JSON should have topology key");
-    assert!(parsed.get("labels").is_some(), "JSON should have labels key");
-    assert!(parsed.get("subdag_boundaries").is_some(), "JSON should have subdag_boundaries key");
+    assert!(
+        parsed.get("topology").is_some(),
+        "JSON should have topology key"
+    );
+    assert!(
+        parsed.get("labels").is_some(),
+        "JSON should have labels key"
+    );
+    assert!(
+        parsed.get("subdag_boundaries").is_some(),
+        "JSON should have subdag_boundaries key"
+    );
 }
 
 #[test]
@@ -6925,14 +6940,35 @@ fn progress_command_json_contains_expected_progress_keys() {
     );
     let parsed: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("progress json should be valid");
-    assert!(parsed.get("total_nodes").is_some(), "should have total_nodes");
-    assert!(parsed.get("total_edges").is_some(), "should have total_edges");
+    assert!(
+        parsed.get("total_nodes").is_some(),
+        "should have total_nodes"
+    );
+    assert!(
+        parsed.get("total_edges").is_some(),
+        "should have total_edges"
+    );
     assert!(parsed.get("waves").is_some(), "should have waves");
-    assert!(parsed.get("parallel_groups").is_some(), "should have parallel_groups");
-    assert!(parsed.get("stage_groups").is_some(), "should have stage_groups");
-    assert!(parsed.get("test_obligations").is_some(), "should have test_obligations");
-    assert!(parsed.get("topology").is_none(), "progress should not include topology");
-    assert!(parsed.get("labels").is_none(), "progress should not include labels");
+    assert!(
+        parsed.get("parallel_groups").is_some(),
+        "should have parallel_groups"
+    );
+    assert!(
+        parsed.get("stage_groups").is_some(),
+        "should have stage_groups"
+    );
+    assert!(
+        parsed.get("test_obligations").is_some(),
+        "should have test_obligations"
+    );
+    assert!(
+        parsed.get("topology").is_none(),
+        "progress should not include topology"
+    );
+    assert!(
+        parsed.get("labels").is_none(),
+        "progress should not include labels"
+    );
 }
 
 #[test]

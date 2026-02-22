@@ -304,7 +304,9 @@ impl Executable for GenericShellPrepareOp {
         }
 
         let command = argv.remove(0);
-        let request = ShellRequest::new(command).args(argv);
+        let request = ShellRequest::new(command)
+            .args(argv)
+            .passthrough(self.spec.passthrough);
 
         OutputMap::new()
             .request("request", TransportRequest::Shell(request))
@@ -667,6 +669,7 @@ mod tests {
                 is_raw_body: false,
             }],
             output_parsing: ShellOutputParsing::TrimStdout,
+            passthrough: false,
         }
     }
 
@@ -686,6 +689,7 @@ mod tests {
                 is_raw_body: false,
             }],
             output_parsing: ShellOutputParsing::ExitCodeBool,
+            passthrough: false,
         }
     }
 
@@ -838,6 +842,22 @@ mod tests {
     }
 
     #[test]
+    fn shell_prepare_enables_passthrough_when_spec_marks_interactive() {
+        let mut spec = shell_spec_simple();
+        spec.passthrough = true;
+        let op = GenericShellPrepareOp { spec };
+
+        let outputs = op.execute(HashMap::new()).unwrap();
+        let req = outputs.get("request").unwrap();
+        match req {
+            Value::Request(TransportRequest::Shell(s)) => {
+                assert!(s.passthrough, "shell request should enable passthrough");
+            }
+            other => panic!("expected Shell request, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn shell_parse_trim_stdout() {
         let op = GenericShellParseOp {
             spec: shell_spec_simple(),
@@ -886,6 +906,7 @@ mod tests {
                 is_raw_body: false,
             }],
             output_parsing: ShellOutputParsing::SplitLines,
+            passthrough: false,
         };
         let op = GenericShellParseOp { spec };
         let response = ShellResponse::ok("origin/main\norigin/dev\n\n");
@@ -937,6 +958,7 @@ mod tests {
                 },
             ],
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+            passthrough: false,
         };
         let op = GenericShellParseOp { spec };
         let mut response = ShellResponse::ok("compiled ok");

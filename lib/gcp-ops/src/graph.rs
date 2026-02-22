@@ -366,7 +366,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 port("scheme", "String"),
                 optional("header_name", "OptionalString"),
                 port("source_id", "String"),
-                list("required_scopes", "String"),
+                list("required_scopes", "NonEmptyString"),
             ],
             vec![port("credential", "Credential")],
             DynOp::new(GcpOps::BuildCredential),
@@ -1222,8 +1222,8 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         vec![port("response", "TransportResponse")],
         vec![
             port("client_id", "String"),
-            port("client_secret", "String"),
-            port("refresh_token", "String"),
+            port("client_secret", "Secret"),
+            port("refresh_token", "Secret"),
         ],
         DynOp::new(GcpOps::ParseAdcCredentials),
     ));
@@ -1233,8 +1233,8 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_oauth2",
         vec![
             port("client_id", "String"),
-            port("client_secret", "String"),
-            port("refresh_token", "String"),
+            port("client_secret", "Secret"),
+            port("refresh_token", "Secret"),
         ],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
         DynOp::new(GcpOps::PrepareOAuth2Refresh),
@@ -1428,8 +1428,8 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         vec![port("response", "TransportResponse")],
         vec![
             port("client_id", "String"),
-            port("client_secret", "String"),
-            port("refresh_token", "String"),
+            port("client_secret", "Secret"),
+            port("refresh_token", "Secret"),
         ],
         DynOp::new(GcpOps::ParseAdcCredentials),
     ));
@@ -1471,8 +1471,8 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         "prepare_retry_oauth2",
         vec![
             port("client_id", "String"),
-            port("client_secret", "String"),
-            port("refresh_token", "String"),
+            port("client_secret", "Secret"),
+            port("refresh_token", "Secret"),
         ],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
         DynOp::new(GcpOps::PrepareOAuth2Refresh),

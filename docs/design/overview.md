@@ -2,7 +2,7 @@
 
 > **Goal**: Structural proof of workflow correctness. If it validates, it is structurally sound.
 
-Companion docs: `docs/handbook.md` (practical guide) and `SPEC.md` (formal IR spec).
+Companion docs: `docs/handbook.md` (practical guide), `SPEC.md` (formal IR spec), and `docs/design/graphir-decommission-design.md` (DSL-only migration/deletion plan).
 
 **Structurally sound** means: the graph is well-formed, acyclic, all edges satisfy type/cardinality compatibility, and all subDAG interfaces match. Structural soundness excludes dynamic failures (I/O, environment, op semantics).
 

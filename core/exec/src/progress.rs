@@ -46,6 +46,18 @@ pub trait ProgressObserver: Send {
     /// Called when a node is intercepted (DryRun mock).
     fn on_node_intercepted(&mut self, node_id: &NodeId, summary: OutputSummary);
 
+    /// Called when a node is about to run an interactive passthrough command.
+    ///
+    /// Passthrough commands inherit stdio directly and may print prompts/URLs
+    /// to the terminal. Renderers can use this hook to temporarily suspend
+    /// animated output and clear in-place frames.
+    fn on_passthrough_start(&mut self, _node_id: &NodeId) {}
+
+    /// Called after an interactive passthrough command returns.
+    ///
+    /// Renderers can use this hook to resume animated output.
+    fn on_passthrough_end(&mut self, _node_id: &NodeId) {}
+
     /// Called when DAG execution completes (success or after failure).
     fn on_dag_complete(&mut self, elapsed: Duration);
 
@@ -335,9 +347,10 @@ impl StageGroup {
 
 /// Events sent from executor to display orchestrator via channel.
 ///
-/// Mirrors the 7 core [`ProgressObserver`] methods used by the animated
-/// display path. Each variant carries owned data (no references) so events
-/// can cross thread boundaries without lifetime constraints.
+/// Mirrors the [`ProgressObserver`] lifecycle methods used by the animated
+/// display path, including passthrough terminal handoff hooks. Each variant
+/// carries owned data (no references) so events can cross thread boundaries
+/// without lifetime constraints.
 #[derive(Debug, Clone)]
 pub enum ExecutionEvent {
     DagStart(DagSnapshot),
@@ -346,6 +359,8 @@ pub enum ExecutionEvent {
     NodeFailed(NodeId, String),
     NodeSkipped(NodeId),
     NodeIntercepted(NodeId, OutputSummary),
+    PassthroughStart(NodeId),
+    PassthroughEnd(NodeId),
     DagComplete(Duration),
 }
 
@@ -484,6 +499,9 @@ impl DagProgress {
             ExecutionEvent::NodeFailed(id, error) => self.on_node_failed(&id, &error),
             ExecutionEvent::NodeSkipped(id) => self.on_node_skipped(&id),
             ExecutionEvent::NodeIntercepted(id, summary) => self.on_node_intercepted(&id, summary),
+            // Passthrough events are render-surface control signals.
+            // They do not mutate the DAG execution state machine.
+            ExecutionEvent::PassthroughStart(_) | ExecutionEvent::PassthroughEnd(_) => {}
             ExecutionEvent::DagComplete(elapsed) => self.on_dag_complete(elapsed),
         }
     }
@@ -707,6 +725,16 @@ impl ProgressObserver for ComposedObserver<'_, '_> {
         self.secondary.on_node_intercepted(node_id, summary);
     }
 
+    fn on_passthrough_start(&mut self, node_id: &NodeId) {
+        self.primary.on_passthrough_start(node_id);
+        self.secondary.on_passthrough_start(node_id);
+    }
+
+    fn on_passthrough_end(&mut self, node_id: &NodeId) {
+        self.primary.on_passthrough_end(node_id);
+        self.secondary.on_passthrough_end(node_id);
+    }
+
     fn on_dag_complete(&mut self, elapsed: Duration) {
         self.primary.on_dag_complete(elapsed);
         self.secondary.on_dag_complete(elapsed);
@@ -751,6 +779,8 @@ pub enum ProgressEvent {
     NodeFailed(NodeId, String),
     NodeSkipped(NodeId),
     NodeIntercepted(NodeId),
+    PassthroughStart(NodeId),
+    PassthroughEnd(NodeId),
     DagComplete(Duration),
 }
 
@@ -813,6 +843,14 @@ impl ProgressObserver for RecordingObserver {
     fn on_node_intercepted(&mut self, node_id: &NodeId, _summary: OutputSummary) {
         self.events
             .push(ProgressEvent::NodeIntercepted(node_id.clone()));
+    }
+    fn on_passthrough_start(&mut self, node_id: &NodeId) {
+        self.events
+            .push(ProgressEvent::PassthroughStart(node_id.clone()));
+    }
+    fn on_passthrough_end(&mut self, node_id: &NodeId) {
+        self.events
+            .push(ProgressEvent::PassthroughEnd(node_id.clone()));
     }
     fn on_dag_complete(&mut self, elapsed: Duration) {
         self.events.push(ProgressEvent::DagComplete(elapsed));

@@ -82,7 +82,7 @@ pub fn build_chat_completion_graph_with_config(
             optional("allow_impersonation", "OptionalBool"),
             port("scheme", "NonEmptyString"),
             port("header_name", "String"),
-            list("required_scopes", "String"),
+            list("required_scopes", "NonEmptyString"),
             port("interactive_allowed", "Bool"),
         ],
         DynOp::new(LlmOps::ResolveAuth),
@@ -114,7 +114,7 @@ pub fn build_chat_completion_graph_with_config(
     let scope_preflight = builder.add_node_after(
         Node::opaque(
             "scope_preflight",
-            vec![list("required_scopes", "String")],
+            vec![list("required_scopes", "NonEmptyString")],
             vec![port("scope_verified", "Bool")],
             DynOp::new(CloudOps::ScopePreflight),
         ),

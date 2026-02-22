@@ -261,6 +261,11 @@ pub struct ShellOperationSpec {
     pub output_fields: Vec<OutputFieldSpec>,
     /// How to parse the shell response.
     pub output_parsing: ShellOutputParsing,
+    /// Whether this shell operation should run in passthrough mode.
+    ///
+    /// Derived from `@external`/`@interactive` annotations and used to
+    /// preserve interactive terminal handoff semantics at runtime.
+    pub passthrough: bool,
 }
 
 /// Specification for an input field.
@@ -3846,13 +3851,26 @@ fn derive_shell_spec(service: &ServiceDef, operation: &OperationDef) -> Option<S
     let output_parsing = annotation_shell_output_parsing(&operation.annotations)
         .or_else(|| annotation_shell_output_parsing(&service.annotations))
         .unwrap_or_else(|| infer_shell_output_parsing(&operation.outputs));
+    let passthrough =
+        annotation_shell_passthrough(&operation.annotations, &service.annotations);
 
     Some(ShellOperationSpec {
         argv_template,
         input_fields,
         output_fields,
         output_parsing,
+        passthrough,
     })
+}
+
+fn annotation_shell_passthrough(
+    op_annotations: &[Annotation],
+    service_annotations: &[Annotation],
+) -> bool {
+    has_annotation(op_annotations, "external")
+        || has_annotation(service_annotations, "external")
+        || has_annotation(op_annotations, "interactive")
+        || has_annotation(service_annotations, "interactive")
 }
 
 /// Extract a string argument from a named annotation: `@name("value")`.
@@ -4250,6 +4268,10 @@ fn add_service_transport_triplets(
                     }
                 }
                 let service_metadata = derive_service_call_metadata(service, operation);
+                let transport_is_interactive = matches!(
+                    service_metadata.spec.as_ref(),
+                    Some(ServiceOperationSpec::Shell(shell_spec)) if shell_spec.passthrough
+                );
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
                     service.name, operation.name
@@ -4282,7 +4304,7 @@ fn add_service_transport_triplets(
                         ),
                         obligation: ObligationCategory::ServiceTransportPrepare,
                         service_metadata: Some(Box::new(service_metadata.clone())),
-                        is_interactive: false,
+                        is_interactive: transport_is_interactive,
                         resource_target: None,
                     },
                 ));
@@ -4299,7 +4321,7 @@ fn add_service_transport_triplets(
                         ),
                         obligation: ObligationCategory::ServiceTransportExecute,
                         service_metadata: Some(Box::new(service_metadata.clone())),
-                        is_interactive: false,
+                        is_interactive: transport_is_interactive,
                         resource_target: None,
                     },
                 ));
@@ -4332,7 +4354,7 @@ fn add_service_transport_triplets(
                         ),
                         obligation: ObligationCategory::ServiceTransportParse,
                         service_metadata: Some(Box::new(service_metadata)),
-                        is_interactive: false,
+                        is_interactive: transport_is_interactive,
                         resource_target: None,
                     },
                 ));
@@ -6596,6 +6618,80 @@ service FsStorage implements Storage {
         match spec {
             ServiceOperationSpec::Shell(spec) => spec.output_parsing,
             other => panic!("expected shell operation spec, got {other:?}"),
+        }
+    }
+
+    fn shell_passthrough_for_node(dag: &Dag<LoweredOp>, node_id: &str) -> bool {
+        let node = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == node_id)
+            .expect("transport node should exist");
+        let metadata = match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => op
+                .service_call_metadata()
+                .expect("service metadata should be present"),
+            gunbc_ir::node::NodeBody::SubDag(_) => {
+                panic!("expected opaque lowered node for transport metadata")
+            }
+        };
+        let spec = metadata
+            .spec
+            .as_ref()
+            .expect("service metadata should include operation spec");
+        match spec {
+            ServiceOperationSpec::Shell(spec) => spec.passthrough,
+            other => panic!("expected shell operation spec, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_external_annotation_sets_passthrough_semantics() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/shell_external_passthrough.dag",
+            r#"module sample.services
+service shell.Auth {
+  @shell(["gcloud", "auth", "login"])
+  @external
+  operation Login() -> { ok: Bool }
+}
+func run() -> { ok: Bool } {
+  result = shell.Auth.Login()
+  return { ok: result.ok }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let prepare_id = "prepare_transport_sample_services_shell_Auth_Login";
+        let execute_id = "execute_transport_sample_services_shell_Auth_Login";
+        let parse_id = "parse_transport_sample_services_shell_Auth_Login";
+        assert!(
+            shell_passthrough_for_node(&dag, prepare_id),
+            "prepare node should preserve passthrough metadata"
+        );
+        assert!(
+            shell_passthrough_for_node(&dag, execute_id),
+            "execute node should preserve passthrough metadata"
+        );
+        assert!(
+            shell_passthrough_for_node(&dag, parse_id),
+            "parse node should preserve passthrough metadata"
+        );
+        for node_id in [prepare_id, execute_id, parse_id] {
+            let node = dag
+                .nodes
+                .iter()
+                .find(|node| node.id.0 == node_id)
+                .expect("transport node should exist");
+            let is_interactive = match &node.body {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+                    is_interactive, ..
+                }) => *is_interactive,
+                _ => panic!("expected callable lowered op"),
+            };
+            assert!(
+                is_interactive,
+                "transport node `{node_id}` should be marked interactive"
+            );
         }
     }
 

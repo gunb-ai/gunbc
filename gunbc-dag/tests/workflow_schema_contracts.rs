@@ -73,7 +73,11 @@ fn assert_workflow_schema_contracts(
         }
     }
 
-    assert!(has_report_node, "workflow '{}' must include a report node", spec.id.0);
+    assert!(
+        has_report_node,
+        "workflow '{}' must include a report node",
+        spec.id.0
+    );
     assert!(
         invoke_count > 0,
         "workflow '{}' must include at least one invoke node",
@@ -99,7 +103,12 @@ fn test_all_workflow_spec_satisfies_schema_contracts() {
 fn sdlc_workflow_spec_satisfies_schema_contracts() {
     let spec = sdlc_workflow_spec().expect("sdlc workflow spec should build");
     let registry = default_process_unit_registry();
-    assert_workflow_schema_contracts(&spec, "sdlc.", &["sdlc", "compilation", "codegen"], &registry);
+    assert_workflow_schema_contracts(
+        &spec,
+        "sdlc.",
+        &["sdlc", "compilation", "codegen"],
+        &registry,
+    );
 }
 
 #[test]

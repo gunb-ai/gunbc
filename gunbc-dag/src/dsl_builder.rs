@@ -100,6 +100,30 @@ pub(crate) fn build_pragma_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/pragma.dag")
 }
 
+pub(crate) fn build_clippy_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/clippy.dag")
+}
+
+pub(crate) fn build_deps_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/deps.dag")
+}
+
+pub(crate) fn build_dag_viz_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/dag_viz.dag")
+}
+
+pub(crate) fn build_gist_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/gist.dag")
+}
+
+pub(crate) fn build_testgen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/testgen.dag")
+}
+
+pub(crate) fn build_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/review.dag")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,5 +178,41 @@ mod tests {
             !dag.nodes.iter().any(|node| node.id.0 == "pipelines.ci::ci"),
             "runtime CI graph should not include pipeline metadata nodes"
         );
+    }
+
+    #[test]
+    fn builds_clippy_dsl_graph() {
+        let dag = build_clippy_graph_dsl().expect("clippy DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_deps_dsl_graph() {
+        let dag = build_deps_graph_dsl().expect("deps DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_dag_viz_dsl_graph() {
+        let dag = build_dag_viz_graph_dsl().expect("dag_viz DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_gist_dsl_graph() {
+        let dag = build_gist_graph_dsl().expect("gist DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_testgen_dsl_graph() {
+        let dag = build_testgen_graph_dsl().expect("testgen DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_review_dsl_graph() {
+        let dag = build_review_graph_dsl().expect("review DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
     }
 }

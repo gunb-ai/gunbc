@@ -354,3 +354,34 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | EX-5 | Lower control flow in function bodies: control-flow pattern lowering for `for`/`if`/`match` plus parser fixes so `if`/`match` expressions parse non-lossy in function bodies. | Done 2026-02-22 |
 | EX-6 | Lower string interpolation and formatting: ensured interpolation template extraction/lowering paths are preserved and test-covered for identifier interpolation. | Done 2026-02-22 |
 | EX-7 | Structured document rendering: added `Document`/`TextFile` DSL types and shared render helpers, migrated pragma/makegen/docgen/build rendering through structured document construction + rendering pipeline. | Done 2026-02-22 |
+
+---
+
+## Archived 2026-02-22 (tasks.md cleanup)
+
+### Lane 4: Codebase Polish (Partial)
+
+| ID | Task | Status |
+|----|------|--------|
+| CU-1 | Audit near-empty stub files across IR/codegen/CLI/policy/test scaffolding and resolve each as remove/real impl/doc-only placeholder. | Done 2026-02-22 |
+| CU-3 | Factor common mock helper patterns across large `graph_mock.rs` files into shared `gunbc-test::mock_helpers`. | Done 2026-02-22 |
+| CU-4 | Document side-effect imports (`use ... as _;`) across binaries/tests with intent comments. | Done 2026-02-22 |
+| CU-5 | Archive `design-eliminate-registration-lists.md` after completion of covered phases. | Done 2026-02-22 |
+| CU-6 | Reorganize `TODO/TODONE/` into quarterly structure (`TODO/TODONE/2026-Q1/`). | Done 2026-02-22 |
+
+---
+
+## Archived 2026-02-22 (repo-state verification + no-fallback cleanup)
+
+| ID | Task | Status |
+|----|------|--------|
+| TS-2 | Regenerate CI generated tests: `typed_mock_for_response` fallback now emits list shape for `StringList`; targeted unit test passes. | Done 2026-02-22 |
+| TS-5 | Process all annotations in typecheck: `@content/@brand/@non_empty/@pattern/@file_types` mapped and covered by typecheck tests. | Done 2026-02-22 |
+| L2-1 | daglang-cli makegen regressions resolved; full `cargo test -p daglang-cli` now green. | Done 2026-02-22 |
+| L2-2 | Deps generated test freshness restored (`FileResponse.bytes` present in generated tests). | Done 2026-02-22 |
+| TS-6 | Workspace subdag pipeline coverage handled with explicit exclusions/mapping (`reconciler`, `sdlc`) and mapping test passes. | Done 2026-02-22 |
+| S12-6 | Profile syntax (`profile` + `bind`) implemented in syntax/parser with tests. | Done 2026-02-22 |
+| S12-7 | Active-profile binding resolution implemented in lowering; profile-binding tests pass. | Done 2026-02-22 |
+| S12-8 | `--profile` CLI flag wired in daglang CLI/commands; parsing tests pass. | Done 2026-02-22 |
+| S12-5 | Pipeline `uses` interface resolution verified by successful `daglang compile --profile unit_test` and `--profile local` for `dsl/pipelines/sdlc.dag`. | Done 2026-02-22 |
+| TS-3 | Removed `Option<TypeRegistry>` fallback in testgen codegen (`TypeRegistry` now required by construction). | Done 2026-02-22 |

@@ -858,7 +858,7 @@ pub fn build_wif_bootstrap_dag(
             Node::opaque(
                 "enable_apis",
                 vec![port("access_token", "String")],
-            vec![port("ok", "Bool"), port("note", "NonEmptyString")],
+                vec![port("ok", "Bool"), port("note", "NonEmptyString")],
                 InfraBootstrapGraphOp::Bootstrap(InfraBootstrapOps::EnableApis {
                     project: infra_spec.config.secrets_project.to_string(),
                     services: vec![

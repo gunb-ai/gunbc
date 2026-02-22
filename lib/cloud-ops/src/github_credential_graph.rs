@@ -184,7 +184,7 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
             port("secret_name", "GcpSecretId"),
             port("scheme", "NonEmptyString"),
             port("header_name", "String"),
-            list("required_scopes", "String"),
+            list("required_scopes", "NonEmptyString"),
             port("interactive_allowed", "Bool"),
         ],
         GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ResolveAuth),
@@ -256,7 +256,7 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
     let scope_preflight = builder.add_node_after(
         Node::opaque(
             "scope_preflight",
-            vec![list("required_scopes", "String")],
+            vec![list("required_scopes", "NonEmptyString")],
             vec![port("scope_verified", "Bool")],
             GitHubCredentialGraphOp::Cloud(DynOp::new(CloudOps::ScopePreflight)),
         ),
@@ -274,12 +274,12 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
         "prepare_request",
         "execute",
         "parse_status",
-        vec![list("required_scopes", "String")],
+        vec![list("required_scopes", "NonEmptyString")],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
-        vec![list("required_scopes", "String")],
+        vec![list("required_scopes", "NonEmptyString")],
         vec![port("status", "Int"), port("ok", "Bool")],
         GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::PrepareRateLimit),
         GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ParseStatus),

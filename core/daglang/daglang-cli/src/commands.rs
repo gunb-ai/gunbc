@@ -69,10 +69,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let format =
                 parse_output_format("topology", args).unwrap_or_else(|usage| exit_usage(&usage));
             let output = compile_target_or_exit(cwd, args.get(2));
-            println!(
-                "{}",
-                render_topology_with_format(&output.derived, format)
-            );
+            println!("{}", render_topology_with_format(&output.derived, format));
         }
         "obligations" => {
             if args.len() != 3 && args.len() != 5 {

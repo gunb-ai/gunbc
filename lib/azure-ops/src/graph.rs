@@ -18,7 +18,7 @@ pub fn build_azure_key_vault_credential_graph() -> Result<Dag<AzureKeyVaultGraph
             port("scheme", "NonEmptyString"),
             optional("header_name", "OptionalString"),
             port("source_id", "NonEmptyString"),
-            list("required_scopes", "String"),
+            list("required_scopes", "NonEmptyString"),
             optional("lifetime_seconds", "OptionalInt"),
             optional("request_url", "OptionalString"),
             optional("request_token", "OptionalString"),

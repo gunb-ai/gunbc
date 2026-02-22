@@ -62,6 +62,13 @@ Moved to `TODO/TODONE/2026-Q1/tasks-completed.md`:
 - Sprint 11 (all): `S11-1`-`S11-5`
 - Sprint 11.5 (all): `DR-1`-`DR-5`
 - Cleanup (all): `CL1`, `CL4`, `CL7` + Phase 1 resolver-trusts-compiler
+- Lane 4 (partial): `CU-1`, `CU-3`-`CU-6`
+- Modeling hardening (all): `M8-D`-`M14`, `M16-D`-`M19` (already archived on 2026-02-20; removed from active duplicate lane)
+- Lane 1 security/install (partial): `M7-D`, `M7`, `M15-D`, `M15` (already archived on 2026-02-20; removed from active duplicate section)
+- Horizon done IDs removed from unscheduled table: `H2`, `H3`, `H4`, `H7`, `H8`, `H9`, `H11`
+- Lane 1 + Lane 2 repo-state verification pass: `TS-2`, `TS-5`, `L2-1`, `L2-2`, `TS-6`, `S12-6`, `S12-7`, `S12-8` (validated via targeted tests/compile)
+- Lane 2 profile binding cutover (partial): `S12-5` verified via `daglang compile --profile unit_test|local dsl/pipelines/sdlc.dag`
+- Post-merge hard cutover (partial): `TS-3` implemented (removed `Option<TypeRegistry>` fallback)
 
 ### SDLC Design Checklist (Must Hold) — All Satisfied
 
@@ -107,19 +114,11 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| A: SDLC delivery | **DONE** | — |
-| B: Review credential | **DONE** | — |
-| C: Planner/CI | **DONE** | — |
-| D: Daglang convergence | **DONE** | — |
-| E: Runtime infra | **DONE** | — |
-| F: Codegen-first SDLC | **DONE** | — |
-| G: Workflow DSL migration | **DONE** | — |
-| H: DSL expression language | **DONE** | — |
-| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, M7, M15 |
-| 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19 |
-| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4 (needs both Lane 1 + Lane 2 done) |
-| 3: Modeling integrity | **QUEUED** | M8..M14, M16..M19 |
-| 4: Codebase polish | **ACTIVE** | CU-1..CU-9 |
+| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d |
+| 2: 100% codegen pipeline | **PRIORITY — IN PROGRESS** | Critical path: S12-10→S12-11→S12-12. Parallel: S12-1..S12-4, S12-9, S12-17..S12-19. Final: L2-3, L2-4 |
+| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-4 (needs both Lane 1 + Lane 2 done) |
+| 4: Codebase polish | **ACTIVE** | CU-2, CU-7..CU-9 |
+| 5: GraphIR decommission (exclusive) | **ACTIVE** | GD-4..GD-6 |
 
 ---
 
@@ -133,28 +132,20 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports → `Secret`. Identity ports → `GcpServiceAccountEmail`. Project ports → `GcpProjectId`. Audience ports → `NonEmptyString`. 2 duplicate graph functions share these ports. | — | L | |
-| **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | |
-| **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` → `NonEmptyString`. `secret_name` → `SecretName`. | — | L | |
-| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | — | S | |
+| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports → `Secret`. Identity ports → `GcpServiceAccountEmail`. Project ports → `GcpProjectId`. Audience ports → `NonEmptyString`. 2 duplicate graph functions share these ports. | — | L | In Progress |
+| **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | In Progress |
+| **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` → `NonEmptyString`. `secret_name` → `SecretName`. | — | L | In Progress |
+| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | — | S | In Progress |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
 
 ### Phase 1-B: Test infrastructure + annotations
 
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **TS-2** | **Regenerate CI generated tests**: 2197 CI tests fail (`invalid 'items' input: expected StringList`). Fix `typed_mock_for_response` catch-all in `daglang-emit/test_gen.rs` (line 155). | — | M | |
-| **TS-5** | **Process all annotations in typecheck**: `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types` → extension→encoding map. | — | L | |
+Archived: `TS-2`, `TS-5` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-22).
 
-### Phase 1-C: Security + install modeling (from `TODO/modeling.md`)
+### Phase 1-C: Security + install modeling
 
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **M7-D** | **Design: Secret redaction by default**: Capability-split `SecretValue` runtime + redacted render type. `Display`/`Debug`/`ToString` always redacted; plaintext extraction is explicit transport-boundary only. | — | S | |
-| **M7** | **Secret redaction by default**: Implement per M7-D design. Audit all plaintext extraction callsites. Add clippy disallow rules for plaintext methods outside transport boundaries. Regression tests for no plaintext in renderers. | M7-D | M | |
-| **M15-D** | **Design: Typed package manager modeling**: `PackageManagerId` typed parse + explicit `InstallPlan` policy model. Unknown IDs fail closed. | — | S | |
-| **M15** | **Typed install planning**: Remove stringly/lossy installer bridging. Implement typed `PackageManagerId` with explicit selection policy. Adapter preserves required fields. Exhaustive tests. | M15-D | M | |
+Archived: `M7-D`, `M7`, `M15-D`, `M15` are already complete in `TODO/TODONE/2026-Q1/tasks-completed.md` (archived 2026-02-20).
 
 ### Files touched (Lane 1)
 
@@ -169,9 +160,8 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | `lib/tools/gist/src/graph.rs` | 6 port type updates (TS-1d) |
 | `lib/tools/deps/src/graph.rs` | 1 port type update (TS-1d) |
 | `gunbc-dag/src/testgen_dag/graph.rs` | 1 port type update (TS-1d) |
-| `core/daglang/daglang-emit/src/test_gen.rs` | Fix mock generation (TS-2) |
-| `core/daglang/daglang-typecheck/src/lib.rs` | Annotation handling only (TS-5) |
-| `core/ir/src/transport/` | SecretValue redaction (M7) |
+| `core/daglang/daglang-emit/src/test_gen.rs` | Fix mock generation (TS-2, archived 2026-02-22) |
+| `core/daglang/daglang-typecheck/src/lib.rs` | Annotation handling (TS-5, archived 2026-02-22) |
 
 ---
 
@@ -185,15 +175,11 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **L2-0** | **Commit & PR current session changes**: Package resolve_config boundary mocks (4 graph_mock.rs), HandlerKind variants (daglang-emit), TypeExpr::Record fixes (daglang-syntax, daglang-typecheck), credential_lifecycle.rs, workflow catalog, resolve.rs. Run clippy. Create PR. | — | S | |
+| **L2-0** | **Commit & PR current session changes**: Package resolve_config boundary mocks (4 graph_mock.rs), HandlerKind variants (daglang-emit), TypeExpr::Record fixes (daglang-syntax, daglang-typecheck), credential_lifecycle.rs, workflow catalog, resolve.rs. Run clippy. Create PR. | — | S | In Progress |
 
 ### Phase 2-A: Test green (unblock workspace)
 
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **L2-1** | **Fix 4 failing daglang-cli makegen tests**: `resolve_lowered_dag_maps_makegen_nodes_to_dyn_ops` assertion fails on `LoadRegistry` op debug format. 3 `compile_resolve_execute_makegen` tests also fail. | L2-0 | S | |
-| **L2-2** | **Deps generated test freshness**: `lib/tools/deps/src/generated_tests.rs` stale `FileResponse` struct (missing `bytes` field). Regenerate with `cargo run --bin gunbc-testgen`. | L2-0 | S | |
-| **TS-6** | **Workspace subdag mapping**: 2 workspace subdag tests fail ("unmapped DSL pipeline modules: reconciler, sdlc"). Add module mappings or exclusions. | L2-0 | S | |
+Archived: `L2-1`, `L2-2`, `TS-6` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-22).
 
 ### Phase 2-B: Compiler profile binding (S12 Phase 2 — the critical unlock)
 
@@ -201,10 +187,9 @@ The DSL pipeline, interfaces, providers, and profiles all exist. The **compiler*
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **S12-6** | **Profile syntax in parser**: Add `profile` declaration and `bind` statement to `daglang-syntax`. Parse `profile local { bind IssueProvider -> GitHubIssueProvider { credential: env("...") } }`. | L2-1 | M | |
-| **S12-7** | **Profile resolution in lowering**: When lowering `uses` declarations, resolve via active profile's bindings. Generate transport code for the bound concrete implementation. Thread profile through lowering context. | S12-6 | L | |
-| **S12-8** | **`--profile` CLI flag**: Add `--profile` to `daglang compile` and all tool binaries. Load profile definitions from `dsl/profiles/`. Create `unit_test`, `local`, `cloud_run` profiles. | S12-6, S12-7 | S | |
-| **S12-9** | **Credential binding via profile**: Wire `credential: env(...)` and `credential: secret(...)` in profile bindings. Connect to existing `credential_chain` pattern. | S12-7 | M | |
+| **S12-9** | **Credential binding via profile**: Wire `credential: env(...)` and `credential: secret(...)` in profile bindings. Connect to existing `credential_chain` pattern. | S12-7 | M | Ready |
+
+Archived: `S12-6`, `S12-7`, `S12-8` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-22).
 
 ### Phase 2-C: Domain interface wiring (S12 Phase 1)
 
@@ -212,22 +197,23 @@ DSL interface and provider files exist. These tasks wire them through the compil
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **S12-1** | **IssueProvider interface wiring**: Verify `interface IssueProvider` (discover, get, comment, set_labels, close) compiles. Wire `GitHubIssueProvider` as implementation. Add `StubIssueProvider` test coverage. | S12-7 | M | |
-| **S12-2** | **ClaimStore interface wiring**: Verify `interface ClaimStore` (acquire, heartbeat, release) compiles. Wire `FileClaimStore` and `GcsClaimStore`. Add `InMemoryClaimStore` test coverage. | S12-7 | M | |
-| **S12-3** | **OutcomeLedger interface wiring**: Verify `interface OutcomeLedger` (upsert, get) compiles. Wire `FileOutcomeLedger` and `GcsOutcomeLedger`. | S12-2 | S | |
-| **S12-4** | **AgentProvider interface wiring**: Verify `interface AgentProvider` (spawn, poll, cancel) compiles. Wire `CodexAgentProvider`. Add `StubAgentProvider` test coverage. | S12-7 | S | |
-| **S12-5** | **Pipeline uses interfaces**: Verify `dsl/pipelines/sdlc.dag` and `dsl/funcs/sdlc_worker.dag` compile with all `uses` declarations resolved via profile binding. | S12-1, S12-2, S12-3, S12-4 | M | |
-| **S12-18** | **SignalStore interface wiring**: Verify `interface SignalStore` (emit, consume, ack) compiles. Wire `FileSignalStore` (local) and `PubSubSignalStore` (cloud_run). Currently stubbed in both profiles. | S12-7 | S | |
-| **S12-19** | **ArtifactStore interface wiring**: Verify `interface ArtifactStore` (store, retrieve, store_marker, get_canonical_marker) compiles. Wire `InlineArtifactStore` (local) and `GcsArtifactStore` (cloud_run). Currently stubbed. | S12-7 | S | |
+| **S12-1** | **IssueProvider interface wiring**: Verify `interface IssueProvider` (discover, get, comment, set_labels, close) compiles. Wire `GitHubIssueProvider` as implementation. Add `StubIssueProvider` test coverage. | S12-7 | M | **IN PROGRESS** |
+| **S12-2** | **ClaimStore interface wiring**: Verify `interface ClaimStore` (acquire, heartbeat, release) compiles. Wire `FileClaimStore` and `GcsClaimStore`. Add `InMemoryClaimStore` test coverage. | S12-7 | M | Ready |
+| **S12-3** | **OutcomeLedger interface wiring**: Verify `interface OutcomeLedger` (upsert, get) compiles. Wire `FileOutcomeLedger` and `GcsOutcomeLedger`. | S12-2 | S | Blocked (S12-2) |
+| **S12-4** | **AgentProvider interface wiring**: Verify `interface AgentProvider` (spawn, poll, cancel) compiles. Wire `CodexAgentProvider`. Add `StubAgentProvider` test coverage. | S12-7 | S | Ready |
+| **S12-18** | **SignalStore interface wiring**: Verify `interface SignalStore` (emit, consume, ack) compiles. Wire `FileSignalStore` (local) and `PubSubSignalStore` (cloud_run). Currently stubbed in both profiles. | S12-7 | S | Ready |
+| **S12-19** | **ArtifactStore interface wiring**: Verify `interface ArtifactStore` (store, retrieve, store_marker, get_canonical_marker) compiles. Wire `InlineArtifactStore` (local) and `GcsArtifactStore` (cloud_run). Currently stubbed. | S12-7 | S | Ready |
+
+Archived: `S12-5` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-22).
 
 ### Phase 2-D: Runtime execution (S12 Phase 3)
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **S12-10** | **SubDag node execution**: Replace `UnsupportedOp` for `SubDag` nodes in `resolve.rs` with recursive DAG resolution and execution. | S12-5 | M | |
-| **S12-11** | **Pipeline node execution**: Replace `UnsupportedOp` for `Pipeline` nodes in `resolve.rs` with ordered stage sequence execution. | S12-10 | S | |
-| **S12-12** | **Worker DAG invocation**: Wire `gunbc-sdlc worker` to load compiled pipeline, resolve via profile, and execute. Replace hand-written `dispatch_pipeline_stage()` with compiled DAG dispatch. Delete Rust worker scaffolding stage handlers. | S12-5, S12-8, S12-10, S12-11 | M | |
-| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time via `--param` flags. | S12-8 | S | |
+| **S12-10** | **SubDag node execution**: Replace `UnsupportedOp` for `SubDag` nodes in `resolve.rs` with recursive DAG resolution and execution. | S12-5 | M | **IN PROGRESS** |
+| **S12-11** | **Pipeline node execution**: Replace `UnsupportedOp` for `Pipeline` nodes in `resolve.rs` with ordered stage sequence execution. | S12-10 | S | Blocked (S12-10) |
+| **S12-12** | **Worker DAG invocation**: Wire `gunbc-sdlc worker` to load compiled pipeline, resolve via profile, and execute. Replace hand-written `dispatch_pipeline_stage()` with compiled DAG dispatch. Delete Rust worker scaffolding stage handlers. | S12-5, S12-8, S12-10, S12-11 | M | Blocked (S12-10, S12-11) |
+| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time via `--param` flags. | S12-8 | S | Ready |
 
 ### Phase 2-E: Stage completion (S12 Phase 4)
 
@@ -282,66 +268,9 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 
 ---
 
-## Lane 3: Modeling Integrity (Queued — Start After 1/2 Merge)
+## Lane 3: Modeling Integrity
 
-**Source**: `TODO/modeling.md` — 13 intake tasks for semantic-integrity hardening.
-**Design-first policy**: Every M* task requires a paired M*-D design review before implementation.
-**Queued, not blocked**: Can start whenever a worker is free; independent of Lanes I/J except where noted.
-
-### Lane 3-A: Graph semantics (M8 → M9 → M16)
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **M8-D** | **Design: Separate metadata from validation**: New `TypeOp::Meta` or typed metadata carrier. Metadata remains traversable but cannot fail or alter execution. Only true validators in `Validate`. | — | S | |
-| **M8** | **Semantically inert metadata op**: Migrate SystemModel from `Validate(Custom("meta:..."))` to `Meta(...)`. Erasure-invariance test: removing `Meta` must not change runtime behavior. Reject metadata-over-Validate in strict mode. | M8-D | M | |
-| **M9-D** | **Design: Typed dependency markers**: `DependencyNodeId` typed constructor replacing `dep:system::<target>` string conventions. | M8-D | S | |
-| **M9** | **Typed dependency markers**: Replace string-encoded dependency IDs with typed edge metadata. Remove runtime logic that infers kind from string prefixes. Round-trip tests for system/secret dependency mapping. | M9-D, M8 | S | |
-| **M16-D** | **Design: SystemModel/TransportBehavior unification**: Shared invocation contract model consumed by both SystemModel and transport behavior specs. | M8-D | S | |
-| **M16** | **Unify invocation contracts**: Migrate `Invocation::Rest` to shared transport spec types. Parity tests proving SystemModel and TransportBehavior are structurally equivalent. Remove duplicate spec surfaces. | M16-D, M8 | M | |
-
-### Lane 3-B: Workflow execution safety (M10 → M11 → M12)
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **M10-D** | **Design: Mandatory resource declarations + auto-wiring**: Build-time rule: effectful ops must declare resource ports/claims. Auto-wiring helper for filesystem/manifest claims. Scheduler denies undeclared I/O. | — | S | |
-| **M10** | **Mandatory resource declarations**: Build-time validator for effectful units. Auto-wiring for common resources. Conflict tests for read/read allowed, write/write denied. Failure tests for undeclared effectful I/O. | M10-D | L | |
-| **M11-D** | **Design: Strict dry-run mode**: `DryRunMode::{Lenient,Strict}` with poison/UNSET defaults. Strict mode: unset resource/env consumption is hard failure. | M10-D | S | |
-| **M11** | **Strict dry-run in CI/testgen**: Poison value model for missing acquisitions. Executor fail-fast on poison consumption with data-flow trace. Wire strict mode into CI/testgen. Lenient preserved for dev ergonomics. | M11-D, M10 | M | |
-| **M12-D** | **Design: Coercion proof nodes**: Assertion node set or shape-receipt channel for coercion verification. | M11-D | S | |
-| **M12** | **Coercion proof nodes**: Generated coercion tests assert shape/cardinality invariants (scalar→list, non-nested, etc.). Failures are explicit and localized. | M12-D, M11 | S | |
-
-### Lane 3-C: Process contract drift (M13 → M14)
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **M13-D** | **Design: Registry→CLI→Make contract tests**: Hermetic round-trip harness from registry entrypoint metadata to emitted argv semantics. | — | S | |
-| **M13** | **Contract tests**: Fast integration tests catching dropped repeatable flags and cardinality drift across registry, makegen, CLI. Failing contract blocks CI. | M13-D | M | |
-| **M14-D** | **Design: Single inventory authority**: Inventory-backed canonical registration for binaries + provides/consumes metadata. | M13-D | S | |
-| **M14** | **Single inventory authority**: Downstream consumers (Make/CI/resource maps) derive from one source. Adding a tool requires one registration point. Drift tests validate parity. | M14-D, M13 | M | |
-
-### Lane 3-D: Global minimality proof (M17 → M18 → M19)
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **M17-D** | **Design: Global flattening + context-free work identity**: `WorkIdentity` model independent of orchestration node names. Flattening pass resolves equivalent work before scheduling. | — | M | |
-| **M17** | **Global flattening**: Planner resolves/merges equivalent `WorkIdentity` vertices before scheduling. Cross-workflow tests proving shared cache hits. | M17-D | L | |
-| **M18-D** | **Design: Single semantic authority / projection-only surfaces**: Canonical semantic source with generated projections. Drift validators. | M17-D | S | |
-| **M18** | **Projection-only surfaces**: Make/CLI/report are generated views. Drift checks fail CI. Remove manually maintained duplicate dependency graphs. | M18-D, M17 | M | |
-| **M19-D** | **Design: Formal non-redundancy proof harness**: Invariant suite over resolved global DAG + ledger/key behavior. | M18-D | S | |
-| **M19** | **Non-redundancy proof harness**: At-most-once execution checks. Minimal-dirty-closure checks. Single-writer ordering checks. Actionable diagnostics on proof failure. | M19-D, M17, M18 | M | |
-
-### Lane 3 dependency graph
-
-```
-Lane 3-A:  M8 → M9 → M16
-Lane 3-B:  M10 → M11 → M12
-Lane 3-C:  M13 → M14
-Lane 3-D:  M17 → M18 → M19
-
-3-A and 3-B are independent.
-3-C is independent.
-3-D is independent but highest complexity.
-```
+Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20): `M8-D`..`M14`, `M16-D`..`M19`.
 
 ---
 
@@ -354,7 +283,6 @@ Lane 3-D:  M17 → M18 → M19
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | |
-| **TS-3** | **Make TypeRegistry non-optional**: Change `Option<TypeRegistry>` → `TypeRegistry` in `core/codegen/src/testgen/codegen.rs`. Audit for other `Option<TypeRegistry>` patterns. | TS-7 | S | |
 | **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | |
 
 ### Post-merge files touched
@@ -364,7 +292,7 @@ Lane 3-D:  M17 → M18 → M19
 | `core/daglang/daglang-typecheck/src/lib.rs` | Delete `types_match()` (TS-7) |
 | `core/daglang/daglang-syntax/src/ast_utils.rs` | Delete `canonical_type_name()` (TS-7) |
 | `core/daglang/daglang-lower/src/lib.rs` | Replace 8 `canonical_type_name()` call sites (TS-7) |
-| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3) |
+| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3, archived 2026-02-22) |
 | `core/ir/src/port_type.rs` | Delete `PortType::Any` catch-all (TS-4) |
 | `core/ir/src/types.rs` | Update `PortType::Any` arm (TS-4) |
 | `core/ir/src/system_model.rs` | Update `PortType::Any` arm (TS-4) |
@@ -379,15 +307,36 @@ Lane 3-D:  M17 → M18 → M19
 
 | ID | Task | Location | Deps | Size | Status |
 |----|------|----------|------|------|--------|
-| **CU-1** | **Audit near-empty stub files**: 7 files with <5 lines: `core/ir/src/{go_ir.rs, register_ir.rs, c_ir.rs}`, `core/codegen/src/testgen/render.rs`, `core/daglang/daglang-cli/src/lib.rs`, `gunbc-dag/src/policy/mod.rs`, `gunbc-dag/tests/common/mod.rs`. Decide: remove if unused, add content if placeholder, or add comment explaining purpose. | Various | — | S | Done (2026-02-22) |
 | **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Blocked (lane dependency) |
-| **CU-3** | **Factor common mock helpers**: 3 largest mock files (llm-ops 1043 lines, gist 643, review 620) share patterns. Extract to shared `gunbc-test::mock_helpers` module. | `lib/*/src/graph_mock.rs` | — | M | Done (2026-02-22) |
-| **CU-4** | **Document side-effect imports**: ~16 `use ... as _;` imports across binary and test files. Add explanatory comments. | `gunbc-dag/src/bin/*.rs` | — | S | Done (2026-02-22) |
-| **CU-5** | **Archive `design-eliminate-registration-lists.md`**: Phase 1 complete; Phases 2-3 covered by Lanes G/H (done). Move to `TODO/TODONE/`. | `TODO/` | — | S | Done (2026-02-22) |
-| **CU-6** | **Organize TODONE by quarter**: 65 completed items in flat `TODO/TODONE/`. Create `TODONE/2026-Q1/` subdirectory. | `TODO/TODONE/` | — | S | Done (2026-02-22) |
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
 | **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | — | L | |
 | **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | — | S | |
+
+---
+
+## Lane 5: GraphIR Decommission (Exclusive Lane)
+
+**Goal**: Remove handwritten GraphIR authoring and route tool/workspace topology through DSL-only execution.
+
+**Source of truth**: `docs/design/graphir-decommission-design.md` (section 9 inventory + section 10 backlog).
+
+**Exclusive execution policy**: Run this lane by itself while active. It intentionally spans lowering/runtime/tool/workspace/provider/deletion surfaces and should not be mixed with other lanes to avoid partial migration states.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **GD-1** | **Cut over DSL-module tool targets**: replace handwritten builders for `gist`, `deps`, `clippy`, `review`, and `dag_viz` with DSL-backed builders/wrappers. Verify no target registration points to legacy graph constructors. | — | M | Done (2026-02-22) |
+| **GD-2** | **Interactive/external lowering + passthrough**: propagate DSL interactive/external semantics through lowering/runtime so shell requests set passthrough correctly and progress rendering pauses during passthrough windows. | GD-1 | M | Done (2026-02-22) |
+| **GD-3** | **Replace manual workspace subdags**: remove handwritten workspace subdag composition for `gist/deps/clippy/dag_viz/testgen` and route through DSL-backed modules. | GD-1 | M | Done (2026-02-22) |
+| **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | In Progress (2026-02-22) |
+| **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | In Progress (2026-02-22) |
+| **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | In Progress (2026-02-22) |
+
+### Lane 5 exit criteria
+
+1. `dsl_module` targets execute via DSL-backed builders only.
+2. Section 9C files are deleted.
+3. Section 9D files are either dropped and deleted, or DSL-migrated then deleted.
+4. Resolver is fail-closed and CI enforces non-regression.
 
 ---
 
@@ -398,14 +347,7 @@ Design docs exist in `docs/design/horizon/`. These are speculative features — 
 | ID | Design Doc | Summary | Size |
 |----|-----------|---------|------|
 | **H1** | `h1-display-reactive-dsl.md` | Channel-driven event loop with `on`/`tick` triggers for display orchestration | XL |
-| **H2** | `h2-testgen-dynamic-targets.md` | Dynamic testgen target discovery (currently static registration) | M |
-| **H3** | `h3-makegen-tool-registry.md` | Makegen tool registry improvements | S |
-| **H4** | `h4-loop-extra-inputs-passthrough.md` | Loop node extra inputs passthrough | S |
-| **H7** | `h7-resource-abstraction-trait.md` | Full resource trait migration (eliminate string `res:*` ports) | L |
-| **H8** | `h8-workflow-rendering-justfile.md` | Justfile rendering from workflow specs | M |
-| **H9** | `h9-workflow-rendering-github-actions.md` | GitHub Actions YAML rendering from workflow specs | M |
 | **H10** | `h10-compute-stack-services.md` | Cloud Run/GCS/LB provision/apply orchestration | L |
-| **H11** | `h11-dag-typing-hardening.md` | DAG typing hardening (related to Lane I) | M |
 
 ---
 

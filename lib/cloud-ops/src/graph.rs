@@ -201,7 +201,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         port("scheme", "NonEmptyString"),
         optional("header_name", "OptionalString"),
         port("source_id", "NonEmptyString"),
-        list("required_scopes", "String"),
+        list("required_scopes", "NonEmptyString"),
         optional("allow_impersonation", "OptionalBool"),
         optional("lifetime_seconds", "OptionalInt"),
     ];
@@ -234,7 +234,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                 port("scheme", "NonEmptyString"),
                 optional("header_name", "OptionalString"),
                 port("source_id", "NonEmptyString"),
-                list("required_scopes", "String"),
+                list("required_scopes", "NonEmptyString"),
                 optional("allow_impersonation", "OptionalBool"),
                 optional("lifetime_seconds", "OptionalInt"),
                 // interactive_allowed is accepted as input for all runtimes

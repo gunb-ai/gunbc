@@ -254,15 +254,9 @@ pub enum TypeError {
         resource_type: String,
     },
     /// Profile bind references an unknown interface.
-    UnknownProfileInterface {
-        profile: String,
-        interface: String,
-    },
+    UnknownProfileInterface { profile: String, interface: String },
     /// Profile bind interface resolves ambiguously.
-    AmbiguousProfileInterface {
-        profile: String,
-        interface: String,
-    },
+    AmbiguousProfileInterface { profile: String, interface: String },
     /// Profile bind references an unknown concrete implementation.
     UnknownProfileImplementation {
         profile: String,
@@ -3382,9 +3376,7 @@ fn parse_file_types_annotation(
 
         for entry in entries {
             let extension = expr_as_string(entry).ok_or_else(|| {
-                format!(
-                    "@file_types bucket `{bucket}` contains a non-string extension entry"
-                )
+                format!("@file_types bucket `{bucket}` contains a non-string extension entry")
             })?;
             let previous = file_types.insert(extension.clone(), encoding);
             if let Some(previous_encoding) = previous {
@@ -5426,11 +5418,9 @@ fn run(value: Int @range(min: 5, max: 1)) -> Int { value }"#,
             .predicates
             .contains(&Predicate::Content(ContentEncoding::UTF8)));
         assert!(processed.predicates.contains(&Predicate::NonEmpty));
-        assert!(
-            processed
-                .predicates
-                .contains(&Predicate::Matches("^blob:.*$".to_string()))
-        );
+        assert!(processed
+            .predicates
+            .contains(&Predicate::Matches("^blob:.*$".to_string())));
         assert!(processed.type_ops.iter().any(|op| matches!(
             op,
             TypeOp::Brand(name, base) if name == "TextBlob" && base == &TypeId::from("String")
@@ -5449,9 +5439,7 @@ fn run(value: Int @range(min: 5, max: 1)) -> Int { value }"#,
                         "text".to_string(),
                         Expr::List(vec![
                             Expr::Literal(daglang_syntax::ast::Literal::String(".rs".to_string())),
-                            Expr::Literal(daglang_syntax::ast::Literal::String(
-                                ".md".to_string(),
-                            )),
+                            Expr::Literal(daglang_syntax::ast::Literal::String(".md".to_string())),
                         ]),
                     ),
                     (

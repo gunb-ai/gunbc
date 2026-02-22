@@ -210,6 +210,10 @@ struct IntakeRecord {
     retry: RetryState,
     awaiting_approval_since_epoch_ms: Option<u128>,
     trace_linkage: Option<TraceLinkage>,
+    #[serde(default)]
+    intent_title: String,
+    #[serde(default)]
+    intent_objective: String,
     created_at_epoch_ms: u128,
     updated_at_epoch_ms: u128,
 }
@@ -631,10 +635,13 @@ fn parse_stage(value: &str) -> Result<IssueLifecycleStage, String> {
         "design" => Ok(IssueLifecycleStage::Design),
         "design-review" => Ok(IssueLifecycleStage::DesignReview),
         "accepted" => Ok(IssueLifecycleStage::Accepted),
-        "implementation" => Ok(IssueLifecycleStage::Implementation),
-        "closed" => Ok(IssueLifecycleStage::Closed),
+        "implementing" => Ok(IssueLifecycleStage::Implementing),
+        "code-review" => Ok(IssueLifecycleStage::CodeReview),
+        "testing" => Ok(IssueLifecycleStage::Testing),
+        "done" => Ok(IssueLifecycleStage::Done),
+        "terminal-failed" => Ok(IssueLifecycleStage::TerminalFailed),
         _ => Err(format!(
-            "invalid stage `{value}`; expected one of: idea, design, design-review, accepted, implementation, closed"
+            "invalid stage `{value}`; expected one of: idea, design, design-review, accepted, implementing, code-review, testing, done, terminal-failed"
         )),
     }
 }
@@ -708,6 +715,8 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
             existing.issue_id = intent.tracking.issue_id.or(existing.issue_id);
             existing.policy_version = intent.idempotency.policy_version.clone();
             existing.trace_linkage = trace_linkage.clone();
+            existing.intent_title = intent.title.clone();
+            existing.intent_objective = intent.objective.clone();
             if existing.created_at_epoch_ms == 0 {
                 existing.created_at_epoch_ms = now;
             }
@@ -728,6 +737,8 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
                     retry: RetryState::default(),
                     awaiting_approval_since_epoch_ms: None,
                     trace_linkage: trace_linkage.clone(),
+                    intent_title: intent.title.clone(),
+                    intent_objective: intent.objective.clone(),
                     created_at_epoch_ms: now,
                     updated_at_epoch_ms: now,
                 },
@@ -1675,10 +1686,10 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
         .ok_or_else(|| format!("intake key '{intake_key}' not found"))?;
 
     if record.stage != IssueLifecycleStage::Accepted
-        && record.stage != IssueLifecycleStage::Implementation
+        && record.stage != IssueLifecycleStage::Implementing
     {
         return Err(format!(
-            "validate-pr requires stage 'accepted' or 'implementation', found '{}'",
+            "validate-pr requires stage 'accepted' or 'implementing', found '{}'",
             record.stage.as_label()
         ));
     }
@@ -1788,7 +1799,7 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
     if validation.all_passed() && !dry_run {
         let mut intake_ledger = load_intake_ledger(&intake_ledger_path())?;
         if let Some(entry) = intake_ledger.entries.get_mut(intake_key) {
-            entry.stage = IssueLifecycleStage::Closed;
+            entry.stage = IssueLifecycleStage::Done;
             entry.updated_at_epoch_ms = epoch_millis();
         }
         save_intake_ledger(&intake_ledger_path(), &intake_ledger)?;
@@ -1807,7 +1818,7 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
             "all_passed": validation.all_passed(),
             "blocking_findings_count": validation.blocking_findings.len(),
             "ci_summary": validation.ci_summary,
-            "stage_after": if validation.all_passed() { "closed" } else { "implementation" },
+            "stage_after": if validation.all_passed() { "done" } else { "implementing" },
         }))
         .map_err(|e| format!("serialize: {e}"))?
     );
@@ -2453,8 +2464,11 @@ fn estimated_llm_cost_units(stage: IssueLifecycleStage, awaiting_approval: bool)
         IssueLifecycleStage::Design => 8,
         IssueLifecycleStage::DesignReview => 13,
         IssueLifecycleStage::Accepted => 2,
-        IssueLifecycleStage::Implementation => 5,
-        IssueLifecycleStage::Closed => 0,
+        IssueLifecycleStage::Implementing => 5,
+        IssueLifecycleStage::CodeReview => 13,
+        IssueLifecycleStage::Testing => 0,
+        IssueLifecycleStage::Done => 0,
+        IssueLifecycleStage::TerminalFailed => 0,
     }
 }
 
@@ -2833,8 +2847,8 @@ impl CompiledStageDispatcher {
             "stage".to_string(),
             Value::Str(compiled_stage_token(record.stage).to_string()),
         );
-        inputs.insert("title".to_string(), Value::Str(String::new()));
-        inputs.insert("body".to_string(), Value::Str(String::new()));
+        inputs.insert("title".to_string(), Value::Str(record.intent_title.clone()));
+        inputs.insert("body".to_string(), Value::Str(record.intent_objective.clone()));
         inputs.insert("run_key".to_string(), Value::Str(record.run_key.clone()));
         inputs.insert("owner".to_string(), Value::Str(owner));
         inputs.insert("repo".to_string(), Value::Str(repo));
@@ -2884,8 +2898,11 @@ fn compiled_stage_token(stage: IssueLifecycleStage) -> &'static str {
         IssueLifecycleStage::Design => "design",
         IssueLifecycleStage::DesignReview => "design-review",
         IssueLifecycleStage::Accepted => "accepted",
-        IssueLifecycleStage::Implementation => "implementation",
-        IssueLifecycleStage::Closed => "closed",
+        IssueLifecycleStage::Implementing => "implementing",
+        IssueLifecycleStage::CodeReview => "code-review",
+        IssueLifecycleStage::Testing => "testing",
+        IssueLifecycleStage::Done => "done",
+        IssueLifecycleStage::TerminalFailed => "terminal-failed",
     }
 }
 
@@ -2895,8 +2912,11 @@ fn parse_compiled_stage(stage: &str) -> Result<IssueLifecycleStage, String> {
         "design" => Ok(IssueLifecycleStage::Design),
         "designreview" | "design-review" => Ok(IssueLifecycleStage::DesignReview),
         "accepted" => Ok(IssueLifecycleStage::Accepted),
-        "implementation" | "implementing" => Ok(IssueLifecycleStage::Implementation),
-        "closed" | "done" => Ok(IssueLifecycleStage::Closed),
+        "implementing" | "implementation" => Ok(IssueLifecycleStage::Implementing),
+        "codereview" | "code-review" => Ok(IssueLifecycleStage::CodeReview),
+        "testing" => Ok(IssueLifecycleStage::Testing),
+        "done" | "closed" => Ok(IssueLifecycleStage::Done),
+        "terminal-failed" | "terminalfailed" => Ok(IssueLifecycleStage::TerminalFailed),
         other => Err(format!("unknown compiled stage `{other}`")),
     }
 }
@@ -2995,6 +3015,8 @@ mod tests {
             retry: RetryState::default(),
             awaiting_approval_since_epoch_ms: None,
             trace_linkage: None,
+            intent_title: "Test intent".to_string(),
+            intent_objective: "Test objective".to_string(),
             created_at_epoch_ms: 1,
             updated_at_epoch_ms: 1,
         }

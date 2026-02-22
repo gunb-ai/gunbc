@@ -29,6 +29,7 @@ use crate::{
     ExecutionMode, NodeState,
 };
 use gunbc_ir::layout::compute_layout;
+use gunbc_ir::render_ir::{CursorAction, Frame};
 use gunbc_ir::symbols::{SemanticColor, SymbolId, Tier, STANDARD};
 use gunbc_ir::{
     detect_boundaries, Dag, NodeId, Value, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
@@ -436,12 +437,30 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
     let mut stderr = io::stderr();
     let mut last_tick = Instant::now();
     let mut progress = DagProgress::new(snapshot);
+    let mut passthrough_depth = 0usize;
 
     loop {
         match event_rx.recv_timeout(PROGRESS_TICK) {
-            Ok(event) => progress.apply(event),
+            Ok(event) => match event {
+                ExecutionEvent::PassthroughStart(_) => {
+                    passthrough_depth = passthrough_depth.saturating_add(1);
+                    clear_progress_frame(&mut writer, &mut stderr);
+                }
+                ExecutionEvent::PassthroughEnd(_) => {
+                    passthrough_depth = passthrough_depth.saturating_sub(1);
+                    // Reset spinner delta baseline after a long terminal handoff.
+                    last_tick = Instant::now();
+                }
+                other => progress.apply(other),
+            },
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
+        }
+
+        // Interactive passthrough commands own the terminal.
+        // Suspend frame rendering to avoid line interleaving.
+        if passthrough_depth > 0 {
+            continue;
         }
 
         // Skip rendering until the DAG is actually running — avoids
@@ -798,6 +817,18 @@ impl ProgressObserver for ChannelObserver {
             .send(ExecutionEvent::NodeIntercepted(node_id.clone(), summary));
     }
 
+    fn on_passthrough_start(&mut self, node_id: &NodeId) {
+        let _ = self
+            .tx
+            .send(ExecutionEvent::PassthroughStart(node_id.clone()));
+    }
+
+    fn on_passthrough_end(&mut self, node_id: &NodeId) {
+        let _ = self
+            .tx
+            .send(ExecutionEvent::PassthroughEnd(node_id.clone()));
+    }
+
     fn on_dag_complete(&mut self, elapsed: Duration) {
         let _ = self.tx.send(ExecutionEvent::DagComplete(elapsed));
     }
@@ -855,6 +886,14 @@ fn render_progress_frame(
         profile.tier,
         &STANDARD,
     );
+    let _ = writer.write_frame(&frame, sink);
+}
+
+fn clear_progress_frame(writer: &mut FrameWriter, sink: &mut dyn io::Write) {
+    let frame = Frame {
+        lines: vec![],
+        cursor_action: CursorAction::Overwrite,
+    };
     let _ = writer.write_frame(&frame, sink);
 }
 

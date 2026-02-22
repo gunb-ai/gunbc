@@ -13,8 +13,11 @@ pub enum IssueLifecycleStage {
     Design,
     DesignReview,
     Accepted,
-    Implementation,
-    Closed,
+    Implementing,
+    CodeReview,
+    Testing,
+    Done,
+    TerminalFailed,
 }
 
 impl IssueLifecycleStage {
@@ -25,8 +28,11 @@ impl IssueLifecycleStage {
             IssueLifecycleStage::Design => "design",
             IssueLifecycleStage::DesignReview => "design-review",
             IssueLifecycleStage::Accepted => "accepted",
-            IssueLifecycleStage::Implementation => "implementation",
-            IssueLifecycleStage::Closed => "closed",
+            IssueLifecycleStage::Implementing => "implementing",
+            IssueLifecycleStage::CodeReview => "code-review",
+            IssueLifecycleStage::Testing => "testing",
+            IssueLifecycleStage::Done => "done",
+            IssueLifecycleStage::TerminalFailed => "terminal-failed",
         }
     }
 }
@@ -115,7 +121,9 @@ impl std::error::Error for StageLabelError {}
 
 /// Map a GitHub issue record into canonical tracked-issue form.
 pub fn map_github_issue(record: GitHubIssueRecord) -> Result<TrackedIssue, String> {
-    let stage = stage_from_labels(&record.labels).map_err(|e| e.to_string())?.unwrap_or(IssueLifecycleStage::Idea);
+    let stage = stage_from_labels(&record.labels)
+        .map_err(|e| e.to_string())?
+        .unwrap_or(IssueLifecycleStage::Idea);
     Ok(TrackedIssue {
         reference: IssueRef {
             owner: record.owner,
@@ -132,7 +140,9 @@ pub fn map_github_issue(record: GitHubIssueRecord) -> Result<TrackedIssue, Strin
 
 /// Resolve lifecycle stage from issue labels. Returns `None` when no stage
 /// label is present.
-pub fn stage_from_labels(labels: &[String]) -> Result<Option<IssueLifecycleStage>, StageLabelError> {
+pub fn stage_from_labels(
+    labels: &[String],
+) -> Result<Option<IssueLifecycleStage>, StageLabelError> {
     let mut stages = Vec::new();
     let has = |label: &'static str| labels.iter().any(|candidate| candidate == label);
     if has(IssueLifecycleStage::Idea.as_label()) {
@@ -147,11 +157,20 @@ pub fn stage_from_labels(labels: &[String]) -> Result<Option<IssueLifecycleStage
     if has(IssueLifecycleStage::Accepted.as_label()) {
         stages.push(IssueLifecycleStage::Accepted);
     }
-    if has(IssueLifecycleStage::Implementation.as_label()) {
-        stages.push(IssueLifecycleStage::Implementation);
+    if has(IssueLifecycleStage::Implementing.as_label()) {
+        stages.push(IssueLifecycleStage::Implementing);
     }
-    if has(IssueLifecycleStage::Closed.as_label()) {
-        stages.push(IssueLifecycleStage::Closed);
+    if has(IssueLifecycleStage::CodeReview.as_label()) {
+        stages.push(IssueLifecycleStage::CodeReview);
+    }
+    if has(IssueLifecycleStage::Testing.as_label()) {
+        stages.push(IssueLifecycleStage::Testing);
+    }
+    if has(IssueLifecycleStage::Done.as_label()) {
+        stages.push(IssueLifecycleStage::Done);
+    }
+    if has(IssueLifecycleStage::TerminalFailed.as_label()) {
+        stages.push(IssueLifecycleStage::TerminalFailed);
     }
 
     if stages.len() > 1 {
@@ -182,7 +201,9 @@ pub fn compare_and_set_stage_label(
     expected_stage: IssueLifecycleStage,
     next_stage: IssueLifecycleStage,
 ) -> Result<Vec<String>, String> {
-    let current_stage = stage_from_labels(existing_labels).map_err(|e| e.to_string())?.unwrap_or(IssueLifecycleStage::Idea);
+    let current_stage = stage_from_labels(existing_labels)
+        .map_err(|e| e.to_string())?
+        .unwrap_or(IssueLifecycleStage::Idea);
     if current_stage != expected_stage {
         return Err(format!(
             "stage compare-and-set failed: expected `{}`, found `{}`",
@@ -226,7 +247,7 @@ pub fn ensure_sdlc_issue_capabilities(capabilities: SdlcIssueCapabilities) -> Re
 fn is_stage_label(label: &str) -> bool {
     matches!(
         label,
-        "idea" | "design" | "design-review" | "accepted" | "implementation" | "closed"
+        "idea" | "design" | "design-review" | "accepted" | "implementing" | "code-review" | "testing" | "done" | "terminal-failed"
     )
 }
 
@@ -244,7 +265,8 @@ mod tests {
             body: "Details".to_string(),
             state: "open".to_string(),
             labels: vec!["priority:M".to_string()],
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(tracked.stage, IssueLifecycleStage::Idea);
     }
 
@@ -256,7 +278,9 @@ mod tests {
             "priority:M".to_string(),
         ];
         let err = stage_from_labels(&labels).unwrap_err();
-        assert!(err.to_string().contains("issue has multiple conflicting stage labels"));
+        assert!(err
+            .to_string()
+            .contains("issue has multiple conflicting stage labels"));
     }
 
     #[test]

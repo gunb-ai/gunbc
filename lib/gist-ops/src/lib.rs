@@ -462,7 +462,7 @@ fn execute_gist_resolve_auth(
 /// **Interface (auto-inferred from entrypoints/boundaries):**
 /// - Inputs: `markdown: String`, `branch: OptionalString`,
 ///   `remote_branch: OptionalString`, `base_ref: OptionalString`
-/// - Outputs: `url: String` (plus `ok: Bool` from cloud credential on some configs)
+/// - Outputs: `url: Url` (plus `ok: Bool` from cloud credential on some configs)
 ///
 /// The credential chain is fully self-contained — consumers don't need to
 /// understand cloud credentials at all. They just wire `markdown` in and get
@@ -516,7 +516,7 @@ pub fn build_gist_upload_subdag(
             optional("allow_impersonation", "OptionalBool"),
             port("scheme", "String"),
             port("header_name", "String"),
-            list("required_scopes", "String"),
+            list("required_scopes", "NonEmptyString"),
             port("interactive_allowed", "Bool"),
             optional("lifetime_seconds", "OptionalInt"),
         ],
@@ -544,7 +544,7 @@ pub fn build_gist_upload_subdag(
 
     dag.add_node(Node::opaque(
         "scope_preflight",
-        vec![list("required_scopes", "String")],
+        vec![list("required_scopes", "NonEmptyString")],
         vec![scalar("scope_verified", "Bool")],
         GistUploadOp::Cloud(DynOp::new(CloudOps::ScopePreflight)),
     ));
@@ -562,7 +562,7 @@ pub fn build_gist_upload_subdag(
             resource("file", "FilesystemHandle", AccessMode::Read),
             resource("clock", "Timestamp", AccessMode::Read),
             optional("credential_expires_in", "OptionalInt"),
-            list("required_scopes", "String"),
+            list("required_scopes", "NonEmptyString"),
             optional("base_ref", "OptionalString"),
         ],
         vec![
@@ -587,7 +587,7 @@ pub fn build_gist_upload_subdag(
     dag.add_node(Node::opaque(
         "parse_gist_response",
         vec![scalar("response", "TransportResponse")],
-        vec![scalar("url", "String")],
+        vec![scalar("url", "Url")],
         GistUploadOp::Gist(GistOps::ParseGistResponse),
     ));
 

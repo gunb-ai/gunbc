@@ -34,7 +34,7 @@ use crate::lower::{lower, LoopInfo};
 use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
 use crate::topo::topo_sort;
 use crate::Executable;
-use gunbc_ir::transport::{FileOp, TransportResponse};
+use gunbc_ir::transport::{FileOp, TransportRequest, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, classify_coercion, detect_boundaries, detect_entrypoints,
     normalize_resource_id, AccessMode, AppliedCoercion, BoundaryInfo, Cardinality, Dag,
@@ -800,6 +800,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             observer.on_node_start(node_id);
 
             let should_intercept = should_intercept_for_mode(node, mode);
+            let uses_passthrough = is_passthrough_shell_request(&inputs);
 
             if should_intercept {
                 // Intercept: use mock values for boundary outputs
@@ -818,10 +819,16 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                     NodeBody::Opaque(op) => {
                         // Snapshot inputs for failure diagnostics
                         let saved_inputs = inputs.clone();
-                        match op
+                        if uses_passthrough {
+                            observer.on_passthrough_start(node_id);
+                        }
+                        let exec_result = op
                             .execute(inputs)
-                            .map_err(|e| e.context(format!("node '{}'", node.id.0)))
-                        {
+                            .map_err(|e| e.context(format!("node '{}'", node.id.0)));
+                        if uses_passthrough {
+                            observer.on_passthrough_end(node_id);
+                        }
+                        match exec_result {
                             Ok(outputs) => {
                                 node_elapsed = node_start.elapsed();
                                 (outputs, false)
@@ -1264,6 +1271,12 @@ fn should_intercept_for_mode<T>(node: &Node<T>, mode: &ExecutionMode) -> bool {
         && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
 }
 
+fn is_passthrough_shell_request(inputs: &HashMap<String, Value>) -> bool {
+    inputs.values().any(
+        |value| matches!(value, Value::Request(TransportRequest::Shell(request)) if request.passthrough),
+    )
+}
+
 /// Collect a single upstream value into a fan-in bucket for a list port.
 ///
 /// Given a value produced by an upstream node and the source port's
@@ -1532,6 +1545,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
         started_at: Instant,
         inputs: Option<HashMap<String, Value>>,
         coercions_applied: Vec<AppliedCoercion>,
+        had_passthrough: bool,
         result: Result<HashMap<String, Value>, ExecError>,
     }
 
@@ -1684,6 +1698,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 if let Some(ref mut o) = obs {
                     o.on_node_start(&node_id);
                 }
+                let uses_passthrough = is_passthrough_shell_request(&inputs);
 
                 if should_intercept_for_mode(node, mode) {
                     let captured_inputs = capture_log_inputs_for_node(node, &inputs, log_detail);
@@ -1727,14 +1742,21 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         let tx = tx.clone();
                         let captured_inputs =
                             capture_log_inputs_for_node(node, &inputs, log_detail);
+                        if uses_passthrough {
+                            if let Some(ref mut o) = obs {
+                                o.on_passthrough_start(&node_id);
+                            }
+                        }
                         scope.spawn(move || {
-                            let result =
-                                op.execute(inputs).map_err(|e| e.context(format!("node '{}'", node_id_clone.0)));
+                            let result = op
+                                .execute(inputs)
+                                .map_err(|e| e.context(format!("node '{}'", node_id_clone.0)));
                             let _ = tx.send(NodeExecutionResult {
                                 node_id: node_id_clone,
                                 started_at: node_start,
                                 inputs: captured_inputs,
                                 coercions_applied: node_coercions,
+                                had_passthrough: uses_passthrough,
                                 result,
                             });
                         });
@@ -1784,6 +1806,11 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
             release_node_requirements(requirements, &mut active_resource_locks);
+            if completed_node.had_passthrough {
+                if let Some(ref mut o) = obs {
+                    o.on_passthrough_end(&completed_node.node_id);
+                }
+            }
             match completed_node.result {
                 Ok(outputs) => {
                     let node =
@@ -2131,6 +2158,7 @@ fn mock_intercept_outputs<T>(
 mod tests {
     use super::*;
     use gunbc_ir::build::*;
+    use gunbc_ir::transport::ShellRequest;
     use gunbc_ir::Edge;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex, OnceLock};
@@ -2178,6 +2206,50 @@ mod tests {
     // Backward-compat alias used in existing tests
     type Produce = TestOp;
 
+    #[derive(Default)]
+    struct EventRecorder {
+        events: Vec<String>,
+    }
+
+    impl ProgressObserver for EventRecorder {
+        fn on_dag_start(&mut self, _snapshot: &DagSnapshot) {
+            self.events.push("dag_start".to_string());
+        }
+
+        fn on_node_start(&mut self, node_id: &NodeId) {
+            self.events.push(format!("node_start:{}", node_id.0));
+        }
+
+        fn on_node_complete(&mut self, node_id: &NodeId, _summary: OutputSummary) {
+            self.events.push(format!("node_complete:{}", node_id.0));
+        }
+
+        fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+            self.events
+                .push(format!("node_failed:{}:{error}", node_id.0));
+        }
+
+        fn on_node_skipped(&mut self, node_id: &NodeId) {
+            self.events.push(format!("node_skipped:{}", node_id.0));
+        }
+
+        fn on_node_intercepted(&mut self, node_id: &NodeId, _summary: OutputSummary) {
+            self.events.push(format!("node_intercepted:{}", node_id.0));
+        }
+
+        fn on_passthrough_start(&mut self, node_id: &NodeId) {
+            self.events.push(format!("passthrough_start:{}", node_id.0));
+        }
+
+        fn on_passthrough_end(&mut self, node_id: &NodeId) {
+            self.events.push(format!("passthrough_end:{}", node_id.0));
+        }
+
+        fn on_dag_complete(&mut self, _elapsed: Duration) {
+            self.events.push("dag_complete".to_string());
+        }
+    }
+
     fn with_strict_dry_run_env<F>(enabled: bool, f: F)
     where
         F: FnOnce() + std::panic::UnwindSafe,
@@ -2211,6 +2283,49 @@ mod tests {
             exists: None,
             error: None,
         }))
+    }
+
+    #[test]
+    fn test_passthrough_shell_request_emits_terminal_handoff_events() {
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "interactive_node",
+            vec![port("interactive", "TransportRequest")],
+            vec![port("ok", "Bool")],
+            Produce::produce("ok", Value::Bool(true)),
+        ));
+
+        let mut input_mocks = BoundaryMocks::new();
+        input_mocks.set_input(
+            "interactive_node",
+            "interactive",
+            Value::Request(
+                ShellRequest::new("true")
+                    .passthrough(true)
+                    .into_transport_request(),
+            ),
+        );
+
+        let mut observer = EventRecorder::default();
+        let _log = execute_with_progress_and_mode_and_inputs(
+            &dag,
+            ExecutionMode::Real,
+            &mut observer,
+            Some(&input_mocks),
+        )
+        .expect("execution should succeed");
+
+        assert_eq!(
+            observer.events,
+            vec![
+                "dag_start".to_string(),
+                "node_start:interactive_node".to_string(),
+                "passthrough_start:interactive_node".to_string(),
+                "passthrough_end:interactive_node".to_string(),
+                "node_complete:interactive_node".to_string(),
+                "dag_complete".to_string(),
+            ]
+        );
     }
 
     #[test]

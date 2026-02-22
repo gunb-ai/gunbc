@@ -70,8 +70,8 @@ pub use policy::{CratePolicy, CrateRole};
     name = "clippy",
     crate_name = "gunbc-clippy",
     description = "Run clippy via upsert (check → install → run)",
-    builder = "build_clippy_graph_lint_all",
-    import = "use gunbc_clippy::build_clippy_graph_lint_all;",
+    builder = "build_clippy_graph_dsl",
+    import = "use gunbc_dag::build_clippy_graph_dsl;",
     mock_spec = "gunbc_clippy::graph_mock::clippy_mock_spec()",
     dsl_module = "clippy",
     returns_result

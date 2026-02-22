@@ -17,9 +17,8 @@
 //! # Adding a new module
 //!
 //! To wire a new `.dag` module:
-//! - **Passthrough callables** (forward inputs to outputs): no Rust changes
-//!   needed — the resolver defaults to passthrough for any callable the
-//!   compiler validated.
+//! - **Passthrough callables** (forward inputs to outputs): add an explicit
+//!   allowlist entry in `resolve_passthrough_entrypoint()`.
 //! - **Custom callables**: add a match arm in `resolve_domain()` for the
 //!   module path and map each callable to its `DynOp`.
 //! - Infrastructure nodes (content_upsert, fs_env) are handled automatically.
@@ -30,12 +29,15 @@ use daglang_lower::{
     CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
     ServiceCallMetadata, ServiceOperationSpec,
 };
-use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    execute_with_mode_and_inputs, BoundaryMocks, DynOp, ExecError, Executable, ExecutionMode,
+    OutputMap,
+};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::{FileRequest, TransportRequest};
-use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
+use gunbc_ir::{detect_boundaries, detect_entrypoints, Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
@@ -288,8 +290,9 @@ impl Executable for InfraOrchestrationOp {
         let target_count = planned_targets.len() as i64;
         let mode = if execute { "apply" } else { "plan" };
         let applied_count = if execute { target_count } else { 0 };
-        let report =
-            format!("infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)");
+        let report = format!(
+            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
+        );
 
         OutputMap::new()
             .str("environment", environment)
@@ -329,38 +332,6 @@ fn input_as_string_list(value: Option<&Value>) -> Vec<String> {
                 _ => None,
             })
             .unwrap_or_default(),
-    }
-}
-
-/// Typed error op for nodes that exist in topology but must not be executed.
-///
-/// Use this instead of identity/no-op placeholders so that accidental execution
-/// fails immediately with a clear message rather than silently producing wrong outputs.
-#[cfg(test)]
-#[derive(Debug, Clone)]
-struct UnsupportedOp {
-    callable: String,
-}
-
-#[cfg(test)]
-impl UnsupportedOp {
-    fn new(callable: &str) -> Self {
-        Self {
-            callable: callable.to_string(),
-        }
-    }
-}
-
-#[cfg(test)]
-impl Executable for UnsupportedOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        Err(ExecError::new(format!(
-            "unsupported operation `{}`: must be lowered away before execution",
-            self.callable
-        )))
     }
 }
 
@@ -640,6 +611,97 @@ impl Executable for PrepareFileWriteCompatOp {
 }
 
 // ============================================================================
+// SubDag executor
+// ============================================================================
+
+/// SubDag executor: executes an inner DAG as a self-contained unit.
+///
+/// Routes inputs to the inner DAG's entrypoints, executes the inner DAG,
+/// and extracts outputs from its boundaries. This is the primitive that
+/// S12-11 (pipeline stages) and S12-12 (worker invocation) build on.
+#[derive(Clone)]
+struct SubDagExecutorOp {
+    inner_dag: Dag<DynOp>,
+    /// (outer_port_name, inner_node_id, inner_port_name)
+    input_map: Vec<(String, String, String)>,
+    /// (outer_port_name, inner_node_id, inner_port_name)
+    output_map: Vec<(String, String, String)>,
+}
+
+impl SubDagExecutorOp {
+    fn new(dag: Dag<DynOp>) -> Self {
+        let entrypoints = detect_entrypoints(&dag);
+        let boundaries = detect_boundaries(&dag);
+
+        let input_map: Vec<(String, String, String)> = entrypoints
+            .entrypoint_ports
+            .iter()
+            .map(|(node_id, port_name, _type_id)| {
+                let outer_port = format!("{}/{}", node_id.0, port_name.0);
+                (outer_port, node_id.0.clone(), port_name.0.clone())
+            })
+            .collect();
+
+        let output_map: Vec<(String, String, String)> = boundaries
+            .boundary_ports
+            .iter()
+            .map(|(node_id, port_name)| {
+                let outer_port = format!("{}/{}", node_id.0, port_name.0);
+                (outer_port, node_id.0.clone(), port_name.0.clone())
+            })
+            .collect();
+
+        Self {
+            inner_dag: dag,
+            input_map,
+            output_map,
+        }
+    }
+}
+
+impl std::fmt::Debug for SubDagExecutorOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "SubDagExecutorOp {{ nodes: {} }}",
+            self.inner_dag.nodes.len()
+        )
+    }
+}
+
+impl Executable for SubDagExecutorOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // 1. Build BoundaryMocks for input injection
+        let mut mocks = BoundaryMocks::new();
+        for (outer_port, inner_node, inner_port) in &self.input_map {
+            if let Some(value) = inputs.get(outer_port) {
+                mocks.set_input(inner_node.as_str(), inner_port.as_str(), value.clone());
+            }
+        }
+
+        // 2. Execute the inner DAG
+        let log = execute_with_mode_and_inputs(
+            &self.inner_dag,
+            ExecutionMode::Real,
+            Some(&mocks),
+        )
+        .map_err(|e| ExecError::new(format!("SubDag execution failed: {e}")))?;
+
+        // 3. Extract outputs from boundary nodes
+        let mut outputs = HashMap::new();
+        for (outer_port, inner_node, inner_port) in &self.output_map {
+            if let Some(entry) = log.get(inner_node) {
+                if let Some(value) = entry.outputs.get(inner_port) {
+                    outputs.insert(outer_port.clone(), value.clone());
+                }
+            }
+        }
+
+        Ok(outputs)
+    }
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -655,6 +717,35 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
             inputs: node.inputs.clone(),
             outputs: node.outputs.clone(),
             body: resolve_node_body(node)?,
+            examples: node.examples.clone(),
+            log_detail: node.log_detail,
+        };
+        normalize_release_resource_inputs(&mut resolved_node);
+        if let Some(mode) = needs_transport_resource(node, &resolved_node) {
+            resolved_node
+                .inputs
+                .push(Port::resource("res:file", "FilesystemHandle", mode));
+        }
+        resolved.add_node(resolved_node);
+    }
+    resolved.edges = dag.edges.clone();
+    wire_missing_filesystem_resources(&mut resolved);
+    Ok(resolved)
+}
+
+/// Resolve a lowered DAG into an executable `Dag<DynOp>`, flattening SubDag
+/// nodes into `Opaque(SubDagExecutorOp)` instead of preserving SubDag structure.
+///
+/// This is the entry point for S12-11/S12-12: SubDag nodes become self-contained
+/// executors rather than structural containers that need later flattening.
+pub fn resolve_lowered_dag_flat(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveError> {
+    let mut resolved = Dag::new();
+    for node in &dag.nodes {
+        let mut resolved_node = Node {
+            id: node.id.clone(),
+            inputs: node.inputs.clone(),
+            outputs: node.outputs.clone(),
+            body: resolve_node_body_flat(node)?,
             examples: node.examples.clone(),
             log_detail: node.log_detail,
         };
@@ -691,7 +782,10 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
     match &node.body {
         NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
-        NodeBody::SubDag(_) => Ok(DynOp::new(UnsupportedOp::new("subdag_pattern"))),
+        NodeBody::SubDag(inner) => {
+            let resolved_inner = resolve_lowered_dag(inner)?;
+            Ok(DynOp::new(SubDagExecutorOp::new(resolved_inner)))
+        }
     }
 }
 
@@ -699,6 +793,18 @@ fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveE
     match &node.body {
         NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(&node.id.0, op, &node.outputs)?)),
         NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag(inner)?)),
+    }
+}
+
+fn resolve_node_body_flat(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveError> {
+    match &node.body {
+        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(&node.id.0, op, &node.outputs)?)),
+        NodeBody::SubDag(inner) => {
+            let resolved_inner = resolve_lowered_dag(inner)?;
+            Ok(NodeBody::Opaque(DynOp::new(SubDagExecutorOp::new(
+                resolved_inner,
+            ))))
+        }
     }
 }
 
@@ -810,11 +916,13 @@ fn resolve_domain(
     if module.starts_with("services.") || module.starts_with("workspace.") {
         return resolve_service_transport(node_id, module, name, service_metadata);
     }
-    // 3. Default: passthrough. The compiler validated this callable exists.
-    //    If it compiled, it's resolvable. No registry needed.
-    Ok(DynOp::new(PassthroughOp {
-        output_port_names: declared_output_names(outputs),
-    }))
+    // 3. Explicit passthrough entrypoints for DSL-composed modules.
+    if let Some(op) = resolve_passthrough_entrypoint(module, name, outputs) {
+        return Ok(op);
+    }
+
+    // 4. Fail closed for unknown callables.
+    Err(unknown_callable(node_id, module, name))
 }
 
 fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
@@ -844,6 +952,41 @@ fn resolve_tools_pragma(name: &str) -> Option<DynOp> {
         _ => return None,
     };
     Some(DynOp::new(op))
+}
+
+fn resolve_passthrough_entrypoint(module: &str, name: &str, outputs: &[Port]) -> Option<DynOp> {
+    // Explicit allowlist only. Unknown modules/callables fail closed.
+    let is_passthrough = matches!(
+        (module, name),
+        ("tools.build", "build")
+            | ("tools.ci", "ci")
+            | ("tools.clippy", "clippy")
+            | ("tools.codegen", "codegen")
+            | ("tools.dag_viz", "dag_viz")
+            | ("tools.deps", "deps")
+            | ("tools.docgen", "docgen")
+            | ("tools.gist", "gist")
+            | ("tools.makegen", "makegen")
+            | ("tools.review", "review")
+            | ("tools.testgen", "testgen")
+            | ("pipelines.ci", "ci")
+            | ("workflows.bootstrap", "bootstrap")
+            | ("workflows.build_all", "build_all")
+            | ("workflows.ci", "ci")
+            | ("workflows.dag_viz", "dag_viz")
+            | ("workflows.deps", "deps")
+            | ("workflows.gist", "gist")
+            | ("workflows.makegen", "makegen")
+            | ("workflows.pragma", "pragma")
+            | ("workflows.sdlc", "sdlc")
+            | ("workflows.test_all", "test_all")
+    );
+    if !is_passthrough {
+        return None;
+    }
+    Some(DynOp::new(PassthroughOp {
+        output_port_names: declared_output_names(outputs),
+    }))
 }
 
 fn resolve_std_resources(name: &str) -> DynOp {
@@ -1118,10 +1261,7 @@ mod tests {
     fn resolve_pragma_render_ops() {
         let cases = [
             ("render_clippy_toml", "RenderClippy"),
-            (
-                "render_disallowed_methods_allowlist",
-                "RenderAllowlist",
-            ),
+            ("render_disallowed_methods_allowlist", "RenderAllowlist"),
             ("render_pragma_lint_policy", "RenderLintPolicy"),
         ];
         for (name, expected_debug) in cases {
@@ -1316,6 +1456,7 @@ mod tests {
                     is_raw_body: false,
                 }],
                 output_parsing: ShellOutputParsing::ExitCodeBool,
+                passthrough: false,
             })),
         }
     }
@@ -1365,6 +1506,7 @@ mod tests {
                     },
                 ],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+                passthrough: false,
             })),
         }
     }
@@ -1751,28 +1893,33 @@ mod tests {
     }
 
     #[test]
-    fn resolve_unknown_module_defaults_to_passthrough() {
+    fn resolve_unknown_module_fails_closed() {
         let node = callable_node(
             "unknown_op",
             "tools.unknown",
             "do_something",
             ObligationCategory::None,
         );
-        let result = resolve_node(&node).expect("unknown modules should default to passthrough");
-        assert_passthrough_behavior(&result);
+        let err = resolve_node(&node).expect_err("unknown modules should fail closed");
+        assert!(
+            err.reason.contains("unknown callable"),
+            "unexpected resolver error: {err}"
+        );
     }
 
     #[test]
-    fn resolve_unknown_callable_in_custom_module_falls_through_to_passthrough() {
+    fn resolve_unknown_callable_in_custom_module_fails_closed() {
         let node = callable_node(
             "bad_op",
             "tools.pragma",
             "nonexistent_op",
             ObligationCategory::None,
         );
-        let result =
-            resolve_node(&node).expect("unknown callable should fall through to passthrough");
-        assert_passthrough_behavior(&result);
+        let err = resolve_node(&node).expect_err("unknown callable should fail closed");
+        assert!(
+            err.reason.contains("unknown callable"),
+            "unexpected resolver error: {err}"
+        );
     }
 
     #[test]
@@ -1799,7 +1946,9 @@ mod tests {
         );
         inputs.insert("execute".to_string(), Value::Bool(false));
 
-        let outputs = result.execute(inputs).expect("infra orchestration should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("infra orchestration should execute");
         assert_eq!(outputs.get("mode"), Some(&Value::Str("plan".to_string())));
         assert_eq!(outputs.get("target_count"), Some(&Value::Int(0)));
         assert_eq!(outputs.get("applied_count"), Some(&Value::Int(0)));
@@ -2005,6 +2154,125 @@ mod tests {
             handle_port.cardinality,
             Cardinality::ZERO_OR_MORE,
             "release resource_handle input should accept fan-in without scalar conflicts"
+        );
+    }
+
+    // ---- SubDag executor tests ----
+
+    #[test]
+    fn subdag_executor_routes_inputs_to_inner_dag() {
+        // Inner DAG: single identity node with unconnected input/output
+        let mut inner: Dag<DynOp> = Dag::new();
+        inner.add_node(Node::opaque(
+            "receiver",
+            vec![Port::new("data", "String")],
+            vec![Port::new("data", "String")],
+            DynOp::new(IdentityCallableOp),
+        ));
+
+        let op = SubDagExecutorOp::new(inner);
+
+        // Verify port mappings
+        assert_eq!(op.input_map.len(), 1, "should have one entrypoint");
+        assert_eq!(op.output_map.len(), 1, "should have one boundary");
+        assert_eq!(op.input_map[0].0, "receiver/data");
+        assert_eq!(op.output_map[0].0, "receiver/data");
+
+        // Execute with input routed to entrypoint
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "receiver/data".to_string(),
+            Value::Str("hello".to_string()),
+        );
+        let outputs = op
+            .execute(inputs)
+            .expect("subdag executor should execute");
+        assert_eq!(
+            outputs
+                .get("receiver/data")
+                .and_then(Value::as_str),
+            Some("hello"),
+            "subdag should route input through inner DAG and return boundary output"
+        );
+    }
+
+    #[test]
+    fn resolve_lowered_dag_flat_converts_subdag_to_opaque() {
+        // Build an inner LoweredOp DAG
+        let mut inner: Dag<LoweredOp> = Dag::new();
+        inner.add_node(Node::opaque(
+            "inner_render",
+            vec![],
+            vec![Port::new("return", "String")],
+            LoweredOp::Callable {
+                module: "tools.pragma".to_string(),
+                kind: CallableKind::Fn,
+                name: "render_clippy_toml".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        // Build outer DAG with a SubDag node
+        let mut dag: Dag<LoweredOp> = Dag::new();
+        dag.add_node(Node {
+            id: "subdag_node".into(),
+            inputs: vec![],
+            outputs: vec![Port::new("return", "String")],
+            body: NodeBody::SubDag(inner),
+            examples: vec![],
+            log_detail: None,
+        });
+
+        let resolved =
+            resolve_lowered_dag_flat(&dag).expect("flat resolution should succeed");
+        assert_eq!(resolved.nodes.len(), 1);
+        for node in &resolved.nodes {
+            assert!(
+                matches!(node.body, NodeBody::Opaque(_)),
+                "all nodes should be Opaque after flat resolution, got SubDag"
+            );
+        }
+
+        // Verify the opaque op is a SubDagExecutorOp
+        let debug_str = format!("{:?}", resolved.nodes[0].body);
+        assert!(
+            debug_str.contains("SubDagExecutorOp"),
+            "flattened SubDag should be a SubDagExecutorOp, got: {debug_str}"
+        );
+    }
+
+    #[test]
+    fn subdag_executor_executes_pragma_render() {
+        use crate::pragma::PragmaOp;
+
+        // Inner DAG with a real pragma render op
+        let mut inner: Dag<DynOp> = Dag::new();
+        inner.add_node(Node::opaque(
+            "render",
+            vec![],
+            vec![Port::new("return", "String")],
+            DynOp::new(PragmaOp::RenderClippy),
+        ));
+
+        let op = SubDagExecutorOp::new(inner);
+
+        // No entrypoints (render has no inputs), one boundary (render/return)
+        assert!(op.input_map.is_empty(), "pragma render has no entrypoints");
+        assert_eq!(op.output_map.len(), 1);
+
+        let outputs = op
+            .execute(HashMap::new())
+            .expect("subdag with pragma render should execute");
+        assert!(
+            outputs
+                .get("render/return")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("disallowed-methods"),
+            "subdag should execute pragma render and produce clippy policy output"
         );
     }
 }

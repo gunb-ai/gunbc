@@ -1,8 +1,6 @@
 //! Cloud configuration ops.
 
-use gunbc_exec::{
-    optional_str_list_strict, require_str, ExecError, Executable, OutputMap,
-};
+use gunbc_exec::{optional_str_list_strict, require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};

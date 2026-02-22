@@ -379,10 +379,8 @@ mod tests {
         .into_iter()
         .map(|name| name.to_string())
         .collect();
-        let pipeline_names: BTreeSet<String> = ["ci"]
-            .into_iter()
-            .map(|name| name.to_string())
-            .collect();
+        let pipeline_names: BTreeSet<String> =
+            ["ci"].into_iter().map(|name| name.to_string()).collect();
 
         let dag = build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
             .expect("pure workspace dag composition should succeed");
@@ -517,10 +515,8 @@ mod tests {
 
     #[test]
     fn test_registered_pipeline_subdag_mapping() {
-        let pipeline_names: BTreeSet<String> = ["ci"]
-            .into_iter()
-            .map(|name| name.to_string())
-            .collect();
+        let pipeline_names: BTreeSet<String> =
+            ["ci"].into_iter().map(|name| name.to_string()).collect();
         let mut dag = Dag::new();
         add_discovered_pipeline_subdags(&mut dag, &pipeline_names)
             .expect("registered pipeline mapping should build");

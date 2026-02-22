@@ -158,10 +158,7 @@ mod tests {
         )
         .expect("parse should succeed");
         assert_eq!(result.number, 42);
-        assert_eq!(
-            result.url,
-            "https://github.com/test-org/test-repo/pull/42"
-        );
+        assert_eq!(result.url, "https://github.com/test-org/test-repo/pull/42");
         assert_eq!(result.head_branch, "feature/test");
     }
 

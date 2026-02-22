@@ -197,6 +197,12 @@ fn tool_targets_have_testgen_coverage() {
     // references the same function name in the same crate directory.
     let mut missing = Vec::new();
     for (builder_fn, crate_dir, source_loc) in &tool_builders {
+        // DSL-backed tool targets execute through shared gunbc-dag wrappers
+        // and are validated by DSL builder/compile coverage instead of
+        // per-crate graph_mock builder parity.
+        if builder_fn.ends_with("_dsl") {
+            continue;
+        }
         let has_testgen = testgen_builders
             .iter()
             .any(|(testgen_fn, testgen_dir)| testgen_fn == builder_fn && testgen_dir == crate_dir);

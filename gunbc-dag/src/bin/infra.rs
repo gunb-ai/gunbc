@@ -335,8 +335,9 @@ fn run_compiled_infra_orchestration(
     inputs.insert("execute".to_string(), execute_mode.to_string());
 
     let input_mocks = build_entrypoint_input_mocks(&orchestration_dag, &inputs, false)?;
-    let log = execute_with_mode_and_inputs(&orchestration_dag, ExecutionMode::Real, Some(&input_mocks))
-        .map_err(|error| format!("compiled infra DAG execution failed: {error}"))?;
+    let log =
+        execute_with_mode_and_inputs(&orchestration_dag, ExecutionMode::Real, Some(&input_mocks))
+            .map_err(|error| format!("compiled infra DAG execution failed: {error}"))?;
     match extract_orchestration_output(&log) {
         Ok(output) => Ok(output),
         Err(error)

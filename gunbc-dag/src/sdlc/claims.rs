@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn heartbeat_claim_extends_owner_lease() {
         let mut ledger = ClaimLedger::default();
-        let key = claim_slot_key(2, IssueLifecycleStage::Implementation);
+        let key = claim_slot_key(2, IssueLifecycleStage::Implementing);
         let _ = try_acquire_claim(&mut ledger, &key, "worker-a", 1000, 100);
         assert!(heartbeat_claim(&mut ledger, &key, "worker-a", 1080, 250));
         assert_eq!(

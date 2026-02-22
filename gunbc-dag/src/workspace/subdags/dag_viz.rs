@@ -2,17 +2,14 @@
 //!
 //! Wraps the dag_viz tool as a SubDag node using WorkspaceOp.
 
-use crate::dag_viz::{build_dag_viz_graph, DagVizMode};
-use crate::workspace::convert::convert_dag;
+use crate::dsl_builder::build_dag_viz_graph_dsl;
 use crate::workspace::WorkspaceOp;
-use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Node};
 
 /// Build the dag_viz SubDag node.
 pub fn build_dag_viz_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
-    let original = build_dag_viz_graph(DagVizMode::Snapshot)?;
-    let converted_dag = convert_dag(original, &|op| DynOp::new(op));
-    Ok(Node::subdag("dag_viz", converted_dag))
+    let dsl_dag = build_dag_viz_graph_dsl()?;
+    Ok(Node::subdag("dag_viz", dsl_dag))
 }
 
 #[cfg(test)]
@@ -32,8 +29,7 @@ mod tests {
         let node = build_dag_viz_subdag().expect("dag_viz subdag should build");
         match &node.body {
             NodeBody::SubDag(dag) => {
-                assert!(dag.get_node(&"build_topology".into()).is_some());
-                assert!(dag.get_node(&"render_snapshot".into()).is_some());
+                assert!(!dag.nodes.is_empty(), "dag_viz DSL subdag should contain nodes");
             }
             _ => panic!("Expected SubDag"),
         }

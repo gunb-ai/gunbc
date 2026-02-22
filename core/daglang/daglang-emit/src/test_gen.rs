@@ -149,7 +149,9 @@ pub fn emit_transport_mock_tests(backend: &str, dag: &Dag<LoweredOp>) -> Option<
 fn typed_mock_for_response(response_type: &str) -> String {
     match response_type {
         "TransportResponse" => r#"{"status":"ok","type":"transport"}"#.to_string(),
-        "FileResponse" => r#"{"path":"/tmp/test.txt","success":true,"operation":"read"}"#.to_string(),
+        "FileResponse" => {
+            r#"{"path":"/tmp/test.txt","success":true,"operation":"read"}"#.to_string()
+        }
         "RestResponse" => r#"{"status":200,"body":{"ok":true}}"#.to_string(),
         "ShellResponse" => r#"{"exit_code":0,"stdout":"output"}"#.to_string(),
         _ => typed_mock_fallback(response_type),
@@ -646,7 +648,10 @@ mod tests {
 
     #[test]
     fn typed_mock_for_response_fallback_uses_list_shape_for_string_list() {
-        assert_eq!(typed_mock_for_response("StringList"), r#"["mock-response"]"#);
+        assert_eq!(
+            typed_mock_for_response("StringList"),
+            r#"["mock-response"]"#
+        );
     }
 
     #[test]

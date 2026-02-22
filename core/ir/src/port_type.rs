@@ -82,7 +82,10 @@ impl PortType {
     ///
     /// Returns `Err` if the type string is not recognized by either
     /// structural parsing or the registry.
-    pub fn from_registry(type_str: &str, registry: &crate::type_registry::TypeRegistry) -> Result<PortType, std::string::String> {
+    pub fn from_registry(
+        type_str: &str,
+        registry: &crate::type_registry::TypeRegistry,
+    ) -> Result<PortType, std::string::String> {
         // First try structural parse
         if let Some(pt) = try_parse_port_type(type_str) {
             return Ok(pt);
@@ -180,14 +183,22 @@ fn try_parse_port_type(s: &str) -> Option<PortType> {
         }
 
         // Domain types — string-backed
-        "FilePath" | "Path" | "TextFilePath"
-        | "Url" | "Email" | "NonEmptyString"
-        | "Platform" | "ContentEncoding"
-        | "OidcAudience" | "WifAudience"
-        | "GcpProjectId" | "GcpSecretId" | "GcpSecretVersion"
-        | "GcpServiceAccountEmail" | "GcpSubjectToken" | "OidcSubjectToken" => {
-            Some(PortType::String)
-        }
+        "FilePath"
+        | "Path"
+        | "TextFilePath"
+        | "Url"
+        | "Email"
+        | "NonEmptyString"
+        | "Platform"
+        | "ContentEncoding"
+        | "OidcAudience"
+        | "WifAudience"
+        | "GcpProjectId"
+        | "GcpSecretId"
+        | "GcpSecretVersion"
+        | "GcpServiceAccountEmail"
+        | "GcpSubjectToken"
+        | "OidcSubjectToken" => Some(PortType::String),
 
         // Domain types — bytes-backed
         "BinaryFilePath" => Some(PortType::Bytes),
@@ -199,9 +210,8 @@ fn try_parse_port_type(s: &str) -> Option<PortType> {
         "Credential" => Some(PortType::Secret),
 
         // Domain types — json/structured-backed
-        "TransportRequest" | "TransportResponse"
-        | "FileResponse" | "ShellResponse" | "RestResponse" | "HttpResponse"
-        | "ToolHandle" | "FilesystemHandle" | "NetworkHandle"
+        "TransportRequest" | "TransportResponse" | "FileResponse" | "ShellResponse"
+        | "RestResponse" | "HttpResponse" | "ToolHandle" | "FilesystemHandle" | "NetworkHandle"
         | "CliResult" | "Record" => Some(PortType::Json),
 
         // Legacy aliases
