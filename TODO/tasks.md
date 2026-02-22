@@ -119,6 +119,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19 |
 | Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4 (needs both Lane 1 + Lane 2 done) |
 | 3: Modeling integrity | **QUEUED** | M8..M14, M16..M19 |
+| 4: Codebase polish | **ACTIVE** | CU-1..CU-9 |
 
 ---
 
@@ -418,24 +419,6 @@ See `TODO/backlog.md` for details. Parked for future consideration:
 - Resource Trait String Port Elimination (L) — typed resource system exists, string coexistence
 - Glob-aware Resource Admission (M) — policy-sensitive concurrency, needs explicit design
 - Canonical Port Naming Invariants (S) — mechanical but needs snapshot coordination
-
----
-
-## Cleanup: Codebase Polish (Any Lane — Filler Work)
-
-Low-priority items that any lane can pick up when blocked or between tasks. Goal: spotless codebase.
-
-| ID | Task | Location | Size | Status |
-|----|------|----------|------|--------|
-| **CU-1** | **Audit near-empty stub files**: 7 files with <5 lines: `core/ir/src/{go_ir.rs, register_ir.rs, c_ir.rs}`, `core/codegen/src/testgen/render.rs`, `core/daglang/daglang-cli/src/lib.rs`, `gunbc-dag/src/policy/mod.rs`, `gunbc-dag/tests/common/mod.rs`. Decide per file: remove if unused, add content if placeholder, or add comment explaining purpose. | Various | S | |
-| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level `#[allow(dead_code)]` at `daglang-syntax/src/parser.rs:130` masks potential actual dead code. Replace with per-method attributes only where needed. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | S | |
-| **CU-3** | **Factor common mock helpers**: The 3 largest mock files (llm-ops 1043 lines, gist 643, review 620) share patterns like `mock_credential()`, `mock_cloud_config()`, `mock_fs_handle()`. Extract to a shared `gunbc-test::mock_helpers` module. Reduces per-tool mock boilerplate. | `lib/*/src/graph_mock.rs` | M | |
-| **CU-4** | **Document side-effect imports**: ~16 `use ... as _;` imports across binary and test files for tool registration. Add explanatory comments above each (e.g., "Force registration of tool-specific ops into global registry"). | `gunbc-dag/src/bin/*.rs` | S | |
-| **CU-5** | **Archive `design-eliminate-registration-lists.md`**: Phase 1 complete; Phases 2-3 are covered by Lanes G/H (done). Move to `TODO/TODONE/`. | `TODO/` | S | |
-| **CU-6** | **Organize TODONE by quarter**: 65 completed items in flat `TODO/TODONE/`. Create `TODONE/2026-Q1/` subdirectory and move completed items by date. | `TODO/TODONE/` | S | |
-| **CU-7** | **Typed API migration**: `TypedPort<T>`, `TypedInput<T>`, `TypedOutput<T>` exist. Migrate remaining legacy untyped `Port` API callsites in graph builders to typed wrappers. Mechanical but wide-blast-radius. | `lib/*/src/graph.rs` (after Lane 1) | L | |
-| **CU-8** | **Resource trait string port elimination**: Typed `Resource` trait, `AccessMode`, `ManagedResource` exist. Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | L | |
-| **CU-9** | **Canonical port naming invariants**: Some paths rely on module-specific port aliases in normalization. Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | S | |
 
 ---
 
