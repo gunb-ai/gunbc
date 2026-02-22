@@ -50,6 +50,7 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     ))
 }
 
+#[allow(dead_code)]
 fn unique_workspace_target_dir(name: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -62,6 +63,7 @@ fn unique_workspace_target_dir(name: &str) -> PathBuf {
     ))
 }
 
+#[allow(dead_code)]
 fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
     main_rs
         .lines()
@@ -168,10 +170,9 @@ fn dsl_parse_error_files(dsl_root: &Path) -> BTreeSet<PathBuf> {
     let roots = vec![dsl_root.to_path_buf()];
     match ModuleGraph::discover(&roots) {
         Ok(_) => BTreeSet::new(),
-        Err(ResolveError::ParseErrors(errors)) => errors
-            .into_iter()
-            .map(|(path, _)| path)
-            .collect(),
+        Err(ResolveError::ParseErrors(errors)) => {
+            errors.into_iter().map(|(path, _)| path).collect()
+        }
         Err(other) => panic!("failed to inspect dsl parse errors: {other}"),
     }
 }
@@ -13258,10 +13259,6 @@ fn compile_non_rust_layer_one_reports_error() {
 }
 
 #[test]
-
-#[test]
-
-#[test]
 fn viz_without_self_defaults_to_compiled_ascii_graph() {
     let output = Command::new(daglang_bin())
         .arg("viz")
@@ -13403,8 +13400,6 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
 }
 
 /// D1.8 — Compile pragma.dag to exec-runtime layer and verify generated files.
-#[test]
-
 /// D1.8 — Full end-to-end test: compile pragma.dag to exec-runtime binary,
 /// build it, run it, and verify the pragma config files are generated.
 ///

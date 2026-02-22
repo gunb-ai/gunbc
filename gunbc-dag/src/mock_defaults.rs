@@ -59,14 +59,17 @@ fn gcp_field_value_for_kind(kind: GcpFieldKind) -> Value {
 /// Legacy compatibility path while graph ports migrate to refined type aliases.
 fn legacy_gcp_field_value_by_name(port_name: &str) -> Option<Value> {
     match port_name {
+        "provider" => Some(Value::Str("gcp".to_string())),
+        "runtime" => Some(Value::Str("local".to_string())),
         "audience" => Some(gcp_field_value_for_kind(GcpFieldKind::Audience)),
-        "project" => Some(gcp_field_value_for_kind(GcpFieldKind::Project)),
+        "project" | "project_or_account" => Some(gcp_field_value_for_kind(GcpFieldKind::Project)),
         "secret" | "secret_name" => Some(gcp_field_value_for_kind(GcpFieldKind::Secret)),
         "subject_token" => Some(gcp_field_value_for_kind(GcpFieldKind::SubjectToken)),
         "version" => Some(gcp_field_value_for_kind(GcpFieldKind::Version)),
         "service_account" | "service_account_or_role" => {
             Some(gcp_field_value_for_kind(GcpFieldKind::ServiceAccount))
         }
+        "impersonate_account_or_role" => Some(Value::Str(String::new())),
         _ => None,
     }
 }
@@ -174,7 +177,11 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
     type_id: &str,
 ) -> Value {
     if type_id != "TransportResponse" {
-        return default_value_for_type(type_id);
+        if port_name == "items" {
+            return Value::str_list(vec!["mock".to_string()]);
+        }
+        return gcp_field_value(type_id, port_name)
+            .unwrap_or_else(|| default_value_for_type(type_id));
     }
 
     // Pick a response variant compatible with downstream parse nodes.

@@ -2768,6 +2768,7 @@ struct CompiledStageOutcome {
     success: bool,
     next_stage: IssueLifecycleStage,
     awaiting_approval: bool,
+    payload: Option<String>,
 }
 
 #[derive(Clone)]
@@ -2863,11 +2864,16 @@ impl CompiledStageDispatcher {
             .map(parse_compiled_stage)
             .transpose()?
             .unwrap_or(record.stage);
+        let payload = outputs
+            .get("payload")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
 
         Ok(CompiledStageOutcome {
             success,
             next_stage,
             awaiting_approval,
+            payload,
         })
     }
 }
@@ -2932,6 +2938,16 @@ fn dispatch_pipeline_stage(
     }
 
     if outcome.next_stage != record.stage {
+        if let Some(payload) = outcome.payload.as_deref() {
+            let marker = format!("{}-marker", outcome.next_stage.as_label());
+            issue_transport_upsert_comment(
+                issue_transport,
+                issue_id,
+                &marker,
+                payload,
+                now_epoch_ms,
+            )?;
+        }
         issue_transport_upsert_comment(
             issue_transport,
             issue_id,

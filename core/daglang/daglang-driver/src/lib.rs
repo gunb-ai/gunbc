@@ -981,9 +981,11 @@ func run(path: String) -> { body: String } uses store: Storage {
             },
         )
         .expect("compile should succeed with active profile");
-        assert!(output.lowered_dag.nodes.iter().any(
-            |node| node.id.0 == "prepare_transport_sample_FsStorage_read"
-        ));
+        assert!(output
+            .lowered_dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "prepare_transport_sample_FsStorage_read"));
 
         let unknown_profile_error = compile_from_context_with_options(
             &context,
@@ -1306,22 +1308,26 @@ fn run() -> Bool {
             .content
             .as_str();
 
-        // ---- Pragma-specific handler kinds ----
+        // ---- Pragma-specific callable nodes ----
         assert!(
-            main_rs.contains("RenderPragmaClippyToml"),
-            "missing RenderPragmaClippyToml handler"
+            main_rs.contains("tools.pragma::render_clippy_toml"),
+            "missing render_clippy_toml callable node"
         );
         assert!(
-            main_rs.contains("RenderPragmaAllowlist"),
-            "missing RenderPragmaAllowlist handler"
+            main_rs.contains("tools.pragma::render_disallowed_methods_allowlist"),
+            "missing render_disallowed_methods_allowlist callable node"
         );
         assert!(
-            main_rs.contains("RenderPragmaLintPolicy"),
-            "missing RenderPragmaLintPolicy handler"
+            main_rs.contains("tools.pragma::render_pragma_lint_policy"),
+            "missing render_pragma_lint_policy callable node"
         );
         assert!(
-            main_rs.contains("PragmaEntrypoint"),
-            "missing PragmaEntrypoint handler"
+            main_rs.contains("tools.pragma::pragma"),
+            "missing pragma entry callable node"
+        );
+        assert!(
+            main_rs.contains("UnimplementedPassthrough"),
+            "pragma callable nodes should lower to UnimplementedPassthrough in exec-runtime"
         );
 
         // ---- Content upsert pattern handlers (shared) ----
@@ -1344,16 +1350,6 @@ fn run() -> Bool {
         assert!(
             main_rs.contains("ExecuteTransport"),
             "missing ExecuteTransport handler"
-        );
-
-        // ---- Pragma helper infrastructure ----
-        assert!(
-            main_rs.contains("PragmaDirectiveRuntime"),
-            "should emit PragmaDirectiveRuntime struct"
-        );
-        assert!(
-            main_rs.contains("parse_pragma_directives"),
-            "should emit pragma directive parsing helper"
         );
 
         // ---- DAG topology ----

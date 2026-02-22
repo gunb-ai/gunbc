@@ -25,6 +25,7 @@ fn unique_temp_file(name: &str) -> PathBuf {
     fixture_root.join(format!("{name}.dag"))
 }
 
+#[allow(dead_code)]
 fn unique_temp_output_file(name: &str, extension: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -50,6 +51,7 @@ fn workspace_single_file_context(relative_path: &str) -> PipelineContext {
     }
 }
 
+#[allow(dead_code)]
 struct MakegenOutputFixture {
     context: PipelineContext,
     output_path: PathBuf,
@@ -57,6 +59,7 @@ struct MakegenOutputFixture {
 }
 
 impl MakegenOutputFixture {
+    #[allow(dead_code)]
     fn new(name: &str) -> Self {
         let context = workspace_single_file_context("tools/makegen.dag");
         let output_path = unique_temp_output_file(name, "mk");
@@ -429,7 +432,6 @@ fn compile_single_file_makegen_produces_non_empty_outputs() {
 }
 
 #[test]
-#[test]
 fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
@@ -503,9 +505,6 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
     assert!(result.contains_key("out"));
 }
 
-#[test]
-#[test]
-#[test]
 #[test]
 fn compile_resolve_execute_end_to_end_function_body_expressions() {
     let (context, root) = temp_dag_context(

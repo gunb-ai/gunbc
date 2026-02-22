@@ -235,13 +235,88 @@ pub fn optional_str_list_strict(
     inputs: &HashMap<String, Value>,
     key: &str,
 ) -> Result<Option<Vec<String>>, ExecError> {
+    fn coerce_string_list(value: &Value) -> Option<Vec<String>> {
+        fn push_value(out: &mut Vec<String>, value: &Value) -> bool {
+            match value {
+                Value::Str(s) => {
+                    out.push(s.clone());
+                    true
+                }
+                Value::Int(i) => {
+                    out.push(i.to_string());
+                    true
+                }
+                Value::Bool(b) => {
+                    out.push(b.to_string());
+                    true
+                }
+                Value::Float(f) => {
+                    out.push(f.to_string());
+                    true
+                }
+                Value::Json(json) => {
+                    if let Some(items) = json.as_array() {
+                        for item in items {
+                            if let Some(s) = item.as_str() {
+                                out.push(s.to_string());
+                            } else {
+                                out.push(item.to_string());
+                            }
+                        }
+                        true
+                    } else {
+                        out.push(
+                            json.as_str()
+                                .map(ToString::to_string)
+                                .unwrap_or_else(|| json.to_string()),
+                        );
+                        true
+                    }
+                }
+                Value::List(items) | Value::Set(items) => {
+                    for nested in items {
+                        if !push_value(out, nested) {
+                            return false;
+                        }
+                    }
+                    true
+                }
+                _ => false,
+            }
+        }
+
+        match value {
+            Value::Str(s) => Some(vec![s.clone()]),
+            Value::List(items) | Value::Set(items) => {
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    if !push_value(&mut out, item) {
+                        return None;
+                    }
+                }
+                Some(out)
+            }
+            Value::Json(_) => {
+                let mut out = Vec::new();
+                if !push_value(&mut out, value) {
+                    return None;
+                }
+                Some(out)
+            }
+            _ => None,
+        }
+    }
+
     match inputs.get(key) {
         None => Ok(None),
         Some(Value::Skipped) => Ok(None),
-        Some(v) => v
-            .as_str_list()
-            .map(Some)
-            .ok_or_else(|| ExecError::new(format!("invalid '{}' input: expected StringList", key))),
+        Some(v) => coerce_string_list(v).map(Some).ok_or_else(|| {
+            ExecError::new(format!(
+                "invalid '{}' input: expected StringList (got {})",
+                key,
+                v.kind().type_name()
+            ))
+        }),
     }
 }
 

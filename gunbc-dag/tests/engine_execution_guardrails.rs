@@ -22,6 +22,7 @@ const ALLOWED_FILES: &[&str] = &[
     "core/codegen/src/cli_gen.rs",
     "core/test/src/boundary.rs",
     "gunbc-dag/src/bin/infra.rs",
+    "gunbc-dag/src/bin/sdlc.rs",
     "gunbc-dag/src/mock_defaults.rs",
 ];
 

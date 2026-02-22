@@ -71,7 +71,8 @@ fn parse_module_declaration(dsl_root: &Path, path: &Path) -> String {
 #[test]
 fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("expected real dsl graph to parse");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root))
+        .expect("expected real dsl graph to parse");
 
     let expected = expected_dsl_modules_sorted(&dsl_root);
     assert_eq!(
@@ -91,7 +92,8 @@ fn discovers_all_real_dsl_modules() {
 #[test]
 fn real_corpus_module_order_is_stable_across_discovery_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let first = ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("expected real dsl graph");
+    let first =
+        ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("expected real dsl graph");
     let second = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph");
     let first_order: Vec<String> = first
         .modules
@@ -141,12 +143,16 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("cloud.aws.credential".into(), 3),
         ("cloud.azure.credential".into(), 3),
         ("cloud.gcp.credential".into(), 6),
+        ("config.codegen_paths".into(), 0),
+        ("config.gitignore_categories".into(), 0),
+        ("config.pragma_policy".into(), 0),
+        ("config.tool_registry".into(), 0),
         ("examples.abstract_services".into(), 1),
         ("examples.deployment".into(), 10),
         ("examples.integration_tests".into(), 2),
         ("examples.rich_types".into(), 0),
-        ("funcs.agent_feedback".into(), 4),
-        ("funcs.sdlc_worker".into(), 5),
+        ("funcs.sdlc_stages".into(), 9),
+        ("funcs.sdlc_worker".into(), 7),
         ("funcs.test_control_flow".into(), 1),
         ("infra.aws.config".into(), 2),
         ("infra.aws.resources".into(), 3),
@@ -160,25 +166,43 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("infra.gcp.services".into(), 0),
         ("infra.sdlc.deploy".into(), 2),
         ("infra.spec".into(), 1),
+        ("interfaces.agent_provider".into(), 1),
+        ("interfaces.artifact_store".into(), 1),
+        ("interfaces.claim_store".into(), 1),
+        ("interfaces.issue_provider".into(), 1),
+        ("interfaces.outcome_ledger".into(), 1),
+        ("interfaces.signal_store".into(), 1),
         ("pipelines.ci".into(), 10),
-        ("pipelines.sdlc".into(), 5),
-        ("services.agent.codex".into(), 0),
+        ("pipelines.reconciler".into(), 6),
+        ("pipelines.sdlc".into(), 13),
+        ("profiles.cloud_run".into(), 6),
+        ("profiles.local".into(), 6),
+        ("profiles.sdlc".into(), 6),
+        ("profiles.unit_test".into(), 6),
         ("services.cargo".into(), 0),
         ("services.gcp.iam".into(), 0),
         ("services.gcp.secret_manager".into(), 0),
         ("services.gcp.sts".into(), 0),
         ("services.git".into(), 1),
         ("services.github.gist".into(), 0),
-        ("services.github.issues".into(), 0),
+        ("services.github.issues".into(), 2),
         ("services.github.pull_request".into(), 0),
         ("services.llm.anthropic".into(), 0),
         ("services.llm.openai".into(), 0),
-        ("services.sdlc.control_plane".into(), 0),
+        ("services.sdlc.providers.codex_agent_provider".into(), 2),
+        ("services.sdlc.providers.file_claim_store".into(), 3),
+        ("services.sdlc.providers.file_outcome_ledger".into(), 3),
+        ("services.sdlc.providers.gcs_claim_store".into(), 2),
+        ("services.sdlc.providers.gcs_outcome_ledger".into(), 2),
+        ("services.sdlc.providers.github_issue_provider".into(), 2),
+        ("services.sdlc.providers.stub_providers".into(), 7),
         ("services.shell".into(), 1),
+        ("shared.compilation".into(), 0),
         ("shared.dag_util".into(), 2),
         ("shared.gist_modes".into(), 5),
         ("std.patterns".into(), 5),
         ("std.resources".into(), 0),
+        ("std.state_machines".into(), 1),
         ("std.types".into(), 0),
         ("tools.bootstrap".into(), 4),
         ("tools.build".into(), 3),
@@ -186,14 +210,24 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.codegen".into(), 2),
         ("tools.dag_viz".into(), 5),
         ("tools.deps".into(), 4),
-        ("tools.design".into(), 3),
-        ("tools.docgen".into(), 2),
+        ("tools.design".into(), 2),
+        ("tools.docgen".into(), 4),
         ("tools.gist".into(), 5),
         ("tools.infra".into(), 0),
         ("tools.makegen".into(), 3),
         ("tools.pragma".into(), 3),
         ("tools.review".into(), 0),
         ("tools.testgen".into(), 2),
+        ("workflows.bootstrap".into(), 2),
+        ("workflows.build_all".into(), 3),
+        ("workflows.ci".into(), 0),
+        ("workflows.dag_viz".into(), 2),
+        ("workflows.deps".into(), 2),
+        ("workflows.gist".into(), 2),
+        ("workflows.makegen".into(), 2),
+        ("workflows.pragma".into(), 2),
+        ("workflows.sdlc".into(), 2),
+        ("workflows.test_all".into(), 0),
     ]);
 
     assert_eq!(actual, expected);
