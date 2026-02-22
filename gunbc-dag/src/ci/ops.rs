@@ -1637,6 +1637,7 @@ mod tests {
                     operation: FileOp::Exists,
                     success: true,
                     content: None,
+                    bytes: None,
                     exists: Some(true),
                     error: None,
                 }
@@ -1667,6 +1668,7 @@ mod tests {
                     operation: FileOp::Exists,
                     success: true,
                     content: None,
+                    bytes: None,
                     exists: Some(false),
                     error: None,
                 }

@@ -1819,6 +1819,7 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
                             operation: FileOp::Read,
                             success: true,
                             content: Some(String::new()),
+                            bytes: None,
                             exists: None,
                             error: None,
                         }))
@@ -2116,6 +2117,7 @@ mod tests {
             operation,
             success: true,
             content: None,
+            bytes: None,
             exists: None,
             error: None,
         }))

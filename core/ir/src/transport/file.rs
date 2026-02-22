@@ -5,8 +5,10 @@ use serde::{Deserialize, Serialize};
 /// File operation type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileOp {
-    /// Read file contents
+    /// Read file contents as UTF-8 text
     Read,
+    /// Read file contents as raw bytes (never fails on encoding)
+    ReadBytes,
     /// Write file (create or overwrite)
     Write,
     /// Append to file
@@ -45,8 +47,10 @@ pub struct FileResponse {
     pub operation: FileOp,
     /// Whether the operation succeeded
     pub success: bool,
-    /// Content (for read operations)
+    /// Content (for text read operations)
     pub content: Option<String>,
+    /// Raw bytes (for ReadBytes operations)
+    pub bytes: Option<Vec<u8>>,
     /// Whether the file exists (for exists operations)
     pub exists: Option<bool>,
     /// Error message if operation failed
@@ -54,11 +58,21 @@ pub struct FileResponse {
 }
 
 impl FileRequest {
-    /// Create a read request.
+    /// Create a read request (UTF-8 text).
     pub fn read(path: impl Into<String>) -> Self {
         Self {
             path: path.into(),
             operation: FileOp::Read,
+            content: None,
+            create_parents: false,
+        }
+    }
+
+    /// Create a read-bytes request (raw binary, never fails on encoding).
+    pub fn read_bytes(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::ReadBytes,
             content: None,
             create_parents: false,
         }
@@ -149,18 +163,33 @@ impl FileResponse {
             operation: FileOp::Write,
             success: true,
             content: None,
+            bytes: None,
             exists: None,
             error: None,
         }
     }
 
-    /// Create a successful response for a read operation.
+    /// Create a successful response for a text read operation.
     pub fn read_ok(path: impl Into<String>, content: impl Into<String>) -> Self {
         Self {
             path: path.into(),
             operation: FileOp::Read,
             success: true,
             content: Some(content.into()),
+            bytes: None,
+            exists: None,
+            error: None,
+        }
+    }
+
+    /// Create a successful response for a binary read operation.
+    pub fn read_bytes_ok(path: impl Into<String>, data: Vec<u8>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::ReadBytes,
+            success: true,
+            content: None,
+            bytes: Some(data),
             exists: None,
             error: None,
         }
@@ -173,6 +202,7 @@ impl FileResponse {
             operation,
             success: false,
             content: None,
+            bytes: None,
             exists: None,
             error: Some(error.into()),
         }
@@ -185,6 +215,7 @@ impl FileResponse {
             operation: FileOp::Exists,
             success: true,
             content: None,
+            bytes: None,
             exists: Some(exists),
             error: None,
         }
@@ -201,6 +232,7 @@ impl FileResponse {
             operation: FileOp::Glob,
             success: true,
             content: Some(content),
+            bytes: None,
             exists: None,
             error: None,
         }
@@ -213,6 +245,7 @@ impl FileResponse {
             operation: FileOp::Metadata,
             success: true,
             content: Some(modified_millis.to_string()),
+            bytes: None,
             exists: None,
             error: None,
         }

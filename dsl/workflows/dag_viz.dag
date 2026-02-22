@@ -22,24 +22,37 @@ import tools.codegen { codegen_ensure }
 pipeline dag_viz {
 
   stage compilation_ensure {
+    @file(WRITE, "target")
+    @tool(READ, "cargo")
     _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
+    @file(WRITE, "generated:cli")
     _ = codegen_ensure()
   }
 
-  stage branch_resolution [after codegen_ensure] {}
+  stage branch_resolution [after codegen_ensure] {
+    @file(READ, "workspace")
+  }
 
-  stage credential_resolve [after codegen_ensure] {}
+  stage credential_resolve [after codegen_ensure] {
+    @credential(READ, "github")
+  }
 
-  stage serialize_dag [after codegen_ensure, when mode == "dag-viz" || mode == "dag-viz-diff" || mode == "dag-viz-recent"] {}
+  stage serialize_dag [after codegen_ensure, when mode == "dag-viz" || mode == "dag-viz-diff" || mode == "dag-viz-recent"] {
+    @file(READ, "workspace")
+  }
 
   stage render_viz [after serialize_dag, when mode == "dag-viz" || mode == "dag-viz-diff" || mode == "dag-viz-recent"] {}
 
-  stage list_files [after codegen_ensure, when mode == "dag-snapshot"] {}
+  stage list_files [after codegen_ensure, when mode == "dag-snapshot"] {
+    @file(READ, "workspace")
+  }
 
-  stage read_files [after list_files, when mode == "dag-snapshot"] {}
+  stage read_files [after list_files, when mode == "dag-snapshot"] {
+    @file(READ, "workspace")
+  }
 
   stage render_snapshot [after read_files, when mode == "dag-snapshot"] {}
 
@@ -52,7 +65,10 @@ pipeline dag_viz {
       || mode == "dag-viz-diff"
       || mode == "dag-viz-recent"
       || mode == "dag-snapshot"
-  ] {}
+  ] {
+    @network(WRITE, "github_gist")
+    @credential(READ, "github")
+  }
 
   stage report [after gist_upload] {}
 }

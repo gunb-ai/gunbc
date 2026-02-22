@@ -16,6 +16,7 @@ gunbc-test = { path = "../core/test" }
 # DSL compilation
 daglang-driver = { path = "../core/daglang/daglang-driver" }
 daglang-lower = { path = "../core/daglang/daglang-lower" }
+daglang-syntax = { path = "../core/daglang/daglang-syntax" }
 
 # Libraries
 gunbc-primitives = { path = "../lib/primitives" }
@@ -129,6 +130,5 @@ path = "src/bin/workflow.rs"
 [[bin]]
 name = "gunbc-sdlc"
 path = "src/bin/sdlc.rs"
-
 
 

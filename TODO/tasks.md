@@ -110,7 +110,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | D: Daglang convergence | **DONE** | — |
 | E: Runtime infra | **DONE** | — |
 | F: Codegen-first SDLC | **DONE** | `CG1` superseded (SDLC modules are runtime-authored) |
-| G: Workflow DSL migration | **ACTIVE** | WM-1..WM-9 (14 workflows, 69 process units, 16 builder fns) |
+| G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **ACTIVE** | EX-1..EX-15 (22 tool ops → 0; parser has syntax, gap is lowering + execution) |
 
 ---
@@ -232,8 +232,8 @@ Implemented: default-passthrough resolver, `Option`-returning inventory resolver
 | **WM-5** | **Migrate `deps` workflow to DSL**: 8 process units. Create `dsl/workflows/deps.dag`. | — | M | **DONE** |
 | **WM-6** | **Migrate `gist` workflow family to DSL**: 3 variants (`gist-snapshot`, `gist-diff`, `gist-recent`) sharing 9 process units. Create `dsl/workflows/gist.dag` with parameterized mode. | — | M | **DONE** |
 | **WM-7** | **Migrate `dag-viz` workflow family to DSL**: 3 variants (`dag-viz`, `dag-viz-diff`, `dag-viz-recent`) + `dag-snapshot`. 6-7 process units each. Create `dsl/workflows/dag-viz.dag`. | — | M | **DONE** |
-| **WM-8** | **Derive process unit claims from DSL annotations**: The DSL already has `@file(READ/WRITE)` annotations and the compiler extracts `ResourceUsage`. Generate `UnitClaim` entries from compiled pipeline metadata instead of the hardcoded 69-entry `default_process_unit_registry()`. | WM-1..WM-7 | M | |
-| **WM-9** | **Delete Rust workflow builders**: Remove `TOOL_WORKFLOWS` registry, all `*_workflow_spec()` builder functions, and `default_process_unit_registry()`. Wire workspace subdag discovery to load compiled DSL workflows. | WM-8 | M | |
+| **WM-8** | **Derive process unit claims from DSL annotations**: The DSL already has `@file(READ/WRITE)` annotations and the compiler extracts `ResourceUsage`. Generate `UnitClaim` entries from compiled pipeline metadata instead of the hardcoded 69-entry `default_process_unit_registry()`. | WM-1..WM-7 | M | **DONE** |
+| **WM-9** | **Delete Rust workflow builders**: Remove `TOOL_WORKFLOWS` registry, all `*_workflow_spec()` builder functions, and `default_process_unit_registry()`. Wire workspace subdag discovery to load compiled DSL workflows. | WM-8 | M | **DONE** |
 
 **Parallelism**: WM-1 through WM-7 are fully independent — each workflow can be migrated by a separate worker. WM-8 and WM-9 depend on all migrations completing.
 

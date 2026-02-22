@@ -187,6 +187,14 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
                 e.to_string(),
             )),
         },
+        FileOp::ReadBytes => match fs::read(&request.path) {
+            Ok(data) => Ok(FileResponse::read_bytes_ok(&request.path, data)),
+            Err(e) => Ok(FileResponse::error(
+                &request.path,
+                FileOp::ReadBytes,
+                e.to_string(),
+            )),
+        },
         FileOp::Write => {
             if request.create_parents {
                 if let Some(parent) = std::path::Path::new(&request.path).parent() {
@@ -225,6 +233,7 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
                         operation: FileOp::Append,
                         success: true,
                         content: None,
+                        bytes: None,
                         exists: None,
                         error: None,
                     }),
@@ -247,6 +256,7 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
                 operation: FileOp::Delete,
                 success: true,
                 content: None,
+                bytes: None,
                 exists: None,
                 error: None,
             }),
@@ -266,6 +276,7 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
                 operation: FileOp::CreateDir,
                 success: true,
                 content: None,
+                bytes: None,
                 exists: None,
                 error: None,
             }),

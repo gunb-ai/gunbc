@@ -74,6 +74,7 @@ fn dag_viz_mock_spec(mode: &DagVizMode) -> MockSpec {
                     operation: FileOp::Write,
                     success: true,
                     content: None,
+                    bytes: None,
                     exists: None,
                     error: None,
                 })),

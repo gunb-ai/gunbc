@@ -143,6 +143,63 @@ impl ContentEncoding {
     }
 }
 
+impl crate::algebra::PartialOrder for ContentEncoding {
+    fn leq(&self, other: &Self) -> bool {
+        self.is_subtype_of(other)
+    }
+}
+
+impl crate::algebra::JoinSemilattice for ContentEncoding {
+    /// Least upper bound: the most general encoding that contains both.
+    fn join(self, other: Self) -> Self {
+        if self == other {
+            return self;
+        }
+        if self.is_subtype_of(&other) {
+            return other;
+        }
+        if other.is_subtype_of(&self) {
+            return self;
+        }
+        // Neither is a subtype of the other — find LUB.
+        // Both under Text but incomparable (e.g., UTF8 vs Latin1) → Text
+        // One Text, one Binary → Unknown
+        match (&self, &other) {
+            (ContentEncoding::UTF8, ContentEncoding::Latin1)
+            | (ContentEncoding::Latin1, ContentEncoding::UTF8)
+            | (ContentEncoding::ASCII, ContentEncoding::Latin1)
+            | (ContentEncoding::Latin1, ContentEncoding::ASCII) => ContentEncoding::Text,
+            _ => ContentEncoding::Unknown,
+        }
+    }
+}
+
+impl crate::algebra::MeetSemilattice for ContentEncoding {
+    /// Greatest lower bound: the most specific encoding contained in both.
+    /// Returns None if the intersection is empty.
+    fn meet(self, other: Self) -> Option<Self> {
+        if self == other {
+            return Some(self);
+        }
+        if self.is_subtype_of(&other) {
+            return Some(self);
+        }
+        if other.is_subtype_of(&self) {
+            return Some(other);
+        }
+        // Incomparable types: UTF8 ∧ Latin1 = None, Text ∧ Binary = None
+        None
+    }
+}
+
+impl crate::algebra::Lattice for ContentEncoding {}
+
+impl crate::algebra::BoundedLattice for ContentEncoding {
+    fn top() -> Self {
+        ContentEncoding::Unknown
+    }
+}
+
 /// Predicates that can be validated against values.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Predicate {
@@ -401,6 +458,25 @@ mod tests {
 
         // Binary ⊆ Unknown
         assert!(binary.entails(&unknown));
+
+        // And/Or composite distribution through Content predicates
+        let and_ascii_nonempty = Predicate::And(vec![
+            Predicate::Content(ContentEncoding::ASCII),
+            Predicate::NonEmpty,
+        ]);
+        // And(ASCII, NonEmpty) entails Content(UTF8) because ASCII ⊆ UTF8
+        assert!(and_ascii_nonempty.entails(&utf8));
+        // And(ASCII, NonEmpty) does NOT entail Content(Binary)
+        assert!(!and_ascii_nonempty.entails(&binary));
+
+        let or_utf8_binary = Predicate::Or(vec![
+            Predicate::Content(ContentEncoding::UTF8),
+            Predicate::Content(ContentEncoding::Binary),
+        ]);
+        // Or(UTF8, Binary) entails Content(Unknown) — both arms are ⊆ Unknown
+        assert!(or_utf8_binary.entails(&unknown));
+        // Or(UTF8, Binary) does NOT entail Content(Text) — Binary ⊄ Text
+        assert!(!or_utf8_binary.entails(&text));
     }
 
     #[test]
@@ -439,5 +515,100 @@ mod tests {
         let string_to_int = Coercion::new(BaseType::String, BaseType::Int);
         assert_eq!(string_to_int.from, BaseType::String);
         assert_eq!(string_to_int.to, BaseType::Int);
+    }
+
+    // --- ContentEncoding lattice tests ---
+
+    #[test]
+    fn test_content_encoding_lattice_join() {
+        use crate::algebra::JoinSemilattice;
+
+        // Self-join is idempotent
+        assert_eq!(ContentEncoding::ASCII.join(ContentEncoding::ASCII), ContentEncoding::ASCII);
+
+        // Join of subtypes gives the supertype
+        assert_eq!(ContentEncoding::ASCII.join(ContentEncoding::UTF8), ContentEncoding::UTF8);
+        assert_eq!(ContentEncoding::UTF8.join(ContentEncoding::Text), ContentEncoding::Text);
+
+        // Incomparable text subtypes join to Text
+        assert_eq!(ContentEncoding::UTF8.join(ContentEncoding::Latin1), ContentEncoding::Text);
+        assert_eq!(ContentEncoding::ASCII.join(ContentEncoding::Latin1), ContentEncoding::Text);
+
+        // Text and Binary join to Unknown
+        assert_eq!(ContentEncoding::Text.join(ContentEncoding::Binary), ContentEncoding::Unknown);
+        assert_eq!(ContentEncoding::UTF8.join(ContentEncoding::Binary), ContentEncoding::Unknown);
+    }
+
+    #[test]
+    fn test_content_encoding_lattice_meet() {
+        use crate::algebra::MeetSemilattice;
+
+        // Self-meet is idempotent
+        assert_eq!(ContentEncoding::UTF8.meet(ContentEncoding::UTF8), Some(ContentEncoding::UTF8));
+
+        // Meet of related types gives the subtype
+        assert_eq!(ContentEncoding::UTF8.meet(ContentEncoding::Text), Some(ContentEncoding::UTF8));
+        assert_eq!(ContentEncoding::ASCII.meet(ContentEncoding::UTF8), Some(ContentEncoding::ASCII));
+
+        // Meet of incomparable types is None
+        assert_eq!(ContentEncoding::UTF8.meet(ContentEncoding::Latin1), None);
+        assert_eq!(ContentEncoding::Text.meet(ContentEncoding::Binary), None);
+    }
+
+    #[test]
+    fn test_content_encoding_lattice_partial_order() {
+        use crate::algebra::PartialOrder;
+
+        // Reflexivity
+        assert!(ContentEncoding::ASCII.leq(&ContentEncoding::ASCII));
+
+        // Transitivity: ASCII ≤ UTF8 ≤ Text
+        assert!(ContentEncoding::ASCII.leq(&ContentEncoding::UTF8));
+        assert!(ContentEncoding::UTF8.leq(&ContentEncoding::Text));
+        assert!(ContentEncoding::ASCII.leq(&ContentEncoding::Text));
+
+        // Top
+        assert!(ContentEncoding::Binary.leq(&ContentEncoding::Unknown));
+        assert!(ContentEncoding::Text.leq(&ContentEncoding::Unknown));
+
+        // Incomparable
+        assert!(!ContentEncoding::UTF8.leq(&ContentEncoding::Binary));
+        assert!(!ContentEncoding::Binary.leq(&ContentEncoding::Text));
+    }
+
+    #[test]
+    fn test_content_encoding_lattice_bounded_top() {
+        use crate::algebra::{BoundedLattice, PartialOrder};
+
+        let top = ContentEncoding::top();
+        assert_eq!(top, ContentEncoding::Unknown);
+
+        let all = [
+            ContentEncoding::Unknown,
+            ContentEncoding::Text,
+            ContentEncoding::UTF8,
+            ContentEncoding::ASCII,
+            ContentEncoding::Latin1,
+            ContentEncoding::Binary,
+        ];
+        for enc in &all {
+            assert!(enc.leq(&top), "{:?} should be ≤ top", enc);
+        }
+    }
+
+    #[test]
+    fn test_content_encoding_lattice_absorption() {
+        use crate::algebra::{JoinSemilattice, MeetSemilattice};
+
+        // a.join(a.meet(b)) == a (when meet exists)
+        let a = ContentEncoding::UTF8;
+        let b = ContentEncoding::Text;
+        if let Some(m) = a.meet(b) {
+            assert_eq!(a.join(m), a);
+        }
+
+        // a.meet(a.join(b)) == Some(a)
+        let j = a.join(b);
+        assert_eq!(a.meet(j), Some(a));
     }
 }

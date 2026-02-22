@@ -134,6 +134,7 @@ fn default_file_response() -> Value {
             r#"{"client_id":"mock-client","client_secret":"mock-secret","refresh_token":"mock-refresh","type":"authorized_user"}"#
                 .to_string(),
         ),
+        bytes: None,
         exists: Some(true),
         error: None,
     }))

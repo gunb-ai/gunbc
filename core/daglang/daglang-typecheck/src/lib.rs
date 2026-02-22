@@ -25,7 +25,8 @@ use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
+    Expr, Field, Item, Literal, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr,
+    UsesClause,
 };
 use daglang_syntax::ast_utils::{
     canonical_type_name, resource_type_name, service_call_lookup_keys,
@@ -998,7 +999,11 @@ fn collect_unique_callables(
                     CallableContract {
                         arity: required_param_arity(&def.params),
                         params: def.params.iter().map(|param| param.name.clone()).collect(),
-                        output: ValueType::Record(field_signature_map(&def.outputs)),
+                        output: if def.outputs.len() == 1 && def.outputs[0].name == "return" {
+                            ValueType::Named(type_expr_to_string(&def.outputs[0].ty))
+                        } else {
+                            ValueType::Record(field_signature_map(&def.outputs))
+                        },
                     },
                 ),
                 Item::PatternDef(def) => register_callable_contract(
@@ -1007,7 +1012,11 @@ fn collect_unique_callables(
                     CallableContract {
                         arity: required_param_arity(&def.params),
                         params: def.params.iter().map(|param| param.name.clone()).collect(),
-                        output: ValueType::Record(field_signature_map(&def.outputs)),
+                        output: if def.outputs.len() == 1 && def.outputs[0].name == "return" {
+                            ValueType::Named(type_expr_to_string(&def.outputs[0].ty))
+                        } else {
+                            ValueType::Record(field_signature_map(&def.outputs))
+                        },
                     },
                 ),
                 Item::TypeDef(def) => {
@@ -1143,6 +1152,22 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 arity: 1,
                 params: HashSet::from(["items".to_string()]),
                 output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
+            "render_cytoscape_html".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["snapshot".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "render_mermaid_markdown".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["snapshot".to_string()]),
+                output: ValueType::Named("String".to_string()),
             },
         ),
         (
@@ -2477,14 +2502,26 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     }
 }
 
+/// Check whether `got` is compatible with `expected` using the TypeRegistry
+/// for coercion path discovery, falling back to canonical name comparison.
 fn types_match(expected: &str, got: &str) -> bool {
     if expected == got {
         return true;
     }
+    // Canonicalize and check structural equality
     let expected_canonical = canonical_type_name(expected);
     let got_canonical = canonical_type_name(got);
-    expected_canonical == got_canonical
+    if expected_canonical == got_canonical
         || expected_canonical.rsplit('.').next() == got_canonical.rsplit('.').next()
+    {
+        return true;
+    }
+    // Check TypeRegistry coercion paths (e.g. TextFilePath → FilePath → String)
+    use gunbc_ir::type_registry::TypeRegistry;
+    let registry = TypeRegistry::with_core_types();
+    let got_id = gunbc_ir::TypeId::from(got_canonical.as_str());
+    let expected_id = gunbc_ir::TypeId::from(expected_canonical.as_str());
+    registry.is_compatible(&got_id, &expected_id)
 }
 
 fn resolve_record_fields(
@@ -2618,7 +2655,9 @@ fn validate_signature_map(
         {
             continue;
         }
-        if provided_ty != expected_ty {
+        let stripped_provided = provided_ty.split(" @").next().unwrap_or(provided_ty).trim();
+        let stripped_expected = expected_ty.split(" @").next().unwrap_or(expected_ty).trim();
+        if stripped_provided != stripped_expected {
             errors.push(TypeError::InterfaceSignatureMismatch {
                 implementor: implementor.to_string(),
                 interface: interface.to_string(),
@@ -2943,16 +2982,61 @@ fn validate_type_expr(
                 context,
             ));
             for annotation in annotations {
-                if annotation.name != "range" {
-                    continue;
-                }
-                let (min, max) = extract_range_bounds(&annotation.args);
-                if let (Some(min), Some(max)) = (min, max) {
-                    if min > max {
-                        errors.push(TypeError::UnsatisfiableRefinement {
-                            ty: type_expr_to_string(inner),
-                            constraint: format!("range min {min} exceeds max {max}"),
-                        });
+                match annotation.name.as_str() {
+                    "range" => {
+                        let (min, max) = extract_range_bounds(&annotation.args);
+                        if let (Some(min), Some(max)) = (min, max) {
+                            if min > max {
+                                errors.push(TypeError::UnsatisfiableRefinement {
+                                    ty: type_expr_to_string(inner),
+                                    constraint: format!("range min {min} exceeds max {max}"),
+                                });
+                            }
+                        }
+                    }
+                    "content" => {
+                        // @content(encoding) — validates encoding is a known ContentEncoding variant
+                        if let Some(encoding_name) = annotation.args.first().and_then(expr_as_string) {
+                            let valid = matches!(
+                                encoding_name.as_str(),
+                                "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown"
+                            );
+                            if !valid {
+                                errors.push(TypeError::UnsatisfiableRefinement {
+                                    ty: type_expr_to_string(inner),
+                                    constraint: format!(
+                                        "unknown content encoding `{encoding_name}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                    "brand" => {
+                        // @brand(name) — validates the brand name is non-empty
+                        if annotation.args.is_empty() {
+                            errors.push(TypeError::UnsatisfiableRefinement {
+                                ty: type_expr_to_string(inner),
+                                constraint: "@brand requires a name argument".to_string(),
+                            });
+                        }
+                    }
+                    "non_empty" => {
+                        // @non_empty — no arguments needed, just recognized
+                    }
+                    "pattern" => {
+                        // @pattern(regex) — validates a pattern argument is present
+                        if annotation.args.is_empty() {
+                            errors.push(TypeError::UnsatisfiableRefinement {
+                                ty: type_expr_to_string(inner),
+                                constraint: "@pattern requires a regex argument".to_string(),
+                            });
+                        }
+                    }
+                    "file_types" => {
+                        // @file_types { text: [...], binary: [...] } — recognized, validated at lower level
+                    }
+                    _ => {
+                        // Unknown annotations are silently accepted for forward compatibility
                     }
                 }
             }
@@ -2977,6 +3061,15 @@ fn resolve_generic_arity(
         return Some(0);
     }
     None
+}
+
+/// Extract a string value from an expression (string literal or identifier).
+fn expr_as_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(daglang_syntax::ast::Literal::String(s)) => Some(s.clone()),
+        Expr::Ident(name) => Some(name.clone()),
+        _ => None,
+    }
 }
 
 fn extract_range_bounds(args: &[Expr]) -> (Option<i64>, Option<i64>) {

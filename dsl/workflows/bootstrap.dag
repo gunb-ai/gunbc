@@ -15,22 +15,31 @@ import tools.codegen { codegen_ensure }
 pipeline bootstrap {
 
   stage compilation_ensure {
+    @file(WRITE, "target")
+    @tool(READ, "cargo")
     _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
+    @file(WRITE, "generated:cli")
     _ = codegen_ensure()
   }
 
-  stage workspace_scan [after codegen_ensure] {}
+  stage workspace_scan [after codegen_ensure] {
+    @file(READ, "workspace")
+  }
 
   stage generate_makefile [after workspace_scan] {}
 
   stage generate_gitignore [after workspace_scan] {}
 
-  stage upsert_makefile [after generate_makefile] {}
+  stage upsert_makefile [after generate_makefile] {
+    @file(WRITE, "workspace")
+  }
 
-  stage upsert_gitignore [after generate_gitignore] {}
+  stage upsert_gitignore [after generate_gitignore] {
+    @file(WRITE, "workspace")
+  }
 
   stage report [after upsert_makefile, after upsert_gitignore] {}
 }

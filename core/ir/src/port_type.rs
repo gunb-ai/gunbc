@@ -18,6 +18,9 @@
 //! | `List(inner)` | `"List<{inner}>"` |
 //! | `Secret` | `"Secret"` |
 //! | `Any` | `"Any"` |
+//!
+//! Domain types are resolved to their structural backing types:
+//! `FilePath` → `String`, `BinaryFilePath` → `Bytes`, `Credential` → `Secret`, etc.
 
 use serde::{Deserialize, Serialize};
 
@@ -44,22 +47,22 @@ pub enum PortType {
     List(Box<PortType>),
     /// Secret value — always sensitive, never logged.
     Secret,
-    /// Any type (wildcard).
+    /// Explicit `Any` type — only matches the literal `"Any"` TypeId string.
+    /// No longer acts as a universal wildcard in compatibility checks.
     #[default]
     Any,
 }
 
 impl PortType {
-    /// Whether two port types are compatible for edge wiring.
+    /// Whether two port types are structurally compatible for edge wiring.
     ///
-    /// `Any` is compatible with everything. `Secret` is strict —
-    /// only compatible with `Secret` or `Any`.
+    /// Strict equality — `Secret` is only compatible with `Secret`,
+    /// `Any` is only compatible with `Any`. Use `TypeRegistry::is_compatible()`
+    /// for full semantic type checking with coercion paths.
     pub fn is_compatible_with(&self, other: &PortType) -> bool {
         match (self, other) {
             _ if self == other => true,
-            (PortType::Any, _) | (_, PortType::Any) => true,
             (PortType::List(a), PortType::List(b)) => a.is_compatible_with(b),
-            (PortType::Secret, _) | (_, PortType::Secret) => false,
             _ => false,
         }
     }
@@ -72,6 +75,33 @@ impl PortType {
     /// Convert this structural type to a `TypeId` string.
     pub fn to_type_id(&self) -> TypeId {
         TypeId::new(self.to_type_id_string())
+    }
+
+    /// Resolve a type string to a structural `PortType`, using the
+    /// `TypeRegistry` for domain types not structurally recognized.
+    ///
+    /// Returns `Err` if the type string is not recognized by either
+    /// structural parsing or the registry.
+    pub fn from_registry(type_str: &str, registry: &crate::type_registry::TypeRegistry) -> Result<PortType, std::string::String> {
+        // First try structural parse
+        if let Some(pt) = try_parse_port_type(type_str) {
+            return Ok(pt);
+        }
+        // Then check if the registry knows the type and can resolve its backing
+        let type_id = crate::types::TypeId::from(type_str);
+        if registry.get(&type_id).is_some() {
+            // Type is registered — resolve to its structural backing via
+            // coercion chain: find the nearest primitive ancestor.
+            for primitive in &["String", "Int", "Float", "Bool", "Bytes", "Secret", "Json"] {
+                let prim_id = crate::types::TypeId::from(*primitive);
+                if registry.coercion_path(&type_id, &prim_id).is_some() {
+                    return Ok(parse_known_type(primitive));
+                }
+            }
+            // Registered but no coercion to a primitive — treat as Json (structured)
+            return Ok(PortType::Json);
+        }
+        Err(format!("unrecognized type: `{type_str}` — not a structural type and not registered in TypeRegistry"))
     }
 
     fn to_type_id_string(&self) -> std::string::String {
@@ -97,17 +127,11 @@ impl std::fmt::Display for PortType {
 
 /// Parse a `TypeId` string into a structural `PortType`.
 ///
-/// Returns `PortType::Any` for unrecognized type strings (fail-open).
+/// Known domain types are resolved to their structural backing types.
+/// Truly unrecognized type strings fall through to `PortType::Any`.
 ///
-/// This is an intentional forward-compatibility choice at the type-parsing
-/// boundary: domain-specific types like `"TransportRequest"`, `"ToolRegistry"`,
-/// etc. are opaque to structural port typing and map to `Any` so that port
-/// wiring doesn't fail on types that only the runtime understands. The
-/// tradeoff is that typos in type strings won't be caught here — they
-/// silently become `Any` and pass compatibility checks.
-///
-/// See also: `value_backing_for_type_id()` in `types.rs` which adds a
-/// second layer of domain-specific recognition for `PortType::Any` types.
+/// For strict resolution that rejects unknown types, use
+/// `PortType::from_registry()` instead.
 impl From<&TypeId> for PortType {
     fn from(type_id: &TypeId) -> Self {
         parse_port_type(&type_id.0)
@@ -120,7 +144,8 @@ impl From<&str> for PortType {
     }
 }
 
-fn parse_port_type(s: &str) -> PortType {
+/// Parse a known structural type keyword. Always succeeds for the 8 primitives.
+fn parse_known_type(s: &str) -> PortType {
     match s {
         "Json" => PortType::Json,
         "String" => PortType::String,
@@ -130,17 +155,67 @@ fn parse_port_type(s: &str) -> PortType {
         "Float" => PortType::Float,
         "Secret" => PortType::Secret,
         "Any" => PortType::Any,
-        other if other.starts_with("List<") && other.ends_with('>') => {
-            let inner = &other[5..other.len() - 1];
-            PortType::List(Box::new(parse_port_type(inner)))
-        }
-        // Legacy gunbc TypeId strings
-        "StringList" => PortType::List(Box::new(PortType::String)),
-        "UrlList" => PortType::List(Box::new(PortType::String)),
-        "Unit" | "Void" => PortType::Any,
-        "OptionalString" => PortType::String,
         _ => PortType::Any,
     }
+}
+
+/// Try to parse a type string into a structural PortType.
+/// Returns `None` for unrecognized types (use `from_registry` for those).
+fn try_parse_port_type(s: &str) -> Option<PortType> {
+    match s {
+        // Structural primitives
+        "Json" => Some(PortType::Json),
+        "String" => Some(PortType::String),
+        "Bytes" => Some(PortType::Bytes),
+        "Bool" => Some(PortType::Bool),
+        "Int" => Some(PortType::Int),
+        "Float" => Some(PortType::Float),
+        "Secret" => Some(PortType::Secret),
+        "Any" => Some(PortType::Any),
+
+        // Generic List<T>
+        other if other.starts_with("List<") && other.ends_with('>') => {
+            let inner = &other[5..other.len() - 1];
+            Some(PortType::List(Box::new(parse_port_type(inner))))
+        }
+
+        // Domain types — string-backed
+        "FilePath" | "Path" | "TextFilePath"
+        | "Url" | "Email" | "NonEmptyString"
+        | "Platform" | "ContentEncoding"
+        | "OidcAudience" | "WifAudience"
+        | "GcpProjectId" | "GcpSecretId" | "GcpSecretVersion"
+        | "GcpServiceAccountEmail" | "GcpSubjectToken" | "OidcSubjectToken" => {
+            Some(PortType::String)
+        }
+
+        // Domain types — bytes-backed
+        "BinaryFilePath" => Some(PortType::Bytes),
+
+        // Domain types — int-backed
+        "Timestamp" => Some(PortType::Int),
+
+        // Domain types — secret-backed
+        "Credential" => Some(PortType::Secret),
+
+        // Domain types — json/structured-backed
+        "TransportRequest" | "TransportResponse"
+        | "FileResponse" | "ShellResponse" | "RestResponse" | "HttpResponse"
+        | "ToolHandle" | "FilesystemHandle" | "NetworkHandle"
+        | "CliResult" | "Record" => Some(PortType::Json),
+
+        // Legacy aliases
+        "StringList" | "UrlList" => Some(PortType::List(Box::new(PortType::String))),
+        "OptionalString" => Some(PortType::String),
+
+        _ => None,
+    }
+}
+
+/// Full parse with fallback to `PortType::Any` for unrecognized types.
+/// Prefer `try_parse_port_type` or `PortType::from_registry` for strict use.
+fn parse_port_type(s: &str) -> PortType {
+    try_parse_port_type(s).unwrap_or(PortType::Any)
 }
 
 #[cfg(test)]
@@ -154,16 +229,18 @@ mod tests {
     }
 
     #[test]
-    fn any_matches_everything() {
-        assert!(PortType::Any.is_compatible_with(&PortType::String));
-        assert!(PortType::Int.is_compatible_with(&PortType::Any));
+    fn any_is_not_wildcard() {
+        // Any only matches itself — no longer a universal wildcard
+        assert!(PortType::Any.is_compatible_with(&PortType::Any));
+        assert!(!PortType::Any.is_compatible_with(&PortType::String));
+        assert!(!PortType::Int.is_compatible_with(&PortType::Any));
     }
 
     #[test]
     fn secret_is_strict() {
         assert!(!PortType::Secret.is_compatible_with(&PortType::String));
         assert!(!PortType::String.is_compatible_with(&PortType::Secret));
-        assert!(PortType::Secret.is_compatible_with(&PortType::Any));
+        assert!(!PortType::Secret.is_compatible_with(&PortType::Any));
         assert!(PortType::Secret.is_compatible_with(&PortType::Secret));
     }
 
@@ -202,15 +279,54 @@ mod tests {
             PortType::from("StringList"),
             PortType::List(Box::new(PortType::String))
         );
-        assert_eq!(PortType::from("Unit"), PortType::Any);
-        assert_eq!(PortType::from("Void"), PortType::Any);
         assert_eq!(PortType::from("OptionalString"), PortType::String);
     }
 
     #[test]
-    fn unknown_type_id_maps_to_any() {
-        assert_eq!(PortType::from("TransportRequest"), PortType::Any);
-        assert_eq!(PortType::from("ToolRegistry"), PortType::Any);
+    fn domain_types_resolve_to_structural_backing() {
+        // String-backed domain types
+        assert_eq!(PortType::from("FilePath"), PortType::String);
+        assert_eq!(PortType::from("TextFilePath"), PortType::String);
+        assert_eq!(PortType::from("Platform"), PortType::String);
+        assert_eq!(PortType::from("Url"), PortType::String);
+        assert_eq!(PortType::from("GcpProjectId"), PortType::String);
+
+        // Bytes-backed domain types
+        assert_eq!(PortType::from("BinaryFilePath"), PortType::Bytes);
+
+        // Int-backed domain types
+        assert_eq!(PortType::from("Timestamp"), PortType::Int);
+
+        // Secret-backed domain types
+        assert_eq!(PortType::from("Credential"), PortType::Secret);
+
+        // Json/structured-backed domain types
+        assert_eq!(PortType::from("TransportRequest"), PortType::Json);
+        assert_eq!(PortType::from("FileResponse"), PortType::Json);
+        assert_eq!(PortType::from("ToolHandle"), PortType::Json);
+        assert_eq!(PortType::from("CliResult"), PortType::Json);
+    }
+
+    #[test]
+    fn unknown_type_still_falls_back_to_any() {
+        // Unrecognized types still get Any via parse_port_type
+        assert_eq!(PortType::from("SomeUnknownType"), PortType::Any);
+    }
+
+    #[test]
+    fn from_registry_resolves_registered_types() {
+        let registry = crate::type_registry::TypeRegistry::with_core_types();
+        // TextFilePath is registered and has coercion to String
+        let pt = PortType::from_registry("TextFilePath", &registry);
+        assert!(pt.is_ok());
+        assert_eq!(pt.unwrap(), PortType::String);
+    }
+
+    #[test]
+    fn from_registry_rejects_unknown_types() {
+        let registry = crate::type_registry::TypeRegistry::with_core_types();
+        let pt = PortType::from_registry("CompletelyFakeType", &registry);
+        assert!(pt.is_err());
     }
 
     #[test]

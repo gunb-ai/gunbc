@@ -68,6 +68,7 @@ fn main() {
                 operation: FileOp::Write,
                 success: true,
                 content: None,
+                bytes: None,
                 exists: None,
                 error: None,
             })),

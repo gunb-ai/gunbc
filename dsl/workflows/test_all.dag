@@ -1,0 +1,37 @@
+// workflows/test_all.dag
+//
+// Planner test-all workflow (WF1) used by gunbc-workflow.
+
+module workflows.test_all
+
+pipeline test_all {
+
+  stage lint_upsert {
+    @file(WRITE, "workspace")
+    @ledger(WRITE, "workflow")
+  }
+
+  stage codegen [after lint_upsert] {
+    @file(WRITE, "generated:cli")
+  }
+
+  stage testgen [after lint_upsert] {
+    @file(WRITE, "generated:tests")
+  }
+
+  stage build_compile [after codegen, after testgen] {
+    @file(WRITE, "target")
+    @tool(READ, "cargo")
+  }
+
+  stage verify_fix [after codegen, after testgen] {
+    @file(WRITE, "workspace")
+  }
+
+  stage cargo_test_xl [after build_compile, after verify_fix] {
+    @file(READ, "target")
+    @tool(READ, "cargo")
+  }
+
+  stage report [after cargo_test_xl, after verify_fix] {}
+}

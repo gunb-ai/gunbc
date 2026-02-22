@@ -197,7 +197,7 @@ pattern upsert<Check, Create, Resolve: -> R>(
 // The most common pattern: ~8 of 13 tools use this.
 // Replaces gunbc's add_content_upsert_chain().
 
-pattern content_upsert(content: String, path: TextFilePath) -> { written: Bool }
+pattern content_upsert(content: String, path: String) -> { written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
   result = ensure(

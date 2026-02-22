@@ -356,8 +356,274 @@ fn wrap_predicate_for_container(pred: Predicate) -> Predicate {
     }
 }
 
-/// Full contract summary for a type.
+// =============================================================================
+// Phase 5: Layered set-theoretic type decomposition and cross-product witnesses
+// =============================================================================
+
+/// A decomposed layer of a type DAG, representing one level of nesting.
+///
+/// Types are decomposed recursively: `List<Optional<Int>>` becomes
+/// three layers: List wrapper → Optional wrapper → Int scalar.
 #[derive(Debug, Clone)]
+pub struct TypeLayer {
+    /// Cardinality at this layer
+    pub cardinality: Cardinality,
+    /// Base type name (for scalar layers)
+    pub base_type: Option<String>,
+    /// Predicates at this layer
+    pub predicates: Vec<Predicate>,
+    /// Wrapper kind (if this layer is a container)
+    pub wrapper: Option<WrapperKind>,
+    /// Recursive inner type (for containers)
+    pub inner: Option<Box<TypeLayer>>,
+    /// Coproduct variants (for coproduct types)
+    pub coproduct_arms: Vec<TypeLayer>,
+    /// Product fields (for product/record types)
+    pub product_fields: Vec<(String, TypeLayer)>,
+}
+
+impl TypeLayer {
+    /// Decompose a type DAG into layers, walking recursively.
+    pub fn from_type_dag(type_dag: &Dag<TypeOp>) -> Self {
+        let card = cardinality(type_dag);
+        let base = base_type(type_dag);
+        let preds = predicates(type_dag);
+        let wrapper = wrapper_kind(type_dag);
+
+        // Check for coproduct
+        let mut coproduct_arms = Vec::new();
+        for node in &type_dag.nodes {
+            if let NodeBody::Opaque(TypeOp::Coproduct(variants)) = &node.body {
+                for (name, _type_id) in variants {
+                    // Each variant gets a scalar layer with its name as base type
+                    coproduct_arms.push(TypeLayer {
+                        cardinality: Cardinality::ONE,
+                        base_type: Some(name.clone()),
+                        predicates: vec![],
+                        wrapper: None,
+                        inner: None,
+                        coproduct_arms: vec![],
+                        product_fields: vec![],
+                    });
+                }
+            }
+        }
+
+        // Check for product
+        let mut product_fields = Vec::new();
+        for node in &type_dag.nodes {
+            if let NodeBody::Opaque(TypeOp::Product(fields)) = &node.body {
+                for (name, _type_id) in fields {
+                    product_fields.push((
+                        name.clone(),
+                        TypeLayer {
+                            cardinality: Cardinality::ONE,
+                            base_type: Some(name.clone()),
+                            predicates: vec![],
+                            wrapper: None,
+                            inner: None,
+                            coproduct_arms: vec![],
+                            product_fields: vec![],
+                        },
+                    ));
+                }
+            }
+        }
+
+        // Recurse into inner type for containers/brands
+        let inner = inner_type_dag(type_dag).map(|inner_dag| {
+            Box::new(TypeLayer::from_type_dag(inner_dag))
+        });
+
+        TypeLayer {
+            cardinality: card,
+            base_type: base,
+            predicates: preds,
+            wrapper,
+            inner,
+            coproduct_arms,
+            product_fields,
+        }
+    }
+
+    /// Count the total number of layers (depth).
+    pub fn depth(&self) -> usize {
+        1 + self.inner.as_ref().map_or(0, |i| i.depth())
+    }
+}
+
+/// Generate cross-product witnesses by decomposing a type DAG into layers.
+///
+/// At each layer, boundary witnesses are generated. The results are then
+/// composed across layers using the cardinality semiring to produce a
+/// comprehensive set of test values.
+///
+/// `depth_limit` controls how deep to recurse (default: 3 levels).
+/// This prevents combinatorial explosion on deeply nested types.
+pub fn cross_product_witnesses(type_dag: &Dag<TypeOp>, depth_limit: usize) -> Vec<Value> {
+    let layer = TypeLayer::from_type_dag(type_dag);
+    layer_witnesses(&layer, depth_limit, 0)
+}
+
+/// Generate witnesses for a single layer, recursing into inner layers.
+fn layer_witnesses(layer: &TypeLayer, depth_limit: usize, current_depth: usize) -> Vec<Value> {
+    if current_depth >= depth_limit {
+        // At depth limit, generate a single scalar witness
+        return vec![scalar_witness_for_base(&layer.base_type, &layer.predicates)];
+    }
+
+    // Generate inner witnesses (for the element type)
+    let inner_witnesses = if let Some(inner) = &layer.inner {
+        layer_witnesses(inner, depth_limit, current_depth + 1)
+    } else {
+        // Scalar layer — generate base witnesses
+        let mut witnesses = vec![scalar_witness_for_base(&layer.base_type, &layer.predicates)];
+
+        // For coproducts, add one witness per variant arm
+        for arm in &layer.coproduct_arms {
+            let arm_witness = scalar_witness_for_base(&arm.base_type, &arm.predicates);
+            if !witnesses.contains(&arm_witness) {
+                witnesses.push(arm_witness);
+            }
+        }
+
+        // For lattice boundary values on predicates
+        for pred in &layer.predicates {
+            let boundary_values = predicate_boundary_witnesses(pred, &layer.base_type);
+            for bv in boundary_values {
+                if !witnesses.contains(&bv) {
+                    witnesses.push(bv);
+                }
+            }
+        }
+
+        witnesses
+    };
+
+    // Now wrap inner witnesses according to this layer's wrapper and cardinality
+    let mut result = Vec::new();
+    for count in layer.cardinality.test_cases_for_tests() {
+        match count {
+            0 => {
+                let empty = match &layer.wrapper {
+                    Some(WrapperKind::Optional) => Value::Unit,
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(vec![]),
+                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(vec![]),
+                    Some(WrapperKind::Map) => Value::Map(std::collections::BTreeMap::new()),
+                    None => Value::Unit,
+                };
+                result.push(empty);
+            }
+            1 => {
+                // One element per inner witness variant
+                for iw in &inner_witnesses {
+                    let value = match &layer.wrapper {
+                        Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
+                            Value::List(vec![iw.clone()])
+                        }
+                        Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
+                            Value::Set(vec![iw.clone()])
+                        }
+                        Some(WrapperKind::Map) => {
+                            let mut map = std::collections::BTreeMap::new();
+                            map.insert("key".to_string(), iw.clone());
+                            Value::Map(map)
+                        }
+                        _ => iw.clone(),
+                    };
+                    result.push(value);
+                }
+            }
+            n => {
+                // Mix inner witnesses for multi-element collections
+                let elements: Vec<Value> = (0..n as usize)
+                    .map(|i| {
+                        let base = &inner_witnesses[i % inner_witnesses.len()];
+                        // Diversify within the same base
+                        if i < inner_witnesses.len() {
+                            base.clone()
+                        } else {
+                            match base {
+                                Value::Str(s) => Value::Str(format!("{}_{}", s, i)),
+                                Value::Int(v) => Value::Int(*v + i as i64),
+                                other => other.clone(),
+                            }
+                        }
+                    })
+                    .collect();
+                match &layer.wrapper {
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
+                        result.push(Value::List(elements));
+                    }
+                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
+                        result.push(Value::set(elements));
+                    }
+                    Some(WrapperKind::Map) => {
+                        let mut map = std::collections::BTreeMap::new();
+                        for (i, e) in elements.into_iter().enumerate() {
+                            map.insert(format!("key_{}", i), e);
+                        }
+                        result.push(Value::Map(map));
+                    }
+                    _ => {
+                        // Can't have n>1 for scalars — skip
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Generate boundary witnesses for a predicate at lattice transition boundaries.
+fn predicate_boundary_witnesses(pred: &Predicate, base_type: &Option<String>) -> Vec<Value> {
+    let base = base_type.as_deref().unwrap_or("String");
+    match pred {
+        Predicate::InRange { min, max } if base == "Int" || base == "i64" => {
+            // Generate values at each boundary: below/at/above
+            let mut values = vec![];
+            if *min > i64::MIN {
+                values.push(Value::Int(*min - 1)); // below min
+            }
+            values.push(Value::Int(*min)); // at min
+            if *min < *max {
+                let mid = min.saturating_add(*max) / 2;
+                values.push(Value::Int(mid)); // midpoint
+            }
+            values.push(Value::Int(*max)); // at max
+            if *max < i64::MAX {
+                values.push(Value::Int(*max + 1)); // above max
+            }
+            values
+        }
+        Predicate::Content(encoding) => {
+            use crate::type_op::ContentEncoding;
+            // Generate a witness per encoding type in the lattice
+            match encoding {
+                ContentEncoding::ASCII => vec![Value::Str("ascii-only".to_string())],
+                ContentEncoding::UTF8 => vec![
+                    Value::Str("ascii-only".to_string()),
+                    Value::Str("utf8-with-émojis".to_string()),
+                ],
+                ContentEncoding::Text => vec![
+                    Value::Str("plain-text".to_string()),
+                    Value::Str("utf8-with-émojis".to_string()),
+                ],
+                ContentEncoding::Binary => vec![Value::Bytes(vec![0xFF, 0xFE, 0x00, 0x01])],
+                ContentEncoding::Latin1 => vec![Value::Str("latin1-café".to_string())],
+                ContentEncoding::Unknown => vec![
+                    Value::Str("text-content".to_string()),
+                    Value::Bytes(vec![0xFF, 0xFE]),
+                ],
+            }
+        }
+        _ => vec![],
+    }
+}
+
+/// Full contract summary for a type.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeContract {
     /// L1: Cardinality
     pub cardinality: Cardinality,
@@ -389,6 +655,21 @@ impl TypeContract {
                         .into_iter()
                         .map(wrap_predicate_for_container),
                 );
+            }
+        }
+
+        // For Brand nodes, recurse into the SubDag to pick up inner predicates.
+        let has_brand = type_dag.nodes.iter().any(|n| {
+            matches!(&n.body, NodeBody::Opaque(TypeOp::Brand(..)))
+        });
+        if has_brand {
+            if let Some(inner) = inner_type_dag(type_dag) {
+                let inner_contract = TypeContract::from_type_dag(inner);
+                // Use inner base type if ours is absent
+                if base.is_none() {
+                    base = inner_contract.base_type;
+                }
+                preds.extend(inner_contract.predicates);
             }
         }
 
@@ -490,6 +771,164 @@ fn base_type_upcasts_to(from: &str, to: &str) -> bool {
         _ => false,
     }
 }
+
+/// Find the common supertype of two base types in the base type lattice.
+/// Returns the least upper bound (join) in the base type order.
+fn base_type_join(a: &str, b: &str) -> String {
+    if a == b {
+        return a.to_string();
+    }
+    // If either upcasts to the other, the other is the join
+    if base_type_upcasts_to(a, b) {
+        return b.to_string();
+    }
+    if base_type_upcasts_to(b, a) {
+        return a.to_string();
+    }
+    // Otherwise, Json is the top of the lattice
+    "Json".to_string()
+}
+
+/// Find the common subtype (meet) of two base types.
+/// Returns None if the types are incomparable (no common subtype).
+fn base_type_meet(a: &str, b: &str) -> Option<String> {
+    if a == b {
+        return Some(a.to_string());
+    }
+    // If either upcasts to the other, the source is the meet
+    if base_type_upcasts_to(a, b) {
+        return Some(a.to_string());
+    }
+    if base_type_upcasts_to(b, a) {
+        return Some(b.to_string());
+    }
+    // Incomparable — no common subtype
+    None
+}
+
+// =============================================================================
+// Lattice trait implementations for TypeContract
+// =============================================================================
+
+impl crate::algebra::PartialOrder for TypeContract {
+    /// `self ≤ other` iff self's values are a subset of other's values:
+    /// - Cardinality is contained
+    /// - Base type can upcast
+    /// - All of other's predicates are entailed by self's predicates
+    fn leq(&self, other: &Self) -> bool {
+        // L1: Cardinality containment
+        if !crate::algebra::PartialOrder::leq(&self.cardinality, &other.cardinality) {
+            return false;
+        }
+        // L2: Base type coercibility
+        match (&self.base_type, &other.base_type) {
+            (Some(from), Some(to)) => {
+                if !base_type_upcasts_to(from, to) {
+                    return false;
+                }
+            }
+            (Some(_), None) => {} // known ≤ unknown (wildcard)
+            (None, Some(_)) => return false, // unknown cannot prove ≤ known
+            (None, None) => {}
+        }
+        // L3: Predicate entailment — every target predicate must be covered
+        for tp in &other.predicates {
+            if !self.predicates.iter().any(|sp| sp.entails(tp)) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl crate::algebra::JoinSemilattice for TypeContract {
+    /// Least upper bound (widening): union of value spaces.
+    /// - Cardinality: join (union of intervals)
+    /// - Base type: common supertype
+    /// - Predicates: intersection (only predicates entailed by both)
+    fn join(self, other: Self) -> Self {
+        use crate::algebra::JoinSemilattice as JS;
+
+        let cardinality = JS::join(self.cardinality, other.cardinality);
+
+        let base_type = match (&self.base_type, &other.base_type) {
+            (Some(a), Some(b)) => Some(base_type_join(a, b)),
+            _ => None, // if either is unknown, join is unknown
+        };
+
+        // Intersection: keep predicates entailed by both sides
+        let predicates = self
+            .predicates
+            .iter()
+            .filter(|p| other.predicates.iter().any(|op| op.entails(p)))
+            .cloned()
+            .collect();
+
+        // Join of container properties
+        let is_container = self.is_container || other.is_container;
+        let wrapper_kind = match (&self.wrapper_kind, &other.wrapper_kind) {
+            (Some(a), Some(b)) if a == b => Some(a.clone()),
+            _ => None, // different wrappers → no wrapper in join
+        };
+
+        TypeContract {
+            cardinality,
+            base_type,
+            predicates,
+            is_container,
+            wrapper_kind,
+        }
+    }
+}
+
+impl crate::algebra::MeetSemilattice for TypeContract {
+    /// Greatest lower bound (narrowing): intersection of value spaces.
+    /// - Cardinality: meet (intersection of intervals)
+    /// - Base type: common subtype
+    /// - Predicates: union (all predicates from both)
+    fn meet(self, other: Self) -> Option<Self> {
+        use crate::algebra::MeetSemilattice as MS;
+
+        let cardinality = MS::meet(self.cardinality, other.cardinality)?;
+
+        let base_type = match (&self.base_type, &other.base_type) {
+            (Some(a), Some(b)) => {
+                base_type_meet(a, b)?; // None → incomparable → no meet
+                Some(base_type_meet(a, b).unwrap())
+            }
+            (Some(a), None) => Some(a.clone()),
+            (None, Some(b)) => Some(b.clone()),
+            (None, None) => None,
+        };
+
+        // Union: collect all predicates (deduplicated)
+        let mut predicates = self.predicates.clone();
+        for p in &other.predicates {
+            if !predicates.contains(p) {
+                predicates.push(p.clone());
+            }
+        }
+
+        let is_container = self.is_container && other.is_container;
+        let wrapper_kind = match (&self.wrapper_kind, &other.wrapper_kind) {
+            (Some(a), Some(b)) if a == b => Some(a.clone()),
+            (Some(_), Some(_)) => return None, // incompatible wrappers
+            (Some(a), None) => Some(a.clone()),
+            (None, Some(b)) => Some(b.clone()),
+            (None, None) => None,
+        };
+
+        Some(TypeContract {
+            cardinality,
+            base_type,
+            predicates,
+            is_container,
+            wrapper_kind,
+        })
+    }
+}
+
+impl crate::algebra::Lattice for TypeContract {}
 
 #[cfg(test)]
 mod tests {
@@ -725,5 +1164,214 @@ mod tests {
             matches!(&kept, Value::Set(v) if v.len() == 2),
             "Value::set() should preserve distinct values"
         );
+    }
+
+    // --- Layered decomposition and cross-product witness tests ---
+
+    #[test]
+    fn test_type_layer_scalar() {
+        let string_type = type_lib::string();
+        let layer = TypeLayer::from_type_dag(&string_type);
+
+        assert_eq!(layer.cardinality, Cardinality::ONE);
+        assert_eq!(layer.base_type, Some("String".to_string()));
+        assert!(layer.wrapper.is_none());
+        assert!(layer.inner.is_none());
+        assert_eq!(layer.depth(), 1);
+    }
+
+    #[test]
+    fn test_type_layer_list_of_string() {
+        let list_type = type_lib::list(type_lib::string());
+        let layer = TypeLayer::from_type_dag(&list_type);
+
+        assert_eq!(layer.cardinality, Cardinality::ZERO_OR_MORE);
+        assert!(matches!(layer.wrapper, Some(WrapperKind::List)));
+        assert!(layer.inner.is_some());
+        assert_eq!(layer.depth(), 2);
+
+        let inner = layer.inner.as_ref().unwrap();
+        assert_eq!(inner.base_type, Some("String".to_string()));
+        assert_eq!(inner.cardinality, Cardinality::ONE);
+    }
+
+    #[test]
+    fn test_type_layer_optional_int() {
+        let opt_type = type_lib::optional(type_lib::int());
+        let layer = TypeLayer::from_type_dag(&opt_type);
+
+        assert_eq!(layer.cardinality, Cardinality::ZERO_OR_ONE);
+        assert!(matches!(layer.wrapper, Some(WrapperKind::Optional)));
+        assert_eq!(layer.depth(), 2);
+    }
+
+    #[test]
+    fn test_cross_product_witnesses_scalar_string() {
+        let string_type = type_lib::string();
+        let witnesses = cross_product_witnesses(&string_type, 3);
+
+        // Scalar string → at least 1 witness
+        assert!(!witnesses.is_empty());
+        assert!(witnesses.iter().all(|w| matches!(w, Value::Str(_))));
+    }
+
+    #[test]
+    fn test_cross_product_witnesses_optional_int() {
+        let opt_int = type_lib::optional(type_lib::int());
+        let witnesses = cross_product_witnesses(&opt_int, 3);
+
+        // Optional<Int> → should have Unit (count=0) and Int witnesses (count=1)
+        assert!(witnesses.iter().any(|w| matches!(w, Value::Unit)));
+        assert!(witnesses.iter().any(|w| matches!(w, Value::Int(_))));
+    }
+
+    #[test]
+    fn test_cross_product_witnesses_list_string() {
+        let list_str = type_lib::list(type_lib::string());
+        let witnesses = cross_product_witnesses(&list_str, 3);
+
+        // List<String> → empty list, single-element lists, possibly multi-element
+        assert!(witnesses.iter().any(|w| matches!(w, Value::List(v) if v.is_empty())));
+        assert!(witnesses.iter().any(|w| matches!(w, Value::List(v) if !v.is_empty())));
+    }
+
+    #[test]
+    fn test_cross_product_witnesses_respects_depth_limit() {
+        let nested = type_lib::list(type_lib::optional(type_lib::list(type_lib::string())));
+        let shallow = cross_product_witnesses(&nested, 1);
+        let deep = cross_product_witnesses(&nested, 3);
+
+        // Deeper decomposition should generally produce more witnesses
+        assert!(deep.len() >= shallow.len());
+    }
+
+    #[test]
+    fn test_predicate_boundary_witnesses_range() {
+        let range_pred = Predicate::InRange { min: 0, max: 100 };
+        let boundaries = predicate_boundary_witnesses(&range_pred, &Some("Int".to_string()));
+
+        // Should include: -1, 0, 50, 100, 101
+        assert!(boundaries.contains(&Value::Int(-1)));
+        assert!(boundaries.contains(&Value::Int(0)));
+        assert!(boundaries.contains(&Value::Int(50)));
+        assert!(boundaries.contains(&Value::Int(100)));
+        assert!(boundaries.contains(&Value::Int(101)));
+    }
+
+    #[test]
+    fn test_predicate_boundary_witnesses_content_encoding() {
+        use crate::type_op::ContentEncoding;
+        let utf8_pred = Predicate::Content(ContentEncoding::UTF8);
+        let boundaries = predicate_boundary_witnesses(&utf8_pred, &Some("String".to_string()));
+
+        // UTF8 should generate both ASCII and UTF8 witnesses
+        assert!(boundaries.len() >= 2);
+        assert!(boundaries.iter().all(|w| matches!(w, Value::Str(_))));
+    }
+
+    // --- TypeContract lattice tests ---
+
+    #[test]
+    fn test_type_contract_partial_order() {
+        use crate::algebra::PartialOrder;
+
+        let url_contract = TypeContract::from_type_dag(&type_lib::url());
+        let string_contract = TypeContract::from_type_dag(&type_lib::string());
+        let int_contract = TypeContract::from_type_dag(&type_lib::int());
+
+        // URL ≤ String (url is a refined string)
+        assert!(url_contract.leq(&string_contract));
+        // String ≰ URL (string doesn't satisfy url predicates)
+        assert!(!string_contract.leq(&url_contract));
+        // Int ≰ String (different base types)
+        assert!(!int_contract.leq(&string_contract));
+        // Reflexive
+        assert!(string_contract.leq(&string_contract));
+    }
+
+    #[test]
+    fn test_type_contract_partial_order_containers() {
+        use crate::algebra::PartialOrder;
+
+        let list_str = TypeContract::from_type_dag(&type_lib::list(type_lib::string()));
+        let opt_str = TypeContract::from_type_dag(&type_lib::optional(type_lib::string()));
+
+        // list [0,∞) ≤ itself
+        assert!(list_str.leq(&list_str));
+        // optional [0,1] ≤ list [0,∞)
+        assert!(opt_str.leq(&list_str));
+        // list [0,∞) ≰ optional [0,1]
+        assert!(!list_str.leq(&opt_str));
+    }
+
+    #[test]
+    fn test_type_contract_join() {
+        use crate::algebra::JoinSemilattice;
+
+        let url_contract = TypeContract::from_type_dag(&type_lib::url());
+        let string_contract = TypeContract::from_type_dag(&type_lib::string());
+
+        // Join(URL, String) should be String-like (widened)
+        let joined = JoinSemilattice::join(url_contract.clone(), string_contract.clone());
+        assert_eq!(joined.base_type, Some("String".to_string()));
+        assert_eq!(joined.cardinality, Cardinality::ONE);
+        // String has no predicates, so intersection with URL predicates = empty
+        assert!(joined.predicates.is_empty());
+    }
+
+    #[test]
+    fn test_type_contract_join_different_base() {
+        use crate::algebra::JoinSemilattice;
+
+        let string_contract = TypeContract::from_type_dag(&type_lib::string());
+        let int_contract = TypeContract::from_type_dag(&type_lib::int());
+
+        // Join(String, Int) = Json (top of base type lattice)
+        let joined = JoinSemilattice::join(string_contract, int_contract);
+        assert_eq!(joined.base_type, Some("Json".to_string()));
+    }
+
+    #[test]
+    fn test_type_contract_meet() {
+        use crate::algebra::MeetSemilattice;
+
+        let url_contract = TypeContract::from_type_dag(&type_lib::url());
+        let string_contract = TypeContract::from_type_dag(&type_lib::string());
+
+        // Meet(URL, String) should be URL-like (narrowed)
+        let met = MeetSemilattice::meet(url_contract.clone(), string_contract);
+        assert!(met.is_some());
+        let met = met.unwrap();
+        assert_eq!(met.base_type, Some("String".to_string()));
+        // Union of predicates — should have URL's predicates
+        assert!(!met.predicates.is_empty());
+    }
+
+    #[test]
+    fn test_type_contract_meet_incompatible() {
+        use crate::algebra::MeetSemilattice;
+
+        let string_contract = TypeContract::from_type_dag(&type_lib::string());
+        let int_contract = TypeContract::from_type_dag(&type_lib::int());
+
+        // Meet(String, Int) = None (incomparable base types)
+        let met = MeetSemilattice::meet(string_contract, int_contract);
+        assert!(met.is_none());
+    }
+
+    #[test]
+    fn test_type_contract_lattice_absorption() {
+        use crate::algebra::{JoinSemilattice, MeetSemilattice, PartialOrder};
+
+        let url_contract = TypeContract::from_type_dag(&type_lib::url());
+        let string_contract = TypeContract::from_type_dag(&type_lib::string());
+
+        // a.join(a.meet(b)) == a (when meet exists)
+        if let Some(met) = MeetSemilattice::meet(url_contract.clone(), string_contract.clone()) {
+            let absorbed = JoinSemilattice::join(url_contract.clone(), met);
+            // The absorbed result should be equivalent to url_contract
+            assert!(absorbed.leq(&url_contract));
+            assert!(url_contract.leq(&absorbed));
+        }
     }
 }

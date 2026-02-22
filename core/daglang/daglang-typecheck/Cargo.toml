@@ -8,3 +8,4 @@ description = "Type checking, refinement validation, and interface resolution fo
 [dependencies]
 daglang-syntax = { path = "../daglang-syntax" }
 daglang-resolve = { path = "../daglang-resolve" }
+gunbc-ir = { path = "../../ir" }

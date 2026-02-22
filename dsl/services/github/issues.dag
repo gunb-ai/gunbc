@@ -20,7 +20,8 @@
 
 module services.github.issues
 
-import interfaces.issue_provider { IssueProvider }
+import interfaces.issue_provider { IssueProvider, IssueEvent }
+import std.types { TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url }
 
 service github.Issues : IssueProvider {
   @endpoint("https://api.github.com")
@@ -30,45 +31,34 @@ service github.Issues : IssueProvider {
 
   operation create {
     input {
-      title: String
+      title: NonEmptyStr
       body: String
       labels: List<String>
     }
     output {
-      number: Int @json("number")
-      url: String @json("html_url")
-      id: Int @json("id")
-      node_id: String @json("node_id")
+      issue: TrackedIssue @json(".")
     }
     @rest(POST, "/repos/gunb-ai/gunbc/issues")
     @permissions(["issues:write"])
     @mock_response(
       status: 201,
       body: {
-        "number": 42,
-        "html_url": "https://github.com/gunb-ai/gunbc/issues/42",
-        "id": 1234567,
-        "node_id": "I_mock"
+        "id": "1234567",
+        "title": "mock",
+        "state": "open"
       }
     )
   }
 
-  operation Get {
+  operation get {
     input {
-      owner: String
-      repo: String
-      number: Int
+      id: NonEmptyStr
     }
     output {
-      number: Int @json("number")
-      title: String @json("title")
-      body: String @json("body")
-      state: String @json("state")
-      labels: Json @json("labels")
-      url: String @json("html_url")
-      user: String @json("user/login")
+      issue: TrackedIssue @json(".")
+      found: Bool @json("status == 200")
     }
-    @rest(GET, "/repos/{owner}/{repo}/issues/{number}")
+    @rest(GET, "/repos/gunb-ai/gunbc/issues/{id}")
     @permissions(["issues:read"])
     @mock_response(
       status: 200,
@@ -78,34 +68,25 @@ service github.Issues : IssueProvider {
         "body": "Mock body",
         "state": "open",
         "labels": [{"name": "idea"}],
-        "html_url": "https://github.com/{owner}/{repo}/issues/42",
+        "html_url": "https://github.com/gunb-ai/gunbc/issues/42",
         "user": {"login": "mock-user"}
       }
     )
   }
 
-  operation Update {
+  operation close {
     input {
-      owner: String
-      repo: String
-      number: Int
-      title: String?
-      body: String?
-      state: String?            // "open" | "closed"
-      labels: List<String>?
-      assignees: List<String>?
+      id: NonEmptyStr
     }
     output {
-      number: Int @json("number")
-      url: String @json("html_url")
+      ok: Bool @json("state == \"closed\"")
     }
-    @rest(PATCH, "/repos/{owner}/{repo}/issues/{number}")
+    @rest(PATCH, "/repos/gunb-ai/gunbc/issues/{id}")
     @permissions(["issues:write"])
     @mock_response(
       status: 200,
       body: {
-        "number": 42,
-        "html_url": "https://github.com/{owner}/{repo}/issues/42"
+        "state": "closed"
       }
     )
   }
@@ -114,24 +95,23 @@ service github.Issues : IssueProvider {
   // Comments are the artifact carrier: designs, reviews, and reports
   // are posted as issue comments with structured markdown.
 
-  operation AddComment {
+  operation comment {
     input {
-      owner: String
-      repo: String
-      number: Int
+      id: NonEmptyStr
       body: String
+      marker: NonEmptyStr?
     }
     output {
-      id: Int @json("id")
-      url: String @json("html_url")
+      comment_id: NonEmptyStr @json("id")
+      ok: Bool @json("id != 0")
     }
-    @rest(POST, "/repos/{owner}/{repo}/issues/{number}/comments")
+    @rest(POST, "/repos/gunb-ai/gunbc/issues/{id}/comments")
     @permissions(["issues:write"])
     @mock_response(
       status: 201,
       body: {
         "id": 999,
-        "html_url": "https://github.com/{owner}/{repo}/issues/42#issuecomment-999"
+        "html_url": "https://github.com/gunb-ai/gunbc/issues/42#issuecomment-999"
       }
     )
   }
@@ -141,17 +121,15 @@ service github.Issues : IssueProvider {
   //   idea → design → design-review → accepted → implementing →
   //   code-review → testing → done
 
-  operation SetLabels {
+  operation set_labels {
     input {
-      owner: String
-      repo: String
-      number: Int
+      id: NonEmptyStr
       labels: List<String>
     }
     output {
-      labels: Json
+      ok: Bool @json("status == 200")
     }
-    @rest(PUT, "/repos/{owner}/{repo}/issues/{number}/labels")
+    @rest(PUT, "/repos/gunb-ai/gunbc/issues/{id}/labels")
     @permissions(["issues:write"])
     @mock_response(
       status: 200,
@@ -161,20 +139,31 @@ service github.Issues : IssueProvider {
 
   // --- Listing (for polling / batch processing) --------------------------
 
-  operation List {
+  operation discover {
     input {
-      owner: String
-      repo: String
-      state: String = "open"
-      labels: String?           // Comma-separated label names
-      sort: String = "created"
-      direction: String = "desc"
-      per_page: Int = 30
+      labels: List<String>
+      state: String? = "open"
     }
     output {
-      issues: List<TrackedIssue>              // Array of issue objects
+      issues: List<TrackedIssue>
     }
-    @rest(GET, "/repos/{owner}/{repo}/issues")
+    @rest(GET, "/repos/gunb-ai/gunbc/issues")
+    @permissions(["issues:read"])
+    @mock_response(
+      status: 200,
+      body: []
+    )
+  }
+
+  operation list_events {
+    input {
+      id: NonEmptyStr
+      since: String?
+    }
+    output {
+      events: List<IssueEvent>
+    }
+    @rest(GET, "/repos/gunb-ai/gunbc/issues/{id}/events")
     @permissions(["issues:read"])
     @mock_response(
       status: 200,

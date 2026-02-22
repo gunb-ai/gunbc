@@ -855,23 +855,24 @@ fn rust_type_for_port_type(port_type: &PortType, original_type_id: &TypeId) -> S
         PortType::Int => "i64".to_string(),
         PortType::Float => "f64".to_string(),
         PortType::Bytes => "Vec<u8>".to_string(),
-        PortType::Json => "serde_json::Value".to_string(),
+        PortType::Json => {
+            // Domain types with known Rust paths resolve to concrete types;
+            // generic Json falls back to serde_json::Value.
+            match original_type_id.0.as_str() {
+                "FileResponse" => "gunbc_ir::transport::FileResponse".to_string(),
+                "ShellResponse" => "gunbc_ir::transport::ShellResponse".to_string(),
+                "RestResponse" => "gunbc_ir::transport::RestResponse".to_string(),
+                "HttpResponse" => "gunbc_ir::transport::HttpResponse".to_string(),
+                _ => "serde_json::Value".to_string(),
+            }
+        }
         PortType::Secret => "String".to_string(),
         PortType::List(inner) => {
             let inner_type =
                 rust_type_for_port_type(inner, &TypeId::new(inner.to_type_id().0.clone()));
             format!("Vec<{inner_type}>")
         }
-        PortType::Any => {
-            // Domain-specific types with known Rust paths in gunbc_ir::transport.
-            match original_type_id.0.as_str() {
-                "FileResponse" => "gunbc_ir::transport::FileResponse".to_string(),
-                "ShellResponse" => "gunbc_ir::transport::ShellResponse".to_string(),
-                "RestResponse" => "gunbc_ir::transport::RestResponse".to_string(),
-                "HttpResponse" => "gunbc_ir::transport::HttpResponse".to_string(),
-                _ => "gunbc_ir::Value".to_string(),
-            }
-        }
+        PortType::Any => "gunbc_ir::Value".to_string(),
     }
 }
 

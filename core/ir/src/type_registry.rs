@@ -513,6 +513,7 @@ impl TypeRegistry {
     /// 1. Same type name (exact match)
     /// 2. Target is "Any" (accepts anything)
     /// 3. Structural refinement: A's contract entails B's contract
+    /// 4. Coercion path: there exists a widening path from A to B in the registry
     pub fn is_compatible(&self, from: &TypeId, to: &TypeId) -> bool {
         // Same type is always compatible.
         if from == to {
@@ -532,15 +533,25 @@ impl TypeRegistry {
         // Look up both types; if not registered, fall back to name equality (handled above).
         let (Some(from_dag), Some(to_dag)) = (self.resolve_type(from), self.resolve_type(to))
         else {
-            return false;
+            // If types aren't registered, check if there's a coercion path.
+            return self.coercion_path(from, to).is_some();
         };
 
         let from_contract = TypeContract::from_type_dag(&from_dag);
         let to_contract = TypeContract::from_type_dag(&to_dag);
 
-        from_contract
-            .can_safely_coerce_to_with(&to_contract, |from, to| self.base_type_upcasts_to(from, to))
+        if from_contract
+            .can_safely_coerce_to_with(&to_contract, |from, to| {
+                self.base_type_upcasts_to(from, to)
+            })
             .is_ok()
+        {
+            return true;
+        }
+
+        // Fall back to coercion path check — branded/nominal types may have
+        // implicit predicate inheritance that the contract comparison misses.
+        self.coercion_path(from, to).is_some()
     }
 
     /// Check structural + strict semantic-carrier compatibility.

@@ -87,6 +87,7 @@ pub fn deps_mock_spec() -> MockSpec {
                 operation: FileOp::Read,
                 success: true,
                 content: Some(mock_manifest().to_string()),
+                bytes: None,
                 exists: Some(true),
                 error: None,
             }),
@@ -186,6 +187,7 @@ pub fn deps_mock_spec() -> MockSpec {
                             operation: FileOp::Read,
                             success: true,
                             content: Some(mock_manifest().to_string()),
+                            bytes: None,
                             exists: Some(true),
                             error: None,
                         }
@@ -277,6 +279,7 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
                 operation: FileOp::Read,
                 success: true,
                 content: Some(mock_manifest().to_string()),
+                bytes: None,
                 exists: Some(true),
                 error: None,
             }),

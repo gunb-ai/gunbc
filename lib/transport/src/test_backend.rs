@@ -106,6 +106,7 @@ impl VirtualFilesystem {
             operation: FileOp::Append,
             success: true,
             content: None,
+            bytes: None,
             exists: None,
             error: None,
         }
@@ -127,6 +128,7 @@ impl VirtualFilesystem {
                 operation: FileOp::Delete,
                 success: true,
                 content: None,
+                bytes: None,
                 exists: None,
                 error: None,
             }
@@ -226,6 +228,17 @@ impl VirtualTransportBackend {
         let mut fs = self.fs.lock().expect("virtual fs lock poisoned");
         match request.operation {
             FileOp::Read => fs.read_file(&request.path),
+            FileOp::ReadBytes => {
+                let resp = fs.read_file(&request.path);
+                if resp.success {
+                    FileResponse::read_bytes_ok(
+                        &request.path,
+                        resp.content.unwrap_or_default().into_bytes(),
+                    )
+                } else {
+                    FileResponse::error(&request.path, FileOp::ReadBytes, resp.error.unwrap_or_default())
+                }
+            }
             FileOp::Write => fs.write_file(
                 &request.path,
                 request.content.as_deref().unwrap_or(""),
@@ -245,6 +258,7 @@ impl VirtualTransportBackend {
                     operation: FileOp::CreateDir,
                     success: true,
                     content: None,
+                    bytes: None,
                     exists: None,
                     error: None,
                 }

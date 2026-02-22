@@ -1,5 +1,7 @@
 //! Workflow planner core modules (WF1+).
 
+mod catalog;
+
 pub mod admission;
 pub mod capabilities;
 pub mod coordination;

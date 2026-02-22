@@ -223,10 +223,7 @@ fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    let mut set = BTreeSet::new();
-    set.insert("sdlc");
-    set.insert("reconciler");
-    set
+    BTreeSet::new()
 }
 
 fn add_discovered_tool_subdags(

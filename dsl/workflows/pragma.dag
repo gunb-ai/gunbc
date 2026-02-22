@@ -16,24 +16,33 @@ import tools.codegen { codegen_ensure }
 pipeline pragma {
 
   stage compilation_ensure {
+    @file(WRITE, "target")
+    @tool(READ, "cargo")
     _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
+    @file(WRITE, "generated:cli")
     _ = codegen_ensure()
   }
 
   stage render_clippy [after codegen_ensure] {}
 
-  stage upsert_clippy [after render_clippy] {}
+  stage upsert_clippy [after render_clippy] {
+    @file(WRITE, "workspace")
+  }
 
   stage render_allowlist [after codegen_ensure] {}
 
-  stage upsert_allowlist [after render_allowlist] {}
+  stage upsert_allowlist [after render_allowlist] {
+    @file(WRITE, "workspace")
+  }
 
   stage render_policy [after codegen_ensure] {}
 
-  stage upsert_policy [after render_policy] {}
+  stage upsert_policy [after render_policy] {
+    @file(WRITE, "workspace")
+  }
 
   stage report [after upsert_clippy, after upsert_allowlist, after upsert_policy] {}
 }

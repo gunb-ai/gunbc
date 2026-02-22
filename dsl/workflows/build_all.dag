@@ -14,14 +14,19 @@ import tools.build { build_all }
 pipeline build_all {
 
   stage compilation_ensure {
+    @file(WRITE, "target")
+    @tool(READ, "cargo")
     _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
+    @file(WRITE, "generated:cli")
     _ = codegen_ensure()
   }
 
   stage build [after codegen_ensure] {
+    @file(WRITE, "target")
+    @tool(READ, "cargo")
     build_result = build_all()
   }
 

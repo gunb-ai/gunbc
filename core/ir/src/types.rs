@@ -795,6 +795,8 @@ pub fn semantic_carrier_compatible(from: &TypeId, to: &TypeId) -> bool {
 
     match (from_kind, to_kind) {
         (Kind::Structural, Kind::Structural) => true,
+        // Allow matching unknown semantics when both ports share the same type ID.
+        (Kind::UnknownSemantic, Kind::UnknownSemantic) if from.0 == to.0 => true,
         (Kind::UnknownSemantic, _) | (_, Kind::UnknownSemantic) => false,
         (lhs, rhs) => lhs == rhs,
     }
@@ -872,26 +874,9 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
         PortType::Secret => ValueBacking::String,
         PortType::List(_) => ValueBacking::List,
         PortType::Any => {
-            // Domain-specific types that PortType doesn't know about
+            // Residual catch-all for types not structurally resolved.
+            // Most domain types now parse directly (FilePath→String, etc.).
             match type_id {
-                // Map-backed types (structured data stored as Value::Map)
-                "ToolHandle" | "Credential" | "FilesystemHandle" | "NetworkHandle"
-                | "CliResult" => ValueBacking::Map,
-                // Int-backed types
-                "Timestamp" => ValueBacking::Int,
-                // String-backed types (refined string primitives)
-                "Platform" | "FilePath" | "Path" | "Url" | "Email" | "NonEmptyString" => {
-                    ValueBacking::String
-                }
-                // Refined GCP aliases (all currently string-backed values).
-                "OidcAudience"
-                | "WifAudience"
-                | "GcpProjectId"
-                | "GcpSecretId"
-                | "GcpSecretVersion"
-                | "GcpServiceAccountEmail"
-                | "GcpSubjectToken"
-                | "OidcSubjectToken" => ValueBacking::String,
                 // Legacy list aliases
                 s if s.ends_with("List") => ValueBacking::List,
                 // Legacy set aliases

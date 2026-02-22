@@ -239,6 +239,7 @@ version = "0.1.0"
 dependencies = [
  "daglang-resolve",
  "daglang-syntax",
+ "gunbc-ir",
 ]
 
 [[package]]
@@ -372,6 +373,7 @@ dependencies = [
  "cargo_metadata",
  "daglang-driver",
  "daglang-lower",
+ "daglang-syntax",
  "glob",
  "gunbc-cli",
  "gunbc-clippy",
