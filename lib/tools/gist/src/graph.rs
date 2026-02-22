@@ -91,59 +91,6 @@ impl Executable for ParseReadFileOp {
     }
 }
 
-/// Classify files as text or binary by extension (PURE - no I/O).
-///
-/// Partitions a list of file paths into text and binary lists using the
-/// canonical extension map from `dsl/std/types.dag @file_types`. Unknown
-/// extensions default to binary (fail-safe: never attempt `read_to_string`
-/// on an unrecognized file).
-///
-/// This is the Rust-side equivalent of the `classify_files` DSL pattern.
-#[derive(Debug, Clone)]
-pub struct ClassifyFilesOp;
-
-/// Known text file extensions (from `dsl/std/types.dag @file_types.text`).
-const TEXT_EXTENSIONS: &[&str] = &[
-    ".rs", ".toml", ".dag", ".md", ".txt", ".json", ".yaml", ".yml",
-    ".sh", ".html", ".css", ".js", ".ts", ".py", ".go", ".java",
-    ".xml", ".csv", ".sql", ".graphql", ".proto", ".lock",
-    // Common extras not in @file_types but safe to read as text
-    ".gitignore", ".gitattributes", ".editorconfig", ".env",
-    ".cfg", ".ini", ".conf", ".log", ".makefile", ".mk",
-];
-
-impl Executable for ClassifyFilesOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let files = optional_str_list_strict(&inputs, "files")?.unwrap_or_default();
-
-        let mut text_files = Vec::new();
-        let mut binary_files = Vec::new();
-
-        for file in &files {
-            let lower = file.to_lowercase();
-            // Check known text extensions; also treat extensionless files as text
-            // (e.g., Makefile, Dockerfile, LICENSE)
-            let has_ext = lower.rfind('.').is_some_and(|i| i > 0 && i < lower.len() - 1);
-            let is_text = if has_ext {
-                TEXT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext))
-            } else {
-                true // extensionless files (Makefile, Dockerfile, etc.) are text
-            };
-
-            if is_text {
-                text_files.push(file.clone());
-            } else {
-                binary_files.push(file.clone());
-            }
-        }
-
-        OutputMap::new()
-            .str_list("text_files", text_files)
-            .str_list("binary_files", binary_files)
-            .ok()
-    }
-}
-
 /// Collect file results into a map (PURE - no I/O).
 #[derive(Debug, Clone)]
 pub struct CollectFileContentsOp;
@@ -246,36 +193,27 @@ fn execute_parse_read_file(
 /// Collect file results into a map (PURE - no I/O).
 ///
 /// This is a post-processing step for LoopBuilder output. It converts
-/// a list of (filename, content) pairs into a Map. Binary files are
-/// included with placeholder content.
+/// a list of (filename, content) pairs into a Map.
 ///
 /// Inputs:
-/// - filenames: list of text filenames
-/// - contents_list: list of text file contents (from LoopBuilder pack)
-/// - binary_files: list of binary filenames (from classify_files)
+/// - results: list of tuples (from LoopBuilder pack node)
 ///
 /// Outputs:
 /// - contents: Map (filename -> content)
 fn execute_collect_file_contents(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    // For now, this expects a list of filename/content pairs
+    // The actual format depends on how LoopBuilder outputs results
+    // This is a placeholder for when LoopBuilder integration is complete
     let filenames = optional_str_list_strict(&inputs, "filenames")?.unwrap_or_default();
     let contents_list = optional_str_list_strict(&inputs, "contents_list")?.unwrap_or_default();
-    let binary_files = optional_str_list_strict(&inputs, "binary_files")?.unwrap_or_default();
 
     let mut contents = BTreeMap::new();
     for (filename, content) in filenames.iter().zip(contents_list.iter()) {
         if !content.is_empty() {
             contents.insert(filename.clone(), content.clone());
         }
-    }
-
-    // Add binary file placeholders
-    for binary_file in &binary_files {
-        contents.insert(
-            binary_file.clone(),
-            format!("[binary file: {}]", binary_file),
-        );
     }
 
     OutputMap::new().map_str_str("contents", contents).ok()
@@ -356,7 +294,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
 /// - Diff: `(repo_path, base_ref?) → url`
 pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
     let mut sig = WorkflowSignature::new()
-        .with_input("repo_path", "FilePath", Cardinality::ONE)
+        .with_input("repo_path", "String", Cardinality::ONE)
         .with_output("url", "String", Cardinality::ONE)
         // cloud_credential subdag exposes ok from IAM ensure chain (LocalDev only)
         .with_output("ok", "Bool", Cardinality::ONE)
@@ -532,24 +470,7 @@ fn build_snapshot_acquire(
         list_files.in_port("res:file"),
     )?;
 
-    // Node: ClassifyFiles (PURE — partitions files into text/binary by extension)
-    //
-    // This prevents the UTF-8 error: binary files (png, pdf, etc.) are
-    // separated before read_files_loop, which uses fs::read_to_string.
-    let classify_files = builder.add_node_after(
-        Node::opaque(
-            "classify_files",
-            vec![list("files", "String")],
-            vec![
-                list("text_files", "String"),
-                list("binary_files", "String"),
-            ],
-            DynOp::new(ClassifyFilesOp),
-        ),
-        &list_files,
-    )?;
-
-    // Node: LoopBuilder for per-file reading (text files only)
+    // Node: LoopBuilder for per-file reading
     use gunbc_ir::patterns::{LoopBuilder, ResourceInput};
 
     let body = build_read_file_body_dag();
@@ -561,21 +482,17 @@ fn build_snapshot_acquire(
         .with_output("contents", "String")
         .build();
 
-    let read_files_loop = builder.add_node_after(loop_node, &classify_files)?;
+    let read_files_loop = builder.add_node_after(loop_node, &list_files)?;
     builder.add_edge(
         fs_env.out(FsEnv::WRITE_PORT),
         read_files_loop.in_port("res:file"),
     )?;
 
-    // Node: CollectFileContents (PURE - zips filenames + contents, adds binary placeholders)
+    // Node: CollectFileContents (PURE - zips filenames + contents into Map)
     let collect_file_contents = builder.add_node_after(
         Node::opaque(
             "collect_file_contents",
-            vec![
-                list("filenames", "String"),
-                list("contents_list", "String"),
-                list("binary_files", "String"),
-            ],
+            vec![list("filenames", "String"), list("contents_list", "String")],
             vec![port("contents", "Map")],
             DynOp::new(CollectFileContentsOp),
         ),
@@ -593,24 +510,15 @@ fn build_snapshot_acquire(
         &collect_file_contents,
     )?;
 
-    // Wire snapshot pipeline:
-    //   list_files → classify_files → read_files_loop → collect_file_contents → render_markdown
-    builder.add_edge(list_files.out("files"), classify_files.in_port("files"))?;
+    // Wire snapshot pipeline (internal triplet edges handled by helper)
+    builder.add_edge(list_files.out("files"), read_files_loop.in_port("files"))?;
     builder.add_edge(
-        classify_files.out("text_files"),
-        read_files_loop.in_port("files"),
-    )?;
-    builder.add_edge(
-        classify_files.out("text_files"),
+        list_files.out("files"),
         collect_file_contents.in_port("filenames"),
     )?;
     builder.add_edge(
         read_files_loop.out("contents"),
         collect_file_contents.in_port("contents_list"),
-    )?;
-    builder.add_edge(
-        classify_files.out("binary_files"),
-        collect_file_contents.in_port("binary_files"),
     )?;
     builder.add_edge(
         collect_file_contents.out("contents"),
@@ -784,7 +692,6 @@ mod tests {
 
         // Content acquisition SubDag wrappers
         assert!(dag.get_node(&"list_files".into()).is_some());
-        assert!(dag.get_node(&"classify_files".into()).is_some());
         assert!(dag.get_node(&"read_files_loop".into()).is_some());
         // Branch resolution and gist upload are now SubDags
         assert!(dag.get_node(&"branch_resolution".into()).is_some());
@@ -808,7 +715,6 @@ mod tests {
         let boundaries = detect_boundaries(&dag);
 
         // Pure/intermediate nodes should not be boundaries
-        assert!(!boundaries.is_boundary_node(&"classify_files".into()));
         assert!(!boundaries.is_boundary_node(&"collect_file_contents".into()));
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
         // gist_upload is terminal → boundary (outputs url, ok)
@@ -1096,66 +1002,5 @@ mod tests {
         assert!(dag.get_node(&"prepare".into()).is_some());
         assert!(dag.get_node(&"execute".into()).is_some());
         assert!(dag.get_node(&"parse".into()).is_some());
-    }
-
-    #[test]
-    fn test_classify_files_separates_text_and_binary() {
-        let op = ClassifyFilesOp;
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "files".to_string(),
-            Value::str_list(vec![
-                "src/main.rs".to_string(),
-                "README.md".to_string(),
-                "screenshot.png".to_string(),
-                "archive.zip".to_string(),
-                "Makefile".to_string(),
-                "data.wasm".to_string(),
-                "config.toml".to_string(),
-            ]),
-        );
-
-        let outputs = op.execute(inputs).expect("classify should succeed");
-
-        let text_files = outputs
-            .get("text_files")
-            .and_then(|v| v.as_str_list())
-            .expect("should have text_files");
-        let binary_files = outputs
-            .get("binary_files")
-            .and_then(|v| v.as_str_list())
-            .expect("should have binary_files");
-
-        assert!(text_files.contains(&"src/main.rs".to_string()));
-        assert!(text_files.contains(&"README.md".to_string()));
-        assert!(text_files.contains(&"Makefile".to_string()));
-        assert!(text_files.contains(&"config.toml".to_string()));
-
-        assert!(binary_files.contains(&"screenshot.png".to_string()));
-        assert!(binary_files.contains(&"archive.zip".to_string()));
-        assert!(binary_files.contains(&"data.wasm".to_string()));
-
-        // Total should match input
-        assert_eq!(text_files.len() + binary_files.len(), 7);
-    }
-
-    #[test]
-    fn test_classify_files_empty_input() {
-        let op = ClassifyFilesOp;
-        let inputs = HashMap::new();
-
-        let outputs = op.execute(inputs).expect("classify should succeed on empty");
-
-        let text_files = outputs
-            .get("text_files")
-            .and_then(|v| v.as_str_list())
-            .unwrap_or_default();
-        let binary_files = outputs
-            .get("binary_files")
-            .and_then(|v| v.as_str_list())
-            .unwrap_or_default();
-
-        assert!(text_files.is_empty());
-        assert!(binary_files.is_empty());
     }
 }

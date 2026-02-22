@@ -112,6 +112,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | F: Codegen-first SDLC | **DONE** | `CG1` superseded (SDLC modules are runtime-authored) |
 | G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **DONE** | — |
+| I: Type system enforcement | **ACTIVE** | TS-1..TS-1d, TS-2..TS-7 (237 port updates, 3 deletions, 2 test fixes) |
 
 ---
 
@@ -284,18 +285,94 @@ The parser has the syntax. The gap is making it executable. These tasks focus on
 
 ---
 
-## Type System Enforcement — Remaining Work
+## Lane I: Type System Enforcement — Hard Cutover
 
-**Context**: Set-theoretic types-as-DAGs migration (Phases 1-6) substantially complete. IR foundation, DSL type compilation, TypeRegistry wiring, Bytes support, lattice boundary witnesses, and cross-product test generation all implemented. Items below are follow-up hardening and propagation work.
+**Context**: Set-theoretic types-as-DAGs migration (Phases 1-6) substantially complete. IR foundation, DSL type compilation, TypeRegistry wiring, Bytes support, lattice boundary witnesses, and cross-product test generation all implemented. This lane completes the migration by eliminating every legacy escape hatch: `PortType::Any` catch-all, `types_match()` string heuristic, `canonical_type_name()` ad-hoc normalization, and `Option<TypeRegistry>` soft bypass. After this lane, every type mismatch is a compile error.
 
-| ID | Task | Context | Size | Status |
-|----|------|---------|------|--------|
-| **TS-1** | **GCP Secret type propagation** | 25+ ports in `lib/gcp-ops/src/graph.rs` use `"String"` for access_token/subject_token. Need `OptionalSecret` type (doesn't exist yet), then update 7 output ports (parse_github_oidc, parse_metadata_oidc, parse_sts, parse_impersonate, merge_auth_result) and 9 input ports (prepare_sts, prepare_impersonate, prepare_secret_access/get/create/add_version, prepare_ensure_iam, check_iam) across 2 duplicate graph functions. | L | |
-| **TS-2** | **Regenerate all CI generated tests** | 2197 CI generated tests fail at runtime (`invalid 'items' input: expected StringList`). Pre-existing issue from collection dispatch changes. The test generator produces tests that exercise DryRun mode, but the `CollectionDispatchOp` expects `StringList` format. Need to update mock generation or collection handling. | M | |
-| **TS-3** | **Wire TypeRegistry into DagBuilder (Phase 3a hard cutover)** | Make `type_registry: TypeRegistry` non-optional on `DagBuilder`. Delete `without_type_registry()`. All `add_edge()` calls enforce `registry.is_compatible()`. Currently additive; needs hard cutover. | M | |
-| **TS-4** | **Delete PortType::Any catch-all (Phase 3b)** | Remove `_ => PortType::Any` fallback in `parse_port_type()`. Unknown type strings → `PortType::from_registry()` → hard compile error if not registered. Requires all graph builders to use registered types (TS-1 is prerequisite). | M | TS-1 |
-| **TS-5** | **Process all annotations in typecheck (Phase 2b)** | `validate_type_expr` in daglang-typecheck skips non-`@range` annotations. Handle `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types { ... }` → extension→encoding map. | L | |
-| **TS-6** | **Workspace subdag mapping for reconciler/sdlc** | 2 workspace subdag tests fail: "unmapped DSL pipeline modules: reconciler, sdlc". Add module mappings in `workspace/subdags` or explicit exclusions. Pre-existing. | S | |
+**Audit baseline** (2026-02-21): 237 `port(..., "String")` calls across 9 graph files. `types_match()` at 2 call sites + 14 `canonical_type_name()` call sites across 2 crates. `PortType::Any` catch-all at 2 sites in `port_type.rs`. `Option<TypeRegistry>` in `codegen.rs`.
+
+### Phase I-A: Port type propagation (all graph builders)
+
+Every `port(..., "String")` that should be a domain type must be updated before the `PortType::Any` catch-all can be removed. The strict path (`try_parse_port_type`) already recognizes domain types — graph builders just aren't using them.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-1** | **GCP credential port types** | 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports (`access_token`, `subject_token`, `client_secret`, `refresh_token`) → `Secret`. Identity ports (`service_account`) → `GcpServiceAccountEmail`. Project ports → `GcpProjectId`. Audience ports → `NonEmptyString`. Requires registering `OptionalSecret` if any port is optional. 2 duplicate graph functions share these ports. | — | L | |
+| **TS-1b** | **Cloud-ops port types** | 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). Same credential/identity patterns as TS-1. | TS-1 | M | |
+| **TS-1c** | **Review + LLM port types** | `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). Ports like `provider`, `model`, `content`, `question`, `answer` → `NonEmptyString` or domain types. `secret_name` → `SecretName`. `scheme`/`header_name` → `NonEmptyString`. | — | L | |
+| **TS-1d** | **Remaining graph port types** | `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). Smaller scope, same patterns. | — | S | |
+
+**Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1 (shares credential type decisions).
+
+### Phase I-B: Delete legacy type comparison
+
+`types_match()` (daglang-typecheck line 2555) creates a fresh `TypeRegistry::with_core_types()` on every call, never sees domain types, and falls back to short-name suffix matching (`rsplit('.').next()`) which can produce false positives (`foo.Bar` matches `baz.Bar`). `canonical_type_name()` (daglang-syntax/ast_utils.rs line 27) strips generic parameters via `split('<').next()` — loses type parameter information entirely. Both must be replaced by `TypeRegistry::is_compatible()` with a registry threaded through the context.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-7** | **Delete `types_match()` and `canonical_type_name()`** | **Delete** `types_match()` (2 call sites: line 2227 in `infer_record_literal_type()`, line 2536 in `push_type_mismatch_if_needed()`). Add `TypeRegistry` as a field on the type checker context; replace both call sites with `registry.is_compatible()`. **Delete** `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). The 8 call sites in daglang-lower (`insert_canonical_names`, `is_known_uses_type`, interface resolution at lines 600/611/4592/4608/4801/4815/4841/4851) need `TypeId`-based lookups instead of string splitting. Also delete `resolve_record_fields()` suffix matching (line 2583 `rsplit('.').next()`) — replace with registry lookup. | TS-1..TS-1d | M | |
+
+### Phase I-C: Hard cutover — delete escape hatches
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-3** | **Make TypeRegistry non-optional** | `without_type_registry()` already deleted from builder. Remaining: change `type_registry: Option<TypeRegistry>` → `type_registry: TypeRegistry` in `core/codegen/src/testgen/codegen.rs` (line 235). Audit for any other `Option<TypeRegistry>` patterns. All callers must supply a registry. | TS-7 | S | |
+| **TS-4** | **Delete PortType::Any catch-all** | Remove `_ => PortType::Any` in `parse_known_type()` (port_type.rs line 158). Remove `try_parse_port_type(s).unwrap_or(PortType::Any)` (line 216). Delete `From<&str> for PortType` impl that silently degrades unknowns to `Any` (line 141). Update `value_backing_for_type_id()` in `types.rs` (line 876, `PortType::Any =>` residual catch-all). Update `system_model.rs` (line 875, `PortType::Any => "gunbc_ir::Value"`). Either delete `PortType::Any` variant entirely or keep it as a non-wildcard (compatibility layer already restricts it — `Any` only matches `Any` per tests at line 230-234). | TS-1..TS-1d, TS-7 | M | |
+
+### Phase I-D: Annotation processing
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-5** | **Process all annotations in typecheck** | `validate_type_expr` in daglang-typecheck skips non-`@range` annotations. Handle: `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types { ... }` → extension→encoding map in TypeRegistry. | — | L | |
+
+### Phase I-E: Test infrastructure
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-2** | **Regenerate CI generated tests** | 2197 CI generated tests fail at runtime (`invalid 'items' input: expected StringList`). Pre-existing issue from collection dispatch changes. `CollectionDispatchOp` expects `StringList` format but mocks produce plain strings. Fix mock generation in `test_gen.rs` (`typed_mock_for_response` catch-all at line 155 returns `"mock-response"` for unknown types — should produce typed witnesses). | — | M | |
+| **TS-6** | **Workspace subdag mapping for reconciler/sdlc** | 2 workspace subdag tests fail: "unmapped DSL pipeline modules: reconciler, sdlc". Add module mappings in workspace subdag discovery or explicit exclusions. Pre-existing. | — | S | |
+
+### Dependency graph
+
+```
+TS-1 ──┐
+TS-1b ─┤ (TS-1b depends on TS-1 for type decisions)
+TS-1c ─┼──→ TS-7 ──→ TS-3 ──→ (done)
+TS-1d ─┘          └──→ TS-4 ──→ (done)
+
+TS-5 ──→ (independent, can parallel with any phase)
+TS-2 ──→ (independent, can parallel with any phase)
+TS-6 ──→ (independent, can parallel with any phase)
+```
+
+### Files touched
+
+| File | Changes |
+|------|---------|
+| `lib/gcp-ops/src/graph.rs` | 62 port type updates (TS-1) |
+| `lib/cloud-ops/src/*.rs` | 49 port type updates across 4 files (TS-1b) |
+| `lib/review/src/graph.rs` | 102 port type updates (TS-1c) |
+| `lib/llm-ops/src/graph.rs` | 13 port type updates (TS-1c) |
+| `lib/aws-ops/src/graph.rs` | 3 port type updates (TS-1d) |
+| `lib/azure-ops/src/graph.rs` | 3 port type updates (TS-1d) |
+| `lib/tools/gist/src/graph.rs` | 6 port type updates (TS-1d) |
+| `lib/tools/deps/src/graph.rs` | 1 port type update (TS-1d) |
+| `gunbc-dag/src/testgen_dag/graph.rs` | 1 port type update (TS-1d) |
+| `core/daglang/daglang-typecheck/src/lib.rs` | **Delete** `types_match()`, replace 2 call sites (TS-7). Annotation handling (TS-5) |
+| `core/daglang/daglang-syntax/src/ast_utils.rs` | **Delete** `canonical_type_name()` (TS-7) |
+| `core/daglang/daglang-lower/src/lib.rs` | Replace 8 `canonical_type_name()` call sites with TypeId lookups (TS-7) |
+| `core/ir/src/port_type.rs` | **Delete** `_ => PortType::Any` catch-all, restrict/remove `PortType::Any` (TS-4) |
+| `core/ir/src/types.rs` | Update `PortType::Any` arm in `value_backing_for_type_id()` (TS-4) |
+| `core/ir/src/system_model.rs` | Update `PortType::Any` arm (TS-4) |
+| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3) |
+| `core/daglang/daglang-emit/src/test_gen.rs` | Fix mock generation catch-all (TS-2) |
+
+### Verification
+
+1. `cargo build --workspace` — all crates compile with no `PortType::Any` fallback
+2. `cargo test --workspace` — all tests pass including regenerated CI tests
+3. `cargo clippy --all-targets -- -D warnings` — no warnings
+4. Grep confirms: zero `types_match` call sites, zero `canonical_type_name` call sites, zero `Option<TypeRegistry>` patterns, zero `PortType::Any` catch-all arms
 
 ---
 
