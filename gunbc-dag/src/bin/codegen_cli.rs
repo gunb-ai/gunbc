@@ -43,7 +43,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
-// Force-link crates that register tool targets needed for DSL coverage validation.
+// Force-link crates so inventory-driven `tool_target` registrations are retained.
+// The `_` alias makes the side-effect-only intent explicit.
 use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 

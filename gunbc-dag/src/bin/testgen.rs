@@ -26,7 +26,8 @@ use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::TransportIo;
 use std::io::IsTerminal;
-// Force-link crates that register testgen targets.
+// Force-link crates so inventory-driven testgen target registrations are retained.
+// The `_` alias makes the side-effect-only intent explicit.
 use gunbc_deps as _;
 use gunbc_gist as _;
 use gunbc_lib_llm_ops as _;
