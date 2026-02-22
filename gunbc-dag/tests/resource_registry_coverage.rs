@@ -60,7 +60,6 @@ fn runtime_registry_contains_non_skip_resource_annotations() {
     let _: fn() -> gunbc_test::MockSpec = gunbc_dag::ci::graph_mock::ci_mock_spec;
     let _: fn() -> gunbc_test::MockSpec = gunbc_dag::makegen::graph_mock::makegen_mock_spec;
     let _: fn() -> gunbc_test::MockSpec = gunbc_dag::pragma::graph_mock::pragma_mock_spec;
-    let _: fn() = gunbc_dag::testgen_dag::testgen_dag_resource_target;
     let _: fn() -> gunbc_test::MockSpec =
         gunbc_dag::credential_lifecycle::github_credential_lifecycle_mock_spec;
     let _ = gunbc_dag::build_build_graph();

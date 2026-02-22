@@ -11,21 +11,13 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::testgen_dag::graph::build_testgen_graph;
-use gunbc_dag::{
-    print_tool_header, run_tool, testgen_resource_def, wire_fs_env_write_mock, RunToolOptions,
-};
-use gunbc_exec::{
-    execute_and_display_with_result, print_attention, AttentionLevel, BoundaryMocks, ExecutionMode,
-};
+use gunbc_dag::{print_tool_header, testgen_resource_def};
+use gunbc_exec::{print_attention, AttentionLevel};
 use gunbc_ir::resource::{
     update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
     ResourceDef, ResourceError, ResourceIo, ResourceManifest,
 };
-use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
-use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::TransportIo;
-use std::io::IsTerminal;
 // Force-link crates so inventory-driven testgen target registrations are retained.
 // The `_` alias makes the side-effect-only intent explicit.
 use gunbc_deps as _;
@@ -33,16 +25,113 @@ use gunbc_gist as _;
 use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 use gunbc_testgen_registry::{iter_dag_specs, DagSpecDef};
-use std::collections::HashMap;
 use std::fmt::Write;
+use std::fs;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::process;
+
+#[derive(Clone)]
+struct TargetPlan {
+    name: String,
+    output_path: PathBuf,
+    spec: &'static DagSpecDef,
+}
 
 /// Build all testgen targets from the auto-discovery registry.
 fn build_targets() -> Vec<&'static DagSpecDef> {
     let mut targets: Vec<&'static DagSpecDef> = iter_dag_specs().collect();
     targets.sort_by(|a, b| a.name.cmp(b.name));
     targets
+}
+
+fn build_target_plans(targets: &[&'static DagSpecDef], output_dir: &PathBuf) -> Vec<TargetPlan> {
+    targets
+        .iter()
+        .map(|spec| {
+            let config = spec.to_def();
+            TargetPlan {
+                name: config.name.to_string(),
+                output_path: output_dir.join(config.output_path.as_ref()),
+                spec,
+            }
+        })
+        .collect()
+}
+
+fn render_target_content(target: &TargetPlan) -> Result<String, String> {
+    let config = target.spec.to_def();
+    let generate_fn = target.spec.generate;
+    match catch_unwind(AssertUnwindSafe(|| (generate_fn)(&config))) {
+        Ok(content) => Ok(content),
+        Err(payload) => {
+            let message = if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = payload.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "unknown panic".to_string()
+            };
+            Err(format!("generate '{}' failed:\n{}", target.name, message))
+        }
+    }
+}
+
+fn check_targets(plans: &[TargetPlan]) -> Result<Vec<String>, String> {
+    let mut ok_count = 0usize;
+    let mut stale = Vec::new();
+
+    for plan in plans {
+        let content = render_target_content(plan)?;
+        let fresh = fs::read_to_string(&plan.output_path)
+            .map(|existing| existing == content)
+            .unwrap_or(false);
+
+        if fresh {
+            println!("[{}] up to date", plan.name);
+            ok_count += 1;
+        } else {
+            println!("[{}] STALE - needs regeneration", plan.name);
+            stale.push(plan.output_path.display().to_string());
+        }
+    }
+
+    println!();
+    println!("check complete: {} ok, {} stale", ok_count, stale.len());
+    Ok(stale)
+}
+
+fn generate_targets(plans: &[TargetPlan], dry_run: bool) -> Result<(), String> {
+    for plan in plans {
+        let content = render_target_content(plan)?;
+        let fresh = fs::read_to_string(&plan.output_path)
+            .map(|existing| existing == content)
+            .unwrap_or(false);
+
+        if fresh {
+            println!("[{}] up to date", plan.name);
+            continue;
+        }
+
+        if dry_run {
+            println!("[{}] would write {}", plan.name, plan.output_path.display());
+            continue;
+        }
+
+        if let Some(parent) = plan.output_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "failed to create parent directory for {}: {e}",
+                    plan.output_path.display()
+                )
+            })?;
+        }
+
+        fs::write(&plan.output_path, content)
+            .map_err(|e| format!("failed to write {}: {e}", plan.output_path.display()))?;
+        println!("[{}] wrote {}", plan.name, plan.output_path.display());
+    }
+    Ok(())
 }
 
 fn main() {
@@ -68,155 +157,16 @@ fn main() {
         process::exit(1);
     }
 
-    // Build the graph
-    let dag = match build_testgen_graph(&targets, &output_dir) {
-        Ok(d) => d,
-        Err(e) => {
-            print_attention(AttentionLevel::Error, "Graph build failed", &e.to_string());
-            process::exit(1);
-        }
-    };
-
-    // Collect target names and output paths for wiring
-    let target_info: Vec<(String, String)> = targets
-        .iter()
-        .map(|t| {
-            let config = t.to_def();
-            let path = output_dir
-                .join(config.output_path.as_ref())
-                .to_string_lossy()
-                .to_string();
-            (config.name.to_string(), path)
-        })
-        .collect();
-
-    let mut path_by_node: HashMap<String, String> = HashMap::new();
-    for (name, path) in &target_info {
-        path_by_node.insert(format!("prepare_read_{name}"), path.clone());
-        path_by_node.insert(format!("prepare_write_{name}"), path.clone());
-    }
-
-    // Set up entrypoint inputs
-    let mut input_mocks = BoundaryMocks::new();
-    let entrypoints = detect_entrypoints(&dag);
-    for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
-        match port_name.0.as_str() {
-            "check_mode" => {
-                input_mocks.set_input(
-                    node_id.0.clone(),
-                    port_name.0.clone(),
-                    Value::Bool(resource_mode == ExecMode::Verify),
-                );
-            }
-            "path" => {
-                if let Some(path) = path_by_node.get(&node_id.0) {
-                    input_mocks.set_input(
-                        node_id.0.clone(),
-                        port_name.0.clone(),
-                        Value::Str(path.clone()),
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // Set up execution mode
-    let mode = if dry_run && resource_mode != ExecMode::Verify {
-        let mut mocks = BoundaryMocks::new();
-
-        // Resource environment: filesystem handle used by file transports.
-        wire_fs_env_write_mock(&dag, &mut mocks);
-
-        for (name, path) in &target_info {
-            let read_node = format!("execute_read_{}", name);
-            let write_node = format!("execute_{}_transport", name);
-
-            // Read transport mock
-            mocks.set_value(
-                &read_node,
-                "response",
-                Value::Response(TransportResponse::File(FileResponse {
-                    path: path.clone(),
-                    operation: FileOp::Read,
-                    success: true,
-                    content: Some("<DRY-RUN>".into()),
-                    bytes: None,
-                    exists: None,
-                    error: None,
-                })),
-            );
-
-            // Write transport mock
-            let response_key = format!("{}_response", name);
-            let path_key = format!("{}_written_path", name);
-            let content_key = format!("{}_content", name);
-
-            mocks.set_value(
-                &write_node,
-                &response_key,
-                Value::Response(TransportResponse::File(FileResponse {
-                    path: path.clone(),
-                    operation: FileOp::Write,
-                    success: true,
-                    content: Some("<DRY-RUN>".into()),
-                    bytes: None,
-                    exists: Some(true),
-                    error: None,
-                })),
-            );
-            mocks.set_value(&write_node, &path_key, Value::Str("<DRY-RUN>".to_string()));
-            mocks.set_value(
-                &write_node,
-                &content_key,
-                Value::Str("<DRY-RUN>".to_string()),
-            );
-            mocks.set_value(&write_node, "skip", Value::Bool(false));
-            mocks.set_value(&write_node, "skip_reason", Value::Str(String::new()));
-        }
-
-        ExecutionMode::DryRun(mocks)
-    } else {
-        ExecutionMode::Real
-    };
-
-    let animated = std::io::stdout().is_terminal();
+    let plans = build_target_plans(&targets, &output_dir);
 
     if resource_mode == ExecMode::Verify {
-        // Check mode: execute through shared display path and inspect log outputs.
-        match execute_and_display_with_result(&dag, mode, animated, None, Some(&input_mocks)) {
-            Ok(result) => {
-                let log = result.log;
-                let mut ok_count = 0;
-                let mut stale = Vec::new();
-
-                for (name, path) in &target_info {
-                    let compare_node = format!("compare_{}_content", name);
-                    let fresh = log
-                        .entries
-                        .iter()
-                        .find(|e| e.node_id == compare_node)
-                        .and_then(|e| e.outputs.get("fresh"))
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-
-                    if fresh {
-                        println!("[{}] up to date", name);
-                        ok_count += 1;
-                    } else {
-                        println!("[{}] STALE - needs regeneration", name);
-                        stale.push(path.as_str());
-                    }
-                }
-
-                println!();
-                println!("check complete: {} ok, {} stale", ok_count, stale.len());
-
+        match check_targets(&plans) {
+            Ok(stale) => {
                 if !stale.is_empty() {
                     let mut body = String::new();
                     body.push_str("Run `make testgen` to regenerate:\n");
                     for path in &stale {
-                        writeln!(body, "  {path}").unwrap();
+                        writeln!(body, "  {path}").expect("string write should not fail");
                     }
                     print_attention(
                         AttentionLevel::Error,
@@ -227,11 +177,7 @@ fn main() {
                 }
             }
             Err(e) => {
-                print_attention(
-                    AttentionLevel::Error,
-                    "testgen --mode=verify failed",
-                    &e.to_string(),
-                );
+                print_attention(AttentionLevel::Error, "testgen --mode=verify failed", &e);
                 process::exit(1);
             }
         }
@@ -245,14 +191,10 @@ fn main() {
                 ("targets", targets.len().to_string()),
             ],
         );
-        run_tool(
-            dag,
-            mode,
-            RunToolOptions {
-                input_mocks: Some(&input_mocks),
-                ..RunToolOptions::default()
-            },
-        );
+        if let Err(e) = generate_targets(&plans, dry_run) {
+            print_attention(AttentionLevel::Error, "testgen generation failed", &e);
+            process::exit(1);
+        }
 
         // Update manifest after successful generation (not in DAG - post-execution step)
         if !dry_run && resource_mode == ExecMode::Ensure {

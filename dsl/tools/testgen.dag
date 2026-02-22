@@ -10,20 +10,24 @@
 module tools.testgen
 
 import std.patterns { content_upsert }
+import std.resources { Filesystem }
 import std.types { CodegenTarget }
 
 fn generate_tests(target: CodegenTarget) -> String {
   target |> generate()
 }
 
+func upsert_target(target: CodegenTarget) -> { written: Bool }
+  uses fs: Filesystem(mode: ReadWrite)
+{
+  result = content_upsert(content: generate_tests(target: target), path: target.path)
+  return { written: result.written }
+}
+
 func testgen(targets: List<CodegenTarget>) -> { all_fresh: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
-  results = for target in targets {
-    content = generate_tests(target: target)
-    content_upsert(content: content, path: target.path)
-  }
-
+  results = targets |> map(t => upsert_target(target: t))
   return { all_fresh: results |> all(r => r.written == false) }
 }
 

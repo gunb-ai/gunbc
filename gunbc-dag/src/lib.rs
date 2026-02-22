@@ -39,7 +39,6 @@ pub mod resolve;
 pub mod resolve_service;
 pub mod resources;
 pub mod sdlc;
-pub mod testgen_dag;
 pub mod tool_runner;
 pub mod tool_testgen;
 pub mod viewer;
@@ -85,7 +84,6 @@ pub use sdlc::{
     ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction,
     ReconcileEntry, ReconcilePlan, RetryState, RunExecutionStatus, RunStateLedger, RunStateRecord,
 };
-pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
     freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
     RunToolOptions,

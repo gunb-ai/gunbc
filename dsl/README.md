@@ -78,7 +78,7 @@ Each `.dag` file replaces a specific Rust graph builder:
 | `tools/deps.dag` | `lib/tools/deps/src/graph.rs` | ~200 |
 | `tools/bootstrap.dag` | `gunbc-dag/src/bootstrap/graph.rs` | ~300 |
 | `tools/codegen.dag` | `gunbc-dag/src/codegen/graph.rs` | ~200 |
-| `tools/testgen.dag` | `gunbc-dag/src/testgen_dag/graph.rs` | ~200 |
+| `tools/testgen.dag` | `gunbc-dag/src/bin/testgen.rs` | ~300 |
 | `tools/pragma.dag` | `gunbc-dag/src/pragma/graph.rs` | ~300 |
 | `tools/build.dag` | `gunbc-dag/src/build/graph.rs` | ~250 |
 | `tools/docgen.dag` | `gunbc-dag/src/docgen/graph.rs` | ~500 |

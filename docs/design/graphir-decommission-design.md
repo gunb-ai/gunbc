@@ -106,12 +106,12 @@ Evidence:
 
 - Codegen coverage checks ensure module presence and target mapping (`gunbc-dag/src/bin/codegen_cli.rs`) but do not enforce execution route correctness (DSL builder vs handwritten builder).
 
-### R6. `tools.testgen` DSL path does not yet replace handwritten generation runtime
+### R6. `tools.testgen` DSL path requires runtime parity verification
 
 Evidence:
 
-- `dsl/tools/testgen.dag` models generation via `target |> generate()`, but the production `gunbc-testgen` binary still executes handwritten runtime generation in `gunbc-dag/src/testgen_dag/graph.rs`.
-- The remaining handwritten `testgen_dag` module is the main blocker to fully deleting section 9C legacy graph authoring.
+- `dsl/tools/testgen.dag` now lowers with executable content-upsert edges via `upsert_target(...)` and no longer compiles as callable-only stubs.
+- Legacy handwritten `gunbc-dag/src/testgen_dag/*` has been deleted; `gunbc-testgen` now runs direct registry-driven generation without GraphIR `testgen_dag` runtime wiring.
 
 ---
 
@@ -250,10 +250,10 @@ Disposition tags:
 ### C. Legacy Tool/Workspace Graph Authoring (`MIGRATE_DELETE`)
 
 25. `gunbc-dag/src/dag_viz/graph.rs` -- [DELETED 2026-02-22]
-26. `gunbc-dag/src/testgen_dag/graph.rs`
+26. `gunbc-dag/src/testgen_dag/graph.rs` -- [DELETED 2026-02-22]
 27. `gunbc-dag/src/testgen_dag/graph_mock.rs` -- [DELETED 2026-02-22]
-28. `gunbc-dag/src/testgen_dag/mod.rs`
-29. `gunbc-dag/src/testgen_dag/ops.rs`
+28. `gunbc-dag/src/testgen_dag/mod.rs` -- [DELETED 2026-02-22]
+29. `gunbc-dag/src/testgen_dag/ops.rs` -- [DELETED 2026-02-22]
 30. `gunbc-dag/src/workspace/subdags/clippy.rs` -- [DELETED 2026-02-22]
 31. `gunbc-dag/src/workspace/subdags/dag_viz.rs` -- [DELETED 2026-02-22]
 32. `gunbc-dag/src/workspace/subdags/deps.rs` -- [DELETED 2026-02-22]
@@ -312,7 +312,7 @@ Disposition tags:
 1. [DONE 2026-02-22] Cut over `dsl_module` tool targets still pointing at handwritten builders (`gist`, `deps`, `clippy`, `review`, `dag_viz`).
 2. [DONE 2026-02-22] Implement interactive/external lowering + shell passthrough propagation.
 3. [DONE 2026-02-22] Replace manual workspace subdags for `gist/deps/clippy/dag_viz/testgen`.
-4. Delete legacy tool graph files in section 9C after parity checks pass.
+4. [DONE 2026-02-22] Delete legacy tool graph files in section 9C after parity checks pass.
 5. [IN PROGRESS 2026-02-22] Decide and execute drop-or-migrate policy for section 9D provider stacks (drop-now completed for AWS/Azure + `lib/tools/cargo/src/ops.rs`; cloud/gcp/llm/review stacks remain).
 6. Enforce fail-closed resolver behavior and CI checks in Phase 5.
-7. Add executable lowering/runtime support for `generate()` in `tools.testgen` path, then delete remaining handwritten `gunbc-dag/src/testgen_dag/*`.
+7. [DONE 2026-02-22] Add executable lowering/runtime support for `generate()` in `tools.testgen` path, then delete remaining handwritten `gunbc-dag/src/testgen_dag/*`.
