@@ -237,6 +237,7 @@ fn main() {
             success_port: Some("output"),
             with_freshness: false,
             input_mocks: Some(&input_mocks),
+            ..RunToolOptions::default()
         },
     );
 }

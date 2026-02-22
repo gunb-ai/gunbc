@@ -706,7 +706,7 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          // Small preflight: dry-run the tool DAG before real execution.\n\
          if !dry_run {{\n\
              if let Err(error) = run_small_preflight(&dag, Some(&input_mocks)) {{\n\
-                 eprintln!(\"ERROR: {}\", error);\n\
+                 eprintln!(\"ERROR: {{}}\", error);\n\
                  process::exit(1);\n\
              }}\n\
          }}\n\
@@ -716,7 +716,7 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          let dag = compose_with_freshness(dag, steps);\n\
          if !dry_run {{\n\
              if let Err(error) = run_lowering_preflight(&dag) {{\n\
-                 eprintln!(\"ERROR: {}\", error);\n\
+                 eprintln!(\"ERROR: {{}}\", error);\n\
                  process::exit(1);\n\
              }}\n\
          }}\n\
@@ -890,7 +890,7 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          // Small preflight: dry-run the tool DAG before real execution.\n\
          if !dry_run {{\n\
              if let Err(error) = run_small_preflight(&dag, Some(&input_mocks)) {{\n\
-                 eprintln!(\"error: {}\", error);\n\
+                 eprintln!(\"error: {{}}\", error);\n\
                  process::exit(1);\n\
              }}\n\
          }}\n\
@@ -900,7 +900,7 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          let dag = compose_with_freshness(dag, steps);\n\
          if !dry_run {{\n\
              if let Err(error) = run_lowering_preflight(&dag) {{\n\
-                 eprintln!(\"error: {}\", error);\n\
+                 eprintln!(\"error: {{}}\", error);\n\
                  process::exit(1);\n\
              }}\n\
          }}\n\

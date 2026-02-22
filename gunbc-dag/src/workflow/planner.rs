@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
 use gunbc_exec::topo_sort;
-use gunbc_ir::{canonical_edge_order, NodeBody, NodeId, PortName, Value};
+use gunbc_ir::{canonical_edge_order, AccessMode, NodeBody, NodeId, PortName, Value};
 
 use super::coordination::{coordination_status, BlockedReason, CoordinationStatus};
 use super::key::{
@@ -15,7 +15,7 @@ use super::ledger::{
     load_global_ledger, rehydrate_outputs_for_entry, LedgerStatus, RunLedgerEntry,
     WorkflowLedgerError,
 };
-use super::process_registry::{ProcessId, ProcessUnitRegistry};
+use super::process_registry::{ProcessId, ProcessUnitRegistry, ProcessUnitSpec};
 use super::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER, PORT_RESULT};
 
 /// Per-node planner action.
@@ -197,7 +197,7 @@ pub fn plan_workflow_with_mode(
             return Err(WorkflowPlannerError::UnknownNode(node_id.clone()));
         };
 
-        let (work_id, op_version) = match op {
+        let (work_id, op_version, volatile_effect) = match op {
             WorkflowOp::InvokeProcessUnit(process_ref) => {
                 let process_spec = registry.get(process_ref).ok_or_else(|| {
                     WorkflowPlannerError::UnknownProcessUnit {
@@ -209,6 +209,7 @@ pub fn plan_workflow_with_mode(
                 (
                     WorkIdentity::new(canonical_process, canonical_unit),
                     process_spec.op_version,
+                    volatile_effect_for_process_unit(process_spec),
                 )
             }
             WorkflowOp::Aggregate(_) => (
@@ -217,6 +218,7 @@ pub fn plan_workflow_with_mode(
                     node_id.clone(),
                 ),
                 1,
+                None,
             ),
             WorkflowOp::Report(_) => (
                 WorkIdentity::new(
@@ -224,6 +226,7 @@ pub fn plan_workflow_with_mode(
                     node_id.clone(),
                 ),
                 1,
+                None,
             ),
         };
 
@@ -243,30 +246,38 @@ pub fn plan_workflow_with_mode(
         )
         .map_err(WorkflowPlannerError::Key)?;
 
-        let action = match previous_by_work_id.get(&work_id) {
-            None => PlanAction::Execute {
-                miss_reason: MissReason::NoPriorRun,
-            },
-            Some(previous) if previous.key.digest == key.digest => {
-                let previous_run = previous_run_id(previous);
-                match rehydrate_outputs_for_entry(workspace_root, previous) {
-                    Ok(outputs) => PlanAction::CachedHit {
-                        previous_run,
-                        rehydrated_outputs: outputs,
-                    },
-                    Err(WorkflowLedgerError::MissingOutputPayload { .. }) => PlanAction::Execute {
-                        miss_reason: MissReason::OutputMissing {
-                            port: PortName::from(PORT_RESULT),
-                        },
-                    },
-                    Err(error) => return Err(WorkflowPlannerError::Ledger(error)),
-                }
+        let action = if let Some(effect) = volatile_effect {
+            PlanAction::Execute {
+                miss_reason: MissReason::VolatileEffect { effect },
             }
-            Some(previous) => {
-                let reason =
-                    derive_miss_reason(&previous.key, &key).unwrap_or(MissReason::NoPriorRun);
-                PlanAction::Execute {
-                    miss_reason: reason,
+        } else {
+            match previous_by_work_id.get(&work_id) {
+                None => PlanAction::Execute {
+                    miss_reason: MissReason::NoPriorRun,
+                },
+                Some(previous) if previous.key.digest == key.digest => {
+                    let previous_run = previous_run_id(previous);
+                    match rehydrate_outputs_for_entry(workspace_root, previous) {
+                        Ok(outputs) => PlanAction::CachedHit {
+                            previous_run,
+                            rehydrated_outputs: outputs,
+                        },
+                        Err(WorkflowLedgerError::MissingOutputPayload { .. }) => {
+                            PlanAction::Execute {
+                                miss_reason: MissReason::OutputMissing {
+                                    port: PortName::from(PORT_RESULT),
+                                },
+                            }
+                        }
+                        Err(error) => return Err(WorkflowPlannerError::Ledger(error)),
+                    }
+                }
+                Some(previous) => {
+                    let reason =
+                        derive_miss_reason(&previous.key, &key).unwrap_or(MissReason::NoPriorRun);
+                    PlanAction::Execute {
+                        miss_reason: reason,
+                    }
                 }
             }
         };
@@ -290,6 +301,18 @@ pub fn plan_workflow_with_mode(
     Ok(WorkflowPlan {
         nodes: plans,
         coordination,
+    })
+}
+
+fn volatile_effect_for_process_unit(process_spec: &ProcessUnitSpec) -> Option<String> {
+    process_spec.required_claims.iter().find_map(|claim| {
+        if claim.claim_id.0.starts_with("network:")
+            && matches!(claim.access_mode, AccessMode::Write | AccessMode::Exclusive)
+        {
+            Some(claim.claim_id.0.clone())
+        } else {
+            None
+        }
     })
 }
 
@@ -699,6 +722,62 @@ mod tests {
             rehydrated_outputs.get(&PortName::from("result")),
             Some(&payload)
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn planner_does_not_cache_network_write_units() {
+        let root = temp_root();
+        let spec = two_node_spec();
+        let mut registry = ProcessUnitRegistry::new();
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("wf", "wf.a"),
+            1,
+            vec![UnitClaim::read("file:workspace")],
+        ));
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("wf", "wf.b"),
+            1,
+            vec![UnitClaim::write("network:github_gist")],
+        ));
+
+        let inputs = PlannerInputs::new();
+        let initial_plan = plan_workflow(&spec, &registry, &inputs, &root).expect("initial plan");
+        let volatile_node = initial_plan
+            .nodes
+            .iter()
+            .find(|plan| plan.node_id == NodeId::from("wf.b"))
+            .expect("wf.b node");
+
+        let payload = Value::Str("cached".to_string());
+        let payload_hash = store_output_payload(&root, &payload).expect("store payload");
+        append_global_ledger_entry(
+            &root,
+            RunLedgerEntry {
+                exec_node_id: volatile_node.node_id.clone(),
+                work_id: volatile_node.work_id.clone(),
+                key: volatile_node.key.clone(),
+                status: LedgerStatus::CachedHit {
+                    previous_run: "run-cached".to_string(),
+                },
+                output_hashes: BTreeMap::from([(PortName::from("result"), payload_hash)]),
+                duration_ms: 1,
+            },
+        )
+        .expect("append cache hit");
+
+        let replanned = plan_workflow(&spec, &registry, &inputs, &root).expect("replanned");
+        let wf_b = replanned
+            .nodes
+            .iter()
+            .find(|plan| plan.node_id == NodeId::from("wf.b"))
+            .expect("wf.b node");
+        assert!(matches!(
+            &wf_b.action,
+            PlanAction::Execute {
+                miss_reason: MissReason::VolatileEffect { effect }
+            } if effect == "network:github_gist"
+        ));
         let _ = std::fs::remove_dir_all(root);
     }
 

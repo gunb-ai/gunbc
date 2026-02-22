@@ -42,6 +42,7 @@ import interfaces.artifact_store { ArtifactStore }
 //
 // ── local ───────────────────────────────────────────────────────────
 // File-based ledgers, real GitHub API, single-process.
+// Credentials resolved via GCP Secret Manager (ADC / LocalDev runtime).
 //   IssueProvider   -> github_issues.github.IssueProvider
 //   ClaimStore      -> file_claims.file.ClaimStore
 //   OutcomeLedger   -> file_outcomes.file.OutcomeLedger
@@ -72,7 +73,7 @@ profile local {
   bind IssueProvider -> github.IssueProvider {
     owner: "gunb-ai",
     repo: "gunbc",
-    credential: env("GITHUB_TOKEN")
+    credential: secret("github-token")
   }
   bind ClaimStore -> file.ClaimStore {
     dir: "target/sdlc/claims"
@@ -81,7 +82,7 @@ profile local {
     dir: "target/sdlc/outcomes"
   }
   bind AgentProvider -> codex.AgentProvider {
-    credential: env("CODEX_API_KEY")
+    credential: secret("codex-api-key")
   }
   bind SignalStore -> file.SignalStore {
     dir: "target/sdlc/signals"

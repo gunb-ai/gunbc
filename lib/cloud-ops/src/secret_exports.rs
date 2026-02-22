@@ -69,6 +69,10 @@ mod tests {
             "dev-anthropic-api-key".to_string(),
             "sk-ant-test".to_string(),
         );
+        fetched.insert(
+            "dev-codex-api-key".to_string(),
+            "codex-test-key".to_string(),
+        );
 
         let exports =
             render_direnv_exports(&GUNBAI_SECRETS, "dev", &fetched).expect("render exports");
@@ -78,9 +82,13 @@ mod tests {
         assert!(exports
             .shell_exports
             .contains("export ANTHROPIC_API_KEY='sk-ant-test'"));
+        assert!(exports
+            .shell_exports
+            .contains("export CODEX_API_KEY='codex-test-key'"));
         assert!(exports.missing_required.is_empty());
         assert!(exports.resolved.contains(&"GITHUB_TOKEN".to_string()));
         assert!(exports.resolved.contains(&"ANTHROPIC_API_KEY".to_string()));
+        assert!(exports.resolved.contains(&"CODEX_API_KEY".to_string()));
     }
 
     #[test]

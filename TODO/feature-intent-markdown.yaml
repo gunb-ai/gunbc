@@ -1,0 +1,53 @@
+intent_id: "intent-20260221-md-report"
+title: "Add structured markdown report output to gunbc-review"
+objective: |
+  Currently gunbc-review outputs findings as JSON to stdout. Add a --format flag
+  that accepts "json" (default) or "markdown", producing a clean markdown-formatted
+  review summary with severity, finding descriptions, and candidate fixes when
+  the markdown format is selected.
+provider: "github"
+success_criteria:
+  - "gunbc-review --format markdown produces valid markdown output"
+  - "gunbc-review --format json preserves existing JSON behavior (backward compatible)"
+  - "Markdown output includes severity, check-id, and observation for each finding"
+  - "Integration test with a mock finding validates markdown rendering"
+  - "cargo test --workspace passes"
+  - "cargo clippy --all-targets -- -D warnings is clean"
+constraints:
+  - "JSON output must remain the default (backward compatible)"
+  - "Must use standard Rust string formatting (no external markdown library)"
+  - "Must adhere to existing ReviewOutput and Finding schema"
+  - "No new crate dependencies"
+owner: "sdlc-agent"
+priority: "M"
+scope:
+  in:
+    - "gunbc-dag/src/bin/review.rs (add --format flag to BinaryArgs)"
+    - "lib/review/src/lib.rs (add markdown rendering function)"
+    - "gunbc-dag/tests/ (add integration test for --format markdown)"
+  out:
+    - "HTML or other format support"
+    - "Changes to the ReviewOutput schema"
+    - "Changes to the LLM prompt or review criteria"
+links:
+  docs:
+    - "TODO/scenario_sdlc.md"
+  related_issues: []
+idempotency:
+  intake_key: "intent-20260221-md-report"
+  policy_version: "1"
+update_strategy:
+  comment_mode: "upsert-by-marker"
+  transition_mode: "compare-and-set"
+tracking:
+  issue_id: null
+  run_key: null
+acceptance_tests:
+  - "cargo test -p gunbc-dag --test sdlc_cli"
+  - "cargo test -p gunbc-lib-review --lib"
+  - "cargo run -p gunbc-dag --bin gunbc-review -- --format markdown --dry-run"
+notes: |
+  This is the target feature for the SDLC E2E scenario defined in TODO/scenario_sdlc.md.
+  The design phase should produce a specification covering: BinaryArgs extension,
+  markdown rendering function, and test plan. The implementation agent will use the
+  design artifact to implement the feature on a feature branch.
