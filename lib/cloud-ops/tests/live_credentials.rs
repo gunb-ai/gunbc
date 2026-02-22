@@ -6,7 +6,10 @@ use gunbc_test::{guard_test_with_env, FermiCost, TestClass};
 
 #[test]
 fn test_github_live_rate_limit() {
-    let env_req = detect_cloud_env_requirements();
+    let env_req = match detect_cloud_env_requirements() {
+        Ok(req) => req,
+        Err(_) => return,
+    };
     if env_req.provider != CloudProviderKind::Gcp {
         return;
     }

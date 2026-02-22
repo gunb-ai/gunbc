@@ -27,7 +27,7 @@ pub fn makegen_dry_run_transport_mocks(output_path: &str) -> BoundaryMocks {
     let mut dry_run_mocks = BoundaryMocks::new();
     dry_run_mocks.set_value(
         "fs_env",
-        "FilesystemHandle",
+        "file:write",
         Value::Str("filesystem://dry-run".to_string()),
     );
     dry_run_mocks.set_value(
@@ -47,7 +47,7 @@ pub fn makegen_check_mode_transport_mocks(output_path: &str) -> BoundaryMocks {
     let mut check_mode_mocks = BoundaryMocks::new();
     check_mode_mocks.set_value(
         "fs_env",
-        "FilesystemHandle",
+        "file:write",
         Value::Str("filesystem://check-mode".to_string()),
     );
     let existing_content = read_existing_content(output_path);

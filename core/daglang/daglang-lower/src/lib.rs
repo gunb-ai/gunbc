@@ -20,9 +20,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{Annotation, Expr, Item, Literal, OperationDef, ServiceDef, Stmt};
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name, resource_type_name,
-    service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
-    walk_stmts,
+    canonical_resource_type_name, resource_type_name, service_call_lookup_keys,
+    should_track_call_name as should_track_call, type_expr_to_string, walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
@@ -615,11 +614,7 @@ fn canonical_type_id(name: &str) -> TypeId {
 }
 
 fn short_type_name(type_id: &TypeId) -> &str {
-    type_id
-        .0
-        .rsplit('.')
-        .next()
-        .unwrap_or(type_id.0.as_str())
+    type_id.0.rsplit('.').next().unwrap_or(type_id.0.as_str())
 }
 
 fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
@@ -3686,34 +3681,34 @@ fn add_makegen_scaffolding(
         );
     }
 
-        if builder.has_node("prepare_read_makegen") {
-            if !builder.has_node("fs_env") {
-                builder.add_node(Node::opaque(
-                    "fs_env",
-                    vec![],
-                    vec![Port::scalar("file:write", "FilesystemHandle")],
-                    LoweredOp::Primitive {
-                        module: "tools.makegen".to_string(),
-                        name: "fs_env".to_string(),
-                        kind: PrimitiveOpKind::FsEnv,
-                    },
-                ));
-            }
+    if builder.has_node("prepare_read_makegen") {
+        if !builder.has_node("fs_env") {
+            builder.add_node(Node::opaque(
+                "fs_env",
+                vec![],
+                vec![Port::scalar("file:write", "FilesystemHandle")],
+                LoweredOp::Primitive {
+                    module: "tools.makegen".to_string(),
+                    name: "fs_env".to_string(),
+                    kind: PrimitiveOpKind::FsEnv,
+                },
+            ));
+        }
+        builder.add_edge(
+            "fs_env",
+            "file:write",
+            "prepare_read_makegen",
+            "res:file:Makefile",
+        );
+        if builder.has_node("execute_makegen_transport") {
             builder.add_edge(
                 "fs_env",
                 "file:write",
-                "prepare_read_makegen",
-                "res:file:Makefile",
+                "execute_makegen_transport",
+                "res:file",
             );
-            if builder.has_node("execute_makegen_transport") {
-                builder.add_edge(
-                    "fs_env",
-                    "file:write",
-                    "execute_makegen_transport",
-                    "res:file",
-                );
-            }
         }
+    }
 }
 
 fn has_annotation(annotations: &[Annotation], target: &str) -> bool {
@@ -3833,8 +3828,7 @@ fn derive_shell_spec(service: &ServiceDef, operation: &OperationDef) -> Option<S
     let output_parsing = annotation_shell_output_parsing(&operation.annotations)
         .or_else(|| annotation_shell_output_parsing(&service.annotations))
         .unwrap_or_else(|| infer_shell_output_parsing(&operation.outputs));
-    let passthrough =
-        annotation_shell_passthrough(&operation.annotations, &service.annotations);
+    let passthrough = annotation_shell_passthrough(&operation.annotations, &service.annotations);
 
     Some(ShellOperationSpec {
         argv_template,
@@ -4426,8 +4420,10 @@ fn add_service_call_edges(
                         .map(|usage| {
                             (
                                 usage.binding.clone(),
-                                canonical_type_id(resource_type_name(&usage.resource_type).as_str())
-                                    .0,
+                                canonical_type_id(
+                                    resource_type_name(&usage.resource_type).as_str(),
+                                )
+                                .0,
                             )
                         })
                         .collect::<HashMap<_, _>>(),
@@ -4445,8 +4441,10 @@ fn add_service_call_edges(
                         .map(|usage| {
                             (
                                 usage.binding.clone(),
-                                canonical_type_id(resource_type_name(&usage.resource_type).as_str())
-                                    .0,
+                                canonical_type_id(
+                                    resource_type_name(&usage.resource_type).as_str(),
+                                )
+                                .0,
                             )
                         })
                         .collect::<HashMap<_, _>>(),

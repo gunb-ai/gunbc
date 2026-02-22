@@ -2705,11 +2705,7 @@ fn canonical_type_id(name: &str) -> TypeId {
 }
 
 fn short_type_name(type_id: &TypeId) -> &str {
-    type_id
-        .0
-        .rsplit('.')
-        .next()
-        .unwrap_or(type_id.0.as_str())
+    type_id.0.rsplit('.').next().unwrap_or(type_id.0.as_str())
 }
 
 fn type_ids_structurally_match(lhs: &TypeId, rhs: &TypeId) -> bool {

@@ -2558,3 +2558,131 @@ fn worker_multi_pass_progresses_stage_to_closed() {
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
+
+#[test]
+fn worker_sweep_polls_inflight_agents_and_updates_ledger() {
+    let ctx = CliTestContext::new("worker_agent_sweep", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+
+    // Initialize git repo and infra intent template.
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-agent-sweep",
+        "intent-agent-sweep",
+        Some(77),
+    );
+
+    // Intake to create ledger infrastructure.
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    // Manually advance intake record to Implementing stage and seed agent ledger
+    // with a Running agent entry. This simulates the state after agent-spawn.
+    let intake_ledger_path = root.join("target/sdlc/intake-ledger.json");
+    let intake_raw = std::fs::read_to_string(&intake_ledger_path).expect("read intake ledger");
+    let mut intake_ledger: serde_json::Value =
+        serde_json::from_str(&intake_raw).expect("parse intake ledger");
+    intake_ledger["entries"]["intent-agent-sweep"]["stage"] = "Implementing".into();
+    std::fs::write(
+        &intake_ledger_path,
+        serde_json::to_string_pretty(&intake_ledger).unwrap(),
+    )
+    .expect("write patched intake ledger");
+
+    // Seed agent ledger with a Running stub agent.
+    let agent_ledger = serde_json::json!({
+        "entries": {
+            "intent-agent-sweep": {
+                "intake_key": "intent-agent-sweep",
+                "handle": {
+                    "provider": "stub",
+                    "session_id": "stub-intent-agent-sweep",
+                    "intake_key": "intent-agent-sweep",
+                    "spawned_at_epoch_ms": 1000
+                },
+                "status": {
+                    "Running": { "progress": null }
+                },
+                "pr_number": null,
+                "pr_url": null,
+                "updated_at_epoch_ms": 1000
+            }
+        }
+    });
+    let agent_ledger_path = root.join("target/sdlc/agent-ledger.json");
+    std::fs::write(
+        &agent_ledger_path,
+        serde_json::to_string_pretty(&agent_ledger).unwrap(),
+    )
+    .expect("write agent ledger");
+
+    // Run worker — should sweep inflight agents before processing intakes.
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run worker");
+    assert!(
+        worker.status.success(),
+        "worker should succeed: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+
+    // Verify agent polling summary reports the inflight agent was polled and updated.
+    let polling = &payload["agent_polling"];
+    assert_eq!(
+        polling["in_flight"][0], "intent-agent-sweep",
+        "running agent should appear in in_flight list"
+    );
+    assert_eq!(
+        polling["polled"][0], "intent-agent-sweep",
+        "agent should be polled"
+    );
+    assert_eq!(
+        polling["updated"][0], "intent-agent-sweep",
+        "agent status should change from Running to Completed"
+    );
+    assert_eq!(
+        polling["statuses"]["intent-agent-sweep"], "completed",
+        "stub adapter should report completed status"
+    );
+    assert!(
+        polling["errors"]
+            .as_object()
+            .map(|map| map.is_empty())
+            .unwrap_or(true),
+        "no polling errors expected for stub provider"
+    );
+
+    // Verify agent ledger was persisted with updated status.
+    let updated_agent_raw =
+        std::fs::read_to_string(&agent_ledger_path).expect("read updated agent ledger");
+    let updated_agent: serde_json::Value =
+        serde_json::from_str(&updated_agent_raw).expect("parse updated agent ledger");
+    let status = &updated_agent["entries"]["intent-agent-sweep"]["status"];
+    assert!(
+        status.get("Completed").is_some(),
+        "agent ledger should persist Completed status after sweep"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}

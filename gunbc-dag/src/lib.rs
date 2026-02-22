@@ -52,9 +52,8 @@ pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp
 pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
 pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp, CIOp};
 pub use cloud_env::{
-    aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
-    gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
-    CLOUD_ENV_COMMON_OPTIONAL,
+    cloud_env_matrix, gcp_github_actions_env, gcp_local_env, gcp_metadata_env,
+    CloudEnvRequirements, CloudEnvRequirementsError, CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use codegen::{build_codegen_graph, codegen_signature, CodegenGraphOp, CodegenOp};
 pub use dag_viz::{build_dag_viz_graph, dag_viz_signature, DagVizGraphOp, DagVizMode};
@@ -187,12 +186,12 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
 
 #[cfg(test)]
 mod system_model_integration {
-    use gunbc_lib_aws_ops::system_models::build_aws_s3_model;
-    use gunbc_lib_gcp_ops::system_models::build_gcp_gcs_model;
     use gunbc_ir::system_model::{
         default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
         validate_store_behavior_mapping, Property, UpsertPhase,
     };
+    use gunbc_lib_aws_ops::system_models::build_aws_s3_model;
+    use gunbc_lib_gcp_ops::system_models::build_gcp_gcs_model;
 
     #[test]
     fn contract_specs_follow_upsert_phase_rules() {

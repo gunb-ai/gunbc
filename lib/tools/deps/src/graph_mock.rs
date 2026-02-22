@@ -118,7 +118,11 @@ pub fn deps_mock_spec() -> MockSpec {
         .expect("generate_scripts already_installed should match type")
         .boundary_str("generate_scripts", "needs_install", "ripgrep")
         .expect("generate_scripts needs_install should match type")
-        .boundary_str("generate_scripts", "install_script", "cargo install ripgrep")
+        .boundary_str(
+            "generate_scripts",
+            "install_script",
+            "cargo install ripgrep",
+        )
         .expect("generate_scripts install_script should match type")
         .boundary_str("generate_scripts", "platform", "linux")
         .expect("generate_scripts platform should match type")

@@ -65,7 +65,7 @@ pub use upsert::UpsertBuilder;
 /// for teams that want stricter guarantees.
 #[derive(Debug, Clone)]
 pub struct ResourceInput {
-    /// Port name (must start with "res:")
+    /// Canonical `res:*` port name.
     pub port_name: String,
     /// Resource type identifier, e.g. "Platform", "Credential"
     pub type_id: String,
@@ -74,16 +74,10 @@ pub struct ResourceInput {
 impl ResourceInput {
     /// Create a new resource input declaration.
     ///
-    /// # Panics
-    ///
-    /// Panics if `port_name` does not start with `"res:"`.
+    /// Accepts either canonical `res:*` names or unprefixed resource claims.
+    /// Input is normalized to canonical `res:*` form.
     pub fn new(port_name: impl Into<String>, type_id: impl Into<String>) -> Self {
-        let port_name = port_name.into();
-        assert!(
-            port_name.starts_with("res:"),
-            "ResourceInput port_name must start with 'res:', got '{}'",
-            port_name
-        );
+        let port_name = crate::resource::resource_port(&port_name.into());
         Self {
             port_name,
             type_id: type_id.into(),

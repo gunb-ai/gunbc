@@ -15,9 +15,9 @@ use crate::env::PlatformEnv;
 use crate::ops::DepsOp;
 use gunbc_exec::DynOp;
 use gunbc_ir::{
-    add_transport_triplet_named_with_passthrough, build::*, BuilderError, Cardinality, Dag,
-    DagBuilder, FilePathTag, FilesystemHandleTag, Node, NonEmptyStringTag, PlatformTag,
-    TransportRequestTag, TransportResponseTag, WorkflowSignature, typed_port,
+    add_transport_triplet_named_with_passthrough, build::*, typed_port, BuilderError, Cardinality,
+    Dag, DagBuilder, FilePathTag, FilesystemHandleTag, Node, NonEmptyStringTag, PlatformTag,
+    TransportRequestTag, TransportResponseTag, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv, PrepareFileWriteOp};
@@ -34,7 +34,11 @@ pub fn deps_signature() -> WorkflowSignature {
         .with_output("dep_count", "Int", Cardinality::ONE)
         .with_output("dep_names", "NonEmptyString", Cardinality::ZERO_OR_MORE)
         .with_output("manifest_path", "FilePath", Cardinality::ONE)
-        .with_output("already_installed", "NonEmptyString", Cardinality::ZERO_OR_MORE)
+        .with_output(
+            "already_installed",
+            "NonEmptyString",
+            Cardinality::ZERO_OR_MORE,
+        )
         .with_output("needs_install", "NonEmptyString", Cardinality::ZERO_OR_MORE)
         .with_output("platform", "Platform", Cardinality::ONE)
         .with_output("executed", "Bool", Cardinality::ONE)
@@ -270,7 +274,10 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
                 scalar("content", "NonEmptyString"),
                 typed_port::<FilePathTag>("path").into(),
             ],
-            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(PrepareFileWriteOp),
         ),
         &render_deps_toml,

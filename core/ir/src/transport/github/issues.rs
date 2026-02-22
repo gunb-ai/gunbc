@@ -247,7 +247,15 @@ pub fn ensure_sdlc_issue_capabilities(capabilities: SdlcIssueCapabilities) -> Re
 fn is_stage_label(label: &str) -> bool {
     matches!(
         label,
-        "idea" | "design" | "design-review" | "accepted" | "implementing" | "code-review" | "testing" | "done" | "terminal-failed"
+        "idea"
+            | "design"
+            | "design-review"
+            | "accepted"
+            | "implementing"
+            | "code-review"
+            | "testing"
+            | "done"
+            | "terminal-failed"
     )
 }
 

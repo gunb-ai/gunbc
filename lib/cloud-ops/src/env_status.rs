@@ -25,7 +25,17 @@ fn env_truthy(name: &str) -> bool {
 }
 
 fn build_status_message() -> String {
-    let req = detect_cloud_env_requirements();
+    let req = match detect_cloud_env_requirements() {
+        Ok(req) => req,
+        Err(err) => {
+            return format!(
+                "Cloud env ({}/{}): unsupported provider selection — {}",
+                err.provider.as_str(),
+                err.runtime.as_str(),
+                err
+            );
+        }
+    };
     let prefix = format!(
         "Cloud env ({}/{})",
         req.provider.as_str(),

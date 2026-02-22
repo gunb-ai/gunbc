@@ -13,9 +13,9 @@
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
-    add_transport_triplet_named_with_passthrough, build::*, BuilderError, Dag, DagBuilder, Node,
-    NodeRef, CloudSecretConfigTag, FilePathTag, FilesystemHandleTag, MapTag, NonEmptyStringTag,
-    SecretNameTag, TransportRequestTag, TransportResponseTag, typed_port,
+    add_transport_triplet_named_with_passthrough, build::*, typed_port, BuilderError,
+    CloudSecretConfigTag, Dag, DagBuilder, FilePathTag, FilesystemHandleTag, MapTag, Node, NodeRef,
+    NonEmptyStringTag, SecretNameTag, TransportRequestTag, TransportResponseTag,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_cloud_ops::{
@@ -294,7 +294,10 @@ pub fn build_review_phase_graph_with_config(
                 optional("handle", "OptionalJson"),
                 typed_port::<bool>("skip").into(),
             ],
-            vec![typed_port::<serde_json::Value>("handle").into(), typed_port::<serde_json::Value>("meta").into()],
+            vec![
+                typed_port::<serde_json::Value>("handle").into(),
+                typed_port::<serde_json::Value>("meta").into(),
+            ],
             DynOp::new(BlobOps::ParseFetch),
         ),
         &execute_blob,
@@ -312,7 +315,10 @@ pub fn build_review_phase_graph_with_config(
             typed_port::<serde_json::Value>("criteria").into(),
             optional("context", "OptionalString"),
         ],
-        vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
+        vec![
+            typed_port::<NonEmptyStringTag>("question").into(),
+            typed_port::<NonEmptyStringTag>("system_prompt").into(),
+        ],
         DynOp::new(ReviewOps::PrepareReviewPrompt),
     ))?;
 
@@ -381,8 +387,14 @@ pub fn build_review_phase_graph_with_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![typed_port::<NonEmptyStringTag>("answer").into(), typed_port::<serde_json::Value>("criteria").into()],
-            vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
+            vec![
+                typed_port::<NonEmptyStringTag>("answer").into(),
+                typed_port::<serde_json::Value>("criteria").into(),
+            ],
+            vec![
+                typed_port::<serde_json::Value>("output").into(),
+                typed_port::<serde_json::Value>("errors").into(),
+            ],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
@@ -459,7 +471,10 @@ pub fn build_inline_review_graph_with_config(
             typed_port::<serde_json::Value>("criteria").into(),
             optional("context", "OptionalString"),
         ],
-        vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
+        vec![
+            typed_port::<NonEmptyStringTag>("question").into(),
+            typed_port::<NonEmptyStringTag>("system_prompt").into(),
+        ],
         DynOp::new(ReviewOps::PrepareReviewPrompt),
     ))?;
 
@@ -520,8 +535,14 @@ pub fn build_inline_review_graph_with_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![typed_port::<NonEmptyStringTag>("answer").into(), typed_port::<serde_json::Value>("criteria").into()],
-            vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
+            vec![
+                typed_port::<NonEmptyStringTag>("answer").into(),
+                typed_port::<serde_json::Value>("criteria").into(),
+            ],
+            vec![
+                typed_port::<serde_json::Value>("output").into(),
+                typed_port::<serde_json::Value>("errors").into(),
+            ],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
@@ -650,7 +671,10 @@ pub fn build_diff_review_graph_with_cloud_config(
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
-        vec![typed_port::<MapTag>("diff_files").into(), typed_port::<NonEmptyStringTag>("stats").into()],
+        vec![
+            typed_port::<MapTag>("diff_files").into(),
+            typed_port::<NonEmptyStringTag>("stats").into(),
+        ],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
@@ -686,7 +710,10 @@ pub fn build_diff_review_graph_with_cloud_config(
                 typed_port::<serde_json::Value>("criteria").into(),
                 optional("context", "OptionalString"),
             ],
-            vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
+            vec![
+                typed_port::<NonEmptyStringTag>("question").into(),
+                typed_port::<NonEmptyStringTag>("system_prompt").into(),
+            ],
             DynOp::new(ReviewOps::PrepareReviewPrompt),
         ),
         &format_artifact,
@@ -754,8 +781,14 @@ pub fn build_diff_review_graph_with_cloud_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![typed_port::<NonEmptyStringTag>("answer").into(), typed_port::<serde_json::Value>("criteria").into()],
-            vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
+            vec![
+                typed_port::<NonEmptyStringTag>("answer").into(),
+                typed_port::<serde_json::Value>("criteria").into(),
+            ],
+            vec![
+                typed_port::<serde_json::Value>("output").into(),
+                typed_port::<serde_json::Value>("errors").into(),
+            ],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
@@ -905,7 +938,10 @@ pub fn build_multi_source_review_graph_with_cloud_config(
                 typed_port::<serde_json::Value>("criteria").into(),
                 optional("context", "OptionalString"),
             ],
-            vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
+            vec![
+                typed_port::<NonEmptyStringTag>("question").into(),
+                typed_port::<NonEmptyStringTag>("system_prompt").into(),
+            ],
             DynOp::new(ReviewOps::PrepareReviewPrompt),
         ),
         &config_node,
@@ -965,8 +1001,14 @@ pub fn build_multi_source_review_graph_with_cloud_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![typed_port::<NonEmptyStringTag>("answer").into(), typed_port::<serde_json::Value>("criteria").into()],
-            vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
+            vec![
+                typed_port::<NonEmptyStringTag>("answer").into(),
+                typed_port::<serde_json::Value>("criteria").into(),
+            ],
+            vec![
+                typed_port::<serde_json::Value>("output").into(),
+                typed_port::<serde_json::Value>("errors").into(),
+            ],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
@@ -980,7 +1022,10 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         Node::opaque(
             "merge",
             vec![list("outputs", "JsonList")],
-            vec![typed_port::<serde_json::Value>("bundle").into(), typed_port::<serde_json::Value>("conflicts").into()],
+            vec![
+                typed_port::<serde_json::Value>("bundle").into(),
+                typed_port::<serde_json::Value>("conflicts").into(),
+            ],
             DynOp::new(ReviewOps::MergeOutputs),
         ),
         &parse_response,
@@ -1094,7 +1139,10 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
-        vec![typed_port::<MapTag>("diff_files").into(), typed_port::<NonEmptyStringTag>("stats").into()],
+        vec![
+            typed_port::<MapTag>("diff_files").into(),
+            typed_port::<NonEmptyStringTag>("stats").into(),
+        ],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
@@ -1185,7 +1233,10 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                     optional("context", "OptionalString"),
                     optional("prior_findings", "OptionalString"),
                 ],
-                vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
+                vec![
+                    typed_port::<NonEmptyStringTag>("question").into(),
+                    typed_port::<NonEmptyStringTag>("system_prompt").into(),
+                ],
                 DynOp::new(DimensionOps::PrepareDimensionPrompt),
             ),
             &format_artifact,
@@ -1224,7 +1275,10 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                     typed_port::<serde_json::Value>("criteria").into(),
                     typed_port::<NonEmptyStringTag>("dimension").into(),
                 ],
-                vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
+                vec![
+                    typed_port::<serde_json::Value>("output").into(),
+                    typed_port::<serde_json::Value>("errors").into(),
+                ],
                 DynOp::new(DimensionOps::ParseDimensionResponse),
             ),
             &llm_triplet,
@@ -1342,7 +1396,10 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                     optional("context", "OptionalString"),
                     optional("prior_findings", "OptionalString"),
                 ],
-                vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
+                vec![
+                    typed_port::<NonEmptyStringTag>("question").into(),
+                    typed_port::<NonEmptyStringTag>("system_prompt").into(),
+                ],
                 DynOp::new(DimensionOps::PrepareDimensionPrompt),
             ),
             &[&format_artifact, &format_prior],
@@ -1381,7 +1438,10 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                     typed_port::<serde_json::Value>("criteria").into(),
                     typed_port::<NonEmptyStringTag>("dimension").into(),
                 ],
-                vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
+                vec![
+                    typed_port::<serde_json::Value>("output").into(),
+                    typed_port::<serde_json::Value>("errors").into(),
+                ],
                 DynOp::new(DimensionOps::ParseDimensionResponse),
             ),
             &aspirational_llm,
@@ -1464,7 +1524,10 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             optional("requirements_output", "OptionalJson"),
             optional("aspirational_output", "OptionalJson"),
         ],
-        vec![typed_port::<serde_json::Value>("output").into(), typed_port::<NonEmptyStringTag>("summary").into()],
+        vec![
+            typed_port::<serde_json::Value>("output").into(),
+            typed_port::<NonEmptyStringTag>("summary").into(),
+        ],
         DynOp::new(DimensionOps::MergeDimensionOutputs),
     );
     let merge = if merge_inputs.is_empty() {

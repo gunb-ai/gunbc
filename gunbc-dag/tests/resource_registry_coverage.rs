@@ -1,6 +1,6 @@
 use gunbc_testgen_registry::iter_resource_tests;
-use std::fs;
 use std::collections::HashSet;
+use std::fs;
 use std::path::Path;
 
 #[test]

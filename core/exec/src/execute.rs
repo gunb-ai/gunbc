@@ -3791,7 +3791,10 @@ mod tests {
         let mut body_dag: Dag<TestLoopOp> = Dag::new();
         body_dag.add_node(Node::opaque(
             "transform",
-            vec![port("element", "String"), port("res:token", "String")],
+            vec![
+                port("element", "String"),
+                resource("token", "String", AccessMode::Read),
+            ],
             vec![port("result", "String")],
             TestLoopOp::ConcatToken,
         ));
@@ -3799,7 +3802,7 @@ mod tests {
         let loop_node: Node<TestLoopOp> = LoopBuilder::new("token_loop")
             .with_input("items", "String", Cardinality::ZERO_OR_MORE)
             .with_element("element", "String")
-            .with_resource_input(ResourceInput::new("res:token", "String"))
+            .with_resource_input(ResourceInput::new("token", "String"))
             .with_body(body_dag)
             .with_output("results", "String")
             .build();

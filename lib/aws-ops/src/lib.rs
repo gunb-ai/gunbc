@@ -1,9 +1,8 @@
 #![recursion_limit = "1024"]
-//! AWS OIDC + Secrets Manager ops (stub).
+//! AWS OIDC + Secrets Manager ops (dropped-provider facade).
 //!
-//! This is a placeholder to keep provider-neutral modeling honest.
-//! The implementation will follow the same subject-token → STS →
-//! optional role chaining → Secrets Manager pattern.
+//! This crate currently exposes fail-closed builder facades so legacy call
+//! sites compile while provider support is removed from the active branch.
 
 pub mod system_models;
 mod unsupported;

@@ -17,9 +17,9 @@ use gunbc_exec::{
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest};
 use gunbc_ir::{
-    add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
-    FilePathTag, FilesystemHandleTag, MapTag, TransportRequestTag, TransportResponseTag,
-    WorkflowSignature, typed_port,
+    add_transport_triplet, build::*, typed_port, BuilderError, Cardinality, Dag, DagBuilder,
+    FilePathTag, FilesystemHandleTag, MapTag, Node, TransportRequestTag, TransportResponseTag,
+    Value, WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::graph_cloud_config;
 use gunbc_lib_gist_ops::{build_gist_upload_subdag, GistUploadOp};
@@ -241,7 +241,10 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // PrepareReadFile node — needs both filename (element) and repo_path (extra input)
     dag.add_node(Node::opaque(
         "prepare",
-        vec![typed_port::<FilePathTag>("filename").into(), typed_port::<FilePathTag>("repo_path").into()],
+        vec![
+            typed_port::<FilePathTag>("filename").into(),
+            typed_port::<FilePathTag>("repo_path").into(),
+        ],
         vec![
             typed_port::<TransportRequestTag>("request").into(),
             typed_port::<FilePathTag>("filename").into(),
@@ -478,7 +481,7 @@ fn build_snapshot_acquire(
     let loop_node: Node<GistGraphOp> = LoopBuilder::new("read_files_loop")
         .with_input("files", "FilePath", Cardinality::ZERO_OR_MORE)
         .with_element("filename", "FilePath")
-        .with_resource_input(ResourceInput::new("res:file", "FilesystemHandle"))
+        .with_resource_input(ResourceInput::new("file", "FilesystemHandle"))
         .with_body(body)
         .with_output("contents", "String")
         .build();
@@ -549,7 +552,10 @@ fn build_diff_acquire(
             optional("base_ref", "OptionalString"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![typed_port::<MapTag>("diff_files").into(), scalar("stats", "NonEmptyString")],
+        vec![
+            typed_port::<MapTag>("diff_files").into(),
+            scalar("stats", "NonEmptyString"),
+        ],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: base_ref.to_string(),
             extensions,
@@ -636,7 +642,10 @@ fn build_recent_acquire(
             optional("base_ref", "OptionalString"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![typed_port::<MapTag>("diff_files").into(), scalar("stats", "NonEmptyString")],
+        vec![
+            typed_port::<MapTag>("diff_files").into(),
+            scalar("stats", "NonEmptyString"),
+        ],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: "HEAD".to_string(),
             extensions,

@@ -7,8 +7,8 @@ use gunbc_ir::builder::BuilderError;
 use gunbc_ir::{
     typed_port, CredentialTag, Dag, DagBuilder, Edge, GcpProjectIdTag, GcpSecretIdTag,
     GcpSecretVersionTag, GcpServiceAccountEmailTag, NetworkHandleTag, Node, NodeRef,
-    NonEmptyStringTag, OidcSubjectTokenTag, RESOURCE_API_NETWORK, SecretTag, TransportRequestTag,
-    TransportResponseTag,
+    NonEmptyStringTag, OidcSubjectTokenTag, SecretTag, TransportRequestTag, TransportResponseTag,
+    RESOURCE_API_NETWORK,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
@@ -61,7 +61,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                             optional("request_url", "Url"),
                             optional("request_token", "Secret"),
                         ],
-                        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+                        vec![
+                            typed_port::<TransportRequestTag>("request").into(),
+                            typed_port::<bool>("skip").into(),
+                        ],
                         DynOp::new(GcpOps::PrepareGitHubOidcRequest),
                     ))?;
 
@@ -103,7 +106,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                     let prepare = builder.add_root_node(Node::opaque(
                         "prepare_metadata_oidc",
                         vec![typed_port::<NonEmptyStringTag>("audience").into()],
-                        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+                        vec![
+                            typed_port::<TransportRequestTag>("request").into(),
+                            typed_port::<bool>("skip").into(),
+                        ],
                         DynOp::new(GcpOps::PrepareMetadataOidcRequest),
                     ))?;
 
@@ -152,7 +158,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                         typed_port::<NonEmptyStringTag>("audience").into(),
                         typed_port::<OidcSubjectTokenTag>("subject_token").into(),
                     ],
-                    vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+                    vec![
+                        typed_port::<TransportRequestTag>("request").into(),
+                        typed_port::<bool>("skip").into(),
+                    ],
                     DynOp::new(GcpOps::PrepareStsExchange),
                 ),
                 &subject_token_node,
@@ -176,7 +185,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                 Node::opaque(
                     "parse_sts",
                     vec![typed_port::<TransportResponseTag>("response").into()],
-                    vec![typed_port::<SecretTag>("access_token").into(), typed_port::<i64>("expires_in").into()],
+                    vec![
+                        typed_port::<SecretTag>("access_token").into(),
+                        typed_port::<i64>("expires_in").into(),
+                    ],
                     DynOp::new(GcpOps::ParseStsExchange),
                 ),
                 &execute_sts,
@@ -236,7 +248,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                 optional("lifetime_seconds", "OptionalInt"),
                 optional("should_impersonate", "OptionalBool"),
             ],
-            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(GcpOps::PrepareImpersonate),
         ),
         &should_impersonate,
@@ -263,7 +278,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                 typed_port::<TransportResponseTag>("response").into(),
                 optional("base_access_token", "Secret"),
             ],
-            vec![typed_port::<SecretTag>("access_token").into(), typed_port::<String>("expires_at").into()],
+            vec![
+                typed_port::<SecretTag>("access_token").into(),
+                typed_port::<String>("expires_at").into(),
+            ],
             DynOp::new(GcpOps::ParseImpersonate),
         ),
         &execute_impersonate,
@@ -311,7 +329,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                 typed_port::<GcpSecretIdTag>("secret").into(),
                 optional("version", "GcpSecretVersion"),
             ],
-            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(GcpOps::PrepareSecretAccess),
         ),
         &parse_impersonate,
@@ -455,7 +476,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                             optional("request_url", "Url"),
                             optional("request_token", "Secret"),
                         ],
-                        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+                        vec![
+                            typed_port::<TransportRequestTag>("request").into(),
+                            typed_port::<bool>("skip").into(),
+                        ],
                         DynOp::new(GcpOps::PrepareGitHubOidcRequest),
                     ))?;
 
@@ -497,7 +521,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                     let prepare = builder.add_root_node(Node::opaque(
                         "prepare_metadata_oidc",
                         vec![typed_port::<NonEmptyStringTag>("audience").into()],
-                        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+                        vec![
+                            typed_port::<TransportRequestTag>("request").into(),
+                            typed_port::<bool>("skip").into(),
+                        ],
                         DynOp::new(GcpOps::PrepareMetadataOidcRequest),
                     ))?;
 
@@ -546,7 +573,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         typed_port::<NonEmptyStringTag>("audience").into(),
                         typed_port::<OidcSubjectTokenTag>("subject_token").into(),
                     ],
-                    vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+                    vec![
+                        typed_port::<TransportRequestTag>("request").into(),
+                        typed_port::<bool>("skip").into(),
+                    ],
                     DynOp::new(GcpOps::PrepareStsExchange),
                 ),
                 &subject_token_node,
@@ -570,7 +600,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 Node::opaque(
                     "parse_sts",
                     vec![typed_port::<TransportResponseTag>("response").into()],
-                    vec![typed_port::<SecretTag>("access_token").into(), typed_port::<i64>("expires_in").into()],
+                    vec![
+                        typed_port::<SecretTag>("access_token").into(),
+                        typed_port::<i64>("expires_in").into(),
+                    ],
                     DynOp::new(GcpOps::ParseStsExchange),
                 ),
                 &execute_sts,
@@ -630,7 +663,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 optional("lifetime_seconds", "OptionalInt"),
                 optional("should_impersonate", "OptionalBool"),
             ],
-            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(GcpOps::PrepareImpersonate),
         ),
         &should_impersonate,
@@ -657,7 +693,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 typed_port::<TransportResponseTag>("response").into(),
                 optional("base_access_token", "Secret"),
             ],
-            vec![typed_port::<SecretTag>("access_token").into(), typed_port::<String>("expires_at").into()],
+            vec![
+                typed_port::<SecretTag>("access_token").into(),
+                typed_port::<String>("expires_at").into(),
+            ],
             DynOp::new(GcpOps::ParseImpersonate),
         ),
         &execute_impersonate,
@@ -704,7 +743,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 typed_port::<GcpProjectIdTag>("project").into(),
                 typed_port::<GcpSecretIdTag>("secret").into(),
             ],
-            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(GcpOps::PrepareSecretGet),
         ),
         &parse_impersonate,
@@ -755,7 +797,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 typed_port::<GcpSecretIdTag>("secret").into(),
                 typed_port::<bool>("exists").into(),
             ],
-            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(GcpOps::PrepareSecretCreate),
         ),
         &parse_get,
@@ -769,7 +814,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 typed_port::<bool>("skip").into(),
                 resource("api:network", "NetworkHandle", AccessMode::Read),
             ],
-            vec![typed_port::<TransportResponseTag>("response").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportResponseTag>("response").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(TransportOps::Execute),
         ),
         &prepare_create,
@@ -800,7 +848,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 typed_port::<SecretTag>("secret_value").into(),
                 optional("create_done", "OptionalBool"),
             ],
-            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(GcpOps::PrepareSecretAddVersion),
         ),
         &execute_create,
@@ -1029,7 +1080,10 @@ fn add_ensure_iam_nodes_with_mode(
         Node::opaque(
             check_node_id,
             check_inputs,
-            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+            vec![
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
+            ],
             DynOp::new(check_op),
         ),
         &execute_get_iam,
@@ -1155,7 +1209,10 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     dag.add_node(Node::opaque(
         "prepare_check",
         vec![],
-        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+        vec![
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<bool>("skip").into(),
+        ],
         DynOp::new(GcpOps::PrepareCheckAdc),
     ));
 
@@ -1206,7 +1263,10 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     dag.add_node(Node::opaque(
         "prepare_read_adc",
         vec![typed_port::<bool>("exists").into()],
-        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+        vec![
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<bool>("skip").into(),
+        ],
         DynOp::new(GcpOps::PrepareReadAdc),
     ));
 
@@ -1241,7 +1301,10 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             typed_port::<SecretTag>("client_secret").into(),
             typed_port::<SecretTag>("refresh_token").into(),
         ],
-        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+        vec![
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<bool>("skip").into(),
+        ],
         DynOp::new(GcpOps::PrepareOAuth2Refresh),
     ));
 
@@ -1354,7 +1417,10 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     dag.add_node(Node::opaque(
         "prepare_gcloud_auth",
         vec![typed_port::<bool>("needs_reauth").into()],
-        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+        vec![
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<bool>("skip").into(),
+        ],
         DynOp::new(GcpOps::PrepareGcloudAuth),
     ));
 
@@ -1413,7 +1479,10 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     dag.add_node(Node::opaque(
         "prepare_reread_adc",
         vec![typed_port::<bool>("exists").into()],
-        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+        vec![
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<bool>("skip").into(),
+        ],
         DynOp::new(GcpOps::PrepareReadAdc),
     ));
 
@@ -1479,7 +1548,10 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             typed_port::<SecretTag>("client_secret").into(),
             typed_port::<SecretTag>("refresh_token").into(),
         ],
-        vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
+        vec![
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<bool>("skip").into(),
+        ],
         DynOp::new(GcpOps::PrepareOAuth2Refresh),
     ));
 
@@ -1560,7 +1632,10 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
             optional("retry_access_token", "Secret"),
             optional("retry_expires_in", "OptionalInt"),
         ],
-        vec![typed_port::<SecretTag>("access_token").into(), typed_port::<i64>("expires_in").into()],
+        vec![
+            typed_port::<SecretTag>("access_token").into(),
+            typed_port::<i64>("expires_in").into(),
+        ],
         DynOp::new(GcpOps::MergeAuthResult),
     ));
 

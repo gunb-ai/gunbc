@@ -1,7 +1,8 @@
 #![recursion_limit = "1024"]
-//! Azure OIDC + Key Vault ops (stub).
+//! Azure OIDC + Key Vault ops (dropped-provider facade).
 //!
-//! Placeholder implementation to keep provider-neutral modeling honest.
+//! This crate currently exposes fail-closed builder facades so legacy call
+//! sites compile while provider support is removed from the active branch.
 
 mod unsupported;
 

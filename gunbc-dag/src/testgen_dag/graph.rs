@@ -5,7 +5,9 @@
 use crate::testgen_dag::ops::TestgenOp;
 use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_exec::{DynOp, Executable};
-use gunbc_ir::{add_content_upsert_chain, build::*, BuilderError, Dag, DagBuilder, Node};
+use gunbc_ir::{
+    add_content_upsert_chain, build::*, BuilderError, Dag, DagBuilder, Node, RESOURCE_FILE,
+};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
@@ -131,8 +133,8 @@ fn add_upsert_chain(
         builder,
         fs_env,
         vec![
-            chain.execute_read.in_port("res:file"),
-            chain.execute_write.in_port("res:file"),
+            chain.execute_read.in_port(RESOURCE_FILE),
+            chain.execute_write.in_port(RESOURCE_FILE),
         ],
     )?;
 

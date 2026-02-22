@@ -16,8 +16,8 @@ pub fn build_aws_secrets_manager_credential_graph(
     ))
 }
 
-pub fn build_aws_secrets_manager_upsert_graph(
-) -> Result<Dag<AwsSecretManagerGraphOp>, BuilderError> {
+pub fn build_aws_secrets_manager_upsert_graph() -> Result<Dag<AwsSecretManagerGraphOp>, BuilderError>
+{
     Err(dropped_provider_error(
         "build_aws_secrets_manager_upsert_graph",
     ))

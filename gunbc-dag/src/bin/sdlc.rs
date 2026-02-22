@@ -3769,4 +3769,154 @@ profile local {
             }
         }
     }
+
+    fn sample_agent_handle(intake_key: &str) -> gunbc_ir::transport::agent::AgentHandle {
+        gunbc_ir::transport::agent::AgentHandle {
+            provider: "stub".to_string(),
+            session_id: format!("stub-{intake_key}"),
+            intake_key: intake_key.to_string(),
+            spawned_at_epoch_ms: 1000,
+        }
+    }
+
+    fn sample_agent_ledger_with_running(intake_key: &str) -> AgentLedger {
+        let mut ledger = AgentLedger::default();
+        upsert_agent_record(
+            &mut ledger,
+            intake_key,
+            sample_agent_handle(intake_key),
+            AgentStatus::Running { progress: None },
+            1000,
+        );
+        ledger
+    }
+
+    #[test]
+    fn sweep_polls_inflight_agents_and_updates_status() {
+        let intake_key = "intent-sweep-poll";
+        let mut intake_ledger = IntakeLedger::default();
+        let mut record = sample_record(IssueLifecycleStage::Implementing);
+        record.issue_id = Some(99);
+        intake_ledger.entries.insert(intake_key.to_string(), record);
+
+        let mut agent_ledger = sample_agent_ledger_with_running(intake_key);
+        let report = sweep_inflight_agents(&intake_ledger, &mut agent_ledger, 2000);
+
+        assert_eq!(report.in_flight, vec![intake_key]);
+        assert_eq!(report.polled, vec![intake_key]);
+        assert_eq!(report.updated, vec![intake_key]);
+        assert_eq!(
+            report.statuses.get(intake_key),
+            Some(&"completed".to_string())
+        );
+        assert!(report.errors.is_empty());
+
+        let updated = agent_ledger.entries.get(intake_key).expect("agent record");
+        assert!(
+            updated.status.is_terminal(),
+            "stub adapter should mark agent as completed"
+        );
+    }
+
+    #[test]
+    fn sweep_skips_agents_not_in_implementing_stage() {
+        let intake_key = "intent-sweep-skip-stage";
+        let mut intake_ledger = IntakeLedger::default();
+        let mut record = sample_record(IssueLifecycleStage::Design);
+        record.issue_id = Some(100);
+        intake_ledger.entries.insert(intake_key.to_string(), record);
+
+        let mut agent_ledger = sample_agent_ledger_with_running(intake_key);
+        let report = sweep_inflight_agents(&intake_ledger, &mut agent_ledger, 2000);
+
+        assert!(
+            report.in_flight.is_empty(),
+            "non-Implementing agents should be skipped"
+        );
+        assert!(report.polled.is_empty());
+        assert!(report.updated.is_empty());
+    }
+
+    #[test]
+    fn sweep_skips_terminal_agents() {
+        let intake_key = "intent-sweep-terminal";
+        let mut intake_ledger = IntakeLedger::default();
+        let mut record = sample_record(IssueLifecycleStage::Implementing);
+        record.issue_id = Some(101);
+        intake_ledger.entries.insert(intake_key.to_string(), record);
+
+        let mut agent_ledger = AgentLedger::default();
+        upsert_agent_record(
+            &mut agent_ledger,
+            intake_key,
+            sample_agent_handle(intake_key),
+            AgentStatus::Completed {
+                branch: "sdlc/issue-101".to_string(),
+                commit_sha: "abc123".to_string(),
+            },
+            1000,
+        );
+
+        let report = sweep_inflight_agents(&intake_ledger, &mut agent_ledger, 2000);
+
+        assert!(
+            report.in_flight.is_empty(),
+            "terminal agents should be skipped"
+        );
+        assert!(report.polled.is_empty());
+    }
+
+    #[test]
+    fn sweep_reports_error_for_unknown_provider() {
+        let intake_key = "intent-sweep-unknown";
+        let mut intake_ledger = IntakeLedger::default();
+        let mut record = sample_record(IssueLifecycleStage::Implementing);
+        record.issue_id = Some(102);
+        intake_ledger.entries.insert(intake_key.to_string(), record);
+
+        let mut agent_ledger = AgentLedger::default();
+        let mut handle = sample_agent_handle(intake_key);
+        handle.provider = "unknown-provider".to_string();
+        upsert_agent_record(
+            &mut agent_ledger,
+            intake_key,
+            handle,
+            AgentStatus::Running { progress: None },
+            1000,
+        );
+
+        let report = sweep_inflight_agents(&intake_ledger, &mut agent_ledger, 2000);
+
+        assert_eq!(report.in_flight, vec![intake_key]);
+        assert!(
+            report.polled.is_empty(),
+            "unknown provider should not be polled"
+        );
+        assert!(
+            report.errors.contains_key(intake_key),
+            "unknown provider should produce an error"
+        );
+        assert!(
+            report.errors[intake_key].contains("not configured"),
+            "error should mention provider is not configured"
+        );
+    }
+
+    #[test]
+    fn sweep_skips_terminalized_intake() {
+        let intake_key = "intent-sweep-terminalized";
+        let mut intake_ledger = IntakeLedger::default();
+        let mut record = sample_record(IssueLifecycleStage::Implementing);
+        record.issue_id = Some(103);
+        record.terminalized = true;
+        intake_ledger.entries.insert(intake_key.to_string(), record);
+
+        let mut agent_ledger = sample_agent_ledger_with_running(intake_key);
+        let report = sweep_inflight_agents(&intake_ledger, &mut agent_ledger, 2000);
+
+        assert!(
+            report.in_flight.is_empty(),
+            "terminalized intake should be skipped"
+        );
+    }
 }

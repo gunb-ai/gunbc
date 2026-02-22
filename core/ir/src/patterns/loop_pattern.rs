@@ -301,7 +301,7 @@ mod tests {
 
         let node = LoopBuilder::new("test_loop")
             .with_body(make_loop_body_with_resource())
-            .with_resource_input(ResourceInput::new("res:platform", "Platform"))
+            .with_resource_input(ResourceInput::new("platform", "Platform"))
             .build();
 
         assert!(node.is_subdag());
@@ -329,7 +329,7 @@ mod tests {
         // Body doesn't have res:credential, so this should panic
         let _node = LoopBuilder::new("test_loop")
             .with_body(make_loop_body())
-            .with_resource_input(ResourceInput::new("res:credential", "Credential"))
+            .with_resource_input(ResourceInput::new("credential", "Credential"))
             .build();
     }
 }

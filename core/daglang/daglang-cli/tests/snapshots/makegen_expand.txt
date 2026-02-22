@@ -55,7 +55,7 @@ Nodes:
       * registry: ToolRegistry (1)
   - fs_env [primitive::FsEnv tools.makegen.fs_env]
     outputs:
-      * FilesystemHandle: FilesystemHandle (1)
+      * file:write: FilesystemHandle (1)
 Edges:
   - tools.makegen::render_makefile.return -> tools.makegen::makegen.__deps
   - prepare_read_makegen.request -> execute_read_makegen.request
@@ -70,6 +70,6 @@ Edges:
   - param_source_tools_makegen_makegen_path.path -> prepare_write_makegen.path
   - load_registry.registry -> tools.makegen::render_makefile.registry
   - load_registry.registry -> tools.makegen::makegen.registry
-  - fs_env.FilesystemHandle -> prepare_read_makegen.res:file:Makefile
-  - fs_env.FilesystemHandle -> execute_makegen_transport.res:file
+  - fs_env.file:write -> prepare_read_makegen.res:file:Makefile
+  - fs_env.file:write -> execute_makegen_transport.res:file
 

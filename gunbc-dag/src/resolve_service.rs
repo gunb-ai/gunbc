@@ -32,7 +32,7 @@ impl Executable for GenericRestPrepareOp {
         for field in &self.spec.input_fields {
             if field.is_path_param {
                 let placeholder = format!("{{{}}}", field.name);
-                let value = input_as_string(&inputs, &field.name, field.default.as_deref());
+                let value = input_as_string_for_field(&inputs, field)?;
                 path = path.replace(&placeholder, &value);
             }
         }
@@ -51,7 +51,12 @@ impl Executable for GenericRestPrepareOp {
             "PUT" => RestRequest::put(&url),
             "PATCH" => RestRequest::patch(&url),
             "DELETE" => RestRequest::delete(&url),
-            _ => RestRequest::post(&url),
+            other => {
+                return Err(ExecError::new(format!(
+                    "unsupported HTTP method `{other}` for {}",
+                    self.spec.path_template
+                )))
+            }
         };
 
         // 4. Build JSON body.
@@ -65,7 +70,9 @@ impl Executable for GenericRestPrepareOp {
                             map.insert(key.clone(), serde_json::Value::String(value.clone()));
                         }
                         BodyEntry::InputRef(key, field_name) => {
-                            let value = input_as_string(&inputs, field_name, None);
+                            let field =
+                                input_field_spec(&self.spec.input_fields, field_name.as_str())?;
+                            let value = input_as_string_for_field(&inputs, field)?;
                             map.insert(key.clone(), serde_json::Value::String(value));
                         }
                     }
@@ -170,47 +177,79 @@ fn extract_output_field(
     }
 
     // Navigate JSON path (supports dot-separated nested paths like "payload.data").
-    let json_val = navigate_json_path(body, &field.json_path);
+    let json_val = navigate_json_path(body, &field.json_path).ok_or_else(|| {
+        ExecError::new(format!(
+            "response missing required field `{}` at path `{}`",
+            field.name, field.json_path
+        ))
+    })?;
 
     // Type-specific conversion.
     match field.type_id.as_str() {
         "Secret" => {
-            let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
+            let s = json_val.as_str().ok_or_else(|| {
+                ExecError::new(format!(
+                    "response field `{}` expected string/secret, got {}",
+                    field.name,
+                    json_type_name(json_val)
+                ))
+            })?;
             Ok(Value::Secret(SecretString::new(s)))
         }
         "Int" => {
-            let n = json_val.and_then(|v| v.as_i64()).unwrap_or(0);
+            let n = json_val.as_i64().ok_or_else(|| {
+                ExecError::new(format!(
+                    "response field `{}` expected int, got {}",
+                    field.name,
+                    json_type_name(json_val)
+                ))
+            })?;
             Ok(Value::Int(n))
         }
         "Bool" => {
-            let b = json_val.and_then(|v| v.as_bool()).unwrap_or(false);
+            let b = json_val.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "response field `{}` expected bool, got {}",
+                    field.name,
+                    json_type_name(json_val)
+                ))
+            })?;
             Ok(Value::Bool(b))
         }
         "Bytes" => {
             // Base64-encoded payload (e.g., GCP SecretManager).
             // Tries direct field first, then nested .data path.
             let b64 = json_val
-                .and_then(|v| {
-                    v.as_str().map(|s| s.to_string()).or_else(|| {
-                        v.get("data")
-                            .and_then(|d| d.as_str())
-                            .map(|s| s.to_string())
-                    })
+                .as_str()
+                .map(ToString::to_string)
+                .or_else(|| {
+                    json_val
+                        .get("data")
+                        .and_then(|d| d.as_str())
+                        .map(|s| s.to_string())
                 })
-                .unwrap_or_default();
+                .ok_or_else(|| {
+                    ExecError::new(format!(
+                        "response field `{}` expected base64 string or object with `.data`",
+                        field.name
+                    ))
+                })?;
             let bytes = base64_decode(&b64)
                 .map_err(|e| ExecError::new(format!("base64 decode for {}: {e}", field.name)))?;
             Ok(Value::List(
                 bytes.into_iter().map(|b| Value::Int(b as i64)).collect(),
             ))
         }
-        "Json" => {
-            let v = json_val.cloned().unwrap_or(serde_json::Value::Null);
-            Ok(Value::Json(v))
-        }
+        "Json" => Ok(Value::Json(json_val.clone())),
         // String, Url, GistId, NonEmptyStr, etc. → all as String.
         _ => {
-            let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
+            let s = json_val.as_str().ok_or_else(|| {
+                ExecError::new(format!(
+                    "response field `{}` expected string, got {}",
+                    field.name,
+                    json_type_name(json_val)
+                ))
+            })?;
             if field.is_secret {
                 Ok(Value::Secret(SecretString::new(s)))
             } else {
@@ -270,14 +309,14 @@ impl Executable for GenericShellPrepareOp {
                     // Handle complex interpolation: e.g., "{base}...{head}"
                     if s.contains('{') {
                         let interpolated =
-                            interpolate_template(s, &inputs, &self.spec.input_fields);
+                            interpolate_template(s, &inputs, &self.spec.input_fields)?;
                         argv.push(interpolated);
                     } else {
                         argv.push(s.clone());
                     }
                 }
                 ArgvSegment::InputRef(name) => {
-                    let value = input_as_string_for_shell(&inputs, name, &self.spec.input_fields);
+                    let value = input_as_string_for_shell(&inputs, name, &self.spec.input_fields)?;
                     argv.push(value);
                 }
             }
@@ -334,12 +373,7 @@ impl Executable for GenericShellParseOp {
 
                     ShellOutputParsing::ExitCodeBool => {
                         // Use the first output field name (e.g., "needed", "exists", "ok").
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("success");
+                        let field_name = required_shell_output_name(&self.spec, "ExitCodeBool")?;
                         OutputMap::new().bool(field_name, shell.success()).ok()
                     }
 
@@ -351,23 +385,13 @@ impl Executable for GenericShellParseOp {
                             .filter(|line| !line.is_empty())
                             .map(|line| line.to_string())
                             .collect();
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("lines");
+                        let field_name = required_shell_output_name(&self.spec, "SplitLines")?;
                         OutputMap::new().str_list(field_name, lines).ok()
                     }
 
                     ShellOutputParsing::TrimStdout => {
                         let text = shell.stdout.trim().to_string();
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("output");
+                        let field_name = required_shell_output_name(&self.spec, "TrimStdout")?;
                         OutputMap::new().str(field_name, text).ok()
                     }
                 }
@@ -381,30 +405,15 @@ impl Executable for GenericShellParseOp {
                         .str("stderr", String::new())
                         .ok(),
                     ShellOutputParsing::ExitCodeBool => {
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("success");
+                        let field_name = required_shell_output_name(&self.spec, "ExitCodeBool")?;
                         OutputMap::new().bool(field_name, false).ok()
                     }
                     ShellOutputParsing::SplitLines => {
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("lines");
+                        let field_name = required_shell_output_name(&self.spec, "SplitLines")?;
                         OutputMap::new().str_list(field_name, Vec::new()).ok()
                     }
                     ShellOutputParsing::TrimStdout => {
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("output");
+                        let field_name = required_shell_output_name(&self.spec, "TrimStdout")?;
                         OutputMap::new().str(field_name, String::new()).ok()
                     }
                 }
@@ -421,15 +430,46 @@ impl Executable for GenericShellParseOp {
 // Helpers
 // ============================================================================
 
-/// Extract an input value as a string, handling Secret and defaults.
-fn input_as_string(inputs: &HashMap<String, Value>, name: &str, default: Option<&str>) -> String {
+fn input_field_spec<'a>(fields: &'a [FieldSpec], name: &str) -> Result<&'a FieldSpec, ExecError> {
+    fields
+        .iter()
+        .find(|field| field.name == name)
+        .ok_or_else(|| {
+            ExecError::new(format!(
+                "service spec references unknown input field `{name}`"
+            ))
+        })
+}
+
+/// Extract an input value as a string, handling Secret and declared defaults.
+fn input_as_string(
+    inputs: &HashMap<String, Value>,
+    name: &str,
+    default: Option<&str>,
+) -> Result<String, ExecError> {
     match inputs.get(name) {
-        Some(Value::Str(s)) => s.clone(),
-        Some(Value::Secret(secret)) => secret.expose_plaintext_for_transport().to_string(),
-        Some(Value::Int(n)) => n.to_string(),
-        Some(Value::Bool(b)) => b.to_string(),
-        _ => default.unwrap_or("(unresolved)").to_string(),
+        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Secret(secret)) => Ok(secret.expose_plaintext_for_transport().to_string()),
+        Some(Value::Int(n)) => Ok(n.to_string()),
+        Some(Value::Bool(b)) => Ok(b.to_string()),
+        Some(Value::Float(f)) => Ok(f.to_string()),
+        Some(Value::Skipped) | None => default.map(ToString::to_string).ok_or_else(|| {
+            ExecError::new(format!(
+                "missing required input `{name}` and no default value is declared"
+            ))
+        }),
+        Some(value) => Err(ExecError::new(format!(
+            "input `{name}` cannot be converted to string (got {})",
+            value_type_name(value)
+        ))),
     }
+}
+
+fn input_as_string_for_field(
+    inputs: &HashMap<String, Value>,
+    field: &FieldSpec,
+) -> Result<String, ExecError> {
+    input_as_string(inputs, field.name.as_str(), field.default.as_deref())
 }
 
 /// Extract an input value as a string for shell argv interpolation.
@@ -437,12 +477,9 @@ fn input_as_string_for_shell(
     inputs: &HashMap<String, Value>,
     name: &str,
     fields: &[FieldSpec],
-) -> String {
-    let default = fields
-        .iter()
-        .find(|f| f.name == name)
-        .and_then(|f| f.default.as_deref());
-    input_as_string(inputs, name, default)
+) -> Result<String, ExecError> {
+    let field = input_field_spec(fields, name)?;
+    input_as_string_for_field(inputs, field)
 }
 
 /// Interpolate `{name}` placeholders in a template string.
@@ -450,16 +487,60 @@ fn interpolate_template(
     template: &str,
     inputs: &HashMap<String, Value>,
     fields: &[FieldSpec],
-) -> String {
+) -> Result<String, ExecError> {
     let mut result = template.to_string();
     for field in fields {
         let placeholder = format!("{{{}}}", field.name);
         if result.contains(&placeholder) {
-            let value = input_as_string(inputs, &field.name, field.default.as_deref());
+            let value = input_as_string_for_field(inputs, field)?;
             result = result.replace(&placeholder, &value);
         }
     }
-    result
+    Ok(result)
+}
+
+fn required_shell_output_name<'a>(
+    spec: &'a ShellOperationSpec,
+    mode: &str,
+) -> Result<&'a str, ExecError> {
+    spec.output_fields
+        .first()
+        .map(|field| field.name.as_str())
+        .ok_or_else(|| {
+            ExecError::new(format!(
+                "shell parse mode `{mode}` requires at least one output field"
+            ))
+        })
+}
+
+fn json_type_name(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+fn value_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Str(_) => "String",
+        Value::Secret(_) => "Secret",
+        Value::Int(_) => "Int",
+        Value::Bool(_) => "Bool",
+        Value::Float(_) => "Float",
+        Value::Bytes(_) => "Bytes",
+        Value::List(_) => "List",
+        Value::Map(_) => "Map",
+        Value::Set(_) => "Set",
+        Value::Json(_) => "Json",
+        Value::Request(_) => "Request",
+        Value::Response(_) => "Response",
+        Value::Skipped => "Skipped",
+        Value::Unit => "Unit",
+    }
 }
 
 /// Insert a `Value` into a JSON map with appropriate conversion.
@@ -1040,5 +1121,85 @@ mod tests {
             }
             other => panic!("expected REST request, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rest_prepare_rejects_unsupported_http_method() {
+        let mut spec = rest_spec_simple();
+        spec.method = "TRACE".to_string();
+        let op = GenericRestPrepareOp { spec };
+
+        let err = op
+            .execute(HashMap::new())
+            .expect_err("unsupported method should fail closed");
+        assert!(err.to_string().contains("unsupported HTTP method"));
+    }
+
+    #[test]
+    fn rest_parse_missing_field_fails_closed() {
+        let op = GenericRestParseOp {
+            spec: rest_spec_simple(),
+        };
+        let response = RestResponse::ok(serde_json::json!({}));
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(response)),
+        );
+
+        let err = op
+            .execute(inputs)
+            .expect_err("missing output field should fail closed");
+        assert!(err.to_string().contains("missing required field"));
+    }
+
+    #[test]
+    fn shell_prepare_missing_required_input_fails_closed() {
+        let spec = ShellOperationSpec {
+            argv_template: vec![
+                ArgvSegment::Literal("echo".to_string()),
+                ArgvSegment::InputRef("value".to_string()),
+            ],
+            input_fields: vec![FieldSpec {
+                name: "value".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: true,
+            }],
+            output_fields: vec![],
+            output_parsing: ShellOutputParsing::TrimStdout,
+            passthrough: false,
+        };
+        let op = GenericShellPrepareOp { spec };
+
+        let err = op
+            .execute(HashMap::new())
+            .expect_err("missing shell input should fail closed");
+        assert!(err.to_string().contains("missing required input `value`"));
+    }
+
+    #[test]
+    fn shell_parse_exit_code_requires_output_field() {
+        let spec = ShellOperationSpec {
+            argv_template: vec![ArgvSegment::Literal("true".to_string())],
+            input_fields: vec![],
+            output_fields: vec![],
+            output_parsing: ShellOutputParsing::ExitCodeBool,
+            passthrough: false,
+        };
+        let op = GenericShellParseOp { spec };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Shell(ShellResponse::ok(""))),
+        );
+
+        let err = op
+            .execute(inputs)
+            .expect_err("missing output field should fail closed");
+        assert!(err
+            .to_string()
+            .contains("requires at least one output field"));
     }
 }

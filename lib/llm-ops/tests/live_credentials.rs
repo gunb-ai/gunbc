@@ -22,7 +22,10 @@ fn input_mocks(provider: &str, model: &str) -> BoundaryMocks {
 }
 
 fn run_live_chat(name: &str, provider: &str, model: &str) {
-    let env_req = detect_cloud_env_requirements();
+    let env_req = match detect_cloud_env_requirements() {
+        Ok(req) => req,
+        Err(_) => return,
+    };
     if env_req.provider != CloudProviderKind::Gcp {
         return;
     }

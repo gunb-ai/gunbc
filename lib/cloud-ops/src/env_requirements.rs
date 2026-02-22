@@ -20,6 +20,25 @@ pub struct CloudEnvRequirements {
     pub notes: Option<&'static str>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudEnvRequirementsError {
+    pub provider: CloudProviderKind,
+    pub runtime: CloudRuntimeKind,
+}
+
+impl std::fmt::Display for CloudEnvRequirementsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "provider `{}` with runtime `{}` is not supported in this branch (GCP-only cloud env)",
+            self.provider.as_str(),
+            self.runtime.as_str()
+        )
+    }
+}
+
+impl std::error::Error for CloudEnvRequirementsError {}
+
 pub const CLOUD_ENV_COMMON_OPTIONAL: &[&str] = &["CLOUD_PROVIDER", "CLOUD_RUNTIME"];
 
 pub const GCP_GITHUB_REQUIRED: &[&str] = &[
@@ -85,50 +104,27 @@ pub fn gcp_local_env() -> CloudEnvRequirements {
     }
 }
 
-pub fn aws_github_actions_env_stub() -> CloudEnvRequirements {
-    CloudEnvRequirements {
-        provider: CloudProviderKind::Aws,
-        runtime: CloudRuntimeKind::GitHubActions,
-        required: &[],
-        required_any_of: &[],
-        optional: CLOUD_ENV_COMMON_OPTIONAL,
-        notes: Some("Stub: define AWS WIF + Secrets Manager env vars."),
-    }
-}
-
-pub fn azure_github_actions_env_stub() -> CloudEnvRequirements {
-    CloudEnvRequirements {
-        provider: CloudProviderKind::Azure,
-        runtime: CloudRuntimeKind::GitHubActions,
-        required: &[],
-        required_any_of: &[],
-        optional: CLOUD_ENV_COMMON_OPTIONAL,
-        notes: Some("Stub: define Azure federated credential + Key Vault env vars."),
-    }
-}
-
 pub fn cloud_env_matrix() -> Vec<CloudEnvRequirements> {
     vec![
         gcp_github_actions_env(),
         gcp_metadata_env(),
         gcp_local_env(),
-        aws_github_actions_env_stub(),
-        azure_github_actions_env_stub(),
     ]
 }
 
 pub fn requirements_for(
     provider: CloudProviderKind,
     runtime: CloudRuntimeKind,
-) -> CloudEnvRequirements {
+) -> Result<CloudEnvRequirements, CloudEnvRequirementsError> {
     match provider {
-        CloudProviderKind::Gcp => match runtime {
+        CloudProviderKind::Gcp => Ok(match runtime {
             CloudRuntimeKind::GitHubActions => gcp_github_actions_env(),
             CloudRuntimeKind::CloudMetadata => gcp_metadata_env(),
             CloudRuntimeKind::LocalDev => gcp_local_env(),
-        },
-        CloudProviderKind::Aws => aws_github_actions_env_stub(),
-        CloudProviderKind::Azure => azure_github_actions_env_stub(),
+        }),
+        CloudProviderKind::Aws | CloudProviderKind::Azure => {
+            Err(CloudEnvRequirementsError { provider, runtime })
+        }
     }
 }
 
@@ -205,7 +201,7 @@ pub fn format_missing_requirements_message(
 }
 
 /// Detect the most likely environment requirements from current env vars.
-pub fn detect_cloud_env_requirements() -> CloudEnvRequirements {
+pub fn detect_cloud_env_requirements() -> Result<CloudEnvRequirements, CloudEnvRequirementsError> {
     let (provider, runtime) = detect_provider_runtime();
     requirements_for(provider, runtime)
 }

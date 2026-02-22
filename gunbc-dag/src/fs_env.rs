@@ -1,6 +1,6 @@
 //! Shared FsEnv graph-builder helpers.
 
-use gunbc_ir::{BuilderError, DagBuilder, InputRef, Node, NodeRef, Port};
+use gunbc_ir::{BuilderError, DagBuilder, InputRef, Node, NodeRef, Port, RESOURCE_FILE};
 use gunbc_primitives::{filename, FsEnv};
 
 /// Add a canonical `fs_env` root node with `file:write` capability output.
@@ -70,7 +70,7 @@ mod tests {
                 &fs_env,
             )
             .expect("sink");
-        wire_fs_env_write_edges(&mut builder, &fs_env, vec![sink.in_port("res:file")])
+        wire_fs_env_write_edges(&mut builder, &fs_env, vec![sink.in_port(RESOURCE_FILE)])
             .expect("wire fs edges");
         let dag = builder.build();
         assert!(dag.get_node(&"fs_env".into()).is_some());

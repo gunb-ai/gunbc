@@ -131,7 +131,7 @@ impl std::fmt::Display for PortType {
 /// Parse a `TypeId` string into a structural `PortType`.
 ///
 /// Known domain types are resolved to their structural backing types.
-/// Unrecognized type strings fall back to `PortType::Json`.
+/// Unrecognized type strings fail closed.
 ///
 /// For strict resolution that rejects unknown types, use `PortType::try_parse`
 /// or `PortType::from_registry`.
@@ -141,7 +141,12 @@ impl From<&TypeId> for PortType {
             return port_type;
         }
         let registry = crate::type_registry::TypeRegistry::with_core_types();
-        PortType::from_registry(&type_id.0, &registry).unwrap_or(PortType::Json)
+        PortType::from_registry(&type_id.0, &registry).unwrap_or_else(|error| {
+            panic!(
+                "unknown TypeId `{}` cannot be converted to PortType: {error}",
+                type_id.0
+            )
+        })
     }
 }
 
@@ -297,7 +302,10 @@ mod tests {
         assert_eq!(PortType::try_parse("Credential"), Some(PortType::Secret));
 
         // Json/structured-backed domain types
-        assert_eq!(PortType::try_parse("TransportRequest"), Some(PortType::Json));
+        assert_eq!(
+            PortType::try_parse("TransportRequest"),
+            Some(PortType::Json)
+        );
         assert_eq!(PortType::try_parse("FileResponse"), Some(PortType::Json));
         assert_eq!(PortType::try_parse("ToolHandle"), Some(PortType::Json));
         assert_eq!(PortType::try_parse("CliResult"), Some(PortType::Json));
@@ -306,6 +314,13 @@ mod tests {
     #[test]
     fn unknown_type_strict_parse_returns_none() {
         assert_eq!(PortType::try_parse("SomeUnknownType"), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown TypeId `SomeUnknownType`")]
+    fn from_type_id_fails_closed_for_unknown_type() {
+        let unknown = TypeId::new("SomeUnknownType");
+        let _ = PortType::from(&unknown);
     }
 
     #[test]

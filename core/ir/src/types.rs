@@ -870,8 +870,8 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
     }
 
     let registry = TypeRegistry::with_core_types();
-    let port_type = PortType::try_parse(type_id)
-        .or_else(|| PortType::from_registry(type_id, &registry).ok());
+    let port_type =
+        PortType::try_parse(type_id).or_else(|| PortType::from_registry(type_id, &registry).ok());
     match port_type {
         Some(PortType::String) => ValueBacking::String,
         Some(PortType::Bool) => ValueBacking::Bool,

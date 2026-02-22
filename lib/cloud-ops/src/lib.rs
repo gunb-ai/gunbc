@@ -33,10 +33,10 @@ pub use credential_policy::{
     ENV_CREDENTIAL_POLICY_JSON, ENV_CREDENTIAL_POLICY_PATH, ENV_CREDENTIAL_POLICY_PROFILE,
 };
 pub use env_requirements::{
-    aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
-    collect_missing_requirements, detect_cloud_env_requirements, detect_provider_runtime,
-    format_missing_requirements_message, gcp_github_actions_env, gcp_local_env, gcp_metadata_env,
-    requirements_for, CloudEnvRequirements, MissingCloudEnvRequirements, CLOUD_ENV_COMMON_OPTIONAL,
+    cloud_env_matrix, collect_missing_requirements, detect_cloud_env_requirements,
+    detect_provider_runtime, format_missing_requirements_message, gcp_github_actions_env,
+    gcp_local_env, gcp_metadata_env, requirements_for, CloudEnvRequirements,
+    CloudEnvRequirementsError, MissingCloudEnvRequirements, CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use env_status::CloudEnvStatus;
 pub use github_credential_graph::{build_github_credential_graph, GitHubCredentialGraphOp};

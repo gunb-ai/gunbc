@@ -76,21 +76,12 @@ fn execute_with_declared_output_passthrough(
     output_port_names: &[String],
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    fn default_passthrough_output(port_name: &str) -> Value {
-        match port_name {
-            "return" | "result" => Value::Str("mock".to_string()),
-            _ => Value::Skipped,
-        }
-    }
-
     let mut outputs = HashMap::new();
     for (key, value) in &inputs {
         outputs.insert(key.clone(), value.clone());
     }
     for port_name in output_port_names {
-        outputs
-            .entry(port_name.clone())
-            .or_insert_with(|| default_passthrough_output(port_name));
+        outputs.entry(port_name.clone()).or_insert(Value::Skipped);
     }
     Ok(outputs)
 }
@@ -655,7 +646,7 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
                 .inputs
-                .push(Port::resource("res:file", "FilesystemHandle", mode));
+                .push(Port::resource("file", "FilesystemHandle", mode));
         }
         resolved.add_node(resolved_node);
     }
@@ -684,7 +675,7 @@ pub fn resolve_lowered_dag_flat(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, Reso
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
                 .inputs
-                .push(Port::resource("res:file", "FilesystemHandle", mode));
+                .push(Port::resource("file", "FilesystemHandle", mode));
         }
         resolved.add_node(resolved_node);
     }
