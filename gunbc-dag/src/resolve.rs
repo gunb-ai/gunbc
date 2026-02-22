@@ -987,7 +987,7 @@ fn resolve_passthrough_entrypoint(module: &str, _name: &str, outputs: &[Port]) -
             | "workflows.test_all"
             | "shared.dag_util"
             | "std.patterns"
-    );
+    ) || module.starts_with("sample.") || module.starts_with("parity.") || module.starts_with("mock.");
     if !is_passthrough_module {
         return None;
     }
