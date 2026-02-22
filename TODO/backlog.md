@@ -26,7 +26,7 @@ Service trait definitions and REST adapters for Cloud Run, GCS, LB, and Compute 
 are implemented (`lib/gcp-ops/src/services/`). Discovery DAG exists. What's missing:
 
 - Provision/apply DAG builder (create/update/release lifecycle)
-- DSL resource declarations → Rust codegen integration
+- DSL resource declarations -> Rust codegen integration
 - Cross-service composition planner
 
 **Why backlogged**: Service layer works, but orchestration is XL scope and not needed
@@ -34,33 +34,7 @@ until infra provisioning is an active use case.
 
 ---
 
-## Typed API Migration (H11 follow-up)
-
-`TypedPort<T>`, `TypedInput<T>`, `TypedOutput<T>` exist and work. Legacy untyped
-`Port` API still active. Full migration to typed-only would touch most builders.
-
-**Why backlogged**: Typed wrappers are available for new code. Migration of existing
-builders is mechanical but wide-blast-radius — lower priority than business flows.
-
----
-
-## Resource Trait String Port Elimination (H7 follow-up)
-
-`Resource` trait, `AccessMode`, `ManagedResource` all exist. String `res:*` ports
-still coexist with the typed resource system.
-
-Current guardrail state:
-- wildcard file ports (for example `res:file:*`, `res:file:src/*`) are normalized
-  to coarse `res:file` for resource accounting/admission.
-- scheduler admission treats coarse `res:file` as conflicting with any specific
-  `res:file:<path>` lock.
-- generated makegen graphs now use coarse `res:file` directly.
-- true glob-aware admission semantics are intentionally deferred.
-
-**Why backlogged**: Resource trait works for new code. Full elimination of string ports
-is a cross-cutting migration with many touchpoints.
-
-### Deferred follow-up: Glob-aware Resource Admission
+## Glob-aware Resource Admission
 
 Define and implement wildcard semantics end-to-end for resource locks (not just file guard):
 - canonical pattern model (`*`, prefix/suffix/infix) and conflict matrix.
@@ -73,11 +47,10 @@ design before enabling in runtime scheduling.
 
 ---
 
-## Canonical Port Naming Invariants (R1 follow-up)
+## Completed (removed from backlog 2026-02-22)
 
-Some paths still rely on module-specific port aliases in normalization/parity logic
-(for example makegen transport output aliases). The long-term direction is one
-canonical port name per semantic role across lowering, runtime emission, and snapshots.
+The following former backlog items were completed as part of Lane 4 (Codebase Polish):
 
-**Why backlogged**: Mechanical cleanup is easy, but cutover needs careful snapshot
-and parity coordination to avoid false regressions across multiple toolchains.
+- **Typed API Migration** (was H11 follow-up) -> Completed as CU-7: all untyped `port(...)` calls migrated to `typed_port::<T>()`.
+- **Resource Trait String Port Elimination** (was H7 follow-up) -> Completed as CU-8: all `res:*` string constructors normalized to typed resource system.
+- **Canonical Port Naming Invariants** (was R1 follow-up) -> Completed as CU-9: standardized on canonical `file:write` + `return` across lowering/runtime/snapshots.
