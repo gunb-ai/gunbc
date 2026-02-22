@@ -45,11 +45,17 @@
 
 #![deny(dead_code)]
 pub mod config;
+pub mod graph;
+pub mod graph_mock;
 pub mod lint;
 pub mod policy;
 
 pub use config::{
     generate_clippy_toml, ClippyConfig, ClippyConfigRenderer, CrateAllowance, DisallowedMethod,
+};
+pub use graph::{
+    build_clippy_dag, build_clippy_graph, build_clippy_graph_lint_all, build_clippy_lint_all,
+    build_clippy_upsert, ClippyGraphOp,
 };
 pub use lint::{LintId, LintSource};
 pub use policy::{CratePolicy, CrateRole};
@@ -64,8 +70,17 @@ pub use policy::{CratePolicy, CrateRole};
     description = "Run clippy via upsert (check → install → run)",
     builder = "build_clippy_graph_dsl",
     import = "use gunbc_dag::build_clippy_graph_dsl;",
+    mock_spec = "gunbc_clippy::graph_mock::clippy_mock_spec()",
     dsl_module = "clippy",
     returns_result
 )]
 pub fn clippy_tool() {}
 
+// ============================================================================
+// Generated Tests (from `make testgen`)
+// ============================================================================
+
+#[cfg(test)]
+mod generated_tests {
+    include!("generated_tests.rs");
+}

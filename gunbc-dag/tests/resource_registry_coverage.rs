@@ -48,6 +48,11 @@ fn public_zero_arg_graph_builders_are_resource_registered() {
 fn runtime_registry_contains_non_skip_resource_annotations() {
     // Touch representative symbols so linker keeps object files that contain
     // inventory submissions from graph + graph_mock modules.
+    let _: fn() -> gunbc_test::MockSpec = gunbc_clippy::graph_mock::clippy_mock_spec;
+    let _: fn() -> gunbc_test::MockSpec = gunbc_deps::graph_mock::deps_mock_spec;
+    let _: fn() -> gunbc_test::MockSpec = gunbc_gist::graph_mock::gist_snapshot_mock_spec;
+    let _: fn() -> gunbc_test::MockSpec = gunbc_gist::graph_mock::gist_diff_mock_spec;
+    let _: fn() -> gunbc_test::MockSpec = gunbc_gist::graph_mock::gist_recent_mock_spec;
     let _: fn() -> gunbc_test::MockSpec = gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec;
     let _: fn() -> gunbc_test::MockSpec =
         gunbc_lib_gcp_ops::graph_mock::gcp_github_upsert_mock_spec;

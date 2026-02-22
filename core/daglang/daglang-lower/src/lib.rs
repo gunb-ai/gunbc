@@ -5483,10 +5483,13 @@ mod tests {
     use daglang_resolve::{ModuleGraph, ResolvedModule};
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
+    use gunbc_clippy::build_clippy_graph_lint_all;
     use gunbc_dag::{
         build_bootstrap_graph, build_build_graph, build_ci_graph, build_codegen_graph,
         build_docgen_graph, build_makegen_graph, build_pragma_graph,
     };
+    use gunbc_deps::build_deps_graph;
+    use gunbc_gist::{build_gist_graph, GistMode};
     use gunbc_ir::{Edge, Port};
     use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -5992,9 +5995,58 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
         assert!(report_a.reference_nodes > 0);
     }
 
+    #[test]
+    fn clippy_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.clippy");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.clippy");
+        let reference = build_clippy_graph_lint_all();
 
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
 
+    #[test]
+    fn deps_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.deps");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.deps");
+        let reference = build_deps_graph().expect("deps builder graph should be available");
 
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_snapshot_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
+            .expect("gist builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_snapshot_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
+            .expect("gist builder graph should be available");
+        let report = compare_gist_topology(&dag, &reference, GistParityMode::Snapshot);
+        assert!(
+            report.is_exact_match(),
+            "normalized gist snapshot parity should match reference topology: {report:?}"
+        );
+    }
 
     #[test]
     fn gcp_credential_normalized_parity_can_reach_exact_match() {
@@ -6025,9 +6077,71 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
         );
     }
 
+    #[test]
+    fn gist_diff_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
+            Vec::new(),
+            false,
+        )
+        .expect("gist builder graph should be available");
 
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
 
+    #[test]
+    fn gist_diff_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
+            Vec::new(),
+            false,
+        )
+        .expect("gist builder graph should be available");
+        let report = compare_gist_topology(&dag, &reference, GistParityMode::Diff);
+        assert!(
+            report.is_exact_match(),
+            "normalized gist diff parity should match reference topology: {report:?}"
+        );
+    }
 
+    #[test]
+    fn gist_recent_parity_report_is_deterministic() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
+            .expect("gist builder graph should be available");
+
+        let report_a = compare_ir(&dag, &reference);
+        let report_b = compare_ir(&dag, &reference);
+        assert_eq!(report_a, report_b);
+        assert!(report_a.candidate_nodes > 0);
+        assert!(report_a.reference_nodes > 0);
+    }
+
+    #[test]
+    fn gist_recent_normalized_parity_can_reach_exact_match() {
+        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
+        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
+        let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
+            .expect("gist builder graph should be available");
+        let report = compare_gist_topology(&dag, &reference, GistParityMode::Recent);
+        assert!(
+            report.is_exact_match(),
+            "normalized gist recent parity should match reference topology: {report:?}"
+        );
+    }
 
     #[test]
     fn gist_dependency_closure_lowering_reuses_shared_credential_chain() {
