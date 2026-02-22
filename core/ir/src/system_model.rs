@@ -515,8 +515,7 @@ pub fn derive_contract_test_specs(models: &[SystemModel]) -> Vec<ContractTestSpe
         for behavior in &model.behaviors {
             let property_markers = if registry_ready {
                 let type_id = system_behavior_type_id(&model.id, &behavior.id);
-                behavior_properties_from_type_dag(&behavior_type_registry, &type_id)
-                    .unwrap_or_else(|| behavior.properties.clone())
+                resolve_behavior_properties(&behavior_type_registry, &type_id, behavior)
             } else {
                 behavior.properties.clone()
             };
@@ -572,38 +571,55 @@ fn behavior_properties_from_type_dag(
     let dag = registry.get(type_id)?;
     let mut properties = Vec::new();
     for node in &dag.nodes {
-        if let crate::node::NodeBody::Opaque(op) = &node.body {
-            let marker = match op {
-                TypeOp::Meta(crate::MetadataPayload::Property(raw)) => Some(raw.as_str()),
-                // Legacy compatibility path during migration.
-                TypeOp::Validate(Predicate::Custom(marker)) => marker.strip_prefix("property:"),
-                _ => None,
-            };
-            if let Some(raw) = marker {
-                if let Some(property) = parse_property_marker(raw) {
-                    if !properties.contains(&property) {
-                        properties.push(property);
-                    }
-                }
+        if let crate::node::NodeBody::Opaque(TypeOp::Meta(crate::MetadataPayload::Property(
+            property,
+        ))) = &node.body
+        {
+            let property = property_from_metadata(*property);
+            if !properties.contains(&property) {
+                properties.push(property);
             }
         }
     }
-    Some(properties)
+    (!properties.is_empty()).then_some(properties)
 }
 
-fn parse_property_marker(raw: &str) -> Option<Property> {
-    match raw {
-        "ReadOnly" => Some(Property::ReadOnly),
-        "WritesWorld" => Some(Property::WritesWorld),
-        "Deterministic" => Some(Property::Deterministic),
-        "Idempotent" => Some(Property::Idempotent),
-        "IdempotentWithKey" => Some(Property::IdempotentWithKey),
-        "FailsWhen" => Some(Property::FailsWhen),
-        "EdgeCase" => Some(Property::EdgeCase),
-        "Retryable" => Some(Property::Retryable),
-        "SecretScoped" => Some(Property::SecretScoped),
-        "PermissionScoped" => Some(Property::PermissionScoped),
-        _ => None,
+fn resolve_behavior_properties(
+    registry: &TypeRegistry,
+    type_id: &TypeId,
+    behavior: &Behavior,
+) -> Vec<Property> {
+    behavior_properties_from_type_dag(registry, type_id)
+        .unwrap_or_else(|| behavior.properties.clone())
+}
+
+fn metadata_from_property(property: Property) -> crate::MetadataProperty {
+    match property {
+        Property::ReadOnly => crate::MetadataProperty::ReadOnly,
+        Property::WritesWorld => crate::MetadataProperty::WritesWorld,
+        Property::Deterministic => crate::MetadataProperty::Deterministic,
+        Property::Idempotent => crate::MetadataProperty::Idempotent,
+        Property::IdempotentWithKey => crate::MetadataProperty::IdempotentWithKey,
+        Property::FailsWhen => crate::MetadataProperty::FailsWhen,
+        Property::EdgeCase => crate::MetadataProperty::EdgeCase,
+        Property::Retryable => crate::MetadataProperty::Retryable,
+        Property::SecretScoped => crate::MetadataProperty::SecretScoped,
+        Property::PermissionScoped => crate::MetadataProperty::PermissionScoped,
+    }
+}
+
+fn property_from_metadata(property: crate::MetadataProperty) -> Property {
+    match property {
+        crate::MetadataProperty::ReadOnly => Property::ReadOnly,
+        crate::MetadataProperty::WritesWorld => Property::WritesWorld,
+        crate::MetadataProperty::Deterministic => Property::Deterministic,
+        crate::MetadataProperty::Idempotent => Property::Idempotent,
+        crate::MetadataProperty::IdempotentWithKey => Property::IdempotentWithKey,
+        crate::MetadataProperty::FailsWhen => Property::FailsWhen,
+        crate::MetadataProperty::EdgeCase => Property::EdgeCase,
+        crate::MetadataProperty::Retryable => Property::Retryable,
+        crate::MetadataProperty::SecretScoped => Property::SecretScoped,
+        crate::MetadataProperty::PermissionScoped => Property::PermissionScoped,
     }
 }
 
@@ -698,7 +714,7 @@ fn build_behavior_contract_dag(
             &mut dag,
             &mut prev,
             &mut idx,
-            crate::MetadataPayload::Property(format!("{property:?}")),
+            crate::MetadataPayload::Property(metadata_from_property(*property)),
         );
     }
 
@@ -710,7 +726,7 @@ fn build_behavior_contract_dag(
             &mut idx,
             crate::MetadataPayload::InputContract {
                 name: sanitize_ident(&input.name),
-                type_id: input.input_type.type_id().0.clone(),
+                type_id: input.input_type.type_id().clone(),
                 required: input.required,
             },
         );
@@ -741,7 +757,7 @@ fn build_behavior_contract_dag(
             &mut idx,
             crate::MetadataPayload::OutputContract {
                 name: sanitize_ident(&output.name),
-                type_id: output.output_type.type_id().0.clone(),
+                type_id: output.output_type.type_id().clone(),
             },
         );
     }
@@ -774,15 +790,21 @@ fn append_meta_step(
         crate::MetadataPayload::Invocation(value) => {
             format!("invocation_{}", sanitize_ident(value))
         }
-        crate::MetadataPayload::Property(value) => format!("property_{}", sanitize_ident(value)),
+        crate::MetadataPayload::Property(value) => {
+            format!("property_{}", sanitize_ident(&format!("{value:?}")))
+        }
         crate::MetadataPayload::InputContract { name, type_id, .. } => {
-            format!("input_{}_{}", sanitize_ident(name), sanitize_ident(type_id))
+            format!(
+                "input_{}_{}",
+                sanitize_ident(name),
+                sanitize_ident(&type_id.0)
+            )
         }
         crate::MetadataPayload::OutputContract { name, type_id } => {
             format!(
                 "output_{}_{}",
                 sanitize_ident(name),
-                sanitize_ident(type_id)
+                sanitize_ident(&type_id.0)
             )
         }
     };
@@ -1022,28 +1044,18 @@ fn behavior_contract_shape(
     for node in &dag.nodes {
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             match op {
-                TypeOp::Meta(crate::MetadataPayload::Property(raw)) => {
-                    properties.push(raw.to_string());
+                TypeOp::Meta(crate::MetadataPayload::Property(property)) => {
+                    properties.push(format!("{:?}", property_from_metadata(*property)));
                 }
                 TypeOp::Meta(crate::MetadataPayload::InputContract {
                     name,
                     type_id,
                     required,
                 }) => {
-                    inputs.push((name.clone(), type_id.clone(), *required));
+                    inputs.push((name.clone(), type_id.0.clone(), *required));
                 }
                 TypeOp::Meta(crate::MetadataPayload::OutputContract { name, type_id }) => {
-                    outputs.push((name.clone(), type_id.clone()));
-                }
-                // Legacy compatibility markers during migration.
-                TypeOp::Validate(Predicate::Custom(marker)) => {
-                    if let Some(raw) = marker.strip_prefix("property:") {
-                        properties.push(raw.to_string());
-                    } else if let Some(parsed) = parse_input_marker_legacy(marker) {
-                        inputs.push(parsed);
-                    } else if let Some(parsed) = parse_output_marker_legacy(marker) {
-                        outputs.push(parsed);
-                    }
+                    outputs.push((name.clone(), type_id.0.clone()));
                 }
                 TypeOp::Wrap(WrapperKind::Optional) => {
                     optional_wrap_count += 1;
@@ -1060,30 +1072,14 @@ fn behavior_contract_shape(
     outputs.sort();
     outputs.dedup();
 
+    validate_no_metadata_validate_custom(dag).ok()?;
+
     Some(BehaviorContractShape {
         properties,
         inputs,
         outputs,
         optional_wrap_count,
     })
-}
-
-fn parse_input_marker_legacy(marker: &str) -> Option<(String, String, bool)> {
-    let marker = marker.strip_prefix("input:")?;
-    let (left, required_raw) = marker.rsplit_once(":required=")?;
-    let required = match required_raw {
-        "true" => true,
-        "false" => false,
-        _ => return None,
-    };
-    let (name, type_id) = left.split_once(':')?;
-    Some((name.to_string(), type_id.to_string(), required))
-}
-
-fn parse_output_marker_legacy(marker: &str) -> Option<(String, String)> {
-    let marker = marker.strip_prefix("output:")?;
-    let (name, type_id) = marker.split_once(':')?;
-    Some((name.to_string(), type_id.to_string()))
 }
 
 /// Built-in system models discovered via inventory registration.
@@ -1277,6 +1273,77 @@ mod tests {
                 && spec.required_all.contains(&Property::ReadOnly)
                 && spec.required_all.contains(&Property::Deterministic)
         }));
+    }
+
+    #[test]
+    fn metadata_property_erasure_falls_back_to_behavior_properties() {
+        let model = SystemModel::new(
+            "provider.delta",
+            "Provider Delta",
+            SystemKind::Sdk,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "lookup",
+            "Lookup item",
+            Invocation::Sdk {
+                function: "lookup".to_string(),
+                docs: "lookup docs".to_string(),
+            },
+        )
+        .with_inputs(vec![BehaviorInput::required(
+            "id",
+            InputType::TypeId(TypeId::from("String")),
+        )])
+        .with_outputs(vec![BehaviorOutput::new(
+            "value",
+            OutputType::TypeId(TypeId::from("Json")),
+        )])
+        .with_properties(&[Property::ReadOnly, Property::Deterministic])]);
+
+        let mut registry = TypeRegistry::with_core_types();
+        register_system_behavior_type_dags(&mut registry, std::slice::from_ref(&model))
+            .expect("registration should succeed");
+        let type_id = system_behavior_type_id("provider.delta", "lookup");
+
+        let baseline = resolve_behavior_properties(&registry, &type_id, &model.behaviors[0]);
+        assert_eq!(baseline, model.behaviors[0].properties);
+
+        let mut erased = registry
+            .get(&type_id)
+            .expect("registered behavior DAG should exist")
+            .clone();
+        for node in &mut erased.nodes {
+            if matches!(node.body, crate::node::NodeBody::Opaque(TypeOp::Meta(_))) {
+                node.body = crate::node::NodeBody::Opaque(TypeOp::Identity);
+            }
+        }
+        registry.register(type_id.clone(), erased);
+
+        let after_erasure = resolve_behavior_properties(&registry, &type_id, &model.behaviors[0]);
+        assert_eq!(
+            after_erasure, model.behaviors[0].properties,
+            "erasing metadata nodes must not change runtime property semantics"
+        );
+    }
+
+    #[test]
+    fn validate_no_metadata_validate_custom_rejects_legacy_property_markers() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "legacy_marker",
+            vec![Port::scalar("in", "Json")],
+            vec![Port::scalar("out", "Json")],
+            TypeOp::Validate(Predicate::Custom("property:ReadOnly".to_string())),
+        ));
+
+        let err = validate_no_metadata_validate_custom(&dag)
+            .expect_err("legacy metadata-over-Validate markers must fail in strict mode");
+        assert!(
+            err.contains("forbidden in strict mode"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
