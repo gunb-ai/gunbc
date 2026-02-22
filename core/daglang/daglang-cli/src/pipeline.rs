@@ -791,7 +791,6 @@ mod tests {
             "services.gcp.secret_manager",
             "services.gcp.sts",
             "services.github.gist",
-            "services.github.issues",
             "services.github.pull_request",
             "services.llm.anthropic",
             "services.llm.openai",
@@ -807,8 +806,12 @@ mod tests {
             "funcs.test_control_flow",
             "interfaces.outcome_ledger",
             "interfaces.signal_store",
+            "profiles.cloud_run",
+            "profiles.local",
             "profiles.sdlc",
+            "profiles.unit_test",
             "services.git",
+            "services.github.issues",
             "services.sdlc.providers.codex_agent_provider",
             "services.sdlc.providers.file_claim_store",
             "services.sdlc.providers.file_outcome_ledger",
@@ -821,6 +824,8 @@ mod tests {
             "cloud.gcp.credential",
             "shared.dag_util",
             "shared.gist_modes",
+            "std.state_machines",
+            "pipelines.reconciler",
             "tools.bootstrap",
             "tools.build",
             "tools.clippy",
@@ -1088,7 +1093,7 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 68);
+        assert_eq!(result.parsed_count(), 73);
         assert!(
             result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
@@ -1133,7 +1138,7 @@ mod tests {
         .expect("pipeline should execute");
         assert_eq!(
             result.parsed_count(),
-            68,
+            73,
             "report stop should retain parse-stage file count for real corpus"
         );
     }

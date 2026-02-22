@@ -292,3 +292,57 @@ pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Int = 1000) -> {} {
   node op: Op
   @retry(max: max_attempts, backoff: exponential(backoff_ms))
 }
+
+// --- Approval Yield (D18) -----------------------------------------------
+// Addresses deficit D18 from domain-modeling-comprehensive.md §9.
+//
+// Models the approval gate protocol: when a stage requires human approval,
+// the worker persists PENDING_APPROVAL in the outcome ledger, releases
+// the claim, and terminates. The issue is rediscovered through normal
+// H4 discovery after the approval event occurs.
+//
+// Key: the worker does NOT busy-wait. AwaitApproval is an async yield
+// with claim release (INV-22).
+//
+// Protocol:
+//   1. Worker persists PENDING_APPROVAL in outcome ledger
+//   2. Worker releases claim
+//   3. Worker terminates execution for this item
+//   4. External approval event (label change, comment, webhook) sets READY
+//   5. Issue is rediscovered through normal H4 discovery
+//   6. New worker claims and resumes from the approval point
+//
+// Usage in pipeline:
+//   node gate: approval_yield(
+//     issue_id: id,
+//     stage: "design-review",
+//     run_key: rk,
+//     outcomes: outcomes,
+//     claims: claims,
+//     owner: "pipelines.sdlc",
+//     generation: claim.lease_generation
+//   )
+//   // Execution stops here. Pipeline is re-entered on next discovery.
+
+// Pattern: approval_yield
+//
+// Approval yield for human-in-the-loop gates. This pattern will be
+// compiled once the DSL supports `uses` clauses on patterns (service
+// dependency injection for compile-time templates). Until then, the
+// logic lives inline in pipeline stages that need it.
+//
+// Signature:
+//   approval_yield(
+//     issue_id: NonEmptyStr,
+//     stage: NonEmptyStr,
+//     run_key: NonEmptyStr,
+//     owner: NonEmptyStr,
+//     generation: Int
+//   ) -> { yielded: Bool }
+//   uses outcomes: OutcomeLedger
+//   uses claims: ClaimStore
+//
+// Steps:
+//   1. Persist PendingApproval in outcome ledger
+//   2. Release claim (INV-22: AwaitApproval releases claim)
+//   3. Signal yield — caller should terminate execution

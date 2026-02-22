@@ -1,48 +1,46 @@
-// interfaces/agent_provider.dag -- Provider-fungible agent dispatch.
+// interfaces/agent_provider.dag -- Abstract agent execution interface.
 //
-// Layer 2 domain interface. The pipeline says "spawn an agent to
-// implement this design." It never mentions Codex, shell commands,
-// or any specific agent runtime.
+// Provider-fungible contract for agent dispatch and lifecycle management.
+// The pipeline spawns agents for implementation work and polls their status.
 //
-// Source: domain-modeling-comprehensive.md Section 4.4
-// Gap:    e2e-gap-analysis.md Gap I (agent branch management)
+// Implementations:
+//   CodexAgentProvider  (@shell codex)  — local, cloud_run profiles
+//   StubAgentProvider   (in-memory)     — unit_test profile
+//
+// Canonical reference: domain-modeling-comprehensive.md §4.4
 
 module interfaces.agent_provider
 
 import std.types { NonEmptyStr, AgentStatus, ApprovalMode }
 
-// =========================================================================
-// AgentProvider -- Agent lifecycle management
-// =========================================================================
-//
-// Implementations:
-//   CodexAgentProvider  (@shell codex)    -- local, cloud_run profiles
-//   StubAgentProvider   (in-memory)       -- unit_test profile
-
 interface AgentProvider {
 
+  // Spawn a new agent task. Returns a run_id for tracking.
   capability spawn(
-    prompt: String,
-    repo_path: String,
-    branch: NonEmptyStr,
-    model: String?,
-    timeout_seconds: Int?,
-    approval_mode: ApprovalMode?
+    prompt:           String,
+    repo_path:        String,
+    branch:           NonEmptyStr,
+    model:            String?,
+    timeout_seconds:  Int?,
+    approval_mode:    ApprovalMode?
   ) -> { run_id: NonEmptyStr, status: AgentStatus, started: Bool }
 
+  // Poll the status of a running agent task.
   capability poll(run_id: NonEmptyStr)
     -> { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
     @idempotent @readonly
 
+  // Cancel a running agent task.
   capability cancel(run_id: NonEmptyStr, reason: String?)
     -> { cancelled: Bool, final_status: AgentStatus }
 
+  // Retrieve the result of a completed agent task.
   capability get_result(run_id: NonEmptyStr)
     -> { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
-    @idempotent @readonly
+    @readonly
 
-  // --- Behavioral contracts ----------------------------------------------
+  // --- Behavioral contracts ------------------------------------------------
 
-  @contract: poll(rid) after spawn(p, rp, b, m, t, a) => { finished is Bool }
-  @contract: get_result(rid) after spawn(p, rp, b, m, t, a) => { status is AgentStatus }
+  @contract: poll(id) after spawn(p, r, b, m, t, a) => { finished: false } or { finished: true }
+  @contract: cancel(id, r) after spawn(p, rp, b, m, t, a) => { cancelled: true }
 }

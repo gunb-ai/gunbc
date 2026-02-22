@@ -1,53 +1,56 @@
-// interfaces/artifact_store.dag -- Artifact storage with two-phase commit.
+// interfaces/artifact_store.dag -- Abstract artifact store interface.
 //
-// Layer 2 domain interface. Supports both inline and blob-reference
-// payloads. Provisional markers are written before stage CAS;
-// canonical markers are confirmed after.
+// Provider-fungible contract for artifact storage with two-phase commit
+// support via provisional/canonical markers.
 //
-// Source: domain-modeling-comprehensive.md Section 4.6
-// Gap:    mega-modeling-design.md Section 6.3
+// Implementations:
+//   InlineArtifactStore    (issue comments / gists)  — local profile (small artifacts)
+//   GcsArtifactStore       (GCS objects)             — cloud_run profile
+//   InMemoryArtifactStore  (HashMap)                 — unit_test profile
+//
+// Canonical reference: domain-modeling-comprehensive.md §4.6
 
 module interfaces.artifact_store
 
-import std.types {
-    NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker
-}
-
-// =========================================================================
-// ArtifactStore -- Artifact lifecycle with two-phase commit
-// =========================================================================
-//
-// Implementations:
-//   InlineArtifactStore  (issue comments / gists)  -- local profile
-//   GcsArtifactStore     (GCS objects)              -- cloud_run profile
-//   InMemoryArtifactStore (HashMap)                 -- unit_test profile
+import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }
 
 interface ArtifactStore {
 
+  // Store an artifact. Idempotent: same artifact_id + same content_hash = success.
+  // Different content_hash for same artifact_id = conflict (fail-closed).
+  // Returns stored xor conflict (exactly one is true).
   capability store(
-    artifact_id: NonEmptyStr,
-    payload: ArtifactPayload,
+    artifact_id:  NonEmptyStr,
+    payload:      ArtifactPayload,
     content_hash: NonEmptyStr
   ) -> { stored: Bool, conflict: Bool }
     @contract: store(id, p, h) => stored xor conflict
-    @idempotent                        // same id + same hash = success
+    @idempotent  // same id + same hash = success
 
+  // Retrieve an artifact by ID.
   capability retrieve(artifact_id: NonEmptyStr)
     -> { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
     @readonly
 
+  // Store an artifact marker (provisional or canonical).
+  // Used in the two-phase commit protocol for artifact lifecycle tracking.
   capability store_marker(marker: ArtifactMarker)
     -> { stored: Bool }
     @idempotent
 
-  capability get_canonical_marker(
-    run_key: NonEmptyStr,
-    artifact_type: ArtifactType
-  ) -> { found: Bool, marker: ArtifactMarker? }
+  // Get the canonical marker for a given run_key + artifact_type.
+  // Only canonical markers represent committed artifacts.
+  capability get_canonical_marker(run_key: NonEmptyStr, artifact_type: ArtifactType)
+    -> { found: Bool, marker: ArtifactMarker? }
     @readonly
 
-  // --- Behavioral contracts ----------------------------------------------
+  // --- Behavioral contracts ------------------------------------------------
+  //
+  // INV-16: Deterministic artifact for given run_key + artifact_type.
+  // INV-17: Canonical markers are authoritative; only they represent committed artifacts.
+  // Collision rules: canonical marker with same content_hash = success;
+  //                  different content_hash = fail-closed conflict.
 
-  @contract: store(id, p, h) => stored xor conflict
-  @contract: retrieve(id) after store(id, p, h) => { found: true }
+  @contract: retrieve(id) after store(id, p, h) => { found: true, content_hash: h }
+  @contract: store(id, p, h) after store(id, p, h) => { stored: true }  // idempotent
 }

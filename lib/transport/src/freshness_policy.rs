@@ -23,7 +23,7 @@ use gunbc_ir::resource::{load_manifest_default, save_manifest_default, ManagedRe
 /// - The repo is already fresh (manifest check passes)
 ///
 /// Returns `Some(steps)` if the repo needs freshening, where steps are
-/// the sequential chain: codegen-dag → testgen → pragma → clippy → test-compile → release-check.
+/// the sequential chain: codegen-dag → testgen → pragma → codegen → clippy → test-compile → release-check.
 pub fn check_and_plan_freshness() -> Option<Vec<FreshnessStep>> {
     // Recursion prevention: if we're already inside a freshness context, skip.
     if std::env::var(FRESHNESS_ACTIVE_ENV).is_ok() {
@@ -76,9 +76,10 @@ pub fn update_freshness_manifest() -> Result<(), String> {
 /// 1. codegen-dag: generate code from DAG structures
 /// 2. testgen: generate tests
 /// 3. pragma: process pragma directives
-/// 4. clippy: lint check (with auto-fix)
-/// 5. test-compile: compile lib tests without running
-/// 6. release-check: compile-check release bins for the workspace
+/// 4. codegen: generate CLI entry points into target/codegen/bin/
+/// 5. clippy: lint check (with auto-fix)
+/// 6. test-compile: compile lib tests without running
+/// 7. release-check: compile-check release bins for the workspace
 fn freshness_steps() -> Vec<FreshnessStep> {
     vec![
         FreshnessStep {
@@ -118,6 +119,19 @@ fn freshness_steps() -> Vec<FreshnessStep> {
                 "gunbc-pragma".into(),
                 "--".into(),
                 "dag".into(),
+            ],
+        },
+        FreshnessStep {
+            id: "codegen".into(),
+            command: vec![
+                "cargo".into(),
+                "run".into(),
+                "-p".into(),
+                "gunbc-dag".into(),
+                "--bin".into(),
+                "gunbc-codegen".into(),
+                "--".into(),
+                "codegen".into(),
             ],
         },
         FreshnessStep {

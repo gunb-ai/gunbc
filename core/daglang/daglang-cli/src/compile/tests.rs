@@ -515,18 +515,19 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes resolve to typed UnsupportedOp placeholders.
+    // Pipeline nodes resolve to PipelineDispatchOp passthrough callables.
     let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
-    assert!(debug.contains("UnsupportedOp"), "unexpected op debug: {debug}");
+    assert!(debug.contains("PipelineDispatchOp"), "unexpected op debug: {debug}");
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("pipeline fixture should not contain subdag nodes")
     };
-    let error = op
+    // PipelineDispatchOp uses output passthrough — execution should succeed.
+    let result = op
         .execute(HashMap::new())
-        .expect_err("unsupported pipeline callable should fail at execution");
-    assert!(error.to_string().contains("unsupported operation"));
+        .expect("pipeline dispatch op should execute as passthrough");
+    assert!(result.contains_key("out"));
 }
 
 #[test]
