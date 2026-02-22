@@ -111,7 +111,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | E: Runtime infra | **DONE** | — |
 | F: Codegen-first SDLC | **DONE** | `CG1` superseded (SDLC modules are runtime-authored) |
 | G: Workflow DSL migration | **ACTIVE** | WM-1..WM-9 (14 workflows, 69 process units, 16 builder fns) |
-| H: DSL expression language | **ACTIVE** | EX-1..EX-15 (46 custom ops → 0, structured data model, expression primitives) |
+| H: DSL expression language | **ACTIVE** | EX-1..EX-15 (22 tool ops → 0; parser has syntax, gap is lowering + execution) |
 
 ---
 
@@ -240,9 +240,11 @@ Implemented: default-passthrough resolver, `Option`-returning inventory resolver
 ### Lane H: DSL Expression Language (Phase 3)
 
 **Design doc**: [TODO/design-eliminate-registration-lists.md](design-eliminate-registration-lists.md) — Changes 6-11
-**Goal**: Add expression-level DSL features so that all 46 custom `Executable` op variants (across 9 modules) can be expressed in DSL. After this lane, zero `Executable` impls exist outside compiler/executor infrastructure. Rust is no longer an escape hatch for business logic.
+**Goal**: Make the existing DSL expression features usable in function bodies so that all 22 custom tool op variants (across 5 modules) can be expressed in DSL. After this lane, zero tool `Executable` impls exist outside compiler/executor infrastructure. Rust is no longer an escape hatch for business logic.
 
 **Principle**: Fix the data model first, then add minimal expression support. Most "string manipulation" disappears when data is properly structured. See design doc "DSL Language Features Required" for the full analysis.
+
+**Key finding**: The parser already supports 21 expression types including `if/else`, `match`, `for`, all binary ops (+, -, *, /, %, ==, !=, <, >, <=, >=, &&, ||), unary ops (!, -), list/map/record literals, string interpolation, lambdas, and pipe operators. The gap is in the **lowering and execution path** — ensuring these expressions compile to executable operations when used in function bodies. The compiler pipeline is: parser (2.8k LOC) → resolve → typecheck → lower (7.5k LOC) → emit (1.2k LOC+).
 
 #### Phase 3a: Structured data at boundaries (eliminates ~45% of custom ops)
 
@@ -250,33 +252,35 @@ Implemented: default-passthrough resolver, `Option`-returning inventory resolver
 |----|------|------|------|--------|
 | **EX-1** | **Structured transport responses**: Extend service call declarations with `@parse` annotations so the transport layer parses shell output into typed records. Eliminates all ad-hoc `.lines()/.trim()/.strip_prefix()` parsing in bootstrap (4 ops) and codegen (2 ops). | — | M | |
 | **EX-2** | **Structured path and glob types**: Make `FilePath` a proper structured type with segments (not a string alias). Add `GlobPattern` type. Path construction, joining, and pattern building become type-safe operations. Eliminates all path string manipulation in pragma and codegen (~8 string ops). | — | M | |
-| **EX-3** | **DSL data source declarations**: Add `data` blocks in DSL for declaring static typed configuration. Move clippy allowlist rules (8), dead code rules (5), allow lints (3), tool registry (12 tools), gitignore categories (14), and codegen path templates from Rust into `dsl/config/*.dag` files. Compiler resolves data references at compile time. | — | M | |
+| **EX-3** | **DSL data source declarations**: Add `data` blocks in DSL for declaring static typed configuration. Move clippy allowlist rules (8), dead code rules (5), allow lints (3), tool registry (12 tools), gitignore categories (14), and codegen path templates from Rust into `dsl/config/*.dag` files. Compiler resolves data references at compile time. No `dsl/config/` directory exists yet — create it. | — | M | |
 
-#### Phase 3b: Expression primitives (eliminates remaining ~55%)
+#### Phase 3b: Expression lowering (the real gap)
+
+The parser has the syntax. The gap is making it executable. These tasks focus on the **lowering pass** (`daglang-lower/src/lib.rs`, 7.5k LOC) and **execution runtime** — ensuring parsed expressions in function bodies lower to `LoweredOp` nodes that the resolver can execute.
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **EX-4** | **Collection operations in DSL**: Add `.map(fn)`, `.filter(fn)`, `.sort()`, `.dedup()`, `.any(fn)`, `.all(fn)`, `.len()`, `.contains(item)`, `.join(sep)`, and list literals `[a, b, c]` to the DSL expression language. Used by all 9 modules. | — | L | |
-| **EX-5** | **Pattern matching and conditionals**: Add `match expr { pattern => body }`, `if cond { a } else { b }`, `let ... = ...` bindings, and boolean operators (`&&`, `||`, `!`) to the DSL. Used by all 9 modules for dispatch, validation, and branching. | — | L | |
-| **EX-6** | **Integer arithmetic and comparison**: Add `+`, `-`, `*`, `/`, `%` arithmetic and `==`, `!=`, `<`, `>`, `<=`, `>=` comparison operators. Used by codegen (manifest freshness), build (exit code checking), makegen (counting). | EX-5 | M | |
-| **EX-7** | **Structured document rendering**: Add `render` functions producing typed document trees (`TextFile`/`Document`). Sections, lines, comments, and blank lines are structural blocks. Rendering engine handles formatting (separators, prefixes, indentation). Replaces all `format!()`/`write!()`/`.push_str()` in pragma (3 ops), makegen (2 ops), build (1 op), docgen (1 op). | EX-4, EX-5 | L | |
-| **EX-8** | **Structured data construction**: Add object literals `{ key: value }` and nested construction (objects containing lists containing objects). Used by makegen for building template data. Close to existing `@mock_response` syntax. | EX-5 | S | |
+| **EX-4** | **Lower collection method calls**: Parser has `List`, `Pipe`, `Lambda`, `Call`. Lowering must generate executable nodes for `.map(fn)`, `.filter(fn)`, `.sort()`, `.dedup()`, `.any(fn)`, `.all(fn)`, `.len()`, `.contains(item)`, `.join(sep)` when used in function bodies. Verify existing `CollectionOp` / `MapOp` / `FilterOp` etc. in `core/exec` are wired through. | — | M | |
+| **EX-5** | **Lower control flow in function bodies**: Parser has `If`, `Match`, `For`, `Let`, `BinOp`, `UnaryOp`. Verify the lowering pass emits correct `LoweredOp` graph structures for branching, iteration, and variable bindings within `fn` bodies. Existing `BranchOp`, `GuardOp`, `LoopOp` in `core/exec` may already cover this. | — | M | |
+| **EX-6** | **Lower string interpolation and formatting**: Parser has `StringInterp` with `Literal`/`Expr` parts. Ensure lowering emits nodes that evaluate interpolated expressions and concatenate results. This is the bridge to structured rendering. | — | S | |
+| **EX-7** | **Structured document rendering**: Add `render` functions producing typed document trees (`TextFile`/`Document`). Sections, lines, comments, and blank lines are structural blocks. Rendering engine handles formatting. Replaces all `format!()`/`write!()`/`.push_str()` in pragma (3 ops), makegen (2 ops), build (1 op), docgen (1 op). | EX-5, EX-6 | L | |
+| **EX-8** | **End-to-end function body test**: Write a `.dag` file with a `fn` that uses `if/else`, `match`, `for`, list ops, string interpolation, and record construction in its body. Compile, resolve, and execute it. This is the integration gate proving the full pipeline works before migrating real ops. | EX-4, EX-5, EX-6 | S | |
 
-#### Phase 3c: Custom op migration (the payoff)
+#### Phase 3c: Custom op migration (the payoff — 22 ops across 5 modules)
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **EX-9** | **Migrate `tools.pragma` ops to DSL**: 3 ops (RenderClippy, RenderAllowlist, RenderLintPolicy). Depends on structured rendering (EX-7) and data sources (EX-3). | EX-3, EX-7 | M | |
-| **EX-10** | **Migrate `tools.makegen` ops to DSL**: 3 ops (LoadRegistry, RenderMakefile, Entrypoint). Depends on data sources (EX-3), rendering (EX-7), and data construction (EX-8). | EX-3, EX-7, EX-8 | M | |
+| **EX-10** | **Migrate `tools.makegen` ops to DSL**: 3 ops (LoadRegistry, RenderMakefile, Entrypoint). Depends on data sources (EX-3) and rendering (EX-7). | EX-3, EX-7 | M | |
 | **EX-11** | **Migrate `tools.bootstrap` ops to DSL**: 4 ops (PrepareScanWorkspace, ParseScanResult, GenerateMakefile, GenerateGitignore). Depends on structured transport (EX-1) and collections (EX-4). | EX-1, EX-4 | M | |
-| **EX-12** | **Migrate `tools.codegen` ops to DSL**: 5 ops (PrepareCodegenExists, ParseCodegenExists, PrepareCodegenCommand, ParseCodegenResult, PrepareStampWrite). Depends on structured transport (EX-1), structured paths (EX-2), and conditionals (EX-5). | EX-1, EX-2, EX-5 | M | |
-| **EX-13** | **Migrate `tools.build` ops to DSL**: 7 ops (PrepareBuild, ParseBuild, PrepareTest, ParseTest, PrepareClippy, ParseClippy, Summary). Depends on conditionals (EX-5), arithmetic (EX-6), and rendering (EX-7). | EX-5, EX-6, EX-7 | M | |
-| **EX-14** | **Migrate remaining ops (ci, docgen, testgen, dag-viz) to DSL**: ~24 ops total. These follow the same patterns as EX-9 through EX-13. Can be parallelized per module. | EX-1..EX-8 | L | |
+| **EX-12** | **Migrate `tools.codegen` ops to DSL**: 5 ops (PrepareCodegenExists, ParseCodegenExists, PrepareCodegenCommand, ParseCodegenResult, PrepareStampWrite). Depends on structured transport (EX-1), structured paths (EX-2), and control flow (EX-5). | EX-1, EX-2, EX-5 | M | |
+| **EX-13** | **Migrate `tools.build` ops to DSL**: 7 ops (PrepareBuild, ParseBuild, PrepareTest, ParseTest, PrepareClippy, ParseClippy, Summary). Depends on control flow (EX-5) and rendering (EX-7). | EX-5, EX-7 | M | |
+| **EX-14** | **Migrate remaining ops (ci, docgen, testgen, dag-viz) to DSL**: ~24 additional ops beyond the 5 core modules. These follow the same patterns as EX-9 through EX-13. Can be parallelized per module. | EX-1..EX-8 | L | |
 | **EX-15** | **Delete custom resolver path**: After all custom ops are migrated, the `resolve_domain` match arms for custom modules become empty. Remove them — `resolve_domain` reduces to service transport + default passthrough. | EX-9..EX-14 | S | |
 
-**Parallelism**: EX-1, EX-2, EX-3 are fully independent (data model fixes). EX-4 and EX-5 are independent of each other but require parser/compiler changes. EX-9 through EX-14 are independent per module once their expression dependencies are met — each module can be migrated by a separate worker.
+**Parallelism**: EX-1, EX-2, EX-3 are fully independent (data model fixes). EX-4, EX-5, EX-6 are independent of each other (lowering path work). EX-9 through EX-14 are independent per module once their expression dependencies are met — each module can be migrated by a separate worker. EX-8 is the integration gate before any migration begins.
 
-**Success criteria**: After Lane H, adding a tool of any complexity requires **1 DSL file** and **0 Rust changes**. Custom `Executable` impls drop from 46 to 0.
+**Success criteria**: After Lane H, adding a tool of any complexity requires **1 DSL file** and **0 Rust changes**. Custom tool `Executable` impls drop from 22 to 0 (46 total impls including infrastructure ops that stay in Rust by design).
 
 ---
 
