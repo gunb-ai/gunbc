@@ -571,12 +571,13 @@ fn behavior_properties_from_type_dag(
     let dag = registry.get(type_id)?;
     let mut properties = Vec::new();
     for node in &dag.nodes {
-        if let crate::node::NodeBody::Opaque(op) = &node.body {
-            if let TypeOp::Meta(crate::MetadataPayload::Property(property)) = op {
-                let property = property_from_metadata(*property);
-                if !properties.contains(&property) {
-                    properties.push(property);
-                }
+        if let crate::node::NodeBody::Opaque(TypeOp::Meta(crate::MetadataPayload::Property(
+            property,
+        ))) = &node.body
+        {
+            let property = property_from_metadata(*property);
+            if !properties.contains(&property) {
+                properties.push(property);
             }
         }
     }
