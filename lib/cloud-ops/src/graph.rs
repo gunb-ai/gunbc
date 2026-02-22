@@ -2,14 +2,11 @@
 
 use crate::ops::CloudOps;
 use gunbc_exec::DynOp;
-use gunbc_ir::build::{list, optional, port};
+use gunbc_ir::build::{list, optional};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
-use gunbc_ir::{BuilderError, Dag, DagBuilder, Node};
-use gunbc_lib_aws_ops::{
-    build_aws_secrets_manager_credential_graph, build_aws_secrets_manager_upsert_graph,
-};
-use gunbc_lib_azure_ops::{
-    build_azure_key_vault_credential_graph, build_azure_key_vault_upsert_graph,
+use gunbc_ir::{
+    typed_port, BuilderError, CloudSecretConfigTag, Dag, DagBuilder, GcpProjectIdTag,
+    GcpSecretIdTag, GcpServiceAccountEmailTag, Node, NonEmptyStringTag, PlatformTag,
 };
 use gunbc_lib_gcp_ops::{
     build_gcp_secret_manager_credential_graph_github,
@@ -39,8 +36,9 @@ pub fn build_cloud_secret_manager_credential_graph_from_config(
             }
             CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
         },
-        CloudProviderKind::Aws => build_cloud_secret_manager_credential_graph_aws_stub(),
-        CloudProviderKind::Azure => build_cloud_secret_manager_credential_graph_azure_stub(),
+        CloudProviderKind::Aws | CloudProviderKind::Azure => {
+            Err(dropped_provider_error(config.provider))
+        }
     }
 }
 
@@ -74,26 +72,6 @@ pub fn build_cloud_secret_manager_credential_graph_gcp_local(
     build_cloud_secret_manager_credential_graph_gcp(CloudRuntimeKind::LocalDev)
 }
 
-#[gunbc_testgen_registry_macros::resource_test_target(
-    name = "cloud-secret-credential-aws-stub",
-    builder = "build_cloud_secret_manager_credential_graph_aws_stub()",
-    returns_result
-)]
-pub fn build_cloud_secret_manager_credential_graph_aws_stub(
-) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
-    Ok(lift_aws(build_aws_secrets_manager_credential_graph()?))
-}
-
-#[gunbc_testgen_registry_macros::resource_test_target(
-    name = "cloud-secret-credential-azure-stub",
-    builder = "build_cloud_secret_manager_credential_graph_azure_stub()",
-    returns_result
-)]
-pub fn build_cloud_secret_manager_credential_graph_azure_stub(
-) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
-    Ok(lift_azure(build_azure_key_vault_credential_graph()?))
-}
-
 /// Build a cloud secret upsert graph based on a concrete config.
 pub fn build_cloud_secret_manager_upsert_graph_from_config(
     config: &CloudSecretConfig,
@@ -106,8 +84,9 @@ pub fn build_cloud_secret_manager_upsert_graph_from_config(
             }
             CloudRuntimeKind::LocalDev => build_cloud_secret_manager_upsert_graph_gcp_local(),
         },
-        CloudProviderKind::Aws => build_cloud_secret_manager_upsert_graph_aws_stub(),
-        CloudProviderKind::Azure => build_cloud_secret_manager_upsert_graph_azure_stub(),
+        CloudProviderKind::Aws | CloudProviderKind::Azure => {
+            Err(dropped_provider_error(config.provider))
+        }
     }
 }
 
@@ -141,29 +120,16 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_local(
     build_cloud_secret_manager_upsert_graph_gcp(CloudRuntimeKind::LocalDev)
 }
 
-#[gunbc_testgen_registry_macros::resource_test_target(
-    name = "cloud-secret-upsert-aws-stub",
-    builder = "build_cloud_secret_manager_upsert_graph_aws_stub()",
-    returns_result
-)]
-pub fn build_cloud_secret_manager_upsert_graph_aws_stub(
-) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
-    Ok(lift_aws(build_aws_secrets_manager_upsert_graph()?))
-}
-
-#[gunbc_testgen_registry_macros::resource_test_target(
-    name = "cloud-secret-upsert-azure-stub",
-    builder = "build_cloud_secret_manager_upsert_graph_azure_stub()",
-    returns_result
-)]
-pub fn build_cloud_secret_manager_upsert_graph_azure_stub(
-) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
-    Ok(lift_azure(build_azure_key_vault_upsert_graph()?))
-}
-
 // ---------------------------------------------------------------------------
 // Internal builders
 // ---------------------------------------------------------------------------
+
+fn dropped_provider_error(provider: CloudProviderKind) -> BuilderError {
+    BuilderError::InternalInvariant(format!(
+        "provider `{}` is dropped in this branch (GCP-only cloud graph)",
+        provider.as_str()
+    ))
+}
 
 fn build_cloud_secret_manager_credential_graph_gcp(
     runtime: CloudRuntimeKind,
@@ -179,13 +145,13 @@ fn build_cloud_secret_manager_credential_graph_gcp(
 
     let resolve_config = builder.add_root_node(Node::opaque(
         "resolve_config",
-        vec![port("config", "CloudSecretConfig")],
+        vec![typed_port::<CloudSecretConfigTag>("config").into()],
         vec![
-            port("provider", "Platform"),
-            port("runtime", "NonEmptyString"),
-            port("audience", "NonEmptyString"),
-            port("project_or_account", "GcpProjectId"),
-            port("secret", "GcpSecretId"),
+            typed_port::<PlatformTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("runtime").into(),
+            typed_port::<NonEmptyStringTag>("audience").into(),
+            typed_port::<GcpProjectIdTag>("project_or_account").into(),
+            typed_port::<GcpSecretIdTag>("secret").into(),
             optional("version", "GcpSecretVersion"),
             optional("service_account_or_role", "GcpServiceAccountEmail"),
             optional("impersonate_account_or_role", "GcpServiceAccountEmail"),
@@ -194,13 +160,13 @@ fn build_cloud_secret_manager_credential_graph_gcp(
     ))?;
 
     let mut map_outputs = vec![
-        port("project", "GcpProjectId"),
-        port("secret", "GcpSecretId"),
+        typed_port::<GcpProjectIdTag>("project").into(),
+        typed_port::<GcpSecretIdTag>("secret").into(),
         optional("version", "GcpSecretVersion"),
-        port("service_account", "GcpServiceAccountEmail"),
-        port("scheme", "NonEmptyString"),
+        typed_port::<GcpServiceAccountEmailTag>("service_account").into(),
+        typed_port::<NonEmptyStringTag>("scheme").into(),
         optional("header_name", "OptionalString"),
-        port("source_id", "NonEmptyString"),
+        typed_port::<NonEmptyStringTag>("source_id").into(),
         list("required_scopes", "NonEmptyString"),
         optional("allow_impersonation", "OptionalBool"),
         optional("lifetime_seconds", "OptionalInt"),
@@ -211,7 +177,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
     // propagate up through nested sub-DAGs.
     if !matches!(runtime, CloudRuntimeKind::LocalDev) {
         map_outputs.push(optional("interactive_allowed", "OptionalBool"));
-        map_outputs.push(port("audience", "NonEmptyString"));
+        map_outputs.push(typed_port::<NonEmptyStringTag>("audience").into());
     }
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         map_outputs.push(optional("request_url", "Url"));
@@ -222,18 +188,18 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         Node::opaque(
             "map_gcp_inputs",
             vec![
-                port("provider", "Platform"),
-                port("runtime", "NonEmptyString"),
-                port("audience", "NonEmptyString"),
-                port("project_or_account", "GcpProjectId"),
-                port("secret", "GcpSecretId"),
+                typed_port::<PlatformTag>("provider").into(),
+                typed_port::<NonEmptyStringTag>("runtime").into(),
+                typed_port::<NonEmptyStringTag>("audience").into(),
+                typed_port::<GcpProjectIdTag>("project_or_account").into(),
+                typed_port::<GcpSecretIdTag>("secret").into(),
                 optional("version", "GcpSecretVersion"),
                 optional("service_account_or_role", "GcpServiceAccountEmail"),
                 optional("impersonate_account_or_role", "GcpServiceAccountEmail"),
                 // Pass-through inputs for the GCP graph.
-                port("scheme", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("scheme").into(),
                 optional("header_name", "OptionalString"),
-                port("source_id", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("source_id").into(),
                 list("required_scopes", "NonEmptyString"),
                 optional("allow_impersonation", "OptionalBool"),
                 optional("lifetime_seconds", "OptionalInt"),
@@ -339,13 +305,13 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
 
     let resolve_config = builder.add_root_node(Node::opaque(
         "resolve_config",
-        vec![port("config", "CloudSecretConfig")],
+        vec![typed_port::<CloudSecretConfigTag>("config").into()],
         vec![
-            port("provider", "Platform"),
-            port("runtime", "NonEmptyString"),
-            port("audience", "NonEmptyString"),
-            port("project_or_account", "GcpProjectId"),
-            port("secret", "GcpSecretId"),
+            typed_port::<PlatformTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("runtime").into(),
+            typed_port::<NonEmptyStringTag>("audience").into(),
+            typed_port::<GcpProjectIdTag>("project_or_account").into(),
+            typed_port::<GcpSecretIdTag>("secret").into(),
             optional("version", "GcpSecretVersion"),
             optional("service_account_or_role", "GcpServiceAccountEmail"),
             optional("impersonate_account_or_role", "GcpServiceAccountEmail"),
@@ -354,9 +320,9 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
     ))?;
 
     let mut map_outputs = vec![
-        port("project", "GcpProjectId"),
-        port("secret", "GcpSecretId"),
-        port("service_account", "GcpServiceAccountEmail"),
+        typed_port::<GcpProjectIdTag>("project").into(),
+        typed_port::<GcpSecretIdTag>("secret").into(),
+        typed_port::<GcpServiceAccountEmailTag>("service_account").into(),
         optional("version", "GcpSecretVersion"),
         optional("allow_impersonation", "OptionalBool"),
         optional("lifetime_seconds", "OptionalInt"),
@@ -364,7 +330,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
     // interactive_allowed only needed for non-local runtimes (see credential graph).
     if !matches!(runtime, CloudRuntimeKind::LocalDev) {
         map_outputs.push(optional("interactive_allowed", "OptionalBool"));
-        map_outputs.push(port("audience", "NonEmptyString"));
+        map_outputs.push(typed_port::<NonEmptyStringTag>("audience").into());
     }
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         map_outputs.push(optional("request_url", "Url"));
@@ -375,11 +341,11 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         Node::opaque(
             "map_gcp_secret_inputs",
             vec![
-                port("provider", "Platform"),
-                port("runtime", "NonEmptyString"),
-                port("audience", "NonEmptyString"),
-                port("project_or_account", "GcpProjectId"),
-                port("secret", "GcpSecretId"),
+                typed_port::<PlatformTag>("provider").into(),
+                typed_port::<NonEmptyStringTag>("runtime").into(),
+                typed_port::<NonEmptyStringTag>("audience").into(),
+                typed_port::<GcpProjectIdTag>("project_or_account").into(),
+                typed_port::<GcpSecretIdTag>("secret").into(),
                 optional("version", "GcpSecretVersion"),
                 optional("service_account_or_role", "GcpServiceAccountEmail"),
                 optional("impersonate_account_or_role", "GcpServiceAccountEmail"),
@@ -463,14 +429,6 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
 // ---------------------------------------------------------------------------
 
 fn lift_gcp(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
-    dag
-}
-
-fn lift_aws(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
-    dag
-}
-
-fn lift_azure(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
     dag
 }
 

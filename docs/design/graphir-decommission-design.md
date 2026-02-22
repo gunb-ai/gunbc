@@ -106,6 +106,13 @@ Evidence:
 
 - Codegen coverage checks ensure module presence and target mapping (`gunbc-dag/src/bin/codegen_cli.rs`) but do not enforce execution route correctness (DSL builder vs handwritten builder).
 
+### R6. `tools.testgen` DSL path does not yet replace handwritten generation runtime
+
+Evidence:
+
+- `dsl/tools/testgen.dag` models generation via `target |> generate()`, but the production `gunbc-testgen` binary still executes handwritten runtime generation in `gunbc-dag/src/testgen_dag/graph.rs`.
+- The remaining handwritten `testgen_dag` module is the main blocker to fully deleting section 9C legacy graph authoring.
+
 ---
 
 ## 5. Target Architecture
@@ -153,6 +160,16 @@ Evidence:
 - For GCP/cloud/LLM/review domain stacks:
   - Migrate semantics to DSL services/patterns + generic interpreters.
   - Delete handwritten graph and ops files after parity confirmation.
+
+### Phase 4 Decision Matrix (2026-02-22)
+
+| Stack | Decision | Status |
+|---|---|---|
+| AWS provider stack (`lib/aws-ops`) | Drop now | Legacy `graph.rs` / `graph_mock.rs` / `ops.rs` deleted; unsupported facade retained |
+| Azure provider stack (`lib/azure-ops`) | Drop now | Legacy `graph.rs` / `graph_mock.rs` / `ops.rs` deleted; unsupported facade retained |
+| Cloud/GCP stack (`lib/cloud-ops`, `lib/gcp-ops`) | Migrate to DSL/generic interpreters | In progress (cloud graph now fails fast for dropped AWS/Azure providers) |
+| LLM stack (`lib/llm-ops`) | Migrate to DSL/generic interpreters | In progress |
+| Review stack (`lib/review`) | Migrate to DSL/generic interpreters | In progress |
 
 ## Phase 5: Fail-Closed Enforcement
 
@@ -256,12 +273,12 @@ Disposition tags:
 
 ### D. Domain Provider Stacks (`DECIDE_DROP_OR_MIGRATE`)
 
-46. `lib/aws-ops/src/graph.rs`
-47. `lib/aws-ops/src/graph_mock.rs`
-48. `lib/aws-ops/src/ops.rs`
-49. `lib/azure-ops/src/graph.rs`
-50. `lib/azure-ops/src/graph_mock.rs`
-51. `lib/azure-ops/src/ops.rs`
+46. `lib/aws-ops/src/graph.rs` -- [DELETED 2026-02-22]
+47. `lib/aws-ops/src/graph_mock.rs` -- [DELETED 2026-02-22]
+48. `lib/aws-ops/src/ops.rs` -- [DELETED 2026-02-22]
+49. `lib/azure-ops/src/graph.rs` -- [DELETED 2026-02-22]
+50. `lib/azure-ops/src/graph_mock.rs` -- [DELETED 2026-02-22]
+51. `lib/azure-ops/src/ops.rs` -- [DELETED 2026-02-22]
 52. `lib/cloud-ops/src/github_credential_graph.rs`
 53. `lib/cloud-ops/src/graph.rs`
 54. `lib/cloud-ops/src/infra_graph.rs`
@@ -296,5 +313,6 @@ Disposition tags:
 2. [DONE 2026-02-22] Implement interactive/external lowering + shell passthrough propagation.
 3. [DONE 2026-02-22] Replace manual workspace subdags for `gist/deps/clippy/dag_viz/testgen`.
 4. Delete legacy tool graph files in section 9C after parity checks pass.
-5. Decide and execute drop-or-migrate policy for section 9D provider stacks.
+5. [IN PROGRESS 2026-02-22] Decide and execute drop-or-migrate policy for section 9D provider stacks (drop-now completed for AWS/Azure + `lib/tools/cargo/src/ops.rs`; cloud/gcp/llm/review stacks remain).
 6. Enforce fail-closed resolver behavior and CI checks in Phase 5.
+7. Add executable lowering/runtime support for `generate()` in `tools.testgen` path, then delete remaining handwritten `gunbc-dag/src/testgen_dag/*`.

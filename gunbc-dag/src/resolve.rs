@@ -454,9 +454,6 @@ impl Executable for ResourceReleaseOp {
 }
 
 /// Filesystem env adapter for DSL graphs.
-///
-/// Lowered DAGs currently use different fs output port names (`file:write`
-/// and/or `FilesystemHandle`). Emit both for compatibility.
 #[derive(Debug, Clone)]
 struct DslFsEnvOp;
 
@@ -466,10 +463,7 @@ impl Executable for DslFsEnvOp {
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
         let fs: Value = filename::FilesystemHandle::cross_platform(filename::Scope::Write).into();
-        OutputMap::new()
-            .value(FsEnv::WRITE_PORT, fs.clone())
-            .value("FilesystemHandle", fs)
-            .ok()
+        OutputMap::new().value(FsEnv::WRITE_PORT, fs).ok()
     }
 }
 
@@ -1089,15 +1083,15 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
             .iter()
             .find(|port| port.type_id.0 == "FilesystemHandle")
             .map(|port| port.name.0.clone())
-            .unwrap_or_else(|| "FilesystemHandle".to_string())
+            .unwrap_or_else(|| FsEnv::WRITE_PORT.to_string())
     } else {
         dag.add_node(Node::opaque(
             fs_node_id.as_str(),
             vec![],
-            vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+            vec![Port::new(FsEnv::WRITE_PORT, "FilesystemHandle")],
             DynOp::new(DslFsEnvOp),
         ));
-        "FilesystemHandle".to_string()
+        FsEnv::WRITE_PORT.to_string()
     };
 
     for (node_id, port_name) in pending {
@@ -2018,7 +2012,7 @@ mod tests {
         dag.add_node(Node::opaque(
             "fs_env",
             vec![],
-            vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+            vec![Port::new(FsEnv::WRITE_PORT, "FilesystemHandle")],
             DynOp::new(DslFsEnvOp),
         ));
         dag.add_node(Node::opaque(
@@ -2032,7 +2026,7 @@ mod tests {
 
         let has_edge = dag.edges.iter().any(|edge| {
             edge.from_node.0 == "fs_env"
-                && edge.from_port.0 == "FilesystemHandle"
+                && edge.from_port.0 == FsEnv::WRITE_PORT
                 && edge.to_node.0 == "execute_read_makegen"
                 && edge.to_port.0 == "res:file"
         });

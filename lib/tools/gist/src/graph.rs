@@ -18,7 +18,8 @@ use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest};
 use gunbc_ir::{
     add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
-    WorkflowSignature,
+    FilePathTag, FilesystemHandleTag, MapTag, TransportRequestTag, TransportResponseTag,
+    WorkflowSignature, typed_port,
 };
 use gunbc_lib_cloud_ops::graph_cloud_config;
 use gunbc_lib_gist_ops::{build_gist_upload_subdag, GistUploadOp};
@@ -240,11 +241,11 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // PrepareReadFile node — needs both filename (element) and repo_path (extra input)
     dag.add_node(Node::opaque(
         "prepare",
-        vec![port("filename", "FilePath"), port("repo_path", "FilePath")],
+        vec![typed_port::<FilePathTag>("filename").into(), typed_port::<FilePathTag>("repo_path").into()],
         vec![
-            port("request", "TransportRequest"),
-            port("filename", "FilePath"),
-            port("skip", "Bool"),
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<FilePathTag>("filename").into(),
+            typed_port::<bool>("skip").into(),
         ],
         DynOp::new(PrepareReadFileOp),
     ));
@@ -253,11 +254,11 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     dag.add_node(Node::opaque(
         "execute",
         vec![
-            port("request", "TransportRequest"),
-            port("skip", "Bool"),
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<bool>("skip").into(),
             resource("file", "FilesystemHandle", AccessMode::Read),
         ],
-        vec![port("response", "TransportResponse")],
+        vec![typed_port::<TransportResponseTag>("response").into()],
         DynOp::new(TransportOps::Execute),
     ));
 
@@ -265,10 +266,10 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     dag.add_node(Node::opaque(
         "parse",
         vec![
-            port("response", "TransportResponse"),
-            port("filename", "FilePath"),
+            typed_port::<TransportResponseTag>("response").into(),
+            typed_port::<FilePathTag>("filename").into(),
         ],
-        vec![port("result", "String")],
+        vec![typed_port::<String>("result").into()],
         DynOp::new(ParseReadFileOp),
     ));
 
@@ -365,7 +366,7 @@ pub fn build_gist_graph_with_config(
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        vec![typed_port::<FilesystemHandleTag>(FsEnv::WRITE_PORT).into()],
         DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -456,7 +457,7 @@ fn build_snapshot_acquire(
     let list_files = add_transport_triplet(
         builder,
         "list_files",
-        vec![port("repo_path", "FilePath")],
+        vec![typed_port::<FilePathTag>("repo_path").into()],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![list("files", "FilePath")],
         DynOp::new(GitOps::PrepareLsFiles { extensions }),
@@ -496,7 +497,7 @@ fn build_snapshot_acquire(
                 list("filenames", "FilePath"),
                 list("contents_list", "String"),
             ],
-            vec![port("contents", "Map")],
+            vec![typed_port::<MapTag>("contents").into()],
             DynOp::new(CollectFileContentsOp),
         ),
         &read_files_loop,
@@ -506,7 +507,7 @@ fn build_snapshot_acquire(
     let render_markdown = builder.add_node_after(
         Node::opaque(
             "render_markdown",
-            vec![port("contents", "Map")],
+            vec![typed_port::<MapTag>("contents").into()],
             vec![scalar("markdown", "NonEmptyString")],
             DynOp::new(MarkdownOp::RenderCodeSnapshot),
         ),
@@ -544,11 +545,11 @@ fn build_diff_acquire(
         builder,
         "diff",
         vec![
-            port("repo_path", "FilePath"),
+            typed_port::<FilePathTag>("repo_path").into(),
             optional("base_ref", "OptionalString"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![port("diff_files", "Map"), scalar("stats", "NonEmptyString")],
+        vec![typed_port::<MapTag>("diff_files").into(), scalar("stats", "NonEmptyString")],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: base_ref.to_string(),
             extensions,
@@ -565,7 +566,7 @@ fn build_diff_acquire(
         Node::opaque(
             "render_markdown",
             vec![
-                port("diff_files", "Map"),
+                typed_port::<MapTag>("diff_files").into(),
                 optional("stats", "NonEmptyString"),
             ],
             vec![scalar("markdown", "NonEmptyString")],
@@ -610,7 +611,7 @@ fn build_recent_acquire(
     let rev_list = add_transport_triplet(
         builder,
         "rev_list",
-        vec![port("repo_path", "FilePath")],
+        vec![typed_port::<FilePathTag>("repo_path").into()],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![optional("base_ref", "OptionalString")],
         DynOp::new(GitOps::PrepareRevListBefore {
@@ -631,11 +632,11 @@ fn build_recent_acquire(
         builder,
         "diff",
         vec![
-            port("repo_path", "FilePath"),
+            typed_port::<FilePathTag>("repo_path").into(),
             optional("base_ref", "OptionalString"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![port("diff_files", "Map"), scalar("stats", "NonEmptyString")],
+        vec![typed_port::<MapTag>("diff_files").into(), scalar("stats", "NonEmptyString")],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: "HEAD".to_string(),
             extensions,
@@ -652,7 +653,7 @@ fn build_recent_acquire(
         Node::opaque(
             "render_markdown",
             vec![
-                port("diff_files", "Map"),
+                typed_port::<MapTag>("diff_files").into(),
                 optional("stats", "NonEmptyString"),
             ],
             vec![scalar("markdown", "NonEmptyString")],

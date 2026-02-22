@@ -92,7 +92,7 @@
       "inputs": [],
       "outputs": [
         {
-          "name": "FilesystemHandle",
+          "name": "file:write",
           "type_id": "FilesystemHandle",
           "cardinality": "1"
         }
@@ -265,13 +265,13 @@
     },
     {
       "from_node": "fs_env",
-      "from_port": "FilesystemHandle",
+      "from_port": "file:write",
       "to_node": "execute_makegen_transport",
       "to_port": "res:file"
     },
     {
       "from_node": "fs_env",
-      "from_port": "FilesystemHandle",
+      "from_port": "file:write",
       "to_node": "prepare_read_makegen",
       "to_port": "res:file:Makefile"
     },

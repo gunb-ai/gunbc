@@ -26,6 +26,7 @@ gunbc-lib-gist-ops = { path = "../lib/gist-ops" }
 gunbc-lib-git-ops = { path = "../lib/git-ops" }
 gunbc-lib-cloud-ops = { path = "../lib/cloud-ops" }
 gunbc-lib-gcp-ops = { path = "../lib/gcp-ops" }
+gunbc-lib-aws-ops = { path = "../lib/aws-ops" }
 
 # General tools (reusable)
 gunbc-deps = { path = "../lib/tools/deps" }
@@ -146,5 +147,4 @@ path = "../target/codegen/bin/gist/main.rs"
 [[bin]]
 name = "gunbc-gist-diff"
 path = "../target/codegen/bin/gist-diff/main.rs"
-
 

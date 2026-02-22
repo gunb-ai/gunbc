@@ -13,7 +13,7 @@ fn is_fs_env_node(node_id: &NodeId) -> bool {
 }
 
 /// Auto-wire a filesystem write-handle dry-run mock when the DAG declares an
-/// `fs_env` node with a `FilesystemHandle` output.
+/// `fs_env` node with a `file:write` `FilesystemHandle` output.
 ///
 /// Returns true when a mock was inserted.
 pub fn wire_fs_env_write_mock<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) -> bool {
@@ -74,17 +74,17 @@ mod tests {
     }
 
     #[test]
-    fn wire_fs_env_write_mock_supports_dsl_port_name() {
+    fn wire_fs_env_write_mock_uses_canonical_port_name() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
             "fs_env",
             vec![],
-            vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+            vec![Port::new(FsEnv::WRITE_PORT, "FilesystemHandle")],
             (),
         ));
 
         let mut mocks = BoundaryMocks::new();
         assert!(wire_fs_env_write_mock(&dag, &mut mocks));
-        assert!(mocks.has_mock(&NodeId::from("fs_env"), &PortName::from("FilesystemHandle")));
+        assert!(mocks.has_mock(&NodeId::from("fs_env"), &PortName::from(FsEnv::WRITE_PORT)));
     }
 }

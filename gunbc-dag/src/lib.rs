@@ -187,6 +187,8 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
 
 #[cfg(test)]
 mod system_model_integration {
+    use gunbc_lib_aws_ops::system_models::build_aws_s3_model;
+    use gunbc_lib_gcp_ops::system_models::build_gcp_gcs_model;
     use gunbc_ir::system_model::{
         default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
         validate_store_behavior_mapping, Property, UpsertPhase,
@@ -228,6 +230,9 @@ mod system_model_integration {
 
     #[test]
     fn store_behavior_mapping_is_valid_for_gcs_and_s3() {
+        // Anchor provider model symbols so inventory submissions survive linking.
+        let _ = build_aws_s3_model as fn() -> gunbc_ir::system_model::SystemModel;
+        let _ = build_gcp_gcs_model as fn() -> gunbc_ir::system_model::SystemModel;
         validate_store_behavior_mapping(&default_system_models())
             .expect("store abstraction mapping should validate for both cloud providers");
     }

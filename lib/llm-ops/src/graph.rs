@@ -15,7 +15,8 @@ use gunbc_exec::DynOp;
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, validate_authenticate_bindings,
-    AuthenticatePhase, AuthenticatePhaseBinding, BuilderError, Dag, DagBuilder, Node,
+    typed_port, AuthenticatePhase, AuthenticatePhaseBinding, BuilderError, CloudSecretConfigTag,
+    Dag, DagBuilder, Node, NonEmptyStringTag, SecretNameTag,
 };
 use gunbc_lib_cloud_ops::{
     build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
@@ -63,7 +64,7 @@ pub fn build_chat_completion_graph_with_config(
         "cloud_env",
         vec![],
         vec![
-            port("config", "CloudSecretConfig"),
+            typed_port::<CloudSecretConfigTag>("config").into(),
             optional("request_url", "Url"),
             optional("request_token", "Secret"),
         ],
@@ -75,15 +76,15 @@ pub fn build_chat_completion_graph_with_config(
     // Node 1: Resolve auth requirements (pure)
     let resolve_auth = builder.add_root_node(Node::opaque(
         "resolve_auth",
-        vec![port("provider", "NonEmptyString")],
+        vec![typed_port::<NonEmptyStringTag>("provider").into()],
         vec![
-            port("service", "NonEmptyString"),
-            port("secret_name", "SecretName"),
+            typed_port::<NonEmptyStringTag>("service").into(),
+            typed_port::<SecretNameTag>("secret_name").into(),
             optional("allow_impersonation", "OptionalBool"),
-            port("scheme", "NonEmptyString"),
-            port("header_name", "NonEmptyString"),
+            typed_port::<NonEmptyStringTag>("scheme").into(),
+            typed_port::<NonEmptyStringTag>("header_name").into(),
             list("required_scopes", "NonEmptyString"),
-            port("interactive_allowed", "Bool"),
+            typed_port::<bool>("interactive_allowed").into(),
         ],
         DynOp::new(LlmOps::ResolveAuth),
     ))?;
@@ -93,11 +94,11 @@ pub fn build_chat_completion_graph_with_config(
         Node::opaque(
             "bind_secret",
             vec![
-                port("config", "CloudSecretConfig"),
-                port("service", "NonEmptyString"),
-                port("secret_name", "SecretName"),
+                typed_port::<CloudSecretConfigTag>("config").into(),
+                typed_port::<NonEmptyStringTag>("service").into(),
+                typed_port::<SecretNameTag>("secret_name").into(),
             ],
-            vec![port("config", "CloudSecretConfig")],
+            vec![typed_port::<CloudSecretConfigTag>("config").into()],
             DynOp::new(CloudOps::BindSecretName),
         ),
         &[&cloud_env, &resolve_auth],
@@ -115,7 +116,7 @@ pub fn build_chat_completion_graph_with_config(
         Node::opaque(
             "scope_preflight",
             vec![list("required_scopes", "NonEmptyString")],
-            vec![port("scope_verified", "Bool")],
+            vec![typed_port::<bool>("scope_verified").into()],
             DynOp::new(CloudOps::ScopePreflight),
         ),
         &resolve_auth,
@@ -129,9 +130,9 @@ pub fn build_chat_completion_graph_with_config(
         "execute",
         "parse",
         vec![
-            port("provider", "NonEmptyString"),
-            port("model", "NonEmptyString"),
-            port("messages", "Json"),
+            typed_port::<NonEmptyStringTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
+            typed_port::<serde_json::Value>("messages").into(),
             optional("system_prompt", "OptionalString"),
             optional("temperature", "OptionalJson"),
             optional("max_tokens", "OptionalInt"),
@@ -140,13 +141,13 @@ pub fn build_chat_completion_graph_with_config(
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
-        vec![port("provider", "NonEmptyString")],
+        vec![typed_port::<NonEmptyStringTag>("provider").into()],
         vec![
-            port("content", "NonEmptyString"),
-            port("model", "NonEmptyString"),
-            port("finish_reason", "NonEmptyString"),
-            port("input_tokens", "Int"),
-            port("output_tokens", "Int"),
+            typed_port::<NonEmptyStringTag>("content").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
+            typed_port::<NonEmptyStringTag>("finish_reason").into(),
+            typed_port::<i64>("input_tokens").into(),
+            typed_port::<i64>("output_tokens").into(),
         ],
         DynOp::new(LlmOps::PrepareChatRequest),
         DynOp::new(LlmOps::ParseChatResponse),

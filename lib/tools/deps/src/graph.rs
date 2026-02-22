@@ -16,7 +16,8 @@ use crate::ops::DepsOp;
 use gunbc_exec::DynOp;
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, BuilderError, Cardinality, Dag,
-    DagBuilder, Node, WorkflowSignature,
+    DagBuilder, FilePathTag, FilesystemHandleTag, Node, NonEmptyStringTag, PlatformTag,
+    TransportRequestTag, TransportResponseTag, WorkflowSignature, typed_port,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv, PrepareFileWriteOp};
@@ -61,14 +62,14 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let platform_env = builder.add_root_node(Node::opaque(
         "platform_env",
         vec![],
-        vec![port("platform", "Platform")],
+        vec![typed_port::<PlatformTag>("platform").into()],
         DynOp::new(PlatformEnv),
     ))?;
 
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        vec![typed_port::<FilesystemHandleTag>(FsEnv::WRITE_PORT).into()],
         DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -82,13 +83,13 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "prepare_load_manifest",
         "execute_load_manifest",
         "parse_manifest",
-        vec![port("manifest_path", "FilePath")],
+        vec![typed_port::<FilePathTag>("manifest_path").into()],
         vec![resource(
             "file:deps.toml",
             "FilesystemHandle",
             AccessMode::Read,
         )],
-        vec![port("manifest_path", "FilePath")],
+        vec![typed_port::<FilePathTag>("manifest_path").into()],
         vec![
             scalar("dep_count", "Int"),
             list("dep_names", "NonEmptyString"),
@@ -230,7 +231,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        vec![typed_port::<FilesystemHandleTag>(FsEnv::WRITE_PORT).into()],
         DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -267,9 +268,9 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             "prepare_file_write",
             vec![
                 scalar("content", "NonEmptyString"),
-                port("path", "FilePath"),
+                typed_port::<FilePathTag>("path").into(),
             ],
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            vec![typed_port::<TransportRequestTag>("request").into(), typed_port::<bool>("skip").into()],
             DynOp::new(PrepareFileWriteOp),
         ),
         &render_deps_toml,
@@ -281,14 +282,14 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         Node::opaque(
             "execute_transport",
             vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
                 resource("file:deps.toml", "FilesystemHandle", AccessMode::Write),
             ],
             vec![
-                port("response", "TransportResponse"),
-                port("written_path", "FilePath"),
-                port("content", "NonEmptyString"),
+                typed_port::<TransportResponseTag>("response").into(),
+                typed_port::<FilePathTag>("written_path").into(),
+                typed_port::<NonEmptyStringTag>("content").into(),
             ],
             DynOp::new(TransportOps::Execute),
         ),

@@ -32,7 +32,7 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "render_makefile",
                 vec![scalar("registry", "Json")],
-                vec![scalar("makefile_content", "String")],
+                vec![scalar("return", "String")],
                 DynOp::new(MakegenOp::RenderMakefile),
             ),
             &load_registry,
@@ -77,7 +77,7 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
         .expect("registry edge");
     builder
         .add_edge(
-            render_makefile.out("makefile_content"),
+            render_makefile.out("return"),
             prepare_file_write.in_port("content"),
         )
         .expect("content edge");

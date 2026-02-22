@@ -192,9 +192,11 @@ pub use type_op::{
 };
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use typed_io::{
-    typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,
-    ListTag, NetworkHandleTag, NonEmptyListTag, OptionalTag, PlatformTag, PortTypeTag, SecretTag,
-    TimestampTag, ToolHandleTag, TransportRequestTag, TransportResponseTag, TypedInput,
+    typed_input, typed_output, typed_port, AnyTag, CloudSecretConfigTag, CredentialTag,
+    FilePathTag, FilesystemHandleTag, GcpProjectIdTag, GcpSecretIdTag, GcpSecretVersionTag,
+    GcpServiceAccountEmailTag, ListTag, MapTag, NetworkHandleTag, NonEmptyListTag,
+    NonEmptyStringTag, OidcSubjectTokenTag, OptionalTag, PlatformTag, PortTypeTag, SecretNameTag,
+    SecretTag, TimestampTag, ToolHandleTag, TransportRequestTag, TransportResponseTag, TypedInput,
     TypedOutput, TypedPort, UrlTag,
 };
 pub use types::{

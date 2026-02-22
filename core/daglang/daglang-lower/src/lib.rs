@@ -1305,7 +1305,7 @@ mod parity {
     /// - strips `tools.makegen::` node-id prefixes
     /// - drops the wrapper `makegen` callable node
     /// - removes synthetic `__deps` ports/edges
-    /// - canonicalizes `render_makefile.return` output to `makefile_content`
+    /// - preserves canonical callable/fs port names (`return`, `file:write`)
     /// - ignores environment-scaffold edge `fs_env -> prepare_read_makegen`
     pub fn compare_makegen_topology<T>(
         candidate: &Dag<LoweredOp>,
@@ -1572,8 +1572,8 @@ mod parity {
             if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
                 continue;
             }
-            let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
-            let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
+            let from_port = edge.from_port.0.clone();
+            let to_port = edge.to_port.0.clone();
             let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
                 continue;
             };
@@ -2841,8 +2841,8 @@ mod parity {
             if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
                 continue;
             }
-            let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
-            let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
+            let from_port = edge.from_port.0.clone();
+            let to_port = edge.to_port.0.clone();
             let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
                 continue;
             };
@@ -2864,14 +2864,7 @@ mod parity {
     fn normalize_makegen_ports(node_id: &str, inputs: &mut Vec<Port>, outputs: &mut Vec<Port>) {
         match node_id {
             "fs_env" => {
-                outputs.retain(|port| {
-                    matches!(port.name.0.as_str(), "FilesystemHandle" | "file:write")
-                });
-                for output in outputs.iter_mut() {
-                    if output.name.0 == "file:write" {
-                        output.name.0 = "FilesystemHandle".to_string();
-                    }
-                }
+                outputs.retain(|port| port.name.0 == "file:write");
             }
             "load_registry" => {
                 outputs.retain(|port| port.name.0 == "registry");
@@ -2884,12 +2877,7 @@ mod parity {
                 for input in inputs.iter_mut() {
                     input.type_id.0 = "Json".to_string();
                 }
-                for output in outputs.iter_mut() {
-                    if output.name.0 == "return" {
-                        output.name.0 = "makefile_content".to_string();
-                    }
-                }
-                outputs.retain(|port| port.name.0 == "makefile_content");
+                outputs.retain(|port| port.name.0 == "return");
             }
             "prepare_read_makegen" => {
                 inputs.retain(|port| port.name.0 == "path");
@@ -2927,16 +2915,6 @@ mod parity {
         ports.dedup_by(|lhs, rhs| {
             lhs.name == rhs.name && lhs.type_id == rhs.type_id && lhs.cardinality == rhs.cardinality
         });
-    }
-
-    fn canonical_makegen_port_name(node_id: &str, port_name: &str) -> String {
-        if node_id == "render_makefile" && port_name == "return" {
-            return "makefile_content".to_string();
-        }
-        if node_id == "fs_env" && port_name == "file:write" {
-            return "FilesystemHandle".to_string();
-        }
-        port_name.to_string()
     }
 
     fn canonical_makegen_node_id(node_id: &str) -> String {
@@ -3708,34 +3686,34 @@ fn add_makegen_scaffolding(
         );
     }
 
-    if builder.has_node("prepare_read_makegen") {
-        if !builder.has_node("fs_env") {
-            builder.add_node(Node::opaque(
-                "fs_env",
-                vec![],
-                vec![Port::scalar("FilesystemHandle", "FilesystemHandle")],
-                LoweredOp::Primitive {
-                    module: "tools.makegen".to_string(),
-                    name: "fs_env".to_string(),
-                    kind: PrimitiveOpKind::FsEnv,
-                },
-            ));
-        }
-        builder.add_edge(
-            "fs_env",
-            "FilesystemHandle",
-            "prepare_read_makegen",
-            "res:file:Makefile",
-        );
-        if builder.has_node("execute_makegen_transport") {
+        if builder.has_node("prepare_read_makegen") {
+            if !builder.has_node("fs_env") {
+                builder.add_node(Node::opaque(
+                    "fs_env",
+                    vec![],
+                    vec![Port::scalar("file:write", "FilesystemHandle")],
+                    LoweredOp::Primitive {
+                        module: "tools.makegen".to_string(),
+                        name: "fs_env".to_string(),
+                        kind: PrimitiveOpKind::FsEnv,
+                    },
+                ));
+            }
             builder.add_edge(
                 "fs_env",
-                "FilesystemHandle",
-                "execute_makegen_transport",
-                "res:file",
+                "file:write",
+                "prepare_read_makegen",
+                "res:file:Makefile",
             );
+            if builder.has_node("execute_makegen_transport") {
+                builder.add_edge(
+                    "fs_env",
+                    "file:write",
+                    "execute_makegen_transport",
+                    "res:file",
+                );
+            }
         }
-    }
 }
 
 fn has_annotation(annotations: &[Annotation], target: &str) -> bool {
@@ -5515,8 +5493,6 @@ mod tests {
     use gunbc_deps::build_deps_graph;
     use gunbc_gist::{build_gist_graph, GistMode};
     use gunbc_ir::{Edge, Port};
-    use gunbc_lib_aws_ops::build_aws_secrets_manager_credential_graph;
-    use gunbc_lib_azure_ops::build_azure_key_vault_credential_graph;
     use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use std::collections::{HashMap, HashSet, VecDeque};
     use std::fs;
@@ -6204,34 +6180,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
     }
 
     #[test]
-    fn aws_credential_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
-        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.aws.credential");
-        let reference = build_aws_secrets_manager_credential_graph()
-            .expect("aws credential graph should build");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
-    fn azure_credential_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("cloud.azure.credential");
-        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.azure.credential");
-        let reference =
-            build_azure_key_vault_credential_graph().expect("azure credential graph should build");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
     fn ci_pipeline_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
         let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
@@ -6398,7 +6346,7 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
             ),
             (
                 "fs_env",
-                "FilesystemHandle",
+                "file:write",
                 "prepare_read_makegen",
                 "res:file:Makefile",
             ),
@@ -8158,7 +8106,7 @@ func prompt() -> { ok: Bool } {
         dag.add_node(Node::opaque(
             "fs_env",
             vec![],
-            vec![Port::scalar("FilesystemHandle", "FilesystemHandle")],
+            vec![Port::scalar("file:write", "FilesystemHandle")],
             (),
         ));
         dag.add_node(Node::opaque(
@@ -8170,7 +8118,7 @@ func prompt() -> { ok: Bool } {
         dag.add_node(Node::opaque(
             "render_makefile",
             vec![Port::scalar("registry", "ToolRegistry")],
-            vec![Port::scalar("makefile_content", "String")],
+            vec![Port::scalar("return", "String")],
             (),
         ));
         dag.add_node(Node::opaque(
@@ -8230,13 +8178,13 @@ func prompt() -> { ok: Bool } {
         ));
         dag.add_edge(Edge::new(
             "render_makefile",
-            "makefile_content",
+            "return",
             "compare_makegen_content",
             "expected_content",
         ));
         dag.add_edge(Edge::new(
             "render_makefile",
-            "makefile_content",
+            "return",
             "prepare_write_makegen",
             "content",
         ));

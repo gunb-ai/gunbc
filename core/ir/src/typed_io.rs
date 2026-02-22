@@ -211,6 +211,28 @@ impl PortTypeTag for UrlTag {
     }
 }
 
+macro_rules! define_named_type_tag {
+    ($name:ident, $type_id:literal) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub struct $name;
+        impl PortTypeTag for $name {
+            fn type_id() -> TypeId {
+                TypeId::from($type_id)
+            }
+        }
+    };
+}
+
+define_named_type_tag!(MapTag, "Map");
+define_named_type_tag!(NonEmptyStringTag, "NonEmptyString");
+define_named_type_tag!(SecretNameTag, "SecretName");
+define_named_type_tag!(CloudSecretConfigTag, "CloudSecretConfig");
+define_named_type_tag!(OidcSubjectTokenTag, "OidcSubjectToken");
+define_named_type_tag!(GcpProjectIdTag, "GcpProjectId");
+define_named_type_tag!(GcpSecretIdTag, "GcpSecretId");
+define_named_type_tag!(GcpSecretVersionTag, "GcpSecretVersion");
+define_named_type_tag!(GcpServiceAccountEmailTag, "GcpServiceAccountEmail");
+
 /// Generic typed port wrapper.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedPort<T: PortTypeTag> {

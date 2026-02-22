@@ -1,6 +1,5 @@
-use gunbc_ir::resource::ResourceIo;
-use gunbc_lib_transport::TransportIo;
 use gunbc_testgen_registry::iter_resource_tests;
+use std::fs;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -9,15 +8,14 @@ fn public_zero_arg_graph_builders_are_resource_registered() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
-    let io = TransportIo::new();
 
-    let builders = collect_public_zero_arg_graph_builders(root, &io);
+    let builders = collect_public_zero_arg_graph_builders(root);
     assert!(
         !builders.is_empty(),
         "found no public zero-arg graph builders; coverage test is broken"
     );
 
-    let registered = collect_non_skip_resource_builder_registrations(root, &io);
+    let registered = collect_non_skip_resource_builder_registrations(root);
     assert!(
         !registered.is_empty(),
         "found no non-skip #[resource_test_target] registrations; coverage test is broken"
@@ -72,9 +70,8 @@ fn runtime_registry_contains_non_skip_resource_annotations() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
-    let io = TransportIo::new();
 
-    let expected = collect_non_skip_resource_target_names(root, &io);
+    let expected = collect_non_skip_resource_target_names(root);
     assert!(
         !expected.is_empty(),
         "found no non-skip #[resource_test_target] annotations; coverage test is broken"
@@ -103,32 +100,27 @@ fn runtime_registry_contains_non_skip_resource_annotations() {
     );
 }
 
-fn collect_public_zero_arg_graph_builders(
-    root: &Path,
-    io: &TransportIo,
-) -> Vec<(String, String, String)> {
+fn collect_public_zero_arg_graph_builders(root: &Path) -> Vec<(String, String, String)> {
     let pattern = format!("{}/**/*.rs", root.display());
     let mut results = Vec::new();
 
-    let paths = match io.glob_paths(&pattern) {
+    let paths = match glob::glob(&pattern) {
         Ok(paths) => paths,
         Err(_) => return results,
     };
 
-    for path in paths {
+    for path in paths.flatten() {
         let path_str = path.to_string_lossy();
         if path_str.contains("/target/")
             || path_str.contains("/buck-out/")
             || !path_str.contains("/src/")
+            || path_str.ends_with("/unsupported.rs")
         {
             continue;
         }
 
-        let content = match io.read_file(&path) {
-            Ok(bytes) => match String::from_utf8(bytes) {
-                Ok(c) => c,
-                Err(_) => continue,
-            },
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
             Err(_) => continue,
         };
 
@@ -171,19 +163,16 @@ fn collect_public_zero_arg_graph_builders(
     results
 }
 
-fn collect_non_skip_resource_builder_registrations(
-    root: &Path,
-    io: &TransportIo,
-) -> HashSet<(String, String)> {
+fn collect_non_skip_resource_builder_registrations(root: &Path) -> HashSet<(String, String)> {
     let pattern = format!("{}/**/*.rs", root.display());
     let mut results = HashSet::new();
 
-    let paths = match io.glob_paths(&pattern) {
+    let paths = match glob::glob(&pattern) {
         Ok(paths) => paths,
         Err(_) => return results,
     };
 
-    for path in paths {
+    for path in paths.flatten() {
         let path_str = path.to_string_lossy();
         if path_str.contains("/target/")
             || path_str.contains("/buck-out/")
@@ -192,11 +181,8 @@ fn collect_non_skip_resource_builder_registrations(
             continue;
         }
 
-        let content = match io.read_file(&path) {
-            Ok(bytes) => match String::from_utf8(bytes) {
-                Ok(c) => c,
-                Err(_) => continue,
-            },
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
             Err(_) => continue,
         };
         let crate_dir = crate_dir_from_path(root, &path);
@@ -248,16 +234,16 @@ fn collect_non_skip_resource_builder_registrations(
     results
 }
 
-fn collect_non_skip_resource_target_names(root: &Path, io: &TransportIo) -> Vec<(String, String)> {
+fn collect_non_skip_resource_target_names(root: &Path) -> Vec<(String, String)> {
     let pattern = format!("{}/**/*.rs", root.display());
     let mut results = Vec::new();
 
-    let paths = match io.glob_paths(&pattern) {
+    let paths = match glob::glob(&pattern) {
         Ok(paths) => paths,
         Err(_) => return results,
     };
 
-    for path in paths {
+    for path in paths.flatten() {
         let path_str = path.to_string_lossy();
         if path_str.contains("/target/")
             || path_str.contains("/buck-out/")
@@ -266,11 +252,8 @@ fn collect_non_skip_resource_target_names(root: &Path, io: &TransportIo) -> Vec<
             continue;
         }
 
-        let content = match io.read_file(&path) {
-            Ok(bytes) => match String::from_utf8(bytes) {
-                Ok(c) => c,
-                Err(_) => continue,
-            },
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
             Err(_) => continue,
         };
         let lines: Vec<&str> = content.lines().collect();

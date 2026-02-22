@@ -219,7 +219,7 @@ fn main() {
                         .entries
                         .iter()
                         .find(|e| e.node_id == "render_makefile")
-                        .and_then(|e| e.outputs.get("makefile_content"))
+                        .and_then(|e| e.outputs.get("return"))
                         .and_then(|v| v.as_str());
 
                     let actual = log

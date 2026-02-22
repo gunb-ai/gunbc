@@ -122,9 +122,9 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 |------|--------|-----------|
 | 1: Type system + graph builders | **DONE** | All port types converted (TS-1, TS-1b, TS-1c, TS-1d complete 2026-02-22) |
 | 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-16 (partial). Commit: L2-0. L2-3 done, L2-4 done |
-| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-4 (needs Lane 2 done) |
+| Post-merge: Type system hard cutover | **DONE** | TS-7 done (2026-02-22), TS-4 done (2026-02-22) — `PortType::Any` deleted |
 | 4: Codebase polish | **ACTIVE** | CU-7..CU-9 (CU-2 done 2026-02-22) |
-| 5: GraphIR decommission (exclusive) | **ACTIVE** | GD-4 (in progress), GD-5 (in progress) |
+| 5: GraphIR decommission (exclusive) | **ACTIVE** | GD-4 (in progress), GD-5 (in progress: AWS/Azure drop-now cut landed) |
 
 ---
 
@@ -141,7 +141,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports -> `Secret`. Identity ports -> `GcpServiceAccountEmail`. Project ports -> `GcpProjectId`. Audience ports -> `NonEmptyString`. 2 duplicate graph functions share these ports. | -- | L | Done (2026-02-22) -- credential and OIDC/token paths migrated (`request_token` -> `Secret`, `request_url` -> `Url`, `version` -> `GcpSecretVersion`, `client_id` -> `NonEmptyString`); retained `expires_at`/optional `header_name` as string carriers |
 | **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | Done (2026-02-22) -- runtime/config/auth ports migrated (`runtime` -> `NonEmptyString`, service-account aliases -> `GcpServiceAccountEmail`, `version` -> `GcpSecretVersion`, `request_url` -> `Url`, `request_token` -> `Secret`); retained optional `header_name` as string carrier |
 | **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` -> `NonEmptyString`. `secret_name` -> `SecretName`. | -- | L | Done (2026-02-22) -- specified auth/provider ports migrated (`secret_name` -> `SecretName`; cloud OIDC pass-through `request_url` -> `Url`, `request_token` -> `Secret`); free-form prompt/review text ports intentionally remain string-backed |
-| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | -- | S | Done (2026-02-22) -- aws/azure OIDC pass-through migrated (`request_url` -> `Url`, `request_token` -> `Secret`), gist render stats/markdown tightened (`NonEmptyString`), deps ports tightened (`dep_names`/install sets -> `NonEmptyString`, `manifest_content` -> `NonEmptyString`, `platform` -> `Platform`); free-form content/base-ref/stdout/stderr remain string-backed |
+| **TS-1d** | **Remaining graph port types**: aws/azure credential stubs (historical pre-drop), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | -- | S | Done (2026-02-22) -- aws/azure OIDC pass-through migrated (`request_url` -> `Url`, `request_token` -> `Secret`) before the later provider drop; gist render stats/markdown tightened (`NonEmptyString`), deps ports tightened (`dep_names`/install sets -> `NonEmptyString`, `manifest_content` -> `NonEmptyString`, `platform` -> `Platform`); free-form content/base-ref/stdout/stderr remain string-backed |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
 
@@ -161,8 +161,8 @@ Archived: `M7-D`, `M7`, `M15-D`, `M15` are already complete in `TODO/TODONE/2026
 | `lib/cloud-ops/src/*.rs` | 49 port type updates across 4 files (TS-1b) |
 | `lib/review/src/graph.rs` | 102 port type updates (TS-1c) |
 | `lib/llm-ops/src/graph.rs` | 13 port type updates (TS-1c) |
-| `lib/aws-ops/src/graph.rs` | 3 port type updates (TS-1d) |
-| `lib/azure-ops/src/graph.rs` | 3 port type updates (TS-1d) |
+| `lib/aws-ops/src/unsupported.rs` | Provider drop-now facade added post-TS-1d (legacy graph path removed in GD-5) |
+| `lib/azure-ops/src/unsupported.rs` | Provider drop-now facade added post-TS-1d (legacy graph path removed in GD-5) |
 | `lib/tools/gist/src/graph.rs` | 6 port type updates (TS-1d) |
 | `lib/tools/deps/src/graph.rs` | 1 port type update (TS-1d) |
 | `gunbc-dag/src/testgen_dag/graph.rs` | 1 port type update (TS-1d) |
@@ -290,7 +290,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | Done (2026-02-22) -- removed `canonical_type_name()` + `types_match()`; migrated daglang-typecheck/daglang-lower callsites to `TypeId` helpers and registry compatibility checks; validated with `cargo test -p daglang-syntax -p daglang-typecheck -p daglang-lower`, `cargo test -p daglang-cli --lib -q`, and targeted clippy |
-| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | Done (2026-02-22) -- removed `From<&str>` + fallback-to-`Any` parsing path; added strict `PortType::try_parse`; updated `value_backing_for_type_id()` and harness type rendering to explicit JSON fallback for unknowns; validated with `cargo test -p gunbc-ir`, targeted clippy, and workspace clippy |
+| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | Done (2026-02-22) -- deleted `PortType::Any` enum variant entirely; `#[default]` moved to `Json`; removed `Any` from parsing/serialization/compatibility; updated `value_backing_for_type_id()` and `system_model.rs`; 1974 IR+dag tests pass, clippy clean |
 
 ### Post-merge files touched
 
@@ -315,9 +315,9 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 | ID | Task | Location | Deps | Size | Status |
 |----|------|----------|------|------|--------|
 | **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Done (2026-02-22) -- removed blanket `#[allow(dead_code)]`; no actual dead methods found |
-| **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
+| **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | In Progress (2026-02-22) |
 | **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | -- | L | |
-| **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | -- | S | |
+| **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | -- | S | Done (2026-02-22) -- removed makegen/fs alias normalization (`FilesystemHandle`/`makefile_content`), standardized on canonical `file:write` + `return` across lowering parity, resolver fs wiring, and makegen snapshot/test expectations |
 
 ---
 
@@ -334,8 +334,8 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 | **GD-1** | **Cut over DSL-module tool targets**: replace handwritten builders for `gist`, `deps`, `clippy`, `review`, and `dag_viz` with DSL-backed builders/wrappers. Verify no target registration points to legacy graph constructors. | -- | M | Done (2026-02-22) |
 | **GD-2** | **Interactive/external lowering + passthrough**: propagate DSL interactive/external semantics through lowering/runtime so shell requests set passthrough correctly and progress rendering pauses during passthrough windows. | GD-1 | M | Done (2026-02-22) |
 | **GD-3** | **Replace manual workspace subdags**: remove handwritten workspace subdag composition for `gist/deps/clippy/dag_viz/testgen` and route through DSL-backed modules. | GD-1 | M | Done (2026-02-22) |
-| **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | In Progress (2026-02-22) -- deleted `lib/tools/clippy/src/ops.rs`, `gunbc-dag/src/testgen_dag/graph_mock.rs`, and `workspace/subdags/{clippy,dag_viz,deps,gist,testgen}.rs`; inventory reconciliation/deletions continuing |
-| **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | In Progress (2026-02-22) -- drop-now deletion started (`lib/tools/cargo/src/ops.rs`); provider stack decision matrix/deletions continuing |
+| **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | In Progress (2026-02-22) -- deleted legacy clippy ops module, testgen graph-mock module, and the five manual workspace subdag modules; remaining blocker is handwritten `testgen_dag` runtime until DSL `generate()` execution is wired end-to-end |
+| **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | In Progress (2026-02-22) -- drop-now deletions landed for cargo ops and AWS/Azure legacy graph+mock+ops stacks; cloud credential graph now fails fast for dropped providers (GCP-only build path); cloud/gcp/llm/review provider matrix still in progress |
 | **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | Done (2026-02-22) -- unknown-callable fallback removed (wildcard passthrough prefixes deleted); `dsl_module` compile+resolve guardrail and stale `Replaces:` guardrail active in `gunbc-codegen` (CI / opt-in locally via `GUNBC_ENFORCE_STALE_REPLACES=1`) |
 
 ### Lane 5 exit criteria

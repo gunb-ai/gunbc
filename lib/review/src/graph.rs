@@ -14,7 +14,8 @@ use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, BuilderError, Dag, DagBuilder, Node,
-    NodeRef,
+    NodeRef, CloudSecretConfigTag, FilePathTag, FilesystemHandleTag, MapTag, NonEmptyStringTag,
+    SecretNameTag, TransportRequestTag, TransportResponseTag, typed_port,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_cloud_ops::{
@@ -88,11 +89,11 @@ fn add_cloud_credential_chain(
         Node::opaque(
             "bind_secret",
             vec![
-                port("config", "CloudSecretConfig"),
-                port("service", "NonEmptyString"),
-                port("secret_name", "SecretName"),
+                typed_port::<CloudSecretConfigTag>("config").into(),
+                typed_port::<NonEmptyStringTag>("service").into(),
+                typed_port::<SecretNameTag>("secret_name").into(),
             ],
-            vec![port("config", "CloudSecretConfig")],
+            vec![typed_port::<CloudSecretConfigTag>("config").into()],
             DynOp::new(CloudOps::BindSecretName),
         ),
         &[cloud_env, resolve_auth],
@@ -155,7 +156,7 @@ fn add_scope_preflight_chain(
         Node::opaque(
             "scope_preflight",
             vec![list("required_scopes", "NonEmptyString")],
-            vec![port("scope_verified", "Bool")],
+            vec![typed_port::<bool>("scope_verified").into()],
             DynOp::new(CloudOps::ScopePreflight),
         ),
         resolve_auth,
@@ -182,7 +183,7 @@ fn add_cloud_env_node(
         "cloud_env",
         vec![],
         vec![
-            port("config", "CloudSecretConfig"),
+            typed_port::<CloudSecretConfigTag>("config").into(),
             optional("request_url", "Url"),
             optional("request_token", "Secret"),
         ],
@@ -242,7 +243,7 @@ pub fn build_review_phase_graph_with_config(
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        vec![typed_port::<FilesystemHandleTag>(FsEnv::WRITE_PORT).into()],
         DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -256,13 +257,13 @@ pub fn build_review_phase_graph_with_config(
     // Node 1: PrepareFetch - builds request or returns inline data
     let prepare_blob = builder.add_root_node(Node::opaque(
         "prepare_blob",
-        vec![port("source", "Json")],
+        vec![typed_port::<serde_json::Value>("source").into()],
         vec![
-            port("request", "TransportRequest"),
-            port("skip_fetch", "Bool"),
-            port("skip", "Bool"),
-            port("handle", "Json"), // Present if inline
-            port("source", "Json"), // Echo for parse
+            typed_port::<TransportRequestTag>("request").into(),
+            typed_port::<bool>("skip_fetch").into(),
+            typed_port::<bool>("skip").into(),
+            typed_port::<serde_json::Value>("handle").into(), // Present if inline
+            typed_port::<serde_json::Value>("source").into(), // Echo for parse
         ],
         DynOp::new(BlobOps::PrepareFetch),
     ))?;
@@ -273,11 +274,11 @@ pub fn build_review_phase_graph_with_config(
         Node::opaque(
             "execute_blob",
             vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
+                typed_port::<TransportRequestTag>("request").into(),
+                typed_port::<bool>("skip").into(),
                 resource("file", "FilesystemHandle", AccessMode::Read),
             ],
-            vec![port("response", "TransportResponse")],
+            vec![typed_port::<TransportResponseTag>("response").into()],
             DynOp::new(TransportOps::Execute),
         ),
         &prepare_blob,
@@ -288,12 +289,12 @@ pub fn build_review_phase_graph_with_config(
         Node::opaque(
             "parse_blob",
             vec![
-                port("source", "Json"),
-                port("response", "TransportResponse"),
+                typed_port::<serde_json::Value>("source").into(),
+                typed_port::<TransportResponseTag>("response").into(),
                 optional("handle", "OptionalJson"),
-                port("skip", "Bool"),
+                typed_port::<bool>("skip").into(),
             ],
-            vec![port("handle", "Json"), port("meta", "Json")],
+            vec![typed_port::<serde_json::Value>("handle").into(), typed_port::<serde_json::Value>("meta").into()],
             DynOp::new(BlobOps::ParseFetch),
         ),
         &execute_blob,
@@ -307,11 +308,11 @@ pub fn build_review_phase_graph_with_config(
     let prepare_prompt = builder.add_root_node(Node::opaque(
         "prepare_prompt",
         vec![
-            port("artifact", "NonEmptyString"),
-            port("criteria", "Json"),
+            typed_port::<NonEmptyStringTag>("artifact").into(),
+            typed_port::<serde_json::Value>("criteria").into(),
             optional("context", "OptionalString"),
         ],
-        vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
+        vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
         DynOp::new(ReviewOps::PrepareReviewPrompt),
     ))?;
 
@@ -323,14 +324,14 @@ pub fn build_review_phase_graph_with_config(
     let resolve_auth = builder.add_node_after(
         Node::opaque(
             "resolve_auth",
-            vec![port("provider", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("provider").into()],
             vec![
-                port("service", "NonEmptyString"),
-                port("scheme", "NonEmptyString"),
-                port("header_name", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("service").into(),
+                typed_port::<NonEmptyStringTag>("scheme").into(),
+                typed_port::<NonEmptyStringTag>("header_name").into(),
                 list("required_scopes", "NonEmptyString"),
-                port("interactive_allowed", "Bool"),
-                port("secret_name", "SecretName"),
+                typed_port::<bool>("interactive_allowed").into(),
+                typed_port::<SecretNameTag>("secret_name").into(),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -350,18 +351,18 @@ pub fn build_review_phase_graph_with_config(
         "execute_llm",
         "parse_llm",
         vec![
-            port("content", "NonEmptyString"),
-            port("question", "NonEmptyString"),
-            port("provider", "NonEmptyString"),
-            port("model", "NonEmptyString"),
+            typed_port::<NonEmptyStringTag>("content").into(),
+            typed_port::<NonEmptyStringTag>("question").into(),
+            typed_port::<NonEmptyStringTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
             optional("system_prompt", "OptionalString"),
         ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
-        vec![port("provider", "NonEmptyString")],
-        vec![port("answer", "NonEmptyString")],
+        vec![typed_port::<NonEmptyStringTag>("provider").into()],
+        vec![typed_port::<NonEmptyStringTag>("answer").into()],
         DynOp::new(LlmOps::PrepareSimpleRequest),
         DynOp::new(LlmOps::ParseSimpleResponse),
         DynOp::new(TransportOps::Execute),
@@ -380,8 +381,8 @@ pub fn build_review_phase_graph_with_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![port("answer", "NonEmptyString"), port("criteria", "Json")],
-            vec![port("output", "Json"), port("errors", "Json")],
+            vec![typed_port::<NonEmptyStringTag>("answer").into(), typed_port::<serde_json::Value>("criteria").into()],
+            vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
@@ -454,11 +455,11 @@ pub fn build_inline_review_graph_with_config(
     let prepare_prompt = builder.add_root_node(Node::opaque(
         "prepare_prompt",
         vec![
-            port("artifact", "NonEmptyString"),
-            port("criteria", "Json"),
+            typed_port::<NonEmptyStringTag>("artifact").into(),
+            typed_port::<serde_json::Value>("criteria").into(),
             optional("context", "OptionalString"),
         ],
-        vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
+        vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
         DynOp::new(ReviewOps::PrepareReviewPrompt),
     ))?;
 
@@ -466,14 +467,14 @@ pub fn build_inline_review_graph_with_config(
     let resolve_auth = builder.add_node_after(
         Node::opaque(
             "resolve_auth",
-            vec![port("provider", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("provider").into()],
             vec![
-                port("service", "NonEmptyString"),
-                port("scheme", "NonEmptyString"),
-                port("header_name", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("service").into(),
+                typed_port::<NonEmptyStringTag>("scheme").into(),
+                typed_port::<NonEmptyStringTag>("header_name").into(),
                 list("required_scopes", "NonEmptyString"),
-                port("interactive_allowed", "Bool"),
-                port("secret_name", "SecretName"),
+                typed_port::<bool>("interactive_allowed").into(),
+                typed_port::<SecretNameTag>("secret_name").into(),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -493,18 +494,18 @@ pub fn build_inline_review_graph_with_config(
         "execute_llm",
         "parse_llm",
         vec![
-            port("content", "NonEmptyString"),
-            port("question", "NonEmptyString"),
-            port("provider", "NonEmptyString"),
-            port("model", "NonEmptyString"),
+            typed_port::<NonEmptyStringTag>("content").into(),
+            typed_port::<NonEmptyStringTag>("question").into(),
+            typed_port::<NonEmptyStringTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
             optional("system_prompt", "OptionalString"),
         ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
-        vec![port("provider", "NonEmptyString")],
-        vec![port("answer", "NonEmptyString")],
+        vec![typed_port::<NonEmptyStringTag>("provider").into()],
+        vec![typed_port::<NonEmptyStringTag>("answer").into()],
         DynOp::new(LlmOps::PrepareSimpleRequest),
         DynOp::new(LlmOps::ParseSimpleResponse),
         DynOp::new(TransportOps::Execute),
@@ -519,8 +520,8 @@ pub fn build_inline_review_graph_with_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![port("answer", "NonEmptyString"), port("criteria", "Json")],
-            vec![port("output", "Json"), port("errors", "Json")],
+            vec![typed_port::<NonEmptyStringTag>("answer").into(), typed_port::<serde_json::Value>("criteria").into()],
+            vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
@@ -606,7 +607,7 @@ pub fn build_diff_review_graph_with_cloud_config(
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        vec![typed_port::<FilesystemHandleTag>(FsEnv::WRITE_PORT).into()],
         DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -623,9 +624,9 @@ pub fn build_diff_review_graph_with_cloud_config(
         "config",
         vec![],
         vec![
-            port("provider", "NonEmptyString"),
-            port("model", "NonEmptyString"),
-            port("criteria", "Json"),
+            typed_port::<NonEmptyStringTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
+            typed_port::<serde_json::Value>("criteria").into(),
         ],
         DynOp::new(ReviewOps::LoadPipelineConfig(config)),
     ))?;
@@ -645,11 +646,11 @@ pub fn build_diff_review_graph_with_cloud_config(
         "parse_diff",
         vec![
             optional("base_ref", "OptionalString"),
-            port("repo_path", "FilePath"),
+            typed_port::<FilePathTag>("repo_path").into(),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
-        vec![port("diff_files", "Map"), port("stats", "NonEmptyString")],
+        vec![typed_port::<MapTag>("diff_files").into(), typed_port::<NonEmptyStringTag>("stats").into()],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
@@ -666,8 +667,8 @@ pub fn build_diff_review_graph_with_cloud_config(
     let format_artifact = builder.add_node_after(
         Node::opaque(
             "format_artifact",
-            vec![port("diff_files", "Map")],
-            vec![port("artifact", "NonEmptyString")],
+            vec![typed_port::<MapTag>("diff_files").into()],
+            vec![typed_port::<NonEmptyStringTag>("artifact").into()],
             DynOp::new(ReviewOps::FormatDiffArtifact),
         ),
         &diff_triplet,
@@ -681,11 +682,11 @@ pub fn build_diff_review_graph_with_cloud_config(
         Node::opaque(
             "prepare_prompt",
             vec![
-                port("artifact", "NonEmptyString"),
-                port("criteria", "Json"),
+                typed_port::<NonEmptyStringTag>("artifact").into(),
+                typed_port::<serde_json::Value>("criteria").into(),
                 optional("context", "OptionalString"),
             ],
-            vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
             DynOp::new(ReviewOps::PrepareReviewPrompt),
         ),
         &format_artifact,
@@ -698,14 +699,14 @@ pub fn build_diff_review_graph_with_cloud_config(
     let resolve_auth = builder.add_node_after(
         Node::opaque(
             "resolve_auth",
-            vec![port("provider", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("provider").into()],
             vec![
-                port("service", "NonEmptyString"),
-                port("scheme", "NonEmptyString"),
-                port("header_name", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("service").into(),
+                typed_port::<NonEmptyStringTag>("scheme").into(),
+                typed_port::<NonEmptyStringTag>("header_name").into(),
                 list("required_scopes", "NonEmptyString"),
-                port("interactive_allowed", "Bool"),
-                port("secret_name", "SecretName"),
+                typed_port::<bool>("interactive_allowed").into(),
+                typed_port::<SecretNameTag>("secret_name").into(),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -724,18 +725,18 @@ pub fn build_diff_review_graph_with_cloud_config(
         "execute_llm",
         "parse_llm",
         vec![
-            port("content", "NonEmptyString"),
-            port("question", "NonEmptyString"),
-            port("provider", "NonEmptyString"),
-            port("model", "NonEmptyString"),
+            typed_port::<NonEmptyStringTag>("content").into(),
+            typed_port::<NonEmptyStringTag>("question").into(),
+            typed_port::<NonEmptyStringTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
             optional("system_prompt", "OptionalString"),
         ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
-        vec![port("provider", "NonEmptyString")],
-        vec![port("answer", "NonEmptyString")],
+        vec![typed_port::<NonEmptyStringTag>("provider").into()],
+        vec![typed_port::<NonEmptyStringTag>("answer").into()],
         DynOp::new(LlmOps::PrepareSimpleRequest),
         DynOp::new(LlmOps::ParseSimpleResponse),
         DynOp::new(TransportOps::Execute),
@@ -753,8 +754,8 @@ pub fn build_diff_review_graph_with_cloud_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![port("answer", "NonEmptyString"), port("criteria", "Json")],
-            vec![port("output", "Json"), port("errors", "Json")],
+            vec![typed_port::<NonEmptyStringTag>("answer").into(), typed_port::<serde_json::Value>("criteria").into()],
+            vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
@@ -885,9 +886,9 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         "config",
         vec![],
         vec![
-            port("provider", "NonEmptyString"),
-            port("model", "NonEmptyString"),
-            port("criteria", "Json"),
+            typed_port::<NonEmptyStringTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
+            typed_port::<serde_json::Value>("criteria").into(),
         ],
         DynOp::new(ReviewOps::LoadPipelineConfig(config)),
     ))?;
@@ -900,11 +901,11 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         Node::opaque(
             "prepare_prompt",
             vec![
-                port("artifact", "NonEmptyString"),
-                port("criteria", "Json"),
+                typed_port::<NonEmptyStringTag>("artifact").into(),
+                typed_port::<serde_json::Value>("criteria").into(),
                 optional("context", "OptionalString"),
             ],
-            vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
             DynOp::new(ReviewOps::PrepareReviewPrompt),
         ),
         &config_node,
@@ -913,14 +914,14 @@ pub fn build_multi_source_review_graph_with_cloud_config(
     let resolve_auth = builder.add_node_after(
         Node::opaque(
             "resolve_auth",
-            vec![port("provider", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("provider").into()],
             vec![
-                port("service", "NonEmptyString"),
-                port("scheme", "NonEmptyString"),
-                port("header_name", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("service").into(),
+                typed_port::<NonEmptyStringTag>("scheme").into(),
+                typed_port::<NonEmptyStringTag>("header_name").into(),
                 list("required_scopes", "NonEmptyString"),
-                port("interactive_allowed", "Bool"),
-                port("secret_name", "SecretName"),
+                typed_port::<bool>("interactive_allowed").into(),
+                typed_port::<SecretNameTag>("secret_name").into(),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -939,18 +940,18 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         "execute_llm",
         "parse_llm",
         vec![
-            port("content", "NonEmptyString"),
-            port("question", "NonEmptyString"),
-            port("provider", "NonEmptyString"),
-            port("model", "NonEmptyString"),
+            typed_port::<NonEmptyStringTag>("content").into(),
+            typed_port::<NonEmptyStringTag>("question").into(),
+            typed_port::<NonEmptyStringTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
             optional("system_prompt", "OptionalString"),
         ],
         vec![
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
-        vec![port("provider", "NonEmptyString")],
-        vec![port("answer", "NonEmptyString")],
+        vec![typed_port::<NonEmptyStringTag>("provider").into()],
+        vec![typed_port::<NonEmptyStringTag>("answer").into()],
         DynOp::new(LlmOps::PrepareSimpleRequest),
         DynOp::new(LlmOps::ParseSimpleResponse),
         DynOp::new(TransportOps::Execute),
@@ -964,8 +965,8 @@ pub fn build_multi_source_review_graph_with_cloud_config(
     let parse_response = builder.add_node_after(
         Node::opaque(
             "parse_response",
-            vec![port("answer", "NonEmptyString"), port("criteria", "Json")],
-            vec![port("output", "Json"), port("errors", "Json")],
+            vec![typed_port::<NonEmptyStringTag>("answer").into(), typed_port::<serde_json::Value>("criteria").into()],
+            vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
             DynOp::new(ReviewOps::ParseReviewResponse),
         ),
         &llm_triplet,
@@ -979,7 +980,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         Node::opaque(
             "merge",
             vec![list("outputs", "JsonList")],
-            vec![port("bundle", "Json"), port("conflicts", "Json")],
+            vec![typed_port::<serde_json::Value>("bundle").into(), typed_port::<serde_json::Value>("conflicts").into()],
             DynOp::new(ReviewOps::MergeOutputs),
         ),
         &parse_response,
@@ -1074,7 +1075,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env",
         vec![],
-        vec![port(FsEnv::WRITE_PORT, "FilesystemHandle")],
+        vec![typed_port::<FilesystemHandleTag>(FsEnv::WRITE_PORT).into()],
         DynOp::new(FsEnv::new(filename::Scope::Write)),
     ))?;
 
@@ -1089,11 +1090,11 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         "parse_diff",
         vec![
             optional("base_ref", "OptionalString"),
-            port("repo_path", "FilePath"),
+            typed_port::<FilePathTag>("repo_path").into(),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
-        vec![port("diff_files", "Map"), port("stats", "NonEmptyString")],
+        vec![typed_port::<MapTag>("diff_files").into(), typed_port::<NonEmptyStringTag>("stats").into()],
         DynOp::new(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
@@ -1106,8 +1107,8 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
     let format_artifact = builder.add_node_after(
         Node::opaque(
             "format_artifact",
-            vec![port("diff_files", "Map")],
-            vec![port("artifact", "NonEmptyString")],
+            vec![typed_port::<MapTag>("diff_files").into()],
+            vec![typed_port::<NonEmptyStringTag>("artifact").into()],
             DynOp::new(ReviewOps::FormatDiffArtifact),
         ),
         &diff_triplet,
@@ -1117,8 +1118,8 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         "llm_config",
         vec![],
         vec![
-            port("provider", "NonEmptyString"),
-            port("model", "NonEmptyString"),
+            typed_port::<NonEmptyStringTag>("provider").into(),
+            typed_port::<NonEmptyStringTag>("model").into(),
         ],
         DynOp::new(DimensionGraphConfigOps::LoadLlmConfig {
             provider: config.provider,
@@ -1129,14 +1130,14 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
     let resolve_auth = builder.add_node_after(
         Node::opaque(
             "resolve_auth",
-            vec![port("provider", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("provider").into()],
             vec![
-                port("service", "NonEmptyString"),
-                port("scheme", "NonEmptyString"),
-                port("header_name", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("service").into(),
+                typed_port::<NonEmptyStringTag>("scheme").into(),
+                typed_port::<NonEmptyStringTag>("header_name").into(),
                 list("required_scopes", "NonEmptyString"),
-                port("interactive_allowed", "Bool"),
-                port("secret_name", "SecretName"),
+                typed_port::<bool>("interactive_allowed").into(),
+                typed_port::<SecretNameTag>("secret_name").into(),
             ],
             DynOp::new(ReviewOps::ResolveAuthContract),
         ),
@@ -1162,9 +1163,9 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             format!("{prefix}_config"),
             vec![],
             vec![
-                port("criteria", "Json"),
-                port("dimension", "NonEmptyString"),
-                port("depth", "NonEmptyString"),
+                typed_port::<serde_json::Value>("criteria").into(),
+                typed_port::<NonEmptyStringTag>("dimension").into(),
+                typed_port::<NonEmptyStringTag>("depth").into(),
             ],
             DynOp::new(DimensionGraphConfigOps::LoadDimensionConfig {
                 dimension,
@@ -1177,14 +1178,14 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 format!("{prefix}_prepare_prompt"),
                 vec![
-                    port("artifact", "NonEmptyString"),
-                    port("criteria", "Json"),
-                    port("dimension", "NonEmptyString"),
-                    port("depth", "NonEmptyString"),
+                    typed_port::<NonEmptyStringTag>("artifact").into(),
+                    typed_port::<serde_json::Value>("criteria").into(),
+                    typed_port::<NonEmptyStringTag>("dimension").into(),
+                    typed_port::<NonEmptyStringTag>("depth").into(),
                     optional("context", "OptionalString"),
                     optional("prior_findings", "OptionalString"),
                 ],
-                vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
+                vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
                 DynOp::new(DimensionOps::PrepareDimensionPrompt),
             ),
             &format_artifact,
@@ -1197,18 +1198,18 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             format!("execute_{prefix}_llm").as_str(),
             format!("parse_{prefix}_llm").as_str(),
             vec![
-                port("content", "NonEmptyString"),
-                port("question", "NonEmptyString"),
-                port("provider", "NonEmptyString"),
-                port("model", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("content").into(),
+                typed_port::<NonEmptyStringTag>("question").into(),
+                typed_port::<NonEmptyStringTag>("provider").into(),
+                typed_port::<NonEmptyStringTag>("model").into(),
                 optional("system_prompt", "OptionalString"),
             ],
             vec![
                 optional("scope_verified", "OptionalBool"),
                 resource("credential", "Credential", AccessMode::Read),
             ],
-            vec![port("provider", "NonEmptyString")],
-            vec![port("answer", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("provider").into()],
+            vec![typed_port::<NonEmptyStringTag>("answer").into()],
             DynOp::new(LlmOps::PrepareSimpleRequest),
             DynOp::new(LlmOps::ParseSimpleResponse),
             DynOp::new(TransportOps::Execute),
@@ -1219,11 +1220,11 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 format!("{prefix}_parse_response"),
                 vec![
-                    port("answer", "NonEmptyString"),
-                    port("criteria", "Json"),
-                    port("dimension", "NonEmptyString"),
+                    typed_port::<NonEmptyStringTag>("answer").into(),
+                    typed_port::<serde_json::Value>("criteria").into(),
+                    typed_port::<NonEmptyStringTag>("dimension").into(),
                 ],
-                vec![port("output", "Json"), port("errors", "Json")],
+                vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
                 DynOp::new(DimensionOps::ParseDimensionResponse),
             ),
             &llm_triplet,
@@ -1294,7 +1295,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
                 optional("quality_output", "OptionalJson"),
                 optional("requirements_output", "OptionalJson"),
             ],
-            vec![port("prior_findings", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("prior_findings").into()],
             DynOp::new(DimensionOps::FormatPriorFindings),
         );
 
@@ -1319,9 +1320,9 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             "aspirational_config",
             vec![],
             vec![
-                port("criteria", "Json"),
-                port("dimension", "NonEmptyString"),
-                port("depth", "NonEmptyString"),
+                typed_port::<serde_json::Value>("criteria").into(),
+                typed_port::<NonEmptyStringTag>("dimension").into(),
+                typed_port::<NonEmptyStringTag>("depth").into(),
             ],
             DynOp::new(DimensionGraphConfigOps::LoadDimensionConfig {
                 dimension: ReviewDimension::Aspirational,
@@ -1334,14 +1335,14 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 "aspirational_prepare_prompt",
                 vec![
-                    port("artifact", "NonEmptyString"),
-                    port("criteria", "Json"),
-                    port("dimension", "NonEmptyString"),
-                    port("depth", "NonEmptyString"),
+                    typed_port::<NonEmptyStringTag>("artifact").into(),
+                    typed_port::<serde_json::Value>("criteria").into(),
+                    typed_port::<NonEmptyStringTag>("dimension").into(),
+                    typed_port::<NonEmptyStringTag>("depth").into(),
                     optional("context", "OptionalString"),
                     optional("prior_findings", "OptionalString"),
                 ],
-                vec![port("question", "NonEmptyString"), port("system_prompt", "NonEmptyString")],
+                vec![typed_port::<NonEmptyStringTag>("question").into(), typed_port::<NonEmptyStringTag>("system_prompt").into()],
                 DynOp::new(DimensionOps::PrepareDimensionPrompt),
             ),
             &[&format_artifact, &format_prior],
@@ -1354,18 +1355,18 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             "execute_aspirational_llm",
             "parse_aspirational_llm",
             vec![
-                port("content", "NonEmptyString"),
-                port("question", "NonEmptyString"),
-                port("provider", "NonEmptyString"),
-                port("model", "NonEmptyString"),
+                typed_port::<NonEmptyStringTag>("content").into(),
+                typed_port::<NonEmptyStringTag>("question").into(),
+                typed_port::<NonEmptyStringTag>("provider").into(),
+                typed_port::<NonEmptyStringTag>("model").into(),
                 optional("system_prompt", "OptionalString"),
             ],
             vec![
                 optional("scope_verified", "OptionalBool"),
                 resource("credential", "Credential", AccessMode::Read),
             ],
-            vec![port("provider", "NonEmptyString")],
-            vec![port("answer", "NonEmptyString")],
+            vec![typed_port::<NonEmptyStringTag>("provider").into()],
+            vec![typed_port::<NonEmptyStringTag>("answer").into()],
             DynOp::new(LlmOps::PrepareSimpleRequest),
             DynOp::new(LlmOps::ParseSimpleResponse),
             DynOp::new(TransportOps::Execute),
@@ -1376,11 +1377,11 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 "aspirational_parse_response",
                 vec![
-                    port("answer", "NonEmptyString"),
-                    port("criteria", "Json"),
-                    port("dimension", "NonEmptyString"),
+                    typed_port::<NonEmptyStringTag>("answer").into(),
+                    typed_port::<serde_json::Value>("criteria").into(),
+                    typed_port::<NonEmptyStringTag>("dimension").into(),
                 ],
-                vec![port("output", "Json"), port("errors", "Json")],
+                vec![typed_port::<serde_json::Value>("output").into(), typed_port::<serde_json::Value>("errors").into()],
                 DynOp::new(DimensionOps::ParseDimensionResponse),
             ),
             &aspirational_llm,
@@ -1463,7 +1464,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             optional("requirements_output", "OptionalJson"),
             optional("aspirational_output", "OptionalJson"),
         ],
-        vec![port("output", "Json"), port("summary", "NonEmptyString")],
+        vec![typed_port::<serde_json::Value>("output").into(), typed_port::<NonEmptyStringTag>("summary").into()],
         DynOp::new(DimensionOps::MergeDimensionOutputs),
     );
     let merge = if merge_inputs.is_empty() {
