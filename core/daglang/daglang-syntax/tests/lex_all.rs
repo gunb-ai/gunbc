@@ -30,8 +30,8 @@ fn lex_all_golden_dag_files_without_diagnostics() {
 
     assert_eq!(
         dag_files.len(),
-        56,
-        "expected 56 golden .dag files, found {}",
+        73,
+        "expected 73 golden .dag files, found {}",
         dag_files.len()
     );
 

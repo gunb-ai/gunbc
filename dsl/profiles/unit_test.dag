@@ -18,14 +18,13 @@ import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 
-profile unit_test {
-  bind IssueProvider    -> StubIssueProvider
-  bind ClaimStore       -> InMemoryClaimStore
-  bind OutcomeLedger    -> InMemoryOutcomeLedger
-  bind AgentProvider    -> StubAgentProvider
-  bind SignalStore      -> InMemorySignalStore
-  bind ArtifactStore    -> InMemoryArtifactStore
-}
+// Profile bindings (compile-time interface -> implementation mapping):
+//   IssueProvider    -> StubIssueProvider
+//   ClaimStore       -> InMemoryClaimStore
+//   OutcomeLedger    -> InMemoryOutcomeLedger
+//   AgentProvider    -> StubAgentProvider
+//   SignalStore      -> InMemorySignalStore
+//   ArtifactStore    -> InMemoryArtifactStore
 
 // --- Stub implementations ------------------------------------------------
 // These are minimal in-memory implementations that satisfy the interface

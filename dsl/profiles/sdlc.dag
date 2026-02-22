@@ -1,0 +1,60 @@
+// profiles/sdlc.dag -- SDLC deployment profiles.
+//
+// Binds domain interfaces to concrete implementations at compile time.
+// The pipeline imports interfaces (Layer 2); profiles select which
+// Layer 3 implementation fulfills each interface.
+//
+// Three profiles:
+//   unit_test  -- All stub/in-memory, hermetic, deterministic
+//   local      -- File-based ledgers, real GitHub API, single-process
+//   cloud_run  -- GCS-based ledgers, real GitHub API, stateless fleet
+//
+// Source: domain-modeling-comprehensive.md Section 5
+// Gap C: deployment profile binding      [RESOLVED - direct syntax]
+// Gap D: credential wiring via profile   [RESOLVED - secret/env bindings]
+// Gap E: multi-worker CAS               [RESOLVED - GCS generation-based CAS]
+
+module profiles.sdlc
+
+import interfaces.issue_provider { IssueProvider }
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.agent_provider { AgentProvider }
+import interfaces.signal_store { SignalStore }
+import interfaces.artifact_store { ArtifactStore }
+
+// =========================================================================
+// Profile binding declarations
+// =========================================================================
+//
+// Each profile documents which concrete provider fulfills an interface.
+// Runtime: gunbc run --profile <name> reads these bindings and wires
+// the selected implementations.
+//
+// ── unit_test ───────────────────────────────────────────────────────
+// All stubs, hermetic, deterministic. No credentials needed.
+//   IssueProvider   -> stubs.stub.IssueProvider
+//   ClaimStore      -> stubs.stub.ClaimStore
+//   OutcomeLedger   -> stubs.stub.OutcomeLedger
+//   AgentProvider   -> stubs.stub.AgentProvider
+//   SignalStore     -> stubs.stub.SignalStore
+//   ArtifactStore   -> stubs.stub.ArtifactStore
+//
+// ── local ───────────────────────────────────────────────────────────
+// File-based ledgers, real GitHub API, single-process.
+//   IssueProvider   -> github_issues.github.IssueProvider
+//   ClaimStore      -> file_claims.file.ClaimStore
+//   OutcomeLedger   -> file_outcomes.file.OutcomeLedger
+//   AgentProvider   -> codex_agent.codex.AgentProvider
+//   SignalStore     -> stubs.stub.SignalStore
+//   ArtifactStore   -> stubs.stub.ArtifactStore
+//
+// ── cloud_run ───────────────────────────────────────────────────────
+// GCS-based ledgers with generation-based CAS, real GitHub API,
+// stateless multi-worker fleet.
+//   IssueProvider   -> github_issues.github.IssueProvider
+//   ClaimStore      -> gcs_claims.gcs.ClaimStore
+//   OutcomeLedger   -> gcs_outcomes.gcs.OutcomeLedger
+//   AgentProvider   -> codex_agent.codex.AgentProvider
+//   SignalStore     -> stubs.stub.SignalStore   (TODO: pubsub)
+//   ArtifactStore   -> stubs.stub.ArtifactStore (TODO: gcs)

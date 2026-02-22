@@ -1,0 +1,221 @@
+// services/sdlc/providers/github_issue_provider.dag
+//
+// Layer 3 concrete implementation: GitHubIssueProvider implements IssueProvider.
+//
+// Wraps the existing github.Issues service operations to fulfill the
+// IssueProvider interface contract. Transport is REST against api.github.com.
+//
+// Gap A resolution: promotes concrete service to interface implementation.
+// Step 6 (gap analysis): real GitHub transport for enhanced dry-run.
+
+module services.sdlc.providers.github_issue_provider
+
+import interfaces.issue_provider { IssueProvider }
+import std.types { TrackedIssue, IssueState, NonEmptyStr, Url }
+
+// =========================================================================
+// GitHubIssueProvider : IssueProvider
+// =========================================================================
+//
+// Profile bindings: local, cloud_run
+// Credential: env("GITHUB_TOKEN") for local, secret("github-token") for cloud_run
+
+service github.IssueProvider : IssueProvider {
+  @endpoint("https://api.github.com")
+  @auth(BearerToken)
+
+  config {
+    owner: NonEmptyStr                 // GitHub org or user
+    repo: NonEmptyStr                  // Repository name
+  }
+
+  // --- Discovery ---------------------------------------------------------
+
+  operation discover {
+    input {
+      labels: List<String>
+      state: IssueState?
+    }
+    output {
+      issues: Json                     // List<TrackedIssue> (provider transforms)
+    }
+    @rest(GET, "/repos/{config.owner}/{config.repo}/issues?labels={labels}&state={state ?? \"open\"}")
+    @permissions(["issues:read"])
+    @mock_response(
+      status: 200,
+      body: [
+        {
+          "number": 42,
+          "title": "Mock issue",
+          "body": "Mock body",
+          "state": "open",
+          "labels": [{"name": "sdlc:idea"}],
+          "html_url": "https://github.com/{config.owner}/{config.repo}/issues/42",
+          "user": {"login": "mock-user"},
+          "created_at": "2026-01-01T00:00:00Z",
+          "updated_at": "2026-01-01T00:00:00Z"
+        }
+      ]
+    )
+  }
+
+  // --- Single issue ------------------------------------------------------
+
+  operation get {
+    input { id: NonEmptyStr }
+    output {
+      issue: Json                      // TrackedIssue shape
+      found: Bool
+    }
+    @rest(GET, "/repos/{config.owner}/{config.repo}/issues/{id}")
+    @permissions(["issues:read"])
+    @mock_response(
+      status: 200,
+      body: {
+        "issue": {
+          "number": 42,
+          "title": "Mock issue",
+          "body": "Mock body",
+          "state": "open",
+          "labels": [{"name": "sdlc:idea"}],
+          "html_url": "https://github.com/{config.owner}/{config.repo}/issues/42",
+          "user": {"login": "mock-user"}
+        },
+        "found": true
+      }
+    )
+  }
+
+  // --- Create ------------------------------------------------------------
+
+  operation create {
+    input {
+      title: NonEmptyStr
+      body: String
+      labels: List<String>
+    }
+    output {
+      issue: Json                      // TrackedIssue shape
+    }
+    @rest(POST, "/repos/{config.owner}/{config.repo}/issues")
+    @permissions(["issues:write"])
+    @mock_response(
+      status: 201,
+      body: {
+        "issue": {
+          "number": 42,
+          "title": "New issue",
+          "body": "Description",
+          "state": "open",
+          "labels": [{"name": "sdlc:idea"}],
+          "html_url": "https://github.com/{config.owner}/{config.repo}/issues/42"
+        }
+      }
+    )
+  }
+
+  // --- Comment (idempotent via marker) -----------------------------------
+
+  operation comment {
+    input {
+      id: NonEmptyStr
+      body: String
+      marker: NonEmptyStr?
+    }
+    output {
+      comment_id: NonEmptyStr
+      ok: Bool
+    }
+    @rest(POST, "/repos/{config.owner}/{config.repo}/issues/{id}/comments")
+    @permissions(["issues:write"])
+    @mock_response(
+      status: 201,
+      body: {
+        "comment_id": "999",
+        "ok": true
+      }
+    )
+  }
+
+  // --- Set labels (replace full set) ------------------------------------
+
+  operation set_labels {
+    input {
+      id: NonEmptyStr
+      labels: List<String>
+    }
+    output { ok: Bool }
+    @rest(PUT, "/repos/{config.owner}/{config.repo}/issues/{id}/labels")
+    @permissions(["issues:write"])
+    @mock_response(
+      status: 200,
+      body: { "ok": true }
+    )
+  }
+
+  // --- Close (idempotent) ------------------------------------------------
+
+  operation close {
+    input { id: NonEmptyStr }
+    output { ok: Bool }
+    @rest(PATCH, "/repos/{config.owner}/{config.repo}/issues/{id}")
+    @permissions(["issues:write"])
+    @mock_response(
+      status: 200,
+      body: { "ok": true }
+    )
+  }
+
+  // --- List events -------------------------------------------------------
+
+  operation list_events {
+    input {
+      id: NonEmptyStr
+      since: String?
+    }
+    output { events: Json }
+    @rest(GET, "/repos/{config.owner}/{config.repo}/issues/{id}/events")
+    @permissions(["issues:read"])
+    @mock_response(
+      status: 200,
+      body: []
+    )
+  }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test github_discover_issues {
+    @tier(Unit)
+    @hermetic(true)
+
+    mock discover/execute.response -> rest_response(200, [
+        {
+            number: 42,
+            title: "Test issue",
+            body: "Body",
+            state: "open",
+            labels: [{ name: "sdlc:idea" }],
+            html_url: "https://github.com/gunb-ai/gunbc/issues/42",
+            user: { login: "test-user" }
+        }
+    ])
+
+    expect result.issues is List
+}
+
+test github_comment_idempotent {
+    @tier(Unit)
+    @hermetic(true)
+
+    input comment/prepare.id -> "42"
+    input comment/prepare.body -> "Test comment"
+    input comment/prepare.marker -> "sdlc:design:run-001"
+
+    mock comment/execute.response -> rest_response(201, {
+        comment_id: "999",
+        ok: true
+    })
+
+    expect result.ok == true
+}

@@ -20,36 +20,13 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
-import services.github.issues { github.Issues }
-import services.agent.codex { agent.Codex }
-
-profile cloud_run {
-  bind IssueProvider    -> github.Issues {
-    owner: "gunb-ai"
-    repo: "gunbc"
-    credential: secret("github-token", project: "gunbai-auto")
-  }
-  bind ClaimStore       -> GcsClaimStore {
-    bucket: "gunbai-auto-sdlc-claims"
-    project: "gunbai-auto"
-  }
-  bind OutcomeLedger    -> GcsOutcomeLedger {
-    bucket: "gunbai-auto-sdlc-outcomes"
-    project: "gunbai-auto"
-  }
-  bind AgentProvider    -> agent.Codex {
-    credential: secret("codex-api-key", project: "gunbai-auto")
-  }
-  bind SignalStore      -> PubSubSignalStore {
-    topic: "sdlc-signals"
-    subscription: "sdlc-worker"
-    project: "gunbai-auto"
-  }
-  bind ArtifactStore    -> GcsArtifactStore {
-    bucket: "gunbai-auto-sdlc-artifacts"
-    project: "gunbai-auto"
-  }
-}
+// Profile bindings (compile-time interface -> implementation mapping):
+//   IssueProvider    -> github.Issues       { owner: "gunb-ai", repo: "gunbc", credential: secret("github-token") }
+//   ClaimStore       -> GcsClaimStore       { bucket: "gunbai-auto-sdlc-claims" }
+//   OutcomeLedger    -> GcsOutcomeLedger    { bucket: "gunbai-auto-sdlc-outcomes" }
+//   AgentProvider    -> codex.AgentProvider { credential: secret("codex-api-key") }
+//   SignalStore      -> PubSubSignalStore   { topic: "sdlc-signals", subscription: "sdlc-worker" }
+//   ArtifactStore    -> GcsArtifactStore    { bucket: "gunbai-auto-sdlc-artifacts" }
 
 // --- GCS-backed implementations ------------------------------------------
 // These use GCS objects with generation-based CAS (x-goog-if-generation-match).

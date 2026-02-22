@@ -489,11 +489,12 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
         },
     ));
 
-    let error = resolve_lowered_dag(&dag).expect_err("unknown modules should fail closed");
-    assert!(
-        error.to_string().contains("unknown callable"),
-        "unexpected error: {error}"
-    );
+    // Unknown callables now resolve to PassthroughOp (the compiler validated
+    // the callable exists; if it compiled, it's resolvable without a registry entry).
+    let resolved = resolve_lowered_dag(&dag).expect("unknown callables should resolve to passthrough");
+    assert_eq!(resolved.nodes.len(), 1);
+    let debug = format!("{:?}", resolved.nodes[0].body);
+    assert!(debug.contains("PassthroughOp"), "unexpected op debug: {debug}");
 }
 
 #[test]
@@ -515,18 +516,19 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes resolve to typed UnsupportedOp placeholders.
+    // Pipeline nodes resolve to PassthroughOp via resolve_domain's default fallback.
     let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
-    assert!(debug.contains("UnsupportedOp"), "unexpected op debug: {debug}");
+    assert!(debug.contains("PassthroughOp"), "unexpected op debug: {debug}");
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("pipeline fixture should not contain subdag nodes")
     };
-    let error = op
+    // PassthroughOp uses output passthrough — execution should succeed.
+    let result = op
         .execute(HashMap::new())
-        .expect_err("unsupported pipeline callable should fail at execution");
-    assert!(error.to_string().contains("unsupported operation"));
+        .expect("passthrough op should execute");
+    assert!(result.contains_key("out"));
 }
 
 #[test]

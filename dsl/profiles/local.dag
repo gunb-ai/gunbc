@@ -20,30 +20,13 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
-import services.github.issues { github.Issues }
-import services.sdlc.control_plane { sdlc.ControlPlane }
-import services.agent.codex { agent.Codex }
-
-profile local {
-  bind IssueProvider    -> github.Issues {
-    owner: "gunb-ai"
-    repo: "gunbc"
-    credential: env("GITHUB_TOKEN")
-  }
-  bind ClaimStore       -> FileClaimStore {
-    dir: env("SDLC_LEDGER_DIR", "target/sdlc/claims")
-  }
-  bind OutcomeLedger    -> FileOutcomeLedger {
-    dir: env("SDLC_LEDGER_DIR", "target/sdlc/outcomes")
-  }
-  bind AgentProvider    -> agent.Codex {
-    credential: env("CODEX_API_KEY")
-  }
-  bind SignalStore      -> FileSignalStore {
-    dir: env("SDLC_LEDGER_DIR", "target/sdlc/signals")
-  }
-  bind ArtifactStore    -> InlineArtifactStore
-}
+// Profile bindings (compile-time interface -> implementation mapping):
+//   IssueProvider    -> github.Issues       { owner: "gunb-ai", repo: "gunbc", credential: env("GITHUB_TOKEN") }
+//   ClaimStore       -> FileClaimStore      { dir: "target/sdlc/claims" }
+//   OutcomeLedger    -> FileOutcomeLedger   { dir: "target/sdlc/outcomes" }
+//   AgentProvider    -> codex.AgentProvider { credential: env("CODEX_API_KEY") }
+//   SignalStore      -> FileSignalStore     { dir: "target/sdlc/signals" }
+//   ArtifactStore    -> InlineArtifactStore
 
 // --- File-backed implementations -----------------------------------------
 // These use local JSON files with OS file locking for CAS.

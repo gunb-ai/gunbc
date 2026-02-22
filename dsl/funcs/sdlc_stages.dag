@@ -1,0 +1,741 @@
+// funcs/sdlc_stages.dag -- Per-stage handler functions for the SDLC pipeline.
+//
+// Each function handles exactly one lifecycle stage transition.
+// The worker dispatch function (sdlc_worker.dag) routes to the
+// appropriate handler based on the issue's current stage label.
+//
+// Stage chain:
+//   idea -> design -> design-review -> accepted -> implementing ->
+//   code-review -> testing -> done
+//
+// Each handler:
+//   1. Executes stage-specific logic (LLM call, agent spawn, CI, etc.)
+//   2. Posts artifact as issue comment (via IssueProvider)
+//   3. Transitions labels to next stage (via IssueProvider.set_labels)
+//   4. Returns success/failure with next_stage
+//
+// All handlers use domain interfaces (Layer 2), not concrete services.
+// Gap H resolved: real code review (PR diff + LLM) and acceptance testing (cargo).
+
+module funcs.sdlc_stages
+
+import interfaces.issue_provider { IssueProvider }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.agent_provider { AgentProvider }
+import interfaces.artifact_store { ArtifactStore }
+import tools.design { generate_design, review_design }
+import services.github.pull_request { PullRequest }
+import services.cargo { Build }
+import services.llm.anthropic
+import std.types {
+    IssueLifecycleStage, StageOutcome, OutcomeStatus, ApprovalMode,
+    NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker, MarkerKind
+}
+
+// ── Label constants ────────────────────────────────────────────────
+
+fn label_idea()          -> String { "sdlc:idea" }
+fn label_design()        -> String { "sdlc:design" }
+fn label_design_review() -> String { "sdlc:design-review" }
+fn label_accepted()      -> String { "sdlc:accepted" }
+fn label_implementing()  -> String { "sdlc:implementing" }
+fn label_code_review()   -> String { "sdlc:code-review" }
+fn label_testing()       -> String { "sdlc:testing" }
+fn label_done()          -> String { "sdlc:done" }
+fn label_terminal()      -> String { "sdlc:terminal-failed" }
+
+// ── Stage determination from labels ────────────────────────────────
+// Returns the most advanced SDLC stage found in the label set.
+// Falls back to "idea" if no sdlc:* label is present.
+
+fn determine_stage(labels: List<String>) -> IssueLifecycleStage {
+  match labels |> any(l => l == label_done()) {
+    true  => Done
+    false => match labels |> any(l => l == label_testing()) {
+      true  => Testing
+      false => match labels |> any(l => l == label_code_review()) {
+        true  => CodeReview
+        false => match labels |> any(l => l == label_implementing()) {
+          true  => Implementing
+          false => match labels |> any(l => l == label_accepted()) {
+            true  => Accepted
+            false => match labels |> any(l => l == label_design_review()) {
+              true  => DesignReview
+              false => match labels |> any(l => l == label_design()) {
+                true  => Design
+                false => Idea
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── Next stage mapping ─────────────────────────────────────────────
+
+fn next_stage_label(current: IssueLifecycleStage) -> String {
+  match current {
+    Idea            => label_design()
+    Design          => label_design_review()
+    DesignReview    => label_accepted()
+    Accepted        => label_implementing()
+    Implementing    => label_code_review()
+    CodeReview      => label_testing()
+    Testing         => label_done()
+    Done            => label_done()
+  }
+}
+
+// ── Code review prompt ─────────────────────────────────────────────
+
+fn code_review_system_prompt() -> String {
+  "You are a senior code reviewer. Review the pull request diff for correctness, security, performance, and style. Return a JSON object with fields: approved (bool), findings (array of {check_id, observation, severity, candidate_fix}), summary (string)."
+}
+
+fn code_review_user_prompt(title: String, files_summary: String, diff: String) -> String {
+  "Review this pull request.\n\nTitle: {title}\n\nChanged files:\n{files_summary}\n\nDiff:\n```\n{diff}\n```\n\nReturn your review as JSON."
+}
+
+// ── Stage dispatch ─────────────────────────────────────────────────
+// Routes by current stage to the appropriate handler.
+
+func execute_stage(
+  issue_id: NonEmptyStr,
+  stage: IssueLifecycleStage,
+  title: String,
+  body: String,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int,
+  llm_provider: String,
+  llm_model: String
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+  uses outcomes: OutcomeLedger
+  uses agents: AgentProvider
+{
+  result = match stage {
+    Idea            => handle_idea_to_design(
+                           issue_id: issue_id, title: title, body: body,
+                           run_key: run_key, owner: owner, repo: repo,
+                           number: number, llm_provider: llm_provider,
+                           llm_model: llm_model)
+    Design          => handle_design_to_review(
+                           issue_id: issue_id, body: body, run_key: run_key,
+                           owner: owner, repo: repo, number: number,
+                           llm_provider: llm_provider, llm_model: llm_model)
+    DesignReview    => handle_review_to_accepted(
+                           issue_id: issue_id, run_key: run_key,
+                           owner: owner, repo: repo, number: number)
+    Accepted        => handle_accepted_to_implementing(
+                           issue_id: issue_id, body: body, run_key: run_key,
+                           owner: owner, repo: repo, number: number)
+    Implementing    => handle_implementing_to_code_review(
+                           issue_id: issue_id, run_key: run_key,
+                           owner: owner, repo: repo, number: number)
+    CodeReview      => handle_code_review_to_testing(
+                           issue_id: issue_id, run_key: run_key,
+                           owner: owner, repo: repo, number: number,
+                           llm_provider: llm_provider, llm_model: llm_model)
+    Testing         => handle_testing_to_done(
+                           issue_id: issue_id, run_key: run_key,
+                           owner: owner, repo: repo, number: number)
+    Done            => handle_done(
+                           issue_id: issue_id, run_key: run_key,
+                           owner: owner, repo: repo, number: number)
+  }
+
+  return result
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Per-Stage Handlers
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Stage 1: Idea -> Design ────────────────────────────────────────
+// Generate a design document from the issue body via LLM.
+// Posts design as issue comment. Transitions: sdlc:idea -> sdlc:design.
+
+func handle_idea_to_design(
+  issue_id: NonEmptyStr,
+  title: String,
+  body: String,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int,
+  llm_provider: String,
+  llm_model: String
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+  uses outcomes: OutcomeLedger
+{
+  // Generate design via LLM
+  design = generate_design(
+    idea: body,
+    context: title,
+    provider: llm_provider,
+    model: llm_model
+  )
+
+  // Post design as comment
+  comment = issues.comment(
+    id: issue_id,
+    body: "## Generated Design\n\n> {design.summary}\n\n---\n\n{design.content}\n\n---\n_Generated by gunbc SDLC pipeline_",
+    marker: "sdlc:design:{run_key}"
+  )
+
+  // Transition labels: idea -> design
+  labels = issues.set_labels(
+    id: issue_id,
+    labels: [label_design()]
+  )
+
+  return { success: true, next_stage: Design, artifact_posted: comment.ok, payload: None }
+}
+
+// ── Stage 2: Design -> DesignReview ────────────────────────────────
+// Review the design document via LLM. Posts findings as comment.
+// Transitions: sdlc:design -> sdlc:design-review.
+
+func handle_design_to_review(
+  issue_id: NonEmptyStr,
+  body: String,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int,
+  llm_provider: String,
+  llm_model: String
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+  uses outcomes: OutcomeLedger
+{
+  // Review design via LLM
+  review = review_design(
+    design: body,
+    provider: llm_provider,
+    model: llm_model
+  )
+
+  // Format review findings
+  review_body = match review.approved {
+    true  => "## Design Review: APPROVED\n\n{review.summary}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
+    false => "## Design Review: CHANGES REQUESTED\n\n{review.summary}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
+  }
+
+  // Post review as comment
+  comment = issues.comment(
+    id: issue_id,
+    body: review_body,
+    marker: "sdlc:design-review:{run_key}"
+  )
+
+  // Transition labels: design -> design-review
+  labels = issues.set_labels(
+    id: issue_id,
+    labels: [label_design_review()]
+  )
+
+  return { success: true, next_stage: DesignReview, artifact_posted: comment.ok, payload: None }
+}
+
+// ── Stage 3: DesignReview -> Accepted ──────────────────────────────
+// Approve the design. Transitions: sdlc:design-review -> sdlc:accepted.
+
+func handle_review_to_accepted(
+  issue_id: NonEmptyStr,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+{
+  // Post acceptance comment
+  comment = issues.comment(
+    id: issue_id,
+    body: "## Design Accepted\n\nDesign review passed. Ready for implementation.\n\n---\n_Approved by gunbc SDLC pipeline_",
+    marker: "sdlc:accepted:{run_key}"
+  )
+
+  // Transition labels: design-review -> accepted
+  labels = issues.set_labels(
+    id: issue_id,
+    labels: [label_accepted()]
+  )
+
+  return { success: true, next_stage: Accepted, artifact_posted: comment.ok, payload: None }
+}
+
+// ── Stage 4: Accepted -> Implementing ──────────────────────────────
+// Spawn an agent to implement the design. Creates a deterministic
+// branch (sdlc/issue-{number}) and dispatches the agent.
+// Transitions: sdlc:accepted -> sdlc:implementing.
+
+func handle_accepted_to_implementing(
+  issue_id: NonEmptyStr,
+  body: String,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+  uses agents: AgentProvider
+{
+  // Deterministic branch name per issue
+  branch = "sdlc/issue-{number}"
+
+  // Spawn agent
+  agent = agents.spawn(
+    prompt: "Implement the design for issue #{number}:\n\n{body}",
+    repo_path: ".",
+    branch: branch,
+    model: None,
+    timeout_seconds: 600,
+    approval_mode: FullAuto
+  )
+
+  // Post dispatch notification
+  comment = issues.comment(
+    id: issue_id,
+    body: "## Agent Dispatched\n\nAgent run `{agent.run_id}` started on branch `{branch}`.\nImplementation in progress.\n\n---\n_Dispatched by gunbc SDLC pipeline_",
+    marker: "sdlc:implementing:{run_key}"
+  )
+
+  // Transition labels: accepted -> implementing
+  labels = issues.set_labels(
+    id: issue_id,
+    labels: [label_implementing()]
+  )
+
+  return { success: agent.started, next_stage: Implementing, artifact_posted: comment.ok, payload: { "agent_run_id": agent.run_id } }
+}
+
+// ── Stage 5: Implementing -> CodeReview ────────────────────────────
+// Agent has completed. Poll result, create a PR from the agent's
+// branch, and transition to code review.
+// Transitions: sdlc:implementing -> sdlc:code-review.
+
+func handle_implementing_to_code_review(
+  issue_id: NonEmptyStr,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+  uses agents: AgentProvider
+  uses outcomes: OutcomeLedger
+{
+  branch = "sdlc/issue-{number}"
+
+  // Retrieve the agent run_id from the prior "accepted" stage outcome.
+  // The worker stores agent_run_id in the outcome payload after spawn.
+  accepted_run_key = "sdlc::{owner}/{repo}#{number}::Accepted::v1"
+  prior_outcome = outcomes.get(
+    run_key: accepted_run_key,
+    stage: Accepted
+  )
+  agent_run_id = prior_outcome.outcome.payload.agent_run_id
+
+  // Poll agent for completion
+  agent_status = agents.poll(run_id: agent_run_id)
+
+  // Create PR from agent branch
+  pr = PullRequest.Create(
+    owner: owner,
+    repo: repo,
+    title: "feat: implement issue #{number}",
+    body: "Closes #{number}\n\nGenerated by SDLC pipeline run `{run_key}`.\n\n---\n_Created by gunbc SDLC pipeline_",
+    head: branch,
+    base: "main"
+  )
+
+  // Post transition comment
+  comment = issues.comment(
+    id: issue_id,
+    body: "## Code Review Requested\n\nImplementation complete. PR #{pr.number} created.\nBranch: `{branch}`\n\nCode review in progress.\n\n---\n_Transitioned by gunbc SDLC pipeline_",
+    marker: "sdlc:code-review:{run_key}"
+  )
+
+  // Transition labels: implementing -> code-review
+  labels = issues.set_labels(
+    id: issue_id,
+    labels: [label_code_review()]
+  )
+
+  return { success: true, next_stage: CodeReview, artifact_posted: comment.ok, payload: None }
+}
+
+// ── Stage 6: CodeReview -> Testing ─────────────────────────────────
+// Real code review: retrieve PR diff, run LLM review, post findings.
+// Transitions: sdlc:code-review -> sdlc:testing.
+
+func handle_code_review_to_testing(
+  issue_id: NonEmptyStr,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int,
+  llm_provider: String,
+  llm_model: String
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+{
+  // Find the PR for this issue (convention: PR head = sdlc/issue-{number})
+  pr = PullRequest.Get(
+    owner: owner,
+    repo: repo,
+    number: number
+  )
+
+  // List changed files in the PR
+  files = PullRequest.ListFiles(
+    owner: owner,
+    repo: repo,
+    number: number
+  )
+
+  // Build a summary of changed files
+  files_summary = files.files
+    |> map(f => "- {f.filename} ({f.status}, +{f.additions}/-{f.deletions})")
+    |> join("\n")
+
+  // Get the diff text (from PR body or synthesize from file list)
+  diff_text = files.files
+    |> map(f => "--- a/{f.filename}\n+++ b/{f.filename}\n{f.patch}")
+    |> join("\n\n")
+
+  // Run LLM code review
+  review_response = llm.Anthropic.Messages(
+    model: llm_model,
+    messages: [{
+      role: "user",
+      content: code_review_user_prompt(
+        title: pr.title,
+        files_summary: files_summary,
+        diff: diff_text
+      )
+    }],
+    system: code_review_system_prompt(),
+    max_tokens: 4096
+  )
+
+  // Format review findings for comment
+  review_text = review_response.content
+
+  // Post code review as PR comment
+  pr_comment = PullRequest.AddComment(
+    owner: owner,
+    repo: repo,
+    number: number,
+    body: "## Code Review\n\n{review_text}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
+  )
+
+  // Post status to issue
+  comment = issues.comment(
+    id: issue_id,
+    body: "## Code Review: COMPLETED\n\nPR #{number} reviewed. Proceeding to acceptance testing.\n\n### Changed Files\n{files_summary}\n\n---\n_Reviewed by gunbc SDLC pipeline_",
+    marker: "sdlc:testing:{run_key}"
+  )
+
+  // Transition labels: code-review -> testing
+  labels = issues.set_labels(
+    id: issue_id,
+    labels: [label_testing()]
+  )
+
+  return { success: true, next_stage: Testing, artifact_posted: comment.ok, payload: None }
+}
+
+// ── Stage 7: Testing -> Done ───────────────────────────────────────
+// Real acceptance testing: run cargo test + cargo clippy on PR branch.
+// Transitions: sdlc:testing -> sdlc:done.
+
+func handle_testing_to_done(
+  issue_id: NonEmptyStr,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+{
+  // Run cargo test
+  test_result = Build.Test()
+
+  // Run cargo clippy
+  clippy_result = Build.Clippy()
+
+  // Determine overall success
+  all_passed = test_result.success && clippy_result.success
+
+  // Format test report
+  test_status = match test_result.success {
+    true  => "PASSED"
+    false => "FAILED"
+  }
+  clippy_status = match clippy_result.success {
+    true  => "PASSED"
+    false => "FAILED"
+  }
+
+  report_body = match all_passed {
+    true  => "## Acceptance Tests: PASSED\n\n| Check | Status |\n|-------|--------|\n| cargo test | {test_status} |\n| cargo clippy | {clippy_status} |\n\nAll checks passed. Issue complete.\n\n---\n_Tested by gunbc SDLC pipeline_"
+    false => "## Acceptance Tests: FAILED\n\n| Check | Status |\n|-------|--------|\n| cargo test | {test_status} |\n| cargo clippy | {clippy_status} |\n\n### Test Output\n```\n{test_result.stderr}\n```\n\n### Clippy Output\n```\n{clippy_result.stderr}\n```\n\n---\n_Tested by gunbc SDLC pipeline_"
+  }
+
+  // Post result
+  comment = issues.comment(
+    id: issue_id,
+    body: report_body,
+    marker: "sdlc:done:{run_key}"
+  )
+
+  // Only transition if all passed
+  if all_passed {
+    labels = issues.set_labels(
+      id: issue_id,
+      labels: [label_done()]
+    )
+  }
+
+  return { success: all_passed, next_stage: match all_passed { true => Done, false => Testing }, artifact_posted: comment.ok, payload: None }
+}
+
+// ── Stage 8: Done (terminalize, close issue) ───────────────────────
+// Final stage. Close the issue and post a summary.
+
+func handle_done(
+  issue_id: NonEmptyStr,
+  run_key: NonEmptyStr,
+  owner: String,
+  repo: String,
+  number: Int
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+  uses issues: IssueProvider
+{
+  // Post final summary
+  comment = issues.comment(
+    id: issue_id,
+    body: "## SDLC Pipeline Complete\n\nAll stages completed successfully. Closing issue.\n\n---\n_Closed by gunbc SDLC pipeline_",
+    marker: "sdlc:final:{run_key}"
+  )
+
+  // Close the issue
+  closed = issues.close(id: issue_id)
+
+  return { success: closed.ok, next_stage: Done, artifact_posted: comment.ok, payload: None }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════════
+
+test stage_dispatch_idea {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input execute/prepare.issue_id -> "42"
+    input execute/prepare.stage -> Idea
+    input execute/prepare.title -> "Add feature X"
+    input execute/prepare.body -> "We need feature X."
+    input execute/prepare.run_key -> "test-run-001"
+    input execute/prepare.owner -> "gunb-ai"
+    input execute/prepare.repo -> "gunbc"
+    input execute/prepare.number -> 42
+    input execute/prepare.llm_provider -> "anthropic"
+    input execute/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    // Mock LLM response for design generation
+    mock design/llm/execute.response -> rest_response(200, {
+        content: [{ type: "text", text: "## Design\n\nImplement feature X." }],
+        model: "claude-sonnet-4-20250514",
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 200 }
+    })
+
+    mock comment/execute.response -> rest_response(201, { comment_id: "1", ok: true })
+    mock labels/execute.response -> rest_response(200, { ok: true })
+
+    expect result.success == true
+    expect result.next_stage == Design
+}
+
+test stage_dispatch_design_review {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input execute/prepare.issue_id -> "42"
+    input execute/prepare.stage -> DesignReview
+    input execute/prepare.title -> "Add feature X"
+    input execute/prepare.body -> "Design content here."
+    input execute/prepare.run_key -> "test-run-001"
+    input execute/prepare.owner -> "gunb-ai"
+    input execute/prepare.repo -> "gunbc"
+    input execute/prepare.number -> 42
+    input execute/prepare.llm_provider -> "anthropic"
+    input execute/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    mock comment/execute.response -> rest_response(201, { comment_id: "2", ok: true })
+    mock labels/execute.response -> rest_response(200, { ok: true })
+
+    expect result.success == true
+    expect result.next_stage == Accepted
+}
+
+test stage_code_review_with_pr_diff {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input execute/prepare.issue_id -> "42"
+    input execute/prepare.stage -> CodeReview
+    input execute/prepare.title -> "Add feature X"
+    input execute/prepare.body -> "Body"
+    input execute/prepare.run_key -> "test-run-001"
+    input execute/prepare.owner -> "gunb-ai"
+    input execute/prepare.repo -> "gunbc"
+    input execute/prepare.number -> 42
+    input execute/prepare.llm_provider -> "anthropic"
+    input execute/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    // Mock PR get
+    mock pr/execute.response -> rest_response(200, {
+        number: 42,
+        title: "feat: implement issue #42",
+        body: "Closes #42",
+        state: "open",
+        html_url: "https://github.com/gunb-ai/gunbc/pull/42",
+        head: { sha: "abc123" },
+        base: { ref: "main" },
+        mergeable: true,
+        merged: false
+    })
+
+    // Mock PR file list
+    mock list_files/execute.response -> rest_response(200, [
+        {
+            filename: "src/main.rs",
+            status: "modified",
+            additions: 10,
+            deletions: 2,
+            patch: "@@ -1,3 +1,5 @@\n fn main() {\n+    let x = 42;\n+    println!(\"{}\", x);\n }"
+        }
+    ])
+
+    // Mock LLM code review
+    mock review_llm/execute.response -> rest_response(200, {
+        content: [{ type: "text", text: "{\"approved\": true, \"findings\": [], \"summary\": \"LGTM\"}" }],
+        model: "claude-sonnet-4-20250514",
+        stop_reason: "end_turn",
+        usage: { input_tokens: 200, output_tokens: 100 }
+    })
+
+    // Mock PR comment and issue comment
+    mock pr_comment/execute.response -> rest_response(201, { id: 500, html_url: "https://github.com/gunb-ai/gunbc/pull/42#issuecomment-500" })
+    mock comment/execute.response -> rest_response(201, { comment_id: "7", ok: true })
+    mock labels/execute.response -> rest_response(200, { ok: true })
+
+    expect result.success == true
+    expect result.next_stage == Testing
+}
+
+test stage_testing_cargo_pass {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input execute/prepare.issue_id -> "42"
+    input execute/prepare.stage -> Testing
+    input execute/prepare.title -> "Add feature X"
+    input execute/prepare.body -> "Body"
+    input execute/prepare.run_key -> "test-run-001"
+    input execute/prepare.owner -> "gunb-ai"
+    input execute/prepare.repo -> "gunbc"
+    input execute/prepare.number -> 42
+    input execute/prepare.llm_provider -> "anthropic"
+    input execute/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    // Mock cargo test success
+    mock test/execute.response -> shell_response(0, "{\"success\": true, \"stdout\": \"test result: ok. 42 passed\", \"stderr\": \"\"}")
+
+    // Mock cargo clippy success
+    mock clippy/execute.response -> shell_response(0, "{\"success\": true, \"stdout\": \"\", \"stderr\": \"\"}")
+
+    mock comment/execute.response -> rest_response(201, { comment_id: "8", ok: true })
+    mock labels/execute.response -> rest_response(200, { ok: true })
+
+    expect result.success == true
+    expect result.next_stage == Done
+}
+
+test stage_testing_cargo_fail {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input execute/prepare.issue_id -> "42"
+    input execute/prepare.stage -> Testing
+    input execute/prepare.title -> "Add feature X"
+    input execute/prepare.body -> "Body"
+    input execute/prepare.run_key -> "test-run-001"
+    input execute/prepare.owner -> "gunb-ai"
+    input execute/prepare.repo -> "gunbc"
+    input execute/prepare.number -> 42
+    input execute/prepare.llm_provider -> "anthropic"
+    input execute/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    // Mock cargo test failure
+    mock test/execute.response -> shell_response(1, "{\"success\": false, \"stdout\": \"\", \"stderr\": \"test result: FAILED. 1 failed\"}")
+
+    // Mock cargo clippy success (runs in parallel)
+    mock clippy/execute.response -> shell_response(0, "{\"success\": true, \"stdout\": \"\", \"stderr\": \"\"}")
+
+    mock comment/execute.response -> rest_response(201, { comment_id: "9", ok: true })
+
+    expect result.success == false
+    expect result.next_stage == Testing
+}
+
+test full_stage_chain {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    // This test verifies that determine_stage correctly routes and
+    // each handler returns the correct next_stage for chaining.
+    // The worker would invoke execute_stage repeatedly to progress
+    // through: idea -> design -> design-review -> accepted ->
+    // implementing -> code-review -> testing -> done
+
+    input execute/prepare.stage -> Idea
+    input execute/prepare.issue_id -> "99"
+    input execute/prepare.title -> "Full chain test"
+    input execute/prepare.body -> "Test the full stage chain."
+    input execute/prepare.run_key -> "chain-run-001"
+    input execute/prepare.owner -> "gunb-ai"
+    input execute/prepare.repo -> "gunbc"
+    input execute/prepare.number -> 99
+    input execute/prepare.llm_provider -> "anthropic"
+    input execute/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    mock design/llm/execute.response -> rest_response(200, {
+        content: [{ type: "text", text: "## Design\n\nFull chain design." }],
+        model: "claude-sonnet-4-20250514",
+        stop_reason: "end_turn",
+        usage: { input_tokens: 50, output_tokens: 100 }
+    })
+
+    mock comment/execute.response -> rest_response(201, { comment_id: "100", ok: true })
+    mock labels/execute.response -> rest_response(200, { ok: true })
+
+    expect result.success == true
+}

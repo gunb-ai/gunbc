@@ -1,0 +1,107 @@
+// services/sdlc/providers/codex_agent_provider.dag
+//
+// Layer 3 concrete implementation: CodexAgentProvider implements AgentProvider.
+//
+// Wraps the Codex CLI for agent dispatch via @shell transport.
+// The interface contract is generic enough to swap for any agent
+// runner (Devin, SWE-bench, local LLM agent, etc.).
+//
+// Gap I partial resolution: concrete agent provider with branch management.
+
+module services.sdlc.providers.codex_agent_provider
+
+import interfaces.agent_provider { AgentProvider }
+import std.types { NonEmptyStr, AgentStatus, ApprovalMode }
+
+// =========================================================================
+// CodexAgentProvider : AgentProvider
+// =========================================================================
+//
+// Profile bindings: local, cloud_run
+// Transport: @shell (CLI subprocess)
+// Auth: inherits from environment (CODEX_API_KEY)
+
+service codex.AgentProvider : AgentProvider {
+
+  operation spawn {
+    input {
+      prompt: String
+      repo_path: String
+      branch: NonEmptyStr
+      model: String?
+      timeout_seconds: Int?
+      approval_mode: ApprovalMode?
+    }
+    output {
+      run_id: NonEmptyStr
+      status: AgentStatus
+      started: Bool
+    }
+    @shell(["codex", "exec",
+            "--prompt", "{prompt}",
+            "--cwd", "{repo_path}",
+            "--branch", "{branch}",
+            "--model", "{model ?? \"o4-mini\"}",
+            "--timeout", "{timeout_seconds ?? 600}",
+            "--approval-mode", "{approval_mode ?? \"full-auto\"}",
+            "--output-format", "json"])
+    @mock_response(
+      status: 0,
+      body: {
+        "run_id": "codex-run-001",
+        "status": "running",
+        "started": true
+      }
+    )
+  }
+
+  operation poll {
+    input { run_id: NonEmptyStr }
+    output { status: String, finished: Bool, exit_code: Int?, error: String? }
+    @shell(["codex", "status",
+            "--run-id", "{run_id}",
+            "--output-format", "json"])
+    @readonly
+    @mock_response(
+      status: 0,
+      body: {
+        "status": "completed",
+        "finished": true,
+        "exit_code": 0,
+        "error": null
+      }
+    )
+  }
+
+  operation cancel {
+    input { run_id: NonEmptyStr, reason: String? }
+    output { cancelled: Bool, final_status: AgentStatus }
+    @shell(["codex", "cancel",
+            "--run-id", "{run_id}",
+            "--reason", "{reason ?? \"pipeline-cancelled\"}",
+            "--output-format", "json"])
+    @mock_response(
+      status: 0,
+      body: { "cancelled": true, "final_status": "cancelled" }
+    )
+  }
+
+  operation get_result {
+    input { run_id: NonEmptyStr }
+    output { status: String, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
+    @shell(["codex", "result",
+            "--run-id", "{run_id}",
+            "--output-format", "json"])
+    @readonly
+    @mock_response(
+      status: 0,
+      body: {
+        "status": "completed",
+        "exit_code": 0,
+        "stdout": "Implementation complete.",
+        "stderr": "",
+        "files_changed": ["src/main.rs"]
+      }
+    )
+  }
+}

@@ -4,293 +4,390 @@
 // (Cloud Scheduler cron, webhook handler, or CLI). For each open issue
 // with an SDLC label, it:
 //
-//   1. Acquires a stage claim (CAS idempotency via ControlPlane)
+//   1. Discovers issues with SDLC labels (via IssueProvider)
 //   2. Determines the current lifecycle stage from labels
-//   3. Dispatches the appropriate stage handler
-//   4. Records outcome and releases claim
+//   3. Acquires a stage claim (via ClaimStore)
+//   4. Checks for prior outcomes / replay-skip (via OutcomeLedger)
+//   5. Dispatches the appropriate stage handler (via execute_stage)
+//   6. Records outcome and releases claim
 //
 // This is the "thin worker" -- all business logic lives in the
-// per-stage funcs. The worker's only job is discovery + dispatch.
+// per-stage funcs (sdlc_stages.dag). The worker's only job is
+// discovery + claim + dispatch + record.
 //
-// Uses the Loop and Branch patterns from daglang-lower to express
-// the for-each-issue iteration and conditional dispatch as DSL
-// control flow that compiles to SubDag IR nodes.
+// DSL-native implementation of gap analysis Steps 1-5:
+//   Step 1: Multi-stage dispatch via execute_stage() router
+//   Step 2: Stage handlers advance ledger stage (in sdlc_stages.dag)
+//   Step 3: All stage handlers (idea through done) in sdlc_stages.dag
+//   Step 4: Worker loop iteration (for issue in issues)
+//   Step 5: Integration test for multi-stage progression
+//
+// Uses domain interfaces (Layer 2), not concrete services.
+// Profile binding (profiles/sdlc.dag) selects concrete implementations.
 
 module funcs.sdlc_worker
 
-import services.github.issues { Issues }
-import services.sdlc.control_plane { ControlPlane }
-import services.agent.codex { Codex }
-import shared.dag_util { stage_result }
-import pipelines.sdlc { has_label }
-
-// ── Configuration helpers ───────────────────────────────────────────
-
-fn sdlc_labels() -> String {
-  "idea,design,design-review,accepted,implementing,code-review,testing,done"
+import interfaces.issue_provider { IssueProvider }
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.agent_provider { AgentProvider }
+import funcs.sdlc_stages { determine_stage, execute_stage }
+import shared.dag_util { stage_result, aggregate_results, format_report }
+import std.types {
+    TrackedIssue, IssueLifecycleStage, IssueState, StageOutcome, OutcomeStatus,
+    StageResult, Summary, NonEmptyStr
 }
 
-fn make_issue_id(owner: String, repo: String, number: Int) -> String {
-  "{owner}/{repo}#{number}"
+// ── Configuration ─────────────────────────────────────────────────
+
+// All SDLC stage labels for discovery filter
+fn sdlc_discovery_labels() -> String {
+  "sdlc:idea,sdlc:design,sdlc:design-review,sdlc:accepted,sdlc:implementing,sdlc:code-review,sdlc:testing,sdlc:done"
 }
 
-
-
-fn determine_stage(labels: Json) -> String {
-  match has_label(labels: labels, name: "testing") {
-    true  => "testing"
-    false => match has_label(labels: labels, name: "code-review") {
-      true  => "code-review"
-      false => match has_label(labels: labels, name: "implementing") {
-        true  => "implementing"
-        false => match has_label(labels: labels, name: "accepted") {
-          true  => "accepted"
-          false => match has_label(labels: labels, name: "design-review") {
-            true  => "design-review"
-            false => match has_label(labels: labels, name: "design") {
-              true  => "design"
-              false => "idea"
-            }
-          }
-        }
-      }
-    }
-  }
+// Returns the issue number as a string for use as the IssueProvider id.
+// The GitHub provider interpolates this into /issues/{id} endpoints,
+// so it must be just the number (not a composite key like "owner/repo#N").
+fn make_issue_id(number: Int) -> String {
+  "{number}"
 }
 
-// ── Per-stage dispatch handlers ─────────────────────────────────────
-// Each handler transitions one issue through one lifecycle step.
-// They call services directly to avoid cross-module type inference
-// limitations on func return types.
-
-func handle_idea(
-  owner: String,
-  repo: String,
-  number: Int,
-  body: String,
-  title: String,
-  run_key: String
-) -> { success: Bool } {
-  comment = Issues.AddComment(
-    owner: owner,
-    repo: repo,
-    number: number,
-    body: "SDLC pipeline picked up issue. Generating design..."
-  )
-
-  labels = Issues.SetLabels(
-    owner: owner,
-    repo: repo,
-    number: number,
-    labels: ["design"]
-  )
-
-  return { success: true }
+fn make_run_key(owner: String, repo: String, number: Int, stage: IssueLifecycleStage) -> String {
+  "sdlc::{owner}/{repo}#{number}::{stage}::v1"
 }
 
-func handle_design_review(
-  owner: String,
-  repo: String,
-  number: Int,
-  run_key: String
-) -> { success: Bool } {
-  labels = Issues.SetLabels(
-    owner: owner,
-    repo: repo,
-    number: number,
-    labels: ["accepted"]
-  )
-
-  comment = Issues.AddComment(
-    owner: owner,
-    repo: repo,
-    number: number,
-    body: "Design review passed. Ready for implementation."
-  )
-
-  return { success: true }
-}
-
-func handle_accepted(
-  owner: String,
-  repo: String,
-  number: Int,
-  body: String,
-  run_key: String
-) -> { success: Bool } {
-  agent = Codex.Spawn(
-    prompt: "Implement the design for issue #{number}:\n\n{body}",
-    repo_path: ".",
-    branch: "sdlc/issue-{number}",
-    approval_mode: "full-auto"
-  )
-
-  comment = Issues.AddComment(
-    owner: owner,
-    repo: repo,
-    number: number,
-    body: "Agent dispatched (run: {agent.run_id}). Implementation in progress."
-  )
-
-  labels = Issues.SetLabels(
-    owner: owner,
-    repo: repo,
-    number: number,
-    labels: ["implementing"]
-  )
-
-  return { success: agent.started }
-}
-
-func handle_done(
-  owner: String,
-  repo: String,
-  number: Int,
-  run_key: String
-) -> { success: Bool } {
-  comment = Issues.AddComment(
-    owner: owner,
-    repo: repo,
-    number: number,
-    body: "All stages complete. Closing issue."
-  )
-
-  close = Issues.Update(
-    owner: owner,
-    repo: repo,
-    number: number,
-    state: "closed"
-  )
-
-  return { success: true }
-}
-
-// ── Main worker function ────────────────────────────────────────────
+// ── Main worker function ──────────────────────────────────────────
+// Parameters (owner, repo, worker_id, llm_provider, llm_model) are
+// bound at invocation time (CLI args, webhook, cron).
+// Discovers all open issues with SDLC labels, claims each,
+// dispatches the appropriate stage handler, records outcomes.
+//
+// Step 4 (gap analysis): worker loop iteration.
+// Each invocation processes one stage transition per issue.
+// To progress idea -> done, invoke the worker multiple times
+// (or use --until-stable flag once implemented).
 
 func dispatch_sdlc(
   owner: String,
   repo: String,
-  run_key: String
-) -> { processed: Int, skipped: Int } {
-  issues_response = Issues.List(
-    owner: owner,
-    repo: repo,
-    labels: sdlc_labels(),
-    state: "open"
+  worker_id: String,
+  llm_provider: String,
+  llm_model: String
+) -> { processed: Int, skipped: Int, conflicts: Int, stages: List<StageResult> }
+  uses issues: IssueProvider
+  uses claims: ClaimStore
+  uses outcomes: OutcomeLedger
+  uses agents: AgentProvider
+{
+  // Step 4a: Discover all open issues with SDLC labels
+  discovered = issues.discover(
+    labels: ["sdlc:idea", "sdlc:design", "sdlc:design-review", "sdlc:accepted",
+             "sdlc:implementing", "sdlc:code-review", "sdlc:testing", "sdlc:done"],
+    state: Open
   )
 
-  results = for issue in issues_response.issues {
+  // Step 4b: Process each discovered issue
+  results = for issue in discovered.issues {
+    // Determine current stage from labels
     stage = determine_stage(labels: issue.labels)
-    issue_id = make_issue_id(owner: owner, repo: repo, number: issue.number)
+    issue_id = make_issue_id(number: issue.id)
+    run_key = make_run_key(owner: owner, repo: repo, number: issue.id, stage: stage)
 
-    // Replay-skip: check if this stage already has a successful outcome.
-    // Only skip on "Success" — failed outcomes should be retried.
-    prior = ControlPlane.GetStageOutcome(
-      intake_key: "{owner}/{repo}",
-      stage: stage
+    // Step 1: Acquire claim for this (issue_id, stage) pair
+    claim = claims.acquire(
+      issue_id: issue_id,
+      stage: stage,
+      owner: worker_id,
+      lease_ttl_ms: 30000
     )
 
-    if prior.found && prior.outcome_status == "Success" {
-      // Prior success for this stage — skip dispatch.
-      { issue_number: issue.number, stage: stage, action: "replay_skipped" }
-    } else {
-      claim = ControlPlane.AcquireStageClaim(
-        intake_key: "{owner}/{repo}",
-        issue_id: issue_id,
-        stage: stage,
+    if claim.acquired {
+      // Check for prior outcome (replay-skip)
+      prior = outcomes.get(
         run_key: run_key,
-        claimant: "funcs.sdlc_worker"
+        stage: stage
       )
 
-      if claim.acquired {
-        outcome = ControlPlane.UpsertStageOutcome(
-          intake_key: "{owner}/{repo}",
+      if prior.found && prior.outcome.status == Success {
+        // Replay-skip: prior SUCCESS exists, release claim and skip.
+        // Failed outcomes are NOT skipped so the worker can retry.
+        skip_release = claims.release(
           issue_id: issue_id,
           stage: stage,
-          run_key: run_key,
-          outcome_status: "dispatched",
-          payload_hash: "sha256:worker-dispatch"
+          owner: worker_id,
+          generation: claim.lease_generation
         )
 
-        release = ControlPlane.ReleaseStageClaim(
-          intake_key: "{owner}/{repo}",
+        stage_result(name: stage, success: true, stderr: "replay-skip")
+      } else {
+        // Step 1 (gap analysis): dispatch to multi-stage handler
+        stage_outcome = execute_stage(
           issue_id: issue_id,
           stage: stage,
-          claim_token: claim.claim_token,
-          lease_generation: claim.lease_generation
+          title: issue.title,
+          body: issue.body,
+          run_key: run_key,
+          owner: owner,
+          repo: repo,
+          number: issue.id,
+          llm_provider: llm_provider,
+          llm_model: llm_model
+        )
+
+        // Record outcome in ledger (Step 2: stage handlers advance stage)
+        outcome_record = outcomes.upsert(
+          run_key: run_key,
+          stage: stage,
+          outcome: {
+            run_key: run_key,
+            stage: stage,
+            status: match stage_outcome.success {
+              true  => Success
+              false => Failed
+            },
+            payload: stage_outcome.payload,
+            error: None,
+            attempt_count: 1,
+            retry_budget_remaining: 2,
+            next_attempt_at: None,
+            created_at: "",
+            updated_at: ""
+          }
+        )
+
+        // Release claim after stage execution
+        release = claims.release(
+          issue_id: issue_id,
+          stage: stage,
+          owner: worker_id,
+          generation: claim.lease_generation
+        )
+
+        stage_result(
+          name: "{stage}->{stage_outcome.next_stage}",
+          success: stage_outcome.success,
+          stderr: ""
         )
       }
+    } else {
+      // Claim conflict: another worker holds this (issue_id, stage)
+      stage_result(name: stage, success: false, stderr: "claim-conflict")
     }
   }
 
-  return { processed: 0, skipped: 0 }
+  // Aggregate results
+  processed_count = results |> filter(r => r.success) |> count()
+  skipped_count = results |> filter(r => r.stderr == "replay-skip") |> count()
+  conflict_count = results |> filter(r => r.stderr == "claim-conflict") |> count()
+
+  return {
+    processed: processed_count,
+    skipped: skipped_count,
+    conflicts: conflict_count,
+    stages: results
+  }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
 
-test worker_dispatches_idea {
+// Step 5 (gap analysis): integration test for multi-stage progression.
+
+test worker_dispatches_and_advances_stage {
     @tier(Scenario)
     @hermetic(true)
     @auto_mock(true)
 
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
-    input dispatch/prepare.run_key -> "test-run-001"
+    input dispatch/prepare.worker_id -> "test-worker-1"
+    input dispatch/prepare.llm_provider -> "anthropic"
+    input dispatch/prepare.llm_model -> "claude-sonnet-4-20250514"
 
-    mock list/execute.response -> rest_response(200, [
-        {
-            number: 42,
-            title: "Add feature X",
-            body: "We need feature X for the SDLC pipeline.",
-            state: "open",
-            labels: [{ name: "idea" }]
-        }
-    ])
+    // Mock: discover returns one issue at "idea" stage
+    mock discover/execute.response -> rest_response(200, {
+        issues: [
+            {
+                id: "42",
+                title: "Add feature X",
+                body: "We need feature X for the SDLC pipeline.",
+                stage: "Idea",
+                labels: ["sdlc:idea"],
+                url: "https://github.com/gunb-ai/gunbc/issues/42",
+                author: "test-user",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z"
+            }
+        ]
+    })
 
-    mock claim/execute.response -> rest_response(200, {
+    // Mock: claim succeeds
+    mock acquire/execute.response -> rest_response(200, {
         acquired: true,
         conflict: false,
-        lease_generation: 1,
-        lease_expires_at_epoch_ms: 1734000000000,
-        claim_token: "test-token",
-        conflict_reason: null,
-        observed_generation: 1
+        lease_generation: 1
     })
 
-    mock outcome/execute.response -> rest_response(200, { updated: true, previous_status: null, checksum: "sha256:mock" })
-    mock release/execute.response -> rest_response(200, { released: true, observed_generation: 1 })
+    // Mock: no prior outcome (not a replay)
+    mock get/execute.response -> rest_response(200, {
+        found: false,
+        outcome: null
+    })
 
-    expect result is Map
+    // Mock: LLM design generation
+    mock design/llm/execute.response -> rest_response(200, {
+        content: [{ type: "text", text: "## Design\n\nFeature X implementation." }],
+        model: "claude-sonnet-4-20250514",
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 200 }
+    })
+
+    // Mock: comment and label mutations
+    mock comment/execute.response -> rest_response(201, { comment_id: "999", ok: true })
+    mock set_labels/execute.response -> rest_response(200, { ok: true })
+
+    // Mock: outcome upsert
+    mock upsert/execute.response -> rest_response(200, { updated: true, previous: null })
+
+    // Mock: claim release
+    mock release/execute.response -> rest_response(200, { released: true })
+
+    expect result.processed >= 1
 }
 
-test worker_skips_conflict {
+test worker_skips_on_claim_conflict {
     @tier(Scenario)
     @hermetic(true)
     @auto_mock(true)
 
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
-    input dispatch/prepare.run_key -> "test-run-002"
+    input dispatch/prepare.worker_id -> "test-worker-2"
+    input dispatch/prepare.llm_provider -> "anthropic"
+    input dispatch/prepare.llm_model -> "claude-sonnet-4-20250514"
 
-    mock list/execute.response -> rest_response(200, [
-        {
-            number: 43,
-            title: "Already claimed",
-            body: "This issue is already being processed.",
-            state: "open",
-            labels: [{ name: "design" }]
-        }
-    ])
-
-    mock claim/execute.response -> rest_response(200, {
-        acquired: false,
-        conflict: true,
-        lease_generation: 2,
-        lease_expires_at_epoch_ms: 1734000000000,
-        claim_token: null,
-        conflict_reason: "lease held by another worker",
-        observed_generation: 2
+    mock discover/execute.response -> rest_response(200, {
+        issues: [
+            {
+                id: "43",
+                title: "Already claimed",
+                body: "This issue is being processed.",
+                stage: "Design",
+                labels: ["sdlc:design"],
+                url: "https://github.com/gunb-ai/gunbc/issues/43",
+                author: "test-user",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z"
+            }
+        ]
     })
 
-    expect result is Map
+    // Mock: claim fails (conflict)
+    mock acquire/execute.response -> rest_response(200, {
+        acquired: false,
+        conflict: true,
+        lease_generation: 2
+    })
+
+    expect result.conflicts >= 1
+}
+
+test worker_replay_skips_completed_stage {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input dispatch/prepare.owner -> "gunb-ai"
+    input dispatch/prepare.repo -> "gunbc"
+    input dispatch/prepare.worker_id -> "test-worker-3"
+    input dispatch/prepare.llm_provider -> "anthropic"
+    input dispatch/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    mock discover/execute.response -> rest_response(200, {
+        issues: [
+            {
+                id: "44",
+                title: "Already done",
+                body: "This stage was already executed.",
+                stage: "Design",
+                labels: ["sdlc:design"],
+                url: "https://github.com/gunb-ai/gunbc/issues/44",
+                author: "test-user",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z"
+            }
+        ]
+    })
+
+    mock acquire/execute.response -> rest_response(200, {
+        acquired: true,
+        conflict: false,
+        lease_generation: 1
+    })
+
+    // Mock: prior outcome exists with Success status (replay-skip)
+    mock get/execute.response -> rest_response(200, {
+        found: true,
+        outcome: { run_key: "sdlc::gunb-ai/gunbc#44::Design::v1", stage: Design, status: Success }
+    })
+
+    mock release/execute.response -> rest_response(200, { released: true })
+
+    expect result.skipped >= 1
+}
+
+test worker_retries_failed_stage {
+    @tier(Scenario)
+    @hermetic(true)
+    @auto_mock(true)
+
+    input dispatch/prepare.owner -> "gunb-ai"
+    input dispatch/prepare.repo -> "gunbc"
+    input dispatch/prepare.worker_id -> "test-worker-4"
+    input dispatch/prepare.llm_provider -> "anthropic"
+    input dispatch/prepare.llm_model -> "claude-sonnet-4-20250514"
+
+    mock discover/execute.response -> rest_response(200, {
+        issues: [
+            {
+                id: "45",
+                title: "Previously failed",
+                body: "This stage failed last time and should be retried.",
+                stage: "Design",
+                labels: ["sdlc:design"],
+                url: "https://github.com/gunb-ai/gunbc/issues/45",
+                author: "test-user",
+                created_at: "2026-01-01T00:00:00Z",
+                updated_at: "2026-01-01T00:00:00Z"
+            }
+        ]
+    })
+
+    mock acquire/execute.response -> rest_response(200, {
+        acquired: true,
+        conflict: false,
+        lease_generation: 1
+    })
+
+    // Mock: prior outcome exists but with Failed status — should NOT skip
+    mock get/execute.response -> rest_response(200, {
+        found: true,
+        outcome: { run_key: "sdlc::gunb-ai/gunbc#45::Design::v1", stage: Design, status: Failed }
+    })
+
+    // Mock: LLM design generation (retry path)
+    mock design/llm/execute.response -> rest_response(200, {
+        content: [{ type: "text", text: "## Design\n\nRetried design." }],
+        model: "claude-sonnet-4-20250514",
+        stop_reason: "end_turn",
+        usage: { input_tokens: 100, output_tokens: 200 }
+    })
+
+    mock comment/execute.response -> rest_response(201, { comment_id: "999", ok: true })
+    mock set_labels/execute.response -> rest_response(200, { ok: true })
+    mock upsert/execute.response -> rest_response(200, { updated: true, previous: null })
+    mock release/execute.response -> rest_response(200, { released: true })
+
+    // Should process (retry), NOT skip
+    expect result.processed >= 1
+    expect result.skipped == 0
 }
