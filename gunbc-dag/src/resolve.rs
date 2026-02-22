@@ -40,6 +40,7 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
+use crate::makegen::MakegenOp;
 use crate::resolve_service::{
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
 };
@@ -573,14 +574,14 @@ fn resolve_domain(
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
-    // 1. Modules with custom resolvers — return Some for known callables,
-    //    None for unknown (which falls through to passthrough).
-    let custom = match module {
-        "std.resources" => Some(resolve_std_resources(name)),
-        _ => None,
-    };
-    if let Some(op) = custom {
-        return Ok(op);
+    // 1. Modules with custom resolvers.
+    if module == "std.resources" {
+        return Ok(resolve_std_resources(name));
+    }
+    if module == "tools.makegen" {
+        if let Some(op) = resolve_tools_makegen(name) {
+            return Ok(op);
+        }
     }
     // 2. Service/workspace modules use generic transport dispatch.
     if module.starts_with("services.") || module.starts_with("workspace.") {
@@ -591,6 +592,16 @@ fn resolve_domain(
     Ok(DynOp::new(PassthroughOp {
         output_port_names: declared_output_names(outputs),
     }))
+}
+
+fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "load_registry" => MakegenOp::LoadRegistry,
+        "render_makefile" => MakegenOp::RenderMakefile,
+        "makegen" => MakegenOp::Entrypoint,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
 }
 
 fn resolve_std_resources(name: &str) -> DynOp {
@@ -886,7 +897,7 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("load_registry");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        assert!(format!("{:?}", result).contains("LoadRegistry"));
 
         let node = callable_node(
             "render_makefile",
@@ -895,11 +906,11 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("render_makefile");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        assert!(format!("{:?}", result).contains("RenderMakefile"));
 
         let node = callable_node("makegen", "tools.makegen", "makegen", ObligationCategory::None);
         let result = resolve_node(&node).expect("makegen");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        assert!(format!("{:?}", result).contains("Entrypoint"));
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
