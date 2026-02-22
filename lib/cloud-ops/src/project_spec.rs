@@ -540,7 +540,7 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
 /// Mirrors `AllSecrets()` from `gunb.ai/tools/secrets/spec/spec.go`.
 /// Secret IDs match the gunb.ai convention so the same GCP Secret Manager
 /// entries are reused across repos.
-static KNOWN_SECRETS: [SecretSpec; 3] = [
+static KNOWN_SECRETS: [SecretSpec; 4] = [
     SecretSpec {
         env_name: "GITHUB_TOKEN",
         secret_id: GITHUB_SECRET_ID,
@@ -563,6 +563,15 @@ static KNOWN_SECRETS: [SecretSpec; 3] = [
         env_name: "OPENAI_API_KEY",
         secret_id: "openai-api-key",
         requirement: SecretRequirement::Optional,
+        status: SecretStatus::Active,
+        scopes: &[],
+        rotation: RotationHandler::Manual,
+        max_age_days: None,
+    },
+    SecretSpec {
+        env_name: "CODEX_API_KEY",
+        secret_id: "codex-api-key",
+        requirement: SecretRequirement::Required,
         status: SecretStatus::Active,
         scopes: &[],
         rotation: RotationHandler::Manual,
