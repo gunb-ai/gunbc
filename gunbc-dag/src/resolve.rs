@@ -105,15 +105,63 @@ impl Executable for PassthroughOp {
 /// pipeline-level passthrough of inputs to outputs.
 #[derive(Debug, Clone)]
 struct PipelineDispatchOp {
-    _module: String,
-    _name: String,
+    module: String,
+    name: String,
+    stages: usize,
+    stage_names: Vec<String>,
     output_port_names: Vec<String>,
 }
 
 impl Executable for PipelineDispatchOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
+        let mut outputs =
+            execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
+        outputs.insert("stages".to_string(), Value::Int(self.stages as i64));
+        if let Some((index, stage_name)) = self.current_stage(outputs.get("stage")) {
+            outputs.insert("stage_index".to_string(), Value::Int(index as i64));
+            outputs.insert("current_stage".to_string(), Value::Str(stage_name.clone()));
+            let next = self
+                .stage_names
+                .get(index.saturating_add(1))
+                .cloned()
+                .unwrap_or(stage_name);
+            outputs.insert("next_stage".to_string(), Value::Str(next));
+            outputs.insert(
+                "is_terminal_stage".to_string(),
+                Value::Bool(index.saturating_add(1) >= self.stage_names.len()),
+            );
+        } else if let Some(first) = self.stage_names.first() {
+            outputs.insert("next_stage".to_string(), Value::Str(first.clone()));
+            outputs.insert("is_terminal_stage".to_string(), Value::Bool(false));
+        } else {
+            outputs.insert("next_stage".to_string(), Value::Skipped);
+            outputs.insert("is_terminal_stage".to_string(), Value::Bool(true));
+        }
+        outputs.insert(
+            "pipeline".to_string(),
+            Value::Str(format!("{}.{}", self.module, self.name)),
+        );
+        Ok(outputs)
     }
+}
+
+impl PipelineDispatchOp {
+    fn current_stage(&self, stage_value: Option<&Value>) -> Option<(usize, String)> {
+        let raw = stage_value.and_then(Value::as_str)?;
+        let token = normalize_stage_token(raw);
+        self.stage_names
+            .iter()
+            .position(|candidate| normalize_stage_token(candidate) == token)
+            .map(|index| (index, self.stage_names[index].clone()))
+    }
+}
+
+fn normalize_stage_token(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
 }
 
 /// Simple identity callable adapter for DSL entrypoint wrappers.
@@ -554,15 +602,18 @@ fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveE
 fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline { module, name, .. } => {
-            resolve_domain(node_id, module, name, outputs, None).or_else(|_| {
-                Ok(DynOp::new(PipelineDispatchOp {
-                    _module: module.clone(),
-                    _name: name.clone(),
-                    output_port_names: declared_output_names(outputs),
-                }))
-            })
-        }
+        LoweredOp::Pipeline {
+            module,
+            name,
+            stages,
+            stage_names,
+        } => Ok(DynOp::new(PipelineDispatchOp {
+            module: module.clone(),
+            name: name.clone(),
+            stages: *stages,
+            stage_names: stage_names.clone(),
+            output_port_names: declared_output_names(outputs),
+        })),
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
             module,
@@ -972,6 +1023,59 @@ mod tests {
         );
         let result = resolve_node(&node).expect("makegen");
         assert!(format!("{:?}", result).contains("Entrypoint"));
+    }
+
+    #[test]
+    fn resolve_pipeline_ops_use_pipeline_dispatch() {
+        let node = Node::opaque(
+            "pipeline::ci",
+            vec![Port::new("stage", "String")],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines".to_string(),
+                name: "ci".to_string(),
+                stages: 3,
+                stage_names: vec![
+                    "cloud_env".to_string(),
+                    "codegen_stage".to_string(),
+                    "generate".to_string(),
+                ],
+            },
+        );
+        let result = resolve_node(&node).expect("pipeline");
+        assert!(format!("{:?}", result).contains("PipelineDispatchOp"));
+    }
+
+    #[test]
+    fn pipeline_dispatch_computes_next_stage() {
+        let node = Node::opaque(
+            "pipeline::ci",
+            vec![Port::new("stage", "String")],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines".to_string(),
+                name: "ci".to_string(),
+                stages: 3,
+                stage_names: vec![
+                    "cloud_env".to_string(),
+                    "codegen_stage".to_string(),
+                    "generate".to_string(),
+                ],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline");
+        let mut inputs = HashMap::new();
+        inputs.insert("stage".to_string(), Value::Str("cloud_env".to_string()));
+        let outputs = op.execute(inputs).expect("pipeline executes");
+        assert_eq!(outputs.get("stages"), Some(&Value::Int(3)));
+        assert_eq!(
+            outputs.get("next_stage").and_then(Value::as_str),
+            Some("codegen_stage")
+        );
+        assert_eq!(
+            outputs.get("is_terminal_stage").and_then(Value::as_bool),
+            Some(false)
+        );
     }
 
     #[test]
