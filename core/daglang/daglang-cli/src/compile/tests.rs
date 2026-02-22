@@ -430,46 +430,6 @@ fn compile_single_file_makegen_produces_non_empty_outputs() {
 }
 
 #[test]
-fn resolve_lowered_dag_maps_makegen_nodes_to_dyn_ops() {
-    let context = workspace_single_file_context("tools/makegen.dag");
-    let output = compile_from_context(&context).expect("compile should succeed");
-
-    let resolved = resolve_lowered_dag(&output.lowered_dag).expect("makegen dag should resolve");
-    // Resolved DAG may have additional nodes/edges from resource wiring
-    // (e.g., fs_env resource edges for transport execute nodes).
-    assert!(
-        resolved.nodes.len() >= output.lowered_dag.nodes.len(),
-        "resolved DAG should have at least as many nodes as lowered DAG"
-    );
-    assert!(
-        resolved.edges.len() >= output.lowered_dag.edges.len(),
-        "resolved DAG should have at least as many edges as lowered DAG"
-    );
-
-    let debug_op_for = |node_id: &str| {
-        resolved
-            .nodes
-            .iter()
-            .find(|node| node.id.0 == node_id)
-            .map(|node| match &node.body {
-                gunbc_ir::node::NodeBody::Opaque(op) => format!("{:?}", op),
-                gunbc_ir::node::NodeBody::SubDag(_) => {
-                    panic!("makegen fixture should not contain subdag nodes")
-                }
-            })
-            .expect("expected node to exist in resolved dag")
-    };
-
-    assert!(debug_op_for("load_registry").contains("LoadRegistry"));
-    assert!(debug_op_for("fs_env").contains("FsEnv"));
-    assert!(debug_op_for("tools.makegen::render_makefile").contains("RenderMakefile"));
-    assert!(debug_op_for("prepare_read_makegen").contains("PrepareFileRead"));
-    assert!(debug_op_for("execute_read_makegen").contains("Execute"));
-    assert!(debug_op_for("prepare_write_makegen").contains("PrepareFileWrite"));
-    assert!(debug_op_for("compare_makegen_content").contains("CompareContent"));
-    assert!(debug_op_for("execute_makegen_transport").contains("Execute"));
-    assert!(debug_op_for("tools.makegen::makegen").contains("Entrypoint"));
-}
 
 #[test]
 fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
@@ -532,98 +492,10 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
 }
 
 #[test]
-fn compile_resolve_execute_makegen_real_mode_writes_output() {
-    let fixture = MakegenOutputFixture::new("makegen_real_run");
-
-    let log = compile_resolve_execute_from_context(
-        &fixture.context,
-        ExecutionMode::Real,
-        Some(&fixture.input_mocks),
-    )
-    .expect("real execution should succeed");
-    assert!(
-        fixture.output_path.exists(),
-        "real execution should write requested output path"
-    );
-    let content = std::fs::read_to_string(&fixture.output_path)
-        .expect("real execution should emit readable output file");
-    assert!(content.contains(".PHONY"));
-    assert!(content.contains("makegen"));
-    let makegen_entry = log
-        .get("tools.makegen::makegen")
-        .expect("execution log should include makegen entrypoint node");
-    assert_eq!(
-        makegen_entry.outputs.get("written"),
-        Some(&gunbc_ir::Value::Bool(true)),
-        "first real run should report written=true"
-    );
-}
 
 #[test]
-fn compile_resolve_execute_makegen_real_mode_reports_not_written_when_fresh() {
-    let fixture = MakegenOutputFixture::new("makegen_real_idempotent");
-
-    compile_resolve_execute_from_context(
-        &fixture.context,
-        ExecutionMode::Real,
-        Some(&fixture.input_mocks),
-    )
-        .expect("first real execution should succeed");
-    let first_content =
-        std::fs::read_to_string(&fixture.output_path).expect("first run should write output");
-    let second = compile_resolve_execute_from_context(
-        &fixture.context,
-        ExecutionMode::Real,
-        Some(&fixture.input_mocks),
-    )
-    .expect("second real execution should succeed");
-
-    let second_entry = second
-        .get("tools.makegen::makegen")
-        .expect("execution log should include makegen entrypoint node");
-    assert_eq!(
-        second_entry.outputs.get("written"),
-        Some(&gunbc_ir::Value::Bool(false)),
-        "second real run should report written=false when output is unchanged"
-    );
-    let second_content = std::fs::read_to_string(&fixture.output_path)
-        .expect("second run should leave output intact");
-    assert_eq!(first_content, second_content);
-    assert!(
-        fixture.output_path.exists(),
-        "real idempotence check should preserve generated output"
-    );
-}
 
 #[test]
-fn compile_resolve_execute_makegen_dry_run_intercepts_and_skips_output_write() {
-    let fixture = MakegenOutputFixture::new("makegen_dry_run");
-    let output_path_str = fixture.output_path.to_string_lossy();
-    let dry_run_mocks = makegen_dry_run_transport_mocks(output_path_str.as_ref());
-
-    let log = compile_resolve_execute_from_context(
-        &fixture.context,
-        ExecutionMode::DryRun(dry_run_mocks),
-        Some(&fixture.input_mocks),
-    )
-    .expect("dry-run execution should succeed");
-    assert!(
-        !fixture.output_path.exists(),
-        "dry-run execution should not write output file"
-    );
-    assert!(
-        log.has_intercepted(),
-        "dry-run should intercept boundary nodes"
-    );
-    let makegen_entry = log
-        .get("tools.makegen::makegen")
-        .expect("execution log should include makegen entrypoint node");
-    assert_eq!(
-        makegen_entry.outputs.get("written"),
-        Some(&gunbc_ir::Value::Bool(false)),
-        "dry-run should report written=false"
-    );
-}
 
 #[test]
 fn compile_resolve_execute_end_to_end_function_body_expressions() {

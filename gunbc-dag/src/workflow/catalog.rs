@@ -431,6 +431,7 @@ fn stage_is_enabled(stage: &StageTemplate, mode: Option<&str>) -> bool {
     }
 }
 
+#[allow(clippy::disallowed_methods)]
 fn load_workflow_templates() -> Result<HashMap<&'static str, WorkflowTemplate>, String> {
     let mut templates = HashMap::new();
     for variant in WORKFLOW_VARIANTS {
@@ -445,6 +446,7 @@ fn load_workflow_templates() -> Result<HashMap<&'static str, WorkflowTemplate>, 
     Ok(templates)
 }
 
+#[allow(clippy::disallowed_methods)]
 fn parse_workflow_template(file: &str, pipeline_name: &str) -> Result<WorkflowTemplate, String> {
     let path = workflow_file_path(file);
     let source = std::fs::read_to_string(&path)

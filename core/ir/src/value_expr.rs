@@ -214,6 +214,7 @@ fn response_to_value_expr(resp: &TransportResponse) -> ValueExpr {
                 ),
                 ("success".to_string(), ValueExpr::Bool(f.success)),
                 ("content".to_string(), opt_str(&f.content)),
+                ("bytes".to_string(), ValueExpr::Unit),
                 (
                     "exists".to_string(),
                     match f.exists {

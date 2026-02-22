@@ -111,7 +111,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | E: Runtime infra | **DONE** | — |
 | F: Codegen-first SDLC | **DONE** | `CG1` superseded (SDLC modules are runtime-authored) |
 | G: Workflow DSL migration | **DONE** | — |
-| H: DSL expression language | **ACTIVE** | EX-1..EX-15 (22 tool ops → 0; parser has syntax, gap is lowering + execution) |
+| H: DSL expression language | **DONE** | — |
 
 ---
 
@@ -271,7 +271,7 @@ The parser has the syntax. The gap is making it executable. These tasks focus on
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **EX-9** | **Migrate `tools.pragma` ops to DSL**: 3 ops (RenderClippy, RenderAllowlist, RenderLintPolicy). Depends on structured rendering (EX-7) and data sources (EX-3). | EX-3, EX-7 | M | **DONE** |
-| **EX-10** | **Migrate `tools.makegen` ops to DSL**: 3 ops (LoadRegistry, RenderMakefile, Entrypoint). Depends on data sources (EX-3) and rendering (EX-7). | EX-3, EX-7 | M | **TAKEN** |
+| **EX-10** | **Migrate `tools.makegen` ops to DSL**: 3 ops (LoadRegistry, RenderMakefile, Entrypoint). Depends on data sources (EX-3) and rendering (EX-7). | EX-3, EX-7 | M | **DONE** |
 | **EX-11** | **Migrate `tools.bootstrap` ops to DSL**: 4 ops (PrepareScanWorkspace, ParseScanResult, GenerateMakefile, GenerateGitignore). Depends on structured transport (EX-1) and collections (EX-4). | EX-1, EX-4 | M | **DONE** |
 | **EX-12** | **Migrate `tools.codegen` ops to DSL**: 5 ops (PrepareCodegenExists, ParseCodegenExists, PrepareCodegenCommand, ParseCodegenResult, PrepareStampWrite). Depends on structured transport (EX-1), structured paths (EX-2), and control flow (EX-5). | EX-1, EX-2, EX-5 | M | **DONE** |
 | **EX-13** | **Migrate `tools.build` ops to DSL**: 7 ops (PrepareBuild, ParseBuild, PrepareTest, ParseTest, PrepareClippy, ParseClippy, Summary). Depends on control flow (EX-5) and rendering (EX-7). | EX-5, EX-7 | M | **DONE** |
@@ -281,6 +281,21 @@ The parser has the syntax. The gap is making it executable. These tasks focus on
 **Parallelism**: EX-1, EX-2, EX-3 are fully independent (data model fixes). EX-4, EX-5, EX-6 are independent of each other (lowering path work). EX-9 through EX-14 are independent per module once their expression dependencies are met — each module can be migrated by a separate worker. EX-8 is the integration gate before any migration begins.
 
 **Success criteria**: After Lane H, adding a tool of any complexity requires **1 DSL file** and **0 Rust changes**. Custom tool `Executable` impls drop from 22 to 0 (46 total impls including infrastructure ops that stay in Rust by design).
+
+---
+
+## Type System Enforcement — Remaining Work
+
+**Context**: Set-theoretic types-as-DAGs migration (Phases 1-6) substantially complete. IR foundation, DSL type compilation, TypeRegistry wiring, Bytes support, lattice boundary witnesses, and cross-product test generation all implemented. Items below are follow-up hardening and propagation work.
+
+| ID | Task | Context | Size | Status |
+|----|------|---------|------|--------|
+| **TS-1** | **GCP Secret type propagation** | 25+ ports in `lib/gcp-ops/src/graph.rs` use `"String"` for access_token/subject_token. Need `OptionalSecret` type (doesn't exist yet), then update 7 output ports (parse_github_oidc, parse_metadata_oidc, parse_sts, parse_impersonate, merge_auth_result) and 9 input ports (prepare_sts, prepare_impersonate, prepare_secret_access/get/create/add_version, prepare_ensure_iam, check_iam) across 2 duplicate graph functions. | L | |
+| **TS-2** | **Regenerate all CI generated tests** | 2197 CI generated tests fail at runtime (`invalid 'items' input: expected StringList`). Pre-existing issue from collection dispatch changes. The test generator produces tests that exercise DryRun mode, but the `CollectionDispatchOp` expects `StringList` format. Need to update mock generation or collection handling. | M | |
+| **TS-3** | **Wire TypeRegistry into DagBuilder (Phase 3a hard cutover)** | Make `type_registry: TypeRegistry` non-optional on `DagBuilder`. Delete `without_type_registry()`. All `add_edge()` calls enforce `registry.is_compatible()`. Currently additive; needs hard cutover. | M | |
+| **TS-4** | **Delete PortType::Any catch-all (Phase 3b)** | Remove `_ => PortType::Any` fallback in `parse_port_type()`. Unknown type strings → `PortType::from_registry()` → hard compile error if not registered. Requires all graph builders to use registered types (TS-1 is prerequisite). | M | TS-1 |
+| **TS-5** | **Process all annotations in typecheck (Phase 2b)** | `validate_type_expr` in daglang-typecheck skips non-`@range` annotations. Handle `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types { ... }` → extension→encoding map. | L | |
+| **TS-6** | **Workspace subdag mapping for reconciler/sdlc** | 2 workspace subdag tests fail: "unmapped DSL pipeline modules: reconciler, sdlc". Add module mappings in `workspace/subdags` or explicit exclusions. Pre-existing. | S | |
 
 ---
 

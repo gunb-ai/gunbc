@@ -585,7 +585,7 @@ impl<M: TextMedium> RustCodeRenderer<M> {
             },
             "gunbc_ir::transport::FileResponse" => match field {
                 "operation" => Some(format!("{}: {}", field, self.render_file_op(value))),
-                "content" | "exists" | "error" => {
+                "content" | "bytes" | "exists" | "error" => {
                     Some(format!("{}: {}", field, self.render_option_value(value)))
                 }
                 _ => None,
