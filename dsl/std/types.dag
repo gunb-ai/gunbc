@@ -326,12 +326,12 @@ type Document {
 }
 
 type TextFile {
-  path: TextFilePath
+  path: String
   document: Document
 }
 
 type RenderedTextFile {
-  path: TextFilePath
+  path: String
   content: String
 }
 

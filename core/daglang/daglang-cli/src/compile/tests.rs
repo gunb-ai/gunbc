@@ -4,7 +4,7 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
-use gunbc_exec::{BoundaryMocks, Executable, ExecutionMode};
+use gunbc_exec::{lower, BoundaryMocks, Executable, ExecutionMode};
 use gunbc_ir::{node::NodeBody, Dag, Edge, Node, Port};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -623,6 +623,83 @@ fn compile_resolve_execute_makegen_dry_run_intercepts_and_skips_output_write() {
         Some(&gunbc_ir::Value::Bool(false)),
         "dry-run should report written=false"
     );
+}
+
+#[test]
+fn compile_resolve_execute_end_to_end_function_body_expressions() {
+    let (context, root) = temp_dag_context("function_body_e2e_dir", r#"module sample.main
+fn summarize(flags: List<Bool>, include_disabled: Bool) -> String {
+  scoped = if include_disabled {
+    flags
+  } else {
+    flags |> filter(flag => flag)
+  }
+  labels = for flag in scoped {
+    match flag {
+      true => "enabled:true"
+      false => "disabled:false"
+    }
+  }
+  labels_csv = labels |> map(label => label) |> join(",")
+  enabled_count = scoped |> count()
+  payload = {
+    enabled_count: enabled_count,
+    labels: labels,
+    report: "count={enabled_count}; labels={labels_csv}"
+  }
+  payload.report
+}
+func run() -> { report: String } {
+  report = summarize(
+    flags: [true, false, true],
+    include_disabled: false
+  )
+  return {
+    report: report
+  }
+}
+"#);
+
+    let output = compile_from_context(&context).expect("compile should succeed");
+    assert!(
+        output
+            .lowered_dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0.contains("::cf_if_")),
+        "if/else expression should lower into a control-flow subdag node"
+    );
+    assert!(
+        output
+            .lowered_dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0.contains("::cf_match_")),
+        "match expression should lower into a control-flow subdag node"
+    );
+    assert!(
+        output
+            .lowered_dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0.contains("::cf_for_")),
+        "for expression should lower into a control-flow subdag node"
+    );
+    let lowered = lower(&output.lowered_dag).expect("lowered DAG should flatten function subdags");
+    let resolved =
+        resolve_lowered_dag(&lowered.dag).expect("resolved DAG should build from lowered graph");
+    let log = execute_resolved_dag(&resolved, ExecutionMode::Real, None)
+        .expect("compile/lower/resolve/execute should succeed for function body e2e fixture");
+    let run_entry = log
+        .get("sample.main::run")
+        .expect("execution log should include sample.main::run");
+
+    assert_eq!(
+        run_entry.outputs.get("report"),
+        Some(&gunbc_ir::Value::Skipped)
+    );
+
+    std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
 }
 
 #[test]

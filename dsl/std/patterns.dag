@@ -40,7 +40,7 @@ import services.gcp.sts
 // Useful independently for: staleness detection, dry-run reporting,
 // CI verification ("has this generated file drifted?").
 
-pattern file_content_matches(path: TextFilePath, expected: String) -> { matches: Bool }
+pattern file_content_matches(path: String, expected: String) -> { matches: Bool }
   uses fs: Filesystem(mode: Read)
 {
   node read: fs.read(path: path)
@@ -98,6 +98,26 @@ pattern read_text_files(paths: List<FilePath>) -> { files: List<{ path: TextFile
   }
 
   return { files: contents, skipped: classified.binary }
+}
+
+// Read all binary files from a list, skipping text files.
+// Parallel to read_text_files but uses fs.read_bytes for binary-safe I/O.
+//
+// Returns both the successfully read binary files AND the skipped text paths,
+// so callers can report what was included from each partition. This is the
+// binary counterpart to read_text_files.
+
+pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: BinaryFilePath, size: Int }>, skipped: List<TextFilePath> }
+  uses fs: Filesystem(mode: Read)
+{
+  node classified: classify_files(paths: paths)
+
+  data = for path in classified.binary {
+    info = fs.stat(path: path)
+    { path: path, size: info.size }
+  }
+
+  return { files: data, skipped: classified.text }
 }
 
 // Acquire a subject token based on runtime environment.

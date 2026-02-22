@@ -213,6 +213,52 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
         result.push(BoundaryWitness { count, value });
     }
 
+    // Phase 6d: Add lattice boundary witnesses for predicate transitions.
+    // For scalar or single-element containers, generate additional witnesses
+    // at lattice transition points (e.g., range boundaries, encoding variants).
+    if !preds.is_empty() {
+        for pred in &preds {
+            let boundary_values = predicate_boundary_witnesses(pred, &base);
+            for bv in boundary_values {
+                if !result.iter().any(|bw| bw.value == bv) {
+                    match &wrapper {
+                        None => {
+                            // Scalar type: add as count=1 witnesses
+                            result.push(BoundaryWitness { count: 1, value: bv });
+                        }
+                        Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
+                            // Collections: add single-element witnesses per boundary value
+                            result.push(BoundaryWitness {
+                                count: 1,
+                                value: Value::List(vec![bv]),
+                            });
+                        }
+                        Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
+                            result.push(BoundaryWitness {
+                                count: 1,
+                                value: Value::set(vec![bv]),
+                            });
+                        }
+                        Some(WrapperKind::Optional) => {
+                            result.push(BoundaryWitness {
+                                count: 1,
+                                value: bv,
+                            });
+                        }
+                        Some(WrapperKind::Map) => {
+                            let mut map = std::collections::BTreeMap::new();
+                            map.insert("boundary_key".to_string(), bv);
+                            result.push(BoundaryWitness {
+                                count: 1,
+                                value: Value::Map(map),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(result)
 }
 
@@ -1267,6 +1313,52 @@ mod tests {
         // UTF8 should generate both ASCII and UTF8 witnesses
         assert!(boundaries.len() >= 2);
         assert!(boundaries.iter().all(|w| matches!(w, Value::Str(_))));
+    }
+
+    // --- Phase 6d: Lattice-driven witness boundary tests ---
+
+    #[test]
+    fn test_witnesses_with_range_predicate_include_lattice_boundaries() {
+        // Build a type with a range predicate: Int @range(min: 0, max: 100)
+        let range_int = type_lib::refined(
+            "Int",
+            vec![Predicate::InRange { min: 0, max: 100 }],
+        );
+        let w = witnesses(&range_int);
+
+        // Should have the base scalar witness (count=1) PLUS
+        // lattice boundary witnesses: -1, 0, 50, 100, 101
+        assert!(
+            w.len() > 1,
+            "range-predicated type should have lattice boundary witnesses, got {}",
+            w.len()
+        );
+
+        // Verify boundary values are present
+        let values: Vec<&Value> = w.iter().map(|bw| &bw.value).collect();
+        assert!(values.contains(&&Value::Int(0)), "should contain min boundary 0");
+        assert!(values.contains(&&Value::Int(100)), "should contain max boundary 100");
+    }
+
+    #[test]
+    fn test_witnesses_with_content_encoding_include_lattice_boundaries() {
+        use crate::type_op::ContentEncoding;
+        // Build a type with content encoding: String @content(UTF8)
+        let utf8_string = type_lib::refined(
+            "String",
+            vec![Predicate::Content(ContentEncoding::UTF8)],
+        );
+        let w = witnesses(&utf8_string);
+
+        // Should have base witness + encoding-specific witnesses
+        assert!(
+            w.len() >= 2,
+            "content-encoded type should have encoding boundary witnesses, got {}",
+            w.len()
+        );
+
+        // All witnesses for a string type should be strings
+        assert!(w.iter().all(|bw| matches!(&bw.value, Value::Str(_))));
     }
 
     // --- TypeContract lattice tests ---

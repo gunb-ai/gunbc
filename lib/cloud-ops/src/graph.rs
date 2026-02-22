@@ -181,7 +181,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         "resolve_config",
         vec![port("config", "CloudSecretConfig")],
         vec![
-            port("provider", "String"),
+            port("provider", "Platform"),
             port("runtime", "String"),
             port("audience", "String"),
             port("project_or_account", "String"),
@@ -222,7 +222,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         Node::opaque(
             "map_gcp_inputs",
             vec![
-                port("provider", "String"),
+                port("provider", "Platform"),
                 port("runtime", "String"),
                 port("audience", "String"),
                 port("project_or_account", "String"),
@@ -341,7 +341,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         "resolve_config",
         vec![port("config", "CloudSecretConfig")],
         vec![
-            port("provider", "String"),
+            port("provider", "Platform"),
             port("runtime", "String"),
             port("audience", "String"),
             port("project_or_account", "String"),
@@ -375,7 +375,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         Node::opaque(
             "map_gcp_secret_inputs",
             vec![
-                port("provider", "String"),
+                port("provider", "Platform"),
                 port("runtime", "String"),
                 port("audience", "String"),
                 port("project_or_account", "String"),

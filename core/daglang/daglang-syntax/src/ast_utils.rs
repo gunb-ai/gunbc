@@ -20,6 +20,7 @@ pub fn type_expr_to_string(expr: &TypeExpr) -> String {
                 .collect::<Vec<_>>()
                 .join(" ")
         ),
+        TypeExpr::Record(_) => "Record".to_string(),
     }
 }
 

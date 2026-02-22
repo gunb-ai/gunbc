@@ -28,11 +28,11 @@ pub type DepsGraphOp = DynOp;
 pub fn deps_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs
-        .with_input("manifest_path", "String", Cardinality::ONE)
+        .with_input("manifest_path", "FilePath", Cardinality::ONE)
         // Outputs - boundary outputs from terminal nodes
         .with_output("dep_count", "Int", Cardinality::ONE)
         .with_output("dep_names", "StringList", Cardinality::ZERO_OR_MORE)
-        .with_output("manifest_path", "String", Cardinality::ONE)
+        .with_output("manifest_path", "FilePath", Cardinality::ONE)
         .with_output("already_installed", "StringList", Cardinality::ZERO_OR_MORE)
         .with_output("needs_install", "StringList", Cardinality::ZERO_OR_MORE)
         .with_output("platform", "String", Cardinality::ONE)
@@ -82,17 +82,17 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "prepare_load_manifest",
         "execute_load_manifest",
         "parse_manifest",
-        vec![port("manifest_path", "String")],
+        vec![port("manifest_path", "FilePath")],
         vec![resource(
             "file:deps.toml",
             "FilesystemHandle",
             AccessMode::Read,
         )],
-        vec![port("manifest_path", "String")],
+        vec![port("manifest_path", "FilePath")],
         vec![
             scalar("dep_count", "Int"),
             list("dep_names", "StringList"),
-            scalar("manifest_path", "String"),
+            scalar("manifest_path", "FilePath"),
             scalar("manifest_content", "String"), // Pass content to GenerateScripts
         ],
         DynOp::new(DepsOp::PrepareLoadManifest),
@@ -199,10 +199,10 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
 pub fn deps_generate_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
-        .with_input("path", "String", Cardinality::ONE)
+        .with_input("path", "FilePath", Cardinality::ONE)
         // Outputs from execute_transport (boundary)
         .with_output("response", "TransportResponse", Cardinality::ONE)
-        .with_output("written_path", "String", Cardinality::ONE)
+        .with_output("written_path", "FilePath", Cardinality::ONE)
         .with_output("content", "String", Cardinality::ONE)
         // Informational outputs from load_tool_registry
         .with_output("tool_count", "Int", Cardinality::ONE)
@@ -265,7 +265,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let prepare_write = builder.add_node_after(
         Node::opaque(
             "prepare_file_write",
-            vec![scalar("content", "String"), port("path", "String")],
+            vec![scalar("content", "String"), port("path", "FilePath")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             DynOp::new(PrepareFileWriteOp),
         ),
@@ -284,7 +284,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             ],
             vec![
                 port("response", "TransportResponse"),
-                port("written_path", "String"),
+                port("written_path", "FilePath"),
                 port("content", "String"),
             ],
             DynOp::new(TransportOps::Execute),

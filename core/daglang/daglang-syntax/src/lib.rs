@@ -148,6 +148,8 @@ pub mod ast {
         Generic(String, Vec<TypeExpr>),
         Optional(Box<TypeExpr>),
         Annotated(Box<TypeExpr>, Vec<Annotation>),
+        /// Anonymous record return type: `-> { field: Type, ... }`
+        Record(Vec<Field>),
     }
 
     // ── Functions ───────────────────────────────────────────────────

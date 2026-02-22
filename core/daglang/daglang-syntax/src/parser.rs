@@ -1244,11 +1244,9 @@ impl Parser {
 
     fn parse_return_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
         if self.eat(&TokenKind::LBrace) {
-            while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-                self.advance();
-            }
+            let fields = self.parse_field_list_until_rbrace()?;
             self.expect(&TokenKind::RBrace)?;
-            Ok(TypeExpr::Named("Record".into()))
+            Ok(TypeExpr::Record(fields))
         } else {
             self.parse_type_expr()
         }

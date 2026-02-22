@@ -25,8 +25,7 @@ use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Literal, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr,
-    UsesClause,
+    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     canonical_type_name, resource_type_name, service_call_lookup_keys,
@@ -580,20 +579,48 @@ fn collect_signatures(
                     &item_known_types,
                     context.generic_arity_registry,
                 ));
-                errors.extend(validate_type_expr(
-                    &def.return_type,
-                    &item_known_types,
-                    context.generic_arity_registry,
-                    &format!("{}.return", def.name),
-                ));
-                let outputs = vec![TypedBinding {
-                    name: "return".to_string(),
-                    ty: type_expr_to_string(&def.return_type),
-                }];
+                // Handle anonymous record return types: `fn foo() -> { field: Type }`
+                let (return_contract, outputs) = match &def.return_type {
+                    TypeExpr::Record(fields) => {
+                        for field in fields {
+                            errors.extend(validate_type_expr(
+                                &field.ty,
+                                &item_known_types,
+                                context.generic_arity_registry,
+                                &format!("{}.{}", def.name, field.name),
+                            ));
+                        }
+                        (
+                            ReturnContract::record(field_signature_map(fields)),
+                            fields
+                                .iter()
+                                .map(|f| TypedBinding {
+                                    name: f.name.clone(),
+                                    ty: type_expr_to_string(&f.ty),
+                                })
+                                .collect(),
+                        )
+                    }
+                    _ => {
+                        errors.extend(validate_type_expr(
+                            &def.return_type,
+                            &item_known_types,
+                            context.generic_arity_registry,
+                            &format!("{}.return", def.name),
+                        ));
+                        (
+                            ReturnContract::single(type_expr_to_string(&def.return_type)),
+                            vec![TypedBinding {
+                                name: "return".to_string(),
+                                ty: type_expr_to_string(&def.return_type),
+                            }],
+                        )
+                    }
+                };
                 errors.extend(validate_callable_body(
                     &def.name,
                     &def.params,
-                    ReturnContract::single(type_expr_to_string(&def.return_type)),
+                    return_contract,
                     &[],
                     CallableBodyRef {
                         stmts: &def.body.stmts,
@@ -2102,7 +2129,11 @@ fn validate_callable_body(
                 }
                 None => trailing_expr_type.unwrap_or_else(|| ValueType::Named("Unit".to_string())),
             };
-            errors.extend(push_type_mismatch_if_needed(ty, &inferred));
+            let mismatches = push_type_mismatch_if_needed(ty, &inferred);
+            if !mismatches.is_empty() {
+                eprintln!("[DEBUG callable_body] caller={caller:?} return_ty={ty:?} inferred={inferred:?}");
+            }
+            errors.extend(mismatches);
         }
     }
     errors
@@ -2119,6 +2150,7 @@ fn validate_return_stmt(
     match return_contract {
         ReturnContract::Single { ty } => {
             if fields.len() != 1 {
+                eprintln!("[DEBUG validate_return] caller={caller:?} expected single return type={ty:?} but got {len} fields", len=fields.len());
                 errors.push(TypeError::TypeMismatch {
                     expected: ty.clone(),
                     got: "Record".to_string(),
@@ -2132,7 +2164,11 @@ fn validate_return_stmt(
                 infer_context,
             );
             errors.extend(infer_errors);
-            errors.extend(push_type_mismatch_if_needed(ty, &inferred));
+            let mismatches = push_type_mismatch_if_needed(ty, &inferred);
+            if !mismatches.is_empty() {
+                eprintln!("[DEBUG return_single] caller={caller:?} ty={ty:?} inferred={inferred:?} fields={:?}", fields.iter().map(|(n,_)| n.as_str()).collect::<Vec<_>>());
+            }
+            errors.extend(mismatches);
         }
         ReturnContract::Record { fields: expected } => {
             for (field, expr) in fields {
@@ -2145,7 +2181,11 @@ fn validate_return_stmt(
                 };
                 let (inferred, infer_errors) = infer_expr_type(expr, local_bindings, infer_context);
                 errors.extend(infer_errors);
-                errors.extend(push_type_mismatch_if_needed(expected_ty, &inferred));
+                let mismatches = push_type_mismatch_if_needed(expected_ty, &inferred);
+                if !mismatches.is_empty() {
+                    eprintln!("[DEBUG return_record] caller={caller:?} field={field:?} expected_ty={expected_ty:?} inferred={inferred:?}");
+                }
+                errors.extend(mismatches);
             }
         }
     }
@@ -2185,6 +2225,7 @@ fn infer_expr_type_for_expected_named_record(
             continue;
         };
         if !types_match(expected_field_ty, &inferred_name) {
+            eprintln!("[DEBUG field_mismatch] expected_type={expected_type:?} field={name:?} expected_field_ty={expected_field_ty:?} inferred={inferred_name:?}");
             errors.push(TypeError::TypeMismatch {
                 expected: expected_field_ty.clone(),
                 got: inferred_name,
@@ -2493,6 +2534,13 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
         return Vec::new();
     };
     if !types_match(expected, &got) {
+        eprintln!("[DEBUG type_mismatch] expected={expected:?} got={got:?} inferred={inferred:?} backtrace:");
+        // Print a short backtrace to identify call site
+        let bt = std::backtrace::Backtrace::force_capture();
+        let bt_str = format!("{bt}");
+        for line in bt_str.lines().take(20) {
+            eprintln!("  {line}");
+        }
         vec![TypeError::TypeMismatch {
             expected: expected.to_string(),
             got,

@@ -788,7 +788,7 @@ fn build_recent_graph(
     let rev_list = add_transport_triplet(
         builder,
         "rev_list",
-        vec![port("repo_path", "String")],
+        vec![port("repo_path", "FilePath")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![optional("base_ref", "OptionalString")],
         DagVizGraphOp::Git(gunbc_lib_git_ops::GitOps::PrepareRevListBefore {

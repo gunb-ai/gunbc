@@ -607,7 +607,7 @@ fn emit_transport_response(kind: &str, fields: TransportFields<'_>) -> String {
                 .map(emit_string_literal)
                 .unwrap_or_else(|| "\"\"".to_string());
             format!(
-                "Value::Response(TransportResponse::File(FileResponse {{ path: {path}.to_string(), operation: FileOp::Read, success: true, content: None, exists: None, error: None }}))"
+                "Value::Response(TransportResponse::File(FileResponse {{ path: {path}.to_string(), operation: FileOp::Read, success: true, content: None, exists: None, error: None, bytes: None }}))"
             )
         }
         _ => unreachable!("emit_transport_response called with unknown kind: {kind}"),

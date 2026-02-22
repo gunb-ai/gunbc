@@ -40,7 +40,7 @@
 | SDLC mega modeling gate | Resolved (done) | `MD0-D` approved; all downstream lanes delivered. |
 | Three-layer domain abstraction | Resolved | Pipeline sees domain concepts (Issue, Claim, Outcome); domain interfaces are provider-fungible; infra implementations selected by deployment profile at compile time. See `docs/design/sdlc/e2e-gap-analysis.md`. |
 | Compile-time profile binding | Open | `profile { bind Interface -> Impl }` syntax in DSL. Compiler resolves `uses` declarations via active profile. `--profile` CLI flag. |
-| Dry-run deployment readiness | Open | Rust worker multi-stage dispatch enables local dry-run before compiled DAG path is ready. See Sprint 11.5. |
+| Dry-run deployment readiness | Resolved (done) | Rust worker multi-stage dispatch now supports local dry-run progression through terminal `closed` state. See Sprint 11.5. |
 | Dual execution path convergence | Open | Rust worker path (scaffolding) vs compiled DAG path (target). Rust worker must not accumulate SDLC sequencing logic beyond what's needed for dry-run. |
 
 ### Archive Update (2026-02-21)
@@ -138,19 +138,19 @@ Archived to `TODO/TODONE/tasks-completed.md`. All 6 tasks (`AI1`-`AI3`, `PR1`-`P
 ## Sprint 11.5: Dry-Run Deployment Readiness
 
 **Design doc**: [docs/design/sdlc/e2e-gap-analysis.md](../docs/design/sdlc/e2e-gap-analysis.md) (Section 7-8)
-**Goal**: Enable a local dry-run deployment where the Rust worker progresses issues through the full stage chain (idea → done) using the existing ledger/claim/reconcile infrastructure. This is the bridge to Sprint 12's compiled-DAG execution path.
+**Goal**: Enable a local dry-run deployment where the Rust worker progresses issues through the full stage chain (idea → closed) using the existing ledger/claim/reconcile infrastructure. This is the bridge to Sprint 12's compiled-DAG execution path.
 
 **Rationale**: Sprint 12's compiled DAG path requires Gaps A, B, C, F to all be resolved (domain interfaces, profile binding, SubDag/Pipeline execution). The Rust worker already has working ledger/claim/reconcile infrastructure; wiring multi-stage dispatch is the minimum unblocking work for a dry-run.
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **DR-1** | **Wire stage dispatch into run_worker**: Replace direct `execute_stage_idea_to_design()` call (`sdlc.rs:1062`) with `execute_stage()` dispatcher that routes by `record.stage`. Sprint 11 delivered the dispatcher and per-stage handlers. | — | S | |
-| **DR-2** | **Add remaining stage handlers**: Implement stub handlers for implementing→code-review, code-review→testing, testing→done, and done→close. Each handler updates `record.stage` and records an outcome. | DR-1 | S | |
-| **DR-3** | **Verify stage ledger advancement**: Ensure each handler updates `record.stage` in the intake ledger so the next worker pass picks up from the correct stage. | DR-1, DR-2 | S | |
-| **DR-4** | **Reconcile pipeline definitions**: Update `dsl/pipelines/sdlc.dag` to use `param` declarations matching the design version in `docs/design/sdlc/sdlc.dag`. Stub undefined functions (`generate_implementation_plan`, `get_pr_diff`). | — | S | |
-| **DR-5** | **Integration test: multi-stage progression**: Test that runs `intake` + 8× `worker` and verifies the intake record reaches `stage: done` with correct execution report. | DR-1, DR-2, DR-3 | M | |
+| **DR-1** | **Wire stage dispatch into run_worker**: Replace direct `execute_stage_idea_to_design()` call with stage-based dispatch (`dispatch_pipeline_stage`) routed by `record.stage`. | — | S | **DONE** |
+| **DR-2** | **Add remaining stage handlers**: Complete stage routing/handlers for design→design-review, approval gate at design-review, accepted→implementation, and implementation→closed. | DR-1 | S | **DONE** |
+| **DR-3** | **Verify stage ledger advancement**: Ensure stage handlers persist `record.stage` updates in the intake ledger so the next worker pass resumes from the correct stage. | DR-1, DR-2 | S | **DONE** |
+| **DR-4** | **Reconcile pipeline definitions**: Update `dsl/pipelines/sdlc.dag` to use `param` declarations matching the design version in `docs/design/sdlc/sdlc.dag`; stub undefined functions (`generate_implementation_plan`, `get_pr_diff`). | — | S | **DONE** |
+| **DR-5** | **Integration test: multi-stage progression**: Test intake + repeated worker passes (with explicit approval transition) and verify the intake record reaches terminal `stage: closed`. | DR-1, DR-2, DR-3 | M | **DONE** |
 
-**Verification**: `cargo test --workspace` passes. `gunbc-sdlc intake --intent <path> && gunbc-sdlc worker` repeated 8 times results in a `done` stage with correct JSON report.
+**Verification**: `cargo test --workspace` passes. `gunbc-sdlc` intake + worker progression (with explicit approval transition) reaches terminal `closed` stage with expected JSON output.
 
 ---
 
@@ -264,7 +264,7 @@ The parser has the syntax. The gap is making it executable. These tasks focus on
 | **EX-5** | **Lower control flow in function bodies**: Parser has `If`, `Match`, `For`, `Let`, `BinOp`, `UnaryOp`. Verify the lowering pass emits correct `LoweredOp` graph structures for branching, iteration, and variable bindings within `fn` bodies. Existing `BranchOp`, `GuardOp`, `LoopOp` in `core/exec` may already cover this. | — | M | **DONE** |
 | **EX-6** | **Lower string interpolation and formatting**: Parser has `StringInterp` with `Literal`/`Expr` parts. Ensure lowering emits nodes that evaluate interpolated expressions and concatenate results. This is the bridge to structured rendering. | — | S | **DONE** |
 | **EX-7** | **Structured document rendering**: Add `render` functions producing typed document trees (`TextFile`/`Document`). Sections, lines, comments, and blank lines are structural blocks. Rendering engine handles formatting. Replaces all `format!()`/`write!()`/`.push_str()` in pragma (3 ops), makegen (2 ops), build (1 op), docgen (1 op). | EX-5, EX-6 | L | **DONE** |
-| **EX-8** | **End-to-end function body test**: Write a `.dag` file with a `fn` that uses `if/else`, `match`, `for`, list ops, string interpolation, and record construction in its body. Compile, resolve, and execute it. This is the integration gate proving the full pipeline works before migrating real ops. | EX-4, EX-5, EX-6 | S | |
+| **EX-8** | **End-to-end function body test**: Write a `.dag` file with a `fn` that uses `if/else`, `match`, `for`, list ops, string interpolation, and record construction in its body. Compile, resolve, and execute it. This is the integration gate proving the full pipeline works before migrating real ops. | EX-4, EX-5, EX-6 | S | **DONE** |
 
 #### Phase 3c: Custom op migration (the payoff — 22 ops across 5 modules)
 

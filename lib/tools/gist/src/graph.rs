@@ -240,7 +240,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // PrepareReadFile node — needs both filename (element) and repo_path (extra input)
     dag.add_node(Node::opaque(
         "prepare",
-        vec![port("filename", "String"), port("repo_path", "String")],
+        vec![port("filename", "String"), port("repo_path", "FilePath")],
         vec![
             port("request", "TransportRequest"),
             port("filename", "String"),
@@ -456,7 +456,7 @@ fn build_snapshot_acquire(
     let list_files = add_transport_triplet(
         builder,
         "list_files",
-        vec![port("repo_path", "String")],
+        vec![port("repo_path", "FilePath")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![list("files", "String")],
         DynOp::new(GitOps::PrepareLsFiles { extensions }),
@@ -541,7 +541,7 @@ fn build_diff_acquire(
         builder,
         "diff",
         vec![
-            port("repo_path", "String"),
+            port("repo_path", "FilePath"),
             optional("base_ref", "OptionalString"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
@@ -607,7 +607,7 @@ fn build_recent_acquire(
     let rev_list = add_transport_triplet(
         builder,
         "rev_list",
-        vec![port("repo_path", "String")],
+        vec![port("repo_path", "FilePath")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![optional("base_ref", "OptionalString")],
         DynOp::new(GitOps::PrepareRevListBefore {
@@ -628,7 +628,7 @@ fn build_recent_acquire(
         builder,
         "diff",
         vec![
-            port("repo_path", "String"),
+            port("repo_path", "FilePath"),
             optional("base_ref", "OptionalString"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],

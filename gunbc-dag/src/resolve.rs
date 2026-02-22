@@ -32,6 +32,7 @@ use daglang_lower::{
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
+use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
@@ -134,11 +135,13 @@ impl Executable for IdentityCallableOp {
 ///
 /// Use this instead of identity/no-op placeholders so that accidental execution
 /// fails immediately with a clear message rather than silently producing wrong outputs.
+#[cfg(test)]
 #[derive(Debug, Clone)]
 struct UnsupportedOp {
     callable: String,
 }
 
+#[cfg(test)]
 impl UnsupportedOp {
     fn new(callable: &str) -> Self {
         Self {
@@ -147,6 +150,7 @@ impl UnsupportedOp {
     }
 }
 
+#[cfg(test)]
 impl Executable for UnsupportedOp {
     fn execute(
         &self,
@@ -478,8 +482,14 @@ impl Executable for PrepareFileWriteCompatOp {
 pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveError> {
     let mut resolved = Dag::new();
     for node in &dag.nodes {
-        let dyn_op = resolve_node(node)?;
-        let mut resolved_node = node.clone().map_ops(&mut |_| dyn_op.clone());
+        let mut resolved_node = Node {
+            id: node.id.clone(),
+            inputs: node.inputs.clone(),
+            outputs: node.outputs.clone(),
+            body: resolve_node_body(node)?,
+            examples: node.examples.clone(),
+            log_detail: node.log_detail,
+        };
         normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
@@ -508,11 +518,19 @@ fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
 // Node resolution
 // ============================================================================
 
+#[cfg(test)]
 fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
     match &node.body {
         NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
         NodeBody::SubDag(_) => Ok(DynOp::new(UnsupportedOp::new("subdag_pattern"))),
+    }
+}
+
+fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveError> {
+    match &node.body {
+        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(&node.id.0, op, &node.outputs)?)),
+        NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag(inner)?)),
     }
 }
 
@@ -534,11 +552,19 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             service_metadata,
             ..
         } => resolve_domain(node_id, module, name, outputs, service_metadata.as_deref()),
-        LoweredOp::LoopUnpack { .. }
-        | LoweredOp::LoopPack { .. }
-        | LoweredOp::BranchMerge { .. } => {
-            Ok(DynOp::new(UnsupportedOp::new("pattern_internal")))
-        }
+        LoweredOp::LoopUnpack {
+            input_port,
+            element_port,
+        } => Ok(DynOp::new(PatternOp::LoopUnpack {
+            input_port: input_port.clone(),
+            element_port: element_port.clone(),
+        })),
+        LoweredOp::LoopPack { output_port } => Ok(DynOp::new(PatternOp::LoopPack {
+            output_port: output_port.clone(),
+        })),
+        LoweredOp::BranchMerge { output_port } => Ok(DynOp::new(PatternOp::BranchMerge {
+            output_port: output_port.clone(),
+        })),
     }
 }
 

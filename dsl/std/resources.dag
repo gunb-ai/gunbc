@@ -47,7 +47,7 @@ resource Filesystem {
   // were binary, the probe step would have classified it as
   // BinaryFilePath and this capability would never be called.
   capability read {
-    input { path: TextFilePath }
+    input { path: String }
     output { content: String }
     @file(READ, "{path}")
   }

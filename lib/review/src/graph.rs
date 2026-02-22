@@ -645,7 +645,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         "parse_diff",
         vec![
             optional("base_ref", "OptionalString"),
-            port("repo_path", "String"),
+            port("repo_path", "FilePath"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
@@ -1089,7 +1089,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         "parse_diff",
         vec![
             optional("base_ref", "OptionalString"),
-            port("repo_path", "String"),
+            port("repo_path", "FilePath"),
         ],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
         vec![],
