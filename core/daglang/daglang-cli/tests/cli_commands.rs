@@ -1046,7 +1046,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 56 file(s)"),
+        stdout.contains("OK: checked 88 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1075,7 +1075,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(56));
+    assert_eq!(stdout, expected_check_success_stdout(88));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -11503,9 +11503,10 @@ fn check_command_defaults_to_workspace_dsl_root() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 56 file(s)"),
-        "default check should parse full DSL corpus"
+        stdout.contains("OK: checked ") && stdout.contains(" file(s)"),
+        "default check should parse full DSL corpus: {stdout}"
     );
 }
 

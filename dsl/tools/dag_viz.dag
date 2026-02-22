@@ -55,11 +55,11 @@ fn render_topology_snapshot(
 ) -> { content: String, ext: String } {
   match format {
     "html" => {
-      content: render_cytoscape_html(topology: topology_json, title: branch),
+      content: render_cytoscape_html(topology_json),
       ext: "html"
     }
     "md" => {
-      content: render_mermaid_markdown(topology: topology_json, title: branch),
+      content: render_mermaid_markdown(topology_json),
       ext: "md"
     }
   }
