@@ -216,6 +216,8 @@ impl Parser {
             TokenKind::Environment => "environment",
             TokenKind::Pattern => "pattern",
             TokenKind::Service => "service",
+            TokenKind::Profile => "profile",
+            TokenKind::Bind => "bind",
             TokenKind::Resource => "resource",
             TokenKind::Interface => "interface",
             TokenKind::Pipeline => "pipeline",
@@ -281,6 +283,7 @@ impl Parser {
                 | TokenKind::Func
                 | TokenKind::Pattern
                 | TokenKind::Service
+                | TokenKind::Profile
                 | TokenKind::Resource
                 | TokenKind::Interface
                 | TokenKind::Pipeline
@@ -500,6 +503,7 @@ impl Parser {
             TokenKind::Func => Item::FuncDef(self.parse_func_def(leading_anns)?),
             TokenKind::Pattern => Item::PatternDef(self.parse_pattern_def()?),
             TokenKind::Service => Item::ServiceDef(self.parse_service_def(leading_anns)?),
+            TokenKind::Profile => Item::ProfileDef(self.parse_profile_def()?),
             TokenKind::Resource => Item::ResourceDef(self.parse_resource_def()?),
             TokenKind::Interface => Item::InterfaceDef(self.parse_interface_def()?),
             TokenKind::Pipeline => Item::PipelineDef(self.parse_pipeline_def()?),
@@ -961,6 +965,45 @@ impl Parser {
             annotations,
             operations,
         })
+    }
+
+    fn parse_profile_def(&mut self) -> Result<ProfileDef, ParseError> {
+        self.expect(&TokenKind::Profile)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let mut binds = Vec::new();
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            self.expect(&TokenKind::Bind)?;
+            let interface = self.parse_type_name_ref()?;
+            self.expect(&TokenKind::Arrow)?;
+            let implementation = self.parse_type_name_ref()?;
+            let config = if self.eat(&TokenKind::LBrace) {
+                let mut entries = Vec::new();
+                if !self.check(&TokenKind::RBrace) {
+                    loop {
+                        let key = self.expect_ident()?;
+                        self.expect(&TokenKind::Colon)?;
+                        let value = self.parse_expr(0)?;
+                        entries.push((key, value));
+                        if !self.eat(&TokenKind::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.expect(&TokenKind::RBrace)?;
+                Some(entries)
+            } else {
+                None
+            };
+            binds.push(BindDef {
+                interface,
+                implementation,
+                config,
+            });
+            self.eat(&TokenKind::Comma);
+        }
+        self.expect(&TokenKind::RBrace)?;
+        Ok(ProfileDef { name, binds })
     }
 
     fn parse_operation_def(&mut self) -> Result<OperationDef, ParseError> {
@@ -2624,6 +2667,52 @@ mod tests {
             sf.imports[0].node.bindings,
             Some(vec!["ToolRegistry".into()])
         );
+    }
+
+    #[test]
+    fn parse_profile_with_bind_entries_and_config() {
+        let sf = parse_or_panic(
+            r#"module profiles.local
+profile local {
+  bind IssueProvider -> github.Issues { owner: "gunb-ai", token: env("GITHUB_TOKEN") }
+  bind ClaimStore -> file.ClaimStore
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::ProfileDef(def) => {
+                assert_eq!(def.name, "local");
+                assert_eq!(def.binds.len(), 2);
+                assert_eq!(def.binds[0].interface, "IssueProvider");
+                assert_eq!(def.binds[0].implementation, "github.Issues");
+                let config = def.binds[0].config.as_ref().expect("expected bind config");
+                assert_eq!(config.len(), 2);
+                assert_eq!(config[0].0, "owner");
+                assert!(matches!(config[1].1, Expr::Call(_, _)));
+                assert_eq!(def.binds[1].interface, "ClaimStore");
+                assert_eq!(def.binds[1].implementation, "file.ClaimStore");
+                assert!(def.binds[1].config.is_none());
+            }
+            other => panic!("expected ProfileDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_profile_accepts_trailing_comma_in_bind_list() {
+        let sf = parse_or_panic(
+            r#"module profiles.unit_test
+profile unit_test {
+  bind IssueProvider -> stub.IssueProvider,
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::ProfileDef(def) => {
+                assert_eq!(def.name, "unit_test");
+                assert_eq!(def.binds.len(), 1);
+                assert_eq!(def.binds[0].interface, "IssueProvider");
+                assert_eq!(def.binds[0].implementation, "stub.IssueProvider");
+            }
+            other => panic!("expected ProfileDef, got {other:?}"),
+        }
     }
 
     #[test]

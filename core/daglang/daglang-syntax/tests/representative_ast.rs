@@ -28,6 +28,7 @@ fn item_signatures(source: &SourceFile) -> Vec<String> {
             Item::FuncDef(def) => format!("func {}", def.name),
             Item::PatternDef(def) => format!("pattern {}", def.name),
             Item::ServiceDef(def) => format!("service {}", def.name),
+            Item::ProfileDef(def) => format!("profile {}", def.name),
             Item::ResourceDef(def) => format!("resource {}", def.name),
             Item::InterfaceDef(def) => format!("interface {}", def.name),
             Item::PipelineDef(def) => format!("pipeline {}", def.name),
