@@ -242,6 +242,7 @@ pub mod ast {
     #[derive(Debug)]
     pub struct PipelineDef {
         pub name: String,
+        pub uses: Vec<UsesClause>,
         pub stages: Vec<StageDef>,
     }
 

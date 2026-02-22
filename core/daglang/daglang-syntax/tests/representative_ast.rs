@@ -103,7 +103,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        55,
+        83,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -187,6 +187,34 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type ImplementationTask",
             "type PipelineRun",
             "type PipelineArtifact",
+            "type IntentSheet",
+            "type IssueBinding",
+            "type BindingStatus",
+            "type IssueState",
+            "type ClaimLease",
+            "type StageRunKey",
+            "type StageOutcome",
+            "type OutcomeStatus",
+            "type Artifact",
+            "type ArtifactType",
+            "type ArtifactPayload",
+            "type ArtifactMarker",
+            "type MarkerKind",
+            "type Signal",
+            "type SignalType",
+            "type AgentStatus",
+            "type ApprovalMode",
+            "type RetryPolicy",
+            "type FailureClass",
+            "type InfraIntent",
+            "type RuntimeProfile",
+            "type LaunchConfig",
+            "type CredentialBinding",
+            "type CredentialIntent",
+            "type CredentialResolution",
+            "type ExecutionMetrics",
+            "type AuditEntry",
+            "type AuditAction",
             "type DocSource",
         ]
     );

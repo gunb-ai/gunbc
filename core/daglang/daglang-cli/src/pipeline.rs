@@ -786,25 +786,36 @@ mod tests {
             "infra.gcp.resources",
             "examples.integration_tests",
             "infra.sdlc.deploy",
-            "services.agent.codex",
             "services.cargo",
             "services.gcp.iam",
             "services.gcp.secret_manager",
             "services.gcp.sts",
             "services.github.gist",
             "services.github.issues",
-            "funcs.test_control_flow",
             "services.github.pull_request",
             "services.llm.anthropic",
             "services.llm.openai",
-            "services.sdlc.control_plane",
-            "funcs.agent_feedback",
             "std.resources",
             "std.types",
             "cloud.aws.credential",
             "cloud.azure.credential",
             "examples.abstract_services",
+            "interfaces.agent_provider",
+            "interfaces.artifact_store",
+            "interfaces.claim_store",
+            "interfaces.issue_provider",
+            "funcs.test_control_flow",
+            "interfaces.outcome_ledger",
+            "interfaces.signal_store",
+            "profiles.sdlc",
             "services.git",
+            "services.sdlc.providers.codex_agent_provider",
+            "services.sdlc.providers.file_claim_store",
+            "services.sdlc.providers.file_outcome_ledger",
+            "services.sdlc.providers.gcs_claim_store",
+            "services.sdlc.providers.gcs_outcome_ledger",
+            "services.sdlc.providers.github_issue_provider",
+            "services.sdlc.providers.stub_providers",
             "services.shell",
             "std.patterns",
             "cloud.gcp.credential",
@@ -817,8 +828,9 @@ mod tests {
             "tools.dag_viz",
             "tools.deps",
             "tools.design",
-            "pipelines.sdlc",
+            "funcs.sdlc_stages",
             "funcs.sdlc_worker",
+            "pipelines.sdlc",
             "tools.docgen",
             "tools.gist",
             "examples.deployment",
@@ -1076,7 +1088,7 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 56);
+        assert_eq!(result.parsed_count(), 68);
         assert!(
             result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
@@ -1121,7 +1133,7 @@ mod tests {
         .expect("pipeline should execute");
         assert_eq!(
             result.parsed_count(),
-            56,
+            68,
             "report stop should retain parse-stage file count for real corpus"
         );
     }

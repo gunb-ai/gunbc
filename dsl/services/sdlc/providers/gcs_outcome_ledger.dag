@@ -78,9 +78,7 @@ service gcs.OutcomeLedger : OutcomeLedger {
     @rest(GET, "/storage/v1/b/{config.bucket}/o/outcomes%2F{run_key}%2F{stage}.json?alt=media")
     @idempotent @readonly
     @permissions(["storage.objects.get"])
-    @error_map({
-      404 => { found: false, outcome: null }
-    })
+    @error_map(status: 404, body: { "found": false, "outcome": null })
     @mock_response(
       status: 200,
       body: {

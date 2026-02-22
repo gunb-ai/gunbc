@@ -65,9 +65,7 @@ service gcs.ClaimStore : ClaimStore {
     @header("x-goog-if-generation-match", "{expected_generation}")
     @header("Content-Type", "application/json")
     @permissions(["storage.objects.create", "storage.objects.get"])
-    @error_map({
-      412 => { acquired: false, conflict: true, lease_generation: -1 }
-    })
+    @error_map(status: 412, body: { "acquired": false, "conflict": true, "lease_generation": -1 })
     @mock_response(
       status: 200,
       body: {
@@ -92,9 +90,7 @@ service gcs.ClaimStore : ClaimStore {
     @header("Content-Type", "application/json")
     @idempotent
     @permissions(["storage.objects.create"])
-    @error_map({
-      412 => { accepted: false }
-    })
+    @error_map(status: 412, body: { "accepted": false })
     @mock_response(
       status: 200,
       body: { "accepted": true }
@@ -114,9 +110,7 @@ service gcs.ClaimStore : ClaimStore {
     @header("x-goog-if-generation-match", "{generation}")
     @idempotent
     @permissions(["storage.objects.delete"])
-    @error_map({
-      412 => { released: false }
-    })
+    @error_map(status: 412, body: { "released": false })
     @mock_response(
       status: 204,
       body: { "released": true }

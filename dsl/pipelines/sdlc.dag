@@ -60,18 +60,10 @@ import std.types {
     OutcomeStatus, NonEmptyStr
 }
 
-// ── Pipeline parameters ─────────────────────────────────────────────
-// These are bound at invocation time (from webhook payload, CLI args,
-// or a polling loop). Gap J resolution: parameterized instead of hardcoded.
-
-param repo_owner: String               // e.g. "gunb-ai"
-param repo_name: String                // e.g. "gunbc"
-param issue_number: Int                // the issue to process
-param llm_provider: String = "anthropic"
-param llm_model: String = "claude-sonnet-4-20250514"
-param worker_id: String = "pipeline-1" // claim identity
-
 // ── Pipeline ────────────────────────────────────────────────────────
+// Parameters (repo_owner, repo_name, issue_number, llm_provider,
+// llm_model, worker_id) are bound at invocation time from webhook
+// payload, CLI args, or a polling loop.
 // The pipeline definition uses interfaces. Each stage handler
 // delegates to funcs/sdlc_stages.dag which also uses interfaces.
 // The concrete implementation is selected by the profile.

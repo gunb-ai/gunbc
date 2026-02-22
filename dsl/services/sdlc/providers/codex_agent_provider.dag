@@ -41,9 +41,9 @@ service codex.AgentProvider : AgentProvider {
             "--prompt", "{prompt}",
             "--cwd", "{repo_path}",
             "--branch", "{branch}",
-            "--model", "{model ?? 'o4-mini'}",
+            "--model", "{model ?? \"o4-mini\"}",
             "--timeout", "{timeout_seconds ?? 600}",
-            "--approval-mode", "{approval_mode ?? 'full-auto'}",
+            "--approval-mode", "{approval_mode ?? \"full-auto\"}",
             "--output-format", "json"])
     @mock_response(
       status: 0,
@@ -78,7 +78,7 @@ service codex.AgentProvider : AgentProvider {
     output { cancelled: Bool, final_status: AgentStatus }
     @shell(["codex", "cancel",
             "--run-id", "{run_id}",
-            "--reason", "{reason ?? 'pipeline-cancelled'}",
+            "--reason", "{reason ?? \"pipeline-cancelled\"}",
             "--output-format", "json"])
     @mock_response(
       status: 0,

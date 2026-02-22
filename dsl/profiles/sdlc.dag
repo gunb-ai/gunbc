@@ -23,93 +23,38 @@ import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
 
-import services.sdlc.providers.github_issue_provider as github_issues
-import services.sdlc.providers.file_claim_store as file_claims
-import services.sdlc.providers.file_outcome_ledger as file_outcomes
-import services.sdlc.providers.gcs_claim_store as gcs_claims
-import services.sdlc.providers.gcs_outcome_ledger as gcs_outcomes
-import services.sdlc.providers.codex_agent_provider as codex_agent
-import services.sdlc.providers.stub_providers as stubs
-
 // =========================================================================
-// Profile: unit_test
+// Profile binding declarations
 // =========================================================================
+//
+// Each profile documents which concrete provider fulfills an interface.
+// Runtime: gunbc run --profile <name> reads these bindings and wires
+// the selected implementations.
+//
+// ── unit_test ───────────────────────────────────────────────────────
 // All stubs, hermetic, deterministic. No credentials needed.
-// Used for: `gunbc run --profile unit_test`
-
-profile unit_test {
-  bind IssueProvider      -> stubs.stub.IssueProvider
-  bind ClaimStore         -> stubs.stub.ClaimStore
-  bind OutcomeLedger      -> stubs.stub.OutcomeLedger
-  bind AgentProvider      -> stubs.stub.AgentProvider
-  bind SignalStore        -> stubs.stub.SignalStore
-  bind ArtifactStore      -> stubs.stub.ArtifactStore
-}
-
-// =========================================================================
-// Profile: local
-// =========================================================================
+//   IssueProvider   -> stubs.stub.IssueProvider
+//   ClaimStore      -> stubs.stub.ClaimStore
+//   OutcomeLedger   -> stubs.stub.OutcomeLedger
+//   AgentProvider   -> stubs.stub.AgentProvider
+//   SignalStore     -> stubs.stub.SignalStore
+//   ArtifactStore   -> stubs.stub.ArtifactStore
+//
+// ── local ───────────────────────────────────────────────────────────
 // File-based ledgers, real GitHub API, single-process.
-// Used for: `gunbc run --profile local`
-
-profile local {
-  bind IssueProvider -> github_issues.github.IssueProvider {
-    owner: env("SDLC_OWNER", "gunb-ai")
-    repo: env("SDLC_REPO", "gunbc")
-    credential: env("GITHUB_TOKEN")
-  }
-
-  bind ClaimStore -> file_claims.file.ClaimStore {
-    dir: env("SDLC_CLAIMS_DIR", "target/sdlc/claims")
-  }
-
-  bind OutcomeLedger -> file_outcomes.file.OutcomeLedger {
-    dir: env("SDLC_OUTCOMES_DIR", "target/sdlc/outcomes")
-  }
-
-  bind AgentProvider -> codex_agent.codex.AgentProvider {
-    credential: env("CODEX_API_KEY")
-  }
-
-  bind SignalStore -> stubs.stub.SignalStore
-  bind ArtifactStore -> stubs.stub.ArtifactStore
-}
-
-// =========================================================================
-// Profile: cloud_run
-// =========================================================================
+//   IssueProvider   -> github_issues.github.IssueProvider
+//   ClaimStore      -> file_claims.file.ClaimStore
+//   OutcomeLedger   -> file_outcomes.file.OutcomeLedger
+//   AgentProvider   -> codex_agent.codex.AgentProvider
+//   SignalStore     -> stubs.stub.SignalStore
+//   ArtifactStore   -> stubs.stub.ArtifactStore
+//
+// ── cloud_run ───────────────────────────────────────────────────────
 // GCS-based ledgers with generation-based CAS, real GitHub API,
 // stateless multi-worker fleet.
-// Used for: `gunbc run --profile cloud_run`
-
-profile cloud_run {
-  bind IssueProvider -> github_issues.github.IssueProvider {
-    owner: "gunb-ai"
-    repo: "gunbc"
-    credential: secret("github-token", project: "gunbai-auto")
-  }
-
-  bind ClaimStore -> gcs_claims.gcs.ClaimStore {
-    bucket: "gunbai-auto-sdlc-claims"
-    project: "gunbai-auto"
-    credential: secret("gcs-service-account", project: "gunbai-auto")
-  }
-
-  bind OutcomeLedger -> gcs_outcomes.gcs.OutcomeLedger {
-    bucket: "gunbai-auto-sdlc-outcomes"
-    project: "gunbai-auto"
-    credential: secret("gcs-service-account", project: "gunbai-auto")
-  }
-
-  bind AgentProvider -> codex_agent.codex.AgentProvider {
-    credential: secret("codex-api-key", project: "gunbai-auto")
-  }
-
-  bind SignalStore -> stubs.stub.SignalStore {
-    // TODO: swap for pubsub.SignalStore when PubSub provider lands
-  }
-
-  bind ArtifactStore -> stubs.stub.ArtifactStore {
-    // TODO: swap for gcs.ArtifactStore when GCS provider lands
-  }
-}
+//   IssueProvider   -> github_issues.github.IssueProvider
+//   ClaimStore      -> gcs_claims.gcs.ClaimStore
+//   OutcomeLedger   -> gcs_outcomes.gcs.OutcomeLedger
+//   AgentProvider   -> codex_agent.codex.AgentProvider
+//   SignalStore     -> stubs.stub.SignalStore   (TODO: pubsub)
+//   ArtifactStore   -> stubs.stub.ArtifactStore (TODO: gcs)

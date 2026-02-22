@@ -39,7 +39,7 @@ service github.IssueProvider : IssueProvider {
     output {
       issues: Json                     // List<TrackedIssue> (provider transforms)
     }
-    @rest(GET, "/repos/{config.owner}/{config.repo}/issues?labels={labels|join(',')}&state={state ?? 'open'}")
+    @rest(GET, "/repos/{config.owner}/{config.repo}/issues?labels={labels}&state={state ?? \"open\"}")
     @permissions(["issues:read"])
     @mock_response(
       status: 200,

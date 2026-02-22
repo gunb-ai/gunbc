@@ -1226,6 +1226,7 @@ impl Parser {
     fn parse_pipeline_def(&mut self) -> Result<PipelineDef, ParseError> {
         self.expect(&TokenKind::Pipeline)?;
         let name = self.expect_ident()?;
+        let (uses, _provides) = self.parse_uses_provides()?;
         self.expect(&TokenKind::LBrace)?;
         let mut stages = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
@@ -1236,7 +1237,7 @@ impl Parser {
             }
         }
         self.expect(&TokenKind::RBrace)?;
-        Ok(PipelineDef { name, stages })
+        Ok(PipelineDef { name, uses, stages })
     }
 
     fn parse_stage_def(&mut self) -> Result<StageDef, ParseError> {

@@ -56,16 +56,9 @@ fn make_run_key(owner: String, repo: String, number: Int, stage: IssueLifecycleS
   "sdlc::{owner}/{repo}#{number}::{stage}::v1"
 }
 
-// ── Worker parameters ─────────────────────────────────────────────
-// These are bound at invocation time (CLI args, webhook, cron).
-
-param worker_owner: String             // e.g. "gunb-ai"
-param worker_repo: String              // e.g. "gunbc"
-param worker_id: String = "worker-1"   // Worker identity for claims
-param llm_provider: String = "anthropic"
-param llm_model: String = "claude-sonnet-4-20250514"
-
 // ── Main worker function ──────────────────────────────────────────
+// Parameters (owner, repo, worker_id, llm_provider, llm_model) are
+// bound at invocation time (CLI args, webhook, cron).
 // Discovers all open issues with SDLC labels, claims each,
 // dispatches the appropriate stage handler, records outcomes.
 //
