@@ -7,8 +7,8 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    detect_boundaries, detect_entrypoints, value_backing_for_type_id, Dag, NodeId, PortName, Value,
-    ValueBacking,
+    detect_boundaries, detect_entrypoints, value_backing_for_type_id, AuthScheme, Credential, Dag,
+    NodeId, PortName, Secret, Value, ValueBacking,
 };
 use gunbc_primitives::filename;
 use gunbc_test::extract_mock_requirements;
@@ -87,6 +87,7 @@ fn default_value_for_type(type_id: &str) -> Value {
         "TransportResponse" => default_shell_response(),
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
         "CloudSecretConfig" => default_cloud_secret_config(),
+        "Credential" => default_credential(),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
         "FilesystemHandle" => default_fs_handle(),
         _ => match value_backing_for_type_id(type_id) {
@@ -101,6 +102,10 @@ fn default_value_for_type(type_id: &str) -> Value {
             ValueBacking::Bytes => Value::List(vec![Value::Int(0)]),
         },
     }
+}
+
+fn default_credential() -> Value {
+    Credential::new(Secret::static_value("mock-token"), AuthScheme::Bearer).into()
 }
 
 fn default_cloud_secret_config() -> Value {
