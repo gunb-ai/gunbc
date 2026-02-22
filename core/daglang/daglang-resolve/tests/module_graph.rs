@@ -222,7 +222,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("tools.makegen".into(), 3),
         ("tools.pragma".into(), 3),
         ("tools.review".into(), 2),
-        ("tools.testgen".into(), 2),
+        ("tools.testgen".into(), 3),
         ("workflows.bootstrap".into(), 2),
         ("workflows.build_all".into(), 3),
         ("workflows.ci".into(), 0),

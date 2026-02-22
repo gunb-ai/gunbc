@@ -1,3 +1,6 @@
+// Test infrastructure: filesystem scans for registry/coverage assertions.
+#![allow(clippy::disallowed_methods, clippy::disallowed_types)]
+
 use gunbc_testgen_registry::iter_resource_tests;
 use std::collections::HashSet;
 use std::fs;

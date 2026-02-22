@@ -453,6 +453,13 @@ fn input_as_string(
         Some(Value::Int(n)) => Ok(n.to_string()),
         Some(Value::Bool(b)) => Ok(b.to_string()),
         Some(Value::Float(f)) => Ok(f.to_string()),
+        Some(Value::Json(json)) => Ok(match json {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Null => "null".to_string(),
+            _ => json.to_string(),
+        }),
         Some(Value::Skipped) | None => default.map(ToString::to_string).ok_or_else(|| {
             ExecError::new(format!(
                 "missing required input `{name}` and no default value is declared"
@@ -1177,6 +1184,42 @@ mod tests {
             .execute(HashMap::new())
             .expect_err("missing shell input should fail closed");
         assert!(err.to_string().contains("missing required input `value`"));
+    }
+
+    #[test]
+    fn shell_prepare_accepts_json_input_via_string_coercion() {
+        let spec = ShellOperationSpec {
+            argv_template: vec![
+                ArgvSegment::Literal("echo".to_string()),
+                ArgvSegment::InputRef("value".to_string()),
+            ],
+            input_fields: vec![FieldSpec {
+                name: "value".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: true,
+            }],
+            output_fields: vec![],
+            output_parsing: ShellOutputParsing::TrimStdout,
+            passthrough: false,
+        };
+        let op = GenericShellPrepareOp { spec };
+
+        let mut inputs = HashMap::new();
+        inputs.insert("value".to_string(), Value::Json(serde_json::json!({"k":"v"})));
+
+        let outputs = op
+            .execute(inputs)
+            .expect("json input should coerce to string for shell args");
+        let req = outputs.get("request").expect("request output");
+        match req {
+            Value::Request(TransportRequest::Shell(shell)) => {
+                assert_eq!(shell.command, "echo");
+                assert_eq!(shell.args, vec!["{\"k\":\"v\"}"]);
+            }
+            other => panic!("expected shell request, got {other:?}"),
+        }
     }
 
     #[test]
