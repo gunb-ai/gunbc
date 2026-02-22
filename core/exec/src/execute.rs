@@ -2919,33 +2919,37 @@ mod tests {
 
     #[test]
     fn test_simulate_with_mocks() {
-        // Transport executor node (consumes TransportRequest) should be intercepted in simulation
-        let mut dag: Dag<Produce> = Dag::new();
-        dag.add_node(Node::opaque(
-            "transport_node",
-            vec![port("request", "TransportRequest")], // Makes it a transport executor
-            vec![port("result", "String")],
-            TestOp::produce("result", Value::Str("real-value".to_string())),
-        ));
+        // Acquire the strict-dry-run env lock so a parallel strict-dry-run test
+        // cannot leak GUNBC_EXEC_STRICT_DRY_RUN=true into this test.
+        with_strict_dry_run_env(false, || {
+            // Transport executor node (consumes TransportRequest) should be intercepted in simulation
+            let mut dag: Dag<Produce> = Dag::new();
+            dag.add_node(Node::opaque(
+                "transport_node",
+                vec![port("request", "TransportRequest")], // Makes it a transport executor
+                vec![port("result", "String")],
+                TestOp::produce("result", Value::Str("real-value".to_string())),
+            ));
 
-        let mut mocks = BoundaryMocks::new();
-        mocks.set_value(
-            "transport_node",
-            "result",
-            Value::Str("simulated-value".to_string()),
-        );
+            let mut mocks = BoundaryMocks::new();
+            mocks.set_value(
+                "transport_node",
+                "result",
+                Value::Str("simulated-value".to_string()),
+            );
 
-        let config = SimConfig::new().with_mocks(mocks);
+            let config = SimConfig::new().with_mocks(mocks);
 
-        let result = simulate(&dag, config).unwrap();
+            let result = simulate(&dag, config).unwrap();
 
-        // Transport executor should be intercepted with mock value
-        let entry = result.log.get("transport_node").unwrap();
-        assert!(entry.was_intercepted);
-        assert_eq!(
-            entry.outputs.get("result"),
-            Some(&Value::Str("simulated-value".to_string()))
-        );
+            // Transport executor should be intercepted with mock value
+            let entry = result.log.get("transport_node").unwrap();
+            assert!(entry.was_intercepted);
+            assert_eq!(
+                entry.outputs.get("result"),
+                Some(&Value::Str("simulated-value".to_string()))
+            );
+        });
     }
 
     #[test]
