@@ -7,8 +7,8 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    detect_boundaries, detect_entrypoints, value_backing_for_type_id, Dag, NodeId, PortName, Value,
-    ValueBacking,
+    detect_boundaries, detect_entrypoints, value_backing_for_type_id, AuthScheme, Credential, Dag,
+    NodeId, PortName, Secret, Value, ValueBacking,
 };
 use gunbc_primitives::filename;
 use gunbc_test::extract_mock_requirements;
@@ -67,13 +67,14 @@ fn legacy_gcp_field_value_by_name(port_name: &str) -> Option<Value> {
         "provider" => Some(gcp_field_value_for_kind(GcpFieldKind::Provider)),
         "runtime" => Some(gcp_field_value_for_kind(GcpFieldKind::Runtime)),
         "audience" => Some(gcp_field_value_for_kind(GcpFieldKind::Audience)),
-        "project" => Some(gcp_field_value_for_kind(GcpFieldKind::Project)),
+        "project" | "project_or_account" => Some(gcp_field_value_for_kind(GcpFieldKind::Project)),
         "secret" | "secret_name" => Some(gcp_field_value_for_kind(GcpFieldKind::Secret)),
         "subject_token" => Some(gcp_field_value_for_kind(GcpFieldKind::SubjectToken)),
         "version" => Some(gcp_field_value_for_kind(GcpFieldKind::Version)),
         "service_account" | "service_account_or_role" => {
             Some(gcp_field_value_for_kind(GcpFieldKind::ServiceAccount))
         }
+        "impersonate_account_or_role" => Some(Value::Str(String::new())),
         _ => None,
     }
 }
@@ -94,6 +95,7 @@ fn default_value_for_type(type_id: &str) -> Value {
         "TransportResponse" => default_shell_response(),
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
         "CloudSecretConfig" => default_cloud_secret_config(),
+        "Credential" => default_credential(),
         "Secret" => Value::Secret(gunbc_ir::SecretString::new("mock")),
         "FilesystemHandle" => default_fs_handle(),
         _ => match value_backing_for_type_id(type_id) {
@@ -108,6 +110,10 @@ fn default_value_for_type(type_id: &str) -> Value {
             ValueBacking::Bytes => Value::List(vec![Value::Int(0)]),
         },
     }
+}
+
+fn default_credential() -> Value {
+    Credential::new(Secret::static_value("mock-token"), AuthScheme::Bearer).into()
 }
 
 fn default_cloud_secret_config() -> Value {

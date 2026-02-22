@@ -7,14 +7,14 @@
 //! # Commands
 //!
 //! - `daglang viz <file.dag> [--format ascii|mermaid]`: DAG visualization from compiled IR
-//! - `daglang expand <file.dag> [--emit-collection-nodes]`: Show lowered GraphIR (nodes, edges, ports)
-//! - `daglang progress <file.dag> [--format text|json] [--emit-collection-nodes]`: Show progress metrics
+//! - `daglang expand <file.dag> [--emit-collection-nodes] [--profile <name>|--profile=<name>]`: Show lowered GraphIR (nodes, edges, ports)
+//! - `daglang progress <file.dag> [--format text|json] [--emit-collection-nodes] [--profile <name>|--profile=<name>]`: Show progress metrics
 //! - `daglang topology <file.dag> [--format text|json]`: Show graph topology
 //! - `daglang obligations <file.dag> [--format text|json]`: Show derived test obligations summary
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
-//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
+//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>|--profile=<name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`: Compile + resolve + execute makegen DAG
 
 use std::path::PathBuf;
@@ -59,9 +59,10 @@ fn main() {
             default_viz_format_label()
         );
         eprintln!("  expand <file.dag> [--emit-collection-nodes]");
+        eprintln!("                      Optional: --profile <name>");
         eprintln!("                      Show lowered GraphIR (nodes/edges/ports)");
         eprintln!(
-            "  progress <file.dag> [--format text|json] [--emit-collection-nodes]"
+            "  progress <file.dag> [--format text|json] [--emit-collection-nodes] [--profile <name>|--profile=<name>]"
         );
         eprintln!("                      Show progress metrics");
         eprintln!("  topology <file.dag> [--format text|json]");
@@ -74,7 +75,7 @@ fn main() {
         eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse + typecheck modules (no lowering)");
         eprintln!(
-            "  compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]"
+            "  compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>|--profile=<name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]"
         );
         eprintln!("                      Full compilation pipeline");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
@@ -267,6 +268,7 @@ fn resolve_default_roots(cwd: &std::path::Path) -> Result<Vec<PathBuf>, String> 
 struct CompileCommandArgs {
     input: Option<String>,
     emit_collection_nodes: bool,
+    profile: Option<String>,
     target: Option<CodegenTarget>,
     layer: Option<CodegenLayer>,
     format: CompileOutputFormat,
@@ -284,6 +286,7 @@ struct ProgressCommandArgs {
     input: String,
     format: OutputFormat,
     emit_collection_nodes: bool,
+    profile: Option<String>,
 }
 
 pub(crate) fn parse_compile_command_args(
@@ -299,6 +302,7 @@ pub(crate) fn parse_compile_command_args(
     }
     let mut input: Option<String> = None;
     let mut emit_collection_nodes = false;
+    let mut profile: Option<String> = None;
     let mut target: Option<CodegenTarget> = None;
     let mut layer: Option<CodegenLayer> = None;
     let mut format = CompileOutputFormat::Summary;
@@ -358,6 +362,26 @@ pub(crate) fn parse_compile_command_args(
                 return Err(usage.to_string());
             }
             layer = Some(parse_codegen_layer(value).ok_or_else(|| usage.to_string())?);
+            i += 1;
+            continue;
+        }
+        if token == "--profile" {
+            if profile.is_some() {
+                return Err(usage.to_string());
+            }
+            let value = args.get(i + 1).ok_or_else(|| usage.to_string())?;
+            if value.starts_with("--") {
+                return Err(usage.to_string());
+            }
+            profile = Some(value.clone());
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--profile=") {
+            if profile.is_some() || value.is_empty() {
+                return Err(usage.to_string());
+            }
+            profile = Some(value.to_string());
             i += 1;
             continue;
         }
@@ -421,6 +445,7 @@ pub(crate) fn parse_compile_command_args(
     Ok(CompileCommandArgs {
         input,
         emit_collection_nodes,
+        profile,
         target,
         layer,
         format,
@@ -458,7 +483,9 @@ pub(crate) fn parse_progress_command_args(
     command: &str,
     args: &[String],
 ) -> Result<ProgressCommandArgs, String> {
-    let usage = format!("{command} <file.dag> [--format text|json] [--emit-collection-nodes]");
+    let usage = format!(
+        "{command} <file.dag> [--format text|json] [--emit-collection-nodes] [--profile <name>|--profile=<name>]"
+    );
     if args.is_empty() || args.get(1).map(String::as_str) != Some(command) {
         return Err(format!(
             "internal error: parse_progress_command_args expects full `daglang {command} ...` argv"
@@ -473,6 +500,7 @@ pub(crate) fn parse_progress_command_args(
     let mut format = OutputFormat::Text;
     let mut saw_format = false;
     let mut emit_collection_nodes = false;
+    let mut profile: Option<String> = None;
     let mut i = 3usize;
     while i < args.len() {
         let token = &args[i];
@@ -500,12 +528,35 @@ pub(crate) fn parse_progress_command_args(
             i += 2;
             continue;
         }
+        if token == "--profile" {
+            if profile.is_some() {
+                return Err(usage.clone());
+            }
+            let Some(value) = args.get(i + 1) else {
+                return Err(usage.clone());
+            };
+            if value.starts_with("--") {
+                return Err(usage.clone());
+            }
+            profile = Some(value.clone());
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--profile=") {
+            if profile.is_some() || value.is_empty() {
+                return Err(usage.clone());
+            }
+            profile = Some(value.to_string());
+            i += 1;
+            continue;
+        }
         return Err(usage.clone());
     }
     Ok(ProgressCommandArgs {
         input,
         format,
         emit_collection_nodes,
+        profile,
     })
 }
 
@@ -1330,6 +1381,7 @@ mod tests {
         let parsed_valid = super::parse_compile_command_args("compile", &valid, usage, false)
             .expect("compile parser should accept full codegen args");
         assert_eq!(parsed_valid.input.as_deref(), Some("dsl/tools/makegen.dag"));
+        assert!(parsed_valid.profile.is_none());
         assert_eq!(
             parsed_valid.target,
             Some(daglang_driver::CodegenTarget::Rust)
@@ -1392,6 +1444,50 @@ mod tests {
         );
         assert_eq!(
             super::parse_compile_command_args("compile", &missing_target, usage, true),
+            Err(usage.to_string())
+        );
+    }
+
+    #[test]
+    fn parse_compile_command_args_accepts_profile_flag_forms() {
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>|--profile=<name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
+        let spaced = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl/pipelines/sdlc.dag".to_string(),
+            "--profile".to_string(),
+            "unit_test".to_string(),
+        ];
+        let equals = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl/pipelines/sdlc.dag".to_string(),
+            "--profile=local".to_string(),
+        ];
+        let duplicate = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl/pipelines/sdlc.dag".to_string(),
+            "--profile".to_string(),
+            "unit_test".to_string(),
+            "--profile=local".to_string(),
+        ];
+        assert_eq!(
+            super::parse_compile_command_args("compile", &spaced, usage, false)
+                .expect("spaced --profile should parse")
+                .profile
+                .as_deref(),
+            Some("unit_test")
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &equals, usage, false)
+                .expect("equals --profile should parse")
+                .profile
+                .as_deref(),
+            Some("local")
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &duplicate, usage, false),
             Err(usage.to_string())
         );
     }
@@ -1465,6 +1561,7 @@ mod tests {
         assert_eq!(parsed.input, "dsl/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Json));
         assert!(parsed.emit_collection_nodes);
+        assert!(parsed.profile.is_none());
     }
 
     #[test]
@@ -1478,12 +1575,25 @@ mod tests {
             .expect("progress args should parse");
         assert_eq!(parsed.input, "dsl/tools/gist.dag");
         assert!(matches!(parsed.format, super::OutputFormat::Text));
+        assert!(parsed.profile.is_none());
+    }
+
+    #[test]
+    fn parse_progress_command_args_accepts_profile_flag() {
+        let args = vec![
+            "daglang".to_string(),
+            "progress".to_string(),
+            "dsl/tools/gist.dag".to_string(),
+            "--profile=local".to_string(),
+        ];
+        let parsed = super::parse_progress_command_args("progress", &args)
+            .expect("progress args should parse");
+        assert_eq!(parsed.profile.as_deref(), Some("local"));
     }
 
     #[test]
     fn parse_progress_command_args_rejects_invalid_shapes() {
-        let usage =
-            "progress <file.dag> [--format text|json] [--emit-collection-nodes]".to_string();
+        let usage = "progress <file.dag> [--format text|json] [--emit-collection-nodes] [--profile <name>|--profile=<name>]".to_string();
         let missing_input = vec!["daglang".to_string(), "progress".to_string()];
         let duplicate_format = vec![
             "daglang".to_string(),
@@ -1507,6 +1617,14 @@ mod tests {
             "dsl/tools/gist.dag".to_string(),
             "--collection".to_string(),
         ];
+        let duplicate_profile = vec![
+            "daglang".to_string(),
+            "progress".to_string(),
+            "dsl/tools/gist.dag".to_string(),
+            "--profile".to_string(),
+            "local".to_string(),
+            "--profile=unit_test".to_string(),
+        ];
         assert_eq!(
             super::parse_progress_command_args("progress", &missing_input),
             Err(usage.clone())
@@ -1521,6 +1639,10 @@ mod tests {
         );
         assert_eq!(
             super::parse_progress_command_args("progress", &unknown_flag),
+            Err(usage.clone())
+        );
+        assert_eq!(
+            super::parse_progress_command_args("progress", &duplicate_profile),
             Err(usage)
         );
     }

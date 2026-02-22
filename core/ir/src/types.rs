@@ -905,7 +905,10 @@ pub fn value_kind_name(value: &crate::value::Value) -> &'static str {
 /// This mirrors the compatibility rules used by testgen and typed mock
 /// requirements, centralized to avoid divergence.
 pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value) -> bool {
-    use crate::value::{Value, ValueKind};
+    use crate::{
+        transport::Credential,
+        value::{Value, ValueKind},
+    };
 
     let kind = value.kind();
     let kind_name = kind.type_name();
@@ -926,6 +929,12 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
             return true;
         }
         return value_compatible_with_type_id(inner, value);
+    }
+
+    // Credential is encoded as a capability-marked map. Validate using the
+    // canonical runtime conversion rather than raw Value backing.
+    if type_id == "Credential" {
+        return Credential::try_from(value).is_ok();
     }
 
     // Skipped is compatible with any type

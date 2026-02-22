@@ -148,7 +148,12 @@ func execute_stage(
                            owner: owner, repo: repo, number: number)
   }
 
-  return result
+  return {
+    success: result.success,
+    next_stage: result.next_stage,
+    artifact_posted: result.artifact_posted,
+    payload: result.payload
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -313,7 +318,12 @@ func handle_accepted_to_implementing(
     labels: [label_implementing()]
   )
 
-  return { success: agent.started, next_stage: Implementing, artifact_posted: comment.ok, payload: { "agent_run_id": agent.run_id } }
+  return {
+    success: agent.started,
+    next_stage: Implementing,
+    artifact_posted: comment.ok,
+    payload: None
+  }
 }
 
 // ── Stage 5: Implementing -> CodeReview ────────────────────────────

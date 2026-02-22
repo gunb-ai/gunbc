@@ -445,6 +445,8 @@ mod tests {
         let discovered =
             discover_dsl_pipeline_names().expect("dsl pipeline discovery should succeed");
         assert!(discovered.contains("ci"));
+        assert!(discovered.contains("reconciler"));
+        assert!(discovered.contains("sdlc"));
     }
 
     #[test]

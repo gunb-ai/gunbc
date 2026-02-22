@@ -27,27 +27,35 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "expand",
                 args,
-                "expand <file.dag> [--emit-collection-nodes]",
+                "expand <file.dag> [--emit-collection-nodes] [--profile <name>|--profile=<name>]",
                 true,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
             let input = parsed
                 .input
                 .expect("expand parser should require input target");
-            let output = compile_target_or_exit_with_options(
+            let output = compile_target_or_exit_with_compile_options(
                 cwd,
                 Some(&input),
-                parsed.emit_collection_nodes,
+                CompileOptions {
+                    emit_collection_nodes: parsed.emit_collection_nodes,
+                    profile: parsed.profile.clone(),
+                    ..CompileOptions::default()
+                },
             );
             println!("{}", render_expand(&output.lowered_dag));
         }
         "progress" => {
             let parsed = parse_progress_command_args(args[1].as_str(), args)
                 .unwrap_or_else(|usage| exit_usage(&usage));
-            let output = compile_target_or_exit_with_options(
+            let output = compile_target_or_exit_with_compile_options(
                 cwd,
                 Some(&parsed.input),
-                parsed.emit_collection_nodes,
+                CompileOptions {
+                    emit_collection_nodes: parsed.emit_collection_nodes,
+                    profile: parsed.profile.clone(),
+                    ..CompileOptions::default()
+                },
             );
             println!(
                 "{}",
@@ -195,7 +203,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "compile",
                 args,
-                "compile <file.dag|dir> [--emit-collection-nodes] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]",
+                "compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>|--profile=<name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]",
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
@@ -206,6 +214,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let makegen_content = compute_makegen_content();
             let options = CompileOptions {
                 emit_collection_nodes: parsed.emit_collection_nodes,
+                profile: parsed.profile.clone(),
                 target: parsed.target.unwrap_or_default(),
                 layer: parsed.layer.unwrap_or_default(),
                 output_dir: normalized_out_dir.clone(),

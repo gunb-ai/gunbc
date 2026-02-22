@@ -89,6 +89,10 @@ pub enum TypedItemSignature {
         stages: usize,
         stage_names: Vec<String>,
     },
+    Profile {
+        name: String,
+        binds: Vec<TypedProfileBind>,
+    },
 }
 
 /// A normalized callable signature for fn/func/pattern items.
@@ -104,6 +108,13 @@ pub struct TypedCallableSignature {
 pub struct TypedBinding {
     pub name: String,
     pub ty: String,
+}
+
+/// A single profile binding (`bind Interface -> Implementation`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypedProfileBind {
+    pub interface: String,
+    pub implementation: String,
 }
 
 /// Errors during type checking.
@@ -241,6 +252,26 @@ pub enum TypeError {
         item: String,
         binding: String,
         resource_type: String,
+    },
+    /// Profile bind references an unknown interface.
+    UnknownProfileInterface {
+        profile: String,
+        interface: String,
+    },
+    /// Profile bind interface resolves ambiguously.
+    AmbiguousProfileInterface {
+        profile: String,
+        interface: String,
+    },
+    /// Profile bind references an unknown concrete implementation.
+    UnknownProfileImplementation {
+        profile: String,
+        implementation: String,
+    },
+    /// Profile bind implementation resolves ambiguously.
+    AmbiguousProfileImplementation {
+        profile: String,
+        implementation: String,
     },
 }
 
@@ -432,6 +463,28 @@ impl std::fmt::Display for TypeError {
                 f,
                 "ambiguous provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
             ),
+            Self::UnknownProfileInterface { profile, interface } => write!(
+                f,
+                "profile `{profile}` references unknown interface `{interface}`"
+            ),
+            Self::AmbiguousProfileInterface { profile, interface } => write!(
+                f,
+                "profile `{profile}` references ambiguous interface `{interface}`"
+            ),
+            Self::UnknownProfileImplementation {
+                profile,
+                implementation,
+            } => write!(
+                f,
+                "profile `{profile}` references unknown implementation `{implementation}`"
+            ),
+            Self::AmbiguousProfileImplementation {
+                profile,
+                implementation,
+            } => write!(
+                f,
+                "profile `{profile}` references ambiguous implementation `{implementation}`"
+            ),
         }
     }
 }
@@ -453,6 +506,7 @@ pub fn typecheck_module_graph_with_options(
     let pattern_callable_names = collect_pattern_callable_names(&graph.modules);
     let service_call_registry = collect_service_call_contracts(&graph.modules);
     let interface_registry = collect_interfaces(&graph.modules);
+    let implementor_registry = collect_implementors(&graph.modules);
     let resource_type_registry = collect_resource_types(&graph.modules);
     let resource_capability_registry = collect_resource_capabilities(&graph.modules);
     let available_modules = graph
@@ -470,6 +524,7 @@ pub fn typecheck_module_graph_with_options(
         pattern_callable_names: &pattern_callable_names,
         service_call_registry: &service_call_registry,
         interface_registry: &interface_registry,
+        implementor_registry: &implementor_registry,
         resource_type_registry: &resource_type_registry,
         resource_capability_registry: &resource_capability_registry,
         allow_unresolved_references: options.allow_unresolved_imports,
@@ -522,6 +577,7 @@ struct TypecheckContext<'a> {
     pattern_callable_names: &'a HashSet<String>,
     service_call_registry: &'a ServiceCallRegistry,
     interface_registry: &'a InterfaceRegistry,
+    implementor_registry: &'a ImplementorRegistry,
     resource_type_registry: &'a ResourceTypeRegistry,
     resource_capability_registry: &'a ResourceCapabilityRegistry,
     allow_unresolved_references: bool,
@@ -781,6 +837,60 @@ fn collect_signatures(
                     operations: def.operations.len(),
                 });
             }
+            Item::ProfileDef(def) => {
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
+                let mut binds = Vec::with_capacity(def.binds.len());
+                for bind in &def.binds {
+                    match resolve_interface_contract(
+                        bind.interface.as_str(),
+                        context.interface_registry,
+                    ) {
+                        InterfaceResolution::Resolved(_) => {}
+                        InterfaceResolution::Ambiguous => {
+                            errors.push(TypeError::AmbiguousProfileInterface {
+                                profile: def.name.clone(),
+                                interface: bind.interface.clone(),
+                            });
+                        }
+                        InterfaceResolution::Missing => {
+                            errors.push(TypeError::UnknownProfileInterface {
+                                profile: def.name.clone(),
+                                interface: bind.interface.clone(),
+                            });
+                        }
+                    }
+                    match resolve_implementor_name(
+                        bind.implementation.as_str(),
+                        context.implementor_registry,
+                    ) {
+                        ImplementorResolution::Resolved(_) => {}
+                        ImplementorResolution::Ambiguous => {
+                            errors.push(TypeError::AmbiguousProfileImplementation {
+                                profile: def.name.clone(),
+                                implementation: bind.implementation.clone(),
+                            });
+                        }
+                        ImplementorResolution::Missing => {
+                            errors.push(TypeError::UnknownProfileImplementation {
+                                profile: def.name.clone(),
+                                implementation: bind.implementation.clone(),
+                            });
+                        }
+                    }
+                    binds.push(TypedProfileBind {
+                        interface: bind.interface.clone(),
+                        implementation: bind.implementation.clone(),
+                    });
+                }
+                signatures.push(TypedItemSignature::Profile {
+                    name: def.name.clone(),
+                    binds,
+                });
+            }
             Item::ResourceDef(def) => {
                 errors.extend(record_duplicate_item_name(
                     module_name,
@@ -995,6 +1105,13 @@ enum ServiceCallResolution {
 #[derive(Debug, Clone)]
 enum InterfaceResolution {
     Resolved(InterfaceContract),
+    Ambiguous,
+    Missing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ImplementorResolution {
+    Resolved(String),
     Ambiguous,
     Missing,
 }
@@ -1438,6 +1555,12 @@ struct InterfaceRegistry {
 }
 
 #[derive(Debug, Clone, Default)]
+struct ImplementorRegistry {
+    full: HashSet<String>,
+    short: HashMap<String, Option<String>>,
+}
+
+#[derive(Debug, Clone, Default)]
 struct ResourceTypeRegistry {
     full: HashSet<String>,
     short: HashMap<String, Option<String>>,
@@ -1561,6 +1684,43 @@ fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
                     }
                 })
                 .or_insert_with(|| Some(contract.clone()));
+        }
+    }
+    registry
+}
+
+fn collect_implementors(modules: &[ResolvedModule]) -> ImplementorRegistry {
+    let mut registry = ImplementorRegistry::default();
+    for module in modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let implementor_name = match &item.node {
+                Item::ServiceDef(service) => service.name.as_str(),
+                Item::ResourceDef(resource) => resource.name.as_str(),
+                _ => continue,
+            };
+            let full = format!("{module_name}.{implementor_name}");
+            registry.full.insert(full.clone());
+            let mut short_names = vec![implementor_name.to_string()];
+            let tail = implementor_name
+                .rsplit('.')
+                .next()
+                .unwrap_or(implementor_name)
+                .to_string();
+            if tail != implementor_name {
+                short_names.push(tail);
+            }
+            for short_name in short_names {
+                registry
+                    .short
+                    .entry(short_name)
+                    .and_modify(|existing| {
+                        if existing.is_some() {
+                            *existing = None;
+                        }
+                    })
+                    .or_insert_with(|| Some(full.clone()));
+            }
         }
     }
     registry
@@ -2806,6 +2966,28 @@ fn resolve_interface_contract(
 
 fn canonical_interface_name(name: &str) -> String {
     canonical_type_name(name)
+}
+
+fn resolve_implementor_name(
+    implementation: &str,
+    registry: &ImplementorRegistry,
+) -> ImplementorResolution {
+    let canonical = canonical_type_name(implementation);
+    if registry.full.contains(&canonical) {
+        return ImplementorResolution::Resolved(canonical);
+    }
+    if let Some(entry) = registry.short.get(canonical.as_str()) {
+        return match entry {
+            Some(resolved) => ImplementorResolution::Resolved(resolved.clone()),
+            None => ImplementorResolution::Ambiguous,
+        };
+    }
+    let short = canonical.rsplit('.').next().unwrap_or(canonical.as_str());
+    match registry.short.get(short) {
+        Some(Some(resolved)) => ImplementorResolution::Resolved(resolved.clone()),
+        Some(None) => ImplementorResolution::Ambiguous,
+        None => ImplementorResolution::Missing,
+    }
 }
 
 fn resolve_resource_type_name(
@@ -4568,6 +4750,98 @@ service FsStorage implements Storage {
                 implementor,
                 interface
             } if implementor == "FsStorage" && interface == "Storage"
+        )));
+    }
+
+    #[test]
+    fn profile_signature_is_recorded_for_valid_bindings() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+profile local {
+  bind Storage -> FsStorage
+}"#,
+        )]);
+        let typed = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect("valid profile bindings should typecheck");
+        assert!(typed.modules.iter().flat_map(|module| module.signatures.iter()).any(
+            |signature| matches!(
+                signature,
+                TypedItemSignature::Profile { name, binds }
+                    if name == "local"
+                        && binds.iter().any(|bind| bind.interface == "Storage" && bind.implementation == "FsStorage")
+            )
+        ));
+    }
+
+    #[test]
+    fn profile_binding_unknown_interface_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+service FsStorage {
+  operation read(path: String) -> { body: String }
+}
+profile local {
+  bind MissingInterface -> FsStorage
+}"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("unknown profile interface should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnknownProfileInterface { profile, interface }
+                if profile == "local" && interface == "MissingInterface"
+        )));
+    }
+
+    #[test]
+    fn profile_binding_unknown_implementation_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "sample/main.dag",
+            r#"module sample.main
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+profile local {
+  bind Storage -> MissingStorage
+}"#,
+        )]);
+        let errors = typecheck_module_graph_with_options(
+            graph,
+            TypecheckOptions {
+                allow_unresolved_imports: false,
+            },
+        )
+        .expect_err("unknown profile implementation should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnknownProfileImplementation {
+                profile,
+                implementation
+            } if profile == "local" && implementation == "MissingStorage"
         )));
     }
 

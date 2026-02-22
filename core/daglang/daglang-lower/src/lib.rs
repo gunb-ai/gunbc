@@ -456,6 +456,14 @@ struct ResourceLifecycleEndpoint {
     release_node: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct ProfileBindingRegistry {
+    by_full_name: HashMap<String, HashMap<String, String>>,
+    by_short_name: HashMap<String, Option<String>>,
+}
+
+type ActiveProfileBindings = (String, HashMap<String, String>);
+
 /// Cloud provider classification for resource/interface resolution.
 ///
 /// Provider hints come from explicit DSL structure:
@@ -607,6 +615,69 @@ fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
     set.insert(short);
 }
 
+fn collect_profile_binding_registry(project: &TypedProject) -> ProfileBindingRegistry {
+    let mut registry = ProfileBindingRegistry::default();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ProfileDef(profile) = &item.node else {
+                continue;
+            };
+            let full_name = format!("{module_name}.{}", profile.name);
+            let mut binds = HashMap::<String, String>::new();
+            for bind in &profile.binds {
+                let canonical_interface = canonical_type_name(bind.interface.as_str());
+                let short_interface = canonical_interface
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(canonical_interface.as_str())
+                    .to_string();
+                binds.insert(canonical_interface, bind.implementation.clone());
+                binds.insert(short_interface, bind.implementation.clone());
+            }
+            registry.by_full_name.insert(full_name.clone(), binds);
+            registry
+                .by_short_name
+                .entry(profile.name.clone())
+                .and_modify(|existing| {
+                    if existing.is_some() {
+                        *existing = None;
+                    }
+                })
+                .or_insert_with(|| Some(full_name));
+        }
+    }
+    registry
+}
+
+fn resolve_active_profile_bindings(
+    active_profile: Option<&str>,
+    registry: &ProfileBindingRegistry,
+) -> Result<Option<ActiveProfileBindings>, LowerError> {
+    let Some(profile_name) = active_profile else {
+        return Ok(None);
+    };
+    if let Some(bindings) = registry.by_full_name.get(profile_name) {
+        return Ok(Some((profile_name.to_string(), bindings.clone())));
+    }
+    match registry.by_short_name.get(profile_name) {
+        Some(Some(full_name)) => registry
+            .by_full_name
+            .get(full_name)
+            .cloned()
+            .map(|bindings| Some((full_name.clone(), bindings)))
+            .ok_or_else(|| LowerError::UnknownProfile {
+                profile: profile_name.to_string(),
+            }),
+        Some(None) => Err(LowerError::AmbiguousProfile {
+            profile: profile_name.to_string(),
+        }),
+        None => Err(LowerError::UnknownProfile {
+            profile: profile_name.to_string(),
+        }),
+    }
+}
+
 fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
     let canonical = canonical_type_name(name);
     set.contains(&canonical)
@@ -697,6 +768,17 @@ pub enum LowerError {
         binding: String,
         resource_type: String,
     },
+    /// The requested active profile was not found.
+    UnknownProfile { profile: String },
+    /// The requested active profile name resolved ambiguously.
+    AmbiguousProfile { profile: String },
+    /// A `uses` interface binding has no mapping in the active profile.
+    MissingProfileBinding {
+        caller: String,
+        binding: String,
+        interface: String,
+        profile: String,
+    },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
 }
@@ -753,6 +835,21 @@ impl std::fmt::Display for LowerError {
                 f,
                 "ambiguous provided resource `{binding}: {resource_type}` in `{caller}`; use a concrete resource type"
             ),
+            Self::UnknownProfile { profile } => {
+                write!(f, "unknown active profile `{profile}`")
+            }
+            Self::AmbiguousProfile { profile } => {
+                write!(f, "ambiguous active profile `{profile}`")
+            }
+            Self::MissingProfileBinding {
+                caller,
+                binding,
+                interface,
+                profile,
+            } => write!(
+                f,
+                "missing profile binding for `{binding}: {interface}` in `{caller}` (active profile `{profile}`)"
+            ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
     }
@@ -766,21 +863,21 @@ impl std::fmt::Display for LowerError {
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, false)
+    lower_typed_project_with_callable_scope(project, None, false, None)
 }
 
 /// Lowers typed modules while emitting explicit collection pipeline nodes.
 pub fn lower_typed_project_with_collection_nodes(
     project: &TypedProject,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, true)
+    lower_typed_project_with_callable_scope(project, None, true, None)
 }
 
 pub fn lower_typed_project_for_modules(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), false)
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), false, None)
 }
 
 /// Lowers only scoped modules while emitting explicit collection pipeline nodes.
@@ -788,13 +885,44 @@ pub fn lower_typed_project_for_modules_with_collection_nodes(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), true)
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), true, None)
+}
+
+pub fn lower_typed_project_with_profile(
+    project: &TypedProject,
+    active_profile: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, None, false, active_profile)
+}
+
+pub fn lower_typed_project_with_collection_nodes_and_profile(
+    project: &TypedProject,
+    active_profile: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, None, true, active_profile)
+}
+
+pub fn lower_typed_project_for_modules_with_profile(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+    active_profile: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), false, active_profile)
+}
+
+pub fn lower_typed_project_for_modules_with_collection_nodes_and_profile(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+    active_profile: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), true, active_profile)
 }
 
 fn lower_typed_project_with_callable_scope(
     project: &TypedProject,
     callable_modules: Option<&HashSet<String>>,
     emit_collection_nodes: bool,
+    active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
@@ -901,7 +1029,8 @@ fn lower_typed_project_with_callable_scope(
                 TypedItemSignature::Type { .. }
                 | TypedItemSignature::Service { .. }
                 | TypedItemSignature::Resource { .. }
-                | TypedItemSignature::Interface { .. } => {}
+                | TypedItemSignature::Interface { .. }
+                | TypedItemSignature::Profile { .. } => {}
             }
         }
     }
@@ -914,13 +1043,24 @@ fn lower_typed_project_with_callable_scope(
         emit_collection_nodes,
     );
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
-    let service_registry = if callable_modules.is_some() {
+    let service_registry = if callable_modules.is_some() && active_profile.is_none() {
         let required_service_calls = collect_required_service_call_keys(project, callable_modules);
         add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))
     } else {
         add_service_transport_triplets(&mut builder, project, None)
     };
-    add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
+    let profile_registry = collect_profile_binding_registry(project);
+    let active_profile_bindings =
+        resolve_active_profile_bindings(active_profile, &profile_registry)?;
+    let known_interface_types = collect_interface_type_names(project);
+    add_service_call_edges(
+        &mut builder,
+        project,
+        &endpoints_by_full,
+        &service_registry,
+        active_profile_bindings.as_ref(),
+        &known_interface_types,
+    )?;
     let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
     let mut wired_release_targets = HashSet::new();
@@ -3122,10 +3262,8 @@ fn add_control_flow_pattern_nodes(
         let node_id = format!("{}::cf_if_{index}", target.node_id);
 
         if site.has_else {
-            let true_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "true");
-            let false_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "false");
+            let true_dag = make_branch_body_dag(module_name, &target.node_id, index, "true");
+            let false_dag = make_branch_body_dag(module_name, &target.node_id, index, "false");
             let branch_node = BranchBuilder::new(node_id.clone())
                 .with_true_branch(true_dag)
                 .with_false_branch(false_dag)
@@ -3133,8 +3271,7 @@ fn add_control_flow_pattern_nodes(
                 .build();
             builder.add_node(branch_node);
         } else {
-            let then_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "then");
+            let then_dag = make_branch_body_dag(module_name, &target.node_id, index, "then");
             let if_node = IfBuilder::new(node_id.clone())
                 .with_then(then_dag)
                 .with_output("result", "Any")
@@ -3844,9 +3981,7 @@ fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOu
         let parsing = match mode.as_str() {
             "trim" | "trim_stdout" | "string" => Some(ShellOutputParsing::TrimStdout),
             "split_lines" | "lines" | "line_list" => Some(ShellOutputParsing::SplitLines),
-            "exit_code_bool" | "bool" | "success_bool" => {
-                Some(ShellOutputParsing::ExitCodeBool)
-            }
+            "exit_code_bool" | "bool" | "success_bool" => Some(ShellOutputParsing::ExitCodeBool),
             "success_stdout_stderr" | "triple" | "result" => {
                 Some(ShellOutputParsing::SuccessStdoutStderr)
             }
@@ -4260,16 +4395,19 @@ fn add_service_call_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     service_registry: &ServiceEndpointRegistry,
+    active_profile_bindings: Option<&ActiveProfileBindings>,
+    known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
-            let (item_name, params, stmts, uses_bindings) = match &item.node {
+            let (item_name, params, stmts, uses_bindings, uses_types) = match &item.node {
                 Item::FnDef(def) => (
                     &def.name,
                     &def.params,
                     def.body.stmts.as_slice(),
                     HashSet::new(),
+                    HashMap::new(),
                 ),
                 Item::FuncDef(def) => (
                     &def.name,
@@ -4279,6 +4417,17 @@ fn add_service_call_edges(
                         .iter()
                         .map(|usage| usage.binding.clone())
                         .collect::<HashSet<_>>(),
+                    def.uses
+                        .iter()
+                        .map(|usage| {
+                            (
+                                usage.binding.clone(),
+                                canonical_type_name(
+                                    resource_type_name(&usage.resource_type).as_str(),
+                                ),
+                            )
+                        })
+                        .collect::<HashMap<_, _>>(),
                 ),
                 Item::PatternDef(def) => (
                     &def.name,
@@ -4288,6 +4437,17 @@ fn add_service_call_edges(
                         .iter()
                         .map(|usage| usage.binding.clone())
                         .collect::<HashSet<_>>(),
+                    def.uses
+                        .iter()
+                        .map(|usage| {
+                            (
+                                usage.binding.clone(),
+                                canonical_type_name(
+                                    resource_type_name(&usage.resource_type).as_str(),
+                                ),
+                            )
+                        })
+                        .collect::<HashMap<_, _>>(),
                 ),
                 _ => continue,
             };
@@ -4304,12 +4464,43 @@ fn add_service_call_edges(
             let mut service_calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut service_calls);
             for (call_index, call) in service_calls.into_iter().enumerate() {
-                let Some(source) = resolve_service_endpoint(&call.path, service_registry) else {
+                let resolved_source = resolve_service_endpoint(&call.path, service_registry)
+                    .or_else(|| {
+                        resolve_profile_bound_service_endpoint(
+                            &call.path,
+                            &uses_types,
+                            service_registry,
+                            active_profile_bindings,
+                        )
+                    });
+                let Some(source) = resolved_source else {
                     if call
                         .path
                         .first()
                         .is_some_and(|segment| uses_bindings.contains(segment))
                     {
+                        if let Some((profile_name, _)) = active_profile_bindings {
+                            let binding = call.path.first().cloned().unwrap_or_default();
+                            let interface = uses_types
+                                .get(&binding)
+                                .cloned()
+                                .unwrap_or_else(|| "Unknown".to_string());
+                            let short_interface = interface
+                                .rsplit('.')
+                                .next()
+                                .unwrap_or(interface.as_str())
+                                .to_string();
+                            let is_interface = known_interface_types.contains(interface.as_str())
+                                || known_interface_types.contains(short_interface.as_str());
+                            if is_interface {
+                                return Err(LowerError::MissingProfileBinding {
+                                    caller: format!("{module_name}::{item_name}"),
+                                    binding,
+                                    interface,
+                                    profile: profile_name.clone(),
+                                });
+                            }
+                        }
                         continue;
                     }
                     return Err(LowerError::UnresolvedServiceCall {
@@ -4685,6 +4876,21 @@ fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
     known
 }
 
+fn collect_interface_type_names(project: &TypedProject) -> HashSet<String> {
+    let mut known = HashSet::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::InterfaceDef(def) = &item.node else {
+                continue;
+            };
+            insert_canonical_names(&mut known, &def.name);
+            insert_canonical_names(&mut known, &format!("{module_name}.{}", def.name));
+        }
+    }
+    known
+}
+
 fn insert_default_known_resource_types(known: &mut HashSet<String>) {
     for resource_type in ["Filesystem", "Network", "Clock", "AuthContext"] {
         insert_canonical_names(known, resource_type);
@@ -4882,6 +5088,38 @@ fn resolve_service_endpoint(
         }
     }
     None
+}
+
+fn resolve_profile_bound_service_endpoint(
+    call_path: &[String],
+    uses_types: &HashMap<String, String>,
+    registry: &ServiceEndpointRegistry,
+    active_profile_bindings: Option<&ActiveProfileBindings>,
+) -> Option<ServiceTransportEndpoint> {
+    let (_, binds) = active_profile_bindings?;
+    if call_path.len() != 2 {
+        return None;
+    }
+    let binding = &call_path[0];
+    let capability = &call_path[1];
+    let interface = uses_types.get(binding)?;
+    let implementation = binds
+        .get(interface.as_str())
+        .or_else(|| {
+            let short = interface
+                .rsplit('.')
+                .next()
+                .unwrap_or(interface.as_str())
+                .to_string();
+            binds.get(short.as_str())
+        })?
+        .clone();
+    let mut implementation_path = implementation
+        .split('.')
+        .map(|segment| segment.to_string())
+        .collect::<Vec<_>>();
+    implementation_path.push(capability.clone());
+    resolve_service_endpoint(&implementation_path, registry)
 }
 
 fn ensure_param_source_node(
@@ -6449,7 +6687,10 @@ func run() -> { out: String } {
             ServiceOperationSpec::Shell(shell) => shell,
             other => panic!("expected shell operation spec, got {other:?}"),
         };
-        assert_eq!(shell.argv_template[0], ArgvSegment::Literal("echo".to_string()));
+        assert_eq!(
+            shell.argv_template[0],
+            ArgvSegment::Literal("echo".to_string())
+        );
         assert_eq!(
             shell.argv_template[1],
             ArgvSegment::Literal("{value}:{suffix}".to_string())
@@ -6544,6 +6785,84 @@ func run(path: String) -> { body: String } {
             error,
             LowerError::UnresolvedServiceCall { caller, service_call }
                 if caller == "sample.services::run" && service_call == "MissingStorage.read"
+        ));
+    }
+
+    #[test]
+    fn profile_binding_resolves_uses_bound_interface_service_calls() {
+        let typed = typed_project_from_sources(&[
+            (
+                "dsl/profiles/local.dag",
+                r#"module sample.profiles
+profile local {
+  bind IssueProvider -> github.Issues
+}"#,
+            ),
+            (
+                "dsl/services/issues.dag",
+                r#"module sample.services
+interface IssueProvider {
+  capability get {
+    input { id: String }
+    output { body: String }
+  }
+}
+service github.Issues implements IssueProvider {
+  operation get(id: String) -> { body: String }
+}
+func run(id: String) -> { body: String } uses issues: IssueProvider {
+  result = issues.get(id: id)
+  return { body: result.body }
+}"#,
+            ),
+        ]);
+
+        let dag = lower_typed_project_with_profile(&typed, Some("local"))
+            .expect("lowering with active profile should resolve bound service calls");
+        assert!(dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "prepare_transport_sample_services_github_Issues_get"));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "parse_transport_sample_services_github_Issues_get"
+                && edge.to_node.0 == "sample.services::run"
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn active_profile_requires_bindings_for_used_interfaces() {
+        let typed = typed_project_from_sources(&[
+            (
+                "dsl/profiles/local.dag",
+                r#"module sample.profiles
+profile local {
+}"#,
+            ),
+            (
+                "dsl/services/issues.dag",
+                r#"module sample.services
+interface IssueProvider {
+  capability get {
+    input { id: String }
+    output { body: String }
+  }
+}
+service github.Issues implements IssueProvider {
+  operation get(id: String) -> { body: String }
+}
+func run(id: String) -> { body: String } uses issues: IssueProvider {
+  result = issues.get(id: id)
+  return { body: result.body }
+}"#,
+            ),
+        ]);
+        let error = lower_typed_project_with_profile(&typed, Some("local"))
+            .expect_err("lowering should fail when active profile lacks uses binding");
+        assert!(matches!(
+            error,
+            LowerError::MissingProfileBinding { binding, interface, .. }
+                if binding == "issues" && interface == "IssueProvider"
         ));
     }
 

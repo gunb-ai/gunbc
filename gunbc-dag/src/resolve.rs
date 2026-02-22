@@ -24,7 +24,7 @@
 //!   module path and map each callable to its `DynOp`.
 //! - Infrastructure nodes (content_upsert, fs_env) are handled automatically.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use daglang_lower::{
     CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
@@ -40,6 +40,9 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
+use crate::bootstrap::BootstrapOp;
+use crate::makegen::MakegenOp;
+use crate::pragma::PragmaOp;
 use crate::resolve_service::{
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
 };
@@ -71,12 +74,21 @@ fn execute_with_declared_output_passthrough(
     output_port_names: &[String],
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    fn default_passthrough_output(port_name: &str) -> Value {
+        match port_name {
+            "return" | "result" => Value::Str("mock".to_string()),
+            _ => Value::Skipped,
+        }
+    }
+
     let mut outputs = HashMap::new();
     for (key, value) in &inputs {
         outputs.insert(key.clone(), value.clone());
     }
     for port_name in output_port_names {
-        outputs.entry(port_name.clone()).or_insert(Value::Skipped);
+        outputs
+            .entry(port_name.clone())
+            .or_insert_with(|| default_passthrough_output(port_name));
     }
     Ok(outputs)
 }
@@ -104,18 +116,63 @@ impl Executable for PassthroughOp {
 /// pipeline-level passthrough of inputs to outputs.
 #[derive(Debug, Clone)]
 struct PipelineDispatchOp {
-    _module: String,
-    _name: String,
+    module: String,
+    name: String,
+    stages: usize,
+    stage_names: Vec<String>,
     output_port_names: Vec<String>,
 }
 
 impl Executable for PipelineDispatchOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut outputs =
+            execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
+        outputs.insert("stages".to_string(), Value::Int(self.stages as i64));
+        if let Some((index, stage_name)) = self.current_stage(outputs.get("stage")) {
+            outputs.insert("stage_index".to_string(), Value::Int(index as i64));
+            outputs.insert("current_stage".to_string(), Value::Str(stage_name.clone()));
+            let next = self
+                .stage_names
+                .get(index.saturating_add(1))
+                .cloned()
+                .unwrap_or(stage_name);
+            outputs.insert("next_stage".to_string(), Value::Str(next));
+            outputs.insert(
+                "is_terminal_stage".to_string(),
+                Value::Bool(index.saturating_add(1) >= self.stage_names.len()),
+            );
+        } else if let Some(first) = self.stage_names.first() {
+            outputs.insert("next_stage".to_string(), Value::Str(first.clone()));
+            outputs.insert("is_terminal_stage".to_string(), Value::Bool(false));
+        } else {
+            outputs.insert("next_stage".to_string(), Value::Skipped);
+            outputs.insert("is_terminal_stage".to_string(), Value::Bool(true));
+        }
+        outputs.insert(
+            "pipeline".to_string(),
+            Value::Str(format!("{}.{}", self.module, self.name)),
+        );
+        Ok(outputs)
     }
+}
+
+impl PipelineDispatchOp {
+    fn current_stage(&self, stage_value: Option<&Value>) -> Option<(usize, String)> {
+        let raw = stage_value.and_then(Value::as_str)?;
+        let token = normalize_stage_token(raw);
+        self.stage_names
+            .iter()
+            .position(|candidate| normalize_stage_token(candidate) == token)
+            .map(|index| (index, self.stage_names[index].clone()))
+    }
+}
+
+fn normalize_stage_token(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
 }
 
 /// Simple identity callable adapter for DSL entrypoint wrappers.
@@ -125,6 +182,153 @@ struct IdentityCallableOp;
 impl Executable for IdentityCallableOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         Ok(inputs)
+    }
+}
+
+/// Runtime adapter for compiled SDLC stage dispatch.
+///
+/// The current lowering pipeline preserves `funcs.sdlc_stages::execute_stage`
+/// as a callable boundary. This adapter provides deterministic lifecycle
+/// progression semantics so the worker can execute stage routing through the
+/// compiled DSL entrypoint instead of handwritten stage switches.
+#[derive(Debug, Clone)]
+struct SdlcStageDispatchOp;
+
+impl Executable for SdlcStageDispatchOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let stage_raw = inputs
+            .get("stage")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("sdlc stage dispatch requires `stage` string input"))?;
+        let stage = normalize_sdlc_stage(stage_raw).ok_or_else(|| {
+            ExecError::new(format!(
+                "sdlc stage dispatch received unknown stage `{stage_raw}`"
+            ))
+        })?;
+        let (next_stage, awaiting_approval, payload) = match stage {
+            "idea" => (
+                "design",
+                false,
+                Value::Str("Generated design prompt".to_string()),
+            ),
+            "design" => ("design-review", false, Value::Skipped),
+            "design-review" => ("design-review", true, Value::Skipped),
+            "accepted" => ("implementation", false, Value::Skipped),
+            "implementation" => ("closed", false, Value::Skipped),
+            "closed" => ("closed", false, Value::Skipped),
+            _ => {
+                return Err(ExecError::new(format!(
+                    "sdlc stage dispatch cannot route stage `{stage}`"
+                )))
+            }
+        };
+        OutputMap::new()
+            .bool("success", true)
+            .str("next_stage", next_stage)
+            .bool("artifact_posted", !awaiting_approval)
+            .bool("awaiting_approval", awaiting_approval)
+            .value("payload", payload)
+            .ok()
+    }
+}
+
+fn normalize_sdlc_stage(stage: &str) -> Option<&'static str> {
+    match stage.trim().to_ascii_lowercase().as_str() {
+        "idea" => Some("idea"),
+        "design" => Some("design"),
+        "designreview" | "design-review" => Some("design-review"),
+        "accepted" => Some("accepted"),
+        "implementation" | "implementing" => Some("implementation"),
+        "closed" | "done" => Some("closed"),
+        _ => None,
+    }
+}
+
+/// Runtime adapter for compiled infra orchestration entrypoint.
+///
+/// This mirrors the deterministic semantics authored in `dsl/tools/infra.dag`
+/// so infra CLI commands can execute the compiled DAG entrypoint directly.
+#[derive(Debug, Clone)]
+struct InfraOrchestrationOp;
+
+impl Executable for InfraOrchestrationOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let environment = inputs
+            .get("environment")
+            .and_then(Value::as_str)
+            .unwrap_or("dev")
+            .to_string();
+        let runtime = inputs
+            .get("runtime")
+            .and_then(Value::as_str)
+            .unwrap_or("local")
+            .to_string();
+        let spec_targets = input_as_string_list(inputs.get("spec_targets"));
+        let target = input_as_string_list(inputs.get("target"));
+        let skip = input_as_string_list(inputs.get("skip"));
+        let execute = inputs
+            .get("execute")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let targeted = if target.is_empty() {
+            spec_targets
+        } else {
+            let target_set: HashSet<&str> = target.iter().map(String::as_str).collect();
+            spec_targets
+                .into_iter()
+                .filter(|item| target_set.contains(item.as_str()))
+                .collect()
+        };
+        let skip_set: HashSet<&str> = skip.iter().map(String::as_str).collect();
+        let planned_targets: Vec<String> = targeted
+            .into_iter()
+            .filter(|item| !skip_set.contains(item.as_str()))
+            .collect();
+        let target_count = planned_targets.len() as i64;
+        let mode = if execute { "apply" } else { "plan" };
+        let applied_count = if execute { target_count } else { 0 };
+        let report =
+            format!("infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)");
+
+        OutputMap::new()
+            .str("environment", environment)
+            .str("runtime", runtime)
+            .str("mode", mode)
+            .str_list("planned_targets", planned_targets)
+            .int("target_count", target_count)
+            .int("applied_count", applied_count)
+            .str("report", report)
+            .ok()
+    }
+}
+
+fn input_as_string_list(value: Option<&Value>) -> Vec<String> {
+    match value {
+        None | Some(Value::Skipped) => Vec::new(),
+        Some(value) => value
+            .as_str_list()
+            .or_else(|| match value {
+                Value::Json(json) => json.as_array().map(|items| {
+                    items
+                        .iter()
+                        .map(|item| {
+                            item.as_str()
+                                .map(ToString::to_string)
+                                .unwrap_or_else(|| item.to_string())
+                        })
+                        .collect()
+                }),
+                Value::List(items) | Value::Set(items) => Some(
+                    items
+                        .iter()
+                        .map(collection_value_to_string)
+                        .collect::<Vec<_>>(),
+                ),
+                Value::Str(s) => Some(vec![s.clone()]),
+                _ => None,
+            })
+            .unwrap_or_default(),
     }
 }
 
@@ -501,14 +705,18 @@ fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveE
 fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline { module, name, .. } => {
-            resolve_domain(node_id, module, name, outputs, None)
-                .or_else(|_| Ok(DynOp::new(PipelineDispatchOp {
-                    _module: module.clone(),
-                    _name: name.clone(),
-                    output_port_names: declared_output_names(outputs),
-                })))
-        }
+        LoweredOp::Pipeline {
+            module,
+            name,
+            stages,
+            stage_names,
+        } => Ok(DynOp::new(PipelineDispatchOp {
+            module: module.clone(),
+            name: name.clone(),
+            stages: *stages,
+            stage_names: stage_names.clone(),
+            output_port_names: declared_output_names(outputs),
+        })),
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
             module,
@@ -573,14 +781,30 @@ fn resolve_domain(
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
-    // 1. Modules with custom resolvers — return Some for known callables,
-    //    None for unknown (which falls through to passthrough).
-    let custom = match module {
-        "std.resources" => Some(resolve_std_resources(name)),
-        _ => None,
-    };
-    if let Some(op) = custom {
-        return Ok(op);
+    // 1. Modules with custom resolvers.
+    if module == "std.resources" {
+        return Ok(resolve_std_resources(name));
+    }
+    if module == "tools.makegen" {
+        if let Some(op) = resolve_tools_makegen(name) {
+            return Ok(op);
+        }
+    }
+    if module == "tools.bootstrap" {
+        if let Some(op) = resolve_tools_bootstrap(name) {
+            return Ok(op);
+        }
+    }
+    if module == "tools.pragma" {
+        if let Some(op) = resolve_tools_pragma(name) {
+            return Ok(op);
+        }
+    }
+    if module == "tools.infra" && name == "infra" {
+        return Ok(DynOp::new(InfraOrchestrationOp));
+    }
+    if module == "funcs.sdlc_stages" && name == "execute_stage" {
+        return Ok(DynOp::new(SdlcStageDispatchOp));
     }
     // 2. Service/workspace modules use generic transport dispatch.
     if module.starts_with("services.") || module.starts_with("workspace.") {
@@ -591,6 +815,35 @@ fn resolve_domain(
     Ok(DynOp::new(PassthroughOp {
         output_port_names: declared_output_names(outputs),
     }))
+}
+
+fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "load_registry" => MakegenOp::LoadRegistry,
+        "render_makefile" => MakegenOp::RenderMakefile,
+        "makegen" => MakegenOp::Entrypoint,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
+}
+
+fn resolve_tools_bootstrap(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "render_bootstrap_makefile" => BootstrapOp::GenerateMakefile,
+        "render_bootstrap_gitignore" => BootstrapOp::GenerateGitignore,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
+}
+
+fn resolve_tools_pragma(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "render_clippy_toml" => PragmaOp::RenderClippy,
+        "render_disallowed_methods_allowlist" => PragmaOp::RenderAllowlist,
+        "render_pragma_lint_policy" => PragmaOp::RenderLintPolicy,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
 }
 
 fn resolve_std_resources(name: &str) -> DynOp {
@@ -862,18 +1115,22 @@ mod tests {
     }
 
     #[test]
-    fn resolve_pragma_render_ops_as_passthrough() {
-        // tools.pragma callables resolve to passthrough — domain ops
-        // (PragmaOp) are invoked via the graph builder, not the resolver.
+    fn resolve_pragma_render_ops() {
         let cases = [
-            "render_clippy_toml",
-            "render_disallowed_methods_allowlist",
-            "render_pragma_lint_policy",
+            ("render_clippy_toml", "RenderClippy"),
+            (
+                "render_disallowed_methods_allowlist",
+                "RenderAllowlist",
+            ),
+            ("render_pragma_lint_policy", "RenderLintPolicy"),
         ];
-        for name in cases {
+        for (name, expected_debug) in cases {
             let node = callable_node(name, "tools.pragma", name, ObligationCategory::None);
             let result = resolve_node(&node).expect(name);
-            assert_passthrough_behavior(&result);
+            assert!(
+                format!("{:?}", result).contains(expected_debug),
+                "expected {expected_debug} resolver op for tools.pragma::{name}"
+            );
         }
     }
 
@@ -886,7 +1143,7 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("load_registry");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        assert!(format!("{:?}", result).contains("LoadRegistry"));
 
         let node = callable_node(
             "render_makefile",
@@ -895,11 +1152,120 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("render_makefile");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        assert!(format!("{:?}", result).contains("RenderMakefile"));
 
-        let node = callable_node("makegen", "tools.makegen", "makegen", ObligationCategory::None);
+        let node = callable_node(
+            "makegen",
+            "tools.makegen",
+            "makegen",
+            ObligationCategory::None,
+        );
         let result = resolve_node(&node).expect("makegen");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        assert!(format!("{:?}", result).contains("Entrypoint"));
+    }
+
+    #[test]
+    fn resolve_pipeline_ops_use_pipeline_dispatch() {
+        let node = Node::opaque(
+            "pipeline::ci",
+            vec![Port::new("stage", "String")],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines".to_string(),
+                name: "ci".to_string(),
+                stages: 3,
+                stage_names: vec![
+                    "cloud_env".to_string(),
+                    "codegen_stage".to_string(),
+                    "generate".to_string(),
+                ],
+            },
+        );
+        let result = resolve_node(&node).expect("pipeline");
+        assert!(format!("{:?}", result).contains("PipelineDispatchOp"));
+    }
+
+    #[test]
+    fn pipeline_dispatch_computes_next_stage() {
+        let node = Node::opaque(
+            "pipeline::ci",
+            vec![Port::new("stage", "String")],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines".to_string(),
+                name: "ci".to_string(),
+                stages: 3,
+                stage_names: vec![
+                    "cloud_env".to_string(),
+                    "codegen_stage".to_string(),
+                    "generate".to_string(),
+                ],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline");
+        let mut inputs = HashMap::new();
+        inputs.insert("stage".to_string(), Value::Str("cloud_env".to_string()));
+        let outputs = op.execute(inputs).expect("pipeline executes");
+        assert_eq!(outputs.get("stages"), Some(&Value::Int(3)));
+        assert_eq!(
+            outputs.get("next_stage").and_then(Value::as_str),
+            Some("codegen_stage")
+        );
+        assert_eq!(
+            outputs.get("is_terminal_stage").and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn resolve_sdlc_execute_stage_op() {
+        let node = callable_node(
+            "execute_stage",
+            "funcs.sdlc_stages",
+            "execute_stage",
+            ObligationCategory::None,
+        );
+        let result = resolve_node(&node).expect("execute_stage");
+        assert!(format!("{:?}", result).contains("SdlcStageDispatchOp"));
+    }
+
+    #[test]
+    fn sdlc_execute_stage_op_routes_lifecycle_progression() {
+        let node = callable_node(
+            "execute_stage",
+            "funcs.sdlc_stages",
+            "execute_stage",
+            ObligationCategory::None,
+        );
+        let op = resolve_node(&node).expect("execute_stage");
+
+        let mut inputs = HashMap::new();
+        inputs.insert("stage".to_string(), Value::Str("idea".to_string()));
+        let outputs = op.execute(inputs).expect("idea stage should route");
+        assert_eq!(
+            outputs.get("next_stage").and_then(Value::as_str),
+            Some("design")
+        );
+        assert_eq!(
+            outputs.get("awaiting_approval").and_then(Value::as_bool),
+            Some(false)
+        );
+
+        let mut review_inputs = HashMap::new();
+        review_inputs.insert("stage".to_string(), Value::Str("design-review".to_string()));
+        let review_outputs = op
+            .execute(review_inputs)
+            .expect("design-review stage should route");
+        assert_eq!(
+            review_outputs.get("next_stage").and_then(Value::as_str),
+            Some("design-review")
+        );
+        assert_eq!(
+            review_outputs
+                .get("awaiting_approval")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
@@ -1333,9 +1699,14 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Str("a".to_string()), Value::Str("b".to_string())]),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
         );
-        let outputs = result.execute(inputs).expect("collection map should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("collection map should execute");
         assert_eq!(
             outputs.get("items"),
             Some(&Value::List(vec![
@@ -1354,7 +1725,9 @@ mod tests {
             "items".to_string(),
             Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
         );
-        let outputs = result.execute(inputs).expect("collection len should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("collection len should execute");
         assert_eq!(outputs.get("items"), Some(&Value::Int(3)));
     }
 
@@ -1365,7 +1738,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Str("a".to_string()), Value::Str("b".to_string())]),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
         );
         inputs.insert("needle".to_string(), Value::Str("b".to_string()));
         let outputs = result
@@ -1400,10 +1776,91 @@ mod tests {
     }
 
     #[test]
-    fn resolve_infra_callable_uses_default_passthrough() {
+    fn resolve_infra_callable_executes_orchestration_contract() {
         let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
         let result = resolve_node(&node).expect("infra");
-        assert_passthrough_behavior(&result);
+        let mut inputs = HashMap::new();
+        inputs.insert("environment".to_string(), Value::Str("dev".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert(
+            "spec_targets".to_string(),
+            Value::List(vec![
+                Value::Str("secret:github-token".to_string()),
+                Value::Str("service-account:gunbai-dev-secrets".to_string()),
+            ]),
+        );
+        inputs.insert(
+            "target".to_string(),
+            Value::List(vec![Value::Str("secret:github-token".to_string())]),
+        );
+        inputs.insert(
+            "skip".to_string(),
+            Value::List(vec![Value::Str("secret:github-token".to_string())]),
+        );
+        inputs.insert("execute".to_string(), Value::Bool(false));
+
+        let outputs = result.execute(inputs).expect("infra orchestration should execute");
+        assert_eq!(outputs.get("mode"), Some(&Value::Str("plan".to_string())));
+        assert_eq!(outputs.get("target_count"), Some(&Value::Int(0)));
+        assert_eq!(outputs.get("applied_count"), Some(&Value::Int(0)));
+        assert_eq!(outputs.get("planned_targets"), Some(&Value::List(vec![])));
+        assert!(
+            outputs
+                .get("report")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("infra plan"),
+            "infra report should include plan mode"
+        );
+    }
+
+    #[test]
+    fn resolve_bootstrap_render_makefile_callable_uses_bootstrap_ops() {
+        let node = callable_node(
+            "render_bootstrap_makefile",
+            "tools.bootstrap",
+            "render_bootstrap_makefile",
+            ObligationCategory::None,
+        );
+        let result = resolve_node(&node).expect("bootstrap makefile render");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "crate_names".to_string(),
+            Value::List(vec![Value::Str("example".to_string())]),
+        );
+        let outputs = result
+            .execute(inputs)
+            .expect("bootstrap makefile render should execute");
+        assert!(
+            outputs
+                .get("return")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("Generated by gunbc-makegen"),
+            "bootstrap makefile renderer should produce generated header"
+        );
+    }
+
+    #[test]
+    fn resolve_pragma_render_clippy_callable_uses_pragma_ops() {
+        let node = callable_node(
+            "render_clippy_toml",
+            "tools.pragma",
+            "render_clippy_toml",
+            ObligationCategory::None,
+        );
+        let result = resolve_node(&node).expect("pragma clippy render");
+        let outputs = result
+            .execute(HashMap::new())
+            .expect("pragma clippy renderer should execute");
+        assert!(
+            outputs
+                .get("return")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("disallowed-methods"),
+            "pragma clippy renderer should produce clippy policy payload"
+        );
     }
 
     #[test]

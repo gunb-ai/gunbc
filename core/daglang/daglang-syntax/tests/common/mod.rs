@@ -79,6 +79,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "services/sdlc/providers/github_issue_provider.dag",
         "services/sdlc/providers/stub_providers.dag",
         "services/shell.dag",
+        "shared/compilation.dag",
         "shared/dag_util.dag",
         "shared/gist_modes.dag",
         "std/patterns.dag",
@@ -89,7 +90,6 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "tools/build.dag",
         "tools/clippy.dag",
         "tools/codegen.dag",
-        "tools/compilation.dag",
         "tools/dag_viz.dag",
         "tools/deps.dag",
         "tools/design.dag",
@@ -102,11 +102,14 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "tools/testgen.dag",
         "workflows/bootstrap.dag",
         "workflows/build_all.dag",
+        "workflows/ci.dag",
         "workflows/dag_viz.dag",
         "workflows/deps.dag",
         "workflows/gist.dag",
         "workflows/makegen.dag",
         "workflows/pragma.dag",
+        "workflows/sdlc.dag",
+        "workflows/test_all.dag",
     ]
 }
 

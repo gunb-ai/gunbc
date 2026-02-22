@@ -304,9 +304,38 @@ fn run_compiled_infra_orchestration(
 ) -> Result<InfraOrchestrationOutput, String> {
     let dag = build_infra_graph()
         .map_err(|error| format!("failed to build compiled infra DAG: {error}"))?;
-    let input_mocks =
-        build_compiled_infra_orchestration_inputs(&dag, spec, runtime, filter, execute_mode)?;
-    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
+    let entry_node_id = "tools.infra::infra";
+    let entry_node = dag
+        .get_node(&entry_node_id.into())
+        .cloned()
+        .ok_or_else(|| format!("compiled infra DAG missing entrypoint node `{entry_node_id}`"))?;
+    let mut orchestration_dag = Dag::new();
+    orchestration_dag.add_node(entry_node);
+
+    let mut inputs = HashMap::new();
+    let spec_targets = collect_spec_targets(spec);
+    inputs.insert("environment".to_string(), spec.environment.to_string());
+    inputs.insert("runtime".to_string(), runtime.as_str().to_string());
+    inputs.insert(
+        "spec_targets".to_string(),
+        serde_json::to_string(&spec_targets)
+            .map_err(|error| format!("failed to encode spec_targets input: {error}"))?,
+    );
+    inputs.insert(
+        "target".to_string(),
+        serde_json::to_string(&filter.target)
+            .map_err(|error| format!("failed to encode target filter input: {error}"))?,
+    );
+    inputs.insert(
+        "skip".to_string(),
+        serde_json::to_string(&filter.skip)
+            .map_err(|error| format!("failed to encode skip filter input: {error}"))?,
+    );
+    inputs.insert("__deps".to_string(), "[]".to_string());
+    inputs.insert("execute".to_string(), execute_mode.to_string());
+
+    let input_mocks = build_entrypoint_input_mocks(&orchestration_dag, &inputs, false)?;
+    let log = execute_with_mode_and_inputs(&orchestration_dag, ExecutionMode::Real, Some(&input_mocks))
         .map_err(|error| format!("compiled infra DAG execution failed: {error}"))?;
     match extract_orchestration_output(&log) {
         Ok(output) => Ok(output),

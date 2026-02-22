@@ -28,6 +28,7 @@ fn item_signatures(source: &SourceFile) -> Vec<String> {
             Item::FuncDef(def) => format!("func {}", def.name),
             Item::PatternDef(def) => format!("pattern {}", def.name),
             Item::ServiceDef(def) => format!("service {}", def.name),
+            Item::ProfileDef(def) => format!("profile {}", def.name),
             Item::ResourceDef(def) => format!("resource {}", def.name),
             Item::InterfaceDef(def) => format!("interface {}", def.name),
             Item::PipelineDef(def) => format!("pipeline {}", def.name),
@@ -248,7 +249,7 @@ fn patterns_file_contains_pattern_defs() {
     let source = parse_dsl("std/patterns.dag");
     assert_eq!(
         source.items.len(),
-        11,
+        15,
         "std/patterns.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -268,6 +269,7 @@ fn patterns_file_contains_pattern_defs() {
             "pattern file_content_matches",
             "pattern classify_files",
             "pattern read_text_files",
+            "pattern read_binary_files",
             "pattern acquire_subject_token",
             "pattern optional_impersonation",
             "pattern ensure",
@@ -276,6 +278,9 @@ fn patterns_file_contains_pattern_defs() {
             "pattern credential_chain",
             "pattern transaction",
             "pattern retry",
+            "fn github_oidc",
+            "fn metadata_oidc",
+            "fn local_auth",
         ]
     );
 }

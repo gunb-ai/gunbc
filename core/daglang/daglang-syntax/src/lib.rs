@@ -78,6 +78,7 @@ pub mod ast {
         FuncDef(FuncDef),
         PatternDef(PatternDef),
         ServiceDef(ServiceDef),
+        ProfileDef(ProfileDef),
         ResourceDef(ResourceDef),
         InterfaceDef(InterfaceDef),
         PipelineDef(PipelineDef),
@@ -206,6 +207,21 @@ pub mod ast {
     pub struct ProvidesClause {
         pub binding: String,
         pub resource_type: TypeExpr,
+    }
+
+    // ── Profiles ────────────────────────────────────────────────────
+
+    #[derive(Debug)]
+    pub struct ProfileDef {
+        pub name: String,
+        pub binds: Vec<BindDef>,
+    }
+
+    #[derive(Debug)]
+    pub struct BindDef {
+        pub interface: String,
+        pub implementation: String,
+        pub config: Option<Vec<(String, Expr)>>,
     }
 
     // ── Services ────────────────────────────────────────────────────

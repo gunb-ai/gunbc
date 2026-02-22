@@ -22,6 +22,8 @@ pub enum TokenKind {
     Func,
     Pattern,
     Service,
+    Profile,
+    Bind,
     Resource,
     Interface,
     Pipeline,
@@ -126,6 +128,8 @@ impl TokenKind {
             Self::Func => "func",
             Self::Pattern => "pattern",
             Self::Service => "service",
+            Self::Profile => "profile",
+            Self::Bind => "bind",
             Self::Resource => "resource",
             Self::Interface => "interface",
             Self::Pipeline => "pipeline",
@@ -551,6 +555,8 @@ impl<'a> Lexer<'a> {
             "func" => TokenKind::Func,
             "pattern" => TokenKind::Pattern,
             "service" => TokenKind::Service,
+            "profile" => TokenKind::Profile,
+            "bind" => TokenKind::Bind,
             "resource" => TokenKind::Resource,
             "interface" => TokenKind::Interface,
             "pipeline" => TokenKind::Pipeline,
@@ -754,12 +760,16 @@ mod tests {
     #[test]
     fn keywords_and_idents() {
         assert_eq!(
-            kinds("module foo import bar"),
+            kinds("module foo import bar profile local bind IssueProvider"),
             vec![
                 TokenKind::Module,
                 TokenKind::Ident("foo".into()),
                 TokenKind::Import,
                 TokenKind::Ident("bar".into()),
+                TokenKind::Profile,
+                TokenKind::Ident("local".into()),
+                TokenKind::Bind,
+                TokenKind::Ident("IssueProvider".into()),
                 TokenKind::Eof,
             ]
         );

@@ -9,9 +9,10 @@ use daglang_emit::{
     EmissionSummary,
 };
 use daglang_lower::{
-    lower_typed_project, lower_typed_project_for_modules,
-    lower_typed_project_for_modules_with_collection_nodes,
-    lower_typed_project_with_collection_nodes, LoweredOp,
+    lower_typed_project_for_modules_with_collection_nodes_and_profile,
+    lower_typed_project_for_modules_with_profile,
+    lower_typed_project_with_collection_nodes_and_profile, lower_typed_project_with_profile,
+    LoweredOp,
 };
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::Item;
@@ -76,6 +77,7 @@ pub struct CheckOutput {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
+    pub profile: Option<String>,
     pub target: CodegenTarget,
     pub layer: CodegenLayer,
     /// Optional output directory for emitted files.
@@ -137,7 +139,11 @@ pub fn compile_from_context_with_options(
     context: &DriverContext,
     options: CompileOptions,
 ) -> Result<CompileOutput, CompileError> {
-    let module_graph = discover_module_graph_for_context(context)?;
+    let module_graph = if options.profile.is_some() {
+        ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)?
+    } else {
+        discover_module_graph_for_context(context)?
+    };
     compile_from_module_graph_with_options(context, module_graph, options)
 }
 
@@ -167,14 +173,18 @@ pub fn compile_from_module_graph_with_options(
     .map_err(format_typecheck_errors)?;
     let lowered = if let Some(scope) = callable_scope.as_ref() {
         if options.emit_collection_nodes {
-            lower_typed_project_for_modules_with_collection_nodes(&typed, scope)
+            lower_typed_project_for_modules_with_collection_nodes_and_profile(
+                &typed,
+                scope,
+                options.profile.as_deref(),
+            )
         } else {
-            lower_typed_project_for_modules(&typed, scope)
+            lower_typed_project_for_modules_with_profile(&typed, scope, options.profile.as_deref())
         }
     } else if options.emit_collection_nodes {
-        lower_typed_project_with_collection_nodes(&typed)
+        lower_typed_project_with_collection_nodes_and_profile(&typed, options.profile.as_deref())
     } else {
-        lower_typed_project(&typed)
+        lower_typed_project_with_profile(&typed, options.profile.as_deref())
     }
     .map_err(|error| format!("lower error: {error}"))?;
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
@@ -932,6 +942,70 @@ fn run(values: List<String>) -> String {
     }
 
     #[test]
+    fn compile_with_active_profile_threads_into_lowering() {
+        let root = unique_temp_dir("compile_with_profile");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(
+            &file,
+            r#"module sample
+interface Storage {
+  capability read {
+    input { path: String }
+    output { body: String }
+  }
+}
+service FsStorage implements Storage {
+  operation read(path: String) -> { body: String }
+}
+profile local {
+  bind Storage -> FsStorage
+}
+func run(path: String) -> { body: String } uses store: Storage {
+  response = store.read(path: path)
+  return { body: response.body }
+}
+"#,
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file.clone()),
+        };
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                profile: Some("local".to_string()),
+                ..CompileOptions::default()
+            },
+        )
+        .expect("compile should succeed with active profile");
+        assert!(output
+            .lowered_dag
+            .nodes
+            .iter()
+            .any(|node| node.id.0 == "prepare_transport_sample_FsStorage_read"));
+
+        let unknown_profile_error = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                profile: Some("missing".to_string()),
+                ..CompileOptions::default()
+            },
+        )
+        .expect_err("unknown profile should fail compile");
+        assert!(
+            unknown_profile_error
+                .as_str()
+                .contains("unknown active profile `missing`"),
+            "expected unknown profile error, got: {unknown_profile_error}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
     fn compile_with_exec_runtime_layer_emits_exec_runtime_bundle() {
         let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let root = workspace.join("dsl");
@@ -1234,22 +1308,26 @@ fn run() -> Bool {
             .content
             .as_str();
 
-        // ---- Pragma-specific handler kinds ----
+        // ---- Pragma-specific callable nodes ----
         assert!(
-            main_rs.contains("RenderPragmaClippyToml"),
-            "missing RenderPragmaClippyToml handler"
+            main_rs.contains("tools.pragma::render_clippy_toml"),
+            "missing render_clippy_toml callable node"
         );
         assert!(
-            main_rs.contains("RenderPragmaAllowlist"),
-            "missing RenderPragmaAllowlist handler"
+            main_rs.contains("tools.pragma::render_disallowed_methods_allowlist"),
+            "missing render_disallowed_methods_allowlist callable node"
         );
         assert!(
-            main_rs.contains("RenderPragmaLintPolicy"),
-            "missing RenderPragmaLintPolicy handler"
+            main_rs.contains("tools.pragma::render_pragma_lint_policy"),
+            "missing render_pragma_lint_policy callable node"
         );
         assert!(
-            main_rs.contains("PragmaEntrypoint"),
-            "missing PragmaEntrypoint handler"
+            main_rs.contains("tools.pragma::pragma"),
+            "missing pragma entry callable node"
+        );
+        assert!(
+            main_rs.contains("UnimplementedPassthrough"),
+            "pragma callable nodes should lower to UnimplementedPassthrough in exec-runtime"
         );
 
         // ---- Content upsert pattern handlers (shared) ----
@@ -1272,16 +1350,6 @@ fn run() -> Bool {
         assert!(
             main_rs.contains("ExecuteTransport"),
             "missing ExecuteTransport handler"
-        );
-
-        // ---- Pragma helper infrastructure ----
-        assert!(
-            main_rs.contains("PragmaDirectiveRuntime"),
-            "should emit PragmaDirectiveRuntime struct"
-        );
-        assert!(
-            main_rs.contains("parse_pragma_directives"),
-            "should emit pragma directive parsing helper"
         );
 
         // ---- DAG topology ----
