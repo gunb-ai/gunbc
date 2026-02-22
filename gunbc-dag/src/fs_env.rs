@@ -1,6 +1,6 @@
 //! Shared FsEnv graph-builder helpers.
 
-use gunbc_ir::{BuilderError, DagBuilder, InputRef, Node, NodeRef, Port, RESOURCE_FILE};
+use gunbc_ir::{BuilderError, DagBuilder, InputRef, Node, NodeRef, Port};
 use gunbc_primitives::{filename, FsEnv};
 
 /// Add a canonical `fs_env` root node with `file:write` capability output.
@@ -36,7 +36,7 @@ mod tests {
     use super::*;
     use gunbc_exec::{DynOp, ExecError, Executable};
     use gunbc_ir::Value;
-    use gunbc_ir::{DagBuilder, Node, Port};
+    use gunbc_ir::{DagBuilder, Node, Port, RESOURCE_FILE};
     use std::collections::HashMap;
 
     #[derive(Debug, Clone)]
