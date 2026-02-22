@@ -894,7 +894,6 @@ fn rust_type_for_port_type(port_type: &PortType, original_type_id: &TypeId) -> S
                 rust_type_for_port_type(inner, &TypeId::new(inner.to_type_id().0.clone()));
             format!("Vec<{inner_type}>")
         }
-        PortType::Any => "gunbc_ir::Value".to_string(),
     }
 }
 

@@ -234,15 +234,15 @@ Disposition tags:
 
 25. `gunbc-dag/src/dag_viz/graph.rs` -- [DELETED 2026-02-22]
 26. `gunbc-dag/src/testgen_dag/graph.rs`
-27. `gunbc-dag/src/testgen_dag/graph_mock.rs`
+27. `gunbc-dag/src/testgen_dag/graph_mock.rs` -- [DELETED 2026-02-22]
 28. `gunbc-dag/src/testgen_dag/mod.rs`
 29. `gunbc-dag/src/testgen_dag/ops.rs`
-30. `gunbc-dag/src/workspace/subdags/clippy.rs`
-31. `gunbc-dag/src/workspace/subdags/dag_viz.rs`
-32. `gunbc-dag/src/workspace/subdags/deps.rs`
-33. `gunbc-dag/src/workspace/subdags/gist.rs`
+30. `gunbc-dag/src/workspace/subdags/clippy.rs` -- [DELETED 2026-02-22]
+31. `gunbc-dag/src/workspace/subdags/dag_viz.rs` -- [DELETED 2026-02-22]
+32. `gunbc-dag/src/workspace/subdags/deps.rs` -- [DELETED 2026-02-22]
+33. `gunbc-dag/src/workspace/subdags/gist.rs` -- [DELETED 2026-02-22]
 34. `gunbc-dag/src/workspace/subdags/mod.rs`
-35. `gunbc-dag/src/workspace/subdags/testgen.rs`
+35. `gunbc-dag/src/workspace/subdags/testgen.rs` -- [DELETED 2026-02-22]
 36. `lib/review/src/graph.rs`
 37. `lib/review/src/graph_mock.rs`
 38. `lib/tools/clippy/src/graph.rs`
@@ -273,7 +273,7 @@ Disposition tags:
 60. `lib/gcp-ops/src/ops.rs`
 61. `lib/llm-ops/src/graph.rs`
 62. `lib/llm-ops/src/graph_mock.rs`
-63. `lib/tools/cargo/src/ops.rs`
+63. `lib/tools/cargo/src/ops.rs` -- [DELETED 2026-02-22]
 
 ### E. Remaining Handwritten gunbc-dag Tool Ops/Subdags (`MIGRATE_DELETE`)
 

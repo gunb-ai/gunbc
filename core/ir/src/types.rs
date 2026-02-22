@@ -841,10 +841,11 @@ impl ValueBacking {
 
 /// Determine how a `TypeId` string serializes into a `Value` variant.
 ///
-/// Uses `PortType` for structurally known types, then falls back to
-/// domain-specific knowledge for opaque types that map to `PortType::Any`.
+/// Uses strict `PortType` parsing for known structural/domain types, then
+/// falls back to legacy naming heuristics for unknown opaque type strings.
 pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
     use crate::port_type::PortType;
+    use crate::type_registry::TypeRegistry;
 
     // Check for parametric Map<K,V> first
     if parse_map_type_id(type_id).is_some() {
@@ -868,30 +869,28 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
         return ValueBacking::Map;
     }
 
-    let port_type = PortType::from(type_id);
+    let registry = TypeRegistry::with_core_types();
+    let port_type = PortType::try_parse(type_id)
+        .or_else(|| PortType::from_registry(type_id, &registry).ok());
     match port_type {
-        PortType::String => ValueBacking::String,
-        PortType::Bool => ValueBacking::Bool,
-        PortType::Int => ValueBacking::Int,
-        PortType::Float => ValueBacking::Float,
-        PortType::Json => ValueBacking::Json,
-        PortType::Bytes => ValueBacking::Bytes,
-        PortType::Secret => ValueBacking::String,
-        PortType::List(_) => ValueBacking::List,
-        PortType::Any => {
-            // Residual catch-all for types not structurally resolved.
-            // Most domain types now parse directly (FilePath→String, etc.).
-            match type_id {
-                // Legacy list aliases
-                s if s.ends_with("List") => ValueBacking::List,
-                // Legacy set aliases
-                s if s.ends_with("Set") => ValueBacking::Set,
-                // Optional wrappers inherit inner type's backing
-                s if s.starts_with("Optional") => value_backing_for_type_id(&s["Optional".len()..]),
-                // Default: Json accepts anything
-                _ => ValueBacking::Json,
-            }
-        }
+        Some(PortType::String) => ValueBacking::String,
+        Some(PortType::Bool) => ValueBacking::Bool,
+        Some(PortType::Int) => ValueBacking::Int,
+        Some(PortType::Float) => ValueBacking::Float,
+        Some(PortType::Json) => ValueBacking::Json,
+        Some(PortType::Bytes) => ValueBacking::Bytes,
+        Some(PortType::Secret) => ValueBacking::String,
+        Some(PortType::List(_)) => ValueBacking::List,
+        None => match type_id {
+            // Legacy list aliases
+            s if s.ends_with("List") => ValueBacking::List,
+            // Legacy set aliases
+            s if s.ends_with("Set") => ValueBacking::Set,
+            // Optional wrappers inherit inner type's backing
+            s if s.starts_with("Optional") => value_backing_for_type_id(&s["Optional".len()..]),
+            // Default: Json accepts anything
+            _ => ValueBacking::Json,
+        },
     }
 }
 

@@ -6,24 +6,91 @@
 pub mod bootstrap;
 pub mod build;
 pub mod ci;
-pub mod clippy;
 pub mod codegen;
-pub mod dag_viz;
-pub mod deps;
 pub mod docgen;
-pub mod gist;
 pub mod infra;
 pub mod languages;
 pub mod makegen;
 pub mod pragma;
-pub mod testgen;
 
+use crate::dsl_builder::{
+    build_clippy_graph_dsl, build_dag_viz_graph_dsl, build_deps_graph_dsl, build_gist_graph_dsl,
+    build_testgen_graph_dsl,
+};
 use crate::workspace::WorkspaceOp;
 use crate::WorkspaceBinary;
-use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
+use gunbc_gist::GistMode;
+use gunbc_ir::transport::cloud::CloudSecretConfig;
+use gunbc_ir::{BuilderError, Dag, Node, WorkspaceLayout};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
+
+/// Build the clippy SubDag node with custom arguments.
+pub fn build_clippy_subdag(_args: &[&str]) -> Node<WorkspaceOp> {
+    let dsl_dag = build_clippy_graph_dsl().expect("clippy DSL graph should build");
+    Node::subdag("clippy", dsl_dag)
+}
+
+/// Build the clippy lint-all SubDag with standard flags.
+pub fn build_clippy_lint_all_subdag() -> Node<WorkspaceOp> {
+    build_clippy_subdag(&["--all-targets", "--", "-D", "warnings"])
+}
+
+/// Build the dag_viz SubDag node.
+pub fn build_dag_viz_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
+    let dsl_dag = build_dag_viz_graph_dsl()?;
+    Ok(Node::subdag("dag_viz", dsl_dag))
+}
+
+fn build_deps_subdag_with_id(id: &str) -> Result<Node<WorkspaceOp>, BuilderError> {
+    let dsl_dag = build_deps_graph_dsl()?;
+    Ok(Node::subdag(id, dsl_dag))
+}
+
+/// Build the deps install SubDag node.
+pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
+    build_deps_subdag_with_id("deps_install")
+}
+
+/// Build the deps generate SubDag node.
+pub fn build_deps_generate_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
+    build_deps_subdag_with_id("deps_generate")
+}
+
+/// Build the gist SubDag node.
+pub fn build_gist_subdag(
+    mode: GistMode,
+    extensions: Vec<String>,
+    create_gist: bool,
+) -> Node<WorkspaceOp> {
+    build_gist_subdag_with_config(mode, extensions, create_gist, None)
+}
+
+/// Build a gist SubDag with explicit cloud config.
+///
+/// The current DSL-backed subdag is mode-agnostic at composition time; mode
+/// and credential routing are represented inside the DSL module.
+pub fn build_gist_subdag_with_config(
+    _mode: GistMode,
+    _extensions: Vec<String>,
+    _create_gist: bool,
+    _cloud_config: Option<CloudSecretConfig>,
+) -> Node<WorkspaceOp> {
+    let dsl_dag = build_gist_graph_dsl().expect("gist DSL graph should build");
+    Node::subdag("gist", dsl_dag)
+}
+
+/// Build a default gist SubDag for Rust files (snapshot mode).
+pub fn build_gist_rust_subdag() -> Node<WorkspaceOp> {
+    build_gist_subdag(GistMode::Snapshot, vec![".rs".to_string()], false)
+}
+
+/// Build the testgen SubDag node.
+pub fn build_testgen_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
+    let dsl_dag = build_testgen_graph_dsl()?;
+    Ok(Node::subdag("testgen", dsl_dag))
+}
 
 /// Build the Workspace DAG containing all tool and language SubDags.
 ///
@@ -239,11 +306,11 @@ fn add_discovered_tool_subdags(
         dag.add_node(makegen::build_makegen_subdag());
     }
     if tool_names.contains("clippy") {
-        dag.add_node(clippy::build_clippy_lint_all_subdag());
+        dag.add_node(build_clippy_lint_all_subdag());
     }
     if tool_names.contains("deps") {
-        dag.add_node(deps::build_deps_install_subdag()?);
-        dag.add_node(deps::build_deps_generate_subdag()?);
+        dag.add_node(build_deps_install_subdag()?);
+        dag.add_node(build_deps_generate_subdag()?);
     }
     if tool_names.contains("bootstrap") {
         dag.add_node(bootstrap::build_bootstrap_subdag()?);
@@ -252,13 +319,13 @@ fn add_discovered_tool_subdags(
         dag.add_node(codegen::build_codegen_subdag()?);
     }
     if tool_names.contains("dag_viz") {
-        dag.add_node(dag_viz::build_dag_viz_subdag()?);
+        dag.add_node(build_dag_viz_subdag()?);
     }
     if tool_names.contains("docgen") {
         dag.add_node(docgen::build_docgen_subdag()?);
     }
     if tool_names.contains("gist") {
-        dag.add_node(gist::build_gist_rust_subdag());
+        dag.add_node(build_gist_rust_subdag());
     }
     if tool_names.contains("infra") {
         dag.add_node(infra::build_infra_subdag()?);
@@ -267,7 +334,7 @@ fn add_discovered_tool_subdags(
         dag.add_node(pragma::build_pragma_subdag()?);
     }
     if tool_names.contains("testgen") {
-        dag.add_node(testgen::build_testgen_subdag()?);
+        dag.add_node(build_testgen_subdag()?);
     }
     Ok(())
 }
