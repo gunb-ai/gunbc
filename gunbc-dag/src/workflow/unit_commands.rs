@@ -200,7 +200,7 @@ fn gist_snapshot_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("gist.gist_create"),
         UnitCommand::cargo(
             "gist snapshot upload",
-            vec!["run", "-p", "gunbc-gist", "--bin", "gunbc-gist", "--"],
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-gist", "--"],
         ),
     );
     commands
@@ -220,7 +220,7 @@ fn gist_diff_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("gist.gist_create"),
         UnitCommand::cargo(
             "gist diff upload",
-            vec!["run", "-p", "gunbc-gist", "--bin", "gunbc-gist-diff", "--"],
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-gist-diff", "--"],
         ),
     );
     commands
@@ -243,7 +243,7 @@ fn gist_recent_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
             vec![
                 "run",
                 "-p",
-                "gunbc-gist",
+                "gunbc-dag",
                 "--bin",
                 "gunbc-gist-recent",
                 "--",
@@ -351,7 +351,7 @@ fn deps_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     );
     let deps_cmd = UnitCommand::cargo(
         "deps",
-        vec!["run", "-p", "gunbc-deps", "--bin", "gunbc-deps", "--"],
+        vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-deps", "--"],
     );
     commands.insert(NodeId::from("deps.execute_installs"), deps_cmd.clone());
     commands.insert(NodeId::from("deps.write_deps_toml"), deps_cmd);

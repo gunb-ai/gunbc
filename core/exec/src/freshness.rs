@@ -19,7 +19,7 @@
 //! skips injection when it's set.
 
 use crate::{ExecError, Executable};
-use gunbc_ir::{Dag, Edge, Node, Port, Value};
+use gunbc_ir::{Dag, Edge, Node, NodeBody, Port, Value};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -29,6 +29,7 @@ use std::fmt;
 /// it sets this variable. The sub-binary's `compose_with_freshness` sees it and
 /// skips freshness injection — no hardcoded skip list needed.
 pub const FRESHNESS_ACTIVE_ENV: &str = "GUNBC_FRESHNESS_ACTIVE";
+const FRESHNESS_GATE_PORT: &str = "_freshness";
 
 /// A single step in the freshness chain.
 ///
@@ -203,21 +204,10 @@ pub fn compose_with_freshness<T: Clone>(
     // Build the freshness sub-DAG: sequential chain of steps
     let freshness_subdag = build_freshness_subdag(steps);
 
-    // Find root nodes in the wrapped DAG (nodes that no edge targets)
-    let targets: HashSet<_> = wrapped.edges.iter().map(|e| e.to_node.clone()).collect();
-    let roots: Vec<_> = wrapped
-        .nodes
-        .iter()
-        .filter(|n| !targets.contains(&n.id))
-        .map(|n| n.id.clone())
-        .collect();
-
-    // Add _freshness input port to each root node
-    for node in &mut wrapped.nodes {
-        if roots.contains(&node.id) {
-            node.inputs.push(Port::new("_freshness", "Bool"));
-        }
-    }
+    // Inject a `_freshness` gate input across all root paths, including
+    // nested root SubDag chains, so lowering always finds matching
+    // inner entrypoints for every injected SubDag input.
+    let roots = inject_freshness_gate_ports(&mut wrapped);
 
     // Add the freshness sub-DAG as a SubDag node
     // SubDag children get prefixed IDs (e.g., "freshness/codegen-dag")
@@ -232,7 +222,7 @@ pub fn compose_with_freshness<T: Clone>(
             "freshness",
             "done",
             root_id.0.as_str(),
-            "_freshness",
+            FRESHNESS_GATE_PORT,
         ));
     }
 
@@ -276,4 +266,99 @@ fn build_freshness_subdag<T: Clone>(steps: Vec<FreshnessStep>) -> Dag<WithFreshn
     }
 
     dag
+}
+
+fn inject_freshness_gate_ports<T: Clone>(dag: &mut Dag<WithFreshness<T>>) -> Vec<gunbc_ir::NodeId> {
+    let targets: HashSet<_> = dag.edges.iter().map(|e| e.to_node.clone()).collect();
+    let roots: Vec<_> = dag
+        .nodes
+        .iter()
+        .filter(|node| !targets.contains(&node.id))
+        .map(|node| node.id.clone())
+        .collect();
+
+    for root in &roots {
+        if let Some(node) = dag.get_node_mut(root) {
+            inject_freshness_gate_port_node(node);
+        }
+    }
+
+    roots
+}
+
+fn inject_freshness_gate_port_node<T: Clone>(node: &mut Node<WithFreshness<T>>) {
+    if !node
+        .inputs
+        .iter()
+        .any(|port| port.name.0 == FRESHNESS_GATE_PORT)
+    {
+        node.inputs.push(Port::new(FRESHNESS_GATE_PORT, "Bool"));
+    }
+
+    if let NodeBody::SubDag(inner) = &mut node.body {
+        let _ = inject_freshness_gate_ports(inner);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lower::lower;
+    use gunbc_ir::NodeId;
+
+    #[derive(Clone, Debug)]
+    struct TestOp;
+
+    fn step(id: &str) -> FreshnessStep {
+        FreshnessStep {
+            id: id.to_string(),
+            command: vec!["true".to_string()],
+        }
+    }
+
+    #[test]
+    fn compose_with_freshness_handles_nested_root_subdags() {
+        let mut leaf: Dag<TestOp> = Dag::new();
+        leaf.add_node(Node::opaque(
+            "leaf",
+            vec![Port::new("input", "Bool")],
+            vec![Port::new("out", "Bool")],
+            TestOp,
+        ));
+
+        let mut mid: Dag<TestOp> = Dag::new();
+        mid.add_node(Node::subdag("cf_for_0", leaf));
+
+        let mut top: Dag<TestOp> = Dag::new();
+        top.add_node(Node::subdag("tools.gist::gist_recent", mid));
+
+        let composed = compose_with_freshness(top, Some(vec![step("codegen")]));
+        let lowered = lower(&composed);
+        assert!(
+            lowered.is_ok(),
+            "lowering should succeed for nested root subdags with freshness gates"
+        );
+    }
+
+    #[test]
+    fn compose_with_freshness_does_not_duplicate_gate_port() {
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "tool",
+            vec![Port::new(FRESHNESS_GATE_PORT, "Bool")],
+            vec![Port::new("done", "Bool")],
+            TestOp,
+        ));
+
+        let composed = compose_with_freshness(dag, Some(vec![step("codegen")]));
+        let node = composed
+            .get_node(&NodeId::new("tool"))
+            .expect("tool node should exist");
+        let gate_count = node
+            .inputs
+            .iter()
+            .filter(|port| port.name.0 == FRESHNESS_GATE_PORT)
+            .count();
+        assert_eq!(gate_count, 1, "_freshness gate port should not duplicate");
+    }
 }
