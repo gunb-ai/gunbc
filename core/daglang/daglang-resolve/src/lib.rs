@@ -241,7 +241,7 @@ pub fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
     relative
         .with_extension("")
         .components()
-        .filter_map(|component| component.as_os_str().to_str().map(String::from))
+        .filter_map(|component| component.as_os_str().to_str().map(|s| s.replace('-', "_")))
         .collect()
 }
 

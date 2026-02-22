@@ -1,0 +1,32 @@
+// workflows/build-all.dag
+//
+// Replaces WF13: tools.build_all workflow spec.
+//
+// Structure:
+// compilation_ensure -> codegen_ensure -> build -> report
+
+module workflows.build_all
+
+import tools.compilation { compilation_ensure }
+import tools.codegen { codegen_ensure }
+import tools.build { build_all }
+
+pipeline build_all {
+
+  stage compilation_ensure {
+    _ = compilation_ensure()
+  }
+
+  stage codegen_ensure [after compilation_ensure] {
+    _ = codegen_ensure()
+  }
+
+  stage build [after codegen_ensure] {
+    build_result = build_all()
+  }
+
+  stage report [after build] {
+    // The DSL compiler's pipeline emission rules automatically emit a report/terminal block here
+    // But for structural mapping to the old tool workflows, we must make sure the edge is defined.
+  }
+}

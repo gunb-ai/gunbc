@@ -57,7 +57,7 @@ service codex.AgentProvider : AgentProvider {
 
   operation poll {
     input { run_id: NonEmptyStr }
-    output { status: String, finished: Bool, exit_code: Int?, error: String? }
+    output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
     @shell(["codex", "status",
             "--run-id", "{run_id}",
             "--output-format", "json"])
@@ -88,7 +88,7 @@ service codex.AgentProvider : AgentProvider {
 
   operation get_result {
     input { run_id: NonEmptyStr }
-    output { status: String, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
+    output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
     @shell(["codex", "result",
             "--run-id", "{run_id}",
             "--output-format", "json"])

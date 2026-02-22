@@ -45,14 +45,14 @@ service StubIssueProvider : IssueProvider {
 
   operation get {
     input { id: String }
-    output { issue: Json, found: Bool }
+    output { issue: TrackedIssue, found: Bool }
     @hermetic
     @mock_response(status: 200, body: { "issue": {}, "found": false })
   }
 
   operation create {
     input { title: String, body: String, labels: List<String> }
-    output { issue: Json }
+    output { issue: TrackedIssue }
     @hermetic
     @mock_response(status: 201, body: { "issue": { "id": "stub-1", "title": "stub" } })
   }
@@ -135,28 +135,28 @@ service InMemoryOutcomeLedger : OutcomeLedger {
 service StubAgentProvider : AgentProvider {
   operation spawn {
     input { prompt: String, repo_path: String, branch: String, model: String?, timeout_seconds: Int?, approval_mode: String? }
-    output { run_id: String, status: String, started: Bool }
+    output { run_id: String, status: AgentStatus, started: Bool }
     @hermetic
     @mock_response(status: 200, body: { "run_id": "stub-run-1", "status": "completed", "started": true })
   }
 
   operation poll {
     input { run_id: String }
-    output { status: String, finished: Bool, exit_code: Int?, error: String? }
+    output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
     @hermetic
     @mock_response(status: 200, body: { "status": "completed", "finished": true, "exit_code": 0, "error": null })
   }
 
   operation cancel {
     input { run_id: String, reason: String? }
-    output { cancelled: Bool, final_status: String }
+    output { cancelled: Bool, final_status: AgentStatus }
     @hermetic
     @mock_response(status: 200, body: { "cancelled": true, "final_status": "cancelled" })
   }
 
   operation get_result {
     input { run_id: String }
-    output { status: String, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
+    output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
     @hermetic
     @mock_response(status: 200, body: { "status": "completed", "exit_code": 0, "stdout": "stub output", "stderr": "", "files_changed": [] })
   }
@@ -164,14 +164,14 @@ service StubAgentProvider : AgentProvider {
 
 service InMemorySignalStore : SignalStore {
   operation emit {
-    input { signal: Json }
+    input { signal: Signal }
     output { emitted: Bool }
     @hermetic
     @mock_response(status: 200, body: { "emitted": true })
   }
 
   operation consume {
-    input { signal_types: List<String>, limit: Int? }
+    input { signal_types: List<SignalType>, limit: Int? }
     output { signals: List<Json> }
     @hermetic
     @mock_response(status: 200, body: { "signals": [] })
@@ -187,7 +187,7 @@ service InMemorySignalStore : SignalStore {
 
 service InMemoryArtifactStore : ArtifactStore {
   operation store {
-    input { artifact_id: String, payload: Json, content_hash: String }
+    input { artifact_id: String, payload: ArtifactPayload, content_hash: String }
     output { stored: Bool, conflict: Bool }
     @hermetic
     @mock_response(status: 200, body: { "stored": true, "conflict": false })
@@ -195,7 +195,7 @@ service InMemoryArtifactStore : ArtifactStore {
 
   operation retrieve {
     input { artifact_id: String }
-    output { found: Bool, payload: Json?, content_hash: String? }
+    output { found: Bool, payload: ArtifactPayload?, content_hash: String? }
     @hermetic
     @mock_response(status: 200, body: { "found": false, "payload": null, "content_hash": null })
   }

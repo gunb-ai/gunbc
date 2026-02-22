@@ -175,7 +175,7 @@ service github.Issues : IssueProvider {
       per_page: Int = 30
     }
     output {
-      issues: Json              // Array of issue objects
+      issues: List<TrackedIssue>              // Array of issue objects
     }
     @rest(GET, "/repos/{owner}/{repo}/issues")
     @permissions(["issues:read"])

@@ -39,6 +39,8 @@ fn item_signatures(source: &SourceFile) -> Vec<String> {
             Item::DesignDef(def) => format!("design {}", def.name),
             Item::ComponentDef(def) => format!("component {}", def.name),
             Item::EnvironmentDef(def) => format!("environment {}", def.name),
+            Item::ParamDecl(decl) => format!("param {}", decl.name),
+            Item::DataDef(def) => format!("data {}", def.name),
         })
         .collect()
 }
@@ -103,7 +105,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        95,
+        99,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -141,9 +143,13 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type GistId",
             "type SecretValue",
             "type Url",
-            "type FilePath",
             "type SemVer",
             "type NonEmptyStr",
+            "type PathSegment",
+            "type GlobSegment",
+            "type FilePathParts",
+            "type GlobPattern",
+            "type FilePath",
             "type Timestamp",
             "type EpochMs",
             "type Duration",

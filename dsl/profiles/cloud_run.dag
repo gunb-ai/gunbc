@@ -38,7 +38,7 @@ service GcsClaimStore : ClaimStore {
 
   config {
     bucket: String
-    project: String
+    project_id: String
   }
 
   operation acquire {
@@ -73,7 +73,7 @@ service GcsOutcomeLedger : OutcomeLedger {
 
   config {
     bucket: String
-    project: String
+    project_id: String
   }
 
   operation upsert {
@@ -108,11 +108,11 @@ service PubSubSignalStore : SignalStore {
   config {
     topic: String
     subscription: String
-    project: String
+    project_id: String
   }
 
   operation emit {
-    input { signal: Json }
+    input { signal: Signal }
     output { emitted: Bool }
     @rest(POST, "/projects/{config.project}/topics/{config.topic}:publish")
     @idempotent
@@ -120,7 +120,7 @@ service PubSubSignalStore : SignalStore {
   }
 
   operation consume {
-    input { signal_types: List<String>, limit: Int? }
+    input { signal_types: List<SignalType>, limit: Int? }
     output { signals: List<Json> }
     @rest(POST, "/projects/{config.project}/subscriptions/{config.subscription}:pull")
     @mock_response(status: 200, body: { "signals": [] })
@@ -141,11 +141,11 @@ service GcsArtifactStore : ArtifactStore {
 
   config {
     bucket: String
-    project: String
+    project_id: String
   }
 
   operation store {
-    input { artifact_id: String, payload: Json, content_hash: String }
+    input { artifact_id: String, payload: ArtifactPayload, content_hash: String }
     output { stored: Bool, conflict: Bool }
     @rest(POST, "/upload/storage/v1/b/{config.bucket}/o?name=artifacts/{artifact_id}")
     @idempotent
@@ -154,7 +154,7 @@ service GcsArtifactStore : ArtifactStore {
 
   operation retrieve {
     input { artifact_id: String }
-    output { found: Bool, payload: Json?, content_hash: String? }
+    output { found: Bool, payload: ArtifactPayload?, content_hash: String? }
     @rest(GET, "/b/{config.bucket}/o/artifacts/{artifact_id}?alt=media")
     @readonly
     @mock_response(status: 200, body: { "found": false, "payload": null, "content_hash": null })

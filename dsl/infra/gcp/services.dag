@@ -23,14 +23,14 @@ service gcp.Storage {
 
   operation CreateBucket {
     input {
-      project: ProjectId
+      project_id: ProjectId
       name: NonEmptyStr
       location: String = "us-central1"
       storage_class: String = "STANDARD"
       labels: Map<String, String>?
     }
     output { name: String, selfLink: Url }
-    @rest(POST, "/b?project={project}")
+    @rest(POST, "/b?project={project_id}")
   }
 
   operation DeleteBucket {
@@ -47,15 +47,15 @@ service gcp.CloudRun {
   @auth(BearerToken)
 
   operation GetService {
-    input { project: ProjectId, region: String, name: NonEmptyStr }
+    input { project_id: ProjectId, region: String, name: NonEmptyStr }
     output { exists: Bool, name: String, uri: Url?, labels: Map<String, String>? }
-    @rest(GET, "/projects/{project}/locations/{region}/services/{name}")
+    @rest(GET, "/projects/{project_id}/locations/{region}/services/{name}")
     @idempotent @readonly
   }
 
   operation CreateService {
     input {
-      project: ProjectId
+      project_id: ProjectId
       region: String
       name: NonEmptyStr
       image: NonEmptyStr
@@ -68,12 +68,12 @@ service gcp.CloudRun {
       labels: Map<String, String>?
     }
     output { name: String, uri: Url }
-    @rest(POST, "/projects/{project}/locations/{region}/services")
+    @rest(POST, "/projects/{project_id}/locations/{region}/services")
   }
 
   operation UpdateService {
     input {
-      project: ProjectId
+      project_id: ProjectId
       region: String
       name: NonEmptyStr
       image: NonEmptyStr
@@ -82,13 +82,13 @@ service gcp.CloudRun {
       labels: Map<String, String>?
     }
     output { name: String, uri: Url }
-    @rest(PATCH, "/projects/{project}/locations/{region}/services/{name}")
+    @rest(PATCH, "/projects/{project_id}/locations/{region}/services/{name}")
   }
 
   operation DeleteService {
-    input { project: ProjectId, region: String, name: NonEmptyStr }
+    input { project_id: ProjectId, region: String, name: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "/projects/{project}/locations/{region}/services/{name}")
+    @rest(DELETE, "/projects/{project_id}/locations/{region}/services/{name}")
   }
 }
 
@@ -99,16 +99,16 @@ service gcp.SecretManager.Lifecycle {
   @auth(BearerToken)
 
   operation GetSecret {
-    input { project: ProjectId, secret: NonEmptyStr }
+    input { project_id: ProjectId, secret: NonEmptyStr }
     output { exists: Bool, name: String }
-    @rest(GET, "/projects/{project}/secrets/{secret}")
+    @rest(GET, "/projects/{project_id}/secrets/{secret}")
     @idempotent @readonly
   }
 
   operation CreateSecret {
-    input { project: ProjectId, secret_id: NonEmptyStr }
+    input { project_id: ProjectId, secret_id: NonEmptyStr }
     output { name: String }
-    @rest(POST, "/projects/{project}/secrets")
+    @rest(POST, "/projects/{project_id}/secrets")
   }
 
   operation AddVersion {
@@ -118,9 +118,9 @@ service gcp.SecretManager.Lifecycle {
   }
 
   operation DeleteSecret {
-    input { project: ProjectId, secret: NonEmptyStr }
+    input { project_id: ProjectId, secret: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "/projects/{project}/secrets/{secret}")
+    @rest(DELETE, "/projects/{project_id}/secrets/{secret}")
   }
 }
 
@@ -131,20 +131,20 @@ service gcp.IAM.Lifecycle {
   @auth(BearerToken)
 
   operation GetServiceAccount {
-    input { project: ProjectId, email: ServiceAccountEmail }
+    input { project_id: ProjectId, email: ServiceAccountEmail }
     output { exists: Bool, email: String }
-    @rest(GET, "/projects/{project}/serviceAccounts/{email}")
+    @rest(GET, "/projects/{project_id}/serviceAccounts/{email}")
     @idempotent @readonly
   }
 
   operation CreateServiceAccount {
     input {
-      project: ProjectId
+      project_id: ProjectId
       account_id: NonEmptyStr
       display_name: String
     }
     output { email: ServiceAccountEmail }
-    @rest(POST, "/projects/{project}/serviceAccounts")
+    @rest(POST, "/projects/{project_id}/serviceAccounts")
   }
 }
 
@@ -155,28 +155,28 @@ service gcp.WIF {
   @auth(BearerToken)
 
   operation GetPool {
-    input { project: NonEmptyStr, pool_id: NonEmptyStr }
+    input { project_id: NonEmptyStr, pool_id: NonEmptyStr }
     output { exists: Bool, name: String }
-    @rest(GET, "/projects/{project}/locations/global/workloadIdentityPools/{pool_id}")
+    @rest(GET, "/projects/{project_id}/locations/global/workloadIdentityPools/{pool_id}")
     @idempotent @readonly
   }
 
   operation CreatePool {
-    input { project: NonEmptyStr, pool_id: NonEmptyStr, display_name: String }
+    input { project_id: NonEmptyStr, pool_id: NonEmptyStr, display_name: String }
     output { name: String }
-    @rest(POST, "/projects/{project}/locations/global/workloadIdentityPools")
+    @rest(POST, "/projects/{project_id}/locations/global/workloadIdentityPools")
   }
 
   operation GetProvider {
-    input { project: NonEmptyStr, pool_id: NonEmptyStr, provider_id: NonEmptyStr }
+    input { project_id: NonEmptyStr, pool_id: NonEmptyStr, provider_id: NonEmptyStr }
     output { exists: Bool, name: String }
-    @rest(GET, "/projects/{project}/locations/global/workloadIdentityPools/{pool_id}/providers/{provider_id}")
+    @rest(GET, "/projects/{project_id}/locations/global/workloadIdentityPools/{pool_id}/providers/{provider_id}")
     @idempotent @readonly
   }
 
   operation CreateProvider {
     input {
-      project: NonEmptyStr
+      project_id: NonEmptyStr
       pool_id: NonEmptyStr
       provider_id: NonEmptyStr
       issuer_uri: Url
@@ -184,7 +184,7 @@ service gcp.WIF {
       attribute_condition: String?
     }
     output { name: String }
-    @rest(POST, "/projects/{project}/locations/global/workloadIdentityPools/{pool_id}/providers")
+    @rest(POST, "/projects/{project_id}/locations/global/workloadIdentityPools/{pool_id}/providers")
   }
 }
 
@@ -195,22 +195,22 @@ service gcp.PubSub {
   @auth(BearerToken)
 
   operation GetTopic {
-    input { project: ProjectId, topic: NonEmptyStr }
+    input { project_id: ProjectId, topic: NonEmptyStr }
     output { exists: Bool, name: String }
-    @rest(GET, "/projects/{project}/topics/{topic}")
+    @rest(GET, "/projects/{project_id}/topics/{topic}")
     @idempotent @readonly
   }
 
   operation CreateTopic {
-    input { project: ProjectId, topic: NonEmptyStr, labels: Map<String, String>? }
+    input { project_id: ProjectId, topic: NonEmptyStr, labels: Map<String, String>? }
     output { name: String }
-    @rest(PUT, "/projects/{project}/topics/{topic}")
+    @rest(PUT, "/projects/{project_id}/topics/{topic}")
   }
 
   operation Publish {
-    input { topic: NonEmptyStr, data: Bytes, attributes: Map<String, String>? }
+    input { topic: NonEmptyStr, payload: Bytes, attributes: Map<String, String>? }
     output { message_id: NonEmptyStr }
-    @rest(POST, "/projects/{project}/topics/{topic}:publish")
+    @rest(POST, "/projects/{project_id}/topics/{topic}:publish")
   }
 
   operation Pull {
@@ -233,8 +233,8 @@ service gcp.ResourceManager.Infra {
   @auth(BearerToken)
 
   operation SetIamBinding {
-    input { project: ProjectId, role: NonEmptyStr, member: NonEmptyStr }
+    input { project_id: ProjectId, role: NonEmptyStr, member: NonEmptyStr }
     output { ok: Bool }
-    @rest(POST, "/projects/{project}:setIamPolicy")
+    @rest(POST, "/projects/{project_id}:setIamPolicy")
   }
 }

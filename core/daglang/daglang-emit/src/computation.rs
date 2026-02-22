@@ -467,12 +467,19 @@ fn classify_collection(
         .unwrap_or_else(|| "Unknown".to_string());
 
     let mapped_kind = match kind {
-        daglang_lower::CollectionOpKind::Map | daglang_lower::CollectionOpKind::FlatMap => {
-            CollectionOpKind::Map
+        daglang_lower::CollectionOpKind::Map
+        | daglang_lower::CollectionOpKind::FlatMap
+        | daglang_lower::CollectionOpKind::Join => CollectionOpKind::Map,
+        daglang_lower::CollectionOpKind::Filter | daglang_lower::CollectionOpKind::Contains => {
+            CollectionOpKind::Filter
         }
-        daglang_lower::CollectionOpKind::Filter => CollectionOpKind::Filter,
-        daglang_lower::CollectionOpKind::Fold => CollectionOpKind::Fold,
-        daglang_lower::CollectionOpKind::Join => CollectionOpKind::Map,
+        daglang_lower::CollectionOpKind::Fold
+        | daglang_lower::CollectionOpKind::Any
+        | daglang_lower::CollectionOpKind::All
+        | daglang_lower::CollectionOpKind::Len => CollectionOpKind::Fold,
+        daglang_lower::CollectionOpKind::Sort | daglang_lower::CollectionOpKind::Dedup => {
+            CollectionOpKind::Sort
+        }
     };
 
     Ok(Computation::Collection {
@@ -1406,6 +1413,50 @@ mod tests {
             comp,
             Computation::Collection {
                 kind: CollectionOpKind::Filter,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classify_collection_len_as_fold_family() {
+        let node = make_node(
+            "len_items",
+            vec![Port::list("items", "String")],
+            vec![scalar("len", "Int")],
+            LoweredOp::Collection {
+                module: "tools.makegen".into(),
+                callable: "len".into(),
+                kind: daglang_lower::CollectionOpKind::Len,
+            },
+        );
+        let comp = classify_computation(&node).unwrap();
+        assert!(matches!(
+            comp,
+            Computation::Collection {
+                kind: CollectionOpKind::Fold,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classify_collection_dedup_as_sort_family() {
+        let node = make_node(
+            "dedup_items",
+            vec![Port::list("items", "String")],
+            vec![Port::list("items", "String")],
+            LoweredOp::Collection {
+                module: "tools.makegen".into(),
+                callable: "dedup".into(),
+                kind: daglang_lower::CollectionOpKind::Dedup,
+            },
+        );
+        let comp = classify_computation(&node).unwrap();
+        assert!(matches!(
+            comp,
+            Computation::Collection {
+                kind: CollectionOpKind::Sort,
                 ..
             }
         ));

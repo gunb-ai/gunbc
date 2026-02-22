@@ -47,15 +47,15 @@ type ReconcilerParams {
 
 // ── Helper functions ────────────────────────────────────────────────
 
-fn is_terminal(status: String) -> Bool {
+fn is_terminal(status: AgentStatus) -> Bool {
   status == "TerminalFailed"
 }
 
-fn is_retryable(status: String) -> Bool {
+fn is_retryable(status: AgentStatus) -> Bool {
   status == "Failed"
 }
 
-fn is_success(status: String) -> Bool {
+fn is_success(status: AgentStatus) -> Bool {
   status == "Success"
 }
 

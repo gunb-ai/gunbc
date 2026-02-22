@@ -224,7 +224,7 @@ pattern credential_chain(
   audience: NonEmptyStr,
   service_account: ServiceAccountEmail?,
   secret_name: NonEmptyStr,
-  project: ProjectId,
+  project_id: ProjectId,
   scheme: AuthScheme = Bearer,
   header_name: String?,
   source_id: NonEmptyStr,
@@ -252,7 +252,7 @@ pattern credential_chain(
 
   // Step 4: Access the secret
   node secret: gcp.SecretManager.AccessVersion(
-    project: project,
+    project_id: project,
     secret: secret_name
   )
 

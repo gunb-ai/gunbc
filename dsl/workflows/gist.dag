@@ -1,0 +1,61 @@
+// workflows/gist.dag
+//
+// Replaces WF16/WF17/WF18 gist workflow specs.
+//
+// Supported modes:
+// - gist / gist-snapshot / snapshot
+// - gist-diff / diff
+// - gist-recent / recent
+//
+// Stage topology by mode:
+// snapshot: compilation_ensure -> codegen_ensure -> list_files -> read_files -> render_snapshot -> gist_create -> report
+// diff:     compilation_ensure -> codegen_ensure -> diff -> render_diff -> gist_create -> report
+// recent:   compilation_ensure -> codegen_ensure -> rev_list -> diff -> render_diff -> gist_create -> report
+//
+// Shared base edges for all modes:
+// codegen_ensure -> branch_resolution -> gist_create
+// codegen_ensure -> credential_resolve -> gist_create
+
+module workflows.gist
+
+import tools.compilation { compilation_ensure }
+import tools.codegen { codegen_ensure }
+
+pipeline gist {
+
+  stage compilation_ensure {
+    _ = compilation_ensure()
+  }
+
+  stage codegen_ensure [after compilation_ensure] {
+    _ = codegen_ensure()
+  }
+
+  stage branch_resolution [after codegen_ensure] {}
+
+  stage credential_resolve [after codegen_ensure] {}
+
+  stage list_files [after codegen_ensure, when mode == "gist" || mode == "gist-snapshot" || mode == "gist_snapshot" || mode == "snapshot"] {}
+
+  stage read_files [after list_files, when mode == "gist" || mode == "gist-snapshot" || mode == "gist_snapshot" || mode == "snapshot"] {}
+
+  stage render_snapshot [after read_files, when mode == "gist" || mode == "gist-snapshot" || mode == "gist_snapshot" || mode == "snapshot"] {}
+
+  stage rev_list [after codegen_ensure, when mode == "gist-recent" || mode == "gist_recent" || mode == "recent"] {}
+
+  stage diff [after codegen_ensure, after rev_list, when mode == "gist-diff" || mode == "gist_diff" || mode == "diff" || mode == "gist-recent" || mode == "gist_recent" || mode == "recent"] {}
+
+  stage render_diff [after diff, when mode == "gist-diff" || mode == "gist_diff" || mode == "diff" || mode == "gist-recent" || mode == "gist_recent" || mode == "recent"] {}
+
+  stage gist_create [
+    after branch_resolution,
+    after credential_resolve,
+    after render_snapshot,
+    after render_diff,
+    when mode == "gist" || mode == "gist-snapshot" || mode == "gist_snapshot" || mode == "snapshot"
+      || mode == "gist-diff" || mode == "gist_diff" || mode == "diff"
+      || mode == "gist-recent" || mode == "gist_recent" || mode == "recent"
+  ] {}
+
+  stage report [after gist_create] {}
+}

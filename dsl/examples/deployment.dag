@@ -68,7 +68,7 @@ func read_artifact(key: NonEmptyStr) -> { content: Bytes, found: Bool }
 // provider-specific features (e.g., GCS storage classes, S3 versioning).
 
 func store_gist_artifact_gcp(content: String, key: NonEmptyStr) -> { ok: Bool }
-  uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project: "gunbai-auto")
+  uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project_id: "gunbai-auto")
 {
   result = bucket.write(key: key, content: content |> to_bytes())
   return { ok: result.ok }
@@ -80,8 +80,8 @@ func store_gist_artifact_gcp(content: String, key: NonEmptyStr) -> { ok: Bool }
 // =========================================================================
 
 func gist_with_storage(base_ref: CommitSha?) -> { url: Url, stored: Bool }
-  uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project: "gunbai-auto")
-  uses secret: ManagedSecret(project: "gunbai-secrets", secret_id: "github-token", prefix: "dev-")
+  uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project_id: "gunbai-auto")
+  uses secret: ManagedSecret(project_id: "gunbai-secrets", secret_id: "github-token", prefix: "dev-")
 {
   result = gist_snapshot(base_ref: base_ref)
   stored = bucket.write(
@@ -103,7 +103,7 @@ func cross_cloud_pipeline(
   content: Bytes,
   notification: String
 ) -> { stored_gcp: Bool, stored_aws: Bool, notified: Bool }
-  uses gcs: GcsBucket(name: "gunbc-primary", project: "gunbai-auto")
+  uses gcs: GcsBucket(name: "gunbc-primary", project_id: "gunbai-auto")
   uses s3: S3Bucket(name: "gunbc-backup", region: "us-east-1")
   uses queue: SqsQueue(name: "gunbc-notifications", region: "us-east-1")
 {
@@ -143,7 +143,7 @@ func cross_cloud_pipeline(
 fn storage_for_env(env: InfraEnvironment) -> ObjectStorage {
   match env.cloud {
     GcpConfig { project, ... } =>
-      GcsBucket(name: "gunbc-artifacts", project: project)
+      GcsBucket(name: "gunbc-artifacts", project_id: project)
     AwsConfig { region, ... } =>
       S3Bucket(name: "gunbc-artifacts", region: region)
     AzureConfig { ... } =>
@@ -155,8 +155,8 @@ fn compute_for_env(env: InfraEnvironment) -> Compute {
   match env.cloud {
     GcpConfig { project, region, ... } =>
       CloudRunService(
-        name: "gunbc-api", project: project, region: region,
-        image: "gcr.io/{project}/gunbc-api:latest"
+        name: "gunbc-api", project_id: project, region: region,
+        image: "gcr.io/{project_id}/gunbc-api:latest"
       )
     AwsConfig { region, ... } =>
       LambdaFunction(
@@ -233,17 +233,17 @@ func infra_bootstrap_gcp() -> { ready: Bool }
   )
   uses deployer_sa: GcpServiceAccount(
     name: "gunbai-deployer",
-    project: "gunbai-auto",
+    project_id: "gunbai-auto",
     display_name: "GitHub Actions Deployer",
     roles: ["roles/iam.serviceAccountAdmin", "roles/secretmanager.admin"]
   )
   uses github_token: ManagedSecret(
-    project: "gunbai-secrets",
+    project_id: "gunbai-secrets",
     secret_id: "github-token",
     prefix: "dev-"
   )
-  uses gist_bucket: GcsBucket(name: "gunbc-gist-artifacts", project: "gunbai-auto")
-  uses notifications: PubSubTopic(name: "gunbc-events", project: "gunbai-auto")
+  uses gist_bucket: GcsBucket(name: "gunbc-gist-artifacts", project_id: "gunbai-auto")
+  uses notifications: PubSubTopic(name: "gunbc-events", project_id: "gunbai-auto")
 {
   // All resources acquired. Compiler orders:
   //   WIF -> ServiceAccount -> Secret -> Bucket, PubSub (parallel)

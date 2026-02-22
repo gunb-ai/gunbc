@@ -68,9 +68,21 @@ type Port         = Int @range(min: 1, max: 65535)       // ⟦Port⟧ = {n ∈ 
 type GistId       = String @format(uuid)                 // ⟦GistId⟧ ⊂ ⟦String⟧
 type SecretValue  = Secret @non_empty                    // ⟦SecretValue⟧ = {s ∈ Σ* | s ≠ ""}
 type Url          = String @pattern("^https?://")        // ⟦Url⟧ ⊂ ⟦NonEmptyStr⟧ ⊂ ⟦String⟧
-type FilePath     = String @non_empty                    // ⟦FilePath⟧ = ⟦NonEmptyStr⟧
 type SemVer       = String @pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr  = String @non_empty                    // ⟦NonEmptyStr⟧ = {s ∈ Σ* | |s| > 0}
+
+// Path modeling (EX-2):
+// - FilePath remains a compatibility alias for existing modules.
+// - FilePathParts and GlobPattern provide structured forms for new DSL code.
+type PathSegment   = NonEmptyStr @brand("PathSegment")
+type GlobSegment   = NonEmptyStr @brand("GlobSegment")
+type FilePathParts {
+  segments: List<PathSegment>
+}
+type GlobPattern {
+  segments: List<GlobSegment>
+}
+type FilePath      = String @non_empty                   // compatibility alias (legacy modules)
 
 // --- Temporal types (Level 1: Refinements for time) -----------------------
 // Addresses deficit D14 from domain-modeling-comprehensive.md §9.
@@ -246,7 +258,7 @@ type AccessToken {
 }
 
 type CloudSecretConfig {
-  project: String
+  project_id: String
   secret: String
   version: String = "latest"
   service_account: String?
@@ -697,7 +709,7 @@ type CredentialIntent
 // How to acquire a credential.
 type CredentialResolution
   = EnvVar { name: NonEmptyStr }
-  | SecretManagerRef { secret_id: NonEmptyStr, project: NonEmptyStr }
+  | SecretManagerRef { secret_id: NonEmptyStr, project_id: NonEmptyStr }
   | WorkloadIdentity { service_account: NonEmptyStr, scopes: List<String> }
 
 // Credential binding: what + how.

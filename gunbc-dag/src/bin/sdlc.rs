@@ -1059,16 +1059,38 @@ fn run_worker(
                 ready_to_run.push(intake_key.clone());
                 if !dry_run {
                     let transport = StubIssueTransport;
-                    if let Err(e) = dispatch_pipeline_stage(intake_key, record, &worker_id_str, &transport) {
-                        let has_budget = register_retry_failure(&mut record.retry, now, RETRY_BASE_BACKOFF_MS, e.clone());
-                        if !has_budget {
-                            record.terminalized = true;
-                            terminal_failures.insert(intake_key.clone(), e);
-                            terminalized.push(intake_key.clone());
+                    match dispatch_pipeline_stage(intake_key, record, &worker_id_str, &transport) {
+                        Ok(next_stage) => {
+                            // Mark the CURRENT run_key as completed before advancing.
+                            mark_run_completed(&mut run_state, intake_key, &record.run_key, now);
+                            if next_stage != record.stage {
+                                // Release the claim for the old stage before advancing.
+                                if let Some(issue_id) = record.issue_id {
+                                    let old_claim_slot = claim_slot_key(issue_id, record.stage);
+                                    let old_claim_owner = format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
+                                    release_claim(&mut claim_ledger, &old_claim_slot, &old_claim_owner);
+                                }
+                                record.stage = next_stage;
+                                // Derive a new run_key for the advanced stage so the
+                                // next worker pass isn't replay-skipped.
+                                record.run_key = advance_run_key(&record.run_key, next_stage);
+                                record.updated_at_epoch_ms = now;
+                            }
+                            executed_runs.push(intake_key.clone());
                         }
-                    } else {
-                        mark_run_completed(&mut run_state, intake_key, &record.run_key, now);
-                        executed_runs.push(intake_key.clone());
+                        Err(e) => {
+                            let has_budget = register_retry_failure(
+                                &mut record.retry,
+                                now,
+                                RETRY_BASE_BACKOFF_MS,
+                                e.clone(),
+                            );
+                            if !has_budget {
+                                record.terminalized = true;
+                                terminal_failures.insert(intake_key.clone(), e);
+                                terminalized.push(intake_key.clone());
+                            }
+                        }
                     }
                 }
             }
@@ -2188,6 +2210,16 @@ fn require_non_empty(field_name: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Derive a stage-specific run_key so the next worker pass for the
+/// advanced stage isn't replay-skipped by a previously completed key.
+fn advance_run_key(current: &str, next_stage: IssueLifecycleStage) -> String {
+    // Strip any existing stage suffix to avoid chaining.
+    let base = current
+        .rsplit_once("::stage=")
+        .map_or(current, |(prefix, _)| prefix);
+    format!("{base}::stage={}", next_stage.as_label())
+}
+
 fn compute_run_key(intent: &IntentSheet) -> String {
     format!(
         "sdlc::{provider}::{intent_id}::{intake_key}::v{policy_version}",
@@ -2531,10 +2563,33 @@ fn execute_stage_idea_to_design(
     if let Some(issue_id) = record.issue_id {
         if record.stage == IssueLifecycleStage::Idea {
             transport.upsert_comment(issue_id, "design-marker", "Generated design prompt")?;
-            transport.compare_and_set_stage_label(issue_id, IssueLifecycleStage::Idea, IssueLifecycleStage::Design)?;
+            advance_remote_stage(
+                transport,
+                issue_id,
+                IssueLifecycleStage::Idea,
+                IssueLifecycleStage::Design,
+            )?;
         }
     }
     Ok(())
+}
+
+fn advance_remote_stage(
+    transport: &dyn IssueTransport,
+    issue_id: u64,
+    from: IssueLifecycleStage,
+    to: IssueLifecycleStage,
+) -> Result<(), String> {
+    let transitioned = transport.compare_and_set_stage_label(issue_id, from, to)?;
+    if transitioned {
+        Ok(())
+    } else {
+        Err(format!(
+            "failed compare-and-set stage transition for issue {issue_id}: {} -> {}",
+            from.as_label(),
+            to.as_label()
+        ))
+    }
 }
 
 /// Dispatch a compiled SDLC pipeline stage for execution (D9).
@@ -2558,7 +2613,7 @@ fn dispatch_pipeline_stage(
     record: &IntakeRecord,
     worker_id: &str,
     transport: &dyn IssueTransport,
-) -> Result<(), String> {
+) -> Result<IssueLifecycleStage, String> {
     let issue_id = record
         .issue_id
         .ok_or_else(|| format!("no issue_id for intake key `{intake_key}`"))?;
@@ -2566,7 +2621,8 @@ fn dispatch_pipeline_stage(
     match record.stage {
         IssueLifecycleStage::Idea => {
             // Stage 1-3: Idea → Design (generate design via LLM, post artifact)
-            execute_stage_idea_to_design(intake_key, record, transport)
+            execute_stage_idea_to_design(intake_key, record, transport)?;
+            Ok(IssueLifecycleStage::Design)
         }
         IssueLifecycleStage::Design => {
             // Stage 4-5: Design → DesignReview (LLM evaluation of design)
@@ -2575,23 +2631,25 @@ fn dispatch_pipeline_stage(
                 "sdlc:design-review",
                 &format!("Design review initiated for run_key `{}`", record.run_key),
             )?;
-            transport.compare_and_set_stage_label(
+            advance_remote_stage(
+                transport,
                 issue_id,
                 IssueLifecycleStage::Design,
                 IssueLifecycleStage::DesignReview,
             )?;
-            Ok(())
+            Ok(IssueLifecycleStage::DesignReview)
         }
         IssueLifecycleStage::DesignReview => {
             // Stage 5-6: DesignReview → Accepted (approval gate)
             // In compiled DAG mode, this checks for approval yield (D18).
             // For now, auto-approve and transition.
-            transport.compare_and_set_stage_label(
+            advance_remote_stage(
+                transport,
                 issue_id,
                 IssueLifecycleStage::DesignReview,
                 IssueLifecycleStage::Accepted,
             )?;
-            Ok(())
+            Ok(IssueLifecycleStage::Accepted)
         }
         IssueLifecycleStage::Accepted => {
             // Stage 7: Accepted → Implementation (agent spawn, branch creation)
@@ -2603,12 +2661,13 @@ fn dispatch_pipeline_stage(
                     "Implementation started on branch `{branch}` (worker: `{worker_id}`)"
                 ),
             )?;
-            transport.compare_and_set_stage_label(
+            advance_remote_stage(
+                transport,
                 issue_id,
                 IssueLifecycleStage::Accepted,
                 IssueLifecycleStage::Implementation,
             )?;
-            Ok(())
+            Ok(IssueLifecycleStage::Implementation)
         }
         IssueLifecycleStage::Implementation => {
             // Stage 8-10: Implementation → Closed (code review, test, merge, close)
@@ -2622,16 +2681,17 @@ fn dispatch_pipeline_stage(
                     record.run_key
                 ),
             )?;
-            transport.compare_and_set_stage_label(
+            advance_remote_stage(
+                transport,
                 issue_id,
                 IssueLifecycleStage::Implementation,
                 IssueLifecycleStage::Closed,
             )?;
-            Ok(())
+            Ok(IssueLifecycleStage::Closed)
         }
         IssueLifecycleStage::Closed => {
             // Terminal stage — nothing to dispatch.
-            Ok(())
+            Ok(IssueLifecycleStage::Closed)
         }
     }
 }

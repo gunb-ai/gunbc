@@ -32,13 +32,13 @@ resource GcsBucket implements ObjectStorage {
     name: NonEmptyStr
     location: String = "us-central1"
     storage_class: String = "STANDARD"
-    project: ProjectId
+    project_id: ProjectId
   }
 
   acquire {
     check = gcp.Storage.GetBucket(name: config.name)
     create [when !check.exists] = gcp.Storage.CreateBucket(
-      project: config.project,
+      project_id: config.project,
       name: config.name,
       location: config.location,
       storage_class: config.storage_class,
@@ -93,7 +93,7 @@ resource CloudRunService implements Compute {
 
   config {
     name: NonEmptyStr
-    project: ProjectId
+    project_id: ProjectId
     region: String = "us-central1"
     image: NonEmptyStr
     memory: String = "512Mi"
@@ -106,13 +106,13 @@ resource CloudRunService implements Compute {
 
   acquire {
     check = gcp.CloudRun.GetService(
-      project: config.project,
+      project_id: config.project,
       region: config.region,
       name: config.name
     )
 
     create [when !check.exists] = gcp.CloudRun.CreateService(
-      project: config.project,
+      project_id: config.project,
       region: config.region,
       name: config.name,
       image: config.image,
@@ -126,7 +126,7 @@ resource CloudRunService implements Compute {
     )
 
     update [when check.exists && check.labels.spec_hash != hash(config)] = gcp.CloudRun.UpdateService(
-      project: config.project,
+      project_id: config.project,
       region: config.region,
       name: config.name,
       image: config.image,
@@ -136,7 +136,7 @@ resource CloudRunService implements Compute {
     )
 
     resolve = gcp.CloudRun.GetService(
-      project: config.project,
+      project_id: config.project,
       region: config.region,
       name: config.name
     ) [after create, after update]
@@ -183,7 +183,7 @@ resource ManagedSecret implements SecretStore {
   expires: true
 
   config {
-    project: ProjectId
+    project_id: ProjectId
     secret_id: NonEmptyStr
     prefix: String = ""
   }
@@ -192,17 +192,17 @@ resource ManagedSecret implements SecretStore {
     full_name = "{config.prefix}{config.secret_id}"
 
     check = gcp.SecretManager.Lifecycle.GetSecret(
-      project: config.project,
+      project_id: config.project,
       secret: full_name
     )
 
     create [when !check.exists] = gcp.SecretManager.Lifecycle.CreateSecret(
-      project: config.project,
+      project_id: config.project,
       secret_id: full_name
     )
 
     resolve = gcp.SecretManager.Lifecycle.GetSecret(
-      project: config.project,
+      project_id: config.project,
       secret: full_name
     ) [after create]
 
@@ -247,7 +247,7 @@ resource GcpServiceAccount implements Identity {
 
   config {
     name: NonEmptyStr
-    project: ProjectId
+    project_id: ProjectId
     display_name: String
     roles: List<String>
   }
@@ -255,17 +255,17 @@ resource GcpServiceAccount implements Identity {
   acquire {
     email = "{config.name}@{config.project}.iam.gserviceaccount.com"
 
-    check = gcp.IAM.Lifecycle.GetServiceAccount(project: config.project, email: email)
+    check = gcp.IAM.Lifecycle.GetServiceAccount(project_id: config.project, email: email)
 
     create [when !check.exists] = gcp.IAM.Lifecycle.CreateServiceAccount(
-      project: config.project,
+      project_id: config.project,
       account_id: config.name,
       display_name: config.display_name
     )
 
     roles = for role in config.roles {
       gcp.ResourceManager.Infra.SetIamBinding(
-        project: config.project,
+        project_id: config.project,
         role: role,
         member: "serviceAccount:{email}"
       )
@@ -318,24 +318,24 @@ resource WifProvider {
 
   acquire {
     check_pool = gcp.WIF.GetPool(
-      project: config.project_number,
+      project_id: config.project_number,
       pool_id: config.pool_id
     )
 
     create_pool [when !check_pool.exists] = gcp.WIF.CreatePool(
-      project: config.project_number,
+      project_id: config.project_number,
       pool_id: config.pool_id,
       display_name: config.pool_id
     )
 
     check_provider = gcp.WIF.GetProvider(
-      project: config.project_number,
+      project_id: config.project_number,
       pool_id: config.pool_id,
       provider_id: config.provider_id
     ) [after create_pool]
 
     create_provider [when !check_provider.exists] = gcp.WIF.CreateProvider(
-      project: config.project_number,
+      project_id: config.project_number,
       pool_id: config.pool_id,
       provider_id: config.provider_id,
       issuer_uri: config.issuer_uri,
@@ -367,14 +367,14 @@ resource PubSubTopic implements Queue<Bytes> {
 
   config {
     name: NonEmptyStr
-    project: ProjectId
+    project_id: ProjectId
   }
 
   acquire {
-    check = gcp.PubSub.GetTopic(project: config.project, topic: config.name)
+    check = gcp.PubSub.GetTopic(project_id: config.project, topic: config.name)
 
     create [when !check.exists] = gcp.PubSub.CreateTopic(
-      project: config.project,
+      project_id: config.project,
       topic: config.name,
       labels: ResourceFingerprint { spec_hash: hash(config) }.to_labels()
     )

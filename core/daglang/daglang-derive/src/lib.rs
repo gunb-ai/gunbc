@@ -448,6 +448,12 @@ fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
         CollectionOpKind::Fold => "FoldNode",
         CollectionOpKind::Join => "JoinNode",
         CollectionOpKind::FlatMap => "FlatMapNode",
+        CollectionOpKind::Sort => "SortNode",
+        CollectionOpKind::Dedup => "DedupNode",
+        CollectionOpKind::Any => "AnyNode",
+        CollectionOpKind::All => "AllNode",
+        CollectionOpKind::Len => "LenNode",
+        CollectionOpKind::Contains => "ContainsNode",
     }
 }
 

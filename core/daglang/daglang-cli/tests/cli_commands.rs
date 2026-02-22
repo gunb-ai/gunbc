@@ -2,10 +2,11 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use daglang_resolve::ModuleGraph;
+use daglang_resolve::ResolveError;
 use gunbc_ir::WorkspaceLayout;
 use serde_json::Value;
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -154,126 +155,76 @@ fn assert_wrong_cased_dag_extension_rejected(output: &Output, context: &str) {
     );
 }
 
-fn expected_dsl_modules_sorted() -> Vec<&'static str> {
-    vec![
-        "cloud.aws.credential",
-        "cloud.azure.credential",
-        "cloud.gcp.credential",
-        "examples.abstract_services",
-        "examples.deployment",
-        "examples.integration_tests",
-        "examples.rich_types",
-        "funcs.agent_feedback",
-        "funcs.sdlc_worker",
-        "funcs.test_control_flow",
-        "infra.aws.config",
-        "infra.aws.resources",
-        "infra.aws.services",
-        "infra.azure.config",
-        "infra.azure.resources",
-        "infra.azure.services",
-        "infra.core",
-        "infra.gcp.config",
-        "infra.gcp.resources",
-        "infra.gcp.services",
-        "infra.sdlc.deploy",
-        "infra.spec",
-        "pipelines.ci",
-        "pipelines.sdlc",
-        "services.agent.codex",
-        "services.cargo",
-        "services.gcp.iam",
-        "services.gcp.secret_manager",
-        "services.gcp.sts",
-        "services.git",
-        "services.github.gist",
-        "services.github.issues",
-        "services.github.pull_request",
-        "services.llm.anthropic",
-        "services.llm.openai",
-        "services.sdlc.control_plane",
-        "services.shell",
-        "shared.dag_util",
-        "shared.gist_modes",
-        "std.patterns",
-        "std.resources",
-        "std.types",
-        "tools.bootstrap",
-        "tools.build",
-        "tools.clippy",
-        "tools.codegen",
-        "tools.dag_viz",
-        "tools.deps",
-        "tools.design",
-        "tools.docgen",
-        "tools.gist",
-        "tools.infra",
-        "tools.makegen",
-        "tools.pragma",
-        "tools.review",
-        "tools.testgen",
-    ]
+fn expected_dsl_modules_sorted() -> Vec<String> {
+    let dsl_root = workspace_root().join("dsl");
+    let parse_error_files = dsl_parse_error_files(&dsl_root);
+    let mut modules = Vec::new();
+    collect_dsl_modules(&dsl_root, &dsl_root, &parse_error_files, &mut modules);
+    modules.sort();
+    modules
 }
 
-fn expected_real_corpus_module_order() -> Vec<&'static str> {
-    vec![
-        "examples.rich_types",
-        "infra.aws.services",
-        "infra.azure.services",
-        "infra.core",
-        "infra.gcp.services",
-        "infra.spec",
-        "infra.aws.config",
-        "infra.aws.resources",
-        "infra.azure.config",
-        "infra.azure.resources",
-        "infra.gcp.config",
-        "infra.gcp.resources",
-        "examples.integration_tests",
-        "infra.sdlc.deploy",
-        "services.agent.codex",
-        "services.cargo",
-        "services.gcp.iam",
-        "services.gcp.secret_manager",
-        "services.gcp.sts",
-        "services.github.gist",
-        "services.github.issues",
-        "funcs.test_control_flow",
-        "services.github.pull_request",
-        "services.llm.anthropic",
-        "services.llm.openai",
-        "services.sdlc.control_plane",
-        "funcs.agent_feedback",
-        "std.resources",
-        "std.types",
-        "cloud.aws.credential",
-        "cloud.azure.credential",
-        "examples.abstract_services",
-        "services.git",
-        "services.shell",
-        "std.patterns",
-        "cloud.gcp.credential",
-        "shared.dag_util",
-        "shared.gist_modes",
-        "tools.bootstrap",
-        "tools.build",
-        "tools.clippy",
-        "tools.codegen",
-        "tools.dag_viz",
-        "tools.deps",
-        "tools.design",
-        "pipelines.sdlc",
-        "funcs.sdlc_worker",
-        "tools.docgen",
-        "tools.gist",
-        "examples.deployment",
-        "tools.infra",
-        "tools.makegen",
-        "tools.pragma",
-        "tools.review",
-        "tools.testgen",
-        "pipelines.ci",
-    ]
+fn dsl_parse_error_files(dsl_root: &Path) -> BTreeSet<PathBuf> {
+    let roots = vec![dsl_root.to_path_buf()];
+    match ModuleGraph::discover(&roots) {
+        Ok(_) => BTreeSet::new(),
+        Err(ResolveError::ParseErrors(errors)) => errors
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect(),
+        Err(other) => panic!("failed to inspect dsl parse errors: {other}"),
+    }
+}
+
+fn collect_dsl_modules(
+    dsl_root: &Path,
+    dir: &Path,
+    parse_error_files: &BTreeSet<PathBuf>,
+    modules: &mut Vec<String>,
+) {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read dsl directory {}: {e}", dir.display()))
+        .map(|entry| {
+            entry.unwrap_or_else(|e| panic!("failed to read dsl entry in {}: {e}", dir.display()))
+        })
+        .collect();
+    entries.sort_by_key(|entry| entry.path());
+
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dsl_modules(dsl_root, &path, parse_error_files, modules);
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("dag") {
+            continue;
+        }
+        if parse_error_files.contains(&path) {
+            continue;
+        }
+        modules.push(parse_module_declaration(dsl_root, &path));
+    }
+}
+
+fn parse_module_declaration(dsl_root: &Path, path: &Path) -> String {
+    let source = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("failed to read dsl source {}: {e}", path.display()));
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("module ") {
+            if let Some(module_id) = rest.split_whitespace().next() {
+                return module_id.to_string();
+            }
+        }
+    }
+    panic!(
+        "missing module declaration in dsl source {} (under {})",
+        path.display(),
+        dsl_root.display()
+    );
 }
 
 fn reported_modules_in_order(stdout: &str) -> Vec<String> {
@@ -9190,10 +9141,7 @@ fn modules_command_prints_module_graph_summary() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
     let reported_modules = reported_modules_sorted(&stdout);
-    let expected_modules: Vec<String> = expected_dsl_modules_sorted()
-        .into_iter()
-        .map(String::from)
-        .collect();
+    let expected_modules = expected_dsl_modules_sorted();
     assert_eq!(
         reported_modules, expected_modules,
         "modules command should report the complete 45-module corpus"
@@ -9508,7 +9456,7 @@ fn modules_command_real_corpus_diagnostics_match_expected_snapshot() {
 }
 
 #[test]
-fn modules_command_real_corpus_order_matches_expected_snapshot() {
+fn modules_command_real_corpus_modules_match_filesystem_discovery() {
     let output = Command::new(daglang_bin())
         .arg("modules")
         .arg("dsl")
@@ -9522,11 +9470,8 @@ fn modules_command_real_corpus_order_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let actual = reported_modules_in_order(&stdout);
-    let expected: Vec<String> = expected_real_corpus_module_order()
-        .into_iter()
-        .map(String::from)
-        .collect();
+    let actual = reported_modules_sorted(&stdout);
+    let expected = expected_dsl_modules_sorted();
     assert_eq!(actual, expected);
 }
 
@@ -11648,10 +11593,7 @@ fn modules_command_defaults_to_workspace_dsl_root() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Discovered modules:"));
     let reported_modules = reported_modules_sorted(&stdout);
-    let expected_modules: Vec<String> = expected_dsl_modules_sorted()
-        .into_iter()
-        .map(String::from)
-        .collect();
+    let expected_modules = expected_dsl_modules_sorted();
     assert_eq!(
         reported_modules, expected_modules,
         "default modules command should report the complete dsl corpus"

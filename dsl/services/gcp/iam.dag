@@ -30,19 +30,19 @@ service gcp.ResourceManager {
   @auth(BearerToken)
 
   operation GetIamPolicy {
-    input { project: ProjectId }
+    input { project_id: ProjectId }
     output { bindings: Json, etag: String }
-    @rest(POST, "/v1/projects/{project}:getIamPolicy")
+    @rest(POST, "/v1/projects/{project_id}:getIamPolicy")
     @readonly
   }
 
   operation SetIamPolicy {
     input {
-      project: ProjectId
+      project_id: ProjectId
       bindings: Json
       etag: NonEmptyStr
     }
     output { ok: Bool }
-    @rest(POST, "/v1/projects/{project}:setIamPolicy")
+    @rest(POST, "/v1/projects/{project_id}:setIamPolicy")
   }
 }

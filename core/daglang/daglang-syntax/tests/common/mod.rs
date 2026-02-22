@@ -25,6 +25,10 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "cloud/aws/credential.dag",
         "cloud/azure/credential.dag",
         "cloud/gcp/credential.dag",
+        "config/codegen_paths.dag",
+        "config/gitignore_categories.dag",
+        "config/pragma_policy.dag",
+        "config/tool_registry.dag",
         "examples/abstract_services.dag",
         "examples/deployment.dag",
         "examples/integration_tests.dag",
@@ -85,6 +89,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "tools/build.dag",
         "tools/clippy.dag",
         "tools/codegen.dag",
+        "tools/compilation.dag",
         "tools/dag_viz.dag",
         "tools/deps.dag",
         "tools/design.dag",
@@ -95,6 +100,13 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "tools/pragma.dag",
         "tools/review.dag",
         "tools/testgen.dag",
+        "workflows/bootstrap.dag",
+        "workflows/build_all.dag",
+        "workflows/dag_viz.dag",
+        "workflows/deps.dag",
+        "workflows/gist.dag",
+        "workflows/makegen.dag",
+        "workflows/pragma.dag",
     ]
 }
 

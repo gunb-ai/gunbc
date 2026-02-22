@@ -2993,36 +2993,45 @@ struct IfBranchSite {
     has_else: bool,
 }
 
+#[derive(Debug)]
+struct MatchBranchSite {
+    arm_count: usize,
+}
+
 fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
     let mut sites = Vec::new();
-    for stmt in stmts {
-        let expr = match stmt {
-            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => expr,
-            Stmt::Return(_) => continue,
-        };
+    walk_stmts(stmts, &mut |expr| {
         if let Expr::For(var, _, passthrough, _) = expr {
             sites.push(ForLoopSite {
                 element_var: var.clone(),
                 passthrough: passthrough.clone(),
             });
         }
-    }
+    });
     sites
 }
 
 fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchSite> {
     let mut sites = Vec::new();
-    for stmt in stmts {
-        let expr = match stmt {
-            Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => expr,
-            Stmt::Return(_) => continue,
-        };
+    walk_stmts(stmts, &mut |expr| {
         if let Expr::If(_, _, else_branch) = expr {
             sites.push(IfBranchSite {
                 has_else: else_branch.is_some(),
             });
         }
-    }
+    });
+    sites
+}
+
+fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchSite> {
+    let mut sites = Vec::new();
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Match(_, arms) = expr {
+            sites.push(MatchBranchSite {
+                arm_count: arms.len(),
+            });
+        }
+    });
     sites
 }
 
@@ -3090,7 +3099,7 @@ fn add_control_flow_pattern_nodes(
 ) {
     let for_sites = detect_for_loops_in_stmts(stmts);
     for (index, site) in for_sites.iter().enumerate() {
-        let node_id = format!("{}::for_{index}", target.node_id);
+        let node_id = format!("{}::cf_for_{index}", target.node_id);
         let body_dag = make_loop_body_dag(
             module_name,
             &target.node_id,
@@ -3102,15 +3111,15 @@ fn add_control_flow_pattern_nodes(
             .with_input("items", "Any", Cardinality::ZERO_OR_MORE)
             .with_element(&site.element_var, "Any")
             .with_body(body_dag)
-            .with_output("output", "Any")
+            .with_output("result", "Any")
             .build();
         builder.add_node(loop_node);
-        builder.add_edge(&node_id, "output", &target.node_id, "__deps");
+        builder.add_edge(&node_id, "result", &target.node_id, "__deps");
     }
 
     let if_sites = detect_if_branches_in_stmts(stmts);
     for (index, site) in if_sites.iter().enumerate() {
-        let node_id = format!("{}::if_{index}", target.node_id);
+        let node_id = format!("{}::cf_if_{index}", target.node_id);
 
         if site.has_else {
             let true_dag =
@@ -3120,7 +3129,7 @@ fn add_control_flow_pattern_nodes(
             let branch_node = BranchBuilder::new(node_id.clone())
                 .with_true_branch(true_dag)
                 .with_false_branch(false_dag)
-                .with_output("output", "Any")
+                .with_output("result", "Any")
                 .build();
             builder.add_node(branch_node);
         } else {
@@ -3128,11 +3137,35 @@ fn add_control_flow_pattern_nodes(
                 make_branch_body_dag(module_name, &target.node_id, index, "then");
             let if_node = IfBuilder::new(node_id.clone())
                 .with_then(then_dag)
-                .with_output("output", "Any")
+                .with_output("result", "Any")
                 .build();
             builder.add_node(if_node);
         }
-        builder.add_edge(&node_id, "output", &target.node_id, "__deps");
+        builder.add_edge(&node_id, "result", &target.node_id, "__deps");
+    }
+
+    let match_sites = detect_match_branches_in_stmts(stmts);
+    for (index, site) in match_sites.iter().enumerate() {
+        let node_id = format!("{}::cf_match_{index}", target.node_id);
+        if site.arm_count > 1 {
+            let true_dag = make_branch_body_dag(module_name, &target.node_id, index, "match_true");
+            let false_dag =
+                make_branch_body_dag(module_name, &target.node_id, index, "match_false");
+            let branch_node = BranchBuilder::new(node_id.clone())
+                .with_true_branch(true_dag)
+                .with_false_branch(false_dag)
+                .with_output("result", "Any")
+                .build();
+            builder.add_node(branch_node);
+        } else {
+            let then_dag = make_branch_body_dag(module_name, &target.node_id, index, "match_then");
+            let if_node = IfBuilder::new(node_id.clone())
+                .with_then(then_dag)
+                .with_output("result", "Any")
+                .build();
+            builder.add_node(if_node);
+        }
+        builder.add_edge(&node_id, "result", &target.node_id, "__deps");
     }
 }
 
@@ -3673,7 +3706,9 @@ fn derive_shell_spec(service: &ServiceDef, operation: &OperationDef) -> Option<S
 
     let input_fields = derive_input_fields_for_shell(&operation.inputs, &argv_template);
     let output_fields = derive_output_fields(&operation.outputs);
-    let output_parsing = infer_shell_output_parsing(&operation.outputs);
+    let output_parsing = annotation_shell_output_parsing(&operation.annotations)
+        .or_else(|| annotation_shell_output_parsing(&service.annotations))
+        .unwrap_or_else(|| infer_shell_output_parsing(&operation.outputs));
 
     Some(ShellOperationSpec {
         argv_template,
@@ -3726,59 +3761,102 @@ fn annotation_shell_argv(
     op_annotations: &[Annotation],
     service_annotations: &[Annotation],
 ) -> Option<Vec<ArgvSegment>> {
-    let shell_ann = op_annotations
+    for shell_ann in op_annotations
         .iter()
         .chain(service_annotations.iter())
-        .find(|a| a.name == "shell")?;
+        .filter(|a| a.name == "shell")
+    {
+        // @shell(["cmd", "arg1", "{param}", ...])
+        let Some(list) = shell_ann.args.first() else {
+            continue;
+        };
+        let items = match list {
+            Expr::List(items) => items,
+            _ => continue,
+        };
 
-    // @shell(["cmd", "arg1", "{param}", ...])
-    let list = shell_ann.args.first()?;
-    let items = match list {
-        Expr::List(items) => items,
-        _ => return None,
-    };
-
-    let mut segments = Vec::new();
-    for item in items {
-        match item {
-            Expr::Literal(Literal::String(s)) => {
-                // Check for {param} interpolation markers
-                if s.starts_with('{') && s.ends_with('}') && !s.contains(' ') {
-                    let param = s[1..s.len() - 1].to_string();
-                    segments.push(ArgvSegment::InputRef(param));
-                } else if s.contains('{') {
-                    // Complex interpolation like "{base}...{head}" — treat as literal
-                    // (the resolver will handle interpolation at runtime)
-                    segments.push(ArgvSegment::Literal(s.clone()));
-                } else {
-                    segments.push(ArgvSegment::Literal(s.clone()));
-                }
-            }
-            Expr::StringInterp(parts) => {
-                // Handle string interpolation: `"{param}"` or `"{base}...{head}"`
-                use daglang_syntax::ast::StringPart;
-                // Single-expr interpolation like `"{param}"` → InputRef
-                if parts.len() == 1 {
-                    if let StringPart::Expr(Expr::Ident(name)) = &parts[0] {
-                        segments.push(ArgvSegment::InputRef(name.clone()));
-                        continue;
+        let mut segments = Vec::new();
+        for item in items {
+            match item {
+                Expr::Literal(Literal::String(s)) => {
+                    let maybe_single_ref = s
+                        .strip_prefix('{')
+                        .and_then(|inner| inner.strip_suffix('}'))
+                        .filter(|inner| {
+                            !inner.is_empty()
+                                && !inner.contains('{')
+                                && !inner.contains('}')
+                                && !inner.contains(' ')
+                        });
+                    if let Some(param) = maybe_single_ref {
+                        segments.push(ArgvSegment::InputRef(param.to_string()));
+                    } else {
+                        // Complex interpolation like "{base}...{head}" remains a literal template.
+                        segments.push(ArgvSegment::Literal(s.clone()));
                     }
                 }
-                // Multi-part interpolation → reconstruct as Literal with {param} markers
-                let template = expr_to_template_string(item).unwrap_or_default();
-                if !template.is_empty() {
-                    segments.push(ArgvSegment::Literal(template));
+                Expr::StringInterp(parts) => {
+                    // Handle string interpolation: `"{param}"` or `"{base}...{head}"`.
+                    use daglang_syntax::ast::StringPart;
+                    // Single-expr interpolation like `"{param}"` -> InputRef.
+                    if parts.len() == 1 {
+                        if let StringPart::Expr(Expr::Ident(name)) = &parts[0] {
+                            segments.push(ArgvSegment::InputRef(name.clone()));
+                            continue;
+                        }
+                    }
+                    // Multi-part interpolation -> reconstruct as Literal with {param} markers.
+                    let template = expr_to_template_string(item).unwrap_or_default();
+                    if !template.is_empty() {
+                        segments.push(ArgvSegment::Literal(template));
+                    }
                 }
+                _ => {}
             }
-            _ => {}
+        }
+
+        if !segments.is_empty() {
+            return Some(segments);
         }
     }
 
-    if segments.is_empty() {
-        None
-    } else {
-        Some(segments)
+    None
+}
+
+/// Extract shell parse mode from `@parse(mode)`.
+///
+/// Supported aliases:
+/// - trim / trim_stdout / string -> TrimStdout
+/// - split_lines / lines / line_list -> SplitLines
+/// - exit_code_bool / bool / success_bool -> ExitCodeBool
+/// - success_stdout_stderr / triple / result -> SuccessStdoutStderr
+fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOutputParsing> {
+    for ann in annotations.iter().filter(|a| a.name == "parse") {
+        let Some(mode_expr) = ann.args.first() else {
+            continue;
+        };
+        let mode_raw = match mode_expr {
+            Expr::Ident(mode) => mode.as_str(),
+            Expr::Literal(Literal::String(mode)) => mode.as_str(),
+            _ => continue,
+        };
+        let mode = mode_raw.trim().to_ascii_lowercase().replace('-', "_");
+        let parsing = match mode.as_str() {
+            "trim" | "trim_stdout" | "string" => Some(ShellOutputParsing::TrimStdout),
+            "split_lines" | "lines" | "line_list" => Some(ShellOutputParsing::SplitLines),
+            "exit_code_bool" | "bool" | "success_bool" => {
+                Some(ShellOutputParsing::ExitCodeBool)
+            }
+            "success_stdout_stderr" | "triple" | "result" => {
+                Some(ShellOutputParsing::SuccessStdoutStderr)
+            }
+            _ => None,
+        };
+        if parsing.is_some() {
+            return parsing;
+        }
     }
+    None
 }
 
 /// Extract body template from `@body_template({ "key": value, ... })`.
@@ -4963,6 +5041,12 @@ pub enum CollectionOpKind {
     Fold,
     Join,
     FlatMap,
+    Sort,
+    Dedup,
+    Any,
+    All,
+    Len,
+    Contains,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4983,6 +5067,12 @@ fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
         "fold" => Some(CollectionOpKind::Fold),
         "join" => Some(CollectionOpKind::Join),
         "flat_map" => Some(CollectionOpKind::FlatMap),
+        "sort" => Some(CollectionOpKind::Sort),
+        "dedup" => Some(CollectionOpKind::Dedup),
+        "any" => Some(CollectionOpKind::Any),
+        "all" => Some(CollectionOpKind::All),
+        "len" | "count" => Some(CollectionOpKind::Len),
+        "contains" => Some(CollectionOpKind::Contains),
         _ => None,
     }
 }
@@ -5031,6 +5121,12 @@ fn collection_kind_node_label(kind: CollectionOpKind) -> &'static str {
         CollectionOpKind::Fold => "FoldNode",
         CollectionOpKind::Join => "JoinNode",
         CollectionOpKind::FlatMap => "FlatMapNode",
+        CollectionOpKind::Sort => "SortNode",
+        CollectionOpKind::Dedup => "DedupNode",
+        CollectionOpKind::Any => "AnyNode",
+        CollectionOpKind::All => "AllNode",
+        CollectionOpKind::Len => "LenNode",
+        CollectionOpKind::Contains => "ContainsNode",
     }
 }
 
@@ -5371,6 +5467,35 @@ fn run(values: List<String>) -> { out: String } {
     }
 
     #[test]
+    fn collect_collection_ops_detects_extended_collection_intrinsics() {
+        let stmts = callable_stmts_from_source(
+            r#"
+module sample.collections
+fn run(values: List<String>) -> { out: Int } {
+  evaluated = values
+    |> sort()
+    |> dedup()
+    |> contains("needle")
+    |> len()
+  return { out: evaluated }
+}
+"#,
+        );
+        let mut sites = Vec::new();
+        collect_collection_ops_from_stmts(&stmts, &mut sites);
+        let kinds = sites.iter().map(|site| site.kind).collect::<Vec<_>>();
+        assert_eq!(
+            kinds,
+            vec![
+                CollectionOpKind::Len,
+                CollectionOpKind::Contains,
+                CollectionOpKind::Dedup,
+                CollectionOpKind::Sort,
+            ]
+        );
+    }
+
+    #[test]
     fn derive_collection_node_specs_orders_pipeline_left_to_right() {
         let stmts = callable_stmts_from_source(
             r#"
@@ -5505,6 +5630,12 @@ fn run(values: List<String>) -> String {
             CollectionOpKind::Fold => 2,
             CollectionOpKind::Join => 3,
             CollectionOpKind::FlatMap => 4,
+            CollectionOpKind::Sort => 5,
+            CollectionOpKind::Dedup => 6,
+            CollectionOpKind::Any => 7,
+            CollectionOpKind::All => 8,
+            CollectionOpKind::Len => 9,
+            CollectionOpKind::Contains => 10,
         });
         assert_eq!(
             collection_kinds,
@@ -5533,6 +5664,91 @@ fn run(values: List<String>) -> String {
                 && edge.to_node.0 == "sample.collections::run"
                 && edge.to_port.0 == "__deps"
         }));
+    }
+
+    #[test]
+    fn lower_typed_project_emits_control_flow_nodes_for_if_for_match() {
+        let typed = typed_project_from_sources(&[(
+            "sample.control",
+            r#"
+module sample.control
+
+fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
+  let iterated = for value in values {
+    if gate { value } else { 0 }
+  }
+  let chosen = match mode {
+    "hot" => 1
+    _ => 0
+  }
+  let final = if gate { chosen } else { 0 }
+  final
+}
+"#,
+        )]);
+        let fn_body = typed
+            .modules
+            .first()
+            .and_then(|module| module.ast.items.first())
+            .and_then(|item| match &item.node {
+                Item::FnDef(def) => Some(&def.body),
+                _ => None,
+            })
+            .expect("sample source should contain a fn body");
+        assert!(
+            !fn_body.lossy,
+            "expected non-lossy parsed function body for control-flow fixture"
+        );
+        assert!(
+            !fn_body.stmts.is_empty(),
+            "expected control-flow fixture to retain parsed statements"
+        );
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let node_ids = dag
+            .nodes
+            .iter()
+            .map(|node| node.id.0.as_str())
+            .collect::<HashSet<_>>();
+        assert!(
+            node_ids.contains("sample.control::run::cf_for_0"),
+            "node ids: {node_ids:?}"
+        );
+        assert!(
+            node_ids.contains("sample.control::run::cf_if_0"),
+            "node ids: {node_ids:?}"
+        );
+        assert!(
+            node_ids.contains("sample.control::run::cf_if_1"),
+            "node ids: {node_ids:?}"
+        );
+        assert!(
+            node_ids.contains("sample.control::run::cf_match_0"),
+            "node ids: {node_ids:?}"
+        );
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.control::run::cf_for_0"
+                && edge.to_node.0 == "sample.control::run"
+                && edge.to_port.0 == "__deps"
+        }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "sample.control::run::cf_match_0"
+                && edge.to_node.0 == "sample.control::run"
+                && edge.to_port.0 == "__deps"
+        }));
+    }
+
+    #[test]
+    fn expr_to_template_string_preserves_identifier_interpolation() {
+        let expr = Expr::StringInterp(vec![
+            daglang_syntax::ast::StringPart::Literal("prefix-".to_string()),
+            daglang_syntax::ast::StringPart::Expr(Expr::Ident("left".to_string())),
+            daglang_syntax::ast::StringPart::Literal("-".to_string()),
+            daglang_syntax::ast::StringPart::Expr(Expr::Ident("right".to_string())),
+        ]);
+        assert_eq!(
+            expr_to_template_string(&expr),
+            Some("prefix-{left}-{right}".to_string())
+        );
     }
 
     #[test]
@@ -6118,6 +6334,129 @@ service FsStorage implements Storage {
         assert!(
             readonly,
             "service-level readonly annotation should be preserved"
+        );
+    }
+
+    fn shell_output_parsing_for_node(dag: &Dag<LoweredOp>, node_id: &str) -> ShellOutputParsing {
+        let node = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == node_id)
+            .expect("transport node should exist");
+        let metadata = match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => op
+                .service_call_metadata()
+                .expect("service metadata should be present"),
+            gunbc_ir::node::NodeBody::SubDag(_) => {
+                panic!("expected opaque lowered node for transport metadata")
+            }
+        };
+        let spec = metadata
+            .spec
+            .as_ref()
+            .expect("service metadata should include operation spec");
+        match spec {
+            ServiceOperationSpec::Shell(spec) => spec.output_parsing,
+            other => panic!("expected shell operation spec, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_parse_annotation_overrides_inferred_parse_mode() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/shell_parse_override.dag",
+            r#"module sample.services
+@shell
+service shell.Tools {
+  @shell
+  @shell(["echo", "{value}"])
+  @parse(split_lines)
+  operation Echo(value: String) -> { needed: Bool }
+}
+func run() -> { needed: Bool } {
+  result = shell.Tools.Echo(value: "hello")
+  return { needed: result.needed }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let parsing = shell_output_parsing_for_node(
+            &dag,
+            "execute_transport_sample_services_shell_Tools_Echo",
+        );
+        assert_eq!(parsing, ShellOutputParsing::SplitLines);
+    }
+
+    #[test]
+    fn shell_parse_annotation_prefers_operation_over_service() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/shell_parse_precedence.dag",
+            r#"module sample.services
+@shell
+@parse(result)
+service shell.Tools {
+  operation Echo(value: String, suffix: String) -> { lines: List<String> } {
+    @shell(["echo", "{value}:{suffix}"])
+    @parse(exit_code_bool)
+  }
+}
+func run() -> { lines: List<String> } {
+  result = shell.Tools.Echo(value: "a", suffix: "b")
+  return { lines: result.lines }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let parsing = shell_output_parsing_for_node(
+            &dag,
+            "execute_transport_sample_services_shell_Tools_Echo",
+        );
+        assert_eq!(parsing, ShellOutputParsing::ExitCodeBool);
+    }
+
+    #[test]
+    fn shell_argv_annotation_supports_string_interpolation_templates() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/shell_argv_templates.dag",
+            r#"module sample.services
+@shell
+service shell.Tools {
+  @shell(["echo", "{value}:{suffix}", "{value}"])
+  operation Echo(value: String, suffix: String) -> { out: String }
+}
+func run() -> { out: String } {
+  result = shell.Tools.Echo(value: "alpha", suffix: "beta")
+  return { out: result.out }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let node = dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == "prepare_transport_sample_services_shell_Tools_Echo")
+            .expect("prepare node should exist");
+        let metadata = match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => op
+                .service_call_metadata()
+                .expect("service metadata should be present"),
+            gunbc_ir::node::NodeBody::SubDag(_) => {
+                panic!("expected opaque lowered node for prepare transport")
+            }
+        };
+        let spec = metadata
+            .spec
+            .as_ref()
+            .expect("service metadata should include operation spec");
+        let shell = match spec {
+            ServiceOperationSpec::Shell(shell) => shell,
+            other => panic!("expected shell operation spec, got {other:?}"),
+        };
+        assert_eq!(shell.argv_template[0], ArgvSegment::Literal("echo".to_string()));
+        assert_eq!(
+            shell.argv_template[1],
+            ArgvSegment::Literal("{value}:{suffix}".to_string())
+        );
+        assert_eq!(
+            shell.argv_template[2],
+            ArgvSegment::InputRef("value".to_string())
         );
     }
 

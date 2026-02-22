@@ -50,31 +50,19 @@ import std.state_machines {
 }
 
 // ── Pipeline parameters ──────────────────────────────────────────────
-// Addresses D12: Pipeline parameters are injectable from the profile
-// or invocation context (webhook payload, CLI args, polling loop).
-//
-// The PipelineParams type is the top-level input contract for the
-// pipeline. Workers construct this from their context and pass it
-// when invoking the compiled DAG.
+// Injectable from the profile or invocation context (webhook payload,
+// CLI args, polling loop). Matches design version in
+// docs/design/sdlc/sdlc.dag (Gap J: Pipeline parameters).
 
-type PipelineParams {
-  repo_owner:     NonEmptyStr = "gunb-ai"
-  repo_name:      NonEmptyStr = "gunbc"
-  issue_number:   Int = 1
-  llm_provider:   NonEmptyStr = "anthropic"
-  llm_model:      NonEmptyStr = "claude-sonnet-4-20250514"
-  retry_budget:   Int = 3                               // Max attempts per stage
-  worker_id:      NonEmptyStr = "pipelines.sdlc"        // Worker identity for claims
-  agent_model:    NonEmptyStr = "o4-mini"                // Model for agent execution
-  agent_timeout:  Int = 600                              // Agent timeout in seconds
-}
-
-// Accessors for backwards compatibility and readability.
-fn default_repo_owner() -> String { "gunb-ai" }
-fn default_repo_name() -> String { "gunbc" }
-fn default_issue_number() -> Int { 1 }
-fn default_llm_provider() -> String { "anthropic" }
-fn default_llm_model() -> String { "claude-sonnet-4-20250514" }
+param repo_owner: String = "gunb-ai"
+param repo_name: String = "gunbc"
+param issue_number: Int = 1
+param llm_provider: String = "anthropic"
+param llm_model: String = "claude-sonnet-4-20250514"
+param retry_budget: Int = 3                               // Max attempts per stage
+param worker_id: String = "pipelines.sdlc"                // Worker identity for claims
+param agent_model: String = "o4-mini"                      // Model for agent execution
+param agent_timeout: Int = 600                             // Agent timeout in seconds
 
 // ── Helper functions ────────────────────────────────────────────────
 
@@ -142,6 +130,21 @@ fn format_test_results(test_result: Json, clippy_result: Json) -> String {
   "## Acceptance Tests\n\n| Check | Status |\n|---|---|\n| `cargo test` | {test_status} |\n| `cargo clippy` | {clippy_status} |\n\n### Test Output\n```\n{test_result.stdout}\n```\n\n### Clippy Output\n```\n{clippy_result.stdout}\n```\n\n---\n_Tested by gunbc SDLC pipeline_"
 }
 
+// ── Stub functions (DR-4) ────────────────────────────────────────────
+// Referenced in gap analysis but not yet implemented. Stubbed here
+// so the DSL definition is self-contained.
+
+fn generate_implementation_plan(design: String, context: String) -> String {
+  "## Implementation Plan (stub)\n\nBased on design:\n{design}\n\nContext: {context}\n\n_Stub: real implementation will use LLM to decompose design into tasks._"
+}
+
+fn get_pr_diff(owner: String, repo: String, number: Int) -> { diff: String, files: Json } {
+  {
+    diff: "--- stub ---\n+++ stub ---\n@@ Stub diff for {owner}/{repo}#{number} @@",
+    files: []
+  }
+}
+
 // ── Pipeline ────────────────────────────────────────────────────────
 
 pipeline sdlc
@@ -156,7 +159,7 @@ pipeline sdlc
   // Stage 1: Discover and fetch current issue state
   stage fetch {
     issue_result = issues.get(
-      id: provider_issue_id(number: default_issue_number())
+      id: provider_issue_id(number: issue_number)
     )
     current_stage = determine_stage(labels: issue_result.issue.labels)
   }
@@ -165,9 +168,9 @@ pipeline sdlc
   stage claim_design [after fetch] {
     design_claim = claims.acquire(
       issue_id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
+        owner: repo_owner,
+        repo: repo_name,
+        number: issue_number
       ),
       stage: stage_to_label(stage: Design),
       owner: "pipelines.sdlc",
@@ -181,13 +184,13 @@ pipeline sdlc
     design_output = generate_design(
       idea: issue_result.issue.body,
       context: issue_result.issue.title,
-      provider: default_llm_provider(),
-      model: default_llm_model()
+      provider: llm_provider,
+      model: llm_model
     )
 
     // Post artifact as issue comment (idempotent via marker)
     design_comment = issues.comment(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       body: format_design_comment(
         design: design_output.content,
         summary: design_output.summary
@@ -197,7 +200,7 @@ pipeline sdlc
 
     // CAS transition: Idea -> Design via label replacement (INV-4)
     design_labels = issues.set_labels(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Design
@@ -207,9 +210,9 @@ pipeline sdlc
     // Release claim after successful transition
     design_release = claims.release(
       issue_id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
+        owner: repo_owner,
+        repo: repo_name,
+        number: issue_number
       ),
       stage: stage_to_label(stage: Design),
       owner: "pipelines.sdlc",
@@ -221,12 +224,12 @@ pipeline sdlc
   stage design_review [after design] {
     review_output = review_design(
       design: design_output.content,
-      provider: default_llm_provider(),
-      model: default_llm_model()
+      provider: llm_provider,
+      model: llm_model
     )
 
     review_comment = issues.comment(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       body: format_review_comment(
         findings: review_output.findings,
         approved: review_output.approved,
@@ -237,7 +240,7 @@ pipeline sdlc
 
     // CAS transition: Design -> DesignReview
     review_labels = issues.set_labels(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: DesignReview
@@ -264,7 +267,7 @@ pipeline sdlc
   // Stage 6: Accept design (gate: review must approve)
   stage accept_design [after record_design_outcome, when review_output.approved] {
     accepted_labels = issues.set_labels(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Accepted
@@ -272,7 +275,7 @@ pipeline sdlc
     )
 
     accept_comment = issues.comment(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       body: "Design approved. Ready for implementation.",
       marker: "sdlc:accepted-artifact"
     )
@@ -283,14 +286,14 @@ pipeline sdlc
   stage implementation [after accept_design] {
     // Post implementation plan as comment
     plan_comment = issues.comment(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       body: format_plan_comment(plan: design_output.content),
       marker: "sdlc:plan-artifact"
     )
 
     // CAS transition: Accepted -> Implementing
     impl_labels = issues.set_labels(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Implementing
@@ -299,10 +302,10 @@ pipeline sdlc
 
     // D11: Spawn agent on dedicated branch with design context
     agent_run = agents.spawn(
-      prompt: "Implement the following design for issue #{default_issue_number()}:\n\n{design_output.content}",
+      prompt: "Implement the following design for issue #{issue_number}:\n\n{design_output.content}",
       repo_path: ".",
-      branch: agent_branch_name(number: default_issue_number()),
-      model: default_llm_model(),
+      branch: agent_branch_name(number: issue_number),
+      model: llm_model,
       timeout_seconds: 600,
       approval_mode: FullAuto
     )
@@ -312,11 +315,11 @@ pipeline sdlc
 
     // D11: Create PR from agent branch after completion
     pr_result = PullRequest.Create(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
+      owner: repo_owner,
+      repo: repo_name,
       title: "SDLC: {issue_result.issue.title}",
-      body: "## Auto-generated PR\n\nResolves #{default_issue_number()}\n\nGenerated by the SDLC pipeline from the approved design.",
-      head: agent_branch_name(number: default_issue_number()),
+      body: "## Auto-generated PR\n\nResolves #{issue_number}\n\nGenerated by the SDLC pipeline from the approved design.",
+      head: agent_branch_name(number: issue_number),
       base: "main"
     ) [after agent_result, when agent_result.finished && agent_result.exit_code == 0]
 
@@ -340,28 +343,28 @@ pipeline sdlc
   stage code_review [after implementation, when agent_result.exit_code == 0] {
     // Fetch list of changed files from the PR
     pr_files = PullRequest.ListFiles(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
+      owner: repo_owner,
+      repo: repo_name,
       number: pr_result.number
     )
 
     // Get the full diff for LLM review
     pr_diff = git.Core.Diff(
       base: "main",
-      head: agent_branch_name(number: default_issue_number())
+      head: agent_branch_name(number: issue_number)
     )
 
     // LLM-based code review against the diff
     code_review_output = review_design(
       design: pr_diff.diff,
-      provider: default_llm_provider(),
-      model: default_llm_model()
+      provider: llm_provider,
+      model: llm_model
     )
 
     // Post review findings as PR comment
     cr_comment = PullRequest.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
+      owner: repo_owner,
+      repo: repo_name,
       number: pr_result.number,
       body: format_code_review_findings(
         files: pr_files.files,
@@ -371,7 +374,7 @@ pipeline sdlc
 
     // Post review findings to the issue as well
     cr_issue_comment = issues.comment(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       body: format_code_review_findings(
         files: pr_files.files,
         review_body: code_review_output.summary
@@ -381,7 +384,7 @@ pipeline sdlc
 
     // CAS transition: Implementing -> CodeReview
     cr_labels = issues.set_labels(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: CodeReview
@@ -408,7 +411,7 @@ pipeline sdlc
   stage acceptance [after code_review, when code_review_output.approved] {
     // CAS transition: CodeReview -> Testing
     test_labels = issues.set_labels(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Testing
@@ -423,7 +426,7 @@ pipeline sdlc
 
     // Post test results as issue comment
     ci_comment = issues.comment(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       body: format_test_results(
         test_result: test_result,
         clippy_result: clippy_result
@@ -433,8 +436,8 @@ pipeline sdlc
 
     // D11: Merge PR if tests pass
     merge_result = PullRequest.Merge(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
+      owner: repo_owner,
+      repo: repo_name,
       number: pr_result.number,
       merge_method: "squash"
     ) [after test_result, after clippy_result, when test_result.success && clippy_result.success]
@@ -458,7 +461,7 @@ pipeline sdlc
   // Only close when both cargo test and clippy passed.
   stage close [after acceptance, when test_result.success && clippy_result.success] {
     done_labels = issues.set_labels(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       labels: transition_labels(
         current_labels: issue_result.issue.labels,
         to_stage: Done
@@ -466,7 +469,7 @@ pipeline sdlc
     )
 
     close_result = issues.close(
-      id: provider_issue_id(number: default_issue_number())
+      id: provider_issue_id(number: issue_number)
     )
   }
 
@@ -483,7 +486,7 @@ pipeline sdlc
     report_text = format_report(summary: summary, stages: stages)
 
     report_comment = issues.comment(
-      id: provider_issue_id(number: default_issue_number()),
+      id: provider_issue_id(number: issue_number),
       body: report_text,
       marker: "sdlc:final-report"
     )

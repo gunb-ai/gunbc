@@ -89,6 +89,24 @@ pub mod ast {
         DesignDef(DesignDef),
         ComponentDef(ComponentDef),
         EnvironmentDef(EnvironmentDef),
+        ParamDecl(ParamDecl),
+        DataDef(DataDef),
+    }
+
+    /// Module-level parameter: `param name: Type` or `param name: Type = default`
+    #[derive(Debug)]
+    pub struct ParamDecl {
+        pub name: String,
+        pub ty: TypeExpr,
+        pub default: Option<Expr>,
+    }
+
+    /// Module-level static data declaration: `data name: Type = value`.
+    #[derive(Debug)]
+    pub struct DataDef {
+        pub name: String,
+        pub ty: TypeExpr,
+        pub value: Expr,
     }
 
     // ── Types ───────────────────────────────────────────────────────

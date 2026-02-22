@@ -1,0 +1,40 @@
+// workflows/deps.dag
+//
+// Replaces WF20: tools.deps workflow spec.
+//
+// Structure:
+// compilation_ensure -> codegen_ensure ->
+//   platform_env -> load_manifest -> generate_scripts -> execute_installs --\
+//   load_tool_registry -> render_deps_toml -> write_deps_toml ------------+-> report
+
+module workflows.deps
+
+import tools.compilation { compilation_ensure }
+import tools.codegen { codegen_ensure }
+
+pipeline deps {
+
+  stage compilation_ensure {
+    _ = compilation_ensure()
+  }
+
+  stage codegen_ensure [after compilation_ensure] {
+    _ = codegen_ensure()
+  }
+
+  stage platform_env [after codegen_ensure] {}
+
+  stage load_manifest [after platform_env] {}
+
+  stage generate_scripts [after load_manifest] {}
+
+  stage execute_installs [after generate_scripts] {}
+
+  stage load_tool_registry [after codegen_ensure] {}
+
+  stage render_deps_toml [after load_tool_registry] {}
+
+  stage write_deps_toml [after render_deps_toml] {}
+
+  stage report [after execute_installs, after write_deps_toml] {}
+}

@@ -1135,6 +1135,7 @@ fn validate_codegen_dsl_coverage(
 fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
     let mut set = BTreeSet::new();
     set.insert("design");
+    set.insert("compilation");
     set
 }
 

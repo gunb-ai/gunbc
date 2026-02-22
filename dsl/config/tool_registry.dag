@@ -1,0 +1,18 @@
+// config/tool_registry.dag -- Static tool registry metadata (EX-3).
+
+module config.tool_registry
+
+data registered_tools: List<String> = [
+  "bootstrap",
+  "build",
+  "clippy",
+  "codegen",
+  "dag-viz",
+  "deps",
+  "design",
+  "docgen",
+  "gist",
+  "infra",
+  "makegen",
+  "testgen"
+]

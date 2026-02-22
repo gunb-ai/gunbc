@@ -1,0 +1,36 @@
+// workflows/bootstrap.dag
+//
+// Replaces WF19: tools.bootstrap workflow spec.
+//
+// Structure:
+// compilation_ensure -> codegen_ensure -> workspace_scan ->
+//   generate_makefile -> upsert_makefile -> report
+//   generate_gitignore -> upsert_gitignore -> report
+
+module workflows.bootstrap
+
+import tools.compilation { compilation_ensure }
+import tools.codegen { codegen_ensure }
+
+pipeline bootstrap {
+
+  stage compilation_ensure {
+    _ = compilation_ensure()
+  }
+
+  stage codegen_ensure [after compilation_ensure] {
+    _ = codegen_ensure()
+  }
+
+  stage workspace_scan [after codegen_ensure] {}
+
+  stage generate_makefile [after workspace_scan] {}
+
+  stage generate_gitignore [after workspace_scan] {}
+
+  stage upsert_makefile [after generate_makefile] {}
+
+  stage upsert_gitignore [after generate_gitignore] {}
+
+  stage report [after upsert_makefile, after upsert_gitignore] {}
+}

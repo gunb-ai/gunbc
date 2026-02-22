@@ -37,7 +37,7 @@ service github.IssueProvider : IssueProvider {
       state: IssueState?
     }
     output {
-      issues: Json                     // List<TrackedIssue> (provider transforms)
+      issues: List<TrackedIssue>                     // List<TrackedIssue> (provider transforms)
     }
     @rest(GET, "/repos/{config.owner}/{config.repo}/issues?labels={labels}&state={state ?? \"open\"}")
     @permissions(["issues:read"])
@@ -64,7 +64,7 @@ service github.IssueProvider : IssueProvider {
   operation get {
     input { id: NonEmptyStr }
     output {
-      issue: Json                      // TrackedIssue shape
+      issue: TrackedIssue                      // TrackedIssue shape
       found: Bool
     }
     @rest(GET, "/repos/{config.owner}/{config.repo}/issues/{id}")
@@ -95,7 +95,7 @@ service github.IssueProvider : IssueProvider {
       labels: List<String>
     }
     output {
-      issue: Json                      // TrackedIssue shape
+      issue: TrackedIssue                      // TrackedIssue shape
     }
     @rest(POST, "/repos/{config.owner}/{config.repo}/issues")
     @permissions(["issues:write"])
@@ -173,7 +173,7 @@ service github.IssueProvider : IssueProvider {
       id: NonEmptyStr
       since: String?
     }
-    output { events: Json }
+    output { events: List<IssueEvent> }
     @rest(GET, "/repos/{config.owner}/{config.repo}/issues/{id}/events")
     @permissions(["issues:read"])
     @mock_response(

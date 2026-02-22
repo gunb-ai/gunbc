@@ -112,7 +112,7 @@ func execute_stage(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
   uses agents: AgentProvider
@@ -169,7 +169,7 @@ func handle_idea_to_design(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
 {
@@ -210,7 +210,7 @@ func handle_design_to_review(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses outcomes: OutcomeLedger
 {
@@ -252,7 +252,7 @@ func handle_review_to_accepted(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
 {
   // Post acceptance comment
@@ -283,7 +283,7 @@ func handle_accepted_to_implementing(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses agents: AgentProvider
 {
@@ -327,7 +327,7 @@ func handle_implementing_to_code_review(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
   uses agents: AgentProvider
   uses outcomes: OutcomeLedger
@@ -384,7 +384,7 @@ func handle_code_review_to_testing(
   number: Int,
   llm_provider: String,
   llm_model: String
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
 {
   // Find the PR for this issue (convention: PR head = sdlc/issue-{number})
@@ -463,7 +463,7 @@ func handle_testing_to_done(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
 {
   // Run cargo test
@@ -517,7 +517,7 @@ func handle_done(
   owner: String,
   repo: String,
   number: Int
-) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: Json? }
+) -> { success: Bool, next_stage: IssueLifecycleStage, artifact_posted: Bool, payload: ArtifactPayload? }
   uses issues: IssueProvider
 {
   // Post final summary

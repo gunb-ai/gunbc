@@ -252,6 +252,8 @@ impl Parser {
             TokenKind::Mock => "mock",
             TokenKind::Expect => "expect",
             TokenKind::Contains => "contains",
+            TokenKind::DataKw => "data",
+            TokenKind::ParamKw => "param",
             _ => return None,
         };
         Some(text.to_string())
@@ -509,6 +511,8 @@ impl Parser {
             TokenKind::Design => Item::DesignDef(self.parse_design_def()?),
             TokenKind::Component => Item::ComponentDef(self.parse_component_def()?),
             TokenKind::Environment => Item::EnvironmentDef(self.parse_environment_def()?),
+            TokenKind::ParamKw => Item::ParamDecl(self.parse_param_decl()?),
+            TokenKind::DataKw => Item::DataDef(self.parse_data_def()?),
             _ => {
                 return Err(self.err(format!(
                     "expected item declaration, found {}",
@@ -520,6 +524,33 @@ impl Parser {
             node: item,
             span: self.end_span(start),
         })
+    }
+
+    // ── param declarations ─────────────────────────────────────────
+
+    fn parse_param_decl(&mut self) -> Result<ParamDecl, ParseError> {
+        self.expect(&TokenKind::ParamKw)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::Colon)?;
+        let ty = self.parse_type_expr()?;
+        let default = if self.eat(&TokenKind::Eq) {
+            Some(self.parse_expr(0)?)
+        } else {
+            None
+        };
+        Ok(ParamDecl { name, ty, default })
+    }
+
+    // ── data declarations ──────────────────────────────────────────
+
+    fn parse_data_def(&mut self) -> Result<DataDef, ParseError> {
+        self.expect(&TokenKind::DataKw)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::Colon)?;
+        let ty = self.parse_type_expr()?;
+        self.expect(&TokenKind::Eq)?;
+        let value = self.parse_expr(0)?;
+        Ok(DataDef { name, ty, value })
     }
 
     // ── type definitions ───────────────────────────────────────────
@@ -2398,26 +2429,85 @@ impl Parser {
 
     fn parse_match_expr(&mut self) -> Result<Expr, ParseError> {
         self.expect(&TokenKind::Match)?;
-        let scrutinee = self.parse_expr(0)?;
+        let scrutinee = self.parse_for_iterable_expr()?;
         self.expect(&TokenKind::LBrace)?;
-        let mut depth = 1usize;
-        while depth > 0 && !self.at_eof() {
-            match self.peek().kind {
-                TokenKind::LBrace => depth += 1,
-                TokenKind::RBrace => depth = depth.saturating_sub(1),
-                _ => {}
+        let mut arms = Vec::new();
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            let pattern = self.parse_pattern()?;
+            let guard = if self.eat(&TokenKind::If) {
+                Some(self.parse_expr(0)?)
+            } else {
+                None
+            };
+            self.expect(&TokenKind::Arrow)?;
+            let body = self.parse_expr(0)?;
+            arms.push(MatchArm { pattern, guard, body });
+            self.eat(&TokenKind::Comma);
+        }
+        self.expect(&TokenKind::RBrace)?;
+        Ok(Expr::Match(Box::new(scrutinee), arms))
+    }
+
+    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        match self.peek().kind.clone() {
+            TokenKind::Ident(_) => {
+                let name = self.expect_ident()?;
+                if name == "_" {
+                    return Ok(Pattern::Wildcard);
+                }
+                if self.eat(&TokenKind::LParen) {
+                    let mut args = Vec::new();
+                    let mut index = 0;
+                    while !self.check(&TokenKind::RParen) && !self.at_eof() {
+                        let inner = self.parse_pattern()?;
+                        args.push((index.to_string(), inner));
+                        index += 1;
+                        self.eat(&TokenKind::Comma);
+                    }
+                    self.expect(&TokenKind::RParen)?;
+                    Ok(Pattern::Variant(name, args))
+                } else if self.eat(&TokenKind::LBrace) {
+                    let mut args = Vec::new();
+                    while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                        let field = self.expect_ident()?;
+                        self.expect(&TokenKind::Colon)?;
+                        let inner = self.parse_pattern()?;
+                        args.push((field, inner));
+                        self.eat(&TokenKind::Comma);
+                    }
+                    self.expect(&TokenKind::RBrace)?;
+                    Ok(Pattern::Variant(name, args))
+                } else {
+                    Ok(Pattern::Ident(name))
+                }
             }
-            self.advance();
+            TokenKind::True => {
+                self.advance();
+                Ok(Pattern::Literal(Literal::Bool(true)))
+            }
+            TokenKind::False => {
+                self.advance();
+                Ok(Pattern::Literal(Literal::Bool(false)))
+            }
+            TokenKind::Int(n) => {
+                self.advance();
+                Ok(Pattern::Literal(Literal::Int(n)))
+            }
+            TokenKind::Float(f) => {
+                self.advance();
+                Ok(Pattern::Literal(Literal::Float(f)))
+            }
+            TokenKind::Str(s) => {
+                self.advance();
+                Ok(Pattern::Literal(Literal::String(s)))
+            }
+            _ => Err(self.err("expected pattern".into())),
         }
-        if depth != 0 {
-            return Err(self.err("unterminated match expression".into()));
-        }
-        Ok(Expr::Match(Box::new(scrutinee), Vec::new()))
     }
 
     fn parse_if_expr(&mut self) -> Result<Expr, ParseError> {
         self.expect(&TokenKind::If)?;
-        let cond = self.parse_expr(0)?;
+        let cond = self.parse_for_iterable_expr()?;
         self.expect(&TokenKind::LBrace)?;
         let then_b = self.parse_expr(0)?;
         self.expect(&TokenKind::RBrace)?;
@@ -2571,7 +2661,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_fn_body_marks_lossy_for_unsupported_match_arms() {
+    fn parse_fn_body_preserves_match_expression_shape() {
         let sf = parse_or_panic(
             r#"module test
 type CloudConfig = GcpConfig { project: String } | AwsConfig { account: String }
@@ -2585,8 +2675,53 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
         );
         match &sf.items[2].node {
             Item::FnDef(f) => {
-                assert!(f.body.lossy);
-                assert!(f.body.stmts.is_empty());
+                assert!(!f.body.lossy);
+                assert!(matches!(f.body.stmts.first(), Some(Stmt::Expr(Expr::Match(_, arms))) if arms.is_empty()));
+            }
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_if_expression_in_fn_body_is_not_lossy() {
+        let sf = parse_or_panic(
+            r#"module test
+fn choose(gate: Bool) -> Int {
+  let value = if gate { 1 } else { 0 }
+  value
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::FnDef(def) => {
+                assert!(!def.body.lossy);
+                assert!(matches!(
+                    def.body.stmts.first(),
+                    Some(Stmt::Let(_, Expr::If(_, _, Some(_))))
+                ));
+            }
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_match_expression_in_fn_body_is_not_lossy() {
+        let sf = parse_or_panic(
+            r#"module test
+fn choose(mode: String) -> Int {
+  let value = match mode {
+    "hot" => 1
+    _ => 0
+  }
+  value
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::FnDef(def) => {
+                assert!(!def.body.lossy);
+                assert!(matches!(
+                    def.body.stmts.first(),
+                    Some(Stmt::Let(_, Expr::Match(_, _)))
+                ));
             }
             other => panic!("expected FnDef, got {other:?}"),
         }
@@ -2635,6 +2770,26 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
                 }
             }
             other => panic!("expected TypeDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_data_declaration() {
+        let sf = parse_or_panic(
+            r#"module test
+data tool_registry: List<String> = ["makegen", "testgen"]
+"#,
+        );
+        match &sf.items[0].node {
+            Item::DataDef(def) => {
+                assert_eq!(def.name, "tool_registry");
+                assert!(matches!(
+                    def.ty,
+                    TypeExpr::Generic(ref name, _) if name == "List"
+                ));
+                assert!(matches!(def.value, Expr::List(_)));
+            }
+            other => panic!("expected DataDef, got {other:?}"),
         }
     }
 

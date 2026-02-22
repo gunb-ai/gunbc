@@ -1,0 +1,18 @@
+// config/codegen_paths.dag -- Static codegen path templates (EX-3).
+
+module config.codegen_paths
+
+data stamp_file: String = "target/codegen/.stamp"
+
+data generated_roots: List<String> = [
+  "core/ir/src",
+  "core/exec/src",
+  "gunbc-dag/src",
+  "generated"
+]
+
+data path_templates: List<String> = [
+  "target/codegen/{module}.json",
+  "target/codegen/{module}.lock",
+  "target/codegen/{module}.status"
+]

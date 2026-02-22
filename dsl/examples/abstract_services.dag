@@ -123,7 +123,7 @@ service gcs.Storage : Storage {
 
   config {
     bucket: String          // bound at deploy time
-    project: String
+    project_id: String
   }
 
   operation Get {
@@ -267,7 +267,7 @@ service gcp.VertexAI : LLM {
   @auth(BearerToken)
 
   config {
-    project: String
+    project_id: String
     region: String = "us-central1"
     model: String = "gemini-pro"
   }

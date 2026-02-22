@@ -170,7 +170,7 @@ type CloudProvider = Gcp | Aws | Azure
 // Provider-specific cloud account configuration (sum type)
 type CloudConfig
   = GcpConfig {
-      project: ProjectId
+      project_id: ProjectId
       project_number: NonEmptyStr
       region: String = "us-central1"
       zone: String = "us-central1-a"

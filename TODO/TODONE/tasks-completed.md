@@ -340,3 +340,16 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | PR1 | Diff Review Integration: `gunbc-sdlc validate-pr` runs diff review against PR branch, posts findings as PR comments. | Done 2026-02-21 |
 | PR2 | CI/CD Aggregation: `validate-pr` runs `cargo test` + `cargo clippy` and aggregates pass/fail results. | Done 2026-02-21 |
 | PR3 | Close Loop: `validate-pr` auto-transitions `Implementation` -> `Closed` when all checks pass, posts summary comment. | Done 2026-02-21 |
+
+---
+
+## Lane H: DSL Expression Language (Partial — 2026-02-22)
+
+| ID | Task | Status |
+|----|------|--------|
+| EX-1 | Structured transport responses: `@parse(...)` annotation support in shell transport lowering with operation/service precedence + parse-mode aliases. | Done 2026-02-22 |
+| EX-2 | Structured path and glob types: added structured `PathSegment`, `GlobSegment`, `FilePathParts`, and `GlobPattern` DSL types while keeping `FilePath` compatibility alias. | Done 2026-02-22 |
+| EX-3 | DSL data source declarations: added top-level `data` declarations to syntax/parser pipeline and created `dsl/config/*.dag` static config modules. | Done 2026-02-22 |
+| EX-4 | Lower collection method calls: extended collection intrinsic lowering (`sort`, `dedup`, `any`, `all`, `len`, `contains`) and resolver execution wiring. | Done 2026-02-22 |
+| EX-5 | Lower control flow in function bodies: control-flow pattern lowering for `for`/`if`/`match` plus parser fixes so `if`/`match` expressions parse non-lossy in function bodies. | Done 2026-02-22 |
+| EX-6 | Lower string interpolation and formatting: ensured interpolation template extraction/lowering paths are preserved and test-covered for identifier interpolation. | Done 2026-02-22 |

@@ -1,0 +1,20 @@
+// config/gitignore_categories.dag -- Static gitignore policy categories (EX-3).
+
+module config.gitignore_categories
+
+data categories: List<String> = [
+  "build_artifacts",
+  "generated_code",
+  "cargo_cache",
+  "tmp_files",
+  "editor_state",
+  "ide_metadata",
+  "coverage_reports",
+  "test_outputs",
+  "binary_logs",
+  "debug_profiles",
+  "compiled_dags",
+  "local_secrets",
+  "runtime_traces",
+  "misc_os_files"
+]

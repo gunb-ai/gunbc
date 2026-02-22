@@ -1,0 +1,12 @@
+// tools/compilation.dag -- Compilation execution.
+//
+// Ensures that bootstrap or tool phase compilation is up-to-date.
+// The compiler runtime maps these to the canonical capabilities
+// in the `std.compiler` module or handles capability resolution directly.
+
+module tools.compilation
+
+// Ensure compilation capability is met
+func compilation_ensure() -> {} {
+  // handled by executor capability resolution
+}

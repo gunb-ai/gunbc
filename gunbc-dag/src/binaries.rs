@@ -105,6 +105,23 @@ impl WorkspaceBinary {
 #[cfg(test)]
 mod tests {
     use super::WorkspaceBinary;
+    use std::collections::BTreeSet;
+    use toml_edit::DocumentMut;
+
+    fn cargo_manifest_bin_tool_names() -> BTreeSet<String> {
+        let manifest: DocumentMut = include_str!("../Cargo.toml")
+            .parse()
+            .expect("gunbc-dag/Cargo.toml should parse as TOML");
+        let bins = manifest
+            .get("bin")
+            .and_then(|item| item.as_array_of_tables())
+            .expect("gunbc-dag/Cargo.toml should have [[bin]] entries");
+        bins.iter()
+            .filter_map(|entry| entry.get("name").and_then(|item| item.as_str()))
+            .filter_map(|name| name.strip_prefix("gunbc-"))
+            .map(str::to_string)
+            .collect()
+    }
 
     #[test]
     fn tool_name_round_trip_supports_workspace_binary_variants() {
@@ -147,6 +164,36 @@ mod tests {
         assert_eq!(
             WorkspaceBinary::Infra.invocation().binary,
             "gunbc-infra".to_string()
+        );
+    }
+
+    #[test]
+    fn workspace_binary_table_matches_cargo_manifest_bins() {
+        let non_workspace_dispatch_bins: BTreeSet<&str> = BTreeSet::from([
+            // DSL/runtime dispatches these through shared tool-family modules.
+            "dag-viz",
+            "dag-viz-diff",
+            "dag-viz-recent",
+            "dag-snapshot",
+            // Dedicated executors that are not `WorkspaceBinary` tool modules.
+            "review",
+            "pipeline",
+            "workflow",
+        ]);
+
+        let manifest_bins = cargo_manifest_bin_tool_names();
+        let expected_workspace_bins: BTreeSet<String> = manifest_bins
+            .into_iter()
+            .filter(|tool| !non_workspace_dispatch_bins.contains(tool.as_str()))
+            .collect();
+        let actual_workspace_bins: BTreeSet<String> = WorkspaceBinary::all()
+            .iter()
+            .map(|binary| binary.tool_name().to_string())
+            .collect();
+
+        assert_eq!(
+            actual_workspace_bins, expected_workspace_bins,
+            "WorkspaceBinary entries should stay aligned with gunbc-dag/Cargo.toml [[bin]] declarations"
         );
     }
 }

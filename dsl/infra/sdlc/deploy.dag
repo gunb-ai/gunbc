@@ -18,27 +18,27 @@ fn worker_service_name() -> String {
   "gunbc-sdlc-worker"
 }
 
-fn ledger_bucket_name(project: String) -> String {
-  "{project}-sdlc-ledger"
+fn ledger_bucket_name(project_id: String) -> String {
+  "{project_id}-sdlc-ledger"
 }
 
-fn worker_image(project: String, region: String) -> String {
-  "{region}-docker.pkg.dev/{project}/gunbc/sdlc-worker:latest"
+fn worker_image(project_id: String, region: String) -> String {
+  "{region}-docker.pkg.dev/{project_id}/gunbc/sdlc-worker:latest"
 }
 
-fn worker_sa_email(project: String) -> String {
-  "gunbc-sdlc-worker@{project}.iam.gserviceaccount.com"
+fn worker_sa_email(project_id: String) -> String {
+  "gunbc-sdlc-worker@{project_id}.iam.gserviceaccount.com"
 }
 
 // ── Resource declarations ───────────────────────────────────────────
 
-func deploy_ledger_bucket(project: String) -> { name: String } {
-  existing = Storage.GetBucket(name: ledger_bucket_name(project: project))
+func deploy_ledger_bucket(project_id: String) -> { name: String } {
+  existing = Storage.GetBucket(name: ledger_bucket_name(project_id: project))
 
   if !existing.exists {
     created = Storage.CreateBucket(
-      project: project,
-      name: ledger_bucket_name(project: project),
+      project_id: project,
+      name: ledger_bucket_name(project_id: project),
       location: "us-central1",
       storage_class: "STANDARD",
       labels: { "managed-by": "gunbc", "component": "sdlc-ledger" }
@@ -49,15 +49,15 @@ func deploy_ledger_bucket(project: String) -> { name: String } {
   return { name: existing.name }
 }
 
-func deploy_service_account(project: String) -> { email: String } {
+func deploy_service_account(project_id: String) -> { email: String } {
   existing = IAM.GetServiceAccount(
-    project: project,
-    email: worker_sa_email(project: project)
+    project_id: project,
+    email: worker_sa_email(project_id: project)
   )
 
   if !existing.exists {
     created = IAM.CreateServiceAccount(
-      project: project,
+      project_id: project,
       account_id: "gunbc-sdlc-worker",
       display_name: "gunbc SDLC Worker"
     )
@@ -68,21 +68,21 @@ func deploy_service_account(project: String) -> { email: String } {
 }
 
 func deploy_worker_service(
-  project: String,
+  project_id: String,
   region: String
 ) -> { name: String, uri: String } {
   existing = CloudRun.GetService(
-    project: project,
+    project_id: project,
     region: region,
     name: worker_service_name()
   )
 
   if !existing.exists {
     created = CloudRun.CreateService(
-      project: project,
+      project_id: project,
       region: region,
       name: worker_service_name(),
-      image: worker_image(project: project, region: region),
+      image: worker_image(project_id: project, region: region),
       memory: "512Mi",
       cpu: 1,
       min_instances: 0,
@@ -92,32 +92,32 @@ func deploy_worker_service(
         "SDLC_REPO_OWNER": "gunb-ai",
         "SDLC_REPO_NAME": "gunbc"
       },
-      service_account: worker_sa_email(project: project),
+      service_account: worker_sa_email(project_id: project),
       labels: { "managed-by": "gunbc", "component": "sdlc-worker" }
     )
     return { name: created.name, uri: created.uri }
   }
 
   updated = CloudRun.UpdateService(
-    project: project,
+    project_id: project,
     region: region,
     name: worker_service_name(),
-    image: worker_image(project: project, region: region),
+    image: worker_image(project_id: project, region: region),
     memory: "512Mi",
     labels: { "managed-by": "gunbc", "component": "sdlc-worker" }
   )
   return { name: updated.name, uri: updated.uri }
 }
 
-func deploy_github_secret(project: String) -> { name: String } {
+func deploy_github_secret(project_id: String) -> { name: String } {
   existing = SecretManager.GetSecret(
-    project: project,
+    project_id: project,
     secret: "github-token"
   )
 
   if !existing.exists {
     created = SecretManager.CreateSecret(
-      project: project,
+      project_id: project,
       secret_id: "github-token"
     )
     return { name: created.name }
@@ -129,13 +129,13 @@ func deploy_github_secret(project: String) -> { name: String } {
 // ── Full deployment pipeline ────────────────────────────────────────
 
 func deploy_all(
-  project: String,
+  project_id: String,
   region: String
 ) -> { success: Bool } {
-  bucket = deploy_ledger_bucket(project: project)
-  sa = deploy_service_account(project: project)
-  secret = deploy_github_secret(project: project)
-  service = deploy_worker_service(project: project, region: region)
+  bucket = deploy_ledger_bucket(project_id: project)
+  sa = deploy_service_account(project_id: project)
+  secret = deploy_github_secret(project_id: project)
+  service = deploy_worker_service(project_id: project, region: region)
 
   return { success: true }
 }

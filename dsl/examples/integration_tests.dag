@@ -24,7 +24,7 @@ import infra.spec { EnvironmentConfig }
 // =========================================================================
 
 func upload_artifact(key: NonEmptyStr, content: Bytes) -> { url: Url, stored: Bool }
-  uses bucket: GcsBucket(name: "gunbc-artifacts", project: "gunbai-auto")
+  uses bucket: GcsBucket(name: "gunbc-artifacts", project_id: "gunbai-auto")
 {
   write = bucket.write(key: key, content: content)
   url = "gs://gunbc-artifacts/{key}" as Url
@@ -245,7 +245,7 @@ func upload_artifact(key: NonEmptyStr, content: Bytes) -> { url: Url, stored: Bo
 //   @test(tier: Contract, cost: M, hermetic: false)
 //   @requires(GUNBC_TEST_MAX_COST >= "M")
 //   func test_bucket_storage_get_after_put() {
-//     bucket = acquire(GcsBucket, { name: "test-contract-{uuid()}", project: "gunbai-auto" })
+//     bucket = acquire(GcsBucket, { name: "test-contract-{uuid()}", project_id: "gunbai-auto" })
 //
 //     k = "contract-test/{uuid()}"
 //     v = bytes("contract test value")

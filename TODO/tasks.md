@@ -211,9 +211,9 @@ Implemented: default-passthrough resolver, `Option`-returning inventory resolver
 
 | ID | Task | Location | Problem | Fix | Size | Status |
 |----|------|----------|---------|-----|------|--------|
-| **CL1** | **Module order test fixture** | `daglang-cli/src/pipeline.rs` | 58 hardcoded module names in `expected_real_corpus_module_order()`. Breaks every time a `.dag` file is added/removed/renamed. | Replace with filesystem discovery: glob `dsl/**/*.dag`, extract module IDs, sort. The test asserts the compiler discovers the same set, not a hardcoded list. | S | |
-| **CL4** | **`WorkspaceBinary::ALL` array** | `gunbc-dag/src/binaries.rs` | 12-element `const ALL` array + match arms. New binaries require three manual edits. | Derive from `Cargo.toml` `[[bin]]` sections or from the filesystem. | S | |
-| **CL7** | **`MANUAL_TOOL_DEFS`** | `gunbc-dag/src/makegen/registry.rs` | 2 hardcoded manual tool definitions (`pragma`, `build`). | Investigate why these can't use the standard discovery path. Fold in or document. | S | |
+| **CL1** | **Module order test fixture** | `daglang-cli/src/pipeline.rs` | 58 hardcoded module names in `expected_real_corpus_module_order()`. Breaks every time a `.dag` file is added/removed/renamed. | Replace with filesystem discovery: glob `dsl/**/*.dag`, extract module IDs, sort. The test asserts the compiler discovers the same set, not a hardcoded list. | S | **DONE** |
+| **CL4** | **`WorkspaceBinary::ALL` array** | `gunbc-dag/src/binaries.rs` | 12-element `const ALL` array + match arms. New binaries require three manual edits. | Derive from `Cargo.toml` `[[bin]]` sections or from the filesystem. | S | **DONE** |
+| **CL7** | **`MANUAL_TOOL_DEFS`** | `gunbc-dag/src/makegen/registry.rs` | 2 hardcoded manual tool definitions (`pragma`, `build`). | Investigate why these can't use the standard discovery path. Fold in or document. | S | **DONE** |
 
 ### Lane G: Workflow DSL Migration (Phase 2)
 
@@ -225,13 +225,13 @@ Implemented: default-passthrough resolver, `Option`-returning inventory resolver
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **WM-1** | **Migrate `build-all` workflow to DSL**: Simplest workflow (1 core unit). Create `dsl/workflows/build-all.dag`. Verify the compiled DAG matches the Rust-constructed spec structurally. | — | S | |
-| **WM-2** | **Migrate `makegen` workflow to DSL**: 4 process units. Create `dsl/workflows/makegen.dag`. | — | S | |
-| **WM-3** | **Migrate `bootstrap` workflow to DSL**: 5 process units. Create `dsl/workflows/bootstrap.dag`. | — | M | |
-| **WM-4** | **Migrate `pragma` workflow to DSL**: 7 process units, most complex single-tool workflow. Create `dsl/workflows/pragma.dag`. | — | M | |
-| **WM-5** | **Migrate `deps` workflow to DSL**: 8 process units. Create `dsl/workflows/deps.dag`. | — | M | |
-| **WM-6** | **Migrate `gist` workflow family to DSL**: 3 variants (`gist-snapshot`, `gist-diff`, `gist-recent`) sharing 9 process units. Create `dsl/workflows/gist.dag` with parameterized mode. | — | M | |
-| **WM-7** | **Migrate `dag-viz` workflow family to DSL**: 3 variants (`dag-viz`, `dag-viz-diff`, `dag-viz-recent`) + `dag-snapshot`. 6-7 process units each. Create `dsl/workflows/dag-viz.dag`. | — | M | |
+| **WM-1** | **Migrate `build-all` workflow to DSL**: Simplest workflow (1 core unit). Create `dsl/workflows/build-all.dag`. Verify the compiled DAG matches the Rust-constructed spec structurally. | — | S | **DONE** |
+| **WM-2** | **Migrate `makegen` workflow to DSL**: 4 process units. Create `dsl/workflows/makegen.dag`. | — | S | **DONE** |
+| **WM-3** | **Migrate `bootstrap` workflow to DSL**: 5 process units. Create `dsl/workflows/bootstrap.dag`. | — | M | **DONE** |
+| **WM-4** | **Migrate `pragma` workflow to DSL**: 7 process units, most complex single-tool workflow. Create `dsl/workflows/pragma.dag`. | — | M | **DONE** |
+| **WM-5** | **Migrate `deps` workflow to DSL**: 8 process units. Create `dsl/workflows/deps.dag`. | — | M | **DONE** |
+| **WM-6** | **Migrate `gist` workflow family to DSL**: 3 variants (`gist-snapshot`, `gist-diff`, `gist-recent`) sharing 9 process units. Create `dsl/workflows/gist.dag` with parameterized mode. | — | M | **DONE** |
+| **WM-7** | **Migrate `dag-viz` workflow family to DSL**: 3 variants (`dag-viz`, `dag-viz-diff`, `dag-viz-recent`) + `dag-snapshot`. 6-7 process units each. Create `dsl/workflows/dag-viz.dag`. | — | M | **DONE** |
 | **WM-8** | **Derive process unit claims from DSL annotations**: The DSL already has `@file(READ/WRITE)` annotations and the compiler extracts `ResourceUsage`. Generate `UnitClaim` entries from compiled pipeline metadata instead of the hardcoded 69-entry `default_process_unit_registry()`. | WM-1..WM-7 | M | |
 | **WM-9** | **Delete Rust workflow builders**: Remove `TOOL_WORKFLOWS` registry, all `*_workflow_spec()` builder functions, and `default_process_unit_registry()`. Wire workspace subdag discovery to load compiled DSL workflows. | WM-8 | M | |
 
@@ -250,9 +250,9 @@ Implemented: default-passthrough resolver, `Option`-returning inventory resolver
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **EX-1** | **Structured transport responses**: Extend service call declarations with `@parse` annotations so the transport layer parses shell output into typed records. Eliminates all ad-hoc `.lines()/.trim()/.strip_prefix()` parsing in bootstrap (4 ops) and codegen (2 ops). | — | M | |
-| **EX-2** | **Structured path and glob types**: Make `FilePath` a proper structured type with segments (not a string alias). Add `GlobPattern` type. Path construction, joining, and pattern building become type-safe operations. Eliminates all path string manipulation in pragma and codegen (~8 string ops). | — | M | |
-| **EX-3** | **DSL data source declarations**: Add `data` blocks in DSL for declaring static typed configuration. Move clippy allowlist rules (8), dead code rules (5), allow lints (3), tool registry (12 tools), gitignore categories (14), and codegen path templates from Rust into `dsl/config/*.dag` files. Compiler resolves data references at compile time. No `dsl/config/` directory exists yet — create it. | — | M | |
+| **EX-1** | **Structured transport responses**: Extend service call declarations with `@parse` annotations so the transport layer parses shell output into typed records. Eliminates all ad-hoc `.lines()/.trim()/.strip_prefix()` parsing in bootstrap (4 ops) and codegen (2 ops). | — | M | **DONE** |
+| **EX-2** | **Structured path and glob types**: Make `FilePath` a proper structured type with segments (not a string alias). Add `GlobPattern` type. Path construction, joining, and pattern building become type-safe operations. Eliminates all path string manipulation in pragma and codegen (~8 string ops). | — | M | **DONE** |
+| **EX-3** | **DSL data source declarations**: Add `data` blocks in DSL for declaring static typed configuration. Move clippy allowlist rules (8), dead code rules (5), allow lints (3), tool registry (12 tools), gitignore categories (14), and codegen path templates from Rust into `dsl/config/*.dag` files. Compiler resolves data references at compile time. No `dsl/config/` directory exists yet — create it. | — | M | **DONE** |
 
 #### Phase 3b: Expression lowering (the real gap)
 
@@ -260,9 +260,9 @@ The parser has the syntax. The gap is making it executable. These tasks focus on
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **EX-4** | **Lower collection method calls**: Parser has `List`, `Pipe`, `Lambda`, `Call`. Lowering must generate executable nodes for `.map(fn)`, `.filter(fn)`, `.sort()`, `.dedup()`, `.any(fn)`, `.all(fn)`, `.len()`, `.contains(item)`, `.join(sep)` when used in function bodies. Verify existing `CollectionOp` / `MapOp` / `FilterOp` etc. in `core/exec` are wired through. | — | M | |
-| **EX-5** | **Lower control flow in function bodies**: Parser has `If`, `Match`, `For`, `Let`, `BinOp`, `UnaryOp`. Verify the lowering pass emits correct `LoweredOp` graph structures for branching, iteration, and variable bindings within `fn` bodies. Existing `BranchOp`, `GuardOp`, `LoopOp` in `core/exec` may already cover this. | — | M | |
-| **EX-6** | **Lower string interpolation and formatting**: Parser has `StringInterp` with `Literal`/`Expr` parts. Ensure lowering emits nodes that evaluate interpolated expressions and concatenate results. This is the bridge to structured rendering. | — | S | |
+| **EX-4** | **Lower collection method calls**: Parser has `List`, `Pipe`, `Lambda`, `Call`. Lowering must generate executable nodes for `.map(fn)`, `.filter(fn)`, `.sort()`, `.dedup()`, `.any(fn)`, `.all(fn)`, `.len()`, `.contains(item)`, `.join(sep)` when used in function bodies. Verify existing `CollectionOp` / `MapOp` / `FilterOp` etc. in `core/exec` are wired through. | — | M | **DONE** |
+| **EX-5** | **Lower control flow in function bodies**: Parser has `If`, `Match`, `For`, `Let`, `BinOp`, `UnaryOp`. Verify the lowering pass emits correct `LoweredOp` graph structures for branching, iteration, and variable bindings within `fn` bodies. Existing `BranchOp`, `GuardOp`, `LoopOp` in `core/exec` may already cover this. | — | M | **DONE** |
+| **EX-6** | **Lower string interpolation and formatting**: Parser has `StringInterp` with `Literal`/`Expr` parts. Ensure lowering emits nodes that evaluate interpolated expressions and concatenate results. This is the bridge to structured rendering. | — | S | **DONE** |
 | **EX-7** | **Structured document rendering**: Add `render` functions producing typed document trees (`TextFile`/`Document`). Sections, lines, comments, and blank lines are structural blocks. Rendering engine handles formatting. Replaces all `format!()`/`write!()`/`.push_str()` in pragma (3 ops), makegen (2 ops), build (1 op), docgen (1 op). | EX-5, EX-6 | L | |
 | **EX-8** | **End-to-end function body test**: Write a `.dag` file with a `fn` that uses `if/else`, `match`, `for`, list ops, string interpolation, and record construction in its body. Compile, resolve, and execute it. This is the integration gate proving the full pipeline works before migrating real ops. | EX-4, EX-5, EX-6 | S | |
 

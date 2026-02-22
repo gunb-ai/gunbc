@@ -1822,35 +1822,37 @@ fn worker_replay_skips_completed_run_key() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
-        .current_dir(&root)
-        .output()
-        .expect("run first worker");
-    assert!(
-        first_worker.status.success(),
-        "first worker should succeed: {}",
-        String::from_utf8_lossy(&first_worker.stderr)
-    );
-    let first_payload: serde_json::Value =
-        serde_json::from_slice(&first_worker.stdout).expect("first worker output should be JSON");
-    assert_eq!(first_payload["executed_runs"][0], "intent-20260221-replay");
+    // Run 5 workers to progress through all stages (Idea→Design→DesignReview→
+    // Accepted→Implementation→Closed), then a 6th to execute the terminal no-op.
+    for _ in 0..6 {
+        let worker = ctx.command()
+            .arg("worker").arg("--worker-id").arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
 
-    let second_worker = ctx.command()
+    // 7th worker: the terminal stage run_key is already completed → replay skip
+    let replay_worker = ctx.command()
         .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
-        .expect("run second worker");
+        .expect("run replay worker");
     assert!(
-        second_worker.status.success(),
-        "second worker should succeed: {}",
-        String::from_utf8_lossy(&second_worker.stderr)
+        replay_worker.status.success(),
+        "replay worker should succeed: {}",
+        String::from_utf8_lossy(&replay_worker.stderr)
     );
-    let second_payload: serde_json::Value =
-        serde_json::from_slice(&second_worker.stdout).expect("second worker output should be JSON");
-    assert_eq!(second_payload["replay_skipped"][0], "intent-20260221-replay");
+    let replay_payload: serde_json::Value =
+        serde_json::from_slice(&replay_worker.stdout).expect("replay worker output should be JSON");
+    assert_eq!(replay_payload["replay_skipped"][0], "intent-20260221-replay");
     assert_eq!(
-        second_payload["ready_to_run"]
+        replay_payload["ready_to_run"]
             .as_array()
             .expect("ready_to_run should be an array")
             .len(),
@@ -1895,62 +1897,67 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
-        .current_dir(&root)
-        .output()
-        .expect("run first worker");
-    assert!(
-        first_worker.status.success(),
-        "first worker should succeed: {}",
-        String::from_utf8_lossy(&first_worker.stderr)
-    );
+    // Run 6 workers: 5 to advance through all stages + 1 to execute terminal Closed.
+    // After pass 6 the terminal claim slot (issue:9090:stage:closed) is held.
+    for _ in 0..6 {
+        let worker = ctx.command()
+            .arg("worker").arg("--worker-id").arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
 
     let claim_ledger_path = root.join("target/sdlc/claim-ledger.json");
     let first_claim_ledger: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&claim_ledger_path).expect("read first claim ledger"),
+        &std::fs::read_to_string(&claim_ledger_path).expect("read claim ledger after terminal"),
     )
-    .expect("parse first claim ledger");
+    .expect("parse claim ledger");
     let first_claims = first_claim_ledger["claims"]
         .as_object()
         .expect("claims should be object");
     let (slot_key, first_claim) = first_claims
         .iter()
-        .next()
-        .expect("first worker should persist claim entry");
+        .find(|(k, _)| k.contains("stage:closed"))
+        .expect("terminal worker should persist closed-stage claim entry");
     assert!(
         slot_key.contains("issue:9090"),
         "claim slot key should be scoped to requested issue id"
     );
     let first_expires_at = first_claim["lease_expires_at_epoch_ms"]
         .as_u64()
-        .expect("first lease expiry should be numeric");
+        .expect("lease expiry should be numeric");
 
-    let second_worker = ctx.command()
+    // 7th worker: replay-skips at terminal stage but heartbeats the claim
+    let heartbeat_worker = ctx.command()
         .arg("worker").arg("--worker-id").arg("test-worker-id")
         .current_dir(&root)
         .output()
-        .expect("run second worker");
+        .expect("run heartbeat worker");
     assert!(
-        second_worker.status.success(),
-        "second worker should succeed: {}",
-        String::from_utf8_lossy(&second_worker.stderr)
+        heartbeat_worker.status.success(),
+        "heartbeat worker should succeed: {}",
+        String::from_utf8_lossy(&heartbeat_worker.stderr)
     );
-    let second_payload: serde_json::Value =
-        serde_json::from_slice(&second_worker.stdout).expect("second worker output should be JSON");
-    assert_eq!(second_payload["replay_skipped"][0], "intent-20260221-heartbeat");
+    let heartbeat_payload: serde_json::Value =
+        serde_json::from_slice(&heartbeat_worker.stdout).expect("heartbeat worker output should be JSON");
+    assert_eq!(heartbeat_payload["replay_skipped"][0], "intent-20260221-heartbeat");
 
     let second_claim_ledger: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&claim_ledger_path).expect("read second claim ledger"),
+        &std::fs::read_to_string(&claim_ledger_path).expect("read claim ledger after heartbeat"),
     )
-    .expect("parse second claim ledger");
+    .expect("parse claim ledger after heartbeat");
     let second_claim = &second_claim_ledger["claims"][slot_key];
     let second_expires_at = second_claim["lease_expires_at_epoch_ms"]
         .as_u64()
-        .expect("second lease expiry should be numeric");
+        .expect("heartbeat lease expiry should be numeric");
     assert!(
         second_expires_at >= first_expires_at,
-        "second worker pass should heartbeat and extend/refresh claim lease"
+        "heartbeat worker pass should extend/refresh claim lease"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
@@ -2225,6 +2232,60 @@ fn worker_executes_idea_to_design_stage() {
             .iter()
             .any(|value| value == "intent-idea-to-design"),
         "worker should execute the idea->design stage"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_multi_pass_progresses_stage_to_closed() {
+    let ctx = CliTestContext::new("worker_multi_pass_progression", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-multi-pass",
+        "intent-multi-pass",
+        Some(42),
+    );
+
+    let intake = ctx.command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    for _ in 0..5 {
+        let worker = ctx.command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    let ledger_path = root.join("target/sdlc/intake-ledger.json");
+    let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
+    let ledger: serde_json::Value =
+        serde_json::from_str(&ledger_raw).expect("parse intake ledger");
+    assert_eq!(
+        ledger["entries"]["intent-multi-pass"]["stage"],
+        "Closed",
+        "worker multi-pass progression should reach terminal closed stage"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");

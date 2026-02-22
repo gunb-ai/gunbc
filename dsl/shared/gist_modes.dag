@@ -66,7 +66,7 @@ func gist_upload(markdown: String, branch: String, base_ref: CommitSha?) -> { ur
   cred = credential_chain(
     runtime: detect_runtime(),
     audience: "sigstore",
-    project: "gunbc",
+    project_id: "gunbc",
     secret_name: "github-token",
     source_id: "gist",
     required_scopes: ["gist"],

@@ -97,7 +97,7 @@ service FileSignalStore : SignalStore {
   }
 
   operation emit {
-    input { signal: Json }
+    input { signal: Signal }
     output { emitted: Bool }
     @rest(POST, "/v1/sdlc/signals/emit")
     @idempotent
@@ -105,7 +105,7 @@ service FileSignalStore : SignalStore {
   }
 
   operation consume {
-    input { signal_types: List<String>, limit: Int? }
+    input { signal_types: List<SignalType>, limit: Int? }
     output { signals: List<Json> }
     @rest(POST, "/v1/sdlc/signals/consume")
     @mock_response(status: 200, body: { "signals": [] })
@@ -125,7 +125,7 @@ service InlineArtifactStore : ArtifactStore {
   // For local development only; cloud_run uses GcsArtifactStore.
 
   operation store {
-    input { artifact_id: String, payload: Json, content_hash: String }
+    input { artifact_id: String, payload: ArtifactPayload, content_hash: String }
     output { stored: Bool, conflict: Bool }
     @rest(POST, "/v1/sdlc/artifacts/store")
     @idempotent
@@ -134,7 +134,7 @@ service InlineArtifactStore : ArtifactStore {
 
   operation retrieve {
     input { artifact_id: String }
-    output { found: Bool, payload: Json?, content_hash: String? }
+    output { found: Bool, payload: ArtifactPayload?, content_hash: String? }
     @rest(GET, "/v1/sdlc/artifacts/{artifact_id}")
     @readonly
     @mock_response(status: 200, body: { "found": false, "payload": null, "content_hash": null })

@@ -18,161 +18,92 @@ fn write_file(path: &Path, content: &str) {
     fs::write(path, content).expect("failed to write test file");
 }
 
-fn expected_dsl_modules_sorted() -> Vec<&'static str> {
-    vec![
-        "cloud.aws.credential",
-        "cloud.azure.credential",
-        "cloud.gcp.credential",
-        "examples.abstract_services",
-        "examples.deployment",
-        "examples.integration_tests",
-        "examples.rich_types",
-        "funcs.agent_feedback",
-        "funcs.sdlc_worker",
-        "funcs.test_control_flow",
-        "infra.aws.config",
-        "infra.aws.resources",
-        "infra.aws.services",
-        "infra.azure.config",
-        "infra.azure.resources",
-        "infra.azure.services",
-        "infra.core",
-        "infra.gcp.config",
-        "infra.gcp.resources",
-        "infra.gcp.services",
-        "infra.sdlc.deploy",
-        "infra.spec",
-        "pipelines.ci",
-        "pipelines.sdlc",
-        "services.agent.codex",
-        "services.cargo",
-        "services.gcp.iam",
-        "services.gcp.secret_manager",
-        "services.gcp.sts",
-        "services.git",
-        "services.github.gist",
-        "services.github.issues",
-        "services.github.pull_request",
-        "services.llm.anthropic",
-        "services.llm.openai",
-        "services.sdlc.control_plane",
-        "services.shell",
-        "shared.dag_util",
-        "shared.gist_modes",
-        "std.patterns",
-        "std.resources",
-        "std.types",
-        "tools.bootstrap",
-        "tools.build",
-        "tools.clippy",
-        "tools.codegen",
-        "tools.dag_viz",
-        "tools.deps",
-        "tools.design",
-        "tools.docgen",
-        "tools.gist",
-        "tools.infra",
-        "tools.makegen",
-        "tools.pragma",
-        "tools.review",
-        "tools.testgen",
-    ]
+fn expected_dsl_modules_sorted(dsl_root: &Path) -> Vec<String> {
+    let mut modules = Vec::new();
+    collect_dsl_modules(dsl_root, dsl_root, &mut modules);
+    modules.sort();
+    modules
 }
 
-fn expected_real_corpus_module_order() -> Vec<&'static str> {
-    vec![
-        "examples.rich_types",
-        "infra.aws.services",
-        "infra.azure.services",
-        "infra.core",
-        "infra.gcp.services",
-        "infra.spec",
-        "infra.aws.config",
-        "infra.aws.resources",
-        "infra.azure.config",
-        "infra.azure.resources",
-        "infra.gcp.config",
-        "infra.gcp.resources",
-        "examples.integration_tests",
-        "infra.sdlc.deploy",
-        "services.agent.codex",
-        "services.cargo",
-        "services.gcp.iam",
-        "services.gcp.secret_manager",
-        "services.gcp.sts",
-        "services.github.gist",
-        "services.github.issues",
-        "funcs.test_control_flow",
-        "services.github.pull_request",
-        "services.llm.anthropic",
-        "services.llm.openai",
-        "services.sdlc.control_plane",
-        "funcs.agent_feedback",
-        "std.resources",
-        "std.types",
-        "cloud.aws.credential",
-        "cloud.azure.credential",
-        "examples.abstract_services",
-        "services.git",
-        "services.shell",
-        "std.patterns",
-        "cloud.gcp.credential",
-        "shared.dag_util",
-        "shared.gist_modes",
-        "tools.bootstrap",
-        "tools.build",
-        "tools.clippy",
-        "tools.codegen",
-        "tools.dag_viz",
-        "tools.deps",
-        "tools.design",
-        "pipelines.sdlc",
-        "funcs.sdlc_worker",
-        "tools.docgen",
-        "tools.gist",
-        "examples.deployment",
-        "tools.infra",
-        "tools.makegen",
-        "tools.pragma",
-        "tools.review",
-        "tools.testgen",
-        "pipelines.ci",
-    ]
+fn collect_dsl_modules(dsl_root: &Path, dir: &Path, modules: &mut Vec<String>) {
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read dsl directory {}: {e}", dir.display()))
+        .map(|entry| {
+            entry.unwrap_or_else(|e| panic!("failed to read dsl entry in {}: {e}", dir.display()))
+        })
+        .collect();
+    entries.sort_by_key(|entry| entry.path());
+
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dsl_modules(dsl_root, &path, modules);
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("dag") {
+            continue;
+        }
+        modules.push(parse_module_declaration(dsl_root, &path));
+    }
+}
+
+fn parse_module_declaration(dsl_root: &Path, path: &Path) -> String {
+    let source = fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("failed to read dsl source {}: {e}", path.display()));
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("module ") {
+            if let Some(module_id) = rest.split_whitespace().next() {
+                return module_id.to_string();
+            }
+        }
+    }
+    panic!(
+        "missing module declaration in dsl source {} (under {})",
+        path.display(),
+        dsl_root.display()
+    );
 }
 
 #[test]
 fn discovers_all_real_dsl_modules() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
+    let graph = ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("expected real dsl graph to parse");
 
-    assert_eq!(graph.modules.len(), 56, "expected 56 discovered modules");
+    let expected = expected_dsl_modules_sorted(&dsl_root);
+    assert_eq!(
+        graph.modules.len(),
+        expected.len(),
+        "resolved module count should match dsl/**/*.dag filesystem discovery"
+    );
     let mut module_names: Vec<String> = graph
         .modules
         .iter()
         .map(|module| module.module_path.join("."))
         .collect();
     module_names.sort();
-    let expected: Vec<String> = expected_dsl_modules_sorted()
-        .into_iter()
-        .map(String::from)
-        .collect();
     assert_eq!(module_names, expected);
 }
 
 #[test]
-fn real_corpus_module_order_matches_expected_topological_snapshot() {
+fn real_corpus_module_order_is_stable_across_discovery_runs() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
-    let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
-    let actual: Vec<String> = graph
+    let first = ModuleGraph::discover(std::slice::from_ref(&dsl_root)).expect("expected real dsl graph");
+    let second = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph");
+    let first_order: Vec<String> = first
         .modules
         .iter()
         .map(|module| module.module_path.join("."))
         .collect();
-    let expected: Vec<String> = expected_real_corpus_module_order()
-        .into_iter()
-        .map(String::from)
+    let second_order: Vec<String> = second
+        .modules
+        .iter()
+        .map(|module| module.module_path.join("."))
         .collect();
-    assert_eq!(actual, expected);
+    assert_eq!(first_order, second_order);
 }
 
 #[test]

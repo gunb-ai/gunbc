@@ -1,0 +1,31 @@
+// workflows/makegen.dag
+//
+// Replaces WF19: tools.makegen workflow spec.
+//
+// Structure:
+// compilation_ensure -> codegen_ensure -> load_registry ->
+// render_makefile -> upsert_makefile -> report
+
+module workflows.makegen
+
+import tools.compilation { compilation_ensure }
+import tools.codegen { codegen_ensure }
+
+pipeline makegen {
+
+  stage compilation_ensure {
+    _ = compilation_ensure()
+  }
+
+  stage codegen_ensure [after compilation_ensure] {
+    _ = codegen_ensure()
+  }
+
+  stage load_registry [after codegen_ensure] {}
+
+  stage render_makefile [after load_registry] {}
+
+  stage upsert_makefile [after render_makefile] {}
+
+  stage report [after upsert_makefile] {}
+}

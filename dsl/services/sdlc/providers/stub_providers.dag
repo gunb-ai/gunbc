@@ -29,13 +29,13 @@ service stub.IssueProvider : IssueProvider {
 
   operation discover {
     input { labels: List<String>, state: IssueState? }
-    output { issues: Json }
+    output { issues: List<TrackedIssue> }
     @mock_response(status: 0, body: [])
   }
 
   operation get {
     input { id: NonEmptyStr }
-    output { issue: Json, found: Bool }
+    output { issue: TrackedIssue, found: Bool }
     @mock_response(status: 0, body: {
       "issue": {
         "id": "{id}",
@@ -54,7 +54,7 @@ service stub.IssueProvider : IssueProvider {
 
   operation create {
     input { title: NonEmptyStr, body: String, labels: List<String> }
-    output { issue: Json }
+    output { issue: TrackedIssue }
     @mock_response(status: 0, body: {
       "issue": {
         "id": "stub-1",
@@ -88,7 +88,7 @@ service stub.IssueProvider : IssueProvider {
 
   operation list_events {
     input { id: NonEmptyStr, since: String? }
-    output { events: Json }
+    output { events: List<IssueEvent> }
     @mock_response(status: 0, body: [])
   }
 }
@@ -185,14 +185,14 @@ service stub.SignalStore : SignalStore {
   @hermetic
 
   operation emit {
-    input { signal: Json }
+    input { signal: Signal }
     output { emitted: Bool }
     @mock_response(status: 0, body: { "emitted": true })
   }
 
   operation consume {
-    input { signal_types: List<String>, limit: Int? }
-    output { signals: Json }
+    input { signal_types: List<SignalType>, limit: Int? }
+    output { signals: List<Signal> }
     @mock_response(status: 0, body: { "signals": [] })
   }
 

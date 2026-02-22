@@ -115,8 +115,8 @@ service aws.Lambda {
   }
 
   operation Invoke {
-    input { function_name: NonEmptyStr, payload: Json }
-    output { status_code: Int, payload: Json }
+    input { function_name: NonEmptyStr, payload: ArtifactPayload }
+    output { status_code: Int, payload: ArtifactPayload }
     @rest(POST, "/2015-03-31/functions/{function_name}/invocations")
   }
 
