@@ -1688,9 +1688,23 @@ fn discover_dsl_pipeline_modules() -> BTreeSet<String> {
     discover_dsl_modules(&dsl_pipelines_root(), "pipeline")
 }
 
-/// Manual tool definitions: tools that need Makefile targets but aren't in the
-/// tool registry (no `#[tool_target]` registration). Each entry declares its
-/// required DSL module — validation and registration are co-located.
+/// Manual tool definitions: tools that need Makefile targets but can't use
+/// standard `#[tool_target]` registration.
+///
+/// **Why these are manual** (CL7 investigation):
+///
+/// - `pragma`: Has a custom `Executable` impl (`PragmaEntrypointOp`) that
+///   inspects file-write transport responses.  Standard tool-target macros
+///   only support the generic passthrough path.
+///
+/// - `build`: Uses the historical Makefile target name `build-all` (not
+///   `build`), which can't be expressed via the standard short-name
+///   derivation.
+///
+/// Both are DSL-gated: the Makefile target is only generated when the
+/// corresponding `.dag` module is discovered.  If either can be made
+/// standard in the future, remove it from this list and add
+/// `#[tool_target]` to the binary.
 struct ManualToolDef {
     /// DSL module name (file stem in `dsl/tools/` or `dsl/pipelines/`).
     module: &'static str,
@@ -1709,7 +1723,6 @@ impl ManualToolDef {
 
 /// All manual tool definitions. Adding a new manual tool here automatically
 /// validates its DSL module exists and registers its Makefile target.
-// WF8: ci is now a core workflow (thin wrapper over gunbc-workflow), not a manual tool.
 const MANUAL_TOOL_DEFS: &[ManualToolDef] =
     &[ManualToolDef::tool("pragma"), ManualToolDef::tool("build")];
 

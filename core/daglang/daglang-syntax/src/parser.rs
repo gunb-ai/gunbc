@@ -1271,9 +1271,8 @@ impl Parser {
             self.expect(&TokenKind::Eq)?;
             let expr = self.parse_expr(0)?;
             props.push((name, expr));
-            if !self.eat(&TokenKind::Comma) {
-                break;
-            }
+            // Comma is optional; newline-separated properties are valid.
+            self.eat(&TokenKind::Comma);
         }
         Ok(props)
     }
