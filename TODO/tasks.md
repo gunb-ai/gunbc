@@ -115,8 +115,8 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | F: Codegen-first SDLC | **DONE** | — |
 | G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **DONE** | — |
-| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, M7, M15 |
-| 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19, TS-7, TS-3, TS-4 |
+| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, TS-7, TS-3, TS-4, M7, M15 |
+| 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19 |
 | 3: Modeling integrity | **QUEUED** | M8..M14, M16..M19 |
 
 ---
