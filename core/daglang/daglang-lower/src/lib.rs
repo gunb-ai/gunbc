@@ -462,6 +462,8 @@ struct ProfileBindingRegistry {
     by_short_name: HashMap<String, Option<String>>,
 }
 
+type ActiveProfileBindings = (String, HashMap<String, String>);
+
 /// Cloud provider classification for resource/interface resolution.
 ///
 /// Provider hints come from explicit DSL structure:
@@ -651,7 +653,7 @@ fn collect_profile_binding_registry(project: &TypedProject) -> ProfileBindingReg
 fn resolve_active_profile_bindings(
     active_profile: Option<&str>,
     registry: &ProfileBindingRegistry,
-) -> Result<Option<(String, HashMap<String, String>)>, LowerError> {
+) -> Result<Option<ActiveProfileBindings>, LowerError> {
     let Some(profile_name) = active_profile else {
         return Ok(None);
     };
@@ -3260,10 +3262,8 @@ fn add_control_flow_pattern_nodes(
         let node_id = format!("{}::cf_if_{index}", target.node_id);
 
         if site.has_else {
-            let true_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "true");
-            let false_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "false");
+            let true_dag = make_branch_body_dag(module_name, &target.node_id, index, "true");
+            let false_dag = make_branch_body_dag(module_name, &target.node_id, index, "false");
             let branch_node = BranchBuilder::new(node_id.clone())
                 .with_true_branch(true_dag)
                 .with_false_branch(false_dag)
@@ -3271,8 +3271,7 @@ fn add_control_flow_pattern_nodes(
                 .build();
             builder.add_node(branch_node);
         } else {
-            let then_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "then");
+            let then_dag = make_branch_body_dag(module_name, &target.node_id, index, "then");
             let if_node = IfBuilder::new(node_id.clone())
                 .with_then(then_dag)
                 .with_output("result", "Any")
@@ -3982,9 +3981,7 @@ fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOu
         let parsing = match mode.as_str() {
             "trim" | "trim_stdout" | "string" => Some(ShellOutputParsing::TrimStdout),
             "split_lines" | "lines" | "line_list" => Some(ShellOutputParsing::SplitLines),
-            "exit_code_bool" | "bool" | "success_bool" => {
-                Some(ShellOutputParsing::ExitCodeBool)
-            }
+            "exit_code_bool" | "bool" | "success_bool" => Some(ShellOutputParsing::ExitCodeBool),
             "success_stdout_stderr" | "triple" | "result" => {
                 Some(ShellOutputParsing::SuccessStdoutStderr)
             }
@@ -4398,7 +4395,7 @@ fn add_service_call_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     service_registry: &ServiceEndpointRegistry,
-    active_profile_bindings: Option<&(String, HashMap<String, String>)>,
+    active_profile_bindings: Option<&ActiveProfileBindings>,
     known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
@@ -4425,7 +4422,9 @@ fn add_service_call_edges(
                         .map(|usage| {
                             (
                                 usage.binding.clone(),
-                                canonical_type_name(resource_type_name(&usage.resource_type).as_str()),
+                                canonical_type_name(
+                                    resource_type_name(&usage.resource_type).as_str(),
+                                ),
                             )
                         })
                         .collect::<HashMap<_, _>>(),
@@ -4443,7 +4442,9 @@ fn add_service_call_edges(
                         .map(|usage| {
                             (
                                 usage.binding.clone(),
-                                canonical_type_name(resource_type_name(&usage.resource_type).as_str()),
+                                canonical_type_name(
+                                    resource_type_name(&usage.resource_type).as_str(),
+                                ),
                             )
                         })
                         .collect::<HashMap<_, _>>(),
@@ -5093,11 +5094,9 @@ fn resolve_profile_bound_service_endpoint(
     call_path: &[String],
     uses_types: &HashMap<String, String>,
     registry: &ServiceEndpointRegistry,
-    active_profile_bindings: Option<&(String, HashMap<String, String>)>,
+    active_profile_bindings: Option<&ActiveProfileBindings>,
 ) -> Option<ServiceTransportEndpoint> {
-    let Some((_, binds)) = active_profile_bindings else {
-        return None;
-    };
+    let (_, binds) = active_profile_bindings?;
     if call_path.len() != 2 {
         return None;
     }
@@ -6688,7 +6687,10 @@ func run() -> { out: String } {
             ServiceOperationSpec::Shell(shell) => shell,
             other => panic!("expected shell operation spec, got {other:?}"),
         };
-        assert_eq!(shell.argv_template[0], ArgvSegment::Literal("echo".to_string()));
+        assert_eq!(
+            shell.argv_template[0],
+            ArgvSegment::Literal("echo".to_string())
+        );
         assert_eq!(
             shell.argv_template[1],
             ArgvSegment::Literal("{value}:{suffix}".to_string())
