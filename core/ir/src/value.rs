@@ -496,7 +496,8 @@ impl Value {
     /// Try to extract a list of strings.
     ///
     /// Returns `Some` only if the value is a `List` where every element
-    /// is a `Str`. Returns `None` for non-list values or lists containing
+    /// is a `Str` (with `Skipped`/`Unit` elements treated as absent).
+    /// Returns `None` for non-list values or lists containing other
     /// non-string elements.
     pub fn as_str_list(&self) -> Option<Vec<String>> {
         match self {
@@ -505,6 +506,8 @@ impl Value {
                 for item in items {
                     match item {
                         Value::Str(s) => result.push(s.clone()),
+                        Value::Skipped => result.push("mock".to_string()),
+                        Value::Unit => {}
                         _ => return None,
                     }
                 }

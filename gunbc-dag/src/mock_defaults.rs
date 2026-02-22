@@ -176,7 +176,13 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
     type_id: &str,
 ) -> Value {
     if type_id != "TransportResponse" {
-        return gcp_field_value(type_id, port_name).unwrap_or_else(|| default_value_for_type(type_id));
+        if let Some(value) = gcp_field_value(type_id, port_name) {
+            return value;
+        }
+        if let Some(value) = heuristic_value_for_slot(type_id, port_name) {
+            return value;
+        }
+        return default_value_for_type(type_id);
     }
 
     // Pick a response variant compatible with downstream parse nodes.
@@ -191,6 +197,18 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         }
     }
     default_shell_response()
+}
+
+fn heuristic_value_for_slot(type_id: &str, port_name: &str) -> Option<Value> {
+    if type_id == "Any"
+        && matches!(
+            port_name,
+            "items" | "files" | "contents_list" | "result" | "results"
+        )
+    {
+        return Some(Value::List(vec![Value::Str("mock".to_string())]));
+    }
+    None
 }
 
 fn response_candidate_satisfies_consumers<T: Executable + Clone + Send>(
@@ -323,6 +341,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
     let entrypoints = detect_entrypoints(&lowered.dag);
     for (node_id, port_name, type_id) in &entrypoints.entrypoint_ports {
         let value = gcp_field_value(type_id.0.as_str(), port_name.0.as_str())
+            .or_else(|| heuristic_value_for_slot(type_id.0.as_str(), port_name.0.as_str()))
             .unwrap_or_else(|| default_value_for_type(type_id.0.as_str()));
         spec = spec.input_mock(node_id.0.as_str(), port_name.0.as_str(), value);
     }
