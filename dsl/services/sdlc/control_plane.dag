@@ -15,10 +15,17 @@
 // The transport is REST against a local endpoint. In production, this
 // is a sidecar or Cloud Run service that wraps the chosen backend.
 // The DSL pipeline doesn't change when the backend swaps.
+//
+// Implements: interfaces.claim_store.ClaimStore (AcquireStageClaim, HeartbeatStageClaim, ReleaseStageClaim)
+//             interfaces.outcome_ledger.OutcomeLedger (UpsertStageOutcome, GetStageOutcome)
+// Profiles: local (FileClaimStore + FileOutcomeLedger via REST sidecar)
 
 module services.sdlc.control_plane
 
-service sdlc.ControlPlane {
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
+
+service sdlc.ControlPlane : ClaimStore, OutcomeLedger {
   @endpoint("http://127.0.0.1:8787")
 
   operation AcquireStageClaim {

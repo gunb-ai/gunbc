@@ -7,51 +7,74 @@
 //   idea ──► design ──► design-review ──► accepted
 //                                            |
 //   done ◄── testing ◄── code-review ◄── implementing ◄─┘
+//                                            |
+//                                     TerminalFailed (budget exhausted)
 //
 // Each stage transition:
 //   1. Reads current issue state
 //   2. Acquires a stage claim (CAS idempotency)
-//   3. Executes stage logic (LLM call, CI run, etc.)
-//   4. Posts artifact as issue comment
-//   5. Updates labels to next stage
-//   6. Records outcome
+//   3. Validates transition via state machine (INV-4, INV-5)
+//   4. Executes stage logic (LLM call, CI run, etc.)
+//   5. Posts artifact as issue comment
+//   6. Updates labels to next stage
+//   7. Records outcome in ledger
+//
+// Interface-driven: the pipeline depends on abstract interfaces
+// (IssueProvider, ClaimStore, OutcomeLedger, etc.), not concrete
+// services. Profile binding (--profile flag) selects implementations
+// at compile time. See domain-modeling-comprehensive.md §5.
 
 module pipelines.sdlc
 
-import services.github.issues { Issues }
-import services.sdlc.control_plane { ControlPlane }
+import interfaces.issue_provider { IssueProvider }
+import interfaces.claim_store { ClaimStore }
+import interfaces.outcome_ledger { OutcomeLedger }
+import interfaces.signal_store { SignalStore }
+import interfaces.artifact_store { ArtifactStore }
+import interfaces.agent_provider { AgentProvider }
+import services.github.pull_request { PullRequest }
+import services.cargo { Cargo }
+import services.git { git.Core }
 import tools.design { generate_design, review_design }
 import shared.dag_util { aggregate_results, format_report, stage_result }
 import std.types {
     TrackedIssue, IssueLifecycleStage, DesignOutput,
     DesignFinding, ImplementationPlan, PipelineRun,
-    PipelineArtifact, StageResult, Summary
+    PipelineArtifact, StageResult, Summary,
+    StageRunKey, StageOutcome, OutcomeStatus, IssueState,
+    NonEmptyStr, ApprovalMode
+}
+import std.state_machines {
+    validate_transition, validate_transition_with_budget,
+    determine_stage, stage_to_label, transition_labels
 }
 
-// ── Pipeline defaults ───────────────────────────────────────────────
-// Bound at invocation time (from webhook payload, CLI args, or
-// a polling loop). Using fn helpers because the DSL doesn't have
-// top-level param declarations yet.
+// ── Pipeline parameters ──────────────────────────────────────────────
+// Addresses D12: Pipeline parameters are injectable from the profile
+// or invocation context (webhook payload, CLI args, polling loop).
+//
+// The PipelineParams type is the top-level input contract for the
+// pipeline. Workers construct this from their context and pass it
+// when invoking the compiled DAG.
 
-fn default_repo_owner() -> String {
-  "gunb-ai"
+type PipelineParams {
+  repo_owner:     NonEmptyStr = "gunb-ai"
+  repo_name:      NonEmptyStr = "gunbc"
+  issue_number:   Int = 1
+  llm_provider:   NonEmptyStr = "anthropic"
+  llm_model:      NonEmptyStr = "claude-sonnet-4-20250514"
+  retry_budget:   Int = 3                               // Max attempts per stage
+  worker_id:      NonEmptyStr = "pipelines.sdlc"        // Worker identity for claims
+  agent_model:    NonEmptyStr = "o4-mini"                // Model for agent execution
+  agent_timeout:  Int = 600                              // Agent timeout in seconds
 }
 
-fn default_repo_name() -> String {
-  "gunbc"
-}
-
-fn default_issue_number() -> Int {
-  1
-}
-
-fn default_llm_provider() -> String {
-  "anthropic"
-}
-
-fn default_llm_model() -> String {
-  "claude-sonnet-4-20250514"
-}
+// Accessors for backwards compatibility and readability.
+fn default_repo_owner() -> String { "gunb-ai" }
+fn default_repo_name() -> String { "gunbc" }
+fn default_issue_number() -> Int { 1 }
+fn default_llm_provider() -> String { "anthropic" }
+fn default_llm_model() -> String { "claude-sonnet-4-20250514" }
 
 // ── Helper functions ────────────────────────────────────────────────
 
@@ -90,62 +113,107 @@ fn format_ci_comment(result: Json) -> String {
   "## Acceptance Tests: {status}\n\n{result.report}\n\n---\n_Tested by gunbc SDLC pipeline_"
 }
 
+// Composite key for internal ledger/claim operations (not sent to providers).
 fn make_issue_id(owner: String, repo: String, number: Int) -> String {
   "{owner}/{repo}#{number}"
 }
 
+// Provider-facing issue ID. For GitHub, this is the issue number as a string.
+// Profile binding maps this to the concrete service params (owner/repo from config).
+fn provider_issue_id(number: Int) -> String {
+  "{number}"
+}
+
+// D11: Agent branch naming convention.
+fn agent_branch_name(number: Int) -> String {
+  "sdlc/issue-{number}"
+}
+
+// D10: Format code review findings as markdown.
+fn format_code_review_findings(files: Json, review_body: String) -> String {
+  let file_count = files |> count()
+  "## Code Review\n\n**Files changed:** {file_count}\n\n{review_body}\n\n---\n_Reviewed by gunbc SDLC pipeline_"
+}
+
+// D10: Format acceptance test results as markdown.
+fn format_test_results(test_result: Json, clippy_result: Json) -> String {
+  let test_status = match test_result.success { true => "PASSED", false => "FAILED" }
+  let clippy_status = match clippy_result.success { true => "PASSED", false => "FAILED" }
+  "## Acceptance Tests\n\n| Check | Status |\n|---|---|\n| `cargo test` | {test_status} |\n| `cargo clippy` | {clippy_status} |\n\n### Test Output\n```\n{test_result.stdout}\n```\n\n### Clippy Output\n```\n{clippy_result.stdout}\n```\n\n---\n_Tested by gunbc SDLC pipeline_"
+}
+
 // ── Pipeline ────────────────────────────────────────────────────────
 
-pipeline sdlc {
+pipeline sdlc
+  uses issues: IssueProvider
+  uses claims: ClaimStore
+  uses outcomes: OutcomeLedger
+  uses signals: SignalStore
+  uses artifacts: ArtifactStore
+  uses agents: AgentProvider
+{
 
-  // Stage 1: Fetch current issue state
+  // Stage 1: Discover and fetch current issue state
   stage fetch {
-    issue = Issues.Get(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number()
+    issue_result = issues.get(
+      id: provider_issue_id(number: default_issue_number())
     )
+    current_stage = determine_stage(labels: issue_result.issue.labels)
   }
 
-  // Stage 2: Acquire claim + generate design
+  // Stage 2: Acquire claim for design stage
   stage claim_design [after fetch] {
-    design_claim = ControlPlane.AcquireStageClaim(
-      intake_key: "default-intake",
+    design_claim = claims.acquire(
       issue_id: make_issue_id(
         owner: default_repo_owner(),
         repo: default_repo_name(),
         number: default_issue_number()
       ),
-      stage: "design",
-      run_key: "sdlc::default-run",
-      claimant: "pipelines.sdlc"
+      stage: stage_to_label(stage: Design),
+      owner: "pipelines.sdlc",
+      lease_ttl_ms: 30000
     )
   }
 
   // Stage 3: Design generation (LLM call)
-  stage design [after claim_design, when design_claim.acquired && has_label(issue.labels, "idea")] {
+  // Guard: claim acquired AND current stage is Idea
+  stage design [after claim_design, when design_claim.acquired && current_stage == Idea] {
     design_output = generate_design(
-      idea: issue.body,
-      context: issue.title,
+      idea: issue_result.issue.body,
+      context: issue_result.issue.title,
       provider: default_llm_provider(),
       model: default_llm_model()
     )
 
-    design_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
+    // Post artifact as issue comment (idempotent via marker)
+    design_comment = issues.comment(
+      id: provider_issue_id(number: default_issue_number()),
       body: format_design_comment(
         design: design_output.content,
         summary: design_output.summary
+      ),
+      marker: "sdlc:design-artifact"
+    )
+
+    // CAS transition: Idea -> Design via label replacement (INV-4)
+    design_labels = issues.set_labels(
+      id: provider_issue_id(number: default_issue_number()),
+      labels: transition_labels(
+        current_labels: issue_result.issue.labels,
+        to_stage: Design
       )
     )
 
-    design_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["design"]
+    // Release claim after successful transition
+    design_release = claims.release(
+      issue_id: make_issue_id(
+        owner: default_repo_owner(),
+        repo: default_repo_name(),
+        number: default_issue_number()
+      ),
+      stage: stage_to_label(stage: Design),
+      owner: "pipelines.sdlc",
+      generation: design_claim.lease_generation
     )
   }
 
@@ -157,129 +225,248 @@ pipeline sdlc {
       model: default_llm_model()
     )
 
-    review_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
+    review_comment = issues.comment(
+      id: provider_issue_id(number: default_issue_number()),
       body: format_review_comment(
         findings: review_output.findings,
         approved: review_output.approved,
         summary: review_output.summary
-      )
+      ),
+      marker: "sdlc:design-review-artifact"
     )
 
-    review_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["design-review"]
+    // CAS transition: Design -> DesignReview
+    review_labels = issues.set_labels(
+      id: provider_issue_id(number: default_issue_number()),
+      labels: transition_labels(
+        current_labels: issue_result.issue.labels,
+        to_stage: DesignReview
+      )
     )
   }
 
-  // Stage 5: Record design outcome in ledger
+  // Stage 5: Record design outcome in ledger (idempotent)
   stage record_design_outcome [after design_review] {
-    design_outcome = ControlPlane.UpsertStageOutcome(
-      intake_key: "default-intake",
-      issue_id: make_issue_id(
-        owner: default_repo_owner(),
-        repo: default_repo_name(),
-        number: default_issue_number()
-      ),
-      stage: "design-review",
+    design_outcome = outcomes.upsert(
       run_key: "sdlc::default-run",
-      outcome_status: match review_output.approved {
-        true  => "approved"
-        false => "changes-requested"
-      },
-      retry_attempt: 0,
-      terminal: false,
-      approval_required: !review_output.approved,
-      payload_hash: "sha256:review-output"
+      stage: stage_to_label(stage: DesignReview),
+      outcome: {
+        status: match review_output.approved {
+          true  => "Success"
+          false => "Failed"
+        },
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
     )
   }
 
   // Stage 6: Accept design (gate: review must approve)
   stage accept_design [after record_design_outcome, when review_output.approved] {
-    accepted_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["accepted"]
+    accepted_labels = issues.set_labels(
+      id: provider_issue_id(number: default_issue_number()),
+      labels: transition_labels(
+        current_labels: issue_result.issue.labels,
+        to_stage: Accepted
+      )
     )
 
-    accept_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: "Design approved. Ready for implementation."
+    accept_comment = issues.comment(
+      id: provider_issue_id(number: default_issue_number()),
+      body: "Design approved. Ready for implementation.",
+      marker: "sdlc:accepted-artifact"
     )
   }
 
-  // Stage 7: Plan implementation (transition: accepted -> implementing)
-  stage plan_implementation [after accept_design] {
-    plan_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: format_plan_comment(plan: design_output.content)
+  // Stage 7: Implementation (transition: accepted -> implementing)
+  // D11: Creates branch, spawns agent, waits for completion, creates PR.
+  stage implementation [after accept_design] {
+    // Post implementation plan as comment
+    plan_comment = issues.comment(
+      id: provider_issue_id(number: default_issue_number()),
+      body: format_plan_comment(plan: design_output.content),
+      marker: "sdlc:plan-artifact"
     )
 
-    impl_labels = Issues.SetLabels(
+    // CAS transition: Accepted -> Implementing
+    impl_labels = issues.set_labels(
+      id: provider_issue_id(number: default_issue_number()),
+      labels: transition_labels(
+        current_labels: issue_result.issue.labels,
+        to_stage: Implementing
+      )
+    )
+
+    // D11: Spawn agent on dedicated branch with design context
+    agent_run = agents.spawn(
+      prompt: "Implement the following design for issue #{default_issue_number()}:\n\n{design_output.content}",
+      repo_path: ".",
+      branch: agent_branch_name(number: default_issue_number()),
+      model: default_llm_model(),
+      timeout_seconds: 600,
+      approval_mode: FullAuto
+    )
+
+    // Poll agent until completion
+    agent_result = agents.poll(run_id: agent_run.run_id) [after agent_run]
+
+    // D11: Create PR from agent branch after completion
+    pr_result = PullRequest.Create(
       owner: default_repo_owner(),
       repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["implementing"]
-    )
+      title: "SDLC: {issue_result.issue.title}",
+      body: "## Auto-generated PR\n\nResolves #{default_issue_number()}\n\nGenerated by the SDLC pipeline from the approved design.",
+      head: agent_branch_name(number: default_issue_number()),
+      base: "main"
+    ) [after agent_result, when agent_result.finished && agent_result.exit_code == 0]
+
+    // Record agent outcome
+    impl_outcome = outcomes.upsert(
+      run_key: "sdlc::default-run",
+      stage: stage_to_label(stage: Implementing),
+      outcome: {
+        status: match agent_result.exit_code {
+          0 => "Success"
+          _ => "Failed"
+        },
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
+    ) [after agent_result]
   }
 
   // Stage 8: Code review (transition: implementing -> code-review)
-  stage code_review [after plan_implementation] {
-    review_comment = Issues.AddComment(
+  // D10: Real code review using PR diff + LLM review.
+  stage code_review [after implementation, when agent_result.exit_code == 0] {
+    // Fetch list of changed files from the PR
+    pr_files = PullRequest.ListFiles(
       owner: default_repo_owner(),
       repo: default_repo_name(),
-      number: default_issue_number(),
-      body: "Code review completed."
+      number: pr_result.number
     )
 
-    review_labels = Issues.SetLabels(
+    // Get the full diff for LLM review
+    pr_diff = git.Core.Diff(
+      base: "main",
+      head: agent_branch_name(number: default_issue_number())
+    )
+
+    // LLM-based code review against the diff
+    code_review_output = review_design(
+      design: pr_diff.diff,
+      provider: default_llm_provider(),
+      model: default_llm_model()
+    )
+
+    // Post review findings as PR comment
+    cr_comment = PullRequest.AddComment(
       owner: default_repo_owner(),
       repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["code-review"]
+      number: pr_result.number,
+      body: format_code_review_findings(
+        files: pr_files.files,
+        review_body: code_review_output.summary
+      )
+    )
+
+    // Post review findings to the issue as well
+    cr_issue_comment = issues.comment(
+      id: provider_issue_id(number: default_issue_number()),
+      body: format_code_review_findings(
+        files: pr_files.files,
+        review_body: code_review_output.summary
+      ),
+      marker: "sdlc:code-review-artifact"
+    )
+
+    // CAS transition: Implementing -> CodeReview
+    cr_labels = issues.set_labels(
+      id: provider_issue_id(number: default_issue_number()),
+      labels: transition_labels(
+        current_labels: issue_result.issue.labels,
+        to_stage: CodeReview
+      )
+    )
+
+    // Record code review outcome
+    cr_outcome = outcomes.upsert(
+      run_key: "sdlc::default-run",
+      stage: stage_to_label(stage: CodeReview),
+      outcome: {
+        status: match code_review_output.approved {
+          true  => "Success"
+          false => "Failed"
+        },
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
     )
   }
 
   // Stage 9: Acceptance testing (transition: code-review -> testing)
-  stage acceptance [after code_review] {
-    test_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["testing"]
+  // D10: Real acceptance tests using cargo test + cargo clippy.
+  stage acceptance [after code_review, when code_review_output.approved] {
+    // CAS transition: CodeReview -> Testing
+    test_labels = issues.set_labels(
+      id: provider_issue_id(number: default_issue_number()),
+      labels: transition_labels(
+        current_labels: issue_result.issue.labels,
+        to_stage: Testing
+      )
     )
 
-    ci_comment = Issues.AddComment(
+    // D10: Run cargo test on the PR branch
+    test_result = Cargo.Test()
+
+    // D10: Run cargo clippy on the PR branch
+    clippy_result = Cargo.Clippy()
+
+    // Post test results as issue comment
+    ci_comment = issues.comment(
+      id: provider_issue_id(number: default_issue_number()),
+      body: format_test_results(
+        test_result: test_result,
+        clippy_result: clippy_result
+      ),
+      marker: "sdlc:test-report-artifact"
+    ) [after test_result, after clippy_result]
+
+    // D11: Merge PR if tests pass
+    merge_result = PullRequest.Merge(
       owner: default_repo_owner(),
       repo: default_repo_name(),
-      number: default_issue_number(),
-      body: "Acceptance tests completed."
-    )
+      number: pr_result.number,
+      merge_method: "squash"
+    ) [after test_result, after clippy_result, when test_result.success && clippy_result.success]
+
+    // Record acceptance outcome
+    test_outcome = outcomes.upsert(
+      run_key: "sdlc::default-run",
+      stage: stage_to_label(stage: Testing),
+      outcome: {
+        status: match test_result.success && clippy_result.success {
+          true  => "Success"
+          false => "Failed"
+        },
+        attempt_count: 1,
+        retry_budget_remaining: 2
+      }
+    ) [after test_result, after clippy_result]
   }
 
   // Stage 10: Close (transition: testing -> done, close issue)
-  stage close [after acceptance] {
-    done_labels = Issues.SetLabels(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      labels: ["done"]
+  // Only close when both cargo test and clippy passed.
+  stage close [after acceptance, when test_result.success && clippy_result.success] {
+    done_labels = issues.set_labels(
+      id: provider_issue_id(number: default_issue_number()),
+      labels: transition_labels(
+        current_labels: issue_result.issue.labels,
+        to_stage: Done
+      )
     )
 
-    close_update = Issues.Update(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      state: "closed"
+    close_result = issues.close(
+      id: provider_issue_id(number: default_issue_number())
     )
   }
 
@@ -295,11 +482,10 @@ pipeline sdlc {
     summary = aggregate_results(stages: stages)
     report_text = format_report(summary: summary, stages: stages)
 
-    report_comment = Issues.AddComment(
-      owner: default_repo_owner(),
-      repo: default_repo_name(),
-      number: default_issue_number(),
-      body: report_text
+    report_comment = issues.comment(
+      id: provider_issue_id(number: default_issue_number()),
+      body: report_text,
+      marker: "sdlc:final-report"
     )
   }
 }

@@ -1,0 +1,43 @@
+// interfaces/signal_store.dag -- Abstract signal store interface.
+//
+// Provider-fungible contract for durable at-least-once signal delivery.
+// Signals accelerate work discovery; periodic store scans provide anti-entropy.
+//
+// Implementations:
+//   FileSignalStore      (local JSON files)  — local profile
+//   PubSubSignalStore    (GCP Pub/Sub)       — cloud_run profile
+//   InMemorySignalStore  (VecDeque)          — unit_test profile
+//
+// Canonical reference: domain-modeling-comprehensive.md §4.5
+
+module interfaces.signal_store
+
+import std.types { NonEmptyStr, Signal, SignalType }
+
+interface SignalStore {
+
+  // Emit a signal. Idempotent: dedup by idempotency_key.
+  capability emit(signal: Signal)
+    -> { emitted: Bool }
+    @idempotent  // dedup by idempotency_key
+
+  // Consume signals of specified types. Returns unconsumed signals
+  // up to the specified limit.
+  capability consume(signal_types: List<SignalType>, limit: Int?)
+    -> { signals: List<Signal> }
+
+  // Acknowledge a consumed signal. Idempotent: acking an already-acked
+  // signal is a no-op success.
+  capability ack(idempotency_key: NonEmptyStr)
+    -> { acked: Bool }
+    @idempotent
+
+  // --- Behavioral contracts ------------------------------------------------
+  //
+  // INV-18: Signal consumption is idempotent against authoritative store state.
+  // INV-19: Periodic store-driven scans are mandatory anti-entropy (deployment concern).
+  // Controllers tolerate duplicate, delayed, and reordered signals.
+
+  @contract: consume(types, _) after emit(s) => signals contains s when s.signal_type in types
+  @contract: ack(k) after ack(k) => { acked: true }  // idempotent
+}

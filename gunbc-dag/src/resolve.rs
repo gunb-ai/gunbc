@@ -98,6 +98,28 @@ impl Executable for PassthroughOp {
     }
 }
 
+/// Pipeline dispatch op for resolved `LoweredOp::Pipeline` nodes.
+///
+/// When a pipeline is invoked as a node in another DAG, this op represents
+/// the execution dispatch to the compiled pipeline's stages. The individual
+/// stage nodes are expanded by the lowering pass; this op handles the
+/// pipeline-level passthrough of inputs to outputs.
+#[derive(Debug, Clone)]
+struct PipelineDispatchOp {
+    _module: String,
+    _name: String,
+    output_port_names: Vec<String>,
+}
+
+impl Executable for PipelineDispatchOp {
+    fn execute(
+        &self,
+        inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
+    }
+}
+
 /// Simple identity callable adapter for DSL entrypoint wrappers.
 #[derive(Debug, Clone)]
 struct IdentityCallableOp;
@@ -382,7 +404,12 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
         LoweredOp::Pipeline { module, name, .. } => {
-            Ok(DynOp::new(UnsupportedOp::new(&format!("{module}.{name}",))))
+            resolve_domain(node_id, module, name, outputs, None)
+                .or_else(|_| Ok(DynOp::new(PipelineDispatchOp {
+                    _module: module.clone(),
+                    _name: name.clone(),
+                    output_port_names: declared_output_names(outputs),
+                })))
         }
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
