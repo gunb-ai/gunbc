@@ -28,13 +28,9 @@
 //! This crate owns `deps.toml` generation via `build_deps_generate_graph()`.
 //! The filename is centralized in `DEFAULT_MANIFEST_FILENAME`.
 //!
-//! # Mock Specifications
-//!
-//! Mock specs are in `graph_mock.rs` for test generation.
 
 #![deny(dead_code)]
 pub mod env;
-pub mod graph;
 pub mod installer;
 pub mod manifest;
 pub mod ops;
@@ -43,7 +39,6 @@ pub mod platform;
 pub mod tool_upsert;
 pub mod upsert;
 
-pub mod graph_mock;
 
 pub use env::{strict_dry_run_enabled, PlatformEnv, STRICT_DRY_RUN_ENV};
 pub use installer::{InstallMethod, InstallPlan, Installer};

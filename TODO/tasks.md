@@ -29,6 +29,13 @@
 
 ---
 
+## Current Open Work
+
+No active delivery-lane tasks remain in this sheet. Remaining items are unscheduled
+(`H1`, `H10`) or explicitly deferred (`DG1`, `S12-E`).
+
+---
+
 ## Lane 5: GraphIR Decommission (Exclusive Lane)
 
 **Goal**: Remove handwritten GraphIR authoring and route tool/workspace topology through DSL-only execution.
@@ -55,7 +62,7 @@ Final decision matrix:
 | AWS/Azure provider stacks + cargo ops | Drop now | Deleted legacy `graph.rs` / `graph_mock.rs` / `ops.rs`; unsupported facades retained where needed |
 | Cloud infra helper stacks | Migrate + delete redundant stacks | Deleted `lib/cloud-ops/src/infra_graph.rs` and `lib/cloud-ops/src/secret_provision_graph.rs`; moved `render_infra_spec_dot` into `infra_spec.rs` and secret provision builders into `infra_plan_apply.rs` |
 | Cloud/GCP/LLM/Review active graph stacks | Migrate in place (retain) | Kept as active typed graph builders and generic-interpreter execution path; provider drop-now policy enforced via fail-closed config/runtime checks |
-| Tool graph wrappers (`clippy`/`deps`/`gist`) | Migrate in place (retain) | Kept as DSL-backed wrappers with generated contract coverage and registry-backed testgen validation |
+| Tool graph wrappers (`clippy`/`deps`/`gist`) | Drop now | Deleted handwritten `graph.rs`/`graph_mock.rs`, removed `pub mod` declarations, deleted dead test files; DSL-only execution path |
 
 Verification after migration-wave closeout:
 

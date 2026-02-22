@@ -22,9 +22,6 @@
 //! Extension filtering is pushed into git via pathspecs, not separate filter nodes.
 //! All I/O happens through `TransportOps::Execute` boundary nodes.
 //!
-//! # Mock Specifications
-//!
-//! Mock specs are in `graph_mock.rs` for test generation.
 
 #![deny(dead_code)]
 
@@ -39,9 +36,7 @@ pub enum GistMode {
     Recent,
 }
 
-pub mod graph;
 
-pub mod graph_mock;
 
 // Re-export public API
 
