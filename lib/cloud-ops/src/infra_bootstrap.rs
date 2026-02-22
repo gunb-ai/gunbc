@@ -782,7 +782,7 @@ fn add_idempotent_stage(
             vec![
                 port("request", "TransportRequest"),
                 port("skip", "Bool"),
-                port("action", "String"),
+                port("action", "NonEmptyString"),
             ],
             InfraBootstrapGraphOp::Bootstrap(check_op),
         ),
@@ -808,9 +808,9 @@ fn add_idempotent_stage(
             format!("parse_{}", stage_name).as_str(),
             vec![
                 port("response", "TransportResponse"),
-                port("action", "String"),
+                port("action", "NonEmptyString"),
             ],
-            vec![port("ok", "Bool"), port("action", "String")],
+            vec![port("ok", "Bool"), port("action", "NonEmptyString")],
             InfraBootstrapGraphOp::Bootstrap(parse_op),
         ),
         &execute_apply,
@@ -858,7 +858,7 @@ pub fn build_wif_bootstrap_dag(
             Node::opaque(
                 "enable_apis",
                 vec![port("access_token", "String")],
-                vec![port("ok", "Bool"), port("note", "String")],
+            vec![port("ok", "Bool"), port("note", "NonEmptyString")],
                 InfraBootstrapGraphOp::Bootstrap(InfraBootstrapOps::EnableApis {
                     project: infra_spec.config.secrets_project.to_string(),
                     services: vec![
@@ -1008,7 +1008,7 @@ pub fn build_wif_bootstrap_dag(
             Node::opaque(
                 "bootstrap_summary",
                 vec![port("prev_ok", "Bool")],
-                vec![port("ok", "Bool"), port("report", "String")],
+                vec![port("ok", "Bool"), port("report", "NonEmptyString")],
                 InfraBootstrapGraphOp::Bootstrap(InfraBootstrapOps::SummarizeBootstrap {
                     environment: infra_spec.environment.to_string(),
                     project: project.clone(),

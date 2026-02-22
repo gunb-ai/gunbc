@@ -509,10 +509,23 @@ mod tests {
         let secret = Secret::static_value("super-secret-token");
         assert_eq!(format!("{secret:?}"), "Secret(***)");
         assert_eq!(format!("{secret}"), "***");
+        assert_eq!(secret.to_string(), "***");
         assert_eq!(
             secret.expose_plaintext_for_transport(),
             "super-secret-token"
         );
+    }
+
+    #[test]
+    fn credential_debug_never_exposes_secret_plaintext() {
+        let credential = Credential::new(
+            Secret::from_env_var("GITHUB_TOKEN", "ghp_top_secret"),
+            AuthScheme::Bearer,
+        );
+        let rendered = format!("{credential:?}");
+        assert!(rendered.contains("Credential"));
+        assert!(rendered.contains("Secret(***)"));
+        assert!(!rendered.contains("ghp_top_secret"));
     }
 
     #[test]

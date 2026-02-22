@@ -100,6 +100,46 @@ fn mock_env(mocks: &mut BoundaryMocks) {
         Value::Str("mock-oidc-token".to_string()),
     );
     mocks.set_value("gist_upload/bind_secret", "config", cloud_config.into());
+    mocks.set_value(
+        "gist_upload/cloud_credential/resolve_config",
+        "provider",
+        Value::Str("gcp".to_string()),
+    );
+    mocks.set_value(
+        "gist_upload/cloud_credential/resolve_config",
+        "runtime",
+        Value::Str("local".to_string()),
+    );
+    mocks.set_value(
+        "gist_upload/cloud_credential/resolve_config",
+        "audience",
+        Value::Str("//iam.googleapis.com/projects/123456/locations/global/workloadIdentityPools/mock/providers/github".to_string()),
+    );
+    mocks.set_value(
+        "gist_upload/cloud_credential/resolve_config",
+        "project_or_account",
+        Value::Str("mock-project".to_string()),
+    );
+    mocks.set_value(
+        "gist_upload/cloud_credential/resolve_config",
+        "secret",
+        Value::Str("github-token".to_string()),
+    );
+    mocks.set_value(
+        "gist_upload/cloud_credential/resolve_config",
+        "version",
+        Value::Unit,
+    );
+    mocks.set_value(
+        "gist_upload/cloud_credential/resolve_config",
+        "service_account_or_role",
+        Value::Str("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
+    );
+    mocks.set_value(
+        "gist_upload/cloud_credential/resolve_config",
+        "impersonate_account_or_role",
+        Value::Unit,
+    );
 
     let credential = Value::Map(std::collections::BTreeMap::from([
         (

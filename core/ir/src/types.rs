@@ -863,6 +863,11 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
         return value_backing_for_type_id(inner);
     }
 
+    // Capability carriers with custom Value envelope representation.
+    if type_id == "Credential" {
+        return ValueBacking::Map;
+    }
+
     let port_type = PortType::from(type_id);
     match port_type {
         PortType::String => ValueBacking::String,
@@ -1262,6 +1267,7 @@ mod tests {
             value_backing_for_type_id("GcpSubjectToken"),
             ValueBacking::String
         );
+        assert_eq!(value_backing_for_type_id("Credential"), ValueBacking::Map);
     }
 
     #[test]
@@ -1293,6 +1299,18 @@ mod tests {
         assert!(value_compatible_with_type_id(
             "Platform",
             &Value::Str("linux".into())
+        ));
+        let mut credential_map = BTreeMap::new();
+        credential_map.insert("token".to_string(), Value::Secret(crate::SecretString::new("tok")));
+        credential_map.insert("scheme".to_string(), Value::Str("bearer".into()));
+        credential_map.insert("source_type".to_string(), Value::Str("static".into()));
+        credential_map.insert(
+            "cap".to_string(),
+            Value::Secret(crate::SecretString::new("capability")),
+        );
+        assert!(value_compatible_with_type_id(
+            "Credential",
+            &Value::Map(credential_map)
         ));
         assert!(value_compatible_with_type_id("Any", &Value::Skipped));
 

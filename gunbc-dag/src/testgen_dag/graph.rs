@@ -108,7 +108,7 @@ fn add_upsert_chain(
     let generate = builder.add_root_node(Node::opaque(
         gen_id.as_str(),
         vec![],
-        vec![port("content", "String")],
+        vec![port("content", "NonEmptyString")],
         generate_op,
     ))?;
 

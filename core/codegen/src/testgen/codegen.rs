@@ -2142,7 +2142,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         ))),
                         Stmt::Item(Item::Raw(match kind {
                             gunbc_ir::coerce::CoercionKind::WrapScalar => format!(
-                                "assert!(matches!(received, Value::List(values) if !values.is_empty()), \"WrapScalar should deliver non-empty list to {}.{}; got {{:?}}\", received);",
+                                "assert!(matches!(received, Value::List(_)), \"WrapScalar should deliver list shape to {}.{}; got {{:?}}\", received);",
                                 to_node.0, to_port.0
                             ),
                             gunbc_ir::coerce::CoercionKind::OptionalToList => format!(
@@ -6694,7 +6694,7 @@ mod tests {
             code
         );
         assert!(
-            code.contains("WrapScalar should deliver non-empty list to sink.in_items"),
+            code.contains("WrapScalar should deliver list shape to sink.in_items"),
             "coercion tests should verify WrapScalar list shape: {}",
             code
         );

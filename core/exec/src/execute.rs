@@ -474,7 +474,9 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
     // Execute the node
     match &node.body {
         NodeBody::Opaque(op) => {
-            let outputs = op.execute(inputs)?;
+            let outputs = op
+                .execute(inputs)
+                .map_err(|e| e.context(format!("node '{}'", node.id.0)))?;
             enforce_runtime_file_guard(node, &outputs, file_guard_enabled)?;
             Ok(outputs)
         }
@@ -816,7 +818,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                     NodeBody::Opaque(op) => {
                         // Snapshot inputs for failure diagnostics
                         let saved_inputs = inputs.clone();
-                        match op.execute(inputs) {
+                        match op
+                            .execute(inputs)
+                            .map_err(|e| e.context(format!("node '{}'", node.id.0)))
+                        {
                             Ok(outputs) => {
                                 node_elapsed = node_start.elapsed();
                                 (outputs, false)
@@ -1723,7 +1728,8 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         let captured_inputs =
                             capture_log_inputs_for_node(node, &inputs, log_detail);
                         scope.spawn(move || {
-                            let result = op.execute(inputs);
+                            let result =
+                                op.execute(inputs).map_err(|e| e.context(format!("node '{}'", node_id_clone.0)));
                             let _ = tx.send(NodeExecutionResult {
                                 node_id: node_id_clone,
                                 started_at: node_start,

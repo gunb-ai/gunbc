@@ -11,7 +11,7 @@ use std::fmt::Write;
 
 use daglang_derive::TestObligations;
 use daglang_lower::LoweredOp;
-use gunbc_ir::Dag;
+use gunbc_ir::{value_backing_for_type_id, Dag, ValueBacking};
 
 use crate::computation::{classify_computation, Computation};
 use crate::EmittedFile;
@@ -76,7 +76,7 @@ pub fn emit_transport_mock_tests(backend: &str, dag: &Dag<LoweredOp>) -> Option<
                     .first()
                     .map(|p| p.type_id.0.as_str())
                     .unwrap_or("TransportResponse");
-                Some((node.id.0.clone(), typed_mock_for_response(response_type).to_string()))
+                Some((node.id.0.clone(), typed_mock_for_response(response_type)))
             }
             _ => None,
         })
@@ -146,13 +146,26 @@ pub fn emit_transport_mock_tests(backend: &str, dag: &Dag<LoweredOp>) -> Option<
 /// this returns a structured mock value based on the response port type.
 /// This integrates the cross-product witness concept from the type contract
 /// layer into the codegen test emission.
-fn typed_mock_for_response(response_type: &str) -> &'static str {
+fn typed_mock_for_response(response_type: &str) -> String {
     match response_type {
-        "TransportResponse" => r#"{"status":"ok","type":"transport"}"#,
-        "FileResponse" => r#"{"path":"/tmp/test.txt","success":true,"operation":"read"}"#,
-        "RestResponse" => r#"{"status":200,"body":{"ok":true}}"#,
-        "ShellResponse" => r#"{"exit_code":0,"stdout":"output"}"#,
-        _ => "mock-response",
+        "TransportResponse" => r#"{"status":"ok","type":"transport"}"#.to_string(),
+        "FileResponse" => r#"{"path":"/tmp/test.txt","success":true,"operation":"read"}"#.to_string(),
+        "RestResponse" => r#"{"status":200,"body":{"ok":true}}"#.to_string(),
+        "ShellResponse" => r#"{"exit_code":0,"stdout":"output"}"#.to_string(),
+        _ => typed_mock_fallback(response_type),
+    }
+}
+
+fn typed_mock_fallback(response_type: &str) -> String {
+    match value_backing_for_type_id(response_type) {
+        ValueBacking::String => "mock-response".to_string(),
+        ValueBacking::Bool => "true".to_string(),
+        ValueBacking::Int | ValueBacking::Float => "1".to_string(),
+        ValueBacking::Json => r#"{"ok":true}"#.to_string(),
+        ValueBacking::Map => r#"{"items":["mock-response"]}"#.to_string(),
+        ValueBacking::List | ValueBacking::Set => r#"["mock-response"]"#.to_string(),
+        ValueBacking::Unit => "null".to_string(),
+        ValueBacking::Bytes => "[1,2,3]".to_string(),
     }
 }
 
@@ -178,7 +191,7 @@ pub fn witness_mock_responses(response_type: &str) -> Vec<String> {
             r#"{"exit_code":0,"stdout":"ok"}"#.to_string(),
             r#"{"exit_code":1,"stderr":"error"}"#.to_string(),
         ],
-        _ => vec!["mock-response".to_string()],
+        _ => vec![typed_mock_fallback(response_type)],
     }
 }
 
@@ -629,6 +642,16 @@ mod tests {
         assert!(emit_transport_mock_tests("rust", &dag_without_transport_nodes()).is_none());
         assert!(emit_transport_mock_tests("go", &dag_without_transport_nodes()).is_none());
         assert!(emit_transport_mock_tests("c", &dag_without_transport_nodes()).is_none());
+    }
+
+    #[test]
+    fn typed_mock_for_response_fallback_uses_list_shape_for_string_list() {
+        assert_eq!(typed_mock_for_response("StringList"), r#"["mock-response"]"#);
+    }
+
+    #[test]
+    fn typed_mock_for_response_fallback_uses_string_shape_for_string() {
+        assert_eq!(typed_mock_for_response("String"), "mock-response");
     }
 
     // ===== E3.4-E3.6: TestSpec-based generation tests =====

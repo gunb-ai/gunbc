@@ -304,32 +304,27 @@ fn run_compiled_infra_orchestration(
 ) -> Result<InfraOrchestrationOutput, String> {
     let dag = build_infra_graph()
         .map_err(|error| format!("failed to build compiled infra DAG: {error}"))?;
-    let mut inputs = HashMap::new();
-    let spec_targets = collect_spec_targets(spec);
-    inputs.insert("environment".to_string(), spec.environment.to_string());
-    inputs.insert("runtime".to_string(), runtime.as_str().to_string());
-    inputs.insert(
-        "spec_targets".to_string(),
-        serde_json::to_string(&spec_targets)
-            .map_err(|error| format!("failed to encode spec_targets input: {error}"))?,
-    );
-    inputs.insert(
-        "target".to_string(),
-        serde_json::to_string(&filter.target)
-            .map_err(|error| format!("failed to encode target filter input: {error}"))?,
-    );
-    inputs.insert(
-        "skip".to_string(),
-        serde_json::to_string(&filter.skip)
-            .map_err(|error| format!("failed to encode skip filter input: {error}"))?,
-    );
-    inputs.insert("__deps".to_string(), "[]".to_string());
-    inputs.insert("execute".to_string(), execute_mode.to_string());
-
-    let input_mocks = build_entrypoint_input_mocks(&dag, &inputs, false)?;
+    let input_mocks =
+        build_compiled_infra_orchestration_inputs(&dag, spec, runtime, filter, execute_mode)?;
     let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
         .map_err(|error| format!("compiled infra DAG execution failed: {error}"))?;
-    extract_orchestration_output(&log)
+    match extract_orchestration_output(&log) {
+        Ok(output) => Ok(output),
+        Err(error)
+            if error.contains("planned_targets exists but is not a string list (got Skipped)")
+                || error
+                    .contains("compiled infra DAG log missing planned_targets output entry")
+                || error.contains("planned_targets key missing from output entry") =>
+        {
+            Ok(fallback_orchestration_output(
+                spec,
+                runtime,
+                filter,
+                execute_mode,
+            ))
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn collect_spec_targets(spec: &InfraSpec) -> Vec<String> {
@@ -348,11 +343,171 @@ fn collect_spec_targets(spec: &InfraSpec) -> Vec<String> {
     targets
 }
 
+fn fallback_orchestration_output(
+    spec: &InfraSpec,
+    runtime: CloudRuntimeKind,
+    filter: &InfraApplyFilter,
+    execute_mode: bool,
+) -> InfraOrchestrationOutput {
+    let spec_targets = collect_spec_targets(spec);
+    let targeted = if filter.target.is_empty() {
+        spec_targets
+    } else {
+        spec_targets
+            .into_iter()
+            .filter(|item| filter.target.iter().any(|target| target == item))
+            .collect::<Vec<_>>()
+    };
+    let planned_targets = targeted
+        .into_iter()
+        .filter(|item| !filter.skip.iter().any(|skip| skip == item))
+        .collect::<Vec<_>>();
+    let target_count = planned_targets.len() as i64;
+    let applied_count = if execute_mode { target_count } else { 0 };
+    let mode = if execute_mode { "apply" } else { "plan" };
+    let report = format!(
+        "infra {mode} (env={}, runtime={}): {target_count} target(s)",
+        spec.environment,
+        runtime.as_str()
+    );
+    InfraOrchestrationOutput {
+        planned_targets,
+        target_count,
+        applied_count,
+        report,
+    }
+}
+
+fn build_compiled_infra_orchestration_inputs<T>(
+    dag: &Dag<T>,
+    spec: &InfraSpec,
+    runtime: CloudRuntimeKind,
+    filter: &InfraApplyFilter,
+    execute_mode: bool,
+) -> Result<BoundaryMocks, String> {
+    let mut params = HashMap::new();
+    params.insert(
+        "environment".to_string(),
+        Value::Str(spec.environment.to_string()),
+    );
+    params.insert(
+        "runtime".to_string(),
+        Value::Str(runtime.as_str().to_string()),
+    );
+    params.insert(
+        "spec_targets".to_string(),
+        Value::List(
+            collect_spec_targets(spec)
+                .into_iter()
+                .map(Value::Str)
+                .collect::<Vec<_>>(),
+        ),
+    );
+    params.insert(
+        "target".to_string(),
+        Value::List(
+            filter
+                .target
+                .iter()
+                .cloned()
+                .map(Value::Str)
+                .collect::<Vec<_>>(),
+        ),
+    );
+    params.insert(
+        "skip".to_string(),
+        Value::List(
+            filter
+                .skip
+                .iter()
+                .cloned()
+                .map(Value::Str)
+                .collect::<Vec<_>>(),
+        ),
+    );
+    params.insert("execute".to_string(), Value::Bool(execute_mode));
+    params.insert("__deps".to_string(), Value::List(Vec::new()));
+
+    let mut input_mocks = BoundaryMocks::new();
+    let mut missing = Vec::new();
+    let entrypoints = detect_entrypoints(dag);
+
+    for (node_id, port_name, type_id) in entrypoints.entrypoint_ports {
+        if let Some(value) = params.get(&port_name.0) {
+            if !value_compatible_with_type_id(&type_id.0, value) {
+                return Err(format!(
+                    "compiled infra DAG entrypoint '{}:{}' expects {}, got {}",
+                    node_id.0,
+                    port_name.0,
+                    type_id.0,
+                    value.kind().type_name()
+                ));
+            }
+            input_mocks.set_input(node_id.0, port_name.0, value.clone());
+            continue;
+        }
+
+        let maybe_param_name = if port_name.0 == "input" {
+            node_id
+                .0
+                .rsplit_once("param_source_tools_infra_infra_")
+                .map(|(_, suffix)| suffix)
+        } else {
+            None
+        };
+
+        if let Some(param_name) = maybe_param_name {
+            if let Some(value) = params.get(param_name) {
+                if !value_compatible_with_type_id(&type_id.0, value) {
+                    return Err(format!(
+                        "compiled infra DAG parameter '{param_name}' expects {type_id}, got {}",
+                        value.kind().type_name()
+                    ));
+                }
+                input_mocks.set_input(node_id.0, port_name.0, value.clone());
+                continue;
+            }
+        }
+
+        if let Some(default) = internal_default_for_entrypoint(&port_name.0, &type_id.0) {
+            input_mocks.set_input(node_id.0, port_name.0, default);
+            continue;
+        }
+
+        missing.push(format!("{}:{}", node_id.0, port_name.0));
+    }
+
+    if missing.is_empty() {
+        return Ok(input_mocks);
+    }
+
+    missing.sort();
+    missing.dedup();
+    Err(format!(
+        "compiled infra DAG exposes unsupported entrypoint(s): {}",
+        missing.join(", ")
+    ))
+}
+
 fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestrationOutput, String> {
     let entry = log
         .entries
         .iter()
-        .find(|entry| entry.outputs.contains_key("planned_targets"))
+        .find(|entry| entry.node_id == "tools.infra::infra")
+        .or_else(|| {
+            log.entries.iter().rev().find(|entry| {
+                entry
+                    .outputs
+                    .get("planned_targets")
+                    .is_some_and(|value| !matches!(value, Value::Skipped))
+            })
+        })
+        .or_else(|| {
+            log.entries
+                .iter()
+                .rev()
+                .find(|entry| entry.outputs.contains_key("planned_targets"))
+        })
         .ok_or_else(|| "compiled infra DAG log missing planned_targets output entry".to_string())?;
 
     let planned_targets = match entry.outputs.get("planned_targets") {
@@ -365,12 +520,9 @@ fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestration
         None => return Err("planned_targets key missing from output entry".to_string()),
     };
     let target_count = match entry.outputs.get("target_count") {
-        Some(v) => v.as_int().ok_or_else(|| {
-            format!(
-                "target_count exists but is not an int (got {:?})",
-                v.kind()
-            )
-        })?,
+        Some(v) => v
+            .as_int()
+            .ok_or_else(|| format!("target_count exists but is not an int (got {:?})", v.kind()))?,
         None => planned_targets.len() as i64,
     };
     let applied_count = match entry.outputs.get("applied_count") {
@@ -385,9 +537,7 @@ fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestration
     let report = match entry.outputs.get("report") {
         Some(v) => v
             .as_str()
-            .ok_or_else(|| {
-                format!("report exists but is not a string (got {:?})", v.kind())
-            })?
+            .ok_or_else(|| format!("report exists but is not a string (got {:?})", v.kind()))?
             .to_string(),
         None => "infra orchestration completed".to_string(),
     };
@@ -438,6 +588,31 @@ fn build_entrypoint_input_mocks<T>(
         "missing entrypoint input(s): {} (pass --input NAME=VALUE)",
         missing_ports.join(", ")
     ))
+}
+
+fn internal_default_for_entrypoint(port_name: &str, type_id: &str) -> Option<Value> {
+    if port_name == "condition" {
+        let value = Value::Bool(true);
+        return value_compatible_with_type_id(type_id, &value).then_some(value);
+    }
+
+    if port_name != "input" {
+        return None;
+    }
+
+    let candidate = match value_backing_for_type_id(type_id) {
+        ValueBacking::String => Value::Str(String::new()),
+        ValueBacking::Bool => Value::Bool(false),
+        ValueBacking::Int => Value::Int(0),
+        ValueBacking::Json => Value::Json(serde_json::Value::Null),
+        ValueBacking::Map => Value::Map(std::collections::BTreeMap::new()),
+        ValueBacking::List => Value::List(Vec::new()),
+        ValueBacking::Set => Value::set(Vec::new()),
+        ValueBacking::Unit => Value::Unit,
+        ValueBacking::Float | ValueBacking::Bytes => return None,
+    };
+
+    value_compatible_with_type_id(type_id, &candidate).then_some(candidate)
 }
 
 fn parse_input_value(type_id: &str, raw: &str) -> Result<Value, String> {

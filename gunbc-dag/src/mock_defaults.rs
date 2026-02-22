@@ -22,6 +22,8 @@ fn default_fs_handle() -> Value {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GcpFieldKind {
+    Provider,
+    Runtime,
     Audience,
     Project,
     Secret,
@@ -33,6 +35,7 @@ enum GcpFieldKind {
 fn typed_gcp_field_kind(type_id: &str) -> Option<GcpFieldKind> {
     match type_id {
         // Preferred modeling path: refined type aliases encode intent directly.
+        "Platform" => Some(GcpFieldKind::Provider),
         "OidcAudience" | "WifAudience" => Some(GcpFieldKind::Audience),
         "GcpProjectId" => Some(GcpFieldKind::Project),
         "GcpSecretId" => Some(GcpFieldKind::Secret),
@@ -45,6 +48,8 @@ fn typed_gcp_field_kind(type_id: &str) -> Option<GcpFieldKind> {
 
 fn gcp_field_value_for_kind(kind: GcpFieldKind) -> Value {
     match kind {
+        GcpFieldKind::Provider => Value::Str("gcp".to_string()),
+        GcpFieldKind::Runtime => Value::Str("local".to_string()),
         GcpFieldKind::Audience => Value::Str("mock-audience".to_string()),
         GcpFieldKind::Project => Value::Str("mock-project".to_string()),
         GcpFieldKind::Secret => Value::Str("mock-secret".to_string()),
@@ -59,6 +64,8 @@ fn gcp_field_value_for_kind(kind: GcpFieldKind) -> Value {
 /// Legacy compatibility path while graph ports migrate to refined type aliases.
 fn legacy_gcp_field_value_by_name(port_name: &str) -> Option<Value> {
     match port_name {
+        "provider" => Some(gcp_field_value_for_kind(GcpFieldKind::Provider)),
+        "runtime" => Some(gcp_field_value_for_kind(GcpFieldKind::Runtime)),
         "audience" => Some(gcp_field_value_for_kind(GcpFieldKind::Audience)),
         "project" => Some(gcp_field_value_for_kind(GcpFieldKind::Project)),
         "secret" | "secret_name" => Some(gcp_field_value_for_kind(GcpFieldKind::Secret)),
@@ -169,6 +176,12 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
     type_id: &str,
 ) -> Value {
     if type_id != "TransportResponse" {
+        if let Some(value) = gcp_field_value(type_id, port_name) {
+            return value;
+        }
+        if let Some(value) = heuristic_value_for_slot(type_id, port_name) {
+            return value;
+        }
         return default_value_for_type(type_id);
     }
 
@@ -184,6 +197,18 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         }
     }
     default_shell_response()
+}
+
+fn heuristic_value_for_slot(type_id: &str, port_name: &str) -> Option<Value> {
+    if type_id == "Any"
+        && matches!(
+            port_name,
+            "items" | "files" | "contents_list" | "result" | "results"
+        )
+    {
+        return Some(Value::List(vec![Value::Str("mock".to_string())]));
+    }
+    None
 }
 
 fn response_candidate_satisfies_consumers<T: Executable + Clone + Send>(
@@ -316,6 +341,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
     let entrypoints = detect_entrypoints(&lowered.dag);
     for (node_id, port_name, type_id) in &entrypoints.entrypoint_ports {
         let value = gcp_field_value(type_id.0.as_str(), port_name.0.as_str())
+            .or_else(|| heuristic_value_for_slot(type_id.0.as_str(), port_name.0.as_str()))
             .unwrap_or_else(|| default_value_for_type(type_id.0.as_str()));
         spec = spec.input_mock(node_id.0.as_str(), port_name.0.as_str(), value);
     }

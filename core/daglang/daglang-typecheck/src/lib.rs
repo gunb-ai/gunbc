@@ -25,12 +25,14 @@ use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
+    Annotation, Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr,
+    UsesClause,
 };
 use daglang_syntax::ast_utils::{
     canonical_type_name, resource_type_name, service_call_lookup_keys,
     should_track_call_name as should_validate_call_name, type_expr_to_string, walk_stmts,
 };
+use gunbc_ir::{ContentEncoding, Predicate, TypeId, TypeOp};
 
 /// A typechecked project snapshot.
 #[derive(Debug)]
@@ -2972,6 +2974,23 @@ fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<BodyServiceC
     });
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct ProcessedTypeAnnotations {
+    predicates: Vec<Predicate>,
+    type_ops: Vec<TypeOp>,
+    file_types: HashMap<String, ContentEncoding>,
+}
+
+impl ProcessedTypeAnnotations {
+    fn new() -> Self {
+        Self {
+            predicates: Vec::new(),
+            type_ops: Vec::new(),
+            file_types: HashMap::new(),
+        }
+    }
+}
+
 fn validate_type_expr(
     ty: &TypeExpr,
     known_types: &HashSet<String>,
@@ -3029,64 +3048,8 @@ fn validate_type_expr(
                 generic_arity_registry,
                 context,
             ));
-            for annotation in annotations {
-                match annotation.name.as_str() {
-                    "range" => {
-                        let (min, max) = extract_range_bounds(&annotation.args);
-                        if let (Some(min), Some(max)) = (min, max) {
-                            if min > max {
-                                errors.push(TypeError::UnsatisfiableRefinement {
-                                    ty: type_expr_to_string(inner),
-                                    constraint: format!("range min {min} exceeds max {max}"),
-                                });
-                            }
-                        }
-                    }
-                    "content" => {
-                        // @content(encoding) — validates encoding is a known ContentEncoding variant
-                        if let Some(encoding_name) = annotation.args.first().and_then(expr_as_string) {
-                            let valid = matches!(
-                                encoding_name.as_str(),
-                                "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown"
-                            );
-                            if !valid {
-                                errors.push(TypeError::UnsatisfiableRefinement {
-                                    ty: type_expr_to_string(inner),
-                                    constraint: format!(
-                                        "unknown content encoding `{encoding_name}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
-                                    ),
-                                });
-                            }
-                        }
-                    }
-                    "brand" => {
-                        // @brand(name) — validates the brand name is non-empty
-                        if annotation.args.is_empty() {
-                            errors.push(TypeError::UnsatisfiableRefinement {
-                                ty: type_expr_to_string(inner),
-                                constraint: "@brand requires a name argument".to_string(),
-                            });
-                        }
-                    }
-                    "non_empty" => {
-                        // @non_empty — no arguments needed, just recognized
-                    }
-                    "pattern" => {
-                        // @pattern(regex) — validates a pattern argument is present
-                        if annotation.args.is_empty() {
-                            errors.push(TypeError::UnsatisfiableRefinement {
-                                ty: type_expr_to_string(inner),
-                                constraint: "@pattern requires a regex argument".to_string(),
-                            });
-                        }
-                    }
-                    "file_types" => {
-                        // @file_types { text: [...], binary: [...] } — recognized, validated at lower level
-                    }
-                    _ => {
-                        // Unknown annotations are silently accepted for forward compatibility
-                    }
-                }
+            if let Err(annotation_errors) = process_type_annotations(inner, annotations) {
+                errors.extend(annotation_errors);
             }
         }
         TypeExpr::Record(fields) => {
@@ -3101,6 +3064,169 @@ fn validate_type_expr(
         }
     }
     errors
+}
+
+fn process_type_annotations(
+    inner: &TypeExpr,
+    annotations: &[Annotation],
+) -> Result<ProcessedTypeAnnotations, Vec<TypeError>> {
+    let mut processed = ProcessedTypeAnnotations::new();
+    let mut errors = Vec::new();
+
+    for annotation in annotations {
+        match annotation.name.as_str() {
+            "range" => {
+                let (min, max) = extract_range_bounds(&annotation.args);
+                if let (Some(min), Some(max)) = (min, max) {
+                    if min > max {
+                        errors.push(TypeError::UnsatisfiableRefinement {
+                            ty: type_expr_to_string(inner),
+                            constraint: format!("range min {min} exceeds max {max}"),
+                        });
+                    } else {
+                        processed.predicates.push(Predicate::InRange { min, max });
+                    }
+                }
+            }
+            "content" => match annotation.args.first().and_then(expr_as_string) {
+                Some(encoding_name) => {
+                    if let Some(encoding) = parse_content_encoding(encoding_name.as_str()) {
+                        processed.predicates.push(Predicate::Content(encoding));
+                    } else {
+                        errors.push(TypeError::UnsatisfiableRefinement {
+                            ty: type_expr_to_string(inner),
+                            constraint: format!(
+                                "unknown content encoding `{encoding_name}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
+                            ),
+                        });
+                    }
+                }
+                None => {
+                    errors.push(TypeError::UnsatisfiableRefinement {
+                        ty: type_expr_to_string(inner),
+                        constraint: "@content requires an encoding argument".to_string(),
+                    });
+                }
+            },
+            "brand" => match annotation.args.first().and_then(expr_as_string) {
+                Some(brand_name) if !brand_name.trim().is_empty() => {
+                    processed.type_ops.push(TypeOp::Brand(
+                        brand_name,
+                        TypeId::from(type_expr_to_string(inner).as_str()),
+                    ));
+                }
+                _ => {
+                    errors.push(TypeError::UnsatisfiableRefinement {
+                        ty: type_expr_to_string(inner),
+                        constraint: "@brand requires a name argument".to_string(),
+                    });
+                }
+            },
+            "non_empty" => {
+                if !annotation.args.is_empty() {
+                    errors.push(TypeError::UnsatisfiableRefinement {
+                        ty: type_expr_to_string(inner),
+                        constraint: "@non_empty does not take arguments".to_string(),
+                    });
+                } else {
+                    processed.predicates.push(Predicate::NonEmpty);
+                }
+            }
+            "pattern" => match annotation.args.first().and_then(expr_as_string) {
+                Some(regex) if !regex.is_empty() => {
+                    processed.predicates.push(Predicate::Matches(regex));
+                }
+                _ => {
+                    errors.push(TypeError::UnsatisfiableRefinement {
+                        ty: type_expr_to_string(inner),
+                        constraint: "@pattern requires a regex argument".to_string(),
+                    });
+                }
+            },
+            "file_types" => match parse_file_types_annotation(annotation) {
+                Ok(file_types) => {
+                    processed.file_types.extend(file_types);
+                }
+                Err(error) => errors.push(TypeError::UnsatisfiableRefinement {
+                    ty: type_expr_to_string(inner),
+                    constraint: error,
+                }),
+            },
+            _ => {
+                // Unknown annotations are silently accepted for forward compatibility.
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(processed)
+    } else {
+        Err(errors)
+    }
+}
+
+fn parse_content_encoding(name: &str) -> Option<ContentEncoding> {
+    match name {
+        "Text" => Some(ContentEncoding::Text),
+        "UTF8" => Some(ContentEncoding::UTF8),
+        "ASCII" => Some(ContentEncoding::ASCII),
+        "Latin1" => Some(ContentEncoding::Latin1),
+        "Binary" => Some(ContentEncoding::Binary),
+        "Unknown" => Some(ContentEncoding::Unknown),
+        _ => None,
+    }
+}
+
+fn parse_file_types_annotation(
+    annotation: &Annotation,
+) -> Result<HashMap<String, ContentEncoding>, String> {
+    let Some(Expr::Record(_, fields)) = annotation.args.first() else {
+        return Err("@file_types requires a record body".to_string());
+    };
+
+    let mut file_types = HashMap::new();
+    for (bucket, value) in fields {
+        let encoding = parse_content_encoding_bucket(bucket.as_str()).ok_or_else(|| {
+            format!(
+                "@file_types only supports text/binary/utf8/ascii/latin1/unknown buckets, got `{bucket}`"
+            )
+        })?;
+
+        let Expr::List(entries) = value else {
+            return Err(format!(
+                "@file_types bucket `{bucket}` requires a list of extensions"
+            ));
+        };
+
+        for entry in entries {
+            let extension = expr_as_string(entry).ok_or_else(|| {
+                format!(
+                    "@file_types bucket `{bucket}` contains a non-string extension entry"
+                )
+            })?;
+            let previous = file_types.insert(extension.clone(), encoding);
+            if let Some(previous_encoding) = previous {
+                if previous_encoding != encoding {
+                    return Err(format!(
+                        "@file_types extension `{extension}` maps to conflicting encodings"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(file_types)
+}
+
+fn parse_content_encoding_bucket(bucket: &str) -> Option<ContentEncoding> {
+    match bucket.to_ascii_lowercase().as_str() {
+        "text" => Some(ContentEncoding::Text),
+        "binary" => Some(ContentEncoding::Binary),
+        "utf8" => Some(ContentEncoding::UTF8),
+        "ascii" => Some(ContentEncoding::ASCII),
+        "latin1" => Some(ContentEncoding::Latin1),
+        "unknown" => Some(ContentEncoding::Unknown),
+        _ => None,
+    }
 }
 
 fn resolve_generic_arity(
@@ -4992,6 +5118,92 @@ fn run(value: Int @range(min: 5, max: 1)) -> Int { value }"#,
             TypeError::UnsatisfiableRefinement { ty, constraint }
                 if ty == "Int" && constraint.contains("min 5 exceeds max 1")
         )));
+    }
+
+    #[test]
+    fn process_type_annotations_maps_content_brand_non_empty_and_pattern() {
+        let inner = TypeExpr::Named("String".to_string());
+        let annotations = vec![
+            Annotation {
+                name: "content".to_string(),
+                args: vec![Expr::Ident("UTF8".to_string())],
+            },
+            Annotation {
+                name: "brand".to_string(),
+                args: vec![Expr::Literal(daglang_syntax::ast::Literal::String(
+                    "TextBlob".to_string(),
+                ))],
+            },
+            Annotation {
+                name: "non_empty".to_string(),
+                args: vec![],
+            },
+            Annotation {
+                name: "pattern".to_string(),
+                args: vec![Expr::Literal(daglang_syntax::ast::Literal::String(
+                    "^blob:.*$".to_string(),
+                ))],
+            },
+        ];
+
+        let processed =
+            process_type_annotations(&inner, &annotations).expect("annotations should process");
+        assert!(processed
+            .predicates
+            .contains(&Predicate::Content(ContentEncoding::UTF8)));
+        assert!(processed.predicates.contains(&Predicate::NonEmpty));
+        assert!(
+            processed
+                .predicates
+                .contains(&Predicate::Matches("^blob:.*$".to_string()))
+        );
+        assert!(processed.type_ops.iter().any(|op| matches!(
+            op,
+            TypeOp::Brand(name, base) if name == "TextBlob" && base == &TypeId::from("String")
+        )));
+    }
+
+    #[test]
+    fn process_type_annotations_maps_file_types_to_extension_encoding() {
+        let inner = TypeExpr::Named("FilePath".to_string());
+        let annotations = vec![Annotation {
+            name: "file_types".to_string(),
+            args: vec![Expr::Record(
+                None,
+                vec![
+                    (
+                        "text".to_string(),
+                        Expr::List(vec![
+                            Expr::Literal(daglang_syntax::ast::Literal::String(".rs".to_string())),
+                            Expr::Literal(daglang_syntax::ast::Literal::String(
+                                ".md".to_string(),
+                            )),
+                        ]),
+                    ),
+                    (
+                        "binary".to_string(),
+                        Expr::List(vec![Expr::Literal(daglang_syntax::ast::Literal::String(
+                            ".png".to_string(),
+                        ))]),
+                    ),
+                ],
+            )],
+        }];
+
+        let processed =
+            process_type_annotations(&inner, &annotations).expect("file_types should process");
+        assert_eq!(
+            processed.file_types.get(".rs"),
+            Some(&ContentEncoding::Text)
+        );
+        assert_eq!(
+            processed.file_types.get(".md"),
+            Some(&ContentEncoding::Text)
+        );
+        assert_eq!(
+            processed.file_types.get(".png"),
+            Some(&ContentEncoding::Binary)
+        );
     }
 
     #[test]
