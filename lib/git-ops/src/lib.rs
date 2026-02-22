@@ -470,7 +470,7 @@ pub fn build_branch_resolution_subdag() -> Dag<BranchResolutionOp> {
     // ========================================================================
     dag.add_node(Node::opaque(
         "prepare_current_branch",
-        vec![port("repo_path", "String")],
+        vec![port("repo_path", "FilePath")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
         BranchResolutionOp::Git(GitOps::PrepareCurrentBranch),
     ));
@@ -514,7 +514,7 @@ pub fn build_branch_resolution_subdag() -> Dag<BranchResolutionOp> {
     // ========================================================================
     dag.add_node(Node::opaque(
         "prepare_remote_branches",
-        vec![port("repo_path", "String")],
+        vec![port("repo_path", "FilePath")],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
         BranchResolutionOp::Git(GitOps::PrepareRemoteBranchesAtHead),
     ));

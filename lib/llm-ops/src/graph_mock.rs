@@ -69,6 +69,47 @@ fn with_cloud_env(spec: MockSpec) -> MockSpec {
         )
         .boundary("bind_secret", "config", mock_cloud_config())
         .boundary("cloud_credential", "credential", mock_credential())
+        // resolve_config sub-node: unpacks CloudSecretConfig into individual ports
+        .boundary(
+            "cloud_credential/resolve_config",
+            "provider",
+            Value::Str("gcp".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "runtime",
+            Value::Str("local".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "audience",
+            Value::Str("local-dev".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "project_or_account",
+            Value::Str("mock-secrets".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "secret",
+            Value::Str("ci-".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "version",
+            Value::Str(String::new()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "service_account_or_role",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "impersonate_account_or_role",
+            Value::Str(String::new()),
+        )
         .include_prefixed_runtime_mocks(
             "cloud_credential/gcp_wif_secret",
             &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),

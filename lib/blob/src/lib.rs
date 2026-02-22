@@ -477,6 +477,7 @@ impl Executable for BlobOps {
 
                 // --- Resolve expected content + hash ---
                 // Priority: expected (BlobHandle) > expected_hash > expected_content
+                let mut expected_is_skipped = false;
                 let (expected_data, expected_hash): (Option<String>, Option<String>) =
                     if let Some(json) = optional_json_strict(&inputs, "expected")? {
                         let handle =
@@ -489,6 +490,12 @@ impl Executable for BlobOps {
                     } else if let Some(c) = optional_str_strict(&inputs, "expected_content")? {
                         (Some(c.to_string()), None)
                     } else {
+                        if matches!(inputs.get("expected_content"), Some(Value::Skipped))
+                            || matches!(inputs.get("expected_hash"), Some(Value::Skipped))
+                            || matches!(inputs.get("expected"), Some(Value::Skipped))
+                        {
+                            expected_is_skipped = true;
+                        }
                         (None, None)
                     };
 
@@ -532,10 +539,16 @@ impl Executable for BlobOps {
                             (false, reason)
                         }
                         // Missing expected
-                        _ => (false, "no expected content or hash provided".to_string()),
+                        _ => {
+                            if expected_is_skipped {
+                                (false, "upstream expected content was skipped".to_string())
+                            } else {
+                                (false, "no expected content or hash provided".to_string())
+                            }
+                        }
                     };
 
-                let skip = fresh || check_mode;
+                let skip = fresh || check_mode || expected_is_skipped;
                 let skip_reason = if fresh {
                     "content is fresh — write skipped".to_string()
                 } else if check_mode {

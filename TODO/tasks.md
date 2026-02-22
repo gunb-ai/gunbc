@@ -270,13 +270,13 @@ The parser has the syntax. The gap is making it executable. These tasks focus on
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **EX-9** | **Migrate `tools.pragma` ops to DSL**: 3 ops (RenderClippy, RenderAllowlist, RenderLintPolicy). Depends on structured rendering (EX-7) and data sources (EX-3). | EX-3, EX-7 | M | |
-| **EX-10** | **Migrate `tools.makegen` ops to DSL**: 3 ops (LoadRegistry, RenderMakefile, Entrypoint). Depends on data sources (EX-3) and rendering (EX-7). | EX-3, EX-7 | M | |
-| **EX-11** | **Migrate `tools.bootstrap` ops to DSL**: 4 ops (PrepareScanWorkspace, ParseScanResult, GenerateMakefile, GenerateGitignore). Depends on structured transport (EX-1) and collections (EX-4). | EX-1, EX-4 | M | |
-| **EX-12** | **Migrate `tools.codegen` ops to DSL**: 5 ops (PrepareCodegenExists, ParseCodegenExists, PrepareCodegenCommand, ParseCodegenResult, PrepareStampWrite). Depends on structured transport (EX-1), structured paths (EX-2), and control flow (EX-5). | EX-1, EX-2, EX-5 | M | |
-| **EX-13** | **Migrate `tools.build` ops to DSL**: 7 ops (PrepareBuild, ParseBuild, PrepareTest, ParseTest, PrepareClippy, ParseClippy, Summary). Depends on control flow (EX-5) and rendering (EX-7). | EX-5, EX-7 | M | |
-| **EX-14** | **Migrate remaining ops (ci, docgen, testgen, dag-viz) to DSL**: ~24 additional ops beyond the 5 core modules. These follow the same patterns as EX-9 through EX-13. Can be parallelized per module. | EX-1..EX-8 | L | |
-| **EX-15** | **Delete custom resolver path**: After all custom ops are migrated, the `resolve_domain` match arms for custom modules become empty. Remove them — `resolve_domain` reduces to service transport + default passthrough. | EX-9..EX-14 | S | |
+| **EX-9** | **Migrate `tools.pragma` ops to DSL**: 3 ops (RenderClippy, RenderAllowlist, RenderLintPolicy). Depends on structured rendering (EX-7) and data sources (EX-3). | EX-3, EX-7 | M | **DONE** |
+| **EX-10** | **Migrate `tools.makegen` ops to DSL**: 3 ops (LoadRegistry, RenderMakefile, Entrypoint). Depends on data sources (EX-3) and rendering (EX-7). | EX-3, EX-7 | M | **TAKEN** |
+| **EX-11** | **Migrate `tools.bootstrap` ops to DSL**: 4 ops (PrepareScanWorkspace, ParseScanResult, GenerateMakefile, GenerateGitignore). Depends on structured transport (EX-1) and collections (EX-4). | EX-1, EX-4 | M | **DONE** |
+| **EX-12** | **Migrate `tools.codegen` ops to DSL**: 5 ops (PrepareCodegenExists, ParseCodegenExists, PrepareCodegenCommand, ParseCodegenResult, PrepareStampWrite). Depends on structured transport (EX-1), structured paths (EX-2), and control flow (EX-5). | EX-1, EX-2, EX-5 | M | **DONE** |
+| **EX-13** | **Migrate `tools.build` ops to DSL**: 7 ops (PrepareBuild, ParseBuild, PrepareTest, ParseTest, PrepareClippy, ParseClippy, Summary). Depends on control flow (EX-5) and rendering (EX-7). | EX-5, EX-7 | M | **DONE** |
+| **EX-14** | **Migrate remaining ops (ci, docgen, testgen, dag-viz) to DSL**: ~24 additional ops beyond the 5 core modules. These follow the same patterns as EX-9 through EX-13. Can be parallelized per module. | EX-1..EX-8 | L | **DONE** |
+| **EX-15** | **Delete custom resolver path**: After all custom ops are migrated, the `resolve_domain` match arms for custom modules become empty. Remove them — `resolve_domain` reduces to service transport + default passthrough. | EX-9..EX-14 | S | **DONE** |
 
 **Parallelism**: EX-1, EX-2, EX-3 are fully independent (data model fixes). EX-4, EX-5, EX-6 are independent of each other (lowering path work). EX-9 through EX-14 are independent per module once their expression dependencies are met — each module can be migrated by a separate worker. EX-8 is the integration gate before any migration begins.
 

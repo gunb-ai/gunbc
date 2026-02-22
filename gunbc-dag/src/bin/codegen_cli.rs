@@ -1139,7 +1139,10 @@ fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    BTreeSet::new()
+    let mut set = BTreeSet::new();
+    set.insert("reconciler");
+    set.insert("sdlc");
+    set
 }
 
 fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {

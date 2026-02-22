@@ -154,7 +154,56 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             "ok",
             Value::Bool(true),
         )
-        .expect("cloud_credential ok should match type");
+        .expect("cloud_credential ok should match type")
+        // resolve_config sub-node: unpacks CloudSecretConfig into individual ports
+        .boundary(
+            "gist_upload/cloud_credential/resolve_config",
+            "provider",
+            Value::Str("gcp".into()),
+        )
+        .expect("resolve_config provider should match type")
+        .boundary(
+            "gist_upload/cloud_credential/resolve_config",
+            "runtime",
+            Value::Str("local".into()),
+        )
+        .expect("resolve_config runtime should match type")
+        .boundary(
+            "gist_upload/cloud_credential/resolve_config",
+            "audience",
+            Value::Str("local-dev".into()),
+        )
+        .expect("resolve_config audience should match type")
+        .boundary(
+            "gist_upload/cloud_credential/resolve_config",
+            "project_or_account",
+            Value::Str("mock-secrets".into()),
+        )
+        .expect("resolve_config project_or_account should match type")
+        .boundary(
+            "gist_upload/cloud_credential/resolve_config",
+            "secret",
+            Value::Str("ci-".into()),
+        )
+        .expect("resolve_config secret should match type")
+        .boundary(
+            "gist_upload/cloud_credential/resolve_config",
+            "version",
+            Value::Str(String::new()),
+        )
+        .expect("resolve_config version should match type")
+        .boundary(
+            "gist_upload/cloud_credential/resolve_config",
+            "service_account_or_role",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .expect("resolve_config service_account_or_role should match type")
+        .boundary(
+            "gist_upload/cloud_credential/resolve_config",
+            "impersonate_account_or_role",
+            Value::Str(String::new()),
+        )
+        .expect("resolve_config impersonate_account_or_role should match type");
 
     // Mode-specific transport mocks
     match mode {
@@ -395,6 +444,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         GistMode::Snapshot => {
             spec = spec
                 .skip_node_example("read_files_loop")
+                .skip_node_example("classify_files")
                 .node_example(
                     NodeExample::new("list_files/prepare_list_files")
                         .input("repo_path", Value::Str(".".into()))

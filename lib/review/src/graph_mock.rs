@@ -203,6 +203,55 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .expect("cloud_credential ok should match type")
         .boundary("bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
+        // resolve_config sub-node: unpacks CloudSecretConfig into individual ports
+        .boundary(
+            "cloud_credential/resolve_config",
+            "provider",
+            Value::Str("gcp".into()),
+        )
+        .expect("resolve_config provider should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "runtime",
+            Value::Str("local".into()),
+        )
+        .expect("resolve_config runtime should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "audience",
+            Value::Str("local-dev".into()),
+        )
+        .expect("resolve_config audience should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "project_or_account",
+            Value::Str("mock-secrets".into()),
+        )
+        .expect("resolve_config project_or_account should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "secret",
+            Value::Str("ci-".into()),
+        )
+        .expect("resolve_config secret should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "version",
+            Value::Str(String::new()),
+        )
+        .expect("resolve_config version should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "service_account_or_role",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .expect("resolve_config service_account_or_role should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "impersonate_account_or_role",
+            Value::Str(String::new()),
+        )
+        .expect("resolve_config impersonate_account_or_role should match type")
         // Transport: execute_llm (LLM API call)
         .transport_response("llm/execute_llm", "response", llm_response.into())
         .expect("execute_llm response should match type")
@@ -393,6 +442,55 @@ diff --git a/src/main.rs b/src/main.rs
         .expect("cloud_credential ok should match type")
         .boundary("bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
+        // resolve_config sub-node: unpacks CloudSecretConfig into individual ports
+        .boundary(
+            "cloud_credential/resolve_config",
+            "provider",
+            Value::Str("gcp".into()),
+        )
+        .expect("resolve_config provider should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "runtime",
+            Value::Str("local".into()),
+        )
+        .expect("resolve_config runtime should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "audience",
+            Value::Str("local-dev".into()),
+        )
+        .expect("resolve_config audience should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "project_or_account",
+            Value::Str("mock-secrets".into()),
+        )
+        .expect("resolve_config project_or_account should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "secret",
+            Value::Str("ci-".into()),
+        )
+        .expect("resolve_config secret should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "version",
+            Value::Str(String::new()),
+        )
+        .expect("resolve_config version should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "service_account_or_role",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .expect("resolve_config service_account_or_role should match type")
+        .boundary(
+            "cloud_credential/resolve_config",
+            "impersonate_account_or_role",
+            Value::Str(String::new()),
+        )
+        .expect("resolve_config impersonate_account_or_role should match type")
         // Transport: execute_diff (git diff command)
         .transport_response(
             "diff/execute_diff",

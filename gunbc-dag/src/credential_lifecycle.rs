@@ -89,6 +89,47 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
             "config",
             mock_cloud_config_with_secret("github"),
         )
+        // resolve_config sub-node: unpacks CloudSecretConfig into individual ports
+        .boundary(
+            "cloud_credential/resolve_config",
+            "provider",
+            Value::Str("gcp".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "runtime",
+            Value::Str("local".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "audience",
+            Value::Str("local-dev".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "project_or_account",
+            Value::Str("mock-secrets".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "secret",
+            Value::Str("ci-".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "version",
+            Value::Str(String::new()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "service_account_or_role",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .boundary(
+            "cloud_credential/resolve_config",
+            "impersonate_account_or_role",
+            Value::Str(String::new()),
+        )
         // Transport mock (lowered SubDag path)
         .transport_mock(
             "credential_check/execute",

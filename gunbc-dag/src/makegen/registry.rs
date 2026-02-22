@@ -154,8 +154,8 @@ impl BuildConfig {
             build_system: BuildSystem::Cargo,
             use_dag_entrypoints: false,
             warnings: w,
-            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
+            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
+                .args(BinaryArgs::with_mode(ExecMode::Ensure))
                 .warnings(w)),
             codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone())).warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
@@ -280,8 +280,8 @@ impl BuildConfig {
             build_system: BuildSystem::Buck2,
             use_dag_entrypoints: false,
             warnings: w,
-            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
+            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
+                .args(BinaryArgs::with_mode(ExecMode::Ensure))
                 .warnings(w)),
             codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone())).warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
@@ -378,9 +378,8 @@ impl BuildConfig {
 
     /// Get the ensure-codegen command as a shell string.
     ///
-    /// TODO(WF15): Replace `cargo run` dispatch with direct pre-built binary
-    /// invocation once binary freshness is planner-managed. Codegen freshness
-    /// will be a ledger-backed keyed unit, not a Make subprocess.
+    /// Uses the bootstrap-safe DAG wrapper (`gunbc-codegen-dag --mode=ensure`)
+    /// so freshness checks and upsert behavior stay centralized.
     pub fn ensure_codegen_shell(&self) -> String {
         format!("@{}", self.ensure_codegen.to_shell())
     }
@@ -1693,9 +1692,8 @@ fn discover_dsl_pipeline_modules() -> BTreeSet<String> {
 ///
 /// **Why these are manual** (CL7 investigation):
 ///
-/// - `pragma`: Has a custom `Executable` impl (`PragmaEntrypointOp`) that
-///   inspects file-write transport responses.  Standard tool-target macros
-///   only support the generic passthrough path.
+/// - `pragma`: Uses the DSL-compiled pipeline with content-upsert chains.
+///   Standard tool-target macros only support the generic passthrough path.
 ///
 /// - `build`: Uses the historical Makefile target name `build-all` (not
 ///   `build`), which can't be expressed via the standard short-name

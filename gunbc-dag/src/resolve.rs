@@ -34,15 +34,12 @@ use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
-use crate::bootstrap::ops::BootstrapOp;
-use crate::makegen::ops::MakegenOp;
-use crate::pragma::ops::PragmaOp;
 use crate::resolve_service::{
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
 };
@@ -360,45 +357,6 @@ impl Executable for DslFsEnvOp {
     }
 }
 
-/// Terminal adapter for `tools.pragma::pragma`.
-///
-/// The lowered DSL function aggregates write transport responses via `__deps`.
-/// This adapter computes the three `*_written` booleans expected by the
-/// function signature.
-#[derive(Debug, Clone)]
-struct PragmaEntrypointOp;
-
-impl Executable for PragmaEntrypointOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut clippy_written = false;
-        let mut allowlist_written = false;
-        let mut policy_written = false;
-
-        if let Some(deps) = inputs.get("__deps").and_then(Value::as_list) {
-            for dep in deps {
-                let Value::Response(TransportResponse::File(file)) = dep else {
-                    continue;
-                };
-                if file.operation != FileOp::Write || !file.success {
-                    continue;
-                }
-                match file.path.as_str() {
-                    "clippy.toml" => clippy_written = true,
-                    "tools/disallowed-methods-allowlist.txt" => allowlist_written = true,
-                    "tools/pragma-lint-policy.txt" => policy_written = true,
-                    _ => {}
-                }
-            }
-        }
-
-        OutputMap::new()
-            .bool("clippy_written", clippy_written)
-            .bool("allowlist_written", allowlist_written)
-            .bool("policy_written", policy_written)
-            .ok()
-    }
-}
-
 /// File-read prepare adapter for DSL content-upsert chains.
 ///
 /// Requires a `path` input. Missing `path` is a wiring bug and returns
@@ -440,7 +398,10 @@ struct PrepareFileWriteCompatOp;
 impl Executable for PrepareFileWriteCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         if matches!(inputs.get("path"), Some(Value::Skipped)) {
-            return OutputMap::new().value("request", Value::Skipped).ok();
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
         }
         let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
             ExecError::new(
@@ -452,7 +413,10 @@ impl Executable for PrepareFileWriteCompatOp {
             .or_else(|| inputs.get("return"))
             .or_else(|| inputs.get("expected_content"));
         if matches!(content_value, Some(Value::Skipped)) {
-            return OutputMap::new().value("request", Value::Skipped).ok();
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
         }
         let content = content_value
             .and_then(Value::as_str)
@@ -612,10 +576,6 @@ fn resolve_domain(
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).
     let custom = match module {
-        "tools.pragma" => resolve_pragma(name),
-        "tools.makegen" => resolve_makegen(name),
-        "tools.codegen" => resolve_codegen(name),
-        "tools.bootstrap" => resolve_bootstrap(name),
         "std.resources" => Some(resolve_std_resources(name)),
         _ => None,
     };
@@ -631,42 +591,6 @@ fn resolve_domain(
     Ok(DynOp::new(PassthroughOp {
         output_port_names: declared_output_names(outputs),
     }))
-}
-
-fn resolve_pragma(name: &str) -> Option<DynOp> {
-    match name {
-        "render_clippy_toml" => Some(DynOp::new(PragmaOp::RenderClippy)),
-        "render_disallowed_methods_allowlist" => Some(DynOp::new(PragmaOp::RenderAllowlist)),
-        "render_pragma_lint_policy" => Some(DynOp::new(PragmaOp::RenderLintPolicy)),
-        "pragma" => Some(DynOp::new(PragmaEntrypointOp)),
-        _ => None,
-    }
-}
-
-fn resolve_makegen(name: &str) -> Option<DynOp> {
-    match name {
-        "load_registry" => Some(DynOp::new(MakegenOp::LoadRegistry)),
-        "render_makefile" => Some(DynOp::new(MakegenOp::RenderMakefile)),
-        "makegen" => Some(DynOp::new(MakegenOp::Entrypoint)),
-        _ => None,
-    }
-}
-
-fn resolve_codegen(name: &str) -> Option<DynOp> {
-    match name {
-        "codegen" => Some(DynOp::new(IdentityCallableOp)),
-        _ => None,
-    }
-}
-
-fn resolve_bootstrap(name: &str) -> Option<DynOp> {
-    match name {
-        // The DSL `func bootstrap(...)` wrapper only aggregates upstream values.
-        "bootstrap" => Some(DynOp::new(IdentityCallableOp)),
-        "render_bootstrap_makefile" => Some(DynOp::new(BootstrapOp::GenerateMakefile)),
-        "render_bootstrap_gitignore" => Some(DynOp::new(BootstrapOp::GenerateGitignore)),
-        _ => None,
-    }
 }
 
 fn resolve_std_resources(name: &str) -> DynOp {
@@ -906,15 +830,6 @@ mod tests {
         );
     }
 
-    /// Assert a resolved op behaves as identity: inputs == outputs.
-    fn assert_identity_behavior(op: &DynOp) {
-        let mut inputs = HashMap::new();
-        inputs.insert("a".to_string(), Value::Str("v1".to_string()));
-        inputs.insert("b".to_string(), Value::Int(42));
-        let outputs = op.execute(inputs.clone()).expect("identity should succeed");
-        assert_eq!(outputs, inputs, "identity op should return inputs unchanged");
-    }
-
     fn collection_node(id: &str, kind: CollectionOpKind) -> Node<LoweredOp> {
         Node::opaque(
             id,
@@ -947,20 +862,18 @@ mod tests {
     }
 
     #[test]
-    fn resolve_pragma_render_ops() {
+    fn resolve_pragma_render_ops_as_passthrough() {
+        // tools.pragma callables resolve to passthrough — domain ops
+        // (PragmaOp) are invoked via the graph builder, not the resolver.
         let cases = [
-            ("render_clippy_toml", "RenderClippy"),
-            ("render_disallowed_methods_allowlist", "RenderAllowlist"),
-            ("render_pragma_lint_policy", "RenderLintPolicy"),
+            "render_clippy_toml",
+            "render_disallowed_methods_allowlist",
+            "render_pragma_lint_policy",
         ];
-        for (name, expected_debug) in cases {
+        for name in cases {
             let node = callable_node(name, "tools.pragma", name, ObligationCategory::None);
             let result = resolve_node(&node).expect(name);
-            assert!(
-                format!("{:?}", result).contains(expected_debug),
-                "expected {expected_debug} for {name}, got {:?}",
-                result
-            );
+            assert_passthrough_behavior(&result);
         }
     }
 
@@ -973,7 +886,7 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("load_registry");
-        assert!(format!("{:?}", result).contains("LoadRegistry"));
+        assert!(format!("{:?}", result).contains("PassthroughOp"));
 
         let node = callable_node(
             "render_makefile",
@@ -982,7 +895,11 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("render_makefile");
-        assert!(format!("{:?}", result).contains("RenderMakefile"));
+        assert!(format!("{:?}", result).contains("PassthroughOp"));
+
+        let node = callable_node("makegen", "tools.makegen", "makegen", ObligationCategory::None);
+        let result = resolve_node(&node).expect("makegen");
+        assert!(format!("{:?}", result).contains("PassthroughOp"));
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
@@ -1130,7 +1047,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_tools_codegen_entrypoint_identity() {
+    fn resolve_tools_codegen_entrypoint_passthrough() {
         let node = callable_node(
             "codegen",
             "tools.codegen",
@@ -1138,7 +1055,7 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("tools.codegen::codegen");
-        assert_identity_behavior(&result);
+        assert_passthrough_behavior(&result);
     }
 
     #[test]

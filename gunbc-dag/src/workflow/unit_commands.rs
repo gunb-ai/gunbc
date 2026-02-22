@@ -33,18 +33,7 @@ pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     );
     commands.insert(
         NodeId::from("ci.codegen"),
-        UnitCommand::cargo(
-            "codegen ensure",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-codegen",
-                "--",
-                "codegen",
-            ],
-        ),
+        codegen_ensure_command(),
     );
     commands.insert(
         NodeId::from("ci.bootstrap"),
@@ -143,18 +132,7 @@ pub fn test_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     );
     commands.insert(
         NodeId::from("test_all.codegen"),
-        UnitCommand::cargo(
-            "codegen ensure",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-codegen",
-                "--",
-                "codegen",
-            ],
-        ),
+        codegen_ensure_command(),
     );
     commands.insert(
         NodeId::from("test_all.testgen"),
@@ -207,9 +185,9 @@ fn codegen_ensure_command() -> UnitCommand {
             "-p",
             "gunbc-dag",
             "--bin",
-            "gunbc-codegen",
+            "gunbc-codegen-dag",
             "--",
-            "codegen",
+            "--mode=ensure",
         ],
     )
 }
@@ -592,14 +570,41 @@ mod tests {
 
     #[test]
     fn ci_verify_uses_codegen_dag_binary() {
-        let commands = ci_unit_commands();
-        let verify = commands
+        let ci_commands = ci_unit_commands();
+        let verify = ci_commands
             .get(&NodeId::from("ci.verify"))
             .expect("ci.verify command");
         assert_eq!(verify.program, "cargo");
         assert!(
             verify.args.contains(&"gunbc-codegen-dag".to_string()),
             "ci.verify must use codegen DAG wrapper binary for --mode support"
+        );
+
+        let ci_codegen = ci_commands
+            .get(&NodeId::from("ci.codegen"))
+            .expect("ci.codegen command");
+        assert!(
+            ci_codegen.args.contains(&"gunbc-codegen-dag".to_string()),
+            "ci.codegen should use codegen DAG wrapper binary for ensure mode"
+        );
+        assert!(
+            ci_codegen.args.contains(&"--mode=ensure".to_string()),
+            "ci.codegen should run wrapper in ensure mode"
+        );
+
+        let test_all_commands = test_all_unit_commands();
+        let test_all_codegen = test_all_commands
+            .get(&NodeId::from("test_all.codegen"))
+            .expect("test_all.codegen command");
+        assert!(
+            test_all_codegen
+                .args
+                .contains(&"gunbc-codegen-dag".to_string()),
+            "test_all.codegen should use codegen DAG wrapper binary for ensure mode"
+        );
+        assert!(
+            test_all_codegen.args.contains(&"--mode=ensure".to_string()),
+            "test_all.codegen should run wrapper in ensure mode"
         );
     }
 
