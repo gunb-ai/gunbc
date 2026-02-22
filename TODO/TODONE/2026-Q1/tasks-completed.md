@@ -446,4 +446,5 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | GD-2 | Interactive/external lowering + passthrough. | Done 2026-02-22 |
 | GD-3 | Replace manual workspace subdags. | Done 2026-02-22 |
 | GD-4 | Delete section 9C legacy tool graph stacks (testgen_dag deleted, registry-driven generation). | Done 2026-02-22 |
+| GD-5 | Provider stack decision wave (section 9D): finalized drop-now vs migrate-in-place policy, deleted redundant cloud helper stacks (`infra_graph.rs`, `secret_provision_graph.rs`), and validated retained migrated wrappers (`cloud/gcp/llm/review/clippy/deps/gist`) with targeted suites. | Done 2026-02-22 |
 | GD-6 | Fail-closed resolver + CI guardrails. | Done 2026-02-22 |

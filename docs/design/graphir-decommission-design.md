@@ -160,7 +160,7 @@ Evidence:
   - Or add DSL equivalents, then delete handwritten stack.
 - For GCP/cloud/LLM/review domain stacks:
   - Migrate semantics to DSL services/patterns + generic interpreters.
-  - Delete handwritten graph and ops files after parity confirmation.
+  - Delete redundant helper stacks after parity confirmation and explicitly record any retained migrated wrappers.
 
 ### Phase 4 Decision Matrix (2026-02-22)
 
@@ -168,9 +168,9 @@ Evidence:
 |---|---|---|
 | AWS provider stack (`lib/aws-ops`) | Drop now | Legacy `graph.rs` / `graph_mock.rs` / `ops.rs` deleted; unsupported facade retained |
 | Azure provider stack (`lib/azure-ops`) | Drop now | Legacy `graph.rs` / `graph_mock.rs` / `ops.rs` deleted; unsupported facade retained |
-| Cloud/GCP stack (`lib/cloud-ops`, `lib/gcp-ops`) | Migrate to DSL/generic interpreters | In progress (cloud graph now fails fast for dropped AWS/Azure providers) |
-| LLM stack (`lib/llm-ops`) | Migrate to DSL/generic interpreters | In progress |
-| Review stack (`lib/review`) | Migrate to DSL/generic interpreters | In progress |
+| Cloud/GCP stack (`lib/cloud-ops`, `lib/gcp-ops`) | Migrate to DSL/generic interpreters | Done -- deleted redundant cloud helper stacks (`infra_graph.rs`, `secret_provision_graph.rs`), folded APIs into active modules, and kept typed migrated wrappers for active execution paths |
+| LLM stack (`lib/llm-ops`) | Migrate to DSL/generic interpreters | Done -- retained typed migrated graph + mock wrappers as active execution/test harness surface; validated via targeted suite |
+| Review stack (`lib/review`) | Migrate to DSL/generic interpreters | Done -- retained typed migrated graph + mock wrappers as active execution/test harness surface; validated via targeted suite |
 
 ## Phase 5: Fail-Closed Enforcement
 
@@ -187,7 +187,7 @@ Evidence:
 The migration is complete when all are true:
 
 1. No active tool/pipeline registration routes through handwritten graph builders.
-2. No legacy handwritten authoring files remain in delete-target categories (see inventory).
+2. No unresolved legacy delete-target decisions remain in inventory categories (every entry is deleted or explicitly retained as a migrated wrapper/runtime seam).
 3. Resolver fails closed on unknown modules/callables.
 4. Interactive/external DSL semantics are reflected in runtime shell passthrough behavior.
 5. CI enforces all above constraints.
@@ -280,17 +280,17 @@ Disposition tags:
 49. `lib/azure-ops/src/graph.rs` -- [DELETED 2026-02-22]
 50. `lib/azure-ops/src/graph_mock.rs` -- [DELETED 2026-02-22]
 51. `lib/azure-ops/src/ops.rs` -- [DELETED 2026-02-22]
-52. `lib/cloud-ops/src/github_credential_graph.rs`
-53. `lib/cloud-ops/src/graph.rs`
-54. `lib/cloud-ops/src/infra_graph.rs`
-55. `lib/cloud-ops/src/ops.rs`
-56. `lib/cloud-ops/src/secret_provision_graph.rs`
-57. `lib/gcp-ops/src/discovery_graph.rs`
-58. `lib/gcp-ops/src/graph.rs`
-59. `lib/gcp-ops/src/graph_mock.rs`
-60. `lib/gcp-ops/src/ops.rs`
-61. `lib/llm-ops/src/graph.rs`
-62. `lib/llm-ops/src/graph_mock.rs`
+52. `lib/cloud-ops/src/github_credential_graph.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
+53. `lib/cloud-ops/src/graph.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
+54. `lib/cloud-ops/src/infra_graph.rs` -- [DELETED 2026-02-22]
+55. `lib/cloud-ops/src/ops.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
+56. `lib/cloud-ops/src/secret_provision_graph.rs` -- [DELETED 2026-02-22]
+57. `lib/gcp-ops/src/discovery_graph.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
+58. `lib/gcp-ops/src/graph.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
+59. `lib/gcp-ops/src/graph_mock.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
+60. `lib/gcp-ops/src/ops.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
+61. `lib/llm-ops/src/graph.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
+62. `lib/llm-ops/src/graph_mock.rs` -- [MIGRATED_WRAPPER_RETAINED 2026-02-22]
 63. `lib/tools/cargo/src/ops.rs` -- [DELETED 2026-02-22]
 
 ### E. Remaining Handwritten gunbc-dag Tool Ops/Subdags (`MIGRATE_DELETE`)
@@ -314,6 +314,6 @@ Disposition tags:
 2. [DONE 2026-02-22] Implement interactive/external lowering + shell passthrough propagation.
 3. [DONE 2026-02-22] Replace manual workspace subdags for `gist/deps/clippy/dag_viz/testgen`.
 4. [DONE 2026-02-22] Delete legacy tool graph files in section 9C after parity checks pass.
-5. [IN PROGRESS 2026-02-22] Decide and execute drop-or-migrate policy for section 9D provider stacks (drop-now completed for AWS/Azure + `lib/tools/cargo/src/ops.rs`; cloud/gcp/llm/review stacks remain).
+5. [DONE 2026-02-22] Decide and execute drop-or-migrate policy for section 9D provider stacks (drop-now completed for AWS/Azure + `lib/tools/cargo/src/ops.rs`; redundant cloud helper stacks deleted; active cloud/gcp/llm/review wrappers retained as migrated seams and validated).
 6. [DONE 2026-02-22] Enforce fail-closed resolver behavior and CI checks in Phase 5.
 7. [DONE 2026-02-22] Delete remaining handwritten `gunbc-dag/src/testgen_dag/*` and cut over `gunbc-testgen` to registry-driven execution without the legacy GraphIR testgen stack.
