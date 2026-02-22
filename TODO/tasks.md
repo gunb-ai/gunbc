@@ -1,6 +1,6 @@
 # Task Sheet — Dependency-Ordered, Parallelizable
 
-**Last updated**: 2026-02-22
+**Last updated**: 2026-02-22 (Lane 6 added)
 **Verification**: `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
 **Archive**: Completed items in `TODO/TODONE/2026-Q1/tasks-completed.md`. Backlog in `TODO/backlog.md`.
 
@@ -26,13 +26,18 @@
 | Post-merge: Type system hard cutover | **DONE** | Archived 2026-02-22 |
 | 4: Codebase polish | **DONE** | Archived 2026-02-22 |
 | 5: GraphIR decommission (exclusive) | **DONE** | Archived 2026-02-22 |
+| 6A: Topology migration — cleanup + subdags | **ACTIVE** | Parallel with 6B |
+| 6B: Topology migration — cloud/GCP/LLM graphs | **ACTIVE** | Parallel with 6A |
+| 6C: Topology migration — review graph stack | **ACTIVE** | Depends on 6B |
+| 6D: Topology migration — ops semantics | **DEFERRED** | Depends on 6B + 6C |
 
 ---
 
 ## Current Open Work
 
-No active delivery-lane tasks remain in this sheet. Remaining items are unscheduled
-(`H1`, `H10`) or explicitly deferred (`DG1`, `S12-E`).
+Lane 6 (Topology Migration) is active. Sub-lanes 6A, 6B, and 6C contain all
+scheduled work. 6A and 6B are independent and may run in parallel. 6C depends
+on 6B. 6D is deferred pending a DSL executable-semantics design decision.
 
 ---
 
@@ -80,6 +85,180 @@ Verification after migration-wave closeout:
 2. Section 9C files are deleted. **(Done)**
 3. Section 9D decision wave is complete (drop-now deletions executed; retained migrated wrappers explicitly documented and validated). **(Done)**
 4. Resolver is fail-closed and CI enforces non-regression. **(Done)**
+
+---
+
+## Lane 6: Topology Migration (Parallel Lanes)
+
+**Goal**: Finish migrating remaining Rust graph authoring to `.dag`. Delete all handwritten `DagBuilder` graph files. The DAG compiler itself stays in Rust; only graph topology moves to DSL.
+
+**Continues from**: Lane 5 (GraphIR Decommission). Lane 5 migrated tool graphs and deleted legacy stacks. Lane 6 handles the retained cloud/GCP/LLM/review stacks plus remaining workspace subdags.
+
+**Execution constraint — no fallbacks**:
+- No `#[cfg(feature = "legacy")]` toggles or "try DSL, fall back to Rust" paths.
+- No temporary wrapper shims that keep both execution paths alive.
+- No `TODO(HACK)` escape hatches. Each task either fully replaces the Rust graph with `.dag` or it is not done.
+- If the DSL compiler needs new features to express a graph, that is a blocking prerequisite — not something to work around with Rust glue.
+
+**Parallelism**: 6A and 6B are fully independent (disjoint file sets). 6C depends on 6B. 6D is deferred.
+
+### Lane 6A: Cleanup + Workspace Subdags
+
+**Goal**: Delete tombstone files and replace manual workspace subdags with DSL wrappers.
+
+**Mutually exclusive scope**: `lib/tools/{clippy,deps,gist}/src/`, `gunbc-dag/src/workspace/subdags/{bootstrap,makegen}.rs`
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6A-1** | Delete tombstone `graph.rs`/`graph_mock.rs` in `lib/tools/{clippy,deps,gist}/src/` and remove `mod graph` / `mod graph_mock` declarations from their parent `lib.rs` files. | -- | S | Pending |
+| **6A-2** | Replace `gunbc-dag/src/workspace/subdags/bootstrap.rs` (174 LOC) with DSL wrapper: call `build_dsl_graph("tools/bootstrap.dag")` and wrap as `Node::subdag("bootstrap", dag)`. Delete the manual `DagBuilder` body. Follow the pattern in `gunbc-dag/src/bootstrap/graph.rs`. | 6A-1 | S | Pending |
+| **6A-3** | Replace `gunbc-dag/src/workspace/subdags/makegen.rs` (140 LOC) with DSL wrapper: call `build_dsl_graph("tools/makegen.dag")` and wrap as `Node::subdag("makegen", dag)`. Delete the manual `DagBuilder` body. | 6A-1 | S | Pending |
+
+**Explicitly kept in Rust**: `gunbc-dag/src/workspace/subdags/languages.rs` (124 LOC) — compile-time metadata composition over `LanguageOp`; no DSL module exists for language metadata. Requires a new DSL construct to migrate; out of scope.
+
+#### 6A Deletion Manifest
+
+| File | Action |
+|------|--------|
+| `lib/tools/clippy/src/graph.rs` | Delete |
+| `lib/tools/clippy/src/graph_mock.rs` | Delete |
+| `lib/tools/deps/src/graph.rs` | Delete |
+| `lib/tools/deps/src/graph_mock.rs` | Delete |
+| `lib/tools/gist/src/graph.rs` | Delete |
+| `lib/tools/gist/src/graph_mock.rs` | Delete |
+| `gunbc-dag/src/workspace/subdags/bootstrap.rs` | Rewrite (manual `DagBuilder` body deleted, replaced with DSL call) |
+| `gunbc-dag/src/workspace/subdags/makegen.rs` | Rewrite (manual `DagBuilder` body deleted, replaced with DSL call) |
+
+#### 6A Exit Criteria
+
+1. Zero tombstone `graph.rs` / `graph_mock.rs` files remain in `lib/tools/{clippy,deps,gist}/src/`.
+2. `bootstrap.rs` and `makegen.rs` subdags are thin DSL wrappers (under ~30 LOC each), no manual `DagBuilder` calls.
+3. No `mod graph` or `mod graph_mock` declarations referencing deleted files.
+
+#### 6A Verification
+
+```
+cargo check -p gunbc-lib-clippy
+cargo check -p gunbc-lib-deps
+cargo check -p gunbc-lib-gist
+cargo test -q -p gunbc-dag -- workspace
+cargo test -q -p gunbc-dag --test resource_registry_coverage
+cargo clippy --all-targets -- -D warnings
+```
+
+### Lane 6B: Cloud/GCP/LLM Credential Graph Stack
+
+**Goal**: Migrate all cloud credential, GCP, and LLM graph builders from manual Rust `DagBuilder` calls to `.dag` files. Delete the Rust graph files and their mocks.
+
+**Mutually exclusive scope**: `lib/gcp-ops/src/graph*.rs`, `lib/gcp-ops/src/discovery_graph.rs`, `lib/cloud-ops/src/{graph,github_credential_graph}.rs`, `lib/llm-ops/src/graph*.rs`
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6B-1** | Author `.dag` modules for GCP WIF credential graphs (3 runtime variants: GitHub Actions, Cloud Metadata, LocalDev). Must express runtime-conditional subdag composition — no Rust `match` dispatch fallback. Write per-variant `.dag` files if the compiler lacks branching, but each variant must be fully DSL-authored. | -- | L | Pending |
+| **6B-2** | Author `.dag` modules for GCP Secret Manager upsert graphs (3 runtime variants). Same constraint as 6B-1. | 6B-1 | M | Pending |
+| **6B-3** | Author `.dag` module for GCP discovery graph (463 LOC). Wire `build_gcp_discovery_graph_dsl()` in `dsl_builder.rs`. | 6B-1 | M | Pending |
+| **6B-4** | Author `.dag` modules for cloud-ops facade: provider-neutral credential + upsert dispatch and GitHub credential graph (460 + 391 LOC). The DSL equivalent uses `dsl/interfaces/*.dag` provider abstractions or explicit per-provider modules. No Rust `CloudProviderKind` match fallback. | 6B-1, 6B-2 | M | Pending |
+| **6B-5** | Author `.dag` module for LLM chat completion graph (268 LOC). Must compose cloud credential subdag from 6B-4 DSL output. | 6B-4 | M | Pending |
+| **6B-6** | Delete all Rust graph/mock files. Remove `pub mod graph` / `pub mod graph_mock` / `pub mod discovery_graph` / `pub mod github_credential_graph` from parent `lib.rs` files. Update all downstream `use` imports to point to DSL-backed builders. | 6B-1..6B-5 | M | Pending |
+
+#### 6B Deletion Manifest
+
+| File | LOC | Action |
+|------|-----|--------|
+| `lib/gcp-ops/src/graph.rs` | 1,760 | Delete |
+| `lib/gcp-ops/src/graph_mock.rs` | 452 | Delete |
+| `lib/gcp-ops/src/discovery_graph.rs` | 463 | Delete |
+| `lib/cloud-ops/src/graph.rs` | 460 | Delete |
+| `lib/cloud-ops/src/github_credential_graph.rs` | 391 | Delete |
+| `lib/llm-ops/src/graph.rs` | 268 | Delete |
+| `lib/llm-ops/src/graph_mock.rs` | 1,013 | Delete |
+| **Total** | **4,807** | |
+
+#### 6B Exit Criteria
+
+1. Zero `graph.rs`, `graph_mock.rs`, `discovery_graph.rs`, or `github_credential_graph.rs` files in `lib/{gcp-ops,cloud-ops,llm-ops}/src/`.
+2. All 3 GCP runtime variants (GitHub/Metadata/Local) for both credential and upsert graphs compile from `.dag` files.
+3. `dsl_builder.rs` has new builder functions for each migrated graph.
+4. No Rust `match` fallback dispatch remains for graph construction — runtime variant selection is either expressed in DSL or handled by per-variant `.dag` files selected at compile time.
+5. All downstream consumers (`lib/review/src/graph.rs`, `gunbc-dag/src/bin/review.rs`) that import these builders still compile (same public API, now backed by DSL).
+
+#### 6B Verification
+
+```
+cargo check -p gunbc-lib-gcp-ops
+cargo test -q -p gunbc-lib-gcp-ops
+cargo check -p gunbc-lib-cloud-ops
+cargo test -q -p gunbc-lib-cloud-ops
+cargo check -p gunbc-lib-llm-ops
+cargo test -q -p gunbc-lib-llm-ops
+cargo test -q -p gunbc-dag --test resource_registry_coverage
+cargo run -q -p gunbc-dag --bin gunbc-testgen -- --dry-run
+cargo clippy --all-targets -- -D warnings
+```
+
+### Lane 6C: Review Graph Stack
+
+**Goal**: Migrate the review graph builders and their mocks from Rust to `.dag`. Update binary entry points. Delete Rust graph files.
+
+**Mutually exclusive scope**: `lib/review/src/graph*.rs`, `gunbc-dag/src/bin/{review,pipeline}.rs` (import changes only)
+
+**Depends on**: Lane 6B (review graphs compose cloud credential subdags from `lib/cloud-ops` and LLM subdags from `lib/llm-ops`)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6C-1** | Expand `dsl/tools/review.dag` (currently 29 LOC) to express all 4 review graph builders: (a) `review_phase` — blob acquisition + cloud credential chain + LLM triplet + response parsing; (b) `inline_review` — direct content + LLM; (c) `diff_review` — git diff triplet + LLM; (d) `dimension_diff_review` — parallel 4-dimension fan-out (coherence/quality/requirements/aspirational) with aspirational depending on prior findings, plus fan-in merge. Must import cloud credential and LLM modules from 6B DSL output. No `add_cloud_credential_chain` or `add_transport_triplet_named_with_passthrough` Rust helpers — topology expressed in DSL. | 6B-6 | L | Pending |
+| **6C-2** | Wire `dsl_builder.rs` to compile each review graph variant. Add `build_review_phase_graph_dsl()`, `build_inline_review_graph_dsl()`, `build_diff_review_graph_dsl()`, `build_dimension_diff_review_graph_dsl()`. | 6C-1 | S | Pending |
+| **6C-3** | Replace review `graph.rs` with thin DSL wrappers (same pattern as `gunbc-dag/src/bootstrap/graph.rs`). The public API (`build_review_phase_graph()`, etc.) stays but delegates to DSL builders. | 6C-2 | M | Pending |
+| **6C-4** | Update `gunbc-dag/src/bin/review.rs` and `gunbc-dag/src/bin/pipeline.rs` to use DSL-backed review graph builders. No direct `DagBuilder` construction in binaries. | 6C-3 | S | Pending |
+| **6C-5** | Delete `lib/review/src/graph.rs` and `lib/review/src/graph_mock.rs`. Remove `pub mod graph` / `pub mod graph_mock` from `lib/review/src/lib.rs`. Mocks are now auto-generated from `@auto_mock` test annotations in `.dag`. | 6C-3, 6C-4 | S | Pending |
+
+#### 6C Deletion Manifest
+
+| File | LOC | Action |
+|------|-----|--------|
+| `lib/review/src/graph.rs` | 1,794 | Delete |
+| `lib/review/src/graph_mock.rs` | 585 | Delete |
+| **Total** | **2,379** | |
+
+#### 6C Exit Criteria
+
+1. Zero `graph.rs` or `graph_mock.rs` in `lib/review/src/`.
+2. `dsl/tools/review.dag` fully expresses all 4 review graph variants — no Rust `DagBuilder` calls for review topology anywhere in the codebase.
+3. `gunbc-review` and `gunbc-pipeline` binaries execute using DSL-compiled review graphs.
+4. All review-related tests pass, including entrypoint/boundary detection tests, dimension opt-out tests, and transport subdag assertions (currently in the deleted `graph.rs` — equivalent assertions must exist in `.dag` test blocks or in the wrapper module's tests).
+5. `DimensionGraphConfigOps` (currently private to `graph.rs`) either moves to `ops.rs` or is expressed as DSL config nodes.
+
+#### 6C Verification
+
+```
+cargo check -p gunbc-lib-review
+cargo test -q -p gunbc-lib-review
+cargo check -p gunbc-dag
+cargo test -q -p gunbc-dag
+cargo run -q -p gunbc-dag --bin gunbc-review -- -n
+cargo run -q -p gunbc-dag --bin gunbc-pipeline -- --help
+cargo test -q -p gunbc-dag --test resource_registry_coverage
+cargo clippy --all-targets -- -D warnings
+```
+
+### Lane 6D: Ops Semantics to DSL (Deferred)
+
+**Goal**: Migrate `Executable` trait implementations (ops) from Rust into DSL service/pattern primitives.
+
+**Status**: **DEFERRED** — requires the DSL to gain executable semantics (function bodies, not just topology). Prerequisite is a design decision on whether the DSL gains an expression language or whether ops map to generic interpreters over `ServiceOperationSpec`.
+
+**Scope** (6,874 LOC): `lib/gcp-ops/src/ops.rs` (2,403), `gunbc-dag/src/ci/ops.rs` (2,115), `gunbc-dag/src/docgen/ops.rs` (664), `lib/cloud-ops/src/ops.rs` (441), `gunbc-dag/src/codegen/ops.rs` (365), `gunbc-dag/src/build/ops.rs` (300), `gunbc-dag/src/makegen/ops.rs` (244), `gunbc-dag/src/bootstrap/ops.rs` (226), `gunbc-dag/src/pragma/ops.rs` (116).
+
+### Lane 6 Summary
+
+| Lane | Scope | LOC Deleted | Size | Parallel With | Depends On |
+|------|-------|-------------|------|---------------|------------|
+| 6A | Tombstones + workspace subdags | ~320 (+ 2 rewrites) | S | 6B | -- |
+| 6B | Credential + LLM graph builders | 4,807 | L | 6A | -- |
+| 6C | Review graph builders + binaries | 2,379 | L | 6A | 6B |
+| 6D | Executable implementations | 6,874 | XL | -- | 6B, 6C |
+
+**Lanes 6A–6C total**: 7,186 LOC of Rust graph topology deleted, replaced by `.dag` files.
 
 ---
 
