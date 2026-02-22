@@ -254,7 +254,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         Node::opaque(
             "render_deps_toml",
             vec![],
-            vec![scalar("deps_toml_content", "String")],
+            vec![scalar("deps_toml_content", "NonEmptyString")],
             DynOp::new(DepsOp::RenderDepsToml),
         ),
         &load_registry,
@@ -265,7 +265,10 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let prepare_write = builder.add_node_after(
         Node::opaque(
             "prepare_file_write",
-            vec![scalar("content", "NonEmptyString"), port("path", "FilePath")],
+            vec![
+                scalar("content", "NonEmptyString"),
+                port("path", "FilePath"),
+            ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             DynOp::new(PrepareFileWriteOp),
         ),

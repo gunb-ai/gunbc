@@ -13,6 +13,10 @@ pub fn build_signature() -> Result<WorkflowSignature, BuilderError> {
 }
 
 /// Build the infra orchestration graph from DSL source.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "infra",
+    builder = "build_infra_graph().unwrap()"
+)]
 pub fn build_infra_graph() -> Result<Dag<InfraGraphOp>, BuilderError> {
     build_infra_graph_dsl()
 }
