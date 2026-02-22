@@ -151,56 +151,17 @@ impl ProcessUnitRegistry {
     }
 }
 
-fn ci_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("ci", unit)
-}
-
-fn test_all_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("test_all", unit)
-}
-
-fn bootstrap_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("bootstrap", unit)
-}
-
-fn makegen_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("makegen", unit)
-}
-
-fn pragma_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("pragma", unit)
-}
-
-fn deps_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("deps", unit)
-}
-
-fn dag_viz_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("dag_viz", unit)
-}
-
-fn dag_snapshot_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("dag_snapshot", unit)
-}
-
-fn gist_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("gist", unit)
-}
-
-fn build_all_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("build_all", unit)
-}
-
-fn sdlc_ref(unit: &str) -> ProcessUnitRef {
-    ProcessUnitRef::new("sdlc", unit)
-}
-
 fn compilation_ref() -> ProcessUnitRef {
     ProcessUnitRef::new(COMPILATION_PROCESS_ID, COMPILATION_ENSURE_UNIT)
 }
 
 fn codegen_ref() -> ProcessUnitRef {
     ProcessUnitRef::new(CODEGEN_PROCESS_ID, CODEGEN_ENSURE_UNIT)
+}
+
+/// Compact helper: build a `ProcessUnitSpec` with cost 1.
+fn pu(process: &str, unit: &str, claims: Vec<UnitClaim>) -> ProcessUnitSpec {
+    ProcessUnitSpec::new(ProcessUnitRef::new(process, unit), 1, claims)
 }
 
 /// Universal capability claims shared across all tool workflows.
@@ -217,6 +178,9 @@ fn codegen_ensure_claims() -> Vec<UnitClaim> {
 }
 
 /// Default registry for WF1/WF2 planner bootstrap.
+///
+/// Each entry is `pu(process_id, unit_id, claims)`.  Adding a new unit to
+/// an existing workflow requires one `pu(...)` line here.
 pub fn default_process_unit_registry() -> ProcessUnitRegistry {
     let mut registry = ProcessUnitRegistry::new();
 
@@ -228,435 +192,119 @@ pub fn default_process_unit_registry() -> ProcessUnitRegistry {
         registry.register(spec);
     }
 
+    let r = UnitClaim::read;
+    let w = UnitClaim::write;
+
     // CI workflow units
     for spec in [
-        ProcessUnitSpec::new(
-            ci_ref("ci.lint_upsert"),
-            1,
-            vec![
-                UnitClaim::write("file:workspace"),
-                UnitClaim::write("ledger:workflow"),
-            ],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.codegen"),
-            1,
-            vec![UnitClaim::write("file:generated:cli")],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.bootstrap"),
-            1,
-            vec![UnitClaim::write("file:manifest")],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.pragma"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.testgen"),
-            1,
-            vec![UnitClaim::write("file:generated:tests")],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.build_compile"),
-            1,
-            vec![
-                UnitClaim::write("file:target"),
-                UnitClaim::read("tool:cargo"),
-            ],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.test_run"),
-            1,
-            vec![
-                UnitClaim::read("file:target"),
-                UnitClaim::read("tool:cargo"),
-            ],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.clippy_run"),
-            1,
-            vec![
-                UnitClaim::read("file:target"),
-                UnitClaim::read("tool:cargo"),
-            ],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.guardrails"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            ci_ref("ci.verify"),
-            1,
-            vec![UnitClaim::read("file:generated")],
-        ),
-        ProcessUnitSpec::new(ci_ref("ci.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("ci", "ci.lint_upsert",   vec![w("file:workspace"), w("ledger:workflow")]),
+        pu("ci", "ci.codegen",       vec![w("file:generated:cli")]),
+        pu("ci", "ci.bootstrap",     vec![w("file:manifest")]),
+        pu("ci", "ci.pragma",        vec![w("file:workspace")]),
+        pu("ci", "ci.testgen",       vec![w("file:generated:tests")]),
+        pu("ci", "ci.build_compile", vec![w("file:target"), r("tool:cargo")]),
+        pu("ci", "ci.test_run",      vec![r("file:target"), r("tool:cargo")]),
+        pu("ci", "ci.clippy_run",    vec![r("file:target"), r("tool:cargo")]),
+        pu("ci", "ci.guardrails",    vec![r("file:workspace")]),
+        pu("ci", "ci.verify",        vec![r("file:generated")]),
+        pu("ci", "ci.report",        vec![]),
+    ] { registry.register(spec); }
 
     // test-all workflow units
     for spec in [
-        ProcessUnitSpec::new(
-            test_all_ref("test_all.lint_upsert"),
-            1,
-            vec![
-                UnitClaim::write("file:workspace"),
-                UnitClaim::write("ledger:workflow"),
-            ],
-        ),
-        ProcessUnitSpec::new(
-            test_all_ref("test_all.codegen"),
-            1,
-            vec![UnitClaim::write("file:generated:cli")],
-        ),
-        ProcessUnitSpec::new(
-            test_all_ref("test_all.testgen"),
-            1,
-            vec![UnitClaim::write("file:generated:tests")],
-        ),
-        ProcessUnitSpec::new(
-            test_all_ref("test_all.build_compile"),
-            1,
-            vec![
-                UnitClaim::write("file:target"),
-                UnitClaim::read("tool:cargo"),
-            ],
-        ),
-        ProcessUnitSpec::new(
-            test_all_ref("test_all.verify_fix"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            test_all_ref("test_all.cargo_test_xl"),
-            1,
-            vec![
-                UnitClaim::read("file:target"),
-                UnitClaim::read("tool:cargo"),
-            ],
-        ),
-        ProcessUnitSpec::new(test_all_ref("test_all.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("test_all", "test_all.lint_upsert",   vec![w("file:workspace"), w("ledger:workflow")]),
+        pu("test_all", "test_all.codegen",        vec![w("file:generated:cli")]),
+        pu("test_all", "test_all.testgen",        vec![w("file:generated:tests")]),
+        pu("test_all", "test_all.build_compile",  vec![w("file:target"), r("tool:cargo")]),
+        pu("test_all", "test_all.verify_fix",     vec![w("file:workspace")]),
+        pu("test_all", "test_all.cargo_test_xl",  vec![r("file:target"), r("tool:cargo")]),
+        pu("test_all", "test_all.report",         vec![]),
+    ] { registry.register(spec); }
 
-    // =========================================================================
-    // WF16/WF17/WF18: Gist workflow units (snapshot/diff/recent)
-    // =========================================================================
+    // Gist workflow units (WF16/WF17/WF18: snapshot/diff/recent)
     for spec in [
-        // Shared base units
-        ProcessUnitSpec::new(
-            gist_ref("gist.branch_resolution"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            gist_ref("gist.credential_resolve"),
-            1,
-            vec![UnitClaim::read("credential:github")],
-        ),
-        ProcessUnitSpec::new(
-            gist_ref("gist.gist_create"),
-            1,
-            vec![UnitClaim::write("network:github_gist")],
-        ),
-        // WF16: snapshot content acquisition
-        ProcessUnitSpec::new(
-            gist_ref("gist.list_files"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            gist_ref("gist.read_files"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(gist_ref("gist.render_snapshot"), 1, vec![]),
-        // WF17/WF18 shared diff rendering
-        ProcessUnitSpec::new(
-            gist_ref("gist.diff"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(gist_ref("gist.render_diff"), 1, vec![]),
-        // WF18: recent-specific source selection
-        ProcessUnitSpec::new(
-            gist_ref("gist.rev_list"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-    ] {
-        registry.register(spec);
-    }
+        pu("gist", "gist.branch_resolution",  vec![r("file:workspace")]),
+        pu("gist", "gist.credential_resolve",  vec![r("credential:github")]),
+        pu("gist", "gist.gist_create",         vec![w("network:github_gist")]),
+        pu("gist", "gist.list_files",           vec![r("file:workspace")]),
+        pu("gist", "gist.read_files",           vec![r("file:workspace")]),
+        pu("gist", "gist.render_snapshot",      vec![]),
+        pu("gist", "gist.diff",                 vec![r("file:workspace")]),
+        pu("gist", "gist.render_diff",          vec![]),
+        pu("gist", "gist.rev_list",             vec![r("file:workspace")]),
+    ] { registry.register(spec); }
 
-    // =========================================================================
-    // WF19: Bootstrap workflow units
-    // =========================================================================
+    // Bootstrap workflow units (WF19)
     for spec in [
-        // Tool-specific: workspace scan
-        ProcessUnitSpec::new(
-            bootstrap_ref("bootstrap.workspace_scan"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        // Tool-specific: parallel generation
-        ProcessUnitSpec::new(
-            bootstrap_ref("bootstrap.generate_makefile"),
-            1,
-            vec![], // pure computation
-        ),
-        ProcessUnitSpec::new(
-            bootstrap_ref("bootstrap.generate_gitignore"),
-            1,
-            vec![], // pure computation
-        ),
-        // Tool-specific: parallel upsert (filesystem write)
-        ProcessUnitSpec::new(
-            bootstrap_ref("bootstrap.upsert_makefile"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            bootstrap_ref("bootstrap.upsert_gitignore"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(bootstrap_ref("bootstrap.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("bootstrap", "bootstrap.workspace_scan",     vec![r("file:workspace")]),
+        pu("bootstrap", "bootstrap.generate_makefile",   vec![]),
+        pu("bootstrap", "bootstrap.generate_gitignore",  vec![]),
+        pu("bootstrap", "bootstrap.upsert_makefile",     vec![w("file:workspace")]),
+        pu("bootstrap", "bootstrap.upsert_gitignore",    vec![w("file:workspace")]),
+        pu("bootstrap", "bootstrap.report",              vec![]),
+    ] { registry.register(spec); }
 
-    // =========================================================================
-    // WF19: Makegen workflow units
-    // =========================================================================
+    // Makegen workflow units (WF19)
     for spec in [
-        ProcessUnitSpec::new(
-            makegen_ref("makegen.load_registry"),
-            1,
-            vec![], // pure: reads tool registry
-        ),
-        ProcessUnitSpec::new(
-            makegen_ref("makegen.render_makefile"),
-            1,
-            vec![], // pure computation
-        ),
-        ProcessUnitSpec::new(
-            makegen_ref("makegen.upsert_makefile"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(makegen_ref("makegen.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("makegen", "makegen.load_registry",    vec![]),
+        pu("makegen", "makegen.render_makefile",   vec![]),
+        pu("makegen", "makegen.upsert_makefile",   vec![w("file:workspace")]),
+        pu("makegen", "makegen.report",            vec![]),
+    ] { registry.register(spec); }
 
-    // =========================================================================
-    // WF19: Pragma workflow units
-    // =========================================================================
+    // Pragma workflow units (WF19)
     for spec in [
-        // Three independent parallel render+upsert chains
-        ProcessUnitSpec::new(
-            pragma_ref("pragma.render_clippy"),
-            1,
-            vec![], // pure computation
-        ),
-        ProcessUnitSpec::new(
-            pragma_ref("pragma.upsert_clippy"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            pragma_ref("pragma.render_allowlist"),
-            1,
-            vec![], // pure computation
-        ),
-        ProcessUnitSpec::new(
-            pragma_ref("pragma.upsert_allowlist"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            pragma_ref("pragma.render_policy"),
-            1,
-            vec![], // pure computation
-        ),
-        ProcessUnitSpec::new(
-            pragma_ref("pragma.upsert_policy"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(pragma_ref("pragma.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("pragma", "pragma.render_clippy",      vec![]),
+        pu("pragma", "pragma.upsert_clippy",      vec![w("file:workspace")]),
+        pu("pragma", "pragma.render_allowlist",    vec![]),
+        pu("pragma", "pragma.upsert_allowlist",    vec![w("file:workspace")]),
+        pu("pragma", "pragma.render_policy",       vec![]),
+        pu("pragma", "pragma.upsert_policy",       vec![w("file:workspace")]),
+        pu("pragma", "pragma.report",              vec![]),
+    ] { registry.register(spec); }
 
-    // =========================================================================
-    // WF20: Deps workflow units (install + generate)
-    // =========================================================================
+    // Deps workflow units (WF20: install + generate)
     for spec in [
-        // Install graph
-        ProcessUnitSpec::new(
-            deps_ref("deps.platform_env"),
-            1,
-            vec![], // pure: platform detection
-        ),
-        ProcessUnitSpec::new(
-            deps_ref("deps.load_manifest"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            deps_ref("deps.generate_scripts"),
-            1,
-            vec![], // pure computation
-        ),
-        ProcessUnitSpec::new(
-            deps_ref("deps.execute_installs"),
-            1,
-            vec![UnitClaim::write("tool:package_manager")],
-        ),
-        // Generate graph
-        ProcessUnitSpec::new(
-            deps_ref("deps.load_tool_registry"),
-            1,
-            vec![], // pure
-        ),
-        ProcessUnitSpec::new(
-            deps_ref("deps.render_deps_toml"),
-            1,
-            vec![], // pure computation
-        ),
-        ProcessUnitSpec::new(
-            deps_ref("deps.write_deps_toml"),
-            1,
-            vec![UnitClaim::write("file:workspace")],
-        ),
-        ProcessUnitSpec::new(deps_ref("deps.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("deps", "deps.platform_env",       vec![]),
+        pu("deps", "deps.load_manifest",       vec![r("file:workspace")]),
+        pu("deps", "deps.generate_scripts",    vec![]),
+        pu("deps", "deps.execute_installs",    vec![w("tool:package_manager")]),
+        pu("deps", "deps.load_tool_registry",  vec![]),
+        pu("deps", "deps.render_deps_toml",    vec![]),
+        pu("deps", "deps.write_deps_toml",     vec![w("file:workspace")]),
+        pu("deps", "deps.report",              vec![]),
+    ] { registry.register(spec); }
 
-    // =========================================================================
-    // WF20: DAG Viz workflow units (shared base + mode-specific)
-    // =========================================================================
+    // DAG Viz workflow units (WF20)
     for spec in [
-        // Shared base units (same WorkIdentity as gist via canonical dedup)
-        ProcessUnitSpec::new(
-            dag_viz_ref("dag_viz.branch_resolution"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            dag_viz_ref("dag_viz.credential_resolve"),
-            1,
-            vec![UnitClaim::read("credential:github")],
-        ),
-        // Viz-specific content acquisition
-        ProcessUnitSpec::new(
-            dag_viz_ref("dag_viz.serialize_dag"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            dag_viz_ref("dag_viz.render_viz"),
-            1,
-            vec![], // pure computation
-        ),
-        // Network transport (volatile)
-        ProcessUnitSpec::new(
-            dag_viz_ref("dag_viz.gist_upload"),
-            1,
-            vec![
-                UnitClaim::write("network:github_gist"),
-                UnitClaim::read("credential:github"),
-            ],
-        ),
-        ProcessUnitSpec::new(dag_viz_ref("dag_viz.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("dag_viz", "dag_viz.branch_resolution",  vec![r("file:workspace")]),
+        pu("dag_viz", "dag_viz.credential_resolve",  vec![r("credential:github")]),
+        pu("dag_viz", "dag_viz.serialize_dag",        vec![r("file:workspace")]),
+        pu("dag_viz", "dag_viz.render_viz",            vec![]),
+        pu("dag_viz", "dag_viz.gist_upload",           vec![w("network:github_gist"), r("credential:github")]),
+        pu("dag_viz", "dag_viz.report",                vec![]),
+    ] { registry.register(spec); }
 
-    // =========================================================================
-    // WF20: DAG Snapshot workflow units
-    // =========================================================================
+    // DAG Snapshot workflow units (WF20)
     for spec in [
-        ProcessUnitSpec::new(
-            dag_snapshot_ref("dag_snapshot.branch_resolution"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            dag_snapshot_ref("dag_snapshot.credential_resolve"),
-            1,
-            vec![UnitClaim::read("credential:github")],
-        ),
-        ProcessUnitSpec::new(
-            dag_snapshot_ref("dag_snapshot.list_files"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            dag_snapshot_ref("dag_snapshot.read_files"),
-            1,
-            vec![UnitClaim::read("file:workspace")],
-        ),
-        ProcessUnitSpec::new(
-            dag_snapshot_ref("dag_snapshot.render_snapshot"),
-            1,
-            vec![], // pure computation
-        ),
-        ProcessUnitSpec::new(
-            dag_snapshot_ref("dag_snapshot.gist_upload"),
-            1,
-            vec![
-                UnitClaim::write("network:github_gist"),
-                UnitClaim::read("credential:github"),
-            ],
-        ),
-        ProcessUnitSpec::new(dag_snapshot_ref("dag_snapshot.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("dag_snapshot", "dag_snapshot.branch_resolution",  vec![r("file:workspace")]),
+        pu("dag_snapshot", "dag_snapshot.credential_resolve",  vec![r("credential:github")]),
+        pu("dag_snapshot", "dag_snapshot.list_files",           vec![r("file:workspace")]),
+        pu("dag_snapshot", "dag_snapshot.read_files",           vec![r("file:workspace")]),
+        pu("dag_snapshot", "dag_snapshot.render_snapshot",      vec![]),
+        pu("dag_snapshot", "dag_snapshot.gist_upload",          vec![w("network:github_gist"), r("credential:github")]),
+        pu("dag_snapshot", "dag_snapshot.report",               vec![]),
+    ] { registry.register(spec); }
 
-    // =========================================================================
     // Build-all workflow units
-    // =========================================================================
-    registry.register(ProcessUnitSpec::new(
-        build_all_ref("build_all.build"),
-        1,
-        vec![
-            UnitClaim::write("file:target"),
-            UnitClaim::read("tool:cargo"),
-        ],
-    ));
+    registry.register(pu("build_all", "build_all.build", vec![w("file:target"), r("tool:cargo")]));
 
-    // =========================================================================
     // SDLC workflow units
-    // =========================================================================
     for spec in [
-        ProcessUnitSpec::new(
-            sdlc_ref("sdlc.intake"),
-            1,
-            vec![
-                UnitClaim::write("file:target"),
-                UnitClaim::read("file:workspace"),
-            ],
-        ),
-        ProcessUnitSpec::new(
-            sdlc_ref("sdlc.worker"),
-            1,
-            vec![
-                UnitClaim::write("file:target"),
-                UnitClaim::read("network:github_issue"),
-            ],
-        ),
-        ProcessUnitSpec::new(sdlc_ref("sdlc.report"), 1, vec![]),
-    ] {
-        registry.register(spec);
-    }
+        pu("sdlc", "sdlc.intake", vec![w("file:target"), r("file:workspace")]),
+        pu("sdlc", "sdlc.worker", vec![w("file:target"), r("network:github_issue")]),
+        pu("sdlc", "sdlc.report", vec![]),
+    ] { registry.register(spec); }
 
     registry
 }

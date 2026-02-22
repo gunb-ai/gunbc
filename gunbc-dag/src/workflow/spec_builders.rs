@@ -1442,78 +1442,34 @@ struct ToolWorkflowDescriptor {
     build: fn() -> Result<WorkflowSpec, String>,
 }
 
+/// Tool workflow registry.  Adding a new workflow requires one line here
+/// and the corresponding `*_workflow_spec()` builder function.
+///
+/// Format: `(canonical_name, &[aliases], builder_fn)`
 const TOOL_WORKFLOWS: &[ToolWorkflowDescriptor] = &[
-    ToolWorkflowDescriptor {
-        canonical_name: "gist",
-        aliases: &[],
-        build: gist_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "gist-snapshot",
-        aliases: &["gist_snapshot"],
-        build: gist_snapshot_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "gist-diff",
-        aliases: &["gist_diff"],
-        build: gist_diff_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "gist-recent",
-        aliases: &["gist_recent"],
-        build: gist_recent_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "bootstrap",
-        aliases: &[],
-        build: bootstrap_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "makegen",
-        aliases: &[],
-        build: makegen_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "pragma",
-        aliases: &[],
-        build: pragma_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "deps",
-        aliases: &[],
-        build: deps_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "dag-viz",
-        aliases: &["dag_viz"],
-        build: dag_viz_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "dag-viz-diff",
-        aliases: &["dag_viz_diff"],
-        build: dag_viz_diff_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "dag-viz-recent",
-        aliases: &["dag_viz_recent"],
-        build: dag_viz_recent_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "dag-snapshot",
-        aliases: &["dag_snapshot"],
-        build: dag_snapshot_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "build-all",
-        aliases: &["build_all"],
-        build: build_all_workflow_spec,
-    },
-    ToolWorkflowDescriptor {
-        canonical_name: "sdlc",
-        aliases: &[],
-        build: sdlc_workflow_spec,
-    },
+    tw("gist",           &[],                gist_workflow_spec),
+    tw("gist-snapshot",  &["gist_snapshot"],  gist_snapshot_workflow_spec),
+    tw("gist-diff",      &["gist_diff"],      gist_diff_workflow_spec),
+    tw("gist-recent",    &["gist_recent"],    gist_recent_workflow_spec),
+    tw("bootstrap",      &[],                bootstrap_workflow_spec),
+    tw("makegen",        &[],                makegen_workflow_spec),
+    tw("pragma",         &[],                pragma_workflow_spec),
+    tw("deps",           &[],                deps_workflow_spec),
+    tw("dag-viz",        &["dag_viz"],        dag_viz_workflow_spec),
+    tw("dag-viz-diff",   &["dag_viz_diff"],   dag_viz_diff_workflow_spec),
+    tw("dag-viz-recent", &["dag_viz_recent"], dag_viz_recent_workflow_spec),
+    tw("dag-snapshot",   &["dag_snapshot"],   dag_snapshot_workflow_spec),
+    tw("build-all",      &["build_all"],      build_all_workflow_spec),
+    tw("sdlc",           &[],                sdlc_workflow_spec),
 ];
+
+const fn tw(
+    canonical_name: &'static str,
+    aliases: &'static [&'static str],
+    build: fn() -> Result<WorkflowSpec, String>,
+) -> ToolWorkflowDescriptor {
+    ToolWorkflowDescriptor { canonical_name, aliases, build }
+}
 
 /// Return canonical tool workflow names.
 pub fn all_tool_workflow_names() -> Vec<&'static str> {

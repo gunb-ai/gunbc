@@ -770,82 +770,22 @@ mod tests {
         ))
     }
 
-    fn expected_real_corpus_module_order() -> Vec<&'static str> {
-        vec![
-            "examples.rich_types",
-            "infra.aws.services",
-            "infra.azure.services",
-            "infra.core",
-            "infra.gcp.services",
-            "infra.spec",
-            "infra.aws.config",
-            "infra.aws.resources",
-            "infra.azure.config",
-            "infra.azure.resources",
-            "infra.gcp.config",
-            "infra.gcp.resources",
-            "examples.integration_tests",
-            "infra.sdlc.deploy",
-            "services.cargo",
-            "services.gcp.iam",
-            "services.gcp.secret_manager",
-            "services.gcp.sts",
-            "services.github.gist",
-            "services.github.pull_request",
-            "services.llm.anthropic",
-            "services.llm.openai",
-            "std.resources",
-            "std.types",
-            "cloud.aws.credential",
-            "cloud.azure.credential",
-            "examples.abstract_services",
-            "interfaces.agent_provider",
-            "interfaces.artifact_store",
-            "interfaces.claim_store",
-            "interfaces.issue_provider",
-            "funcs.test_control_flow",
-            "interfaces.outcome_ledger",
-            "interfaces.signal_store",
-            "profiles.cloud_run",
-            "profiles.local",
-            "profiles.sdlc",
-            "profiles.unit_test",
-            "services.git",
-            "services.github.issues",
-            "services.sdlc.providers.codex_agent_provider",
-            "services.sdlc.providers.file_claim_store",
-            "services.sdlc.providers.file_outcome_ledger",
-            "services.sdlc.providers.gcs_claim_store",
-            "services.sdlc.providers.gcs_outcome_ledger",
-            "services.sdlc.providers.github_issue_provider",
-            "services.sdlc.providers.stub_providers",
-            "services.shell",
-            "std.patterns",
-            "cloud.gcp.credential",
-            "shared.dag_util",
-            "shared.gist_modes",
-            "std.state_machines",
-            "pipelines.reconciler",
-            "tools.bootstrap",
-            "tools.build",
-            "tools.clippy",
-            "tools.codegen",
-            "tools.dag_viz",
-            "tools.deps",
-            "tools.design",
-            "funcs.sdlc_stages",
-            "funcs.sdlc_worker",
-            "pipelines.sdlc",
-            "tools.docgen",
-            "tools.gist",
-            "examples.deployment",
-            "tools.infra",
-            "tools.makegen",
-            "tools.pragma",
-            "tools.review",
-            "tools.testgen",
-            "pipelines.ci",
-        ]
+    /// Discover expected module IDs from the filesystem instead of a hardcoded list.
+    /// Globs `dsl/**/*.dag`, converts paths to module IDs, and returns a sorted set.
+    fn discover_expected_module_ids(dsl_root: &PathBuf) -> Vec<String> {
+        let files = daglang_resolve::discover_dag_files(dsl_root)
+            .expect("discover_dag_files should succeed");
+        let mut module_ids: Vec<String> = files
+            .iter()
+            .filter_map(|path| {
+                let rel = path.strip_prefix(dsl_root).ok()?;
+                let segments = daglang_resolve::relative_path_to_module_path(rel);
+                Some(segments.join("."))
+            })
+            .collect();
+        module_ids.sort();
+        module_ids.dedup();
+        module_ids
     }
 
     fn reported_modules_in_order(report: &str) -> Vec<String> {
@@ -1084,6 +1024,9 @@ mod tests {
     #[test]
     fn parse_pipeline_parses_full_real_dsl_corpus_without_diagnostics() {
         let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let expected_count = daglang_resolve::discover_dag_files(&dsl_root)
+            .expect("discover_dag_files should succeed")
+            .len();
         let result = run_pipeline(
             &PipelineContext {
                 roots: vec![dsl_root],
@@ -1093,7 +1036,7 @@ mod tests {
         )
         .expect("pipeline should execute");
 
-        assert_eq!(result.parsed_count(), 73);
+        assert_eq!(result.parsed_count(), expected_count);
         assert!(
             result.diagnostics().is_empty(),
             "real corpus parse stop should not emit parse diagnostics: {:?}",
@@ -1128,6 +1071,9 @@ mod tests {
     #[test]
     fn report_pipeline_real_corpus_retains_parsed_count() {
         let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
+        let expected_count = daglang_resolve::discover_dag_files(&dsl_root)
+            .expect("discover_dag_files should succeed")
+            .len();
         let result = run_pipeline(
             &PipelineContext {
                 roots: vec![dsl_root],
@@ -1138,29 +1084,30 @@ mod tests {
         .expect("pipeline should execute");
         assert_eq!(
             result.parsed_count(),
-            73,
+            expected_count,
             "report stop should retain parse-stage file count for real corpus"
         );
     }
 
     #[test]
-    fn report_pipeline_real_corpus_module_order_matches_expected_snapshot() {
+    fn report_pipeline_real_corpus_module_set_matches_filesystem() {
         let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
         let result = run_pipeline(
             &PipelineContext {
-                roots: vec![dsl_root],
+                roots: vec![dsl_root.clone()],
                 target_file: None,
             },
             PipelineStop::Report,
         )
         .expect("pipeline should execute");
         let report = result.report().expect("report should be available");
-        let actual = reported_modules_in_order(report);
-        let expected: Vec<String> = expected_real_corpus_module_order()
-            .into_iter()
-            .map(String::from)
-            .collect();
-        assert_eq!(actual, expected);
+        let mut actual = reported_modules_in_order(report);
+        actual.sort();
+        let expected = discover_expected_module_ids(&dsl_root);
+        assert_eq!(
+            actual, expected,
+            "compiler-discovered modules should match filesystem-discovered .dag files"
+        );
     }
 
     #[test]
