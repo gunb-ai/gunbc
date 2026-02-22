@@ -121,7 +121,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | Lane | Status | Remaining |
 |------|--------|-----------|
 | 1: Type system + graph builders | **DONE** | All port types converted (TS-1, TS-1b, TS-1c, TS-1d complete 2026-02-22) |
-| 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-16 (partial). Commit: L2-0. L2-3 done, L2-4 done |
+| 2: 100% codegen pipeline | **DONE** | S12-16 done (2026-02-22). All SDLC tasks complete (S12-1..S12-17). L2-3 done, L2-4 done |
 | Post-merge: Type system hard cutover | **DONE** | TS-7 done (2026-02-22), TS-4 done (2026-02-22) — `PortType::Any` deleted |
 | 4: Codebase polish | **ACTIVE** | CU-7..CU-9 (CU-2 done 2026-02-22) |
 | 5: GraphIR decommission (exclusive) | **ACTIVE** | GD-4 (in progress), GD-5 (in progress: AWS/Azure drop-now cut landed) |
@@ -228,7 +228,7 @@ Archived: `S12-5` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-comp
 | **S12-13** | **Code review stage**: Verify compiled code review stage works: PR diff retrieval via `PullRequest.ListFiles`, LLM review via `Anthropic.Messages`, findings posted as PR comment. | S12-12 | M | Done (2026-02-22) -- `handle_code_review_to_testing()` in `sdlc_stages.dag` with test coverage |
 | **S12-14** | **Acceptance testing stage**: Verify compiled acceptance testing works: `cargo.Build.Test` + `cargo.Build.Clippy` with pass/fail gating. Only advances to done if both pass. | S12-12 | M | Done (2026-02-22) -- `handle_testing_to_done()` with pass/fail gating and two test paths |
 | **S12-15** | **Agent branch management**: Verify agent spawn creates `sdlc/issue-{number}` branch, pushes after completion, creates PR. | S12-12 | S | Done (2026-02-22) -- branch creation in `handle_accepted_to_implementing()`, PR creation in `handle_implementing_to_code_review()` |
-| **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during sweep. | S12-12 | S | In Progress (polling via compiled stage dispatch during transitions; dedicated background sweep polling not yet implemented) |
+| **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during sweep. | S12-12 | S | Done (2026-02-22) -- `sweep_inflight_agents()` polls all non-terminal agents in Implementing stage; 5 unit tests + 1 integration test cover polling, skip logic, unknown provider errors, and ledger persistence |
 
 ### Phase 2-F: E2E validation
 
@@ -316,7 +316,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 |----|------|----------|------|------|--------|
 | **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Done (2026-02-22) -- removed blanket `#[allow(dead_code)]`; no actual dead methods found |
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | Done (2026-02-22) -- removed untyped `port(...)` usage from active graph builders (`gcp-ops`, `cloud-ops`, `llm-ops`, `review`, `deps`, `gist`); added domain `PortTypeTag` markers and migrated callsites to `typed_port::<...>().into()` |
-| **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | -- | L | In Progress (2026-02-22) |
+| **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | -- | L | Done (2026-02-22) -- removed remaining `res:*` constructor literals in runtime paths (`Port::resource(\"res:file\", ...)`, `ResourceInput::new(\"res:...\")`, and raw resource `port(\"res:...\")`); normalized via `Port::resource(<claim>, ...)`, canonical `ResourceInput::new(<claim>, ...)`, and shared `RESOURCE_FILE` constant for wiring references |
 | **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | -- | S | Done (2026-02-22) -- removed makegen/fs alias normalization (`FilesystemHandle`/`makefile_content`), standardized on canonical `file:write` + `return` across lowering parity, resolver fs wiring, and makegen snapshot/test expectations |
 
 ---
@@ -336,7 +336,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 | **GD-3** | **Replace manual workspace subdags**: remove handwritten workspace subdag composition for `gist/deps/clippy/dag_viz/testgen` and route through DSL-backed modules. | GD-1 | M | Done (2026-02-22) |
 | **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | In Progress (2026-02-22) -- deleted legacy clippy ops module, testgen graph-mock module, and the five manual workspace subdag modules; remaining blocker is handwritten `testgen_dag` runtime until DSL `generate()` execution is wired end-to-end |
 | **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | In Progress (2026-02-22) -- drop-now deletions landed for cargo ops and AWS/Azure legacy graph+mock+ops stacks; cloud credential graph now fails fast for dropped providers (GCP-only build path); **new**: cloud env requirement detection is now fail-closed for dropped providers (removed AWS/Azure env stubs, unsupported provider now returns explicit error); cloud/gcp/llm/review provider matrix still in progress |
-| **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | Done (2026-02-22) -- unknown-callable fallback removed (wildcard passthrough prefixes deleted); `dsl_module` compile+resolve guardrail and stale `Replaces:` guardrail active in `gunbc-codegen` (CI / opt-in locally via `GUNBC_ENFORCE_STALE_REPLACES=1`) |
+| **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | Done (2026-02-22) -- unknown-callable fallback removed (wildcard passthrough prefixes deleted); compiled infra CLI fallback synthesis (`fallback_orchestration_output`) removed so orchestration outputs are fail-closed; `dsl_module` compile+resolve guardrail and stale `Replaces:` guardrail active in `gunbc-codegen` (CI / opt-in locally via `GUNBC_ENFORCE_STALE_REPLACES=1`) |
 
 ### Lane 5 exit criteria
 

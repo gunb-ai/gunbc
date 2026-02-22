@@ -338,23 +338,7 @@ fn run_compiled_infra_orchestration(
     let log =
         execute_with_mode_and_inputs(&orchestration_dag, ExecutionMode::Real, Some(&input_mocks))
             .map_err(|error| format!("compiled infra DAG execution failed: {error}"))?;
-    match extract_orchestration_output(&log) {
-        Ok(output) => Ok(output),
-        Err(error)
-            if error.contains("planned_targets exists but is not a string list (got Skipped)")
-                || error
-                    .contains("compiled infra DAG log missing planned_targets output entry")
-                || error.contains("planned_targets key missing from output entry") =>
-        {
-            Ok(fallback_orchestration_output(
-                spec,
-                runtime,
-                filter,
-                execute_mode,
-            ))
-        }
-        Err(error) => Err(error),
-    }
+    extract_orchestration_output(&log)
 }
 
 fn collect_spec_targets(spec: &InfraSpec) -> Vec<String> {
@@ -371,41 +355,6 @@ fn collect_spec_targets(spec: &InfraSpec) -> Vec<String> {
     );
     targets.push(format!("wif:{}:{}", spec.wif.pool_id, spec.wif.provider_id));
     targets
-}
-
-fn fallback_orchestration_output(
-    spec: &InfraSpec,
-    runtime: CloudRuntimeKind,
-    filter: &InfraApplyFilter,
-    execute_mode: bool,
-) -> InfraOrchestrationOutput {
-    let spec_targets = collect_spec_targets(spec);
-    let targeted = if filter.target.is_empty() {
-        spec_targets
-    } else {
-        spec_targets
-            .into_iter()
-            .filter(|item| filter.target.iter().any(|target| target == item))
-            .collect::<Vec<_>>()
-    };
-    let planned_targets = targeted
-        .into_iter()
-        .filter(|item| !filter.skip.iter().any(|skip| skip == item))
-        .collect::<Vec<_>>();
-    let target_count = planned_targets.len() as i64;
-    let applied_count = if execute_mode { target_count } else { 0 };
-    let mode = if execute_mode { "apply" } else { "plan" };
-    let report = format!(
-        "infra {mode} (env={}, runtime={}): {target_count} target(s)",
-        spec.environment,
-        runtime.as_str()
-    );
-    InfraOrchestrationOutput {
-        planned_targets,
-        target_count,
-        applied_count,
-        report,
-    }
 }
 
 fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestrationOutput, String> {
