@@ -9,15 +9,13 @@
 //! - Chain validation with other tools
 
 use crate::graph::{build_gist_graph, GistMode};
-use gunbc_ir::transport::cloud::{
-    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
-};
 use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{SecretString, Timestamp, Value};
+use gunbc_ir::{Timestamp, Value};
 use gunbc_primitives::filename;
 use gunbc_test::{
-    extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
+    extract_mock_requirements, mock_bearer_credential, mock_gcp_local_cloud_config,
+    InputConstraint, MockSpec, NodeExample, OutputMatcher,
 };
 use std::collections::BTreeMap;
 use std::time::SystemTime;
@@ -29,39 +27,6 @@ fn mock_fs_handle() -> Value {
 
 fn mock_clock() -> Value {
     Timestamp::from_system_time(SystemTime::UNIX_EPOCH).into()
-}
-
-fn mock_credential() -> Value {
-    let mut map = BTreeMap::new();
-    map.insert(
-        "token".to_string(),
-        Value::Secret(SecretString::new("<MOCK_GITHUB_TOKEN>")),
-    );
-    map.insert("source_type".to_string(), Value::Str("static".to_string()));
-    map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-    map.insert(
-        "cap".to_string(),
-        Value::Secret(SecretString::new("capability")),
-    );
-    Value::Map(map)
-}
-
-fn mock_cloud_config() -> Value {
-    CloudSecretConfig {
-        provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::LocalDev,
-        audience: "local-dev".to_string(),
-        project_or_account: "mock-secrets".to_string(),
-        secret: CloudSecretRef {
-            prefix: "ci-".to_string(),
-            name: String::new(),
-            delimiter: String::new(),
-            version: None,
-        },
-        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
-        impersonate_account_or_role: None,
-    }
-    .into()
 }
 
 fn mock_diff_response() -> &'static str {
@@ -127,7 +92,11 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .expect("gist_upload file:write mock should match type")
         .boundary("gist_upload/clock_env", "clock", mock_clock())
         .expect("clock mock should match type")
-        .boundary("gist_upload/cloud_env", "config", mock_cloud_config())
+        .boundary(
+            "gist_upload/cloud_env",
+            "config",
+            mock_gcp_local_cloud_config(),
+        )
         .expect("cloud_env config should match type")
         .boundary(
             "gist_upload/cloud_env",
@@ -141,12 +110,16 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             Value::Str("mock-oidc-token".into()),
         )
         .expect("cloud_env request_token should match type")
-        .boundary("gist_upload/bind_secret", "config", mock_cloud_config())
+        .boundary(
+            "gist_upload/bind_secret",
+            "config",
+            mock_gcp_local_cloud_config(),
+        )
         .expect("bind_secret config should match type")
         .boundary(
             "gist_upload/cloud_credential/gcp_wif_secret/build_credential",
             "credential",
-            mock_credential(),
+            mock_bearer_credential("<MOCK_GITHUB_TOKEN>"),
         )
         .expect("cloud_credential credential should match type")
         .boundary(

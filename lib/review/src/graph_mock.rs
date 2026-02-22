@@ -21,50 +21,15 @@
 
 use crate::graph::{build_diff_review_graph, build_inline_review_graph};
 use crate::{Check, Criteria};
-use gunbc_ir::transport::cloud::{
-    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
-};
 use gunbc_ir::transport::llm::mock;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{SecretString, Value};
+use gunbc_ir::Value;
 use gunbc_primitives::filename;
 use gunbc_test::{
-    extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
+    extract_mock_requirements, mock_bearer_credential, mock_gcp_local_cloud_config,
+    InputConstraint, MockSpec, NodeExample, OutputMatcher,
 };
 use std::collections::BTreeMap;
-
-fn mock_credential() -> Value {
-    let mut map = BTreeMap::new();
-    map.insert(
-        "token".to_string(),
-        Value::Secret(SecretString::new("<MOCK_API_KEY>")),
-    );
-    map.insert("source_type".to_string(), Value::Str("static".to_string()));
-    map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-    map.insert(
-        "cap".to_string(),
-        Value::Secret(SecretString::new("capability")),
-    );
-    Value::Map(map)
-}
-
-fn mock_cloud_config() -> Value {
-    CloudSecretConfig {
-        provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::LocalDev,
-        audience: "local-dev".to_string(),
-        project_or_account: "mock-secrets".to_string(),
-        secret: CloudSecretRef {
-            prefix: "ci-".to_string(),
-            name: String::new(),
-            delimiter: String::new(),
-            version: None,
-        },
-        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
-        impersonate_account_or_role: None,
-    }
-    .into()
-}
 
 fn mock_fs_handle() -> Value {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
@@ -169,7 +134,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
         // Delegate cloud_credential internal mocks to include_prefixed_runtime_mocks
         .exclude_prefix("cloud_credential/gcp_wif_secret")
         // Cloud env + credential boundaries
-        .boundary("cloud_env", "config", mock_cloud_config())
+        .boundary("cloud_env", "config", mock_gcp_local_cloud_config())
         .expect("cloud_env config should match type")
         .boundary(
             "cloud_env",
@@ -186,7 +151,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .boundary(
             "cloud_credential/gcp_wif_secret/build_credential",
             "credential",
-            mock_credential(),
+            mock_bearer_credential("<MOCK_API_KEY>"),
         )
         .expect("cloud_credential credential should match type")
         .boundary(
@@ -201,7 +166,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
             Value::Bool(true),
         )
         .expect("cloud_credential ok should match type")
-        .boundary("bind_secret", "config", mock_cloud_config())
+        .boundary("bind_secret", "config", mock_gcp_local_cloud_config())
         .expect("bind_secret config should match type")
         // resolve_config sub-node: unpacks CloudSecretConfig into individual ports
         .boundary(
@@ -408,7 +373,7 @@ diff --git a/src/main.rs b/src/main.rs
         .boundary("fs_env", "file:write", mock_fs_handle())
         .expect("fs_env should match type")
         // Cloud env + credential boundaries
-        .boundary("cloud_env", "config", mock_cloud_config())
+        .boundary("cloud_env", "config", mock_gcp_local_cloud_config())
         .expect("cloud_env config should match type")
         .boundary(
             "cloud_env",
@@ -425,7 +390,7 @@ diff --git a/src/main.rs b/src/main.rs
         .boundary(
             "cloud_credential/gcp_wif_secret/build_credential",
             "credential",
-            mock_credential(),
+            mock_bearer_credential("<MOCK_API_KEY>"),
         )
         .expect("cloud_credential credential should match type")
         .boundary(
@@ -440,7 +405,7 @@ diff --git a/src/main.rs b/src/main.rs
             Value::Bool(true),
         )
         .expect("cloud_credential ok should match type")
-        .boundary("bind_secret", "config", mock_cloud_config())
+        .boundary("bind_secret", "config", mock_gcp_local_cloud_config())
         .expect("bind_secret config should match type")
         // resolve_config sub-node: unpacks CloudSecretConfig into individual ports
         .boundary(

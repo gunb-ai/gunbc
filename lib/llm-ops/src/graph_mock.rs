@@ -14,49 +14,15 @@
 //! The `execute` boundary returns provider-specific REST responses that
 //! the `parse` node then converts to unified outputs.
 
-use gunbc_ir::transport::cloud::{
-    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
-};
 use gunbc_ir::transport::llm::mock;
-use gunbc_ir::{SecretString, Value};
-use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
-use std::collections::BTreeMap;
-
-fn mock_credential() -> Value {
-    let mut map = BTreeMap::new();
-    map.insert(
-        "token".to_string(),
-        Value::Secret(SecretString::new("<MOCK_API_KEY>")),
-    );
-    map.insert("source_type".to_string(), Value::Str("static".to_string()));
-    map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-    map.insert(
-        "cap".to_string(),
-        Value::Secret(SecretString::new("capability")),
-    );
-    Value::Map(map)
-}
-
-fn mock_cloud_config() -> Value {
-    CloudSecretConfig {
-        provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::LocalDev,
-        audience: "local-dev".to_string(),
-        project_or_account: "mock-secrets".to_string(),
-        secret: CloudSecretRef {
-            prefix: "ci-".to_string(),
-            name: String::new(),
-            delimiter: String::new(),
-            version: None,
-        },
-        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
-        impersonate_account_or_role: None,
-    }
-    .into()
-}
+use gunbc_ir::Value;
+use gunbc_test::{
+    mock_bearer_credential, mock_gcp_local_cloud_config, InputConstraint, MockSpec, NodeExample,
+    OutputMatcher,
+};
 
 fn with_cloud_env(spec: MockSpec) -> MockSpec {
-    spec.boundary("cloud_env", "config", mock_cloud_config())
+    spec.boundary("cloud_env", "config", mock_gcp_local_cloud_config())
         .boundary(
             "cloud_env",
             "request_url",
@@ -67,8 +33,12 @@ fn with_cloud_env(spec: MockSpec) -> MockSpec {
             "request_token",
             Value::Str("mock-oidc-token".into()),
         )
-        .boundary("bind_secret", "config", mock_cloud_config())
-        .boundary("cloud_credential", "credential", mock_credential())
+        .boundary("bind_secret", "config", mock_gcp_local_cloud_config())
+        .boundary(
+            "cloud_credential",
+            "credential",
+            mock_bearer_credential("<MOCK_API_KEY>"),
+        )
         // resolve_config sub-node: unpacks CloudSecretConfig into individual ports
         .boundary(
             "cloud_credential/resolve_config",

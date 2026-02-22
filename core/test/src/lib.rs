@@ -40,6 +40,7 @@ pub mod boundary;
 pub mod composition;
 pub mod fermi;
 pub mod mock;
+pub mod mock_helpers;
 pub mod mock_requirements;
 pub mod mock_spec;
 pub mod mockable;
@@ -54,6 +55,7 @@ pub use fermi::{
     guard, guard_test, guard_test_with_env, max_cost_from_env, FermiCost, TestClass, TestMeta,
 };
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
+pub use mock_helpers::{mock_bearer_credential, mock_gcp_local_cloud_config};
 pub use mock_requirements::{
     extract_mock_requirements, MissingSlot, MockIncompleteError, MockRequirements, MockSlot,
     MockSlotKind, MockTypeError,
