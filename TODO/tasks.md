@@ -115,8 +115,9 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | F: Codegen-first SDLC | **DONE** | — |
 | G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **DONE** | — |
-| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, TS-7, TS-3, TS-4, M7, M15 |
+| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, M7, M15 |
 | 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19 |
+| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4 (needs both Lane 1 + Lane 2 done) |
 | 3: Modeling integrity | **QUEUED** | M8..M14, M16..M19 |
 
 ---
@@ -177,7 +178,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 **Goal**: Make the SDLC pipeline execute entirely through the compiled DSL path. Eliminate the hand-written Rust worker dispatch. After this lane, `gunbc-sdlc worker` loads and executes the compiled `sdlc.dag` pipeline via profile binding — zero hand-written stage logic.
 
-**Mutual exclusivity**: Lane 2 touches `core/daglang/` (syntax, lower, cli), `core/ir/` (port_type, types, system_model), `core/codegen/`, `gunbc-dag/`, and `dsl/`. Lane 1 does NOT touch any of these (except `daglang-typecheck` for annotations, which is a non-overlapping section).
+**Mutual exclusivity**: Lane 2 touches `core/daglang/` (syntax, lower, cli), `gunbc-dag/`, and `dsl/`. Lane 1 does NOT touch any of these (except `daglang-typecheck` for annotations, which is a non-overlapping section). Zero shared files with Lane 1.
 
 ### Step 0: Baseline
 
@@ -236,22 +237,12 @@ DSL interface and provider files exist. These tasks wire them through the compil
 | **S12-15** | **Agent branch management**: Verify agent spawn creates `sdlc/issue-{number}` branch, pushes after completion, creates PR. | S12-12 | S | |
 | **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during sweep. | S12-12 | S | |
 
-### Phase 2-F: Type system hard cutover (depends on Lane 1 port propagation)
-
-These tasks can only start after Lane I's Phase I-A (TS-1*) completes, since they delete the fallback paths that Lane I's port updates make unnecessary.
-
-| ID | Task | Deps | Size | Status |
-|----|------|------|------|--------|
-| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | TS-1..TS-1d | M | |
-| **TS-3** | **Make TypeRegistry non-optional**: Change `Option<TypeRegistry>` → `TypeRegistry` in `core/codegen/src/testgen/codegen.rs`. Audit for other `Option<TypeRegistry>` patterns. | TS-7 | S | |
-| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-1..TS-1d, TS-7 | M | |
-
-### Phase 2-G: E2E validation
+### Phase 2-F: E2E validation
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **L2-3** | **SDLC compiled dry-run**: Execute `dsl/pipelines/sdlc.dag` compiled with `--profile unit_test`. Verify all 8 stage transitions execute through the compiled pipeline. Run `dsl/pipelines/reconciler.dag` test. | S12-12, S12-13, S12-14 | M | |
-| **L2-4** | **Final workspace green**: Run `cargo run --bin gunbc-testgen` (27 targets fresh), `cargo run --bin gunbc-codegen` (fresh), `cargo test --workspace` (224/224 pass), `cargo clippy --all-targets -- -D warnings` (0 warnings). | L2-3, TS-3, TS-4 | S | |
+| **L2-4** | **Final workspace green**: Run `cargo run --bin gunbc-testgen` (27 targets fresh), `cargo run --bin gunbc-codegen` (fresh), `cargo test --workspace` (224/224 pass), `cargo clippy --all-targets -- -D warnings` (0 warnings). | L2-3 | S | |
 
 ### Lane 2 dependency graph
 
@@ -264,8 +255,6 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
                                                                    │
                                  S12-13, S12-14, S12-15, S12-16 ←─┘
                                                                    │
-                            (waits for Lane 1 TS-1*) ──→ TS-7 ──→ TS-3, TS-4
-                                                                   │
                                                        L2-3 ──→ L2-4 (final green)
 ```
 
@@ -274,14 +263,8 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 | File | Changes |
 |------|---------|
 | `core/daglang/daglang-syntax/src/` | Profile syntax (S12-6) |
-| `core/daglang/daglang-lower/src/lib.rs` | Profile resolution (S12-7), canonical_type_name deletion (TS-7) |
+| `core/daglang/daglang-lower/src/lib.rs` | Profile resolution (S12-7) |
 | `core/daglang/daglang-cli/src/` | `--profile` flag (S12-8), makegen test fixes (L2-1) |
-| `core/daglang/daglang-typecheck/src/lib.rs` | Delete `types_match()` (TS-7) |
-| `core/daglang/daglang-syntax/src/ast_utils.rs` | Delete `canonical_type_name()` (TS-7) |
-| `core/ir/src/port_type.rs` | Delete `PortType::Any` catch-all (TS-4) |
-| `core/ir/src/types.rs` | Update `PortType::Any` arm (TS-4) |
-| `core/ir/src/system_model.rs` | Update `PortType::Any` arm (TS-4) |
-| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3) |
 | `gunbc-dag/src/resolve.rs` | SubDag/Pipeline execution (S12-10, S12-11) |
 | `gunbc-dag/src/bin/sdlc.rs` | Worker DAG invocation (S12-12) |
 | `lib/tools/deps/src/generated_tests.rs` | Regenerate (L2-2) |
@@ -291,7 +274,7 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 
 1. `daglang compile --profile unit_test dsl/pipelines/sdlc.dag` — compiles with all interfaces resolved
 2. `gunbc-sdlc worker --dry-run` — executes compiled pipeline through all 8 stages
-3. `cargo build --workspace` — no `PortType::Any` fallback, no `types_match`, no `canonical_type_name`
+3. `cargo build --workspace` — clean build, all interfaces resolved
 4. `cargo test --workspace` — 224/224 pass
 5. `cargo clippy --all-targets -- -D warnings` — 0 warnings
 6. Grep confirms: zero hand-written stage dispatch in `sdlc.rs`
@@ -358,6 +341,52 @@ Lane 3-D:  M17 → M18 → M19
 3-C is independent.
 3-D is independent but highest complexity.
 ```
+
+---
+
+## Post-Merge: Type System Hard Cutover
+
+**Blocked until**: Both Lane 1 (port propagation) and Lane 2 (profile binding) are merged.
+
+**Why post-merge**: TS-7 touches `daglang-lower` (Lane 2's domain) and depends on TS-1* (Lane 1's output). TS-3/TS-4 delete fallback paths that Lane 1 makes unnecessary. These tasks span both lanes' file boundaries and cannot run in parallel with either.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | |
+| **TS-3** | **Make TypeRegistry non-optional**: Change `Option<TypeRegistry>` → `TypeRegistry` in `core/codegen/src/testgen/codegen.rs`. Audit for other `Option<TypeRegistry>` patterns. | TS-7 | S | |
+| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | |
+
+### Post-merge files touched
+
+| File | Changes |
+|------|---------|
+| `core/daglang/daglang-typecheck/src/lib.rs` | Delete `types_match()` (TS-7) |
+| `core/daglang/daglang-syntax/src/ast_utils.rs` | Delete `canonical_type_name()` (TS-7) |
+| `core/daglang/daglang-lower/src/lib.rs` | Replace 8 `canonical_type_name()` call sites (TS-7) |
+| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3) |
+| `core/ir/src/port_type.rs` | Delete `PortType::Any` catch-all (TS-4) |
+| `core/ir/src/types.rs` | Update `PortType::Any` arm (TS-4) |
+| `core/ir/src/system_model.rs` | Update `PortType::Any` arm (TS-4) |
+
+---
+
+## Lane 4: Codebase Polish (Independent — Filler Work)
+
+**Goal**: Spotless codebase. Any of these can run independently of Lanes 1-3 unless noted.
+
+**Mutual exclusivity**: Lane 4 touches only files NOT in Lanes 1/2/3 scope (stub files, binary entrypoints, TODONE). Items marked with lane dependencies must wait.
+
+| ID | Task | Location | Deps | Size | Status |
+|----|------|----------|------|------|--------|
+| **CU-1** | **Audit near-empty stub files**: 7 files with <5 lines: `core/ir/src/{go_ir.rs, register_ir.rs, c_ir.rs}`, `core/codegen/src/testgen/render.rs`, `core/daglang/daglang-cli/src/lib.rs`, `gunbc-dag/src/policy/mod.rs`, `gunbc-dag/tests/common/mod.rs`. Decide: remove if unused, add content if placeholder, or add comment explaining purpose. | Various | — | S | |
+| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | |
+| **CU-3** | **Factor common mock helpers**: 3 largest mock files (llm-ops 1043 lines, gist 643, review 620) share patterns. Extract to shared `gunbc-test::mock_helpers` module. | `lib/*/src/graph_mock.rs` | — | M | |
+| **CU-4** | **Document side-effect imports**: ~16 `use ... as _;` imports across binary and test files. Add explanatory comments. | `gunbc-dag/src/bin/*.rs` | — | S | |
+| **CU-5** | **Archive `design-eliminate-registration-lists.md`**: Phase 1 complete; Phases 2-3 covered by Lanes G/H (done). Move to `TODO/TODONE/`. | `TODO/` | — | S | |
+| **CU-6** | **Organize TODONE by quarter**: 65 completed items in flat `TODO/TODONE/`. Create `TODONE/2026-Q1/` subdirectory. | `TODO/TODONE/` | — | S | |
+| **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
+| **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | — | L | |
+| **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | — | S | |
 
 ---
 
