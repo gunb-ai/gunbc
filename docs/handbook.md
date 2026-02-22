@@ -165,12 +165,12 @@ Intercepted nodes require explicit mocks for all outputs. There are no silent de
 
 ## Transport System
 
-Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to `lib/transport` plus a small set of explicitly audited exceptions: build-time generators (`core/codegen`), bootstrap/config loaders (`gunbc-dag/src/bootstrap`), and the manifest/freshness layer (`core/infra`). Tests are exempt by pragma policy. The full exception list is maintained in `TODO/TODONE/clippy-pragma-audit.md`.
+Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to `lib/transport` plus a small set of explicitly audited exceptions: build-time generators (`core/codegen`), bootstrap/config loaders (`gunbc-dag/src/bootstrap`), and the manifest/freshness layer (`core/infra`). Tests are exempt by pragma policy. The full exception list is maintained in `TODO/TODONE/2026-Q1/clippy-pragma-audit.md`.
 
 Key invariants:
 - Pure ops **prepare** `TransportRequest` values.
 - Only `TransportOps::Execute` performs runtime DAG I/O.
-- Direct I/O is limited to `lib/transport` plus explicitly audited build-time/bootstrap exceptions (see `TODO/TODONE/clippy-pragma-audit.md`). Tests are exempt by pragma policy.
+- Direct I/O is limited to `lib/transport` plus explicitly audited build-time/bootstrap exceptions (see `TODO/TODONE/2026-Q1/clippy-pragma-audit.md`). Tests are exempt by pragma policy.
 
 See `lib/transport/src/lib.rs` and `lib/transport/src/ops.rs`.
 

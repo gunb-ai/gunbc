@@ -5,7 +5,7 @@
 **Updated**: 2026-02-05
 
 Remaining work for the type-system roadmap. Completed items were moved to
-`TODO/TODONE/TODO_type_system.md`.
+`TODO/TODONE/2026-Q1/TODO_type_system.md`.
 
 ## Completed Tasks (2026-02-07)
 
@@ -21,4 +21,4 @@ Remaining work for the type-system roadmap. Completed items were moved to
 
 ## Notes
 
-- Design principles and completed milestones live in `TODO/TODONE/TODO_type_system.md`.
+- Design principles and completed milestones live in `TODO/TODONE/2026-Q1/TODO_type_system.md`.

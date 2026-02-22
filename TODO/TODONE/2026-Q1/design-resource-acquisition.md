@@ -18,7 +18,7 @@
 - DryRun mock extension for all resource types
 - Migrated existing inline violations to resource acquisition pattern
 
-**Remaining (tracked in TODO/TODONE/design-unified-resource-model.md):**
+**Remaining (tracked in TODO/TODONE/2026-Q1/design-unified-resource-model.md):**
 - Phase 4: Sub-DAG zero-based delegation model
 - Phase 5: Resource accounting / auto-derive ResourceAccess
 
@@ -452,7 +452,7 @@ Use the resource constructors to build explicit mock values:
 
 ### Phase 4: Sub-DAG Delegation
 
-> **Note:** Tracked in `TODO/TODONE/design-unified-resource-model.md` which consolidates
+> **Note:** Tracked in `TODO/TODONE/2026-Q1/design-unified-resource-model.md` which consolidates
 > this with build resource management.
 
 - [ ] Add `with_resource_input()` to `LoopBuilder`
@@ -462,7 +462,7 @@ Use the resource constructors to build explicit mock values:
 
 ### Phase 5: Resource Accounting
 
-> **Note:** Tracked in `TODO/TODONE/design-unified-resource-model.md` which consolidates
+> **Note:** Tracked in `TODO/TODONE/2026-Q1/design-unified-resource-model.md` which consolidates
 > this with build resource management.
 
 - [ ] Auto-derive `ResourceAccess` from port types + edges

@@ -2,7 +2,7 @@
 
 **Last updated**: 2026-02-22
 **Verification**: `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
-**Archive**: Completed items in `TODO/TODONE/tasks-completed.md`. Backlog in `TODO/backlog.md`.
+**Archive**: Completed items in `TODO/TODONE/2026-Q1/tasks-completed.md`. Backlog in `TODO/backlog.md`.
 
 **Sizing**: S (<1 day), M (1-3 days), L (3-5 days), XL (5+ days)
 
@@ -45,7 +45,7 @@
 
 ### Archive Update (2026-02-22)
 
-Moved to `TODO/TODONE/tasks-completed.md`:
+Moved to `TODO/TODONE/2026-Q1/tasks-completed.md`:
 
 - `WF6`-`WF9`, `WF14`-`WF18`
 - `DL1`-`DL4`
@@ -379,12 +379,12 @@ Lane 3-D:  M17 → M18 → M19
 
 | ID | Task | Location | Deps | Size | Status |
 |----|------|----------|------|------|--------|
-| **CU-1** | **Audit near-empty stub files**: 7 files with <5 lines: `core/ir/src/{go_ir.rs, register_ir.rs, c_ir.rs}`, `core/codegen/src/testgen/render.rs`, `core/daglang/daglang-cli/src/lib.rs`, `gunbc-dag/src/policy/mod.rs`, `gunbc-dag/tests/common/mod.rs`. Decide: remove if unused, add content if placeholder, or add comment explaining purpose. | Various | — | S | |
-| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | |
-| **CU-3** | **Factor common mock helpers**: 3 largest mock files (llm-ops 1043 lines, gist 643, review 620) share patterns. Extract to shared `gunbc-test::mock_helpers` module. | `lib/*/src/graph_mock.rs` | — | M | |
-| **CU-4** | **Document side-effect imports**: ~16 `use ... as _;` imports across binary and test files. Add explanatory comments. | `gunbc-dag/src/bin/*.rs` | — | S | |
-| **CU-5** | **Archive `design-eliminate-registration-lists.md`**: Phase 1 complete; Phases 2-3 covered by Lanes G/H (done). Move to `TODO/TODONE/`. | `TODO/` | — | S | |
-| **CU-6** | **Organize TODONE by quarter**: 65 completed items in flat `TODO/TODONE/`. Create `TODONE/2026-Q1/` subdirectory. | `TODO/TODONE/` | — | S | |
+| **CU-1** | **Audit near-empty stub files**: 7 files with <5 lines: `core/ir/src/{go_ir.rs, register_ir.rs, c_ir.rs}`, `core/codegen/src/testgen/render.rs`, `core/daglang/daglang-cli/src/lib.rs`, `gunbc-dag/src/policy/mod.rs`, `gunbc-dag/tests/common/mod.rs`. Decide: remove if unused, add content if placeholder, or add comment explaining purpose. | Various | — | S | Done (2026-02-22) |
+| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Blocked (lane dependency) |
+| **CU-3** | **Factor common mock helpers**: 3 largest mock files (llm-ops 1043 lines, gist 643, review 620) share patterns. Extract to shared `gunbc-test::mock_helpers` module. | `lib/*/src/graph_mock.rs` | — | M | Done (2026-02-22) |
+| **CU-4** | **Document side-effect imports**: ~16 `use ... as _;` imports across binary and test files. Add explanatory comments. | `gunbc-dag/src/bin/*.rs` | — | S | Done (2026-02-22) |
+| **CU-5** | **Archive `design-eliminate-registration-lists.md`**: Phase 1 complete; Phases 2-3 covered by Lanes G/H (done). Move to `TODO/TODONE/`. | `TODO/` | — | S | Done (2026-02-22) |
+| **CU-6** | **Organize TODONE by quarter**: 65 completed items in flat `TODO/TODONE/`. Create `TODONE/2026-Q1/` subdirectory. | `TODO/TODONE/` | — | S | Done (2026-02-22) |
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
 | **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | — | L | |
 | **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | — | S | |

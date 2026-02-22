@@ -57,7 +57,7 @@ PrepareDiff → Execute → ParseDiff → FilterDiffFiles → RenderDiffSnapshot
 
 #### 1. PrepareDiff (PURE) — via `GitOps::PrepareDiff`
 
-Uses the Git transport API (`TODO/TODONE/git-transport-api.md`) rather than constructing raw shell strings. The `GitRequest::diff()` builder enforces deterministic output flags (`--no-ext-diff`, `--no-color`, `--src-prefix=a/`, `--dst-prefix=b/`, etc.) so parsing is stable across environments.
+Uses the Git transport API (`TODO/TODONE/2026-Q1/git-transport-api.md`) rather than constructing raw shell strings. The `GitRequest::diff()` builder enforces deterministic output flags (`--no-ext-diff`, `--no-color`, `--src-prefix=a/`, `--dst-prefix=b/`, etc.) so parsing is stable across environments.
 
 ```rust
 /// Implemented as GitOps::PrepareDiff { base_ref }
@@ -196,7 +196,7 @@ pub fn diff_gist_signature() -> WorkflowSignature {
 pub enum GistGraphOp {
     // ... existing variants ...
 
-    // Git operations (via git-ops crate, see TODO/TODONE/git-transport-api.md)
+    // Git operations (via git-ops crate, see TODO/TODONE/2026-Q1/git-transport-api.md)
     /// Git operations (PURE - builds requests, parses responses)
     Git(GitOps),
 
@@ -345,7 +345,7 @@ The `MapStrStr` type already fits perfectly (filename → diff content). Adding 
 
 ## Related Files
 
-- `TODO/TODONE/git-transport-api.md` — **Dependency**: Git transport interface (GitRequest, GitOps)
+- `TODO/TODONE/2026-Q1/git-transport-api.md` — **Dependency**: Git transport interface (GitRequest, GitOps)
 - `core/ir/src/git.rs` — `GitConfig.default_branch` (source of `base_ref`)
 - `core/ir/src/transport/git.rs` — **New**: `GitRequest` builder + parsers
 - `lib/git-ops/src/lib.rs` — **New**: `GitOps` pure ops enum

@@ -146,5 +146,5 @@ When a lint fires on generated code:
 
 - Test IR implementation: `core/ir/src/code_ir.rs`
 - Test IR renderer: `core/codegen/src/testgen/render_rust.rs`
-- Original codegen-on-DAG design: `TODO/TODONE/TODO_codegen_dag.md`
-- Testgen improvements: `TODO/TODONE/testgen-improvements.md` (Phase 11 references this doc)
+- Original codegen-on-DAG design: `TODO/TODONE/2026-Q1/TODO_codegen_dag.md`
+- Testgen improvements: `TODO/TODONE/2026-Q1/testgen-improvements.md` (Phase 11 references this doc)

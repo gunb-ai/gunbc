@@ -1,7 +1,7 @@
 # DSL Codegen: Parallelizable Task Breakdown
 
 **Status**: DONE — Track A complete (2026-02-17). Archived from `docs/design/v4/`.
-**Active task tracking**: [`TODO/tasks.md`](../tasks.md)
+**Active task tracking**: [`TODO/tasks.md`](../../tasks.md)
 
 Each task is a self-contained work unit with:
 - **Owns**: files this task creates or modifies (exclusive — no other task touches these)

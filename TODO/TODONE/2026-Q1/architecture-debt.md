@@ -85,13 +85,13 @@ The week's work pulled multiple leaks back into structure:
 
 ### Coherence with existing plans
 
-Strongly coherent with `TODO/TODONE/refactor-pressure.md` root causes (A–D) and
+Strongly coherent with `TODO/TODONE/2026-Q1/refactor-pressure.md` root causes (A–D) and
 the decision rules (single source of truth, no stringly refs, no
 hidden env/IO). Two watchpoints for drift:
 
 1. **Generated artifact verification** — CI doesn't yet verify that
    generated files match their generator output. First hand-edit
-   re-introduces drift. Tracked in `TODO/TODONE/refactor-pressure.md` tasks.
+   re-introduces drift. Tracked in `TODO/TODONE/2026-Q1/refactor-pressure.md` tasks.
 
 2. **Codegen freshness** — manifest-based model works (Phases 1-5)
    but the codegen upsert key still has a brittle path if inputs
@@ -125,7 +125,7 @@ dependency or silent default. See `core/ir/src/resource/defs.rs`.
 ## References
 
 - `TODO_hacks` — Detailed hack descriptions
-- `TODO/TODONE/refactor-pressure.md` — Recurring root patterns that cause rework
-- `TODO/TODONE/design-unified-resource-model.md` — Resource model design
-- `TODO/TODONE/design-resource-performance.md` — Performance considerations (DONE)
-- `TODO/TODONE/design-resource-acquisition.md` — Resource trait design (DONE)
+- `TODO/TODONE/2026-Q1/refactor-pressure.md` — Recurring root patterns that cause rework
+- `TODO/TODONE/2026-Q1/design-unified-resource-model.md` — Resource model design
+- `TODO/TODONE/2026-Q1/design-resource-performance.md` — Performance considerations (DONE)
+- `TODO/TODONE/2026-Q1/design-resource-acquisition.md` — Resource trait design (DONE)

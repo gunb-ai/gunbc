@@ -3,7 +3,7 @@
 > **Key Insight**: The current design hashes everything on every check.
 > This is fundamentally wrong. Make solved this in 1976: use mtime as fast path.
 >
-> See `TODO/TODONE/architecture-debt.md` for the consolidated view of all debt.
+> See `TODO/TODONE/2026-Q1/architecture-debt.md` for the consolidated view of all debt.
 
 ## The Problem
 

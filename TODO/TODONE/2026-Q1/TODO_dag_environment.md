@@ -316,7 +316,7 @@ filesystem handles, platform detection, clock snapshots, and env var resolution
 now flow through DAG edges via per-resource env nodes (FsEnv, PlatformEnv,
 ClockEnv, CredentialOp). DryRun requires explicit mocks for all intercepted nodes.
 
-See `TODO/TODONE/design-resource-acquisition.md` for the full design.
+See `TODO/TODONE/2026-Q1/design-resource-acquisition.md` for the full design.
 
 ---
 

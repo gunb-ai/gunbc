@@ -257,7 +257,7 @@ Design sandbox mode (no real I/O) and replay/durability for DAG execution.
 ## Track C — Modeling Foundation
 
 ### C5 — Type DAG Coercion (Wave 0) — DONE
-**Source**: `TODO/TODONE/design-type-coercion.md` Phases 1-4, `core/ir/src/type_op.rs`,
+**Source**: `TODO/TODONE/2026-Q1/design-type-coercion.md` Phases 1-4, `core/ir/src/type_op.rs`,
 `core/ir/src/contract.rs`, `core/ir/src/coerce.rs`
 
 Types are DAGs (`Dag<TypeOp>`) with a contract tower (L1 cardinality, L2 base type,

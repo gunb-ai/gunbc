@@ -3497,7 +3497,7 @@ Each generation's "free" capabilities compound: the DSL gets parallel execution 
 
 This appendix documents the precise failure modes that caused gunbc's codebase to accumulate glue, drift, and rework pressure — and traces each failure mode to the DSL construct that eliminates it.
 
-The framing draws on internal postmortem documents: `TODO/TODONE/refactor-pressure.md` (2026-02-05), `TODO/TODONE/architecture-debt.md` (2026-02-05), `docs/design/consolidation-plan.md`, `docs/design/unified-registration.md`, and `docs/design/unified-emission.md`.
+The framing draws on internal postmortem documents: `TODO/TODONE/2026-Q1/refactor-pressure.md` (2026-02-05), `TODO/TODONE/2026-Q1/architecture-debt.md` (2026-02-05), `docs/design/consolidation-plan.md`, `docs/design/unified-registration.md`, and `docs/design/unified-emission.md`.
 
 ## K.1 The Precise Diagnosis
 
@@ -3694,8 +3694,8 @@ For navigating between this design doc and the source material it consolidates:
 | Unified Registration | `docs/design/unified-registration.md` | 6 registration islands → unified discovery |
 | Unified Emission | `docs/design/unified-emission.md` | 13 rendering systems → OutputMedium hierarchy |
 | Consolidation Plan | `docs/design/consolidation-plan.md` | 6 work streams, reconciliation status |
-| Refactor Pressure | `TODO/TODONE/refactor-pressure.md` | Root causes A-D, decision rules, quick scans |
-| Architecture Debt | `TODO/TODONE/architecture-debt.md` | Meta-root-cause, leak→fix table |
+| Refactor Pressure | `TODO/TODONE/2026-Q1/refactor-pressure.md` | Root causes A-D, decision rules, quick scans |
+| Architecture Debt | `TODO/TODONE/2026-Q1/architecture-debt.md` | Meta-root-cause, leak→fix table |
 | IR Spec | `SPEC.md` | Formal IR specification |
 | Agent Guide | `AGENT.md` | Onboarding, guardrails |
 

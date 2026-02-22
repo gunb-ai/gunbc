@@ -7,7 +7,7 @@
 
 ## Context
 
-`TODO/TODONE/testgen-improvements.md` records earlier cleanup of redundant
+`TODO/TODONE/2026-Q1/testgen-improvements.md` records earlier cleanup of redundant
 patterns (A-E), including boundary-presence and signature-validation classes.
 This review checks for regressions/residual copies in current sources.
 

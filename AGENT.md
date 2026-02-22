@@ -45,7 +45,7 @@ gunbc is a **DSL-first workflow compiler** where **everything is a DAG**. The pr
 | `core/exec/` | Execution engine, DryRun interception, simulation |
 | `core/codegen/` | CLI and test generation |
 | `core/test/` | MockSpec and test utilities |
-| `lib/transport/` | Canonical I/O boundary; a few bootstrap/generator crates do direct I/O by exception (see `TODO/TODONE/clippy-pragma-audit.md`) |
+| `lib/transport/` | Canonical I/O boundary; a few bootstrap/generator crates do direct I/O by exception (see `TODO/TODONE/2026-Q1/clippy-pragma-audit.md`) |
 | `lib/tools/` | General-purpose tool wrappers (clippy, deps, gist) |
 | `gunbc-dag/` | Repo-specific DAGs and CLI entrypoints (ci, makegen, codegen, testgen, bootstrap) |
 | `docs/design/` | Design documentation |
@@ -61,7 +61,7 @@ gunbc is a **DSL-first workflow compiler** where **everything is a DAG**. The pr
 
 ## Invariants That Matter
 
-- All runtime DAG world I/O happens through `TransportOps::Execute` nodes; build-time generators and a small set of bootstrap/config loaders are explicit exceptions (see `TODO/TODONE/clippy-pragma-audit.md`).
+- All runtime DAG world I/O happens through `TransportOps::Execute` nodes; build-time generators and a small set of bootstrap/config loaders are explicit exceptions (see `TODO/TODONE/2026-Q1/clippy-pragma-audit.md`).
 - Boundaries and entrypoints are inferred from unconnected ports.
 - Tool handles are capability-based. When used, they flow through `tool:<id>` ports.
 - Tool ports are excluded from user-facing workflow signatures.

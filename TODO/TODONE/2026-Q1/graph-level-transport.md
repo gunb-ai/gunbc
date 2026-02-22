@@ -6,7 +6,7 @@
 
 ## Goal
 
-Bring the codebase into compliance with the **Graph Invariants** defined in [`docs/design/overview.md`](../docs/design/overview.md#graph-invariants):
+Bring the codebase into compliance with the **Graph Invariants** defined in [`docs/design/overview.md`](../../../docs/design/overview.md#graph-invariants):
 
 | Invariant | Summary |
 |-----------|---------|
@@ -371,8 +371,8 @@ Fix: Split into `PrepareScan` → `Execute` → `ParseScanResult`
 
 ## Related
 
-- [`docs/design/overview.md#graph-invariants`](../docs/design/overview.md#graph-invariants) - Canonical invariant definitions
-- [`TODONE/transport-compliance.md`](TODONE/transport-compliance.md) - Prerequisite work (I2 satisfied)
-- [`TODO/TODONE/opaque-op-tool-mismatch.md`](opaque-op-tool-mismatch.md) - Related problem (tool deps hidden in ops)
-- [`core/ir/src/patterns/`](../core/ir/src/patterns/) - Existing pattern builders
+- [`docs/design/overview.md#graph-invariants`](../../../docs/design/overview.md#graph-invariants) - Canonical invariant definitions
+- [`transport-compliance.md`](transport-compliance.md) - Prerequisite work (I2 satisfied)
+- [`TODO/TODONE/2026-Q1/opaque-op-tool-mismatch.md`](opaque-op-tool-mismatch.md) - Related problem (tool deps hidden in ops)
+- [`core/ir/src/patterns/`](../../../core/ir/src/patterns/) - Existing pattern builders
 - `~/.cursor/plans/pure_node_enforcement_bf6bf5f3.plan.md` - Detailed implementation plan

@@ -45,7 +45,7 @@ reference material (patterns, architecture notes).
 - [x] Eliminate `type_id == "List"` dual encoding — already resolved: loop_pattern uses element type + cardinality, debug_assert guards CliEntrypoint
 - [x] Replace string-based builder references with enum keys — `GraphBuilderId` enum in `cli_gen.rs`
 - [x] Extract `buck-out/gen` to a single constant — was `target/codegen`, constants already exist, migrated CI ops
-- [x] Fix CODEGEN_SOURCES hardcoded path list — already resolved per `TODO/TODONE/TODO_hacks_general.md`
+- [x] Fix CODEGEN_SOURCES hardcoded path list — already resolved per `TODO/TODONE/2026-Q1/TODO_hacks_general.md`
 
 ## Test cleanup
 

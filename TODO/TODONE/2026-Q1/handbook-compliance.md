@@ -208,7 +208,7 @@ Small, mechanical items that each reduce noise and improve consistency.
 
 **D1. Make `graph_mock.rs` data-only** (in progress via testgen Phase 8)
 
-Per `TODO/TODONE/testgen-improvements.md`, patterns already safe to delete:
+Per `TODO/TODONE/2026-Q1/testgen-improvements.md`, patterns already safe to delete:
 - Pattern A (boundary presence checks) — testgen Bucket A covers this
 - Pattern C (self-chain checks) — testgen generates these
 - Pattern D (resource presence) — testgen emits lease tests
@@ -311,12 +311,12 @@ causes a test failure.
 
 ## Cross-references
 
-- `TODO/TODONE/testgen-improvements.md` — Phases 8-9 (graph_mock cleanup, DagSpec)
+- `TODO/TODONE/2026-Q1/testgen-improvements.md` — Phases 8-9 (graph_mock cleanup, DagSpec)
 - `TODO/consolidation.md` — Generic ops, rendering DAGs
-- `TODO/TODONE/refactor-pressure.md` — Structural gap prevention
+- `TODO/TODONE/2026-Q1/refactor-pressure.md` — Structural gap prevention
 - `TODO/design-codegen-quality.md` — IR completeness
 - `TODO_hacks` — Dual encoding, ShellResponse, compound shell commands
-- `TODO/TODONE/design-unified-resource-model.md` — Resource phases 6-7
+- `TODO/TODONE/2026-Q1/design-unified-resource-model.md` — Resource phases 6-7
 
 ---
 

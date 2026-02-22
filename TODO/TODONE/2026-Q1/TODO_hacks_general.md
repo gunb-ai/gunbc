@@ -92,7 +92,7 @@ Files:
 ## CI codegen check is brittle (file existence hack) (2026-02-05)
 
 **Resolved**: CI pipeline uses manifest-based freshness checking. See
-`TODO/TODONE/design-unified-resource-model.md` for Phases 1-5.
+`TODO/TODONE/2026-Q1/design-unified-resource-model.md` for Phases 1-5.
 
 - `core/ir/src/resource/` — ContentHash, ResourceManifest, ExecMode
 - `core/codegen/src/main.rs` — writes manifest after codegen

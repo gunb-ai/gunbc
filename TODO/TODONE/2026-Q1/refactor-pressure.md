@@ -9,7 +9,7 @@
 Reduce refactor churn by identifying the recurring structural gaps that
 force rework and by adding lightweight guardrails that prevent regressions.
 
-This doc is **adjacent to** `TODO/TODONE/architecture-debt.md` (DONE):
+This doc is **adjacent to** `TODO/TODONE/2026-Q1/architecture-debt.md` (DONE):
 - Architecture debt explained what was broken and why (all phases complete).
 - This doc explains how we keep re-creating similar debt and the
   project-level rules to stop it.
