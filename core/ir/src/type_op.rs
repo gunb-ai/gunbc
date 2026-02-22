@@ -424,6 +424,24 @@ mod tests {
     }
 
     #[test]
+    fn test_metadata_payload_typed_roundtrip() {
+        let payload = MetadataPayload::InputContract {
+            name: "credential".to_string(),
+            type_id: TypeId::from("Credential"),
+            required: true,
+        };
+        let encoded = serde_json::to_string(&payload).expect("serialize payload");
+        let decoded: MetadataPayload = serde_json::from_str(&encoded).expect("deserialize payload");
+        assert_eq!(decoded, payload);
+
+        let property_payload = MetadataPayload::Property(MetadataProperty::ReadOnly);
+        let property_json = serde_json::to_string(&property_payload).expect("serialize property");
+        let property_decoded: MetadataPayload =
+            serde_json::from_str(&property_json).expect("deserialize property");
+        assert_eq!(property_decoded, property_payload);
+    }
+
+    #[test]
     fn test_predicate_composition() {
         let non_empty = Predicate::NonEmpty;
         let matches_url = Predicate::Matches(r"https?://.*".to_string());
