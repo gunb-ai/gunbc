@@ -111,10 +111,7 @@ struct PipelineDispatchOp {
 }
 
 impl Executable for PipelineDispatchOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         execute_with_declared_output_passthrough(&self.output_port_names, inputs)
     }
 }
@@ -126,6 +123,61 @@ struct IdentityCallableOp;
 impl Executable for IdentityCallableOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         Ok(inputs)
+    }
+}
+
+/// Runtime adapter for compiled SDLC stage dispatch.
+///
+/// The current lowering pipeline preserves `funcs.sdlc_stages::execute_stage`
+/// as a callable boundary. This adapter provides deterministic lifecycle
+/// progression semantics so the worker can execute stage routing through the
+/// compiled DSL entrypoint instead of handwritten stage switches.
+#[derive(Debug, Clone)]
+struct SdlcStageDispatchOp;
+
+impl Executable for SdlcStageDispatchOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let stage_raw = inputs
+            .get("stage")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("sdlc stage dispatch requires `stage` string input"))?;
+        let stage = normalize_sdlc_stage(stage_raw).ok_or_else(|| {
+            ExecError::new(format!(
+                "sdlc stage dispatch received unknown stage `{stage_raw}`"
+            ))
+        })?;
+        let (next_stage, awaiting_approval) = match stage {
+            "idea" => ("design", false),
+            "design" => ("design-review", false),
+            "design-review" => ("design-review", true),
+            "accepted" => ("implementation", false),
+            "implementation" => ("closed", false),
+            "closed" => ("closed", false),
+            _ => {
+                return Err(ExecError::new(format!(
+                    "sdlc stage dispatch cannot route stage `{stage}`"
+                )))
+            }
+        };
+        OutputMap::new()
+            .bool("success", true)
+            .str("next_stage", next_stage)
+            .bool("artifact_posted", !awaiting_approval)
+            .bool("awaiting_approval", awaiting_approval)
+            .value("payload", Value::Skipped)
+            .ok()
+    }
+}
+
+fn normalize_sdlc_stage(stage: &str) -> Option<&'static str> {
+    match stage.trim().to_ascii_lowercase().as_str() {
+        "idea" => Some("idea"),
+        "design" => Some("design"),
+        "designreview" | "design-review" => Some("design-review"),
+        "accepted" => Some("accepted"),
+        "implementation" | "implementing" => Some("implementation"),
+        "closed" | "done" => Some("closed"),
+        _ => None,
     }
 }
 
@@ -503,12 +555,13 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
         LoweredOp::Pipeline { module, name, .. } => {
-            resolve_domain(node_id, module, name, outputs, None)
-                .or_else(|_| Ok(DynOp::new(PipelineDispatchOp {
+            resolve_domain(node_id, module, name, outputs, None).or_else(|_| {
+                Ok(DynOp::new(PipelineDispatchOp {
                     _module: module.clone(),
                     _name: name.clone(),
                     output_port_names: declared_output_names(outputs),
-                })))
+                }))
+            })
         }
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
@@ -582,6 +635,9 @@ fn resolve_domain(
         if let Some(op) = resolve_tools_makegen(name) {
             return Ok(op);
         }
+    }
+    if module == "funcs.sdlc_stages" && name == "execute_stage" {
+        return Ok(DynOp::new(SdlcStageDispatchOp));
     }
     // 2. Service/workspace modules use generic transport dispatch.
     if module.starts_with("services.") || module.starts_with("workspace.") {
@@ -908,9 +964,65 @@ mod tests {
         let result = resolve_node(&node).expect("render_makefile");
         assert!(format!("{:?}", result).contains("RenderMakefile"));
 
-        let node = callable_node("makegen", "tools.makegen", "makegen", ObligationCategory::None);
+        let node = callable_node(
+            "makegen",
+            "tools.makegen",
+            "makegen",
+            ObligationCategory::None,
+        );
         let result = resolve_node(&node).expect("makegen");
         assert!(format!("{:?}", result).contains("Entrypoint"));
+    }
+
+    #[test]
+    fn resolve_sdlc_execute_stage_op() {
+        let node = callable_node(
+            "execute_stage",
+            "funcs.sdlc_stages",
+            "execute_stage",
+            ObligationCategory::None,
+        );
+        let result = resolve_node(&node).expect("execute_stage");
+        assert!(format!("{:?}", result).contains("SdlcStageDispatchOp"));
+    }
+
+    #[test]
+    fn sdlc_execute_stage_op_routes_lifecycle_progression() {
+        let node = callable_node(
+            "execute_stage",
+            "funcs.sdlc_stages",
+            "execute_stage",
+            ObligationCategory::None,
+        );
+        let op = resolve_node(&node).expect("execute_stage");
+
+        let mut inputs = HashMap::new();
+        inputs.insert("stage".to_string(), Value::Str("idea".to_string()));
+        let outputs = op.execute(inputs).expect("idea stage should route");
+        assert_eq!(
+            outputs.get("next_stage").and_then(Value::as_str),
+            Some("design")
+        );
+        assert_eq!(
+            outputs.get("awaiting_approval").and_then(Value::as_bool),
+            Some(false)
+        );
+
+        let mut review_inputs = HashMap::new();
+        review_inputs.insert("stage".to_string(), Value::Str("design-review".to_string()));
+        let review_outputs = op
+            .execute(review_inputs)
+            .expect("design-review stage should route");
+        assert_eq!(
+            review_outputs.get("next_stage").and_then(Value::as_str),
+            Some("design-review")
+        );
+        assert_eq!(
+            review_outputs
+                .get("awaiting_approval")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
@@ -1344,9 +1456,14 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Str("a".to_string()), Value::Str("b".to_string())]),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
         );
-        let outputs = result.execute(inputs).expect("collection map should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("collection map should execute");
         assert_eq!(
             outputs.get("items"),
             Some(&Value::List(vec![
@@ -1365,7 +1482,9 @@ mod tests {
             "items".to_string(),
             Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
         );
-        let outputs = result.execute(inputs).expect("collection len should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("collection len should execute");
         assert_eq!(outputs.get("items"), Some(&Value::Int(3)));
     }
 
@@ -1376,7 +1495,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Str("a".to_string()), Value::Str("b".to_string())]),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
         );
         inputs.insert("needle".to_string(), Value::Str("b".to_string()));
         let outputs = result

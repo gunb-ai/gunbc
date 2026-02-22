@@ -7,15 +7,18 @@
 #![deny(dead_code)]
 #![allow(clippy::disallowed_methods)] // CLI-owned local ledgers and git metadata probes are intentional entrypoint concerns.
 
+use daglang_driver::{compile_from_context_with_options, CompileOptions, DriverContext};
 use gunbc_dag::{
     canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
     promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
-    reconcile_entries, register_retry_failure, release_claim, retry_ready, should_replay_skip,
-    try_acquire_claim, upsert_agent_record, upsert_provisional_artifact_with_payload,
-    validate_stage_transition, AgentLedger, ArtifactLedger, ArtifactPayload,
-    ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry,
-    RetryState, RunStateLedger,
+    reconcile_entries, register_retry_failure, release_claim, resolve_lowered_dag, retry_ready,
+    should_replay_skip, try_acquire_claim, upsert_agent_record,
+    upsert_provisional_artifact_with_payload, validate_stage_transition, AgentLedger,
+    ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger,
+    ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
 };
+use gunbc_design_ops::{build_design_prompt, DesignRequest};
+use gunbc_exec::{execute_single_node, DynOp, ExecutionMode};
 use gunbc_ir::transport::agent::{
     target_branch_for_intent, AgentConstraints, DesignArtifact, HandoffSpec,
 };
@@ -24,16 +27,15 @@ use gunbc_ir::transport::agent_adapter::{AgentAdapter, StubAgentAdapter};
 use gunbc_ir::transport::github::pull_request::{
     build_pr_comment_request, build_pr_create_request, parse_pr_create_response,
 };
-use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::github::IssueLifecycleStage;
 use gunbc_ir::transport::github::{
-    compare_and_set_stage_label as compare_issue_stage_labels,
-    ensure_sdlc_issue_capabilities,
+    compare_and_set_stage_label as compare_issue_stage_labels, ensure_sdlc_issue_capabilities,
     SdlcIssueCapabilities,
 };
+use gunbc_ir::{Dag, Value, WorkspaceLayout};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -66,6 +68,7 @@ struct CliArgs {
     drain_activate: bool,
     drain_deactivate: bool,
     worker_id: Option<String>,
+    profile: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -257,6 +260,7 @@ fn main() {
             args.emit_pending_exit_code,
             args.infra_intent_path.as_ref(),
             args.worker_id.as_deref(),
+            args.profile.as_deref(),
             None,
             "worker",
         ),
@@ -265,6 +269,7 @@ fn main() {
             args.emit_pending_exit_code,
             args.infra_intent_path.as_ref(),
             args.worker_id.as_deref(),
+            args.profile.as_deref(),
             args.issue_id,
             "issue",
         ),
@@ -297,6 +302,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             drain_activate: false,
             drain_deactivate: false,
             worker_id: None,
+            profile: None,
         });
     }
 
@@ -324,6 +330,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let mut drain_activate = false;
     let mut drain_deactivate = false;
     let mut worker_id: Option<String> = None;
+    let mut profile: Option<String> = None;
     while idx < argv.len() {
         let token = &argv[idx];
         if token == "--dry-run" {
@@ -510,6 +517,31 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             idx += 1;
             continue;
         }
+        if token == "--profile" {
+            if profile.is_some() {
+                return Err("duplicate --profile flag".to_string());
+            }
+            let value = argv
+                .get(idx + 1)
+                .ok_or_else(|| "--profile requires a value".to_string())?;
+            if value.starts_with("--") {
+                return Err("--profile requires a non-flag value".to_string());
+            }
+            profile = Some(value.clone());
+            idx += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--profile=") {
+            if profile.is_some() {
+                return Err("duplicate --profile flag".to_string());
+            }
+            if value.is_empty() {
+                return Err("--profile requires a non-empty value".to_string());
+            }
+            profile = Some(value.to_string());
+            idx += 1;
+            continue;
+        }
         return Err(format!("unknown flag `{token}`"));
     }
 
@@ -570,6 +602,9 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command != SdlcCommand::Drain && (drain_activate || drain_deactivate) {
         return Err("--activate/--deactivate are only valid for drain".to_string());
     }
+    if command != SdlcCommand::Worker && command != SdlcCommand::Issue && profile.is_some() {
+        return Err("--profile is only valid for worker or issue".to_string());
+    }
     if drain_activate && drain_deactivate {
         return Err("drain command cannot use --activate and --deactivate together".to_string());
     }
@@ -586,6 +621,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         drain_activate,
         drain_deactivate,
         worker_id,
+        profile,
     })
 }
 
@@ -741,6 +777,7 @@ fn run_worker(
     emit_pending_exit_code: bool,
     infra_intent_path: Option<&PathBuf>,
     worker_id: Option<&str>,
+    profile: Option<&str>,
     issue_filter: Option<u64>,
     command_label: &str,
 ) -> Result<(), String> {
@@ -773,9 +810,19 @@ fn run_worker(
     let mut issue_transport = load_issue_transport_ledger(&issue_transport_ledger_path)?;
     let mode = if dry_run { "dry-run" } else { "real" };
     let now = epoch_millis();
-    let worker_id_str = worker_id
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| std::env::var("SDLC_WORKER_ID").unwrap_or_else(|_| format!("worker-{}-{}", std::process::id(), now)));
+    let worker_id_str = worker_id.map(|s| s.to_string()).unwrap_or_else(|| {
+        std::env::var("SDLC_WORKER_ID")
+            .unwrap_or_else(|_| format!("worker-{}-{}", std::process::id(), now))
+    });
+    let active_profile = profile
+        .map(|value| value.to_string())
+        .or_else(|| std::env::var("SDLC_PROFILE").ok())
+        .unwrap_or_else(|| "local".to_string());
+    let compiled_dispatcher = if dry_run {
+        None
+    } else {
+        Some(CompiledStageDispatcher::load(&active_profile)?)
+    };
 
     let drain_flag = drain_flag_path();
     let drain_active = !dry_run && drain_flag.exists();
@@ -785,6 +832,7 @@ fn run_worker(
         let output = json!({
             "command": command_label,
             "mode": mode,
+            "profile": active_profile,
             "report_generated_at_epoch_ms": now,
             "issue_filter": issue_filter,
             "issue_binding_found": issue_filter.map(|_| false),
@@ -1063,6 +1111,9 @@ fn run_worker(
                         &worker_id_str,
                         &mut issue_transport,
                         now,
+                        compiled_dispatcher
+                            .as_ref()
+                            .expect("compiled dispatcher should be initialized in real mode"),
                     ) {
                         Ok(StageDispatchOutcome::Advanced(next_stage)) => {
                             // Mark the CURRENT run_key as completed before advancing.
@@ -1077,8 +1128,13 @@ fn run_worker(
                                 // Release the claim for the old stage before advancing.
                                 if let Some(issue_id) = record.issue_id {
                                     let old_claim_slot = claim_slot_key(issue_id, record.stage);
-                                    let old_claim_owner = format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
-                                    release_claim(&mut claim_ledger, &old_claim_slot, &old_claim_owner);
+                                    let old_claim_owner =
+                                        format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
+                                    release_claim(
+                                        &mut claim_ledger,
+                                        &old_claim_slot,
+                                        &old_claim_owner,
+                                    );
                                 }
                                 record.stage = next_stage;
                                 record.awaiting_approval = false;
@@ -1174,6 +1230,7 @@ fn run_worker(
         "issue_filter": issue_filter,
         "issue_binding_found": issue_binding_found,
         "mode": mode,
+        "profile": active_profile,
         "pending_count": pending_count,
         "intake_keys": intake_keys,
         "ready_to_run": ready_to_run,
@@ -1474,9 +1531,7 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
     let artifact = artifact_ledger
         .records
         .get(&canonical_key)
-        .ok_or_else(|| {
-            format!("no canonical artifact found for intake key '{intake_key}'")
-        })?;
+        .ok_or_else(|| format!("no canonical artifact found for intake key '{intake_key}'"))?;
 
     let design_content = match &artifact.payload {
         Some(ArtifactPayload::Inline { body }) => body.clone(),
@@ -1486,9 +1541,9 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
         None => String::new(),
     };
 
-    let issue_id = record.issue_id.ok_or_else(|| {
-        format!("intake record '{intake_key}' has no bound issue_id")
-    })?;
+    let issue_id = record
+        .issue_id
+        .ok_or_else(|| format!("intake record '{intake_key}' has no bound issue_id"))?;
 
     let target_branch = target_branch_for_intent(&record.intent_id);
 
@@ -1544,7 +1599,13 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
 
     let now = epoch_millis();
     let mut agent_ledger = load_agent_ledger(&agent_ledger_path)?;
-    upsert_agent_record(&mut agent_ledger, intake_key, handle.clone(), status.clone(), now);
+    upsert_agent_record(
+        &mut agent_ledger,
+        intake_key,
+        handle.clone(),
+        status.clone(),
+        now,
+    );
     save_agent_ledger(&agent_ledger_path, &agent_ledger)?;
 
     println!(
@@ -1633,10 +1694,7 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
     let (branch, _commit_sha) = match &agent_record.status {
         AgentStatus::Completed { branch, commit_sha } => (branch.clone(), commit_sha.clone()),
         other => {
-            return Err(format!(
-                "agent is not in Completed state: {:?}",
-                other
-            ));
+            return Err(format!("agent is not in Completed state: {:?}", other));
         }
     };
 
@@ -1777,9 +1835,9 @@ fn run_diff_review(branch: &str, dry_run: bool) -> Result<DiffReviewResult, Stri
     if !output.status.success() {
         return Ok(DiffReviewResult {
             blocking_count: 0,
-            blocking_summaries: vec![
-                format!("diff review skipped: branch '{branch}' not reachable from main"),
-            ],
+            blocking_summaries: vec![format!(
+                "diff review skipped: branch '{branch}' not reachable from main"
+            )],
         });
     }
 
@@ -1815,7 +1873,9 @@ fn run_ci_validation(branch: &str, dry_run: bool) -> Result<CiValidationResult, 
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .output()
         .map_err(|e| format!("git rev-parse failed: {e}"))?;
-    let original_branch = String::from_utf8_lossy(&original_branch.stdout).trim().to_string();
+    let original_branch = String::from_utf8_lossy(&original_branch.stdout)
+        .trim()
+        .to_string();
 
     // Checkout the agent branch so CI runs against the correct code.
     let checkout = Command::new("git")
@@ -1888,16 +1948,17 @@ fn format_validation_comment(
 
     lines.push(format!(
         "| Check | Status |\n|-------|--------|\n| Diff Review | {} |\n| CI (test + clippy) | {} |",
-        if validation.review_passed { "PASS" } else { "FAIL" },
+        if validation.review_passed {
+            "PASS"
+        } else {
+            "FAIL"
+        },
         if validation.ci_passed { "PASS" } else { "FAIL" },
     ));
 
     if review.blocking_count > 0 {
         lines.push(String::new());
-        lines.push(format!(
-            "### Blocking findings ({})",
-            review.blocking_count
-        ));
+        lines.push(format!("### Blocking findings ({})", review.blocking_count));
         for finding in &review.blocking_summaries {
             lines.push(format!("- {finding}"));
         }
@@ -1922,10 +1983,7 @@ fn detect_repo_name() -> Option<String> {
 }
 
 fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
-    let cleaned = url
-        .trim()
-        .trim_end_matches(".git")
-        .trim_end_matches('/');
+    let cleaned = url.trim().trim_end_matches(".git").trim_end_matches('/');
     // Handle SSH URLs like git@github.com:org/repo
     // by normalizing the colon separator to a slash.
     let normalized = if let Some(colon_pos) = cleaned.find(':') {
@@ -2613,10 +2671,10 @@ fn print_help() {
     println!("USAGE:");
     println!("    gunbc-sdlc intake [--intent <path>] [--dry-run]");
     println!(
-        "    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]"
+        "    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>] [--profile <name>]"
     );
     println!(
-        "    gunbc-sdlc issue --issue-id <value> [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]"
+        "    gunbc-sdlc issue --issue-id <value> [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>] [--profile <name>]"
     );
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
@@ -2668,40 +2726,11 @@ fn issue_transport_compare_and_set_stage_label(
 ) -> Result<bool, String> {
     let entry = issue_transport_record_mut(ledger, issue_id, now_epoch_ms);
     let labels = compare_issue_stage_labels(&entry.labels, from, to).map_err(|error| {
-        format!(
-            "issue transport stage compare-and-set failed for issue {issue_id}: {error}"
-        )
+        format!("issue transport stage compare-and-set failed for issue {issue_id}: {error}")
     })?;
     entry.labels = labels;
     entry.updated_at_epoch_ms = now_epoch_ms;
     Ok(true)
-}
-
-fn execute_stage_idea_to_design(
-    _intake_key: &str,
-    record: &IntakeRecord,
-    issue_transport: &mut IssueTransportLedger,
-    now_epoch_ms: u128,
-) -> Result<(), String> {
-    if let Some(issue_id) = record.issue_id {
-        if record.stage == IssueLifecycleStage::Idea {
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "design-marker",
-                "Generated design prompt",
-                now_epoch_ms,
-            )?;
-            advance_remote_stage(
-                issue_transport,
-                issue_id,
-                IssueLifecycleStage::Idea,
-                IssueLifecycleStage::Design,
-                now_epoch_ms,
-            )?;
-        }
-    }
-    Ok(())
 }
 
 fn advance_remote_stage(
@@ -2711,8 +2740,13 @@ fn advance_remote_stage(
     to: IssueLifecycleStage,
     now_epoch_ms: u128,
 ) -> Result<(), String> {
-    let transitioned =
-        issue_transport_compare_and_set_stage_label(issue_transport, issue_id, from, to, now_epoch_ms)?;
+    let transitioned = issue_transport_compare_and_set_stage_label(
+        issue_transport,
+        issue_id,
+        from,
+        to,
+        now_epoch_ms,
+    )?;
     if transitioned {
         Ok(())
     } else {
@@ -2729,123 +2763,305 @@ enum StageDispatchOutcome {
     AwaitingApproval,
 }
 
-/// Dispatch a compiled SDLC pipeline stage for execution (D9).
-///
-/// Routes the current intake record to the appropriate compiled pipeline
-/// stage based on the lifecycle stage. Each stage corresponds to a section
-/// of the `pipelines.sdlc` DAG.
-///
-/// Stage routing:
-///   - Idea         → design generation (LLM call, artifact post)
-///   - Design       → design review (LLM evaluation)
-///   - DesignReview → awaiting approval (manual transition gate)
-///   - Accepted     → implementation (agent spawn, branch, PR)
-///   - Implementation → closed (acceptance tests, merge, close)
-///
-/// The compiled DAG provides the node graph; this function supplies
-/// the runtime inputs (issue_id, run_key, worker_id) and dispatches
-/// via the standard execution engine.
+#[derive(Debug, Clone)]
+struct CompiledStageOutcome {
+    success: bool,
+    next_stage: IssueLifecycleStage,
+    awaiting_approval: bool,
+}
+
+#[derive(Clone)]
+struct CompiledStageDispatcher {
+    profile: String,
+    resolved: Dag<DynOp>,
+}
+
+impl CompiledStageDispatcher {
+    fn load(profile: &str) -> Result<Self, String> {
+        let layout = WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+            .map_err(|error| format!("failed to resolve workspace layout: {error}"))?;
+        let dsl_root = layout.workspace_root.join("dsl");
+        let target_file = dsl_root.join("funcs/sdlc_stages.dag");
+        let compiled = compile_from_context_with_options(
+            &DriverContext {
+                roots: vec![dsl_root],
+                target_file: Some(target_file),
+            },
+            CompileOptions {
+                profile: Some(profile.to_string()),
+                ..CompileOptions::default()
+            },
+        )
+        .map_err(|error| format!("failed to compile funcs/sdlc_stages.dag: {error}"))?;
+        let execute_stage_node = compiled
+            .lowered_dag
+            .nodes
+            .iter()
+            .find(|node| node.id.0 == "funcs.sdlc_stages::execute_stage")
+            .cloned()
+            .ok_or_else(|| {
+                "compiled SDLC stage DAG missing funcs.sdlc_stages::execute_stage node".to_string()
+            })?;
+        let mut reduced = Dag::new();
+        reduced.add_node(execute_stage_node);
+        let resolved = resolve_lowered_dag(&reduced)
+            .map_err(|error| format!("failed to resolve compiled SDLC stage DAG: {error}"))?;
+        Ok(Self {
+            profile: profile.to_string(),
+            resolved,
+        })
+    }
+
+    fn dispatch_stage(&self, record: &IntakeRecord) -> Result<CompiledStageOutcome, String> {
+        let issue_id = record
+            .issue_id
+            .ok_or_else(|| "stage dispatch requires issue_id in intake record".to_string())?;
+        let issue_number = i64::try_from(issue_id)
+            .map_err(|_| format!("issue_id {issue_id} exceeds i64 range"))?;
+        let owner = std::env::var("SDLC_REPO_OWNER").unwrap_or_else(|_| "gunb-ai".to_string());
+        let repo = std::env::var("SDLC_REPO_NAME").unwrap_or_else(|_| "gunbc".to_string());
+        let llm_provider =
+            std::env::var("SDLC_LLM_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
+        let llm_model = std::env::var("SDLC_LLM_MODEL")
+            .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string());
+
+        let mut inputs: HashMap<String, Value> = HashMap::new();
+        inputs.insert("issue_id".to_string(), Value::Str(issue_id.to_string()));
+        inputs.insert(
+            "stage".to_string(),
+            Value::Str(compiled_stage_token(record.stage).to_string()),
+        );
+        inputs.insert("title".to_string(), Value::Str(String::new()));
+        inputs.insert("body".to_string(), Value::Str(String::new()));
+        inputs.insert("run_key".to_string(), Value::Str(record.run_key.clone()));
+        inputs.insert("owner".to_string(), Value::Str(owner));
+        inputs.insert("repo".to_string(), Value::Str(repo));
+        inputs.insert("number".to_string(), Value::Int(issue_number));
+        inputs.insert("llm_provider".to_string(), Value::Str(llm_provider));
+        inputs.insert("llm_model".to_string(), Value::Str(llm_model));
+
+        let outputs = execute_single_node(
+            &self.resolved,
+            "funcs.sdlc_stages::execute_stage",
+            inputs,
+            ExecutionMode::Real,
+        )
+        .map_err(|error| format!("compiled stage execution failed: {error}"))?;
+
+        let success = outputs
+            .get("success")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let awaiting_approval = outputs
+            .get("awaiting_approval")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let next_stage = outputs
+            .get("next_stage")
+            .and_then(Value::as_str)
+            .map(parse_compiled_stage)
+            .transpose()?
+            .unwrap_or(record.stage);
+
+        Ok(CompiledStageOutcome {
+            success,
+            next_stage,
+            awaiting_approval,
+        })
+    }
+}
+
+fn compiled_stage_token(stage: IssueLifecycleStage) -> &'static str {
+    match stage {
+        IssueLifecycleStage::Idea => "idea",
+        IssueLifecycleStage::Design => "design",
+        IssueLifecycleStage::DesignReview => "design-review",
+        IssueLifecycleStage::Accepted => "accepted",
+        IssueLifecycleStage::Implementation => "implementation",
+        IssueLifecycleStage::Closed => "closed",
+    }
+}
+
+fn parse_compiled_stage(stage: &str) -> Result<IssueLifecycleStage, String> {
+    match stage.trim().to_ascii_lowercase().as_str() {
+        "idea" => Ok(IssueLifecycleStage::Idea),
+        "design" => Ok(IssueLifecycleStage::Design),
+        "designreview" | "design-review" => Ok(IssueLifecycleStage::DesignReview),
+        "accepted" => Ok(IssueLifecycleStage::Accepted),
+        "implementation" | "implementing" => Ok(IssueLifecycleStage::Implementation),
+        "closed" | "done" => Ok(IssueLifecycleStage::Closed),
+        other => Err(format!("unknown compiled stage `{other}`")),
+    }
+}
+
+/// Dispatch through compiled SDLC stage router (`funcs.sdlc_stages::execute_stage`).
 fn dispatch_pipeline_stage(
     intake_key: &str,
     record: &IntakeRecord,
     worker_id: &str,
     issue_transport: &mut IssueTransportLedger,
     now_epoch_ms: u128,
+    dispatcher: &CompiledStageDispatcher,
 ) -> Result<StageDispatchOutcome, String> {
     let issue_id = record
         .issue_id
         .ok_or_else(|| format!("no issue_id for intake key `{intake_key}`"))?;
 
-    match record.stage {
-        IssueLifecycleStage::Idea => {
-            // Stage 1-3: Idea → Design (generate design via LLM, post artifact)
-            execute_stage_idea_to_design(intake_key, record, issue_transport, now_epoch_ms)?;
-            Ok(StageDispatchOutcome::Advanced(IssueLifecycleStage::Design))
+    let outcome = dispatcher.dispatch_stage(record)?;
+    if !outcome.success {
+        return Err(format!(
+            "compiled stage dispatch returned unsuccessful outcome for stage `{}` (profile `{}`)",
+            record.stage.as_label(),
+            dispatcher.profile
+        ));
+    }
+
+    if outcome.awaiting_approval {
+        issue_transport_upsert_comment(
+            issue_transport,
+            issue_id,
+            "sdlc:approval-gate",
+            &format!(
+                "Awaiting explicit approval for run_key `{}` (worker: `{worker_id}`, profile: `{}`)",
+                record.run_key, dispatcher.profile
+            ),
+            now_epoch_ms,
+        )?;
+        return Ok(StageDispatchOutcome::AwaitingApproval);
+    }
+
+    if outcome.next_stage != record.stage {
+        issue_transport_upsert_comment(
+            issue_transport,
+            issue_id,
+            "sdlc:stage-transition",
+            &format!(
+                "Compiled stage transition `{}` -> `{}` for run_key `{}` (worker: `{worker_id}`, profile: `{}`)",
+                record.stage.as_label(),
+                outcome.next_stage.as_label(),
+                record.run_key,
+                dispatcher.profile
+            ),
+            now_epoch_ms,
+        )?;
+        advance_remote_stage(
+            issue_transport,
+            issue_id,
+            record.stage,
+            outcome.next_stage,
+            now_epoch_ms,
+        )?;
+    }
+
+    Ok(StageDispatchOutcome::Advanced(outcome.next_stage))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::OnceLock;
+
+    fn dispatcher() -> &'static CompiledStageDispatcher {
+        static DISPATCHER: OnceLock<CompiledStageDispatcher> = OnceLock::new();
+        DISPATCHER.get_or_init(|| CompiledStageDispatcher::load("unit_test").expect("dispatcher"))
+    }
+
+    fn sample_record(stage: IssueLifecycleStage) -> IntakeRecord {
+        IntakeRecord {
+            intent_id: "intent-1".to_string(),
+            run_key: "run-1".to_string(),
+            issue_id: Some(42),
+            policy_version: "v1".to_string(),
+            stage,
+            awaiting_approval: false,
+            terminalized: false,
+            retry: RetryState::default(),
+            awaiting_approval_since_epoch_ms: None,
+            trace_linkage: None,
+            created_at_epoch_ms: 1,
+            updated_at_epoch_ms: 1,
         }
-        IssueLifecycleStage::Design => {
-            // Stage 4-5: Design → DesignReview (LLM evaluation of design)
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "sdlc:design-review",
-                &format!("Design review initiated for run_key `{}`", record.run_key),
-                now_epoch_ms,
-            )?;
-            advance_remote_stage(
-                issue_transport,
-                issue_id,
-                IssueLifecycleStage::Design,
-                IssueLifecycleStage::DesignReview,
-                now_epoch_ms,
-            )?;
-            Ok(StageDispatchOutcome::Advanced(
-                IssueLifecycleStage::DesignReview,
-            ))
-        }
-        IssueLifecycleStage::DesignReview => {
-            // Stage 5-6: DesignReview → Accepted (approval gate)
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "sdlc:approval-gate",
-                &format!(
-                    "Awaiting explicit approval for run_key `{}`; \
-                     transition to `accepted` after review sign-off.",
-                    record.run_key
-                ),
-                now_epoch_ms,
-            )?;
-            Ok(StageDispatchOutcome::AwaitingApproval)
-        }
-        IssueLifecycleStage::Accepted => {
-            // Stage 7: Accepted → Implementation (agent spawn, branch creation)
-            let branch = format!("sdlc/issue-{issue_id}");
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "sdlc:implementation",
-                &format!(
-                    "Implementation started on branch `{branch}` (worker: `{worker_id}`)"
-                ),
-                now_epoch_ms,
-            )?;
-            advance_remote_stage(
-                issue_transport,
-                issue_id,
-                IssueLifecycleStage::Accepted,
-                IssueLifecycleStage::Implementation,
-                now_epoch_ms,
-            )?;
-            Ok(StageDispatchOutcome::Advanced(
-                IssueLifecycleStage::Implementation,
-            ))
-        }
-        IssueLifecycleStage::Implementation => {
-            // Stage 8-10: Implementation → Closed (code review, test, merge, close)
-            // In the full compiled DAG, this runs PR diff review, cargo test,
-            // cargo clippy, then merges PR and closes the issue.
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "sdlc:acceptance",
-                &format!(
-                    "Acceptance testing and close for run_key `{}` (worker: `{worker_id}`)",
-                    record.run_key
-                ),
-                now_epoch_ms,
-            )?;
-            advance_remote_stage(
-                issue_transport,
-                issue_id,
-                IssueLifecycleStage::Implementation,
-                IssueLifecycleStage::Closed,
-                now_epoch_ms,
-            )?;
-            Ok(StageDispatchOutcome::Advanced(IssueLifecycleStage::Closed))
-        }
-        IssueLifecycleStage::Closed => {
-            // Terminal stage — nothing to dispatch.
-            Ok(StageDispatchOutcome::Advanced(IssueLifecycleStage::Closed))
-        }
+    }
+
+    #[test]
+    fn parse_cli_args_accepts_profile_for_worker() {
+        let args = vec![
+            "gunbc-sdlc".to_string(),
+            "worker".to_string(),
+            "--profile=unit_test".to_string(),
+        ];
+        let parsed = parse_cli_args(&args).expect("profile flag should parse");
+        assert_eq!(parsed.profile.as_deref(), Some("unit_test"));
+    }
+
+    #[test]
+    fn compiled_stage_dispatch_advances_idea_to_design() {
+        let mut issue_transport = IssueTransportLedger::default();
+        issue_transport.issues.insert(
+            42,
+            IssueTransportRecord {
+                labels: vec!["idea".to_string()],
+                comments_by_marker: BTreeMap::new(),
+                updated_at_epoch_ms: 0,
+            },
+        );
+        let record = sample_record(IssueLifecycleStage::Idea);
+        let outcome = dispatch_pipeline_stage(
+            "intake-1",
+            &record,
+            "worker-test",
+            &mut issue_transport,
+            10,
+            dispatcher(),
+        )
+        .expect("dispatch should succeed");
+        assert!(matches!(
+            outcome,
+            StageDispatchOutcome::Advanced(IssueLifecycleStage::Design)
+        ));
+        let labels = &issue_transport
+            .issues
+            .get(&42)
+            .expect("issue record should exist")
+            .labels;
+        assert!(
+            labels.contains(&"design".to_string()),
+            "labels should advance to design"
+        );
+    }
+
+    #[test]
+    fn compiled_stage_dispatch_marks_design_review_as_awaiting_approval() {
+        let mut issue_transport = IssueTransportLedger::default();
+        issue_transport.issues.insert(
+            42,
+            IssueTransportRecord {
+                labels: vec!["design-review".to_string()],
+                comments_by_marker: BTreeMap::new(),
+                updated_at_epoch_ms: 0,
+            },
+        );
+        let record = sample_record(IssueLifecycleStage::DesignReview);
+        let outcome = dispatch_pipeline_stage(
+            "intake-1",
+            &record,
+            "worker-test",
+            &mut issue_transport,
+            10,
+            dispatcher(),
+        )
+        .expect("dispatch should succeed");
+        assert!(matches!(outcome, StageDispatchOutcome::AwaitingApproval));
+        let issue_record = issue_transport
+            .issues
+            .get(&42)
+            .expect("issue record should exist");
+        assert!(
+            issue_record
+                .comments_by_marker
+                .contains_key("sdlc:approval-gate"),
+            "awaiting approval marker should be recorded"
+        );
     }
 }
