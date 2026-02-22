@@ -79,16 +79,31 @@ pub enum MetadataPayload {
     SystemKind(String),
     BehaviorId(String),
     Invocation(String),
-    Property(String),
+    Property(MetadataProperty),
     InputContract {
         name: String,
-        type_id: String,
+        type_id: TypeId,
         required: bool,
     },
     OutputContract {
         name: String,
-        type_id: String,
+        type_id: TypeId,
     },
+}
+
+/// Typed property marker used by [`MetadataPayload::Property`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MetadataProperty {
+    ReadOnly,
+    WritesWorld,
+    Deterministic,
+    Idempotent,
+    IdempotentWithKey,
+    FailsWhen,
+    EdgeCase,
+    Retryable,
+    SecretScoped,
+    PermissionScoped,
 }
 
 /// Content encoding lattice for file content classification.
@@ -524,19 +539,40 @@ mod tests {
         use crate::algebra::JoinSemilattice;
 
         // Self-join is idempotent
-        assert_eq!(ContentEncoding::ASCII.join(ContentEncoding::ASCII), ContentEncoding::ASCII);
+        assert_eq!(
+            ContentEncoding::ASCII.join(ContentEncoding::ASCII),
+            ContentEncoding::ASCII
+        );
 
         // Join of subtypes gives the supertype
-        assert_eq!(ContentEncoding::ASCII.join(ContentEncoding::UTF8), ContentEncoding::UTF8);
-        assert_eq!(ContentEncoding::UTF8.join(ContentEncoding::Text), ContentEncoding::Text);
+        assert_eq!(
+            ContentEncoding::ASCII.join(ContentEncoding::UTF8),
+            ContentEncoding::UTF8
+        );
+        assert_eq!(
+            ContentEncoding::UTF8.join(ContentEncoding::Text),
+            ContentEncoding::Text
+        );
 
         // Incomparable text subtypes join to Text
-        assert_eq!(ContentEncoding::UTF8.join(ContentEncoding::Latin1), ContentEncoding::Text);
-        assert_eq!(ContentEncoding::ASCII.join(ContentEncoding::Latin1), ContentEncoding::Text);
+        assert_eq!(
+            ContentEncoding::UTF8.join(ContentEncoding::Latin1),
+            ContentEncoding::Text
+        );
+        assert_eq!(
+            ContentEncoding::ASCII.join(ContentEncoding::Latin1),
+            ContentEncoding::Text
+        );
 
         // Text and Binary join to Unknown
-        assert_eq!(ContentEncoding::Text.join(ContentEncoding::Binary), ContentEncoding::Unknown);
-        assert_eq!(ContentEncoding::UTF8.join(ContentEncoding::Binary), ContentEncoding::Unknown);
+        assert_eq!(
+            ContentEncoding::Text.join(ContentEncoding::Binary),
+            ContentEncoding::Unknown
+        );
+        assert_eq!(
+            ContentEncoding::UTF8.join(ContentEncoding::Binary),
+            ContentEncoding::Unknown
+        );
     }
 
     #[test]
@@ -544,11 +580,20 @@ mod tests {
         use crate::algebra::MeetSemilattice;
 
         // Self-meet is idempotent
-        assert_eq!(ContentEncoding::UTF8.meet(ContentEncoding::UTF8), Some(ContentEncoding::UTF8));
+        assert_eq!(
+            ContentEncoding::UTF8.meet(ContentEncoding::UTF8),
+            Some(ContentEncoding::UTF8)
+        );
 
         // Meet of related types gives the subtype
-        assert_eq!(ContentEncoding::UTF8.meet(ContentEncoding::Text), Some(ContentEncoding::UTF8));
-        assert_eq!(ContentEncoding::ASCII.meet(ContentEncoding::UTF8), Some(ContentEncoding::ASCII));
+        assert_eq!(
+            ContentEncoding::UTF8.meet(ContentEncoding::Text),
+            Some(ContentEncoding::UTF8)
+        );
+        assert_eq!(
+            ContentEncoding::ASCII.meet(ContentEncoding::UTF8),
+            Some(ContentEncoding::ASCII)
+        );
 
         // Meet of incomparable types is None
         assert_eq!(ContentEncoding::UTF8.meet(ContentEncoding::Latin1), None);
