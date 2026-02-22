@@ -19,9 +19,9 @@ pub fn build_aws_secrets_manager_credential_graph(
         "aws_secrets_manager_stub",
         vec![
             port("config", "CloudSecretConfig"),
-            port("scheme", "String"),
+            port("scheme", "NonEmptyString"),
             optional("header_name", "OptionalString"),
-            port("source_id", "String"),
+            port("source_id", "NonEmptyString"),
             list("required_scopes", "String"),
             optional("lifetime_seconds", "OptionalInt"),
             optional("request_url", "OptionalString"),
@@ -50,7 +50,7 @@ pub fn build_aws_secrets_manager_upsert_graph() -> Result<Dag<AwsSecretManagerGr
             port("config", "CloudSecretConfig"),
             port("secret_value", "Secret"),
         ],
-        vec![port("version", "String")],
+        vec![port("version", "NonEmptyString")],
         DynOp::new(AwsOps::Unsupported),
     ))?;
 

@@ -180,9 +180,9 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
         "resolve_auth",
         vec![],
         vec![
-            port("service", "String"),
-            port("secret_name", "String"),
-            port("scheme", "String"),
+            port("service", "NonEmptyString"),
+            port("secret_name", "GcpSecretId"),
+            port("scheme", "NonEmptyString"),
             port("header_name", "String"),
             list("required_scopes", "String"),
             port("interactive_allowed", "Bool"),
@@ -196,8 +196,8 @@ pub fn build_github_credential_graph() -> Result<Dag<GitHubCredentialGraphOp>, B
             "bind_secret",
             vec![
                 port("config", "CloudSecretConfig"),
-                port("service", "String"),
-                port("secret_name", "String"),
+                port("service", "NonEmptyString"),
+                port("secret_name", "GcpSecretId"),
             ],
             vec![port("config", "CloudSecretConfig")],
             GitHubCredentialGraphOp::Cloud(DynOp::new(CloudOps::BindSecretName)),

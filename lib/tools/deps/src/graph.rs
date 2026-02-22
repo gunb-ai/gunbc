@@ -265,7 +265,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let prepare_write = builder.add_node_after(
         Node::opaque(
             "prepare_file_write",
-            vec![scalar("content", "String"), port("path", "FilePath")],
+            vec![scalar("content", "NonEmptyString"), port("path", "FilePath")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             DynOp::new(PrepareFileWriteOp),
         ),

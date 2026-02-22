@@ -52,7 +52,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                     let prepare = builder.add_root_node(Node::opaque(
                         "prepare_github_oidc",
                         vec![
-                            port("audience", "String"),
+                            port("audience", "NonEmptyString"),
                             optional("request_url", "OptionalString"),
                             optional("request_token", "OptionalString"),
                         ],
@@ -78,7 +78,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                         Node::opaque(
                             "parse_github_oidc",
                             vec![port("response", "TransportResponse")],
-                            vec![port("subject_token", "String")],
+                            vec![port("subject_token", "OidcSubjectToken")],
                             DynOp::new(GcpOps::ParseGitHubOidcResponse),
                         ),
                         &execute,
@@ -97,7 +97,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 GcpRuntimeKind::GcpMetadata => {
                     let prepare = builder.add_root_node(Node::opaque(
                         "prepare_metadata_oidc",
-                        vec![port("audience", "String")],
+                        vec![port("audience", "NonEmptyString")],
                         vec![port("request", "TransportRequest"), port("skip", "Bool")],
                         DynOp::new(GcpOps::PrepareMetadataOidcRequest),
                     ))?;
@@ -120,7 +120,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                         Node::opaque(
                             "parse_metadata_oidc",
                             vec![port("response", "TransportResponse")],
-                            vec![port("subject_token", "String")],
+                            vec![port("subject_token", "OidcSubjectToken")],
                             DynOp::new(GcpOps::ParseMetadataOidcResponse),
                         ),
                         &execute,
@@ -143,7 +143,10 @@ pub fn build_gcp_secret_manager_credential_graph(
             let prepare_sts = builder.add_node_after(
                 Node::opaque(
                     "prepare_sts",
-                    vec![port("audience", "String"), port("subject_token", "String")],
+                    vec![
+                        port("audience", "NonEmptyString"),
+                        port("subject_token", "OidcSubjectToken"),
+                    ],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
                     DynOp::new(GcpOps::PrepareStsExchange),
                 ),
@@ -210,7 +213,7 @@ pub fn build_gcp_secret_manager_credential_graph(
         Node::opaque(
             "should_impersonate",
             vec![
-                port("service_account", "String"),
+                port("service_account", "GcpServiceAccountEmail"),
                 optional("allow_impersonation", "OptionalBool"),
             ],
             vec![port("should", "Bool")],
@@ -224,7 +227,7 @@ pub fn build_gcp_secret_manager_credential_graph(
             "prepare_impersonate",
             vec![
                 port("access_token", "String"),
-                port("service_account", "String"),
+                port("service_account", "GcpServiceAccountEmail"),
                 optional("lifetime_seconds", "OptionalInt"),
                 optional("should_impersonate", "OptionalBool"),
             ],
@@ -299,8 +302,8 @@ pub fn build_gcp_secret_manager_credential_graph(
             "prepare_secret_access",
             vec![
                 port("access_token", "String"),
-                port("project", "String"),
-                port("secret", "String"),
+                port("project", "GcpProjectId"),
+                port("secret", "GcpSecretId"),
                 optional("version", "OptionalString"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
@@ -327,7 +330,7 @@ pub fn build_gcp_secret_manager_credential_graph(
         Node::opaque(
             "parse_secret_access",
             vec![port("response", "TransportResponse")],
-            vec![port("secret", "String")],
+            vec![port("secret", "Secret")],
             DynOp::new(GcpOps::ParseSecretAccess),
         ),
         &execute_secret,
@@ -359,7 +362,7 @@ pub fn build_gcp_secret_manager_credential_graph(
         Node::opaque(
             "build_credential",
             vec![
-                port("secret", "String"),
+                port("secret", "Secret"),
                 port("scheme", "String"),
                 optional("header_name", "OptionalString"),
                 port("source_id", "String"),
@@ -443,7 +446,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                     let prepare = builder.add_root_node(Node::opaque(
                         "prepare_github_oidc",
                         vec![
-                            port("audience", "String"),
+                            port("audience", "NonEmptyString"),
                             optional("request_url", "OptionalString"),
                             optional("request_token", "OptionalString"),
                         ],
@@ -469,7 +472,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         Node::opaque(
                             "parse_github_oidc",
                             vec![port("response", "TransportResponse")],
-                            vec![port("subject_token", "String")],
+                            vec![port("subject_token", "OidcSubjectToken")],
                             DynOp::new(GcpOps::ParseGitHubOidcResponse),
                         ),
                         &execute,
@@ -488,7 +491,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 GcpRuntimeKind::GcpMetadata => {
                     let prepare = builder.add_root_node(Node::opaque(
                         "prepare_metadata_oidc",
-                        vec![port("audience", "String")],
+                        vec![port("audience", "NonEmptyString")],
                         vec![port("request", "TransportRequest"), port("skip", "Bool")],
                         DynOp::new(GcpOps::PrepareMetadataOidcRequest),
                     ))?;
@@ -511,7 +514,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         Node::opaque(
                             "parse_metadata_oidc",
                             vec![port("response", "TransportResponse")],
-                            vec![port("subject_token", "String")],
+                            vec![port("subject_token", "OidcSubjectToken")],
                             DynOp::new(GcpOps::ParseMetadataOidcResponse),
                         ),
                         &execute,
@@ -534,7 +537,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
             let prepare_sts = builder.add_node_after(
                 Node::opaque(
                     "prepare_sts",
-                    vec![port("audience", "String"), port("subject_token", "String")],
+                    vec![
+                        port("audience", "NonEmptyString"),
+                        port("subject_token", "OidcSubjectToken"),
+                    ],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
                     DynOp::new(GcpOps::PrepareStsExchange),
                 ),
@@ -601,7 +607,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
         Node::opaque(
             "should_impersonate",
             vec![
-                port("service_account", "String"),
+                port("service_account", "GcpServiceAccountEmail"),
                 optional("allow_impersonation", "OptionalBool"),
             ],
             vec![port("should", "Bool")],
@@ -615,7 +621,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
             "prepare_impersonate",
             vec![
                 port("access_token", "String"),
-                port("service_account", "String"),
+                port("service_account", "GcpServiceAccountEmail"),
                 optional("lifetime_seconds", "OptionalInt"),
                 optional("should_impersonate", "OptionalBool"),
             ],
@@ -690,8 +696,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
             "prepare_secret_get",
             vec![
                 port("access_token", "String"),
-                port("project", "String"),
-                port("secret", "String"),
+                port("project", "GcpProjectId"),
+                port("secret", "GcpSecretId"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             DynOp::new(GcpOps::PrepareSecretGet),
@@ -740,8 +746,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
             "prepare_secret_create",
             vec![
                 port("access_token", "String"),
-                port("project", "String"),
-                port("secret", "String"),
+                port("project", "GcpProjectId"),
+                port("secret", "GcpSecretId"),
                 port("exists", "Bool"),
             ],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
@@ -784,8 +790,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
             "prepare_secret_add_version",
             vec![
                 port("access_token", "String"),
-                port("project", "String"),
-                port("secret", "String"),
+                port("project", "GcpProjectId"),
+                port("secret", "GcpSecretId"),
                 port("secret_value", "Secret"),
                 optional("create_done", "OptionalBool"),
             ],
@@ -969,25 +975,25 @@ fn add_ensure_iam_nodes_with_mode(
 
     let mut prepare_inputs = vec![
         port("access_token", "String"),
-        port("project", "String"),
-        port("service_account", "String"),
+        port("project", "GcpProjectId"),
+        port("service_account", "GcpServiceAccountEmail"),
     ];
     let mut prepare_outputs = vec![
         port("request", "TransportRequest"),
         port("skip", "Bool"),
-        port("service_account", "String"),
-        port("project", "String"),
+        port("service_account", "GcpServiceAccountEmail"),
+        port("project", "GcpProjectId"),
     ];
     let mut check_inputs = vec![
         port("response", "TransportResponse"),
         port("access_token", "String"),
-        port("project", "String"),
-        port("service_account", "String"),
+        port("project", "GcpProjectId"),
+        port("service_account", "GcpServiceAccountEmail"),
     ];
     if include_member_port {
-        prepare_inputs.push(port("member", "String"));
-        prepare_outputs.push(port("member", "String"));
-        check_inputs.push(port("member", "String"));
+        prepare_inputs.push(port("member", "NonEmptyString"));
+        prepare_outputs.push(port("member", "NonEmptyString"));
+        check_inputs.push(port("member", "NonEmptyString"));
     }
 
     let prepare_ensure_iam = builder.add_node_after(

@@ -183,9 +183,9 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         vec![
             port("provider", "Platform"),
             port("runtime", "String"),
-            port("audience", "String"),
-            port("project_or_account", "String"),
-            port("secret", "String"),
+            port("audience", "NonEmptyString"),
+            port("project_or_account", "GcpProjectId"),
+            port("secret", "GcpSecretId"),
             optional("version", "OptionalString"),
             optional("service_account_or_role", "OptionalString"),
             optional("impersonate_account_or_role", "OptionalString"),
@@ -194,13 +194,13 @@ fn build_cloud_secret_manager_credential_graph_gcp(
     ))?;
 
     let mut map_outputs = vec![
-        port("project", "String"),
-        port("secret", "String"),
+        port("project", "GcpProjectId"),
+        port("secret", "GcpSecretId"),
         optional("version", "OptionalString"),
-        port("service_account", "String"),
-        port("scheme", "String"),
+        port("service_account", "GcpServiceAccountEmail"),
+        port("scheme", "NonEmptyString"),
         optional("header_name", "OptionalString"),
-        port("source_id", "String"),
+        port("source_id", "NonEmptyString"),
         list("required_scopes", "String"),
         optional("allow_impersonation", "OptionalBool"),
         optional("lifetime_seconds", "OptionalInt"),
@@ -211,7 +211,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
     // propagate up through nested sub-DAGs.
     if !matches!(runtime, CloudRuntimeKind::LocalDev) {
         map_outputs.push(optional("interactive_allowed", "OptionalBool"));
-        map_outputs.push(port("audience", "String"));
+        map_outputs.push(port("audience", "NonEmptyString"));
     }
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         map_outputs.push(optional("request_url", "OptionalString"));
@@ -224,16 +224,16 @@ fn build_cloud_secret_manager_credential_graph_gcp(
             vec![
                 port("provider", "Platform"),
                 port("runtime", "String"),
-                port("audience", "String"),
-                port("project_or_account", "String"),
-                port("secret", "String"),
+                port("audience", "NonEmptyString"),
+                port("project_or_account", "GcpProjectId"),
+                port("secret", "GcpSecretId"),
                 optional("version", "OptionalString"),
                 optional("service_account_or_role", "OptionalString"),
                 optional("impersonate_account_or_role", "OptionalString"),
                 // Pass-through inputs for the GCP graph.
-                port("scheme", "String"),
+                port("scheme", "NonEmptyString"),
                 optional("header_name", "OptionalString"),
-                port("source_id", "String"),
+                port("source_id", "NonEmptyString"),
                 list("required_scopes", "String"),
                 optional("allow_impersonation", "OptionalBool"),
                 optional("lifetime_seconds", "OptionalInt"),
@@ -343,9 +343,9 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         vec![
             port("provider", "Platform"),
             port("runtime", "String"),
-            port("audience", "String"),
-            port("project_or_account", "String"),
-            port("secret", "String"),
+            port("audience", "NonEmptyString"),
+            port("project_or_account", "GcpProjectId"),
+            port("secret", "GcpSecretId"),
             optional("version", "OptionalString"),
             optional("service_account_or_role", "OptionalString"),
             optional("impersonate_account_or_role", "OptionalString"),
@@ -354,9 +354,9 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
     ))?;
 
     let mut map_outputs = vec![
-        port("project", "String"),
-        port("secret", "String"),
-        port("service_account", "String"),
+        port("project", "GcpProjectId"),
+        port("secret", "GcpSecretId"),
+        port("service_account", "GcpServiceAccountEmail"),
         optional("version", "OptionalString"),
         optional("allow_impersonation", "OptionalBool"),
         optional("lifetime_seconds", "OptionalInt"),
@@ -364,7 +364,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
     // interactive_allowed only needed for non-local runtimes (see credential graph).
     if !matches!(runtime, CloudRuntimeKind::LocalDev) {
         map_outputs.push(optional("interactive_allowed", "OptionalBool"));
-        map_outputs.push(port("audience", "String"));
+        map_outputs.push(port("audience", "NonEmptyString"));
     }
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         map_outputs.push(optional("request_url", "OptionalString"));
@@ -377,9 +377,9 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
             vec![
                 port("provider", "Platform"),
                 port("runtime", "String"),
-                port("audience", "String"),
-                port("project_or_account", "String"),
-                port("secret", "String"),
+                port("audience", "NonEmptyString"),
+                port("project_or_account", "GcpProjectId"),
+                port("secret", "GcpSecretId"),
                 optional("version", "OptionalString"),
                 optional("service_account_or_role", "OptionalString"),
                 optional("impersonate_account_or_role", "OptionalString"),

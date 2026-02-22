@@ -240,10 +240,10 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // PrepareReadFile node — needs both filename (element) and repo_path (extra input)
     dag.add_node(Node::opaque(
         "prepare",
-        vec![port("filename", "String"), port("repo_path", "FilePath")],
+        vec![port("filename", "FilePath"), port("repo_path", "FilePath")],
         vec![
             port("request", "TransportRequest"),
-            port("filename", "String"),
+            port("filename", "FilePath"),
             port("skip", "Bool"),
         ],
         DynOp::new(PrepareReadFileOp),
@@ -266,7 +266,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
         "parse",
         vec![
             port("response", "TransportResponse"),
-            port("filename", "String"),
+            port("filename", "FilePath"),
         ],
         vec![port("result", "String")],
         DynOp::new(ParseReadFileOp),
@@ -294,8 +294,8 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
 /// - Diff: `(repo_path, base_ref?) → url`
 pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
     let mut sig = WorkflowSignature::new()
-        .with_input("repo_path", "String", Cardinality::ONE)
-        .with_output("url", "String", Cardinality::ONE)
+        .with_input("repo_path", "FilePath", Cardinality::ONE)
+        .with_output("url", "Url", Cardinality::ONE)
         // cloud_credential subdag exposes ok from IAM ensure chain (LocalDev only)
         .with_output("ok", "Bool", Cardinality::ONE)
         // cloud_credential subdag also surfaces lease metadata.
@@ -458,7 +458,7 @@ fn build_snapshot_acquire(
         "list_files",
         vec![port("repo_path", "FilePath")],
         vec![resource("file", "FilesystemHandle", AccessMode::Read)],
-        vec![list("files", "String")],
+        vec![list("files", "FilePath")],
         DynOp::new(GitOps::PrepareLsFiles { extensions }),
         DynOp::new(GitOps::ParseLsFiles),
         DynOp::new(TransportOps::Execute),
@@ -475,8 +475,8 @@ fn build_snapshot_acquire(
 
     let body = build_read_file_body_dag();
     let loop_node: Node<GistGraphOp> = LoopBuilder::new("read_files_loop")
-        .with_input("files", "String", Cardinality::ZERO_OR_MORE)
-        .with_element("filename", "String")
+        .with_input("files", "FilePath", Cardinality::ZERO_OR_MORE)
+        .with_element("filename", "FilePath")
         .with_resource_input(ResourceInput::new("res:file", "FilesystemHandle"))
         .with_body(body)
         .with_output("contents", "String")
@@ -492,7 +492,7 @@ fn build_snapshot_acquire(
     let collect_file_contents = builder.add_node_after(
         Node::opaque(
             "collect_file_contents",
-            vec![list("filenames", "String"), list("contents_list", "String")],
+            vec![list("filenames", "FilePath"), list("contents_list", "String")],
             vec![port("contents", "Map")],
             DynOp::new(CollectFileContentsOp),
         ),

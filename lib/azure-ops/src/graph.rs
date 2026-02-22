@@ -15,9 +15,9 @@ pub fn build_azure_key_vault_credential_graph() -> Result<Dag<AzureKeyVaultGraph
         "azure_key_vault_stub",
         vec![
             port("config", "CloudSecretConfig"),
-            port("scheme", "String"),
+            port("scheme", "NonEmptyString"),
             optional("header_name", "OptionalString"),
-            port("source_id", "String"),
+            port("source_id", "NonEmptyString"),
             list("required_scopes", "String"),
             optional("lifetime_seconds", "OptionalInt"),
             optional("request_url", "OptionalString"),
@@ -45,7 +45,7 @@ pub fn build_azure_key_vault_upsert_graph() -> Result<Dag<AzureKeyVaultGraphOp>,
             port("config", "CloudSecretConfig"),
             port("secret_value", "Secret"),
         ],
-        vec![port("version", "String")],
+        vec![port("version", "NonEmptyString")],
         DynOp::new(AzureOps::Unsupported),
     ))?;
 
