@@ -48,7 +48,6 @@ pub mod config;
 pub mod graph;
 pub mod graph_mock;
 pub mod lint;
-pub mod ops;
 pub mod policy;
 
 pub use config::{
@@ -59,7 +58,6 @@ pub use graph::{
     build_clippy_upsert, ClippyGraphOp,
 };
 pub use lint::{LintId, LintSource};
-pub use ops::{CliToolOp, Clippy};
 pub use policy::{CratePolicy, CrateRole};
 
 // ============================================================================

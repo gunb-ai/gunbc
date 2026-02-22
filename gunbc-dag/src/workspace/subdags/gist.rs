@@ -54,7 +54,10 @@ mod tests {
 
         match &node.body {
             NodeBody::SubDag(dag) => {
-                assert!(!dag.nodes.is_empty(), "gist DSL subdag should contain nodes");
+                assert!(
+                    !dag.nodes.is_empty(),
+                    "gist DSL subdag should contain nodes"
+                );
             }
             _ => panic!("Expected SubDag"),
         }

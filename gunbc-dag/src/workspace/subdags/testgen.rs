@@ -29,7 +29,10 @@ mod tests {
         let node = build_testgen_subdag().expect("testgen subdag should build");
         match &node.body {
             NodeBody::SubDag(dag) => {
-                assert!(!dag.nodes.is_empty(), "testgen DSL subdag should contain nodes");
+                assert!(
+                    !dag.nodes.is_empty(),
+                    "testgen DSL subdag should contain nodes"
+                );
             }
             _ => panic!("Expected SubDag"),
         }

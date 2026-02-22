@@ -22,6 +22,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
@@ -29,10 +30,10 @@ use daglang_syntax::ast::{
     UsesClause,
 };
 use daglang_syntax::ast_utils::{
-    canonical_type_name, resource_type_name, service_call_lookup_keys,
+    canonical_resource_type_name, resource_type_name, service_call_lookup_keys,
     should_track_call_name as should_validate_call_name, type_expr_to_string, walk_stmts,
 };
-use gunbc_ir::{ContentEncoding, Predicate, TypeId, TypeOp};
+use gunbc_ir::{type_registry::TypeRegistry, ContentEncoding, Predicate, TypeId, TypeOp};
 
 /// A typechecked project snapshot.
 #[derive(Debug)]
@@ -2380,8 +2381,7 @@ fn infer_expr_type_for_expected_named_record(
             compatible = false;
             continue;
         };
-        if !types_match(expected_field_ty, &inferred_name) {
-            eprintln!("[DEBUG field_mismatch] expected_type={expected_type:?} field={name:?} expected_field_ty={expected_field_ty:?} inferred={inferred_name:?}");
+        if !type_ids_compatible(expected_field_ty, &inferred_name) {
             errors.push(TypeError::TypeMismatch {
                 expected: expected_field_ty.clone(),
                 got: inferred_name,
@@ -2519,7 +2519,7 @@ fn infer_expr_type(
                 daglang_syntax::ast::BinOp::NullCoalesce => lhs_ty,
                 _ => match (lhs_ty, rhs_ty) {
                     (ValueType::Named(lhs), ValueType::Named(rhs))
-                        if canonical_type_name(&lhs) == canonical_type_name(&rhs) =>
+                        if type_ids_compatible_bidirectional(&lhs, &rhs) =>
                     {
                         ValueType::Named(lhs)
                     }
@@ -2689,14 +2689,7 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     let Some(got) = inferred.display_name() else {
         return Vec::new();
     };
-    if !types_match(expected, &got) {
-        eprintln!("[DEBUG type_mismatch] expected={expected:?} got={got:?} inferred={inferred:?} backtrace:");
-        // Print a short backtrace to identify call site
-        let bt = std::backtrace::Backtrace::force_capture();
-        let bt_str = format!("{bt}");
-        for line in bt_str.lines().take(20) {
-            eprintln!("  {line}");
-        }
+    if !type_ids_compatible(expected, &got) {
         vec![TypeError::TypeMismatch {
             expected: expected.to_string(),
             got,
@@ -2706,33 +2699,46 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     }
 }
 
-/// Check whether `got` is compatible with `expected` using the TypeRegistry
-/// for coercion path discovery, falling back to canonical name comparison.
-fn types_match(expected: &str, got: &str) -> bool {
-    if expected == got {
+fn canonical_type_id(name: &str) -> TypeId {
+    let canonical = canonical_resource_type_name(name);
+    TypeId::from(canonical.as_str())
+}
+
+fn short_type_name(type_id: &TypeId) -> &str {
+    type_id
+        .0
+        .rsplit('.')
+        .next()
+        .unwrap_or(type_id.0.as_str())
+}
+
+fn type_ids_structurally_match(lhs: &TypeId, rhs: &TypeId) -> bool {
+    lhs == rhs || short_type_name(lhs) == short_type_name(rhs)
+}
+
+fn core_type_registry() -> &'static TypeRegistry {
+    static REGISTRY: OnceLock<TypeRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(TypeRegistry::with_core_types)
+}
+
+fn type_ids_compatible(expected: &str, got: &str) -> bool {
+    let expected_id = canonical_type_id(expected);
+    let got_id = canonical_type_id(got);
+    if type_ids_structurally_match(&expected_id, &got_id) {
         return true;
     }
-    // Canonicalize and check structural equality
-    let expected_canonical = canonical_type_name(expected);
-    let got_canonical = canonical_type_name(got);
-    if expected_canonical == got_canonical
-        || expected_canonical.rsplit('.').next() == got_canonical.rsplit('.').next()
-    {
-        return true;
-    }
-    // Check TypeRegistry coercion paths (e.g. TextFilePath → FilePath → String)
-    use gunbc_ir::type_registry::TypeRegistry;
-    let registry = TypeRegistry::with_core_types();
-    let got_id = gunbc_ir::TypeId::from(got_canonical.as_str());
-    let expected_id = gunbc_ir::TypeId::from(expected_canonical.as_str());
-    registry.is_compatible(&got_id, &expected_id)
+    core_type_registry().is_compatible(&got_id, &expected_id)
+}
+
+fn type_ids_compatible_bidirectional(lhs: &str, rhs: &str) -> bool {
+    type_ids_compatible(lhs, rhs) && type_ids_compatible(rhs, lhs)
 }
 
 fn resolve_record_fields(
     ty: &str,
     registry: &RecordTypeRegistry,
 ) -> Option<HashMap<String, String>> {
-    let canonical = canonical_type_name(ty);
+    let canonical = canonical_type_id(ty).0;
     if let Some(fields) = registry.full.get(&canonical) {
         return Some(fields.clone());
     }
@@ -2946,7 +2952,7 @@ fn resolve_interface_contract(
     implemented: &str,
     registry: &InterfaceRegistry,
 ) -> InterfaceResolution {
-    let canonical = canonical_type_name(implemented);
+    let canonical = canonical_type_id(implemented).0;
     if let Some(contract) = registry.full.get(&canonical) {
         return InterfaceResolution::Resolved(contract.clone());
     }
@@ -2959,14 +2965,14 @@ fn resolve_interface_contract(
 }
 
 fn canonical_interface_name(name: &str) -> String {
-    canonical_type_name(name)
+    canonical_type_id(name).0
 }
 
 fn resolve_implementor_name(
     implementation: &str,
     registry: &ImplementorRegistry,
 ) -> ImplementorResolution {
-    let canonical = canonical_type_name(implementation);
+    let canonical = canonical_type_id(implementation).0;
     if registry.full.contains(&canonical) {
         return ImplementorResolution::Resolved(canonical);
     }

@@ -24,17 +24,18 @@ pub fn type_expr_to_string(expr: &TypeExpr) -> String {
     }
 }
 
-pub fn canonical_type_name(name: &str) -> String {
-    name.split('<').next().unwrap_or(name).trim().to_string()
-}
-
 pub fn canonical_resource_type_name(name: &str) -> String {
     let base_without_config = name.split('(').next().unwrap_or(name).trim();
     let base_without_annotations = base_without_config
         .split_whitespace()
         .next()
         .unwrap_or(base_without_config);
-    canonical_type_name(base_without_annotations)
+    base_without_annotations
+        .split('<')
+        .next()
+        .unwrap_or(base_without_annotations)
+        .trim()
+        .to_string()
 }
 
 pub fn resource_type_name(resource_type: &TypeExpr) -> String {

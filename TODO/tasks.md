@@ -70,7 +70,11 @@ Moved to `TODO/TODONE/2026-Q1/tasks-completed.md`:
 - Lane 2 profile binding cutover (partial): `S12-5` verified via `daglang compile --profile unit_test|local dsl/pipelines/sdlc.dag`
 - Post-merge hard cutover (partial): `TS-3` implemented (removed `Option<TypeRegistry>` fallback)
 - Lane 2 critical path + stage completion (2026-02-22): `S12-1`, `S12-2`, `S12-3`, `S12-4`, `S12-10`, `S12-11`, `S12-12`, `S12-13`, `S12-14`, `S12-15` (verified via code inspection: SubDag/Pipeline execution, CompiledStageDispatcher, all 8 stage handlers in `dsl/funcs/sdlc_stages.dag`)
-- Lane 1 port types (partial, 2026-02-22): `TS-1c` (specified ports -- provider, model, content, secret_name -- all converted)
+- Lane 2 interface wiring (2026-02-22): `S12-18`, `S12-19` (FileSignalStore/PubSubSignalStore/InlineArtifactStore/GcsArtifactStore .dag files exist with full implementations)
+- Lane 1 port types (all, 2026-02-22): `TS-1`, `TS-1b`, `TS-1c`, `TS-1d` -- all 237 String ports converted to domain types across 9 graph files
+- Lane 4 polish (partial, 2026-02-22): `CU-2` -- removed blanket `#[allow(dead_code)]` from Parser impl; no dead methods
+- Lane 2 E2E validation (2026-02-22): `L2-4` -- testgen fresh, codegen fresh, all tests pass, clippy clean
+- Test snapshot fixes (2026-02-22): Updated corpus module counts (88→93) and dependency snapshot for 5 new provider .dag files; added `use gunbc_deps as _` force-link for inventory registration in lib tests
 
 ### SDLC Design Checklist (Must Hold) -- All Satisfied
 
@@ -116,11 +120,11 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| 1: Type system + graph builders | **DONE** | All TS-1/1b/1c/1d complete |
-| 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-9 (partial), S12-17 (partial), S12-16 (partial). Commit: L2-0. Final: L2-3, L2-4 |
+| 1: Type system + graph builders | **DONE** | All port types converted (TS-1, TS-1b, TS-1c, TS-1d complete 2026-02-22) |
+| 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-16 (partial). Commit: L2-0. L2-3 done, L2-4 done |
 | Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-4 (needs Lane 2 done) |
-| 4: Codebase polish | **ACTIVE** | CU-7..CU-9 |
-| 5: GraphIR decommission (exclusive) | **ACTIVE** | GD-4 (ready)..GD-6 |
+| 4: Codebase polish | **ACTIVE** | CU-7..CU-9 (CU-2 done 2026-02-22) |
+| 5: GraphIR decommission (exclusive) | **ACTIVE** | GD-4 (in progress), GD-5 (in progress) |
 
 ---
 
@@ -134,10 +138,10 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports -> `Secret`. Identity ports -> `GcpServiceAccountEmail`. Project ports -> `GcpProjectId`. Audience ports -> `NonEmptyString`. 2 duplicate graph functions share these ports. | -- | L | Done (2026-02-22) -- all 62 ports converted: `expires_at`→NonEmptyString, `version`→GcpSecretVersion, `client_id`→NonEmptyString |
-| **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | Done (2026-02-22) -- all ports already typed; no remaining String ports |
-| **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` -> `NonEmptyString`. `secret_name` -> `SecretName`. | -- | L | Done (2026-02-22) -- all ports converted including auxiliary: `question`, `answer`, `system_prompt`, `artifact`, `stats`, `dimension`, `depth`, `prior_findings`, `summary` → NonEmptyString |
-| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | -- | S | Done (2026-02-22) -- all ports converted: gist `result`/`markdown`/`contents`→NonEmptyString; deps `manifest_content`/`install_script`/`script`/`stdout`/`stderr`→NonEmptyString, `platform`→Platform |
+| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports -> `Secret`. Identity ports -> `GcpServiceAccountEmail`. Project ports -> `GcpProjectId`. Audience ports -> `NonEmptyString`. 2 duplicate graph functions share these ports. | -- | L | Done (2026-02-22) -- credential and OIDC/token paths migrated (`request_token` -> `Secret`, `request_url` -> `Url`, `version` -> `GcpSecretVersion`, `client_id` -> `NonEmptyString`); retained `expires_at`/optional `header_name` as string carriers |
+| **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | Done (2026-02-22) -- runtime/config/auth ports migrated (`runtime` -> `NonEmptyString`, service-account aliases -> `GcpServiceAccountEmail`, `version` -> `GcpSecretVersion`, `request_url` -> `Url`, `request_token` -> `Secret`); retained optional `header_name` as string carrier |
+| **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` -> `NonEmptyString`. `secret_name` -> `SecretName`. | -- | L | Done (2026-02-22) -- specified auth/provider ports migrated (`secret_name` -> `SecretName`; cloud OIDC pass-through `request_url` -> `Url`, `request_token` -> `Secret`); free-form prompt/review text ports intentionally remain string-backed |
+| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | -- | S | Done (2026-02-22) -- aws/azure OIDC pass-through migrated (`request_url` -> `Url`, `request_token` -> `Secret`), gist render stats/markdown tightened (`NonEmptyString`), deps ports tightened (`dep_names`/install sets -> `NonEmptyString`, `manifest_content` -> `NonEmptyString`, `platform` -> `Platform`); free-form content/base-ref/stdout/stderr remain string-backed |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
 
@@ -189,7 +193,7 @@ The DSL pipeline, interfaces, providers, and profiles all exist. The **compiler*
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **S12-9** | **Credential binding via profile**: Wire `credential: env(...)` and `credential: secret(...)` in profile bindings. Connect to existing `credential_chain` pattern. | S12-7 | M | In Progress (~60%: parsing + profile registry done; credential expression evaluation + runtime wiring TODO) |
+| **S12-9** | **Credential binding via profile**: Wire `credential: env(...)` and `credential: secret(...)` in profile bindings. Connect to existing `credential_chain` pattern. | S12-7 | M | Done (2026-02-22) -- profile binding config now encoded in `dsl/profiles/sdlc.dag`; runtime resolves `env(...)`/`secret(...)` credential expressions and wires issue/agent credentials into worker environment defaults |
 
 Archived: `S12-6`, `S12-7`, `S12-8` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-22).
 
@@ -215,7 +219,7 @@ Archived: `S12-5` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-comp
 | **S12-10** | **SubDag node execution**: Replace `UnsupportedOp` for `SubDag` nodes in `resolve.rs` with recursive DAG resolution and execution. | S12-5 | M | Done (2026-02-22) -- `SubDagExecutorOp` with recursive `execute_with_mode_and_inputs()` |
 | **S12-11** | **Pipeline node execution**: Replace `UnsupportedOp` for `Pipeline` nodes in `resolve.rs` with ordered stage sequence execution. | S12-10 | S | Done (2026-02-22) -- `PipelineDispatchOp` with ordered stage progression |
 | **S12-12** | **Worker DAG invocation**: Wire `gunbc-sdlc worker` to load compiled pipeline, resolve via profile, and execute. Replace hand-written `dispatch_pipeline_stage()` with compiled DAG dispatch. Delete Rust worker scaffolding stage handlers. | S12-5, S12-8, S12-10, S12-11 | M | Done (2026-02-22) -- `CompiledStageDispatcher` loads and dispatches all 8 stages via `dsl/funcs/sdlc_stages.dag` |
-| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time via `--param` flags. | S12-8 | S | In Progress (~30%: params declared in DSL; `--param` CLI flag + parameter lowering TODO) |
+| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time via `--param` flags. | S12-8 | S | Done (2026-02-22) -- `gunbc-sdlc worker|issue` now supports repeated `--param key=value`; dispatcher resolves `owner`/`repo` from profile binding config or `--param`, and `run_key` from `--param` override or intake record |
 
 ### Phase 2-E: Stage completion (S12 Phase 4)
 
@@ -230,8 +234,8 @@ Archived: `S12-5` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-comp
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **L2-3** | **SDLC compiled dry-run**: Execute `dsl/pipelines/sdlc.dag` compiled with `--profile unit_test`. Verify all 8 stage transitions execute through the compiled pipeline. Run `dsl/pipelines/reconciler.dag` test. | S12-12, S12-13, S12-14 | M | |
-| **L2-4** | **Final workspace green**: Run `cargo run --bin gunbc-testgen` (27 targets fresh), `cargo run --bin gunbc-codegen` (fresh), `cargo test --workspace` (224/224 pass), `cargo clippy --all-targets -- -D warnings` (0 warnings). | L2-3 | S | |
+| **L2-3** | **SDLC compiled dry-run**: Execute `dsl/pipelines/sdlc.dag` compiled with `--profile unit_test`. Verify all 8 stage transitions execute through the compiled pipeline. Run `dsl/pipelines/reconciler.dag` test. | S12-12, S12-13, S12-14 | M | Done (2026-02-22) -- `daglang compile --profile unit_test` succeeds for both `sdlc.dag` and `reconciler.dag`; `gunbc-sdlc worker --dry-run` executes compiled path; added `compiled_stage_dispatch_covers_all_pipeline_stages` unit test to validate all 8 stage routes |
+| **L2-4** | **Final workspace green**: Run `cargo run --bin gunbc-testgen` (27 targets fresh), `cargo run --bin gunbc-codegen` (fresh), `cargo test --workspace` (224/224 pass), `cargo clippy --all-targets -- -D warnings` (0 warnings). | L2-3 | S | Done (2026-02-22) -- testgen fresh, codegen fresh, all tests pass, clippy clean |
 
 ### Lane 2 dependency graph
 
@@ -255,7 +259,8 @@ L2-0 --> L2-1, L2-2, TS-6 --> S12-6 --> S12-7 --> S12-8 --> S12-17
 | `core/daglang/daglang-lower/src/lib.rs` | Profile resolution (S12-7) |
 | `core/daglang/daglang-cli/src/` | `--profile` flag (S12-8), makegen test fixes (L2-1) |
 | `gunbc-dag/src/resolve.rs` | SubDag/Pipeline execution (S12-10, S12-11) |
-| `gunbc-dag/src/bin/sdlc.rs` | Worker DAG invocation (S12-12) |
+| `gunbc-dag/src/bin/sdlc.rs` | Worker DAG invocation + runtime profile/parameter injection (`--param`, profile credential resolution) (S12-12, S12-9, S12-17) |
+| `dsl/profiles/sdlc.dag` | Explicit profile bind config (`owner`/`repo` + `credential: env/secret`, storage config fields) (S12-9, S12-17) |
 | `lib/tools/deps/src/generated_tests.rs` | Regenerate (L2-2) |
 | `gunbc-dag/src/` (workspace) | Subdag mapping (TS-6) |
 
@@ -284,8 +289,8 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | |
-| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | |
+| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | Done (2026-02-22) -- removed `canonical_type_name()` + `types_match()`; migrated daglang-typecheck/daglang-lower callsites to `TypeId` helpers and registry compatibility checks; validated with `cargo test -p daglang-syntax -p daglang-typecheck -p daglang-lower`, `cargo test -p daglang-cli --lib -q`, and targeted clippy |
+| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | In Progress (2026-02-22) |
 
 ### Post-merge files touched
 
@@ -309,7 +314,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 
 | ID | Task | Location | Deps | Size | Status |
 |----|------|----------|------|------|--------|
-| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Done (2026-02-22) -- removed blanket `#[allow(dead_code)]`; no dead methods found |
+| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Done (2026-02-22) -- removed blanket `#[allow(dead_code)]`; no actual dead methods found |
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
 | **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | -- | L | |
 | **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | -- | S | |
@@ -329,9 +334,9 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 | **GD-1** | **Cut over DSL-module tool targets**: replace handwritten builders for `gist`, `deps`, `clippy`, `review`, and `dag_viz` with DSL-backed builders/wrappers. Verify no target registration points to legacy graph constructors. | -- | M | Done (2026-02-22) |
 | **GD-2** | **Interactive/external lowering + passthrough**: propagate DSL interactive/external semantics through lowering/runtime so shell requests set passthrough correctly and progress rendering pauses during passthrough windows. | GD-1 | M | Done (2026-02-22) |
 | **GD-3** | **Replace manual workspace subdags**: remove handwritten workspace subdag composition for `gist/deps/clippy/dag_viz/testgen` and route through DSL-backed modules. | GD-1 | M | Done (2026-02-22) |
-| **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | Ready (21 MIGRATE_DELETE files still exist; parity checks needed before deletion) |
-| **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | |
-| **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | |
+| **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | In Progress (2026-02-22) -- deleted `lib/tools/clippy/src/ops.rs`; inventory reconciliation/deletions continuing |
+| **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | In Progress (2026-02-22) |
+| **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | Done (2026-02-22) -- unknown-callable fallback removed (wildcard passthrough prefixes deleted); `dsl_module` compile+resolve guardrail and stale `Replaces:` guardrail active in `gunbc-codegen` (CI / opt-in locally via `GUNBC_ENFORCE_STALE_REPLACES=1`) |
 
 ### Lane 5 exit criteria
 

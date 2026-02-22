@@ -41,7 +41,8 @@ mod tests {
 
     #[test]
     fn builds_dag_viz_graph_from_dsl() {
-        let dag = build_dag_viz_graph(DagVizMode::Snapshot).expect("dag_viz DSL graph should build");
+        let dag =
+            build_dag_viz_graph(DagVizMode::Snapshot).expect("dag_viz DSL graph should build");
         assert!(!dag.nodes.is_empty());
     }
 }

@@ -136,6 +136,9 @@ pub use workspace::{
     build_testgen_subdag, build_workspace_dag, WorkspaceOp,
 };
 
+// Force-link tool crates so their `inventory` registrations are visible in lib tests.
+use gunbc_deps as _;
+
 /// Build the clippy tool graph from canonical DSL.
 pub fn build_clippy_graph_dsl() -> Result<gunbc_ir::Dag<gunbc_exec::DynOp>, gunbc_ir::BuilderError>
 {

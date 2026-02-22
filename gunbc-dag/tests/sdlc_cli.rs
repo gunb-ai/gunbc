@@ -1958,9 +1958,9 @@ fn worker_replay_skips_completed_run_key() {
         String::from_utf8_lossy(&approve.stderr)
     );
 
-    // Run 3 workers to progress Accepted -> Implementing -> Done, then
-    // execute terminal Done no-op.
-    for _ in 0..3 {
+    // Run 5 workers to progress Accepted -> Implementing -> CodeReview
+    // -> Testing -> Done, then execute terminal Done no-op.
+    for _ in 0..5 {
         let worker = ctx
             .command()
             .arg("worker")
@@ -1976,7 +1976,7 @@ fn worker_replay_skips_completed_run_key() {
         );
     }
 
-    // 7th worker: the terminal stage run_key is already completed → replay skip
+    // 9th worker: the terminal stage run_key is already completed -> replay skip
     let replay_worker = ctx
         .command()
         .arg("worker")
@@ -2077,10 +2077,10 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         String::from_utf8_lossy(&approve.stderr)
     );
 
-    // Run 3 workers to progress Accepted -> Implementing -> Done, then
-    // execute terminal Done no-op. After pass 6 overall, the terminal claim
-    // slot (issue:9090:stage:done) is held.
-    for _ in 0..3 {
+    // Run 5 workers to progress Accepted -> Implementing -> CodeReview
+    // -> Testing -> Done, then execute terminal Done no-op. After pass 8
+    // overall, the terminal claim slot (issue:9090:stage:done) is held.
+    for _ in 0..5 {
         let worker = ctx
             .command()
             .arg("worker")
@@ -2116,7 +2116,7 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         .as_u64()
         .expect("lease expiry should be numeric");
 
-    // 7th worker: replay-skips at terminal stage but heartbeats the claim
+    // 9th worker: replay-skips at terminal stage but heartbeats the claim
     let heartbeat_worker = ctx
         .command()
         .arg("worker")
@@ -2458,9 +2458,12 @@ fn worker_executes_idea_to_design_stage() {
         issue_record["labels"][0], "design",
         "idea->design pass should update issue transport stage label"
     );
-    assert_eq!(
-        issue_record["comments_by_marker"]["design-marker"], "Generated design prompt",
-        "idea->design pass should upsert design comment marker"
+    let transition_comment = issue_record["comments_by_marker"]["sdlc:stage-transition"]
+        .as_str()
+        .expect("compiled stage transition marker should be present");
+    assert!(
+        transition_comment.contains("idea") && transition_comment.contains("design"),
+        "idea->design pass should record compiled stage transition details"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
@@ -2527,8 +2530,9 @@ fn worker_multi_pass_progresses_stage_to_closed() {
         String::from_utf8_lossy(&approve.stderr)
     );
 
-    // Run 2 workers to progress Accepted -> Implementing -> Done.
-    for _ in 0..2 {
+    // Run 4 workers to progress Accepted -> Implementing -> CodeReview
+    // -> Testing -> Done.
+    for _ in 0..4 {
         let worker = ctx
             .command()
             .arg("worker")

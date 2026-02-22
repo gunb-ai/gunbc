@@ -47,7 +47,10 @@ mod tests {
         for node in [install, generate] {
             match node.body {
                 NodeBody::SubDag(ref dag) => {
-                    assert!(!dag.nodes.is_empty(), "deps DSL subdag should contain nodes");
+                    assert!(
+                        !dag.nodes.is_empty(),
+                        "deps DSL subdag should contain nodes"
+                    );
                 }
                 _ => panic!("Expected SubDag"),
             }

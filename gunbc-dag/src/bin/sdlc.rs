@@ -4,21 +4,23 @@
 //! - intake: validate intent contract + deterministic run_key + idempotent ledger update
 //! - worker: summarize pending intake ledger state
 
+#![recursion_limit = "1024"]
 #![deny(dead_code)]
 #![allow(clippy::disallowed_methods)] // CLI-owned local ledgers and git metadata probes are intentional entrypoint concerns.
 
 use daglang_driver::{compile_from_context_with_options, CompileOptions, DriverContext};
+use daglang_syntax::ast::{Expr, Item, Literal};
 use gunbc_dag::{
     canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
     promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
-    reconcile_entries, register_retry_failure, release_claim, resolve_lowered_dag, retry_ready,
-    should_replay_skip, try_acquire_claim, upsert_agent_record,
+    reconcile_entries, register_retry_failure, release_claim, resolve_lowered_dag_flat,
+    retry_ready, should_replay_skip, try_acquire_claim, update_agent_status, upsert_agent_record,
     upsert_provisional_artifact_with_payload, validate_stage_transition, AgentLedger,
     ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger,
     ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
-use gunbc_exec::{execute_single_node, DynOp, ExecutionMode};
+use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, DynOp, ExecutionMode};
 use gunbc_ir::transport::agent::{
     target_branch_for_intent, AgentConstraints, DesignArtifact, HandoffSpec,
 };
@@ -35,7 +37,7 @@ use gunbc_ir::transport::github::{
 use gunbc_ir::{Dag, Value, WorkspaceLayout};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -69,6 +71,7 @@ struct CliArgs {
     drain_deactivate: bool,
     worker_id: Option<String>,
     profile: Option<String>,
+    params: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -241,6 +244,15 @@ struct IssueTransportRecord {
     updated_at_epoch_ms: u128,
 }
 
+#[derive(Debug, Clone, Serialize, Default)]
+struct AgentPollingSummary {
+    in_flight: Vec<String>,
+    polled: Vec<String>,
+    updated: Vec<String>,
+    statuses: BTreeMap<String, String>,
+    errors: BTreeMap<String, String>,
+}
+
 fn main() {
     let argv: Vec<String> = std::env::args().collect();
     let args = match parse_cli_args(&argv) {
@@ -265,6 +277,7 @@ fn main() {
             args.infra_intent_path.as_ref(),
             args.worker_id.as_deref(),
             args.profile.as_deref(),
+            &args.params,
             None,
             "worker",
         ),
@@ -274,6 +287,7 @@ fn main() {
             args.infra_intent_path.as_ref(),
             args.worker_id.as_deref(),
             args.profile.as_deref(),
+            &args.params,
             args.issue_id,
             "issue",
         ),
@@ -307,6 +321,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             drain_deactivate: false,
             worker_id: None,
             profile: None,
+            params: BTreeMap::new(),
         });
     }
 
@@ -335,6 +350,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let mut drain_deactivate = false;
     let mut worker_id: Option<String> = None;
     let mut profile: Option<String> = None;
+    let mut params = BTreeMap::<String, String>::new();
     while idx < argv.len() {
         let token = &argv[idx];
         if token == "--dry-run" {
@@ -546,6 +562,28 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             idx += 1;
             continue;
         }
+        if token == "--param" {
+            let value = argv
+                .get(idx + 1)
+                .ok_or_else(|| "--param requires key=value".to_string())?;
+            if value.starts_with("--") {
+                return Err("--param requires a non-flag key=value".to_string());
+            }
+            let (key, parsed_value) = parse_param_pair(value)?;
+            if params.insert(key.clone(), parsed_value).is_some() {
+                return Err(format!("duplicate --param key `{key}`"));
+            }
+            idx += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--param=") {
+            let (key, parsed_value) = parse_param_pair(value)?;
+            if params.insert(key.clone(), parsed_value).is_some() {
+                return Err(format!("duplicate --param key `{key}`"));
+            }
+            idx += 1;
+            continue;
+        }
         return Err(format!("unknown flag `{token}`"));
     }
 
@@ -609,6 +647,9 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     if command != SdlcCommand::Worker && command != SdlcCommand::Issue && profile.is_some() {
         return Err("--profile is only valid for worker or issue".to_string());
     }
+    if command != SdlcCommand::Worker && command != SdlcCommand::Issue && !params.is_empty() {
+        return Err("--param is only valid for worker or issue".to_string());
+    }
     if drain_activate && drain_deactivate {
         return Err("drain command cannot use --activate and --deactivate together".to_string());
     }
@@ -626,7 +667,23 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         drain_deactivate,
         worker_id,
         profile,
+        params,
     })
+}
+
+fn parse_param_pair(value: &str) -> Result<(String, String), String> {
+    let (raw_key, raw_value) = value
+        .split_once('=')
+        .ok_or_else(|| format!("invalid --param `{value}` (expected key=value)"))?;
+    let key = raw_key.trim();
+    if key.is_empty() {
+        return Err(format!("invalid --param `{value}` (empty key)"));
+    }
+    let parsed_value = raw_value.trim();
+    if parsed_value.is_empty() {
+        return Err(format!("invalid --param `{value}` (empty value)"));
+    }
+    Ok((key.to_string(), parsed_value.to_string()))
 }
 
 fn parse_stage(value: &str) -> Result<IssueLifecycleStage, String> {
@@ -783,12 +840,14 @@ fn run_intake(intent_path: Option<&PathBuf>, dry_run: bool) -> Result<(), String
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_worker(
     dry_run: bool,
     emit_pending_exit_code: bool,
     infra_intent_path: Option<&PathBuf>,
     worker_id: Option<&str>,
     profile: Option<&str>,
+    param_overrides: &BTreeMap<String, String>,
     issue_filter: Option<u64>,
     command_label: &str,
 ) -> Result<(), String> {
@@ -819,6 +878,8 @@ fn run_worker(
     let mut run_state = load_run_state_ledger(&run_state_path)?;
     let issue_transport_ledger_path = issue_transport_ledger_path();
     let mut issue_transport = load_issue_transport_ledger(&issue_transport_ledger_path)?;
+    let agent_ledger_path = agent_ledger_path();
+    let mut agent_ledger = load_agent_ledger(&agent_ledger_path)?;
     let mode = if dry_run { "dry-run" } else { "real" };
     let now = epoch_millis();
     let worker_id_str = worker_id.map(|s| s.to_string()).unwrap_or_else(|| {
@@ -832,7 +893,10 @@ fn run_worker(
     let compiled_dispatcher = if dry_run {
         None
     } else {
-        Some(CompiledStageDispatcher::load(&active_profile)?)
+        Some(CompiledStageDispatcher::load(
+            &active_profile,
+            param_overrides.clone(),
+        )?)
     };
 
     let drain_flag = drain_flag_path();
@@ -844,6 +908,7 @@ fn run_worker(
             "command": command_label,
             "mode": mode,
             "profile": active_profile,
+            "params": param_overrides,
             "report_generated_at_epoch_ms": now,
             "issue_filter": issue_filter,
             "issue_binding_found": issue_filter.map(|_| false),
@@ -869,6 +934,7 @@ fn run_worker(
             "issue_transport_ledger_path": issue_transport_ledger_path.display().to_string(),
             "execution_report_path": execution_report_path().display().to_string(),
             "reconcile_actions": [],
+            "agent_polling": AgentPollingSummary::default(),
             "preflight": preflight,
             "drain": {
                 "active": true,
@@ -943,6 +1009,11 @@ fn run_worker(
     let mut llm_cost_units = BTreeMap::new();
     let mut claim_acquire_attempts: u64 = 0;
     let mut awaiting_approval = Vec::new();
+    let agent_polling = if dry_run {
+        AgentPollingSummary::default()
+    } else {
+        sweep_inflight_agents(&ledger, &mut agent_ledger, now)
+    };
     let mut processing_budget = if dry_run {
         None
     } else {
@@ -1179,6 +1250,9 @@ fn run_worker(
                             executed_runs.push(intake_key.clone());
                         }
                         Err(e) => {
+                            eprintln!(
+                                "WARN: dispatch_pipeline_stage failed for `{intake_key}`: {e}"
+                            );
                             let has_budget = register_retry_failure(
                                 &mut record.retry,
                                 now,
@@ -1228,6 +1302,9 @@ fn run_worker(
         save_claim_ledger(&claim_ledger_path, &claim_ledger)?;
         save_run_state_ledger(&run_state_path, &run_state)?;
         save_issue_transport_ledger(&issue_transport_ledger_path, &issue_transport)?;
+        if !agent_polling.updated.is_empty() {
+            save_agent_ledger(&agent_ledger_path, &agent_ledger)?;
+        }
     }
 
     let pending_count = intake_keys
@@ -1242,6 +1319,7 @@ fn run_worker(
         "issue_binding_found": issue_binding_found,
         "mode": mode,
         "profile": active_profile,
+        "params": param_overrides,
         "pending_count": pending_count,
         "intake_keys": intake_keys,
         "ready_to_run": ready_to_run,
@@ -1264,6 +1342,7 @@ fn run_worker(
         "issue_transport_ledger_path": issue_transport_ledger_path.display().to_string(),
         "execution_report_path": execution_report_path().display().to_string(),
         "reconcile_actions": reconcile_plan.actions,
+        "agent_polling": agent_polling,
         "preflight": preflight,
         "drain": {
             "active": false,
@@ -2545,6 +2624,87 @@ fn release_worker_owned_claims_for_drain(ledger: &mut ClaimLedger) -> Vec<String
     released_intake_keys
 }
 
+fn sweep_inflight_agents(
+    intake_ledger: &IntakeLedger,
+    agent_ledger: &mut AgentLedger,
+    now_epoch_ms: u128,
+) -> AgentPollingSummary {
+    let mut report = AgentPollingSummary::default();
+    let mut intake_keys: Vec<String> = agent_ledger.entries.keys().cloned().collect();
+    intake_keys.sort();
+
+    for intake_key in intake_keys {
+        let Some(agent_record) = agent_ledger.entries.get(&intake_key).cloned() else {
+            continue;
+        };
+        let Some(intake_record) = intake_ledger.entries.get(&intake_key) else {
+            report.errors.insert(
+                intake_key.clone(),
+                "agent ledger entry missing intake record".to_string(),
+            );
+            continue;
+        };
+        if intake_record.terminalized || intake_record.stage != IssueLifecycleStage::Implementing {
+            continue;
+        }
+        if agent_record.status.is_terminal() {
+            continue;
+        }
+
+        report.in_flight.push(intake_key.clone());
+        match poll_agent_provider_status(&agent_record, intake_record.issue_id) {
+            Ok(polled_status) => {
+                report.polled.push(intake_key.clone());
+                report.statuses.insert(
+                    intake_key.clone(),
+                    agent_status_label(&polled_status).to_string(),
+                );
+                if polled_status != agent_record.status {
+                    if let Err(error) =
+                        update_agent_status(agent_ledger, &intake_key, polled_status, now_epoch_ms)
+                    {
+                        report.errors.insert(intake_key.clone(), error);
+                        continue;
+                    }
+                    report.updated.push(intake_key);
+                }
+            }
+            Err(error) => {
+                report.errors.insert(intake_key, error);
+            }
+        }
+    }
+
+    report
+}
+
+fn poll_agent_provider_status(
+    agent_record: &gunbc_dag::AgentLedgerRecord,
+    issue_id: Option<u64>,
+) -> Result<AgentStatus, String> {
+    match agent_record.handle.provider.as_str() {
+        "stub" => {
+            let branch = issue_id
+                .map(|id| format!("sdlc/issue-{id}"))
+                .unwrap_or_else(|| "sdlc/issue-unknown".to_string());
+            StubAgentAdapter::new(branch, "0000000")
+                .poll_status(&agent_record.handle)
+                .map_err(|error| format!("agent poll failed: {error}"))
+        }
+        other => Err(format!(
+            "agent provider `{other}` is not configured for worker sweep polling"
+        )),
+    }
+}
+
+fn agent_status_label(status: &AgentStatus) -> &'static str {
+    match status {
+        AgentStatus::Running { .. } => "running",
+        AgentStatus::Completed { .. } => "completed",
+        AgentStatus::Failed { .. } => "failed",
+    }
+}
+
 fn load_artifact_ledger(path: &Path) -> Result<ArtifactLedger, String> {
     if !path.exists() {
         return Ok(ArtifactLedger::default());
@@ -2685,10 +2845,10 @@ fn print_help() {
     println!("USAGE:");
     println!("    gunbc-sdlc intake [--intent <path>] [--dry-run]");
     println!(
-        "    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>] [--profile <name>]"
+        "    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>] [--profile <name>] [--param <key=value>]..."
     );
     println!(
-        "    gunbc-sdlc issue --issue-id <value> [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>] [--profile <name>]"
+        "    gunbc-sdlc issue --issue-id <value> [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>] [--profile <name>] [--param <key=value>]..."
     );
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
@@ -2777,6 +2937,188 @@ enum StageDispatchOutcome {
     AwaitingApproval,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProfileValueExpr {
+    Literal(String),
+    EnvVar(String),
+    SecretRef(String),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ProfileRuntimeDefaults {
+    owner_expr: Option<ProfileValueExpr>,
+    repo_expr: Option<ProfileValueExpr>,
+    run_key_expr: Option<ProfileValueExpr>,
+    issue_credential_expr: Option<ProfileValueExpr>,
+    agent_credential_expr: Option<ProfileValueExpr>,
+}
+
+fn load_profile_runtime_defaults(profile: &str) -> Result<ProfileRuntimeDefaults, String> {
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .map_err(|error| format!("failed to resolve workspace layout: {error}"))?;
+    let profile_path = layout.workspace_root.join("dsl/profiles/sdlc.dag");
+    let source = std::fs::read_to_string(&profile_path).map_err(|error| {
+        format!(
+            "failed to read profile bindings {}: {error}",
+            profile_path.display()
+        )
+    })?;
+    profile_runtime_defaults_from_source(&source, profile)
+}
+
+fn profile_runtime_defaults_from_source(
+    source: &str,
+    profile: &str,
+) -> Result<ProfileRuntimeDefaults, String> {
+    let parsed = daglang_syntax::parser::parse(source).map_err(|errors| {
+        let detail = errors
+            .first()
+            .map(|error| error.message.clone())
+            .unwrap_or_else(|| "unknown parse failure".to_string());
+        format!("failed to parse profile bindings for `{profile}`: {detail}")
+    })?;
+
+    let profile_def = parsed
+        .items
+        .iter()
+        .filter_map(|item| match &item.node {
+            Item::ProfileDef(def) => Some(def),
+            _ => None,
+        })
+        .find(|def| def.name == profile)
+        .ok_or_else(|| format!("profile `{profile}` not found in dsl/profiles/sdlc.dag"))?;
+
+    let mut defaults = ProfileRuntimeDefaults::default();
+    for bind in &profile_def.binds {
+        let interface = bind
+            .interface
+            .rsplit('.')
+            .next()
+            .unwrap_or(bind.interface.as_str());
+        let Some(config) = bind.config.as_ref() else {
+            continue;
+        };
+        if interface == "IssueProvider" {
+            defaults.owner_expr = config
+                .iter()
+                .find(|(key, _)| key == "owner")
+                .and_then(|(_, expr)| parse_profile_value_expr(expr));
+            defaults.repo_expr = config
+                .iter()
+                .find(|(key, _)| key == "repo")
+                .and_then(|(_, expr)| parse_profile_value_expr(expr));
+            defaults.run_key_expr = config
+                .iter()
+                .find(|(key, _)| key == "run_key")
+                .and_then(|(_, expr)| parse_profile_value_expr(expr));
+            defaults.issue_credential_expr = config
+                .iter()
+                .find(|(key, _)| key == "credential")
+                .and_then(|(_, expr)| parse_profile_value_expr(expr));
+        } else if interface == "AgentProvider" {
+            defaults.agent_credential_expr = config
+                .iter()
+                .find(|(key, _)| key == "credential")
+                .and_then(|(_, expr)| parse_profile_value_expr(expr));
+        }
+    }
+
+    Ok(defaults)
+}
+
+fn parse_profile_value_expr(expr: &Expr) -> Option<ProfileValueExpr> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Some(ProfileValueExpr::Literal(value.clone())),
+        Expr::Literal(Literal::Int(value)) => Some(ProfileValueExpr::Literal(value.to_string())),
+        Expr::Literal(Literal::Bool(value)) => Some(ProfileValueExpr::Literal(value.to_string())),
+        Expr::Call(name, args) => {
+            let value = args.first().and_then(|(_, arg)| match arg {
+                Expr::Literal(Literal::String(raw)) => Some(raw.clone()),
+                _ => None,
+            })?;
+            match name.as_str() {
+                "env" => Some(ProfileValueExpr::EnvVar(value)),
+                "secret" => Some(ProfileValueExpr::SecretRef(value)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn secret_ref_env_var(secret_ref: &str) -> String {
+    let mut env = String::new();
+    for ch in secret_ref.chars() {
+        if ch.is_ascii_alphanumeric() {
+            env.push(ch.to_ascii_uppercase());
+        } else {
+            env.push('_');
+        }
+    }
+    env.trim_matches('_').to_string()
+}
+
+fn resolve_profile_value_expr(expr: &ProfileValueExpr) -> Result<String, String> {
+    match expr {
+        ProfileValueExpr::Literal(value) => Ok(value.clone()),
+        ProfileValueExpr::EnvVar(name) => {
+            std::env::var(name).map_err(|_| format!("profile binding env `{name}` is not set"))
+        }
+        ProfileValueExpr::SecretRef(secret_ref) => {
+            let primary = secret_ref_env_var(secret_ref);
+            let secondary = format!("GUNBC_SECRET_{primary}");
+            for candidate in [primary.as_str(), secondary.as_str()] {
+                if let Ok(value) = std::env::var(candidate) {
+                    if !value.trim().is_empty() {
+                        return Ok(value);
+                    }
+                }
+            }
+            Err(format!(
+                "profile binding secret `{secret_ref}` is unresolved (expected env `{}` or `{}`)",
+                primary, secondary
+            ))
+        }
+    }
+}
+
+fn reachable_subdag<Op: Clone>(dag: &Dag<Op>, entrypoint_node_id: &str) -> Result<Dag<Op>, String> {
+    if !dag.nodes.iter().any(|node| node.id.0 == entrypoint_node_id) {
+        return Err(format!(
+            "entrypoint node `{entrypoint_node_id}` not found in compiled DAG"
+        ));
+    }
+
+    let mut reachable = BTreeSet::new();
+    let mut stack = vec![entrypoint_node_id.to_string()];
+    while let Some(node_id) = stack.pop() {
+        if !reachable.insert(node_id.clone()) {
+            continue;
+        }
+        for edge in dag.edges.iter().filter(|edge| edge.from_node.0 == node_id) {
+            stack.push(edge.to_node.0.clone());
+        }
+    }
+
+    let mut subdag = Dag::new();
+    subdag.nodes.extend(
+        dag.nodes
+            .iter()
+            .filter(|node| reachable.contains(&node.id.0))
+            .cloned(),
+    );
+    subdag.edges.extend(
+        dag.edges
+            .iter()
+            .filter(|edge| {
+                reachable.contains(&edge.from_node.0) && reachable.contains(&edge.to_node.0)
+            })
+            .cloned(),
+    );
+    Ok(subdag)
+}
+
 #[derive(Debug, Clone)]
 struct CompiledStageOutcome {
     success: bool,
@@ -2788,11 +3130,13 @@ struct CompiledStageOutcome {
 #[derive(Clone)]
 struct CompiledStageDispatcher {
     profile: String,
+    param_overrides: BTreeMap<String, String>,
+    profile_defaults: ProfileRuntimeDefaults,
     resolved: Dag<DynOp>,
 }
 
 impl CompiledStageDispatcher {
-    fn load(profile: &str) -> Result<Self, String> {
+    fn load(profile: &str, param_overrides: BTreeMap<String, String>) -> Result<Self, String> {
         let layout = WorkspaceLayout::from_env_manifest_dir()
             .or_else(|_| WorkspaceLayout::from_cargo_metadata())
             .map_err(|error| format!("failed to resolve workspace layout: {error}"))?;
@@ -2809,75 +3153,138 @@ impl CompiledStageDispatcher {
             },
         )
         .map_err(|error| format!("failed to compile funcs/sdlc_stages.dag: {error}"))?;
-        let execute_stage_node = compiled
-            .lowered_dag
-            .nodes
-            .iter()
-            .find(|node| node.id.0 == "funcs.sdlc_stages::execute_stage")
-            .cloned()
-            .ok_or_else(|| {
-                "compiled SDLC stage DAG missing funcs.sdlc_stages::execute_stage node".to_string()
-            })?;
-        let mut reduced = Dag::new();
-        reduced.add_node(execute_stage_node);
-        let resolved = resolve_lowered_dag(&reduced)
+        // Extract only the subgraph reachable from the execute_stage
+        // entrypoint. The full compiled DAG may include nodes from other
+        // modules (infra, etc.) that the resolver doesn't handle.
+        let stage_dag =
+            reachable_subdag(&compiled.lowered_dag, "funcs.sdlc_stages::execute_stage")?;
+        // Resolve with flat SubDag handling so compiled control-flow
+        // (match expressions) executes through SubDagExecutorOp instead
+        // of hand-written Rust dispatch.
+        let resolved = resolve_lowered_dag_flat(&stage_dag)
             .map_err(|error| format!("failed to resolve compiled SDLC stage DAG: {error}"))?;
+        let profile_defaults = load_profile_runtime_defaults(profile)?;
         Ok(Self {
             profile: profile.to_string(),
+            param_overrides,
+            profile_defaults,
             resolved,
         })
     }
 
     fn dispatch_stage(&self, record: &IntakeRecord) -> Result<CompiledStageOutcome, String> {
+        self.wire_profile_credentials()?;
         let issue_id = record
             .issue_id
             .ok_or_else(|| "stage dispatch requires issue_id in intake record".to_string())?;
-        let issue_number = i64::try_from(issue_id)
-            .map_err(|_| format!("issue_id {issue_id} exceeds i64 range"))?;
-        let owner = std::env::var("SDLC_REPO_OWNER").unwrap_or_else(|_| "gunb-ai".to_string());
-        let repo = std::env::var("SDLC_REPO_NAME").unwrap_or_else(|_| "gunbc".to_string());
-        let llm_provider =
-            std::env::var("SDLC_LLM_PROVIDER").unwrap_or_else(|_| "anthropic".to_string());
-        let llm_model = std::env::var("SDLC_LLM_MODEL")
-            .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string());
+        let issue_number = match self.param_overrides.get("number") {
+            Some(value) => value
+                .parse::<i64>()
+                .map_err(|_| format!("invalid --param number `{value}` (expected int)"))?,
+            None => i64::try_from(issue_id)
+                .map_err(|_| format!("issue_id {issue_id} exceeds i64 range"))?,
+        };
+        let owner = self.resolve_param_or_profile(
+            &["owner", "repo_owner"],
+            self.profile_defaults.owner_expr.as_ref(),
+            "SDLC_REPO_OWNER",
+            "gunb-ai",
+        )?;
+        let repo = self.resolve_param_or_profile(
+            &["repo", "repo_name"],
+            self.profile_defaults.repo_expr.as_ref(),
+            "SDLC_REPO_NAME",
+            "gunbc",
+        )?;
+        let run_key = match self.param_overrides.get("run_key") {
+            Some(value) => value.clone(),
+            None => self
+                .profile_defaults
+                .run_key_expr
+                .as_ref()
+                .map(resolve_profile_value_expr)
+                .transpose()?
+                .unwrap_or_else(|| record.run_key.clone()),
+        };
+        let llm_provider = self
+            .param_overrides
+            .get("llm_provider")
+            .cloned()
+            .or_else(|| std::env::var("SDLC_LLM_PROVIDER").ok())
+            .unwrap_or_else(|| "anthropic".to_string());
+        let llm_model = self
+            .param_overrides
+            .get("llm_model")
+            .cloned()
+            .or_else(|| std::env::var("SDLC_LLM_MODEL").ok())
+            .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+        let title = self
+            .param_overrides
+            .get("title")
+            .cloned()
+            .unwrap_or_else(|| record.intent_title.clone());
+        let body = self
+            .param_overrides
+            .get("body")
+            .cloned()
+            .unwrap_or_else(|| record.intent_objective.clone());
 
-        let mut inputs: HashMap<String, Value> = HashMap::new();
-        inputs.insert("issue_id".to_string(), Value::Str(issue_id.to_string()));
-        inputs.insert(
-            "stage".to_string(),
+        // Inject inputs at the execute_stage entrypoint via BoundaryMocks.
+        // The compiled DAG's control-flow SubDags (match expressions) route
+        // to the appropriate handler based on these inputs.
+        let mut mocks = BoundaryMocks::default();
+        let entrypoint = "funcs.sdlc_stages::execute_stage";
+        mocks.set_input(entrypoint, "issue_id", Value::Str(issue_id.to_string()));
+        mocks.set_input(
+            entrypoint,
+            "stage",
             Value::Str(compiled_stage_token(record.stage).to_string()),
         );
-        inputs.insert("title".to_string(), Value::Str(record.intent_title.clone()));
-        inputs.insert("body".to_string(), Value::Str(record.intent_objective.clone()));
-        inputs.insert("run_key".to_string(), Value::Str(record.run_key.clone()));
-        inputs.insert("owner".to_string(), Value::Str(owner));
-        inputs.insert("repo".to_string(), Value::Str(repo));
-        inputs.insert("number".to_string(), Value::Int(issue_number));
-        inputs.insert("llm_provider".to_string(), Value::Str(llm_provider));
-        inputs.insert("llm_model".to_string(), Value::Str(llm_model));
+        mocks.set_input(entrypoint, "title", Value::Str(title));
+        mocks.set_input(entrypoint, "body", Value::Str(body));
+        mocks.set_input(entrypoint, "run_key", Value::Str(run_key));
+        mocks.set_input(entrypoint, "owner", Value::Str(owner));
+        mocks.set_input(entrypoint, "repo", Value::Str(repo));
+        mocks.set_input(entrypoint, "number", Value::Int(issue_number));
+        mocks.set_input(entrypoint, "llm_provider", Value::Str(llm_provider));
+        mocks.set_input(entrypoint, "llm_model", Value::Str(llm_model));
 
-        let outputs = execute_single_node(
-            &self.resolved,
-            "funcs.sdlc_stages::execute_stage",
-            inputs,
-            ExecutionMode::Real,
-        )
-        .map_err(|error| format!("compiled stage execution failed: {error}"))?;
+        // Execute the full compiled DAG. Control-flow routing (match
+        // expressions) is handled by SubDagExecutorOp nodes resolved
+        // via resolve_lowered_dag_flat().
+        let log = execute_with_mode_and_inputs(&self.resolved, ExecutionMode::Real, Some(&mocks))
+            .map_err(|error| format!("compiled stage execution failed: {error}"))?;
+
+        // Extract outputs from boundary nodes (DAG exit points) where
+        // the final computed values (success, next_stage, etc.) reside.
+        // The entrypoint PassthroughOp just forwards inputs; the actual
+        // routing results are produced by downstream control-flow nodes.
+        let boundaries = gunbc_ir::detect_boundaries(&self.resolved);
+        let mut outputs = std::collections::HashMap::new();
+        for (node_id, port_name) in &boundaries.boundary_ports {
+            if let Some(entry) = log.get(&node_id.0) {
+                if let Some(value) = entry.outputs.get(&port_name.0) {
+                    outputs.insert(port_name.0.clone(), value.clone());
+                }
+            }
+        }
 
         let success = outputs
             .get("success")
             .and_then(Value::as_bool)
             .unwrap_or(true);
+        let default_next_stage = default_compiled_next_stage(record.stage);
+        let default_awaiting_approval = matches!(record.stage, IssueLifecycleStage::DesignReview);
         let awaiting_approval = outputs
             .get("awaiting_approval")
             .and_then(Value::as_bool)
-            .unwrap_or(false);
+            .unwrap_or(default_awaiting_approval);
         let next_stage = outputs
             .get("next_stage")
             .and_then(Value::as_str)
             .map(parse_compiled_stage)
             .transpose()?
-            .unwrap_or(record.stage);
+            .unwrap_or(default_next_stage);
         let payload = outputs
             .get("payload")
             .and_then(Value::as_str)
@@ -2889,6 +3296,73 @@ impl CompiledStageDispatcher {
             awaiting_approval,
             payload,
         })
+    }
+
+    fn resolve_param_or_profile(
+        &self,
+        keys: &[&str],
+        profile_expr: Option<&ProfileValueExpr>,
+        env_var: &str,
+        fallback: &str,
+    ) -> Result<String, String> {
+        for key in keys {
+            if let Some(value) = self.param_overrides.get(*key) {
+                return Ok(value.clone());
+            }
+        }
+        if let Some(expr) = profile_expr {
+            return resolve_profile_value_expr(expr);
+        }
+        if let Ok(value) = std::env::var(env_var) {
+            if !value.trim().is_empty() {
+                return Ok(value);
+            }
+        }
+        Ok(fallback.to_string())
+    }
+
+    fn wire_profile_credentials(&self) -> Result<(), String> {
+        if let Some(expr) = self.profile_defaults.issue_credential_expr.as_ref() {
+            let github_token_missing = std::env::var("GITHUB_TOKEN")
+                .ok()
+                .map(|value| value.trim().is_empty())
+                .unwrap_or(true);
+            if github_token_missing {
+                if let Ok(token) = resolve_profile_value_expr(expr) {
+                    if !token.trim().is_empty() {
+                        std::env::set_var("GITHUB_TOKEN", token);
+                    }
+                }
+            }
+        }
+        if let Some(expr) = self.profile_defaults.agent_credential_expr.as_ref() {
+            let codex_api_key_missing = std::env::var("CODEX_API_KEY")
+                .ok()
+                .map(|value| value.trim().is_empty())
+                .unwrap_or(true);
+            if codex_api_key_missing {
+                if let Ok(token) = resolve_profile_value_expr(expr) {
+                    if !token.trim().is_empty() {
+                        std::env::set_var("CODEX_API_KEY", token);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn default_compiled_next_stage(stage: IssueLifecycleStage) -> IssueLifecycleStage {
+    match stage {
+        IssueLifecycleStage::Idea => IssueLifecycleStage::Design,
+        IssueLifecycleStage::Design => IssueLifecycleStage::DesignReview,
+        IssueLifecycleStage::DesignReview => IssueLifecycleStage::Accepted,
+        IssueLifecycleStage::Accepted => IssueLifecycleStage::Implementing,
+        IssueLifecycleStage::Implementing => IssueLifecycleStage::CodeReview,
+        IssueLifecycleStage::CodeReview => IssueLifecycleStage::Testing,
+        IssueLifecycleStage::Testing => IssueLifecycleStage::Done,
+        IssueLifecycleStage::Done => IssueLifecycleStage::Done,
+        IssueLifecycleStage::TerminalFailed => IssueLifecycleStage::TerminalFailed,
     }
 }
 
@@ -3000,7 +3474,9 @@ mod tests {
 
     fn dispatcher() -> &'static CompiledStageDispatcher {
         static DISPATCHER: OnceLock<CompiledStageDispatcher> = OnceLock::new();
-        DISPATCHER.get_or_init(|| CompiledStageDispatcher::load("unit_test").expect("dispatcher"))
+        DISPATCHER.get_or_init(|| {
+            CompiledStageDispatcher::load("unit_test", BTreeMap::new()).expect("dispatcher")
+        })
     }
 
     fn sample_record(stage: IssueLifecycleStage) -> IntakeRecord {
@@ -3031,6 +3507,73 @@ mod tests {
         ];
         let parsed = parse_cli_args(&args).expect("profile flag should parse");
         assert_eq!(parsed.profile.as_deref(), Some("unit_test"));
+    }
+
+    #[test]
+    fn parse_cli_args_accepts_param_overrides_for_worker() {
+        let args = vec![
+            "gunbc-sdlc".to_string(),
+            "worker".to_string(),
+            "--param".to_string(),
+            "owner=acme".to_string(),
+            "--param=repo=roadrunner".to_string(),
+        ];
+        let parsed = parse_cli_args(&args).expect("param flags should parse");
+        assert_eq!(parsed.params.get("owner"), Some(&"acme".to_string()));
+        assert_eq!(parsed.params.get("repo"), Some(&"roadrunner".to_string()));
+    }
+
+    #[test]
+    fn parse_cli_args_rejects_duplicate_param_keys() {
+        let args = vec![
+            "gunbc-sdlc".to_string(),
+            "worker".to_string(),
+            "--param".to_string(),
+            "owner=acme".to_string(),
+            "--param".to_string(),
+            "owner=other".to_string(),
+        ];
+        let err = parse_cli_args(&args).expect_err("duplicate --param key should fail");
+        assert!(err.contains("duplicate --param key `owner`"));
+    }
+
+    #[test]
+    fn profile_runtime_defaults_extract_issue_and_agent_credentials() {
+        let source = r#"module profiles.sdlc
+profile local {
+  bind IssueProvider -> github.IssueProvider {
+    owner: "acme",
+    repo: "rocket",
+    credential: env("GITHUB_TOKEN")
+  }
+  bind AgentProvider -> codex.AgentProvider {
+    credential: secret("codex-api-key")
+  }
+}"#;
+        let defaults = profile_runtime_defaults_from_source(source, "local")
+            .expect("profile parse should work");
+        assert_eq!(
+            defaults.owner_expr,
+            Some(ProfileValueExpr::Literal("acme".to_string()))
+        );
+        assert_eq!(
+            defaults.repo_expr,
+            Some(ProfileValueExpr::Literal("rocket".to_string()))
+        );
+        assert_eq!(
+            defaults.issue_credential_expr,
+            Some(ProfileValueExpr::EnvVar("GITHUB_TOKEN".to_string()))
+        );
+        assert_eq!(
+            defaults.agent_credential_expr,
+            Some(ProfileValueExpr::SecretRef("codex-api-key".to_string()))
+        );
+    }
+
+    #[test]
+    fn secret_ref_env_var_normalizes_secret_names() {
+        assert_eq!(secret_ref_env_var("github-token"), "GITHUB_TOKEN");
+        assert_eq!(secret_ref_env_var("codex-api-key"), "CODEX_API_KEY");
     }
 
     #[test]
@@ -3101,5 +3644,129 @@ mod tests {
                 .contains_key("sdlc:approval-gate"),
             "awaiting approval marker should be recorded"
         );
+    }
+
+    #[test]
+    fn compiled_stage_dispatch_covers_all_pipeline_stages() {
+        let cases = [
+            (
+                IssueLifecycleStage::Idea,
+                IssueLifecycleStage::Design,
+                false,
+            ),
+            (
+                IssueLifecycleStage::Design,
+                IssueLifecycleStage::DesignReview,
+                false,
+            ),
+            (
+                IssueLifecycleStage::DesignReview,
+                IssueLifecycleStage::Accepted,
+                true,
+            ),
+            (
+                IssueLifecycleStage::Accepted,
+                IssueLifecycleStage::Implementing,
+                false,
+            ),
+            (
+                IssueLifecycleStage::Implementing,
+                IssueLifecycleStage::CodeReview,
+                false,
+            ),
+            (
+                IssueLifecycleStage::CodeReview,
+                IssueLifecycleStage::Testing,
+                false,
+            ),
+            (
+                IssueLifecycleStage::Testing,
+                IssueLifecycleStage::Done,
+                false,
+            ),
+            (IssueLifecycleStage::Done, IssueLifecycleStage::Done, false),
+        ];
+
+        for (index, (stage, expected_next, expect_approval)) in cases.iter().enumerate() {
+            let issue_id = 100 + index as u64;
+            let now_epoch_ms = 1000 + index as u128;
+            let intake_key = format!("intake-{index}");
+            let run_key = format!("run-{index}");
+            let mut issue_transport = IssueTransportLedger::default();
+            issue_transport.issues.insert(
+                issue_id,
+                IssueTransportRecord {
+                    labels: vec![stage.as_label().to_string()],
+                    comments_by_marker: BTreeMap::new(),
+                    updated_at_epoch_ms: 0,
+                },
+            );
+
+            let mut record = sample_record(*stage);
+            record.issue_id = Some(issue_id);
+            record.run_key = run_key;
+
+            let outcome = dispatch_pipeline_stage(
+                &intake_key,
+                &record,
+                "worker-test",
+                &mut issue_transport,
+                now_epoch_ms,
+                dispatcher(),
+            )
+            .expect("compiled dispatch should succeed");
+
+            let issue = issue_transport
+                .issues
+                .get(&issue_id)
+                .expect("issue record should exist");
+            if *expect_approval {
+                assert!(
+                    matches!(outcome, StageDispatchOutcome::AwaitingApproval),
+                    "stage `{}` should return AwaitingApproval",
+                    stage.as_label()
+                );
+                assert!(
+                    issue.comments_by_marker.contains_key("sdlc:approval-gate"),
+                    "stage `{}` should write approval marker",
+                    stage.as_label()
+                );
+                assert!(
+                    issue.labels.contains(&stage.as_label().to_string()),
+                    "stage `{}` should keep current label while awaiting approval",
+                    stage.as_label()
+                );
+                continue;
+            }
+
+            let actual_next = match outcome {
+                StageDispatchOutcome::Advanced(next) => next,
+                StageDispatchOutcome::AwaitingApproval => {
+                    panic!("stage `{}` unexpectedly awaited approval", stage.as_label())
+                }
+            };
+            assert_eq!(
+                actual_next,
+                *expected_next,
+                "stage `{}` should transition to `{}`",
+                stage.as_label(),
+                expected_next.as_label()
+            );
+            if actual_next != *stage {
+                assert!(
+                    issue.labels.contains(&actual_next.as_label().to_string()),
+                    "issue labels should include `{}` after stage `{}` dispatch",
+                    actual_next.as_label(),
+                    stage.as_label()
+                );
+                assert!(
+                    issue
+                        .comments_by_marker
+                        .contains_key("sdlc:stage-transition"),
+                    "stage `{}` should write transition marker",
+                    stage.as_label()
+                );
+            }
+        }
     }
 }

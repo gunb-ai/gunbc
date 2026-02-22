@@ -232,7 +232,7 @@ Disposition tags:
 
 ### C. Legacy Tool/Workspace Graph Authoring (`MIGRATE_DELETE`)
 
-25. `gunbc-dag/src/dag_viz/graph.rs`
+25. `gunbc-dag/src/dag_viz/graph.rs` -- [DELETED 2026-02-22]
 26. `gunbc-dag/src/testgen_dag/graph.rs`
 27. `gunbc-dag/src/testgen_dag/graph_mock.rs`
 28. `gunbc-dag/src/testgen_dag/mod.rs`
@@ -247,7 +247,7 @@ Disposition tags:
 37. `lib/review/src/graph_mock.rs`
 38. `lib/tools/clippy/src/graph.rs`
 39. `lib/tools/clippy/src/graph_mock.rs`
-40. `lib/tools/clippy/src/ops.rs`
+40. `lib/tools/clippy/src/ops.rs` -- [DELETED 2026-02-22]
 41. `lib/tools/deps/src/graph.rs`
 42. `lib/tools/deps/src/graph_mock.rs`
 43. `lib/tools/deps/src/ops.rs`

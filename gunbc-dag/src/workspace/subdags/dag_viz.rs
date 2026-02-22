@@ -29,7 +29,10 @@ mod tests {
         let node = build_dag_viz_subdag().expect("dag_viz subdag should build");
         match &node.body {
             NodeBody::SubDag(dag) => {
-                assert!(!dag.nodes.is_empty(), "dag_viz DSL subdag should contain nodes");
+                assert!(
+                    !dag.nodes.is_empty(),
+                    "dag_viz DSL subdag should contain nodes"
+                );
             }
             _ => panic!("Expected SubDag"),
         }

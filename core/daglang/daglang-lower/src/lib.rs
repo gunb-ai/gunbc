@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{Annotation, Expr, Item, Literal, OperationDef, ServiceDef, Stmt};
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name as canonical_type_name, resource_type_name,
+    canonical_resource_type_name, resource_type_name,
     service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
     walk_stmts,
 };
@@ -28,7 +28,7 @@ use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, Node, Port};
+use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, Node, Port, TypeId};
 use serde::Serialize;
 
 /// Lowered operation payload for daglang graph nodes.
@@ -609,14 +609,23 @@ fn provider_hint_from_resource_properties(properties: &[(String, Expr)]) -> Opti
     None
 }
 
-fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
-    let canonical = canonical_type_name(name);
-    let short = canonical
+fn canonical_type_id(name: &str) -> TypeId {
+    let canonical = canonical_resource_type_name(name);
+    TypeId::from(canonical.as_str())
+}
+
+fn short_type_name(type_id: &TypeId) -> &str {
+    type_id
+        .0
         .rsplit('.')
         .next()
-        .unwrap_or(canonical.as_str())
-        .to_string();
-    set.insert(canonical);
+        .unwrap_or(type_id.0.as_str())
+}
+
+fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
+    let canonical = canonical_type_id(name);
+    set.insert(canonical.0.clone());
+    let short = short_type_name(&canonical).to_string();
     set.insert(short);
 }
 
@@ -631,13 +640,9 @@ fn collect_profile_binding_registry(project: &TypedProject) -> ProfileBindingReg
             let full_name = format!("{module_name}.{}", profile.name);
             let mut binds = HashMap::<String, String>::new();
             for bind in &profile.binds {
-                let canonical_interface = canonical_type_name(bind.interface.as_str());
-                let short_interface = canonical_interface
-                    .rsplit('.')
-                    .next()
-                    .unwrap_or(canonical_interface.as_str())
-                    .to_string();
-                binds.insert(canonical_interface, bind.implementation.clone());
+                let canonical_interface = canonical_type_id(bind.interface.as_str());
+                binds.insert(canonical_interface.0.clone(), bind.implementation.clone());
+                let short_interface = short_type_name(&canonical_interface).to_string();
                 binds.insert(short_interface, bind.implementation.clone());
             }
             registry.by_full_name.insert(full_name.clone(), binds);
@@ -684,9 +689,8 @@ fn resolve_active_profile_bindings(
 }
 
 fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
-    let canonical = canonical_type_name(name);
-    set.contains(&canonical)
-        || set.contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
+    let canonical = canonical_type_id(name);
+    set.contains(canonical.0.as_str()) || set.contains(short_type_name(&canonical))
 }
 
 /// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
@@ -4444,9 +4448,8 @@ fn add_service_call_edges(
                         .map(|usage| {
                             (
                                 usage.binding.clone(),
-                                canonical_type_name(
-                                    resource_type_name(&usage.resource_type).as_str(),
-                                ),
+                                canonical_type_id(resource_type_name(&usage.resource_type).as_str())
+                                    .0,
                             )
                         })
                         .collect::<HashMap<_, _>>(),
@@ -4464,9 +4467,8 @@ fn add_service_call_edges(
                         .map(|usage| {
                             (
                                 usage.binding.clone(),
-                                canonical_type_name(
-                                    resource_type_name(&usage.resource_type).as_str(),
-                                ),
+                                canonical_type_id(resource_type_name(&usage.resource_type).as_str())
+                                    .0,
                             )
                         })
                         .collect::<HashMap<_, _>>(),
@@ -4802,11 +4804,8 @@ fn resolve_interface_resource_endpoint(
     project: &TypedProject,
     registry: &ResourceLifecycleRegistry,
 ) -> ResourceEndpointResolution {
-    let target_canonical = canonical_type_name(resource_type);
-    let target_short = target_canonical
-        .rsplit('.')
-        .next()
-        .unwrap_or(target_canonical.as_str());
+    let target_canonical = canonical_type_id(resource_type);
+    let target_short = short_type_name(&target_canonical);
     let mut candidates = Vec::<(Option<ProviderHint>, ResourceLifecycleEndpoint)>::new();
 
     for module in &project.modules {
@@ -4818,11 +4817,8 @@ fn resolve_interface_resource_endpoint(
             let Some(implemented) = &resource.implements else {
                 continue;
             };
-            let implemented_canonical = canonical_type_name(implemented);
-            let implemented_short = implemented_canonical
-                .rsplit('.')
-                .next()
-                .unwrap_or(implemented_canonical.as_str());
+            let implemented_canonical = canonical_type_id(implemented);
+            let implemented_short = short_type_name(&implemented_canonical);
             if implemented_canonical != target_canonical && implemented_short != target_short {
                 continue;
             }
@@ -5020,13 +5016,14 @@ fn add_interface_contract_verification_nodes(
                 resource.name.as_str(),
                 resource_registry,
             );
+            let canonical_interface = canonical_type_id(interface_name);
             for index in 0..contract_count {
                 let node_id = format!(
                     "verify_contract_{}",
                     sanitize_identifier(&format!(
                         "{module_name}_{}_{}_{}",
                         resource.name,
-                        canonical_type_name(interface_name),
+                        canonical_interface.0.as_str(),
                         index
                     ))
                 );
@@ -5040,7 +5037,7 @@ fn add_interface_contract_verification_nodes(
                         name: format!(
                             "interface_contract::{}::{}::{}",
                             resource.name,
-                            canonical_type_name(interface_name),
+                            canonical_interface.0.as_str(),
                             index
                         ),
                         obligation: ObligationCategory::InterfaceContractVerification,
@@ -5066,8 +5063,8 @@ fn add_interface_contract_verification_nodes(
 }
 
 fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str) -> usize {
-    let target = canonical_type_name(interface_name);
-    let target_short = target.rsplit('.').next().unwrap_or(target.as_str());
+    let target = canonical_type_id(interface_name);
+    let target_short = short_type_name(&target);
     let mut counts = Vec::new();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -5076,13 +5073,13 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
                 continue;
             };
             let qualified = format!("{module_name}.{}", interface.name);
-            let qualified_canonical = canonical_type_name(&qualified);
+            let qualified_canonical = canonical_type_id(&qualified);
             let interface_short = interface
                 .name
                 .rsplit('.')
                 .next()
                 .unwrap_or(interface.name.as_str());
-            let matches_target = if target.contains('.') {
+            let matches_target = if target.0.contains('.') {
                 qualified_canonical == target
             } else {
                 interface_short == target_short

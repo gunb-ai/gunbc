@@ -187,65 +187,6 @@ impl Executable for IdentityCallableOp {
     }
 }
 
-/// Runtime adapter for compiled SDLC stage dispatch.
-///
-/// The current lowering pipeline preserves `funcs.sdlc_stages::execute_stage`
-/// as a callable boundary. This adapter provides deterministic lifecycle
-/// progression semantics so the worker can execute stage routing through the
-/// compiled DSL entrypoint instead of handwritten stage switches.
-#[derive(Debug, Clone)]
-struct SdlcStageDispatchOp;
-
-impl Executable for SdlcStageDispatchOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let stage_raw = inputs
-            .get("stage")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("sdlc stage dispatch requires `stage` string input"))?;
-        let stage = normalize_sdlc_stage(stage_raw).ok_or_else(|| {
-            ExecError::new(format!(
-                "sdlc stage dispatch received unknown stage `{stage_raw}`"
-            ))
-        })?;
-        let (next_stage, awaiting_approval, payload) = match stage {
-            "idea" => (
-                "design",
-                false,
-                Value::Str("Generated design prompt".to_string()),
-            ),
-            "design" => ("design-review", false, Value::Skipped),
-            "design-review" => ("design-review", true, Value::Skipped),
-            "accepted" => ("implementation", false, Value::Skipped),
-            "implementation" => ("closed", false, Value::Skipped),
-            "closed" => ("closed", false, Value::Skipped),
-            _ => {
-                return Err(ExecError::new(format!(
-                    "sdlc stage dispatch cannot route stage `{stage}`"
-                )))
-            }
-        };
-        OutputMap::new()
-            .bool("success", true)
-            .str("next_stage", next_stage)
-            .bool("artifact_posted", !awaiting_approval)
-            .bool("awaiting_approval", awaiting_approval)
-            .value("payload", payload)
-            .ok()
-    }
-}
-
-fn normalize_sdlc_stage(stage: &str) -> Option<&'static str> {
-    match stage.trim().to_ascii_lowercase().as_str() {
-        "idea" => Some("idea"),
-        "design" => Some("design"),
-        "designreview" | "design-review" => Some("design-review"),
-        "accepted" => Some("accepted"),
-        "implementation" | "implementing" => Some("implementation"),
-        "closed" | "done" => Some("closed"),
-        _ => None,
-    }
-}
-
 /// Runtime adapter for compiled infra orchestration entrypoint.
 ///
 /// This mirrors the deterministic semantics authored in `dsl/tools/infra.dag`
@@ -680,12 +621,8 @@ impl Executable for SubDagExecutorOp {
         }
 
         // 2. Execute the inner DAG
-        let log = execute_with_mode_and_inputs(
-            &self.inner_dag,
-            ExecutionMode::Real,
-            Some(&mocks),
-        )
-        .map_err(|e| ExecError::new(format!("SubDag execution failed: {e}")))?;
+        let log = execute_with_mode_and_inputs(&self.inner_dag, ExecutionMode::Real, Some(&mocks))
+            .map_err(|e| ExecError::new(format!("SubDag execution failed: {e}")))?;
 
         // 3. Extract outputs from boundary nodes
         let mut outputs = HashMap::new();
@@ -909,9 +846,6 @@ fn resolve_domain(
     if module == "tools.infra" && name == "infra" {
         return Ok(DynOp::new(InfraOrchestrationOp));
     }
-    if module == "funcs.sdlc_stages" && name == "execute_stage" {
-        return Ok(DynOp::new(SdlcStageDispatchOp));
-    }
     // 2. Service/workspace modules use generic transport dispatch.
     if module.starts_with("services.") || module.starts_with("workspace.") {
         return resolve_service_transport(node_id, module, name, service_metadata);
@@ -922,7 +856,7 @@ fn resolve_domain(
     }
 
     // 4. Fail closed for unknown callables.
-    Err(unknown_callable(node_id, module, name)).inspect_err(|_| println!("DEBUG: module={}, name={}", module, name))
+    Err(unknown_callable(node_id, module, name))
 }
 
 fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
@@ -968,6 +902,9 @@ fn resolve_passthrough_entrypoint(module: &str, _name: &str, outputs: &[Port]) -
             | "tools.dag_viz"
             | "tools.deps"
             | "tools.docgen"
+            | "funcs.sdlc_stages"
+            | "funcs.sdlc_worker"
+            | "funcs.test_control_flow"
             | "tools.gist"
             | "tools.infra"
             | "tools.makegen"
@@ -987,7 +924,8 @@ fn resolve_passthrough_entrypoint(module: &str, _name: &str, outputs: &[Port]) -
             | "workflows.test_all"
             | "shared.dag_util"
             | "std.patterns"
-    ) || module.starts_with("sample.") || module.starts_with("parity.") || module.starts_with("mock.");
+            | "sample.main"
+    );
     if !is_passthrough_module {
         return None;
     }
@@ -1058,7 +996,7 @@ fn resolve_service_transport(
         }
     }
 
-    Err(unknown_callable(node_id, module, name)).inspect_err(|_| println!("DEBUG: module={}, name={}", module, name))
+    Err(unknown_callable(node_id, module, name))
 }
 
 // ============================================================================
@@ -1365,7 +1303,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_sdlc_execute_stage_op() {
+    fn resolve_sdlc_execute_stage_as_passthrough() {
         let node = callable_node(
             "execute_stage",
             "funcs.sdlc_stages",
@@ -1373,46 +1311,21 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("execute_stage");
-        assert!(format!("{:?}", result).contains("SdlcStageDispatchOp"));
+        // Stage dispatch is now handled by compiled DSL (SubDag execution),
+        // not a hand-written Rust op. The callable resolves as passthrough.
+        assert!(format!("{:?}", result).contains("PassthroughOp"));
     }
 
     #[test]
-    fn sdlc_execute_stage_op_routes_lifecycle_progression() {
+    fn funcs_module_callables_resolve_as_passthrough() {
         let node = callable_node(
-            "execute_stage",
+            "handle_idea",
             "funcs.sdlc_stages",
-            "execute_stage",
+            "handle_idea_to_design",
             ObligationCategory::None,
         );
-        let op = resolve_node(&node).expect("execute_stage");
-
-        let mut inputs = HashMap::new();
-        inputs.insert("stage".to_string(), Value::Str("idea".to_string()));
-        let outputs = op.execute(inputs).expect("idea stage should route");
-        assert_eq!(
-            outputs.get("next_stage").and_then(Value::as_str),
-            Some("design")
-        );
-        assert_eq!(
-            outputs.get("awaiting_approval").and_then(Value::as_bool),
-            Some(false)
-        );
-
-        let mut review_inputs = HashMap::new();
-        review_inputs.insert("stage".to_string(), Value::Str("design-review".to_string()));
-        let review_outputs = op
-            .execute(review_inputs)
-            .expect("design-review stage should route");
-        assert_eq!(
-            review_outputs.get("next_stage").and_then(Value::as_str),
-            Some("design-review")
-        );
-        assert_eq!(
-            review_outputs
-                .get("awaiting_approval")
-                .and_then(Value::as_bool),
-            Some(true)
-        );
+        let result = resolve_node(&node).expect("handle_idea_to_design");
+        assert!(format!("{:?}", result).contains("PassthroughOp"));
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
@@ -1930,6 +1843,21 @@ mod tests {
     }
 
     #[test]
+    fn resolve_unknown_mock_module_fails_closed() {
+        let node = callable_node(
+            "mocked_op",
+            "mock.example",
+            "do_something",
+            ObligationCategory::None,
+        );
+        let err = resolve_node(&node).expect_err("mock.* module should fail closed");
+        assert!(
+            err.reason.contains("unknown callable"),
+            "unexpected resolver error: {err}"
+        );
+    }
+
+    #[test]
     fn resolve_infra_callable_executes_orchestration_contract() {
         let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
         let result = resolve_node(&node).expect("infra");
@@ -2187,17 +2115,10 @@ mod tests {
 
         // Execute with input routed to entrypoint
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "receiver/data".to_string(),
-            Value::Str("hello".to_string()),
-        );
-        let outputs = op
-            .execute(inputs)
-            .expect("subdag executor should execute");
+        inputs.insert("receiver/data".to_string(), Value::Str("hello".to_string()));
+        let outputs = op.execute(inputs).expect("subdag executor should execute");
         assert_eq!(
-            outputs
-                .get("receiver/data")
-                .and_then(Value::as_str),
+            outputs.get("receiver/data").and_then(Value::as_str),
             Some("hello"),
             "subdag should route input through inner DAG and return boundary output"
         );
@@ -2233,8 +2154,7 @@ mod tests {
             log_detail: None,
         });
 
-        let resolved =
-            resolve_lowered_dag_flat(&dag).expect("flat resolution should succeed");
+        let resolved = resolve_lowered_dag_flat(&dag).expect("flat resolution should succeed");
         assert_eq!(resolved.nodes.len(), 1);
         for node in &resolved.nodes {
             assert!(
@@ -2330,8 +2250,7 @@ mod tests {
             log_detail: None,
         });
 
-        let resolved =
-            resolve_lowered_dag_flat(&dag).expect("flat resolution with mixed nodes");
+        let resolved = resolve_lowered_dag_flat(&dag).expect("flat resolution with mixed nodes");
         assert_eq!(resolved.nodes.len(), 2);
 
         // All nodes must be Opaque after flat resolution

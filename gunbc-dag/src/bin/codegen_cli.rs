@@ -22,9 +22,10 @@
 
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
+use daglang_driver::{compile_from_context, DriverContext};
 use gunbc_cli::BinaryArgs;
 use gunbc_codegen::{core_outputs, generate_cli_with_import, FileWriter, ToolDef};
-use gunbc_dag::WorkspaceBinary;
+use gunbc_dag::{resolve_lowered_dag, WorkspaceBinary};
 use gunbc_exec::{print_attention, run_freshness_steps, AttentionLevel};
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
@@ -988,41 +989,17 @@ fn validate_required_dsl_modules_for_codegen(
     tool_modules: &BTreeSet<String>,
     pipeline_modules: &BTreeSet<String>,
 ) -> Result<(), String> {
-    // Derive required tool modules from the tool registry (dsl_module field)
-    // and WorkspaceBinary (which covers manual/internal tools without registrations).
-    let registry_modules: BTreeSet<&str> = gunbc_tool_registry::dsl_module_to_targets()
-        .keys()
-        .copied()
-        .collect();
-    let binary_tool_modules: BTreeSet<&str> = WorkspaceBinary::all()
-        .iter()
-        .copied()
-        .filter(|binary| binary.is_dsl_tool_module())
-        .map(WorkspaceBinary::tool_name)
-        .collect();
-
-    // Required tools = union of registry dsl_module names and workspace binary tool modules.
-    let required_tools: BTreeSet<&str> = registry_modules
-        .union(&binary_tool_modules)
-        .copied()
-        .collect();
-
-    // Required pipelines: workspace binaries that map to DSL pipeline modules.
-    let required_pipelines: BTreeSet<&str> = WorkspaceBinary::all()
-        .iter()
-        .copied()
-        .filter(|binary| binary.is_dsl_pipeline_module())
-        .map(WorkspaceBinary::tool_name)
-        .collect();
+    let required_tools = required_dsl_tool_modules_for_codegen();
+    let required_pipelines = required_dsl_pipeline_modules_for_codegen();
 
     let missing_tools: Vec<&str> = required_tools
         .iter()
-        .copied()
+        .map(String::as_str)
         .filter(|name| !tool_modules.contains(*name))
         .collect();
     let missing_pipelines: Vec<&str> = required_pipelines
         .iter()
-        .copied()
+        .map(String::as_str)
         .filter(|name| !pipeline_modules.contains(*name))
         .collect();
 
@@ -1041,6 +1018,308 @@ fn validate_required_dsl_modules_for_codegen(
         "missing required DSL modules for codegen discovery: {}",
         parts.join("; ")
     ))
+}
+
+fn required_dsl_tool_modules_for_codegen() -> BTreeSet<String> {
+    let registry_modules: BTreeSet<String> = gunbc_tool_registry::dsl_module_to_targets()
+        .keys()
+        .map(|name| (*name).to_string())
+        .collect();
+    let binary_tool_modules: BTreeSet<String> = WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_tool_module())
+        .map(|binary| binary.tool_name().to_string())
+        .collect();
+    registry_modules
+        .union(&binary_tool_modules)
+        .cloned()
+        .collect()
+}
+
+fn required_dsl_pipeline_modules_for_codegen() -> BTreeSet<String> {
+    WorkspaceBinary::all()
+        .iter()
+        .copied()
+        .filter(|binary| binary.is_dsl_pipeline_module())
+        .map(|binary| binary.tool_name().to_string())
+        .collect()
+}
+
+#[allow(clippy::disallowed_methods)] // Build-time DSL compile/resolve guardrail for codegen.
+fn compile_lowered_dsl_module(
+    workspace_root: &Path,
+    relative_module: &str,
+) -> Result<gunbc_ir::Dag<daglang_lower::LoweredOp>, String> {
+    let dsl_root = workspace_root.join("dsl");
+    let target_file = dsl_root.join(relative_module);
+    let context = DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(target_file),
+    };
+    let output = compile_from_context(&context)
+        .map_err(|error| format!("failed to compile DSL module `{relative_module}`: {error}"))?;
+    Ok(output.lowered_dag)
+}
+
+fn strip_pipeline_nodes_for_codegen(
+    mut dag: gunbc_ir::Dag<daglang_lower::LoweredOp>,
+) -> gunbc_ir::Dag<daglang_lower::LoweredOp> {
+    let pipeline_ids: HashSet<String> = dag
+        .nodes
+        .iter()
+        .filter_map(|node| match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(daglang_lower::LoweredOp::Pipeline { .. }) => {
+                Some(node.id.0.clone())
+            }
+            _ => None,
+        })
+        .collect();
+
+    if pipeline_ids.is_empty() {
+        return dag;
+    }
+
+    dag.nodes.retain(|node| !pipeline_ids.contains(&node.id.0));
+    dag.edges.retain(|edge| {
+        !pipeline_ids.contains(&edge.from_node.0) && !pipeline_ids.contains(&edge.to_node.0)
+    });
+    dag
+}
+
+fn validate_dsl_module_compile_resolve(
+    workspace_root: &Path,
+    tool_modules: &BTreeSet<String>,
+    pipeline_modules: &BTreeSet<String>,
+) -> Result<(), String> {
+    let required_tools = required_dsl_tool_modules_for_codegen();
+    let required_pipelines = required_dsl_pipeline_modules_for_codegen();
+    let mut failures = Vec::new();
+
+    for module in required_tools
+        .iter()
+        .filter(|module| tool_modules.contains(*module))
+    {
+        let relative_module = format!("tools/{module}.dag");
+        match compile_lowered_dsl_module(workspace_root, &relative_module) {
+            Ok(lowered) => {
+                let lowered = strip_pipeline_nodes_for_codegen(lowered);
+                if let Err(error) = resolve_lowered_dag(&lowered) {
+                    failures.push(format!(
+                        "{relative_module}: failed to resolve lowered DAG: {error}"
+                    ));
+                }
+            }
+            Err(error) => failures.push(format!("{relative_module}: {error}")),
+        }
+    }
+
+    for module in required_pipelines
+        .iter()
+        .filter(|module| pipeline_modules.contains(*module))
+    {
+        let relative_module = format!("pipelines/{module}.dag");
+        match compile_lowered_dsl_module(workspace_root, &relative_module) {
+            Ok(lowered) => {
+                let lowered = strip_pipeline_nodes_for_codegen(lowered);
+                if let Err(error) = resolve_lowered_dag(&lowered) {
+                    failures.push(format!(
+                        "{relative_module}: failed to resolve lowered DAG: {error}"
+                    ));
+                }
+            }
+            Err(error) => failures.push(format!("{relative_module}: {error}")),
+        }
+    }
+
+    if failures.is_empty() {
+        return Ok(());
+    }
+
+    Err(format!(
+        "dsl_module compile/resolve guardrail failed:\n  - {}",
+        failures.join("\n  - ")
+    ))
+}
+
+fn stale_replaces_inventory_targets() -> BTreeSet<&'static str> {
+    [
+        "gunbc-dag/src/dag_viz/graph.rs",
+        "gunbc-dag/src/testgen_dag/graph.rs",
+        "gunbc-dag/src/testgen_dag/graph_mock.rs",
+        "gunbc-dag/src/testgen_dag/mod.rs",
+        "gunbc-dag/src/testgen_dag/ops.rs",
+        "gunbc-dag/src/workspace/subdags/clippy.rs",
+        "gunbc-dag/src/workspace/subdags/dag_viz.rs",
+        "gunbc-dag/src/workspace/subdags/deps.rs",
+        "gunbc-dag/src/workspace/subdags/gist.rs",
+        "gunbc-dag/src/workspace/subdags/mod.rs",
+        "gunbc-dag/src/workspace/subdags/testgen.rs",
+        "lib/review/src/graph.rs",
+        "lib/review/src/graph_mock.rs",
+        "lib/tools/clippy/src/graph.rs",
+        "lib/tools/clippy/src/graph_mock.rs",
+        "lib/tools/clippy/src/ops.rs",
+        "lib/tools/deps/src/graph.rs",
+        "lib/tools/deps/src/graph_mock.rs",
+        "lib/tools/deps/src/ops.rs",
+        "lib/tools/gist/src/graph.rs",
+        "lib/tools/gist/src/graph_mock.rs",
+        "lib/aws-ops/src/graph.rs",
+        "lib/aws-ops/src/graph_mock.rs",
+        "lib/aws-ops/src/ops.rs",
+        "lib/azure-ops/src/graph.rs",
+        "lib/azure-ops/src/graph_mock.rs",
+        "lib/azure-ops/src/ops.rs",
+        "lib/cloud-ops/src/github_credential_graph.rs",
+        "lib/cloud-ops/src/graph.rs",
+        "lib/cloud-ops/src/infra_graph.rs",
+        "lib/cloud-ops/src/ops.rs",
+        "lib/cloud-ops/src/secret_provision_graph.rs",
+        "lib/gcp-ops/src/discovery_graph.rs",
+        "lib/gcp-ops/src/graph.rs",
+        "lib/gcp-ops/src/graph_mock.rs",
+        "lib/gcp-ops/src/ops.rs",
+        "lib/llm-ops/src/graph.rs",
+        "lib/llm-ops/src/graph_mock.rs",
+        "lib/tools/cargo/src/ops.rs",
+        "gunbc-dag/src/bootstrap/ops.rs",
+        "gunbc-dag/src/build/ops.rs",
+        "gunbc-dag/src/ci/ops.rs",
+        "gunbc-dag/src/codegen/ops.rs",
+        "gunbc-dag/src/docgen/ops.rs",
+        "gunbc-dag/src/makegen/ops.rs",
+        "gunbc-dag/src/pragma/ops.rs",
+        "gunbc-dag/src/workspace/subdags/bootstrap.rs",
+        "gunbc-dag/src/workspace/subdags/languages.rs",
+        "gunbc-dag/src/workspace/subdags/makegen.rs",
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn extract_replaces_paths(line_fragment: &str) -> Vec<String> {
+    line_fragment
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, ',' | '+' | '(' | ')' | ';'))
+        .filter_map(|token| {
+            let cleaned = token.trim_matches(|ch: char| matches!(ch, '`' | '"' | '\'' | '.'));
+            if cleaned.contains('/') && cleaned.ends_with(".rs") {
+                Some(cleaned.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn parse_replaces_claims(content: &str) -> Vec<String> {
+    let mut claims = Vec::new();
+    let mut in_replaces_block = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("// Replaces:") {
+            in_replaces_block = true;
+            claims.extend(extract_replaces_paths(rest));
+            continue;
+        }
+        if !in_replaces_block {
+            continue;
+        }
+        if !trimmed.starts_with("//") {
+            in_replaces_block = false;
+            continue;
+        }
+        let continuation = trimmed.trim_start_matches("//").trim();
+        let extracted = extract_replaces_paths(continuation);
+        if extracted.is_empty() {
+            in_replaces_block = false;
+            continue;
+        }
+        claims.extend(extracted);
+    }
+    claims
+}
+
+#[allow(clippy::disallowed_methods)] // Build-time DSL inventory guardrail for codegen.
+fn collect_dag_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs::read_dir(&dir)
+            .map_err(|e| format!("failed to read DSL discovery dir {}: {e}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                format!(
+                    "failed to read DSL discovery entry in {}: {e}",
+                    dir.display()
+                )
+            })?;
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
+                if matches!(name, "target" | "buck-out" | ".git") {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("dag") {
+                files.push(path);
+            }
+        }
+    }
+    Ok(files)
+}
+
+#[allow(clippy::disallowed_methods)] // Build-time DSL inventory guardrail for codegen.
+fn validate_stale_replaces_claims(workspace_root: &Path) -> Result<(), String> {
+    let stale_targets = stale_replaces_inventory_targets();
+    let dsl_root = workspace_root.join("dsl");
+    let mut violations = Vec::new();
+
+    for dag_file in collect_dag_files(&dsl_root)? {
+        let content = fs::read_to_string(&dag_file)
+            .map_err(|e| format!("failed to read {}: {e}", dag_file.display()))?;
+        for claim in parse_replaces_claims(&content) {
+            if !stale_targets.contains(claim.as_str()) {
+                continue;
+            }
+            if workspace_root.join(&claim).exists() {
+                let rel = dag_file
+                    .strip_prefix(workspace_root)
+                    .unwrap_or(dag_file.as_path())
+                    .display()
+                    .to_string();
+                violations.push(format!("{rel} -> `{claim}`"));
+            }
+        }
+    }
+
+    if violations.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "stale Replaces guardrail failed (legacy files still present):\n  - {}",
+        violations.join("\n  - ")
+    ))
+}
+
+fn stale_replaces_guardrail_enabled() -> bool {
+    if let Ok(value) = env::var("GUNBC_ENFORCE_STALE_REPLACES") {
+        let normalized = value.trim().to_ascii_lowercase();
+        return matches!(normalized.as_str(), "1" | "true" | "yes" | "on");
+    }
+    match env::var("CI") {
+        Ok(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        }
+        Err(_) => false,
+    }
 }
 
 fn validate_codegen_dsl_coverage(
@@ -1156,6 +1435,10 @@ fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String>
         discover_dsl_module_names(&workspace_root.join("dsl/pipelines"), "pipeline")?;
     validate_required_dsl_modules_for_codegen(&tool_modules, &pipeline_modules)?;
     validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)?;
+    validate_dsl_module_compile_resolve(workspace_root, &tool_modules, &pipeline_modules)?;
+    if stale_replaces_guardrail_enabled() {
+        validate_stale_replaces_claims(workspace_root)?;
+    }
     Ok(tools)
 }
 
@@ -1362,7 +1645,11 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
                 } else {
                     "unchanged"
                 };
-                println!("  [manifest] {} ({})", reg.cargo_toml_path.display(), status);
+                println!(
+                    "  [manifest] {} ({})",
+                    reg.cargo_toml_path.display(),
+                    status
+                );
             }
             Err(e) => {
                 errors.push(format!(
@@ -1604,8 +1891,9 @@ fn print_help() {
 mod tests {
     use super::{
         discover_codegen_tools, generate_github_actions_template, generate_gitlab_ci_template,
-        parse_command_arg, parse_tool_defs_from_file, validate_codegen_dsl_coverage,
-        validate_generated_ci_template, CiTemplateKind, WorkspaceBinary,
+        parse_command_arg, parse_replaces_claims, parse_tool_defs_from_file,
+        validate_codegen_dsl_coverage, validate_generated_ci_template, CiTemplateKind,
+        WorkspaceBinary,
     };
     use gunbc_ir::transport::ci::{CacheConfig, RenderConfig};
     use std::collections::BTreeSet;
@@ -1716,6 +2004,35 @@ pub fn sample_tool() {}
         assert_eq!(tool.entrypoints.len(), 1);
         assert_eq!(tool.entrypoints[0].port_name, "repo_path");
         assert!(tool.invocation.is_some());
+    }
+
+    #[test]
+    fn parse_replaces_claims_extracts_inline_and_multiline_paths() {
+        let source = r#"
+// Replaces: lib/tools/deps/src/graph.rs, lib/tools/deps/src/graph_mock.rs
+//           lib/tools/deps/src/ops.rs
+module tools.deps
+"#;
+        let claims = parse_replaces_claims(source);
+        assert_eq!(
+            claims,
+            vec![
+                "lib/tools/deps/src/graph.rs",
+                "lib/tools/deps/src/graph_mock.rs",
+                "lib/tools/deps/src/ops.rs"
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_replaces_claims_stops_after_non_comment_line() {
+        let source = r#"
+// Replaces: lib/tools/deps/src/graph.rs
+module tools.deps
+// lib/tools/deps/src/ops.rs
+"#;
+        let claims = parse_replaces_claims(source);
+        assert_eq!(claims, vec!["lib/tools/deps/src/graph.rs"]);
     }
 
     #[test]

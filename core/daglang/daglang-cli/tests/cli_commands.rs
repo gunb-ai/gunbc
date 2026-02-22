@@ -1047,7 +1047,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 88 file(s)"),
+        stdout.contains("OK: checked 93 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1076,7 +1076,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(88));
+    assert_eq!(stdout, expected_check_success_stdout(93));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",

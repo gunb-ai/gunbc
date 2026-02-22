@@ -69,19 +69,46 @@ profile unit_test {
 }
 
 profile local {
-  bind IssueProvider -> github.IssueProvider
-  bind ClaimStore -> file.ClaimStore
-  bind OutcomeLedger -> file.OutcomeLedger
-  bind AgentProvider -> codex.AgentProvider
-  bind SignalStore -> file.SignalStore
+  bind IssueProvider -> github.IssueProvider {
+    owner: "gunb-ai",
+    repo: "gunbc",
+    credential: env("GITHUB_TOKEN")
+  }
+  bind ClaimStore -> file.ClaimStore {
+    dir: "target/sdlc/claims"
+  }
+  bind OutcomeLedger -> file.OutcomeLedger {
+    dir: "target/sdlc/outcomes"
+  }
+  bind AgentProvider -> codex.AgentProvider {
+    credential: env("CODEX_API_KEY")
+  }
+  bind SignalStore -> file.SignalStore {
+    dir: "target/sdlc/signals"
+  }
   bind ArtifactStore -> inline.ArtifactStore
 }
 
 profile cloud_run {
-  bind IssueProvider -> github.IssueProvider
-  bind ClaimStore -> gcs.ClaimStore
-  bind OutcomeLedger -> gcs.OutcomeLedger
-  bind AgentProvider -> codex.AgentProvider
-  bind SignalStore -> gcp.PubSubSignalStore
-  bind ArtifactStore -> gcs.ArtifactStore
+  bind IssueProvider -> github.IssueProvider {
+    owner: "gunb-ai",
+    repo: "gunbc",
+    credential: secret("github-token")
+  }
+  bind ClaimStore -> gcs.ClaimStore {
+    bucket: "gunbai-auto-sdlc-claims"
+  }
+  bind OutcomeLedger -> gcs.OutcomeLedger {
+    bucket: "gunbai-auto-sdlc-outcomes"
+  }
+  bind AgentProvider -> codex.AgentProvider {
+    credential: secret("codex-api-key")
+  }
+  bind SignalStore -> gcp.PubSubSignalStore {
+    topic: "sdlc-signals",
+    subscription: "sdlc-worker"
+  }
+  bind ArtifactStore -> gcs.ArtifactStore {
+    bucket: "gunbai-auto-sdlc-artifacts"
+  }
 }
