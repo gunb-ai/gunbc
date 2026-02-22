@@ -302,6 +302,39 @@ type StageResult {
   skipped: Bool
 }
 
+// --- Structured text rendering (EX-7) ----------------------------------
+// Document trees are built structurally, then rendered by shared helpers.
+
+type DocumentLine {
+  text: String
+  is_comment: Bool
+  is_blank: Bool
+}
+
+type DocumentSection {
+  title: String
+  has_title: Bool
+  lines: List<DocumentLine>
+}
+
+type Document {
+  header: String
+  has_header: Bool
+  comment_prefix: String
+  sections: List<DocumentSection>
+  trailing_newline: Bool
+}
+
+type TextFile {
+  path: TextFilePath
+  document: Document
+}
+
+type RenderedTextFile {
+  path: TextFilePath
+  content: String
+}
+
 // --- Tool registry (Level 3+6: Products with Collections) -------------
 
 type ToolEntry {

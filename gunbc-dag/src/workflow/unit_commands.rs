@@ -475,8 +475,6 @@ fn sdlc_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
                 "gunbc-sdlc",
                 "--",
                 "intake",
-                "--intent",
-                "TODO/issue-intent-template.yaml",
             ],
         ),
     );

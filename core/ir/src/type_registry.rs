@@ -281,13 +281,16 @@ impl TypeRegistry {
         registry
     }
 
-    /// Register primitive types (String, Bool, Int, Unit, Json).
+    /// Register primitive types (String, Bool, Int, Float, Bytes, Unit, Json, Secret).
     pub fn register_primitives(&mut self) {
         self.register("String", type_lib::string());
         self.register("Bool", type_lib::bool());
         self.register("Int", type_lib::int());
+        self.register("Float", type_lib::float());
+        self.register("Bytes", type_lib::bytes());
         self.register("Unit", type_lib::unit());
         self.register("Json", type_lib::json());
+        self.register("Secret", type_lib::secret());
     }
 
     /// Register common refined/core types used across the repo.
@@ -301,6 +304,52 @@ impl TypeRegistry {
         self.register("Email", type_lib::email());
         self.register("PositiveInt", type_lib::positive_int());
         self.register("NonNegativeInt", type_lib::non_negative_int());
+
+        // Content-encoded file path types (set-theoretic type system).
+        self.register("TextFilePath", type_lib::text_file_path());
+        self.register("BinaryFilePath", type_lib::binary_file_path());
+
+        // ContentEncoding variants as a coproduct type.
+        self.register(
+            "ContentEncoding",
+            type_lib::coproduct(
+                "ContentEncoding",
+                vec![
+                    ("Unknown", "String"),
+                    ("Text", "String"),
+                    ("UTF8", "String"),
+                    ("ASCII", "String"),
+                    ("Latin1", "String"),
+                    ("Binary", "Bytes"),
+                ],
+            ),
+        );
+
+        // Domain types for transport/infrastructure.
+        self.register(
+            "TransportRequest",
+            type_lib::identity("TransportRequest"),
+        );
+        self.register(
+            "TransportResponse",
+            type_lib::identity("TransportResponse"),
+        );
+        self.register(
+            "Credential",
+            type_lib::refined("String", vec![crate::type_op::Predicate::NonEmpty]),
+        );
+        self.register("FilesystemHandle", type_lib::identity("FilesystemHandle"));
+        self.register("NetworkHandle", type_lib::identity("NetworkHandle"));
+        self.register(
+            "CliResult",
+            type_lib::product(
+                "CliResult",
+                vec![("stdout", "String"), ("stderr", "String"), ("exit_code", "Int")],
+            ),
+        );
+        self.register("ToolHandle", type_lib::identity("ToolHandle"));
+        self.register("Platform", type_lib::identity("Platform"));
+        self.register("Timestamp", type_lib::identity("Timestamp"));
 
         // Container aliases (cardinality encoded in the type DAG).
         self.register("OptionalString", type_lib::optional(type_lib::string()));
@@ -321,6 +370,11 @@ impl TypeRegistry {
         self.register("UrlList", type_lib::url_list());
         self.register("FilePathList", type_lib::file_path_list());
         self.register("NonEmptyFilePathList", type_lib::non_empty_file_path_list());
+
+        // Coercion edges: TextFilePath → FilePath → String
+        self.register_coercion_edge("TextFilePath", "FilePath");
+        self.register_coercion_edge("BinaryFilePath", "FilePath");
+        self.register_coercion_edge("FilePath", "String");
     }
 
     /// Create a type registry with primitives + common refined/core types.
@@ -657,9 +711,12 @@ mod tests {
         assert!(registry.contains(&TypeId::from("String")));
         assert!(registry.contains(&TypeId::from("Bool")));
         assert!(registry.contains(&TypeId::from("Int")));
+        assert!(registry.contains(&TypeId::from("Float")));
+        assert!(registry.contains(&TypeId::from("Bytes")));
         assert!(registry.contains(&TypeId::from("Unit")));
         assert!(registry.contains(&TypeId::from("Json")));
-        assert_eq!(registry.len(), 5);
+        assert!(registry.contains(&TypeId::from("Secret")));
+        assert_eq!(registry.len(), 8);
     }
 
     #[test]
@@ -1034,6 +1091,57 @@ mod tests {
             Some("String".to_string())
         );
         assert_eq!(registry.base_type_name(&TypeId::from("Unknown")), None);
+    }
+
+    #[test]
+    fn test_text_file_path_coercion_chain() {
+        let registry = TypeRegistry::with_core_types();
+
+        // TextFilePath → FilePath is safe (widening via coercion edge)
+        assert!(registry.is_compatible(&TypeId::from("TextFilePath"), &TypeId::from("FilePath")));
+
+        // FilePath → TextFilePath is NOT safe (narrowing)
+        assert!(!registry.is_compatible(&TypeId::from("FilePath"), &TypeId::from("TextFilePath")));
+
+        // TextFilePath → String is safe (multi-step widening)
+        let path = registry
+            .coercion_path(&TypeId::from("TextFilePath"), &TypeId::from("String"))
+            .expect("TextFilePath should widen to String");
+        assert_eq!(
+            path,
+            vec![
+                TypeId::from("TextFilePath"),
+                TypeId::from("FilePath"),
+                TypeId::from("String"),
+            ]
+        );
+
+        // BinaryFilePath → FilePath is safe
+        assert!(
+            registry.is_compatible(&TypeId::from("BinaryFilePath"), &TypeId::from("FilePath"))
+        );
+
+        // BinaryFilePath → TextFilePath is NOT safe (different brands)
+        assert!(!registry
+            .is_compatible(&TypeId::from("BinaryFilePath"), &TypeId::from("TextFilePath")));
+    }
+
+    #[test]
+    fn test_domain_types_registered() {
+        let registry = TypeRegistry::with_core_types();
+
+        assert!(registry.contains(&TypeId::from("TextFilePath")));
+        assert!(registry.contains(&TypeId::from("BinaryFilePath")));
+        assert!(registry.contains(&TypeId::from("ContentEncoding")));
+        assert!(registry.contains(&TypeId::from("TransportRequest")));
+        assert!(registry.contains(&TypeId::from("TransportResponse")));
+        assert!(registry.contains(&TypeId::from("Credential")));
+        assert!(registry.contains(&TypeId::from("FilesystemHandle")));
+        assert!(registry.contains(&TypeId::from("NetworkHandle")));
+        assert!(registry.contains(&TypeId::from("CliResult")));
+        assert!(registry.contains(&TypeId::from("ToolHandle")));
+        assert!(registry.contains(&TypeId::from("Platform")));
+        assert!(registry.contains(&TypeId::from("Timestamp")));
     }
 
     #[test]

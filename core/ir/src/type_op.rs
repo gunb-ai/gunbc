@@ -26,6 +26,7 @@
 //! // optional_url output port has ZeroOrOne cardinality
 //! ```
 
+use crate::types::TypeId;
 use serde::{Deserialize, Serialize};
 
 /// Operations in a type DAG.
@@ -57,6 +58,18 @@ pub enum TypeOp {
 
     /// Unwrap operation — extracts value from a container type.
     Unwrap(WrapperKind),
+
+    /// Product type — a record with named typed fields.
+    /// e.g., `{ path: FilePath, encoding: ContentEncoding }`
+    Product(Vec<(String, TypeId)>),
+
+    /// Coproduct type — a tagged union of named typed variants.
+    /// e.g., `UTF8 | ASCII | Latin1 | Binary`
+    Coproduct(Vec<(String, TypeId)>),
+
+    /// Brand (nominal) type — a named wrapper around an inner type with refinement.
+    /// e.g., `TextFilePath = FilePath @content(Text)`
+    Brand(String, TypeId),
 }
 
 /// Typed inert metadata payload carried by [`TypeOp::Meta`].
@@ -76,6 +89,58 @@ pub enum MetadataPayload {
         name: String,
         type_id: String,
     },
+}
+
+/// Content encoding lattice for file content classification.
+///
+/// Models the encoding hierarchy from `types.dag`:
+/// ```text
+/// Unknown (⊤)
+///   ├── Text
+///   │   ├── UTF8
+///   │   │   └── ASCII
+///   │   └── Latin1
+///   └── Binary (⊥ of binary branch)
+/// ```
+///
+/// `ASCII ⊆ UTF8 ⊆ Text` — a function expecting Text content accepts UTF8.
+/// `Binary` and `Text` are incomparable — a function expecting Text rejects Binary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ContentEncoding {
+    /// Unknown encoding (top of lattice — accepts anything).
+    Unknown,
+    /// Text content (any text encoding).
+    Text,
+    /// UTF-8 encoded text (subset of Text).
+    UTF8,
+    /// ASCII encoded text (subset of UTF8).
+    ASCII,
+    /// Latin-1 encoded text (subset of Text, incomparable with UTF8).
+    Latin1,
+    /// Binary content (not text — incomparable with Text subtypes).
+    Binary,
+}
+
+impl ContentEncoding {
+    /// Check if `self` is a subtype of `other` in the encoding lattice.
+    ///
+    /// `self.is_subtype_of(other)` means: any content with encoding `self`
+    /// is also valid content with encoding `other`.
+    pub fn is_subtype_of(&self, other: &ContentEncoding) -> bool {
+        if self == other {
+            return true;
+        }
+        match (self, other) {
+            // Everything is a subtype of Unknown (top).
+            (_, ContentEncoding::Unknown) => true,
+            // ASCII ⊆ UTF8 ⊆ Text
+            (ContentEncoding::ASCII, ContentEncoding::UTF8 | ContentEncoding::Text) => true,
+            (ContentEncoding::UTF8, ContentEncoding::Text) => true,
+            // Latin1 ⊆ Text
+            (ContentEncoding::Latin1, ContentEncoding::Text) => true,
+            _ => false,
+        }
+    }
 }
 
 /// Predicates that can be validated against values.
@@ -110,6 +175,10 @@ pub enum Predicate {
 
     /// Custom named predicate (resolved at runtime).
     Custom(String),
+
+    /// Content encoding constraint from `@content` annotations.
+    /// e.g., `@content(UTF8)` → `Predicate::Content(ContentEncoding::UTF8)`
+    Content(ContentEncoding),
 }
 
 /// Simple values that can appear in predicates.
@@ -153,6 +222,9 @@ impl Predicate {
             }
             (Predicate::Equals(a), Predicate::Equals(b)) => a == b,
 
+            // Content encoding subtyping: Content(ASCII).entails(Content(UTF8)) = true
+            (Predicate::Content(a), Predicate::Content(b)) => a.is_subtype_of(b),
+
             _ => false,
         }
     }
@@ -183,10 +255,16 @@ pub enum BaseType {
     Bool,
     /// Integer.
     Int,
+    /// Floating point.
+    Float,
     /// String.
     String,
+    /// Raw bytes.
+    Bytes,
     /// JSON value (dynamic).
     Json,
+    /// Secret (redacted string).
+    Secret,
     /// List of elements.
     List(Box<BaseType>),
     /// Optional value (may be absent).
@@ -256,6 +334,24 @@ mod tests {
     }
 
     #[test]
+    fn test_type_op_product_coproduct_brand() {
+        let product = TypeOp::Product(vec![
+            ("path".to_string(), TypeId::from("FilePath")),
+            ("encoding".to_string(), TypeId::from("ContentEncoding")),
+        ]);
+        assert!(matches!(product, TypeOp::Product(ref fields) if fields.len() == 2));
+
+        let coproduct = TypeOp::Coproduct(vec![
+            ("UTF8".to_string(), TypeId::from("String")),
+            ("Binary".to_string(), TypeId::from("Bytes")),
+        ]);
+        assert!(matches!(coproduct, TypeOp::Coproduct(ref variants) if variants.len() == 2));
+
+        let brand = TypeOp::Brand("TextFilePath".to_string(), TypeId::from("FilePath"));
+        assert!(matches!(brand, TypeOp::Brand(ref name, _) if name == "TextFilePath"));
+    }
+
+    #[test]
     fn test_predicate_composition() {
         let non_empty = Predicate::NonEmpty;
         let matches_url = Predicate::Matches(r"https?://.*".to_string());
@@ -280,6 +376,47 @@ mod tests {
     }
 
     #[test]
+    fn test_predicate_content_entails() {
+        let ascii = Predicate::Content(ContentEncoding::ASCII);
+        let utf8 = Predicate::Content(ContentEncoding::UTF8);
+        let text = Predicate::Content(ContentEncoding::Text);
+        let binary = Predicate::Content(ContentEncoding::Binary);
+        let unknown = Predicate::Content(ContentEncoding::Unknown);
+
+        // ASCII ⊆ UTF8 ⊆ Text ⊆ Unknown
+        assert!(ascii.entails(&utf8));
+        assert!(ascii.entails(&text));
+        assert!(ascii.entails(&unknown));
+        assert!(utf8.entails(&text));
+        assert!(utf8.entails(&unknown));
+        assert!(text.entails(&unknown));
+
+        // But not the reverse
+        assert!(!utf8.entails(&ascii));
+        assert!(!text.entails(&utf8));
+
+        // Binary is not a subtype of Text
+        assert!(!binary.entails(&text));
+        assert!(!text.entails(&binary));
+
+        // Binary ⊆ Unknown
+        assert!(binary.entails(&unknown));
+    }
+
+    #[test]
+    fn test_content_encoding_subtype() {
+        assert!(ContentEncoding::ASCII.is_subtype_of(&ContentEncoding::UTF8));
+        assert!(ContentEncoding::ASCII.is_subtype_of(&ContentEncoding::Text));
+        assert!(ContentEncoding::UTF8.is_subtype_of(&ContentEncoding::Text));
+        assert!(ContentEncoding::Latin1.is_subtype_of(&ContentEncoding::Text));
+        assert!(!ContentEncoding::Binary.is_subtype_of(&ContentEncoding::Text));
+        assert!(!ContentEncoding::UTF8.is_subtype_of(&ContentEncoding::Binary));
+        // Everything ⊆ Unknown
+        assert!(ContentEncoding::Binary.is_subtype_of(&ContentEncoding::Unknown));
+        assert!(ContentEncoding::Text.is_subtype_of(&ContentEncoding::Unknown));
+    }
+
+    #[test]
     fn test_base_type_construction() {
         let string_type = BaseType::String;
         let list_of_strings = BaseType::list(BaseType::String);
@@ -290,6 +427,11 @@ mod tests {
         assert!(matches!(list_of_strings, BaseType::List(_)));
         assert!(matches!(optional_int, BaseType::Option(_)));
         assert!(matches!(map_type, BaseType::Map(_, _)));
+
+        // New base types
+        assert_eq!(BaseType::Float, BaseType::Float);
+        assert_eq!(BaseType::Bytes, BaseType::Bytes);
+        assert_eq!(BaseType::Secret, BaseType::Secret);
     }
 
     #[test]

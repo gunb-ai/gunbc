@@ -16,7 +16,7 @@
 
 module workflows.dag_viz
 
-import tools.compilation { compilation_ensure }
+import shared.compilation { compilation_ensure }
 import tools.codegen { codegen_ensure }
 
 pipeline dag_viz {
@@ -33,25 +33,25 @@ pipeline dag_viz {
 
   stage credential_resolve [after codegen_ensure] {}
 
-  stage serialize_dag [after codegen_ensure, when mode == "dag-viz" || mode == "dag_viz" || mode == "snapshot" || mode == "dag-viz-diff" || mode == "dag_viz_diff" || mode == "diff" || mode == "dag-viz-recent" || mode == "dag_viz_recent" || mode == "recent"] {}
+  stage serialize_dag [after codegen_ensure, when mode == "dag-viz" || mode == "dag-viz-diff" || mode == "dag-viz-recent"] {}
 
-  stage render_viz [after serialize_dag, when mode == "dag-viz" || mode == "dag_viz" || mode == "snapshot" || mode == "dag-viz-diff" || mode == "dag_viz_diff" || mode == "diff" || mode == "dag-viz-recent" || mode == "dag_viz_recent" || mode == "recent"] {}
+  stage render_viz [after serialize_dag, when mode == "dag-viz" || mode == "dag-viz-diff" || mode == "dag-viz-recent"] {}
 
-  stage list_files [after codegen_ensure, when mode == "dag-snapshot" || mode == "dag_snapshot"] {}
+  stage list_files [after codegen_ensure, when mode == "dag-snapshot"] {}
 
-  stage read_files [after list_files, when mode == "dag-snapshot" || mode == "dag_snapshot"] {}
+  stage read_files [after list_files, when mode == "dag-snapshot"] {}
 
-  stage render_snapshot [after read_files, when mode == "dag-snapshot" || mode == "dag_snapshot"] {}
+  stage render_snapshot [after read_files, when mode == "dag-snapshot"] {}
 
   stage gist_upload [
     after branch_resolution,
     after credential_resolve,
     after render_viz,
     after render_snapshot,
-    when mode == "dag-viz" || mode == "dag_viz" || mode == "snapshot"
-      || mode == "dag-viz-diff" || mode == "dag_viz_diff" || mode == "diff"
-      || mode == "dag-viz-recent" || mode == "dag_viz_recent" || mode == "recent"
-      || mode == "dag-snapshot" || mode == "dag_snapshot"
+    when mode == "dag-viz"
+      || mode == "dag-viz-diff"
+      || mode == "dag-viz-recent"
+      || mode == "dag-snapshot"
   ] {}
 
   stage report [after gist_upload] {}

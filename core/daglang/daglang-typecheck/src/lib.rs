@@ -1106,6 +1106,46 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             },
         ),
         (
+            "filter_map".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["f".to_string()]),
+                output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
+            "max_by".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["f".to_string()]),
+                output: ValueType::Named("Any".to_string()),
+            },
+        ),
+        (
+            "starts_with".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["prefix".to_string()]),
+                output: ValueType::Named("Bool".to_string()),
+            },
+        ),
+        (
+            "any".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["predicate".to_string()]),
+                output: ValueType::Named("Bool".to_string()),
+            },
+        ),
+        (
+            "append".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["items".to_string()]),
+                output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
             "join".to_string(),
             CallableContract {
                 arity: 1,

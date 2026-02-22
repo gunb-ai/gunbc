@@ -184,6 +184,8 @@ impl OutputSummary {
                     Value::Request(_) => (FieldKind::Scalar, "<Request>".to_string()),
                     Value::Response(_) => (FieldKind::Scalar, "<Response>".to_string()),
                     Value::Set(s) => (FieldKind::List(s.len()), format!("{{{} items}}", s.len())),
+                    Value::Float(f) => (FieldKind::Number, f.to_string()),
+                    Value::Bytes(b) => (FieldKind::Scalar, format!("<{} bytes>", b.len())),
                 };
                 Some(FieldSummary {
                     name: name.clone(),

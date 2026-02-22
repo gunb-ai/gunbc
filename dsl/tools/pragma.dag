@@ -15,34 +15,52 @@
 module tools.pragma
 
 import std.patterns { content_upsert }
-import std.types { PragmaDirective }
-import shared.dag_util { generated_header }
+import std.types { Document, PragmaDirective }
+import shared.dag_util { doc_with_header, generated_header, render_document, section, text_line }
 
-fn render_clippy_toml(directives: List<PragmaDirective>) -> String {
-  let header = generated_header(tool: "pragma")
+fn render_clippy_toml_document(directives: List<PragmaDirective>) -> Document {
   let entries = directives
     |> filter(d => d.scope == "clippy" || d.scope == None)
-    |> map(d => "{d.key} = {d.value}")
-    |> join("\n")
-  "{header}\n{entries}\n"
+    |> map(d => text_line(text: "{d.key} = {d.value}"))
+  doc_with_header(
+    header: generated_header(tool: "pragma"),
+    comment_prefix: "#",
+    sections: [section(lines: entries)]
+  )
+}
+
+fn render_clippy_toml(directives: List<PragmaDirective>) -> String {
+  render_document(document: render_clippy_toml_document(directives: directives))
+}
+
+fn render_disallowed_methods_allowlist_document(directives: List<PragmaDirective>) -> Document {
+  let methods = directives
+    |> filter(d => d.key == "disallowed_method")
+    |> map(d => text_line(text: d.value))
+  doc_with_header(
+    header: generated_header(tool: "pragma"),
+    comment_prefix: "#",
+    sections: [section(lines: methods)]
+  )
 }
 
 fn render_disallowed_methods_allowlist(directives: List<PragmaDirective>) -> String {
-  let header = generated_header(tool: "pragma")
-  let methods = directives
-    |> filter(d => d.key == "disallowed_method")
-    |> map(d => d.value)
-    |> join("\n")
-  "{header}{methods}\n"
+  render_document(document: render_disallowed_methods_allowlist_document(directives: directives))
+}
+
+fn render_pragma_lint_policy_document(directives: List<PragmaDirective>) -> Document {
+  let policies = directives
+    |> filter(d => d.scope == "lint")
+    |> map(d => text_line(text: "{d.key}: {d.value}"))
+  doc_with_header(
+    header: generated_header(tool: "pragma"),
+    comment_prefix: "#",
+    sections: [section(lines: policies)]
+  )
 }
 
 fn render_pragma_lint_policy(directives: List<PragmaDirective>) -> String {
-  let header = generated_header(tool: "pragma")
-  let policies = directives
-    |> filter(d => d.scope == "lint")
-    |> map(d => "{d.key}: {d.value}")
-    |> join("\n")
-  "{header}{policies}\n"
+  render_document(document: render_pragma_lint_policy_document(directives: directives))
 }
 
 func pragma(directives: List<PragmaDirective>) -> { clippy_written: Bool, allowlist_written: Bool, policy_written: Bool } {

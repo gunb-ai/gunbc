@@ -105,7 +105,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        99,
+        104,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -186,6 +186,11 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type TestResult",
             "type Summary",
             "type StageResult",
+            "type DocumentLine",
+            "type DocumentSection",
+            "type Document",
+            "type TextFile",
+            "type RenderedTextFile",
             "type ToolEntry",
             "type ToolRegistry",
             "type DagTopology",

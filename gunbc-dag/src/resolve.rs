@@ -233,6 +233,8 @@ fn collection_sort_key(value: &Value) -> String {
         Value::Request(request) => format!("req:{request:?}"),
         Value::Response(response) => format!("resp:{response:?}"),
         Value::Secret(secret) => format!("secret:{}", secret.len()),
+        Value::Float(f) => format!("f:{f}"),
+        Value::Bytes(b) => format!("bytes:{}", b.len()),
         Value::Skipped => "skipped".to_string(),
         Value::Unit => "unit".to_string(),
     }
@@ -252,6 +254,8 @@ fn collection_value_to_string(value: &Value) -> String {
         Value::Request(request) => format!("{request:?}"),
         Value::Response(response) => format!("{response:?}"),
         Value::Secret(secret) => format!("secret({})", secret.len()),
+        Value::Float(f) => f.to_string(),
+        Value::Bytes(b) => format!("<{} bytes>", b.len()),
     }
 }
 
@@ -259,11 +263,13 @@ fn collection_value_truthy(value: &Value) -> bool {
     match value {
         Value::Bool(b) => *b,
         Value::Int(i) => *i != 0,
+        Value::Float(f) => *f != 0.0,
         Value::Str(s) => !s.is_empty(),
         Value::List(items) | Value::Set(items) => !items.is_empty(),
         Value::Map(map) => !map.is_empty(),
         Value::Json(json) => !json.is_null(),
         Value::Secret(secret) => !secret.is_empty(),
+        Value::Bytes(b) => !b.is_empty(),
         Value::Skipped | Value::Unit => false,
         Value::Request(_) | Value::Response(_) => true,
     }

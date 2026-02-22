@@ -353,3 +353,4 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | EX-4 | Lower collection method calls: extended collection intrinsic lowering (`sort`, `dedup`, `any`, `all`, `len`, `contains`) and resolver execution wiring. | Done 2026-02-22 |
 | EX-5 | Lower control flow in function bodies: control-flow pattern lowering for `for`/`if`/`match` plus parser fixes so `if`/`match` expressions parse non-lossy in function bodies. | Done 2026-02-22 |
 | EX-6 | Lower string interpolation and formatting: ensured interpolation template extraction/lowering paths are preserved and test-covered for identifier interpolation. | Done 2026-02-22 |
+| EX-7 | Structured document rendering: added `Document`/`TextFile` DSL types and shared render helpers, migrated pragma/makegen/docgen/build rendering through structured document construction + rendering pipeline. | Done 2026-02-22 |

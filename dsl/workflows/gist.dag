@@ -18,7 +18,7 @@
 
 module workflows.gist
 
-import tools.compilation { compilation_ensure }
+import shared.compilation { compilation_ensure }
 import tools.codegen { codegen_ensure }
 
 pipeline gist {
@@ -35,26 +35,26 @@ pipeline gist {
 
   stage credential_resolve [after codegen_ensure] {}
 
-  stage list_files [after codegen_ensure, when mode == "gist" || mode == "gist-snapshot" || mode == "gist_snapshot" || mode == "snapshot"] {}
+  stage list_files [after codegen_ensure, when mode == "gist" || mode == "gist-snapshot"] {}
 
-  stage read_files [after list_files, when mode == "gist" || mode == "gist-snapshot" || mode == "gist_snapshot" || mode == "snapshot"] {}
+  stage read_files [after list_files, when mode == "gist" || mode == "gist-snapshot"] {}
 
-  stage render_snapshot [after read_files, when mode == "gist" || mode == "gist-snapshot" || mode == "gist_snapshot" || mode == "snapshot"] {}
+  stage render_snapshot [after read_files, when mode == "gist" || mode == "gist-snapshot"] {}
 
-  stage rev_list [after codegen_ensure, when mode == "gist-recent" || mode == "gist_recent" || mode == "recent"] {}
+  stage rev_list [after codegen_ensure, when mode == "gist-recent"] {}
 
-  stage diff [after codegen_ensure, after rev_list, when mode == "gist-diff" || mode == "gist_diff" || mode == "diff" || mode == "gist-recent" || mode == "gist_recent" || mode == "recent"] {}
+  stage diff [after codegen_ensure, after rev_list, when mode == "gist-diff" || mode == "gist-recent"] {}
 
-  stage render_diff [after diff, when mode == "gist-diff" || mode == "gist_diff" || mode == "diff" || mode == "gist-recent" || mode == "gist_recent" || mode == "recent"] {}
+  stage render_diff [after diff, when mode == "gist-diff" || mode == "gist-recent"] {}
 
   stage gist_create [
     after branch_resolution,
     after credential_resolve,
     after render_snapshot,
     after render_diff,
-    when mode == "gist" || mode == "gist-snapshot" || mode == "gist_snapshot" || mode == "snapshot"
-      || mode == "gist-diff" || mode == "gist_diff" || mode == "diff"
-      || mode == "gist-recent" || mode == "gist_recent" || mode == "recent"
+    when mode == "gist" || mode == "gist-snapshot"
+      || mode == "gist-diff"
+      || mode == "gist-recent"
   ] {}
 
   stage report [after gist_create] {}

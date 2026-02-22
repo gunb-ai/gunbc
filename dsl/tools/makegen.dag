@@ -17,14 +17,17 @@ module tools.makegen
 
 import std.patterns { content_upsert }
 import std.types { ToolRegistry }
-import shared.dag_util { generated_header }
+import shared.dag_util { doc_with_header, generated_header, render_document, section, text_line }
 
 fn render_makefile(registry: ToolRegistry) -> String {
-  let header = generated_header(tool: "makegen") + ".PHONY: all\n"
   let targets = registry.tools
-    |> map(t => "{t.name}:\n\t{t.command}")
-    |> join("\n\n")
-  "{header}\n{targets}"
+    |> map(t => text_line(text: "{t.name}:\n\t{t.command}"))
+  let document = doc_with_header(
+    header: generated_header(tool: "makegen") + ".PHONY: all",
+    comment_prefix: "#",
+    sections: [section(lines: targets)]
+  )
+  render_document(document: document)
 }
 
 func makegen(registry: ToolRegistry, path: String) -> { written: Bool } {

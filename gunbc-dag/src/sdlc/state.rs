@@ -9,6 +9,7 @@ pub struct RunStateLedger {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunStateRecord {
     pub run_key: String,
+    pub stage_label: String,
     pub status: RunExecutionStatus,
     pub updated_at_epoch_ms: u128,
 }
@@ -19,14 +20,20 @@ pub enum RunExecutionStatus {
     Failed,
 }
 
-pub fn should_replay_skip(ledger: &RunStateLedger, intake_key: &str, run_key: &str) -> bool {
+pub fn should_replay_skip(
+    ledger: &RunStateLedger,
+    intake_key: &str,
+    run_key: &str,
+    stage_label: &str,
+) -> bool {
     matches!(
         ledger.entries.get(intake_key),
         Some(RunStateRecord {
             run_key: existing_run_key,
+            stage_label: existing_stage_label,
             status: RunExecutionStatus::Completed,
             ..
-        }) if existing_run_key == run_key
+        }) if existing_run_key == run_key && existing_stage_label == stage_label
     )
 }
 
@@ -34,12 +41,14 @@ pub fn mark_run_completed(
     ledger: &mut RunStateLedger,
     intake_key: &str,
     run_key: &str,
+    stage_label: &str,
     now_epoch_ms: u128,
 ) {
     ledger.entries.insert(
         intake_key.to_string(),
         RunStateRecord {
             run_key: run_key.to_string(),
+            stage_label: stage_label.to_string(),
             status: RunExecutionStatus::Completed,
             updated_at_epoch_ms: now_epoch_ms,
         },
@@ -50,12 +59,14 @@ pub fn mark_run_failed(
     ledger: &mut RunStateLedger,
     intake_key: &str,
     run_key: &str,
+    stage_label: &str,
     now_epoch_ms: u128,
 ) {
     ledger.entries.insert(
         intake_key.to_string(),
         RunStateRecord {
             run_key: run_key.to_string(),
+            stage_label: stage_label.to_string(),
             status: RunExecutionStatus::Failed,
             updated_at_epoch_ms: now_epoch_ms,
         },
@@ -69,15 +80,16 @@ mod tests {
     #[test]
     fn replay_skip_only_when_same_run_key_completed() {
         let mut ledger = RunStateLedger::default();
-        mark_run_completed(&mut ledger, "intent-a", "run-a", 1000);
-        assert!(should_replay_skip(&ledger, "intent-a", "run-a"));
-        assert!(!should_replay_skip(&ledger, "intent-a", "run-b"));
+        mark_run_completed(&mut ledger, "intent-a", "run-a", "design", 1000);
+        assert!(should_replay_skip(&ledger, "intent-a", "run-a", "design"));
+        assert!(!should_replay_skip(&ledger, "intent-a", "run-a", "accepted"));
+        assert!(!should_replay_skip(&ledger, "intent-a", "run-b", "design"));
     }
 
     #[test]
     fn replay_skip_false_after_failed_state() {
         let mut ledger = RunStateLedger::default();
-        mark_run_failed(&mut ledger, "intent-a", "run-a", 1000);
-        assert!(!should_replay_skip(&ledger, "intent-a", "run-a"));
+        mark_run_failed(&mut ledger, "intent-a", "run-a", "design", 1000);
+        assert!(!should_replay_skip(&ledger, "intent-a", "run-a", "design"));
     }
 }

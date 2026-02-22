@@ -24,8 +24,8 @@
 
 use crate::dag::{Dag, Edge, Port};
 use crate::node::Node;
-use crate::type_op::{Predicate, TypeOp, WrapperKind};
-use crate::types::Cardinality;
+use crate::type_op::{ContentEncoding, Predicate, TypeOp, WrapperKind};
+use crate::types::{Cardinality, TypeId};
 
 /// URL pattern regex.
 pub const URL_PATTERN: &str = r"^https?://[^\s/$.?#].[^\s]*$";
@@ -77,6 +77,111 @@ pub fn unit() -> Dag<TypeOp> {
 /// JSON type (identity).
 pub fn json() -> Dag<TypeOp> {
     identity("Json")
+}
+
+/// Bytes type (identity).
+pub fn bytes() -> Dag<TypeOp> {
+    identity("Bytes")
+}
+
+/// Float type (identity).
+pub fn float() -> Dag<TypeOp> {
+    identity("Float")
+}
+
+/// Secret type (identity — redacted string).
+pub fn secret() -> Dag<TypeOp> {
+    identity("Secret")
+}
+
+// =============================================================================
+// Branded / Product / Coproduct Types
+// =============================================================================
+
+/// Branded (nominal) type — a named wrapper around an inner type.
+///
+/// The brand ensures nominal distinctness: `TextFilePath` is not `FilePath`
+/// even though structurally identical, unless the brand allows coercion.
+pub fn branded(name: &str, inner_type: Dag<TypeOp>) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    dag.add_node(Node::opaque(
+        "brand",
+        vec![Port::scalar("in", name)],
+        vec![Port::scalar("out", name)],
+        TypeOp::Brand(name.to_string(), TypeId::from(name)),
+    ));
+
+    dag.add_node(Node::subdag("inner_type", inner_type));
+
+    dag.add_edge(Edge::new("brand", "out", "inner_type", "in"));
+
+    dag
+}
+
+/// Product type — a record with named typed fields.
+///
+/// e.g., `product("FileInfo", vec![("path", "FilePath"), ("encoding", "ContentEncoding")])`
+pub fn product(name: &str, fields: Vec<(&str, &str)>) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    let field_types: Vec<(String, TypeId)> = fields
+        .iter()
+        .map(|(n, t)| (n.to_string(), TypeId::from(*t)))
+        .collect();
+
+    dag.add_node(Node::opaque(
+        "product",
+        vec![Port::scalar("in", name)],
+        vec![Port::scalar("out", name)],
+        TypeOp::Product(field_types),
+    ));
+
+    dag
+}
+
+/// Coproduct type — a tagged union of named typed variants.
+///
+/// e.g., `coproduct("ContentEncoding", vec![("UTF8", "String"), ("Binary", "Bytes")])`
+pub fn coproduct(name: &str, variants: Vec<(&str, &str)>) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    let variant_types: Vec<(String, TypeId)> = variants
+        .iter()
+        .map(|(n, t)| (n.to_string(), TypeId::from(*t)))
+        .collect();
+
+    dag.add_node(Node::opaque(
+        "coproduct",
+        vec![Port::scalar("in", name)],
+        vec![Port::scalar("out", name)],
+        TypeOp::Coproduct(variant_types),
+    ));
+
+    dag
+}
+
+/// Content-refined type — a type with a `@content` encoding predicate.
+///
+/// e.g., `content_refined("String", ContentEncoding::UTF8)` → String @content(UTF8)
+pub fn content_refined(type_name: &str, encoding: ContentEncoding) -> Dag<TypeOp> {
+    refined(type_name, vec![Predicate::Content(encoding)])
+}
+
+/// TextFilePath — branded FilePath with @content(Text) predicate.
+pub fn text_file_path() -> Dag<TypeOp> {
+    branded(
+        "TextFilePath",
+        content_refined("FilePath", ContentEncoding::Text),
+    )
+}
+
+/// BinaryFilePath — branded FilePath with @content(Binary) predicate.
+pub fn binary_file_path() -> Dag<TypeOp> {
+    branded(
+        "BinaryFilePath",
+        content_refined("FilePath", ContentEncoding::Binary),
+    )
 }
 
 // =============================================================================

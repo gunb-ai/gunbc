@@ -187,7 +187,8 @@ pub use transport::{
     TransportKind, TransportRequest, TransportResponse,
 };
 pub use type_op::{
-    BaseType, Coercion, MetadataPayload, Predicate, PredicateValue, TypeOp, WrapperKind,
+    BaseType, Coercion, ContentEncoding, MetadataPayload, Predicate, PredicateValue, TypeOp,
+    WrapperKind,
 };
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use typed_io::{

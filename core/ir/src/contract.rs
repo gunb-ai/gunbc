@@ -58,7 +58,8 @@ pub fn cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
 
 /// L2: Extract base type name from a type DAG.
 ///
-/// The base type is found by looking at the first Identity node's output type.
+/// The base type is found by looking at the first Identity node's output type,
+/// or by recursing through Brand/Product/Coproduct nodes into their SubDags.
 pub fn base_type(type_dag: &Dag<TypeOp>) -> Option<String> {
     // Find the first Identity node and get its output type
     for node in &type_dag.nodes {
@@ -66,6 +67,27 @@ pub fn base_type(type_dag: &Dag<TypeOp>) -> Option<String> {
             if let Some(output) = node.outputs.first() {
                 return Some(output.type_id.0.clone());
             }
+        }
+    }
+    // For Brand nodes, recurse into the inner SubDag
+    for node in &type_dag.nodes {
+        match &node.body {
+            NodeBody::Opaque(TypeOp::Brand(..)) => {
+                if let Some(inner) = inner_type_dag(type_dag) {
+                    return base_type(inner);
+                }
+            }
+            NodeBody::Opaque(TypeOp::Product(_)) => {
+                if let Some(output) = node.outputs.first() {
+                    return Some(output.type_id.0.clone());
+                }
+            }
+            NodeBody::Opaque(TypeOp::Coproduct(_)) => {
+                if let Some(output) = node.outputs.first() {
+                    return Some(output.type_id.0.clone());
+                }
+            }
+            _ => {}
         }
     }
     None

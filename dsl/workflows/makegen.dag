@@ -8,7 +8,7 @@
 
 module workflows.makegen
 
-import tools.compilation { compilation_ensure }
+import shared.compilation { compilation_ensure }
 import tools.codegen { codegen_ensure }
 
 pipeline makegen {

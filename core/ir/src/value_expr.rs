@@ -62,6 +62,8 @@ impl From<&Value> for ValueExpr {
             Value::Json(j) => ValueExpr::Json(j.clone()),
             Value::Request(r) => request_to_value_expr(r),
             Value::Response(r) => response_to_value_expr(r),
+            Value::Float(f) => ValueExpr::Json(serde_json::json!(*f)),
+            Value::Bytes(b) => ValueExpr::Json(serde_json::json!({"__bytes": b.len()})),
             Value::Secret(s) => ValueExpr::Secret(s.expose_plaintext_for_transport().to_string()),
             Value::Skipped => ValueExpr::Skipped,
         }

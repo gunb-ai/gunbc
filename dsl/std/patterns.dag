@@ -346,3 +346,16 @@ pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Int = 1000) -> {} {
 //   1. Persist PendingApproval in outcome ledger
 //   2. Release claim (INV-22: AwaitApproval releases claim)
 //   3. Signal yield — caller should terminate execution
+
+// --- Stubs for acquire_subject_token -----------------------------------
+fn github_oidc(audience: String) -> { token: String } {
+  return { token: "mock-oidc-token" }
+}
+
+fn metadata_oidc(audience: String) -> { token: String } {
+  return { token: "mock-oidc-token" }
+}
+
+fn local_auth() -> { token: String } {
+  return { token: "mock-local-token" }
+}

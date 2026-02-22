@@ -28,14 +28,11 @@ service github.Issues : IssueProvider {
 
   // --- Core CRUD ---------------------------------------------------------
 
-  operation Create {
+  operation create {
     input {
-      owner: String
-      repo: String
       title: String
       body: String
-      labels: List<String>?
-      assignees: List<String>?
+      labels: List<String>
     }
     output {
       number: Int @json("number")
@@ -43,13 +40,13 @@ service github.Issues : IssueProvider {
       id: Int @json("id")
       node_id: String @json("node_id")
     }
-    @rest(POST, "/repos/{owner}/{repo}/issues")
+    @rest(POST, "/repos/gunb-ai/gunbc/issues")
     @permissions(["issues:write"])
     @mock_response(
       status: 201,
       body: {
         "number": 42,
-        "html_url": "https://github.com/{owner}/{repo}/issues/42",
+        "html_url": "https://github.com/gunb-ai/gunbc/issues/42",
         "id": 1234567,
         "node_id": "I_mock"
       }

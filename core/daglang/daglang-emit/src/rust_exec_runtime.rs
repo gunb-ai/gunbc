@@ -27,6 +27,23 @@ use crate::EmittedFile;
 // Public API
 // ===========================================================================
 
+/// Configuration for exec-runtime code generation.
+#[derive(Debug, Clone)]
+pub struct EmitConfig {
+    /// When `true` (the default), modules with no real handler implementation
+    /// are emitted as passthrough stubs (`Ok(inputs)`). When `false`, encountering
+    /// such a module produces an `ExecRuntimeError::UnresolvableNode`.
+    pub allow_unimplemented_passthrough: bool,
+}
+
+impl Default for EmitConfig {
+    fn default() -> Self {
+        Self {
+            allow_unimplemented_passthrough: true,
+        }
+    }
+}
+
 /// Emit a standalone Rust crate from a lowered DAG.
 ///
 /// Returns `src/main.rs` and `Cargo.toml` as [`EmittedFile`] entries.
@@ -51,7 +68,18 @@ pub fn emit_exec_runtime_with_output_dir(
     module_name: &str,
     output_dir: Option<&Path>,
 ) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
-    let classified = classify_nodes(dag)?;
+    emit_exec_runtime_with_config(dag, module_name, output_dir, &EmitConfig::default())
+}
+
+/// Emit a standalone Rust crate from a lowered DAG with full configuration.
+pub fn emit_exec_runtime_with_config(
+    dag: &Dag<LoweredOp>,
+    module_name: &str,
+    output_dir: Option<&Path>,
+    config: &EmitConfig,
+) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
+    let classified =
+        classify_nodes_with_config(dag, config.allow_unimplemented_passthrough)?;
     let handler_kinds = collect_handler_kinds(&classified);
     let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
     let main_rs = crate::render_rust::render_rust_source(&source);
@@ -128,6 +156,10 @@ enum HandlerKind {
     CompareContent,
     ExecuteTransport,
     Collection,
+    /// Placeholder for modules/surfaces that lack a real handler implementation.
+    /// Gated by `allow_unimplemented_passthrough` — when disallowed, these nodes
+    /// cause an `ExecRuntimeError::UnresolvableNode` at classification time.
+    UnimplementedPassthrough,
 }
 
 impl HandlerKind {
@@ -149,6 +181,7 @@ impl HandlerKind {
             Self::CompareContent => "CompareContent",
             Self::ExecuteTransport => "ExecuteTransport",
             Self::Collection => "Collection",
+            Self::UnimplementedPassthrough => "UnimplementedPassthrough",
         }
     }
 }
@@ -166,7 +199,10 @@ struct ClassifiedNode {
     outputs: Vec<(String, String, Cardinality)>, // (port_name, type_id, cardinality)
 }
 
-fn classify_nodes(dag: &Dag<LoweredOp>) -> Result<Vec<ClassifiedNode>, ExecRuntimeError> {
+fn classify_nodes_with_config(
+    dag: &Dag<LoweredOp>,
+    allow_unimplemented_passthrough: bool,
+) -> Result<Vec<ClassifiedNode>, ExecRuntimeError> {
     let mut result = Vec::with_capacity(dag.nodes.len());
     for node in &dag.nodes {
         let node_id = node.id.0.clone();
@@ -182,6 +218,25 @@ fn classify_nodes(dag: &Dag<LoweredOp>) -> Result<Vec<ClassifiedNode>, ExecRunti
             node_id: node_id.clone(),
             detail: format!("no runtime op classification for {op:?}"),
         })?;
+
+        if handler == HandlerKind::UnimplementedPassthrough && !allow_unimplemented_passthrough {
+            let (module, name) = match op {
+                LoweredOp::Callable { module, name, .. } => {
+                    (module.as_str(), name.as_str())
+                }
+                LoweredOp::Pipeline { module, name, .. } => {
+                    (module.as_str(), name.as_str())
+                }
+                _ => ("unknown", "unknown"),
+            };
+            return Err(ExecRuntimeError::UnresolvableNode {
+                node_id,
+                detail: format!(
+                    "unimplemented handler for {module}::{name} \
+                     — use allow_unimplemented_passthrough to permit passthrough stubs"
+                ),
+            });
+        }
         let op_ctor = classify_op_ctor(op, &node.outputs, handler).map_err(|detail| {
             ExecRuntimeError::UnresolvableNode {
                 node_id: node_id.clone(),
@@ -264,7 +319,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
                 || name.starts_with("service_transport::parse::")
                 || name.starts_with("service_transport::execute::") =>
         {
-            return Some(HandlerKind::ParamSource);
+            return Some(HandlerKind::UnimplementedPassthrough);
         }
         LoweredOp::Callable { .. } => {}
         LoweredOp::LoopUnpack { .. }
@@ -279,12 +334,14 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     };
 
     match (module, name) {
-        ("shared.dag_util", _) => Some(HandlerKind::ParamSource),
-        ("std.patterns", _) => Some(HandlerKind::ParamSource),
-        ("std.resources", _) => Some(HandlerKind::ParamSource),
-        ("pipelines.ci", _) => Some(HandlerKind::ParamSource),
-        ("tools.infra", _) => Some(HandlerKind::ParamSource),
-        (module, _) if module.starts_with("services.") => Some(HandlerKind::ParamSource),
+        ("shared.dag_util", _) => Some(HandlerKind::UnimplementedPassthrough),
+        ("std.patterns", _) => Some(HandlerKind::UnimplementedPassthrough),
+        ("std.resources", _) => Some(HandlerKind::UnimplementedPassthrough),
+        ("pipelines.ci", _) => Some(HandlerKind::UnimplementedPassthrough),
+        ("tools.infra", _) => Some(HandlerKind::UnimplementedPassthrough),
+        (module, _) if module.starts_with("services.") => {
+            Some(HandlerKind::UnimplementedPassthrough)
+        }
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(HandlerKind::RenderPragmaAllowlist)
@@ -621,6 +678,10 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             r##"    let items = inputs.get("items").cloned()
         .ok_or_else(|| ExecError::new("missing required `items` input for collection"))?;
     OutputMap::new().value("items", items).ok()
+"##
+        }
+        HandlerKind::UnimplementedPassthrough => {
+            r##"    Ok(inputs)
 "##
         }
     }
@@ -1051,7 +1112,17 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
     writeln!(text, "fn main() {{").unwrap();
     writeln!(
         text,
-        "    let args: Vec<String> = std::env::args().collect();"
+        "    let raw_args: Vec<String> = std::env::args().collect();"
+    )
+    .unwrap();
+    writeln!(
+        text,
+        r#"    let trace_json = raw_args.iter().any(|a| a == "--trace-json");"#
+    )
+    .unwrap();
+    writeln!(
+        text,
+        r#"    let args: Vec<String> = raw_args.into_iter().filter(|a| a != "--trace-json").collect();"#
     )
     .unwrap();
     writeln!(text).unwrap();
@@ -1088,17 +1159,24 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
     }
     writeln!(text, "    match result {{").unwrap();
     writeln!(text, "        Ok(log) => {{").unwrap();
+    writeln!(text, "            if trace_json {{").unwrap();
+    writeln!(text, "                let nodes: Vec<&str> = log.entries.iter().map(|e| e.node_id.as_str()).collect();").unwrap();
+    writeln!(text, r#"                let nodes_json: Vec<String> = nodes.iter().map(|n| format!("\"{{}}\"", n)).collect();"#).unwrap();
+    writeln!(text, r#"                let entries_json: Vec<String> = log.entries.iter().map(|e| format!("{{{{\"node_id\":\"{{}}\",\"intercepted\":{{}}}}}}", e.node_id, e.was_intercepted)).collect();"#).unwrap();
+    writeln!(text, r#"                eprintln!("{{{{\"nodes\":[{{}}],\"entries\":[{{}}]}}}}", nodes_json.join(","), entries_json.join(","));"#).unwrap();
+    writeln!(text, "            }} else {{").unwrap();
     writeln!(
         text,
-        r#"            eprintln!("execution completed: {{}} nodes executed", log.entries.len());"#
+        r#"                eprintln!("execution completed: {{}} nodes executed", log.entries.len());"#
     )
     .unwrap();
-    writeln!(text, "            for entry in &log.entries {{").unwrap();
+    writeln!(text, "                for entry in &log.entries {{").unwrap();
     writeln!(
         text,
-        r#"                eprintln!("  [{{}}] intercepted={{}}", entry.node_id, entry.was_intercepted);"#
+        r#"                    eprintln!("  [{{}}] intercepted={{}}", entry.node_id, entry.was_intercepted);"#
     )
     .unwrap();
+    writeln!(text, "                }}").unwrap();
     writeln!(text, "            }}").unwrap();
     writeln!(text, "        }}").unwrap();
     writeln!(text, "        Err(e) => {{").unwrap();
@@ -1691,7 +1769,7 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&pattern_callable),
-            Some(HandlerKind::ParamSource)
+            Some(HandlerKind::UnimplementedPassthrough)
         );
 
         let service_prepare = LoweredOp::Callable {
@@ -1705,7 +1783,7 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&service_prepare),
-            Some(HandlerKind::ParamSource)
+            Some(HandlerKind::UnimplementedPassthrough)
         );
     }
 }

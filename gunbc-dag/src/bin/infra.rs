@@ -355,27 +355,42 @@ fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestration
         .find(|entry| entry.outputs.contains_key("planned_targets"))
         .ok_or_else(|| "compiled infra DAG log missing planned_targets output entry".to_string())?;
 
-    let planned_targets = entry
-        .outputs
-        .get("planned_targets")
-        .and_then(Value::as_str_list)
-        .unwrap_or_default();
-    let target_count = entry
-        .outputs
-        .get("target_count")
-        .and_then(Value::as_int)
-        .unwrap_or(planned_targets.len() as i64);
-    let applied_count = entry
-        .outputs
-        .get("applied_count")
-        .and_then(Value::as_int)
-        .unwrap_or(0);
-    let report = entry
-        .outputs
-        .get("report")
-        .and_then(Value::as_str)
-        .unwrap_or("infra orchestration completed")
-        .to_string();
+    let planned_targets = match entry.outputs.get("planned_targets") {
+        Some(v) => v.as_str_list().ok_or_else(|| {
+            format!(
+                "planned_targets exists but is not a string list (got {:?})",
+                v.kind()
+            )
+        })?,
+        None => return Err("planned_targets key missing from output entry".to_string()),
+    };
+    let target_count = match entry.outputs.get("target_count") {
+        Some(v) => v.as_int().ok_or_else(|| {
+            format!(
+                "target_count exists but is not an int (got {:?})",
+                v.kind()
+            )
+        })?,
+        None => planned_targets.len() as i64,
+    };
+    let applied_count = match entry.outputs.get("applied_count") {
+        Some(v) => v.as_int().ok_or_else(|| {
+            format!(
+                "applied_count exists but is not an int (got {:?})",
+                v.kind()
+            )
+        })?,
+        None => 0,
+    };
+    let report = match entry.outputs.get("report") {
+        Some(v) => v
+            .as_str()
+            .ok_or_else(|| {
+                format!("report exists but is not a string (got {:?})", v.kind())
+            })?
+            .to_string(),
+        None => "infra orchestration completed".to_string(),
+    };
 
     Ok(InfraOrchestrationOutput {
         planned_targets,

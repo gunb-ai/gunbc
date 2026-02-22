@@ -2439,7 +2439,7 @@ impl Parser {
             } else {
                 None
             };
-            self.expect(&TokenKind::Arrow)?;
+            self.expect(&TokenKind::FatArrow)?;
             let body = self.parse_expr(0)?;
             arms.push(MatchArm { pattern, guard, body });
             self.eat(&TokenKind::Comma);

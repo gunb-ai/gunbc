@@ -9,6 +9,8 @@ module tools.docgen
 
 import std.patterns { content_upsert }
 import std.resources { Filesystem }
+import std.types { Document }
+import shared.dag_util { doc, render_document, section, text_line }
 
 // Source file paths -- these are the 13 inputs to the doc renderer
 // Note: these are file CONTENTS (read from disk), not file paths.
@@ -30,8 +32,8 @@ type DocgenSources {
   gist_codegen_cli: String?           // content of target/codegen/bin/gist/main.rs (may not exist)
 }
 
-fn render_ab_workflows_doc(sources: DocgenSources) -> String {
-  sources.template
+fn render_ab_workflows_document(sources: DocgenSources) -> Document {
+  let content = sources.template
     |> replace_section("clippy_mock_spec", sources.clippy_graph_mock)
     |> replace_section("clippy_generated_test_excerpt", sources.clippy_generated_tests)
     |> replace_section("appendix_a_clippy", sources.clippy_generated_tests)
@@ -39,6 +41,11 @@ fn render_ab_workflows_doc(sources: DocgenSources) -> String {
     |> replace_section("appendix_b", render_test_listings(sources: sources))
     |> replace_section("appendix_c", render_graph_structure(sources: sources))
     |> replace_section("appendix_d", render_source_artifacts(sources: sources))
+  doc(sections: [section(lines: [text_line(text: content)])])
+}
+
+fn render_ab_workflows_doc(sources: DocgenSources) -> String {
+  render_document(document: render_ab_workflows_document(sources: sources))
 }
 
 func docgen() -> { written: Bool }

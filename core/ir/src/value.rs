@@ -126,6 +126,10 @@ pub enum Value {
     Str(String),
     /// Integer
     Int(i64),
+    /// Floating point
+    Float(f64),
+    /// Raw bytes (binary data)
+    Bytes(Vec<u8>),
     /// Homogeneous list of values (ordered, allows duplicates)
     List(Vec<Value>),
     /// Unordered collection of unique values (set semantics)
@@ -158,6 +162,8 @@ pub enum ValueKind {
     Bool,
     String,
     Int,
+    Float,
+    Bytes,
     List,
     Set,
     Map,
@@ -176,6 +182,8 @@ impl ValueKind {
             ValueKind::Bool => "Bool",
             ValueKind::String => "String",
             ValueKind::Int => "Int",
+            ValueKind::Float => "Float",
+            ValueKind::Bytes => "Bytes",
             ValueKind::List => "List",
             ValueKind::Set => "Set",
             ValueKind::Map => "Map",
@@ -202,6 +210,8 @@ impl Value {
             Value::Bool(_) => ValueKind::Bool,
             Value::Str(_) => ValueKind::String,
             Value::Int(_) => ValueKind::Int,
+            Value::Float(_) => ValueKind::Float,
+            Value::Bytes(_) => ValueKind::Bytes,
             Value::List(_) => ValueKind::List,
             Value::Set(_) => ValueKind::Set,
             Value::Map(_) => ValueKind::Map,
@@ -373,11 +383,13 @@ impl Value {
         match self {
             Value::Unit | Value::Skipped => true,
             Value::Str(s) => s.is_empty(),
+            Value::Bytes(b) => b.is_empty(),
             Value::List(v) | Value::Set(v) => v.is_empty(),
             Value::Map(m) => m.is_empty(),
             Value::Secret(s) => s.is_empty(),
             Value::Bool(_)
             | Value::Int(_)
+            | Value::Float(_)
             | Value::Json(_)
             | Value::Request(_)
             | Value::Response(_) => false,
@@ -657,6 +669,8 @@ impl PartialEq for Value {
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::Float(a), Value::Float(b)) => a.to_bits() == b.to_bits(),
+            (Value::Bytes(a), Value::Bytes(b)) => a == b,
             (Value::List(a), Value::List(b)) => a == b,
             (Value::Set(a), Value::Set(b)) => {
                 if a.len() != b.len() {
@@ -683,6 +697,8 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Str(s) => write!(f, "{s}"),
             Value::Int(i) => write!(f, "{i}"),
+            Value::Float(v) => write!(f, "{v}"),
+            Value::Bytes(b) => write!(f, "<{} bytes>", b.len()),
             Value::List(v) => write!(f, "[{} items]", v.len()),
             Value::Set(v) => write!(f, "{{{} items}}", v.len()),
             Value::Map(m) => write!(f, "{{{} entries}}", m.len()),

@@ -8,14 +8,8 @@ use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 pub type BuildGraphOp = DynOp;
 
 /// Get the declared signature for the build workflow (auto-derived from DAG).
-pub fn build_signature() -> WorkflowSignature {
-    match build_build_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build build DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn build_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_build_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Build the build graph from the DSL source.

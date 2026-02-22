@@ -1,0 +1,11 @@
+// shared/compilation.dag -- Shared compilation capability helpers.
+//
+// This module is intentionally not a tool module: it provides a shared
+// capability callable used by multiple workflow families.
+
+module shared.compilation
+
+// Ensure compilation capability is met.
+func compilation_ensure() -> {} {
+  // handled by executor capability resolution
+}

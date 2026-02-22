@@ -882,7 +882,7 @@ fn issue_command_real_mode_persists_execution_report() {
 }
 
 #[test]
-fn legacy_issue_flag_alias_routes_to_issue_command() {
+fn legacy_issue_flag_alias_fails_closed() {
     let ctx = CliTestContext::new("legacy_issue_alias", sdlc_bin());
     let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
@@ -915,20 +915,21 @@ fn legacy_issue_flag_alias_routes_to_issue_command() {
         .output()
         .expect("run legacy issue alias command");
     assert!(
-        issue.status.success(),
-        "legacy issue alias command should succeed: {}",
+        !issue.status.success(),
+        "legacy issue alias command should fail: {}",
         String::from_utf8_lossy(&issue.stderr)
     );
-    let payload: serde_json::Value =
-        serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
-    assert_eq!(payload["command"], "issue");
-    assert_eq!(payload["issue_filter"], 6420);
+    let stderr = String::from_utf8_lossy(&issue.stderr);
+    assert!(
+        stderr.contains("unknown command `--issue`"),
+        "legacy alias failure should identify unknown command: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
 
 #[test]
-fn legacy_issue_equals_alias_routes_to_issue_command() {
+fn legacy_issue_equals_alias_fails_closed() {
     let ctx = CliTestContext::new("legacy_issue_equals_alias", sdlc_bin());
     let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
@@ -960,14 +961,15 @@ fn legacy_issue_equals_alias_routes_to_issue_command() {
         .output()
         .expect("run legacy issue equals alias command");
     assert!(
-        issue.status.success(),
-        "legacy issue equals alias command should succeed: {}",
+        !issue.status.success(),
+        "legacy issue equals alias command should fail: {}",
         String::from_utf8_lossy(&issue.stderr)
     );
-    let payload: serde_json::Value =
-        serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
-    assert_eq!(payload["command"], "issue");
-    assert_eq!(payload["issue_filter"], 6421);
+    let stderr = String::from_utf8_lossy(&issue.stderr);
+    assert!(
+        stderr.contains("unknown command `--issue=6421`"),
+        "legacy alias failure should identify unknown command: {stderr}"
+    );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
@@ -1413,38 +1415,47 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
     let ctx = CliTestContext::new("worker_terminalize", sdlc_bin());
     let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
-    let intent_a = root.join("intent_a.yaml");
-    let intent_b = root.join("intent_b.yaml");
+    let intent_path = root.join("intent.yaml");
     write_intent_file(
-        &intent_a,
-        "intent-20260221-term-a",
-        "intent-20260221-term-a",
-        Some(777),
-    );
-    write_intent_file(
-        &intent_b,
+        &intent_path,
         "intent-20260221-term-b",
         "intent-20260221-term-b",
         Some(777),
     );
 
-    for intent in [&intent_a, &intent_b] {
-        let intake = ctx.command()
-            .arg("intake")
-            .arg("--intent")
-            .arg(intent)
-            .current_dir(&root)
-            .output()
-            .expect("run intake");
-        assert!(
-            intake.status.success(),
-            "intake should succeed: {}",
-            String::from_utf8_lossy(&intake.stderr)
-        );
-    }
+    let intake = ctx.command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
 
     let mut final_payload = serde_json::Value::Null;
     for _ in 0..3 {
+        // Inject a foreign claim for issue:777:stage:Idea owned by another worker.
+        // This blocks our worker from acquiring the claim, producing a conflict.
+        let claim_ledger_path = root.join("target/sdlc/claim-ledger.json");
+        let foreign_claim = serde_json::json!({
+            "claims": {
+                "issue:777:stage:idea": {
+                    "owner": "gunbc-sdlc-worker:foreign-worker:foreign-intent",
+                    "claimed_at_epoch_ms": 1000,
+                    "lease_expires_at_epoch_ms": 9999999999999u64
+                }
+            }
+        });
+        std::fs::write(
+            &claim_ledger_path,
+            serde_json::to_string_pretty(&foreign_claim).expect("serialize foreign claim"),
+        )
+        .expect("write claim ledger with foreign claim");
+
         let worker = ctx.command()
             .arg("worker").arg("--worker-id").arg("test-worker-id")
             .current_dir(&root)
@@ -1822,9 +1833,39 @@ fn worker_replay_skips_completed_run_key() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    // Run 5 workers to progress through all stages (Idea→Design→DesignReview→
-    // Accepted→Implementation→Closed), then a 6th to execute the terminal no-op.
-    for _ in 0..6 {
+    // Run 3 workers to reach the DesignReview approval gate.
+    for _ in 0..3 {
+        let worker = ctx.command()
+            .arg("worker").arg("--worker-id").arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    // Explicitly approve by transitioning DesignReview -> Accepted.
+    let approve = ctx.command()
+        .arg("transition")
+        .arg("--intake-key")
+        .arg("intent-20260221-replay")
+        .arg("--stage")
+        .arg("accepted")
+        .current_dir(&root)
+        .output()
+        .expect("approve transition to accepted");
+    assert!(
+        approve.status.success(),
+        "approval transition should succeed: {}",
+        String::from_utf8_lossy(&approve.stderr)
+    );
+
+    // Run 3 workers to progress Accepted -> Implementation -> Closed, then
+    // execute terminal Closed no-op.
+    for _ in 0..3 {
         let worker = ctx.command()
             .arg("worker").arg("--worker-id").arg("test-worker-id")
             .current_dir(&root)
@@ -1897,9 +1938,40 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    // Run 6 workers: 5 to advance through all stages + 1 to execute terminal Closed.
-    // After pass 6 the terminal claim slot (issue:9090:stage:closed) is held.
-    for _ in 0..6 {
+    // Run 3 workers to reach the DesignReview approval gate.
+    for _ in 0..3 {
+        let worker = ctx.command()
+            .arg("worker").arg("--worker-id").arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    // Explicitly approve by transitioning DesignReview -> Accepted.
+    let approve = ctx.command()
+        .arg("transition")
+        .arg("--intake-key")
+        .arg("intent-20260221-heartbeat")
+        .arg("--stage")
+        .arg("accepted")
+        .current_dir(&root)
+        .output()
+        .expect("approve transition to accepted");
+    assert!(
+        approve.status.success(),
+        "approval transition should succeed: {}",
+        String::from_utf8_lossy(&approve.stderr)
+    );
+
+    // Run 3 workers to progress Accepted -> Implementation -> Closed, then
+    // execute terminal Closed no-op. After pass 6 overall, the terminal claim
+    // slot (issue:9090:stage:closed) is held.
+    for _ in 0..3 {
         let worker = ctx.command()
             .arg("worker").arg("--worker-id").arg("test-worker-id")
             .current_dir(&root)
@@ -2217,7 +2289,9 @@ fn worker_executes_idea_to_design_stage() {
     assert!(intake.status.success(), "intake should succeed: {}", String::from_utf8_lossy(&intake.stderr));
 
     let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker");
@@ -2232,6 +2306,23 @@ fn worker_executes_idea_to_design_stage() {
             .iter()
             .any(|value| value == "intent-idea-to-design"),
         "worker should execute the idea->design stage"
+    );
+
+    let issue_transport_path = root.join("target/sdlc/issue-transport-ledger.json");
+    let issue_transport_raw =
+        std::fs::read_to_string(&issue_transport_path).expect("read issue transport ledger");
+    let issue_transport: serde_json::Value =
+        serde_json::from_str(&issue_transport_raw).expect("parse issue transport ledger");
+    let issue_record = &issue_transport["issues"]["42"];
+    assert_eq!(
+        issue_record["labels"][0],
+        "design",
+        "idea->design pass should update issue transport stage label"
+    );
+    assert_eq!(
+        issue_record["comments_by_marker"]["design-marker"],
+        "Generated design prompt",
+        "idea->design pass should upsert design comment marker"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
@@ -2263,7 +2354,40 @@ fn worker_multi_pass_progresses_stage_to_closed() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    for _ in 0..5 {
+    // Run 3 workers to reach the DesignReview approval gate.
+    for _ in 0..3 {
+        let worker = ctx.command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    // Approval is explicit: transition DesignReview -> Accepted.
+    let approve = ctx.command()
+        .arg("transition")
+        .arg("--intake-key")
+        .arg("intent-multi-pass")
+        .arg("--stage")
+        .arg("accepted")
+        .current_dir(&root)
+        .output()
+        .expect("approve transition to accepted");
+    assert!(
+        approve.status.success(),
+        "approval transition should succeed: {}",
+        String::from_utf8_lossy(&approve.stderr)
+    );
+
+    // Run 2 workers to progress Accepted -> Implementation -> Closed.
+    for _ in 0..2 {
         let worker = ctx.command()
             .arg("worker")
             .arg("--worker-id")

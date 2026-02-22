@@ -247,6 +247,7 @@ fn run_makegen_generated_rust_layer1(crate_out_dir: &Path) -> RuntimeOutcome {
         .arg("--manifest-path")
         .arg(crate_out_dir.join("Cargo.toml"))
         .arg("--")
+        .arg("--trace-json")
         .current_dir(workspace_root());
     for _ in &bindings {
         run_cmd.arg(&generated_path_arg);
@@ -342,50 +343,9 @@ fn run_makegen_interpreter() -> RuntimeOutcome {
     }
 }
 
-fn module_entrypoint_id(relative_module: &str) -> String {
-    let module_name = relative_module
-        .trim_start_matches("dsl/")
-        .trim_end_matches(".dag")
-        .replace('/', ".");
-    let function_name = module_name
-        .rsplit('.')
-        .next()
-        .unwrap_or(module_name.as_str())
-        .to_string();
-    format!("{module_name}::{function_name}")
-}
-
-fn apply_module_entrypoint_inputs(
-    mocks: &mut BoundaryMocks,
-    relative_module: &str,
-    inputs: &[(&str, &str)],
-) {
-    let entrypoint = module_entrypoint_id(relative_module);
-    let entrypoint_dot = entrypoint.replace("::", ".");
-    let module_stub = entrypoint.replace("::", "_").replace('.', "_");
-    for (port, value) in inputs {
-        mocks.set_input(&entrypoint, *port, Value::Str((*value).to_string()));
-        mocks.set_input(&entrypoint_dot, *port, Value::Str((*value).to_string()));
-        mocks.set_input(
-            format!("param_source_{module_stub}_{port}"),
-            *port,
-            Value::Str((*value).to_string()),
-        );
-    }
-}
-
 fn run_module_interpreter_execution_nodes(
     relative_module: &str,
     inputs: &[(&str, &str)],
-) -> Result<Vec<String>, String> {
-    let mut input_mocks = BoundaryMocks::new();
-    apply_module_entrypoint_inputs(&mut input_mocks, relative_module, inputs);
-    run_module_interpreter_execution_nodes_with_mocks(relative_module, input_mocks)
-}
-
-fn run_module_interpreter_execution_nodes_with_mocks(
-    relative_module: &str,
-    input_mocks: BoundaryMocks,
 ) -> Result<Vec<String>, String> {
     let context = DriverContext {
         roots: vec![workspace_root().join("dsl")],
@@ -395,6 +355,21 @@ fn run_module_interpreter_execution_nodes_with_mocks(
         .map_err(|error| format!("compile failed for {relative_module}: {error}"))?;
     let resolved = resolve_lowered_dag(&output.lowered_dag)
         .map_err(|error| format!("resolve failed for {relative_module}: {error}"))?;
+
+    let mut input_mocks = BoundaryMocks::new();
+    let entrypoints = gunbc_ir::detect_entrypoints(&resolved);
+    for (port_name, value) in inputs {
+        for (node_id, ep_port, _) in &entrypoints.entrypoint_ports {
+            if ep_port.0 == *port_name {
+                input_mocks.set_input(
+                    &node_id.0,
+                    *port_name,
+                    Value::Str((*value).to_string()),
+                );
+            }
+        }
+    }
+
     let mut dry_run_boundary_mocks = BoundaryMocks::new();
     for node in &resolved.nodes {
         for output_port in &node.outputs {
@@ -415,19 +390,67 @@ fn run_module_interpreter_execution_nodes_with_mocks(
     Ok(normalize_execution_nodes(nodes))
 }
 
-fn parse_generated_execution_nodes(stdout: &str, stderr: &str) -> Vec<String> {
-    let mut nodes = Vec::new();
-    for line in stdout.lines().chain(stderr.lines()) {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix('[') {
-            if let Some((node, _)) = rest.split_once("] intercepted=") {
-                nodes.push(node.to_string());
+fn run_module_interpreter_execution_nodes_typed(
+    relative_module: &str,
+    inputs: &[(&str, Value)],
+) -> Result<Vec<String>, String> {
+    let context = DriverContext {
+        roots: vec![workspace_root().join("dsl")],
+        target_file: Some(workspace_root().join(relative_module)),
+    };
+    let output = daglang_driver::compile_from_context(&context)
+        .map_err(|error| format!("compile failed for {relative_module}: {error}"))?;
+    let resolved = resolve_lowered_dag(&output.lowered_dag)
+        .map_err(|error| format!("resolve failed for {relative_module}: {error}"))?;
+
+    let mut input_mocks = BoundaryMocks::new();
+    let entrypoints = gunbc_ir::detect_entrypoints(&resolved);
+    for (port_name, value) in inputs {
+        for (node_id, ep_port, _) in &entrypoints.entrypoint_ports {
+            if ep_port.0 == *port_name {
+                input_mocks.set_input(&node_id.0, *port_name, value.clone());
             }
         }
     }
-    nodes.sort();
-    nodes.dedup();
-    normalize_execution_nodes(nodes)
+
+    let mut dry_run_boundary_mocks = BoundaryMocks::new();
+    for node in &resolved.nodes {
+        for output_port in &node.outputs {
+            dry_run_boundary_mocks.set_value(&node.id.0, &output_port.name.0, Value::Skipped);
+        }
+    }
+    let execution = execute_with_mode_and_inputs(
+        &resolved,
+        ExecutionMode::DryRun(dry_run_boundary_mocks),
+        Some(&input_mocks),
+    )
+    .map_err(|error| format!("execute failed for {relative_module}: {error}"))?;
+    let nodes = execution
+        .entries
+        .iter()
+        .map(|entry| entry.node_id.clone())
+        .collect::<Vec<_>>();
+    Ok(normalize_execution_nodes(nodes))
+}
+
+fn parse_trace_json_nodes(stderr: &str) -> Vec<String> {
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("{\"nodes\":") {
+            let parsed: serde_json::Value =
+                serde_json::from_str(trimmed).expect("--trace-json output should be valid JSON");
+            let nodes = parsed["nodes"]
+                .as_array()
+                .expect("trace JSON should contain nodes array");
+            return normalize_execution_nodes(
+                nodes
+                    .iter()
+                    .map(|n| n.as_str().expect("node id should be a string").to_string())
+                    .collect(),
+            );
+        }
+    }
+    panic!("no --trace-json output found in stderr")
 }
 
 fn normalize_execution_nodes(mut nodes: Vec<String>) -> Vec<String> {
@@ -815,6 +838,7 @@ fn run_infra_generated_rust_layer1(crate_out_dir: &Path) -> RuntimeOutcome {
         .arg("--manifest-path")
         .arg(crate_out_dir.join("Cargo.toml"))
         .arg("--")
+        .arg("--trace-json")
         .arg("dev")
         .arg("local")
         .arg("secret:github-token")
@@ -869,6 +893,7 @@ fn run_generated_rust_layer1_with_args(crate_out_dir: &Path, args: &[&str]) -> R
         .arg("--manifest-path")
         .arg(crate_out_dir.join("Cargo.toml"))
         .arg("--")
+        .arg("--trace-json")
         .current_dir(workspace_root());
     for arg in args {
         cmd.arg(arg);
@@ -1523,42 +1548,30 @@ fn infra_tool_rust_layer1_execution_trace_matches_interpreter() {
     let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_trace_diff_infra");
     compile_module_layer1_rust(module, &rust_layer1_out);
     let generated = run_infra_generated_rust_layer1(&rust_layer1_out);
-    let (generated_stdout, generated_stderr) = match generated {
-        RuntimeOutcome::Ran { stdout, stderr } => (stdout, stderr),
+    let generated_stderr = match generated {
+        RuntimeOutcome::Ran { stderr, .. } => stderr,
         RuntimeOutcome::Skipped { reason } => {
             panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
         }
     };
-    let generated_nodes = parse_generated_execution_nodes(&generated_stdout, &generated_stderr);
+    let generated_nodes = parse_trace_json_nodes(&generated_stderr);
     assert!(
         !generated_nodes.is_empty(),
         "generated rust layer1 runtime should emit execution trace for {module}"
     );
 
-    let mut mocks = BoundaryMocks::new();
-    mocks.set_input("tools.infra.infra", "environment", Value::Str("dev".to_string()));
-    mocks.set_input("tools.infra::infra", "environment", Value::Str("dev".to_string()));
-    mocks.set_input("tools.infra.infra", "runtime", Value::Str("local".to_string()));
-    mocks.set_input("tools.infra::infra", "runtime", Value::Str("local".to_string()));
-    mocks.set_input(
-        "tools.infra.infra",
-        "spec_targets",
-        Value::List(vec![Value::Str("secret:github-token".to_string())]),
-    );
-    mocks.set_input(
-        "tools.infra::infra",
-        "spec_targets",
-        Value::List(vec![Value::Str("secret:github-token".to_string())]),
-    );
-    mocks.set_input("tools.infra.infra", "request_token", Value::Str(String::new()));
-    mocks.set_input("tools.infra::infra", "request_token", Value::Str(String::new()));
-    mocks.set_input("tools.infra.infra", "request_url", Value::Str(String::new()));
-    mocks.set_input("tools.infra::infra", "request_url", Value::Str(String::new()));
-    mocks.set_input("tools.infra.infra", "allow_impersonation", Value::Bool(false));
-    mocks.set_input("tools.infra::infra", "allow_impersonation", Value::Bool(false));
-    mocks.set_input("tools.infra.infra", "execute", Value::Bool(false));
-    mocks.set_input("tools.infra::infra", "execute", Value::Bool(false));
-    let interpreter_nodes = run_module_interpreter_execution_nodes_with_mocks(module, mocks)
+    let interpreter_nodes = run_module_interpreter_execution_nodes_typed(
+        module,
+        &[
+            ("environment", Value::Str("dev".to_string())),
+            ("runtime", Value::Str("local".to_string())),
+            ("spec_targets", Value::List(vec![Value::Str("secret:github-token".to_string())])),
+            ("request_token", Value::Str(String::new())),
+            ("request_url", Value::Str(String::new())),
+            ("allow_impersonation", Value::Bool(false)),
+            ("execute", Value::Bool(false)),
+        ],
+    )
     .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
     assert_eq!(
         interpreter_nodes, generated_nodes,
@@ -1578,13 +1591,13 @@ fn sdlc_control_plane_rust_layer1_execution_trace_matches_interpreter() {
         unique_workspace_target_dir("runtime_rust_layer1_trace_diff_sdlc_control_plane");
     compile_module_layer1_rust(module, &rust_layer1_out);
     let generated = run_generated_rust_layer1_with_args(&rust_layer1_out, &[]);
-    let (generated_stdout, generated_stderr) = match generated {
-        RuntimeOutcome::Ran { stdout, stderr } => (stdout, stderr),
+    let generated_stderr = match generated {
+        RuntimeOutcome::Ran { stderr, .. } => stderr,
         RuntimeOutcome::Skipped { reason } => {
             panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
         }
     };
-    let generated_nodes = parse_generated_execution_nodes(&generated_stdout, &generated_stderr);
+    let generated_nodes = parse_trace_json_nodes(&generated_stderr);
     assert!(
         !generated_nodes.is_empty(),
         "generated rust layer1 runtime should emit execution trace for {module}"

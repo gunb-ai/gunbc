@@ -7,7 +7,7 @@
 
 module workflows.build_all
 
-import tools.compilation { compilation_ensure }
+import shared.compilation { compilation_ensure }
 import tools.codegen { codegen_ensure }
 import tools.build { build_all }
 

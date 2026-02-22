@@ -8,14 +8,8 @@ use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 pub type InfraGraphOp = DynOp;
 
 /// Get the declared signature for the infra workflow (auto-derived from DAG).
-pub fn build_signature() -> WorkflowSignature {
-    match build_infra_graph() {
-        Ok(dag) => infer_signature(&dag),
-        Err(err) => {
-            eprintln!("warning: failed to build infra DAG for signature: {err}");
-            WorkflowSignature::default()
-        }
-    }
+pub fn build_signature() -> Result<WorkflowSignature, BuilderError> {
+    build_infra_graph().map(|dag| infer_signature(&dag))
 }
 
 /// Build the infra orchestration graph from DSL source.
