@@ -89,7 +89,7 @@ fn add_cloud_credential_chain(
             "bind_secret",
             vec![
                 port("config", "CloudSecretConfig"),
-                port("service", "String"),
+                port("service", "NonEmptyString"),
                 port("secret_name", "GcpSecretId"),
             ],
             vec![port("config", "CloudSecretConfig")],
@@ -325,8 +325,8 @@ pub fn build_review_phase_graph_with_config(
             "resolve_auth",
             vec![port("provider", "NonEmptyString")],
             vec![
-                port("service", "String"),
-                port("scheme", "String"),
+                port("service", "NonEmptyString"),
+                port("scheme", "NonEmptyString"),
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
@@ -468,8 +468,8 @@ pub fn build_inline_review_graph_with_config(
             "resolve_auth",
             vec![port("provider", "NonEmptyString")],
             vec![
-                port("service", "String"),
-                port("scheme", "String"),
+                port("service", "NonEmptyString"),
+                port("scheme", "NonEmptyString"),
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
@@ -667,7 +667,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         Node::opaque(
             "format_artifact",
             vec![port("diff_files", "Map")],
-            vec![port("artifact", "String")],
+            vec![port("artifact", "NonEmptyString")],
             DynOp::new(ReviewOps::FormatDiffArtifact),
         ),
         &diff_triplet,
@@ -700,8 +700,8 @@ pub fn build_diff_review_graph_with_cloud_config(
             "resolve_auth",
             vec![port("provider", "NonEmptyString")],
             vec![
-                port("service", "String"),
-                port("scheme", "String"),
+                port("service", "NonEmptyString"),
+                port("scheme", "NonEmptyString"),
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
@@ -915,8 +915,8 @@ pub fn build_multi_source_review_graph_with_cloud_config(
             "resolve_auth",
             vec![port("provider", "NonEmptyString")],
             vec![
-                port("service", "String"),
-                port("scheme", "String"),
+                port("service", "NonEmptyString"),
+                port("scheme", "NonEmptyString"),
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
@@ -1107,7 +1107,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         Node::opaque(
             "format_artifact",
             vec![port("diff_files", "Map")],
-            vec![port("artifact", "String")],
+            vec![port("artifact", "NonEmptyString")],
             DynOp::new(ReviewOps::FormatDiffArtifact),
         ),
         &diff_triplet,
@@ -1128,8 +1128,8 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             "resolve_auth",
             vec![port("provider", "NonEmptyString")],
             vec![
-                port("service", "String"),
-                port("scheme", "String"),
+                port("service", "NonEmptyString"),
+                port("scheme", "NonEmptyString"),
                 port("header_name", "String"),
                 list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
