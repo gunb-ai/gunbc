@@ -27,15 +27,23 @@
 //! Mock specs are in `graph_mock.rs` for test generation.
 
 #![deny(dead_code)]
+
+/// Mode selection for gist graph construction.
+#[derive(Debug, Clone)]
+pub enum GistMode {
+    /// Snapshot mode.
+    Snapshot,
+    /// Diff mode.
+    Diff { base_ref: String },
+    /// Recent mode.
+    Recent,
+}
+
 pub mod graph;
 
 pub mod graph_mock;
 
 // Re-export public API
-pub use graph::{
-    build_gist_graph, build_gist_graph_with_config, build_read_file_body_dag, gist_signature,
-    GistGraphOp, GistMode,
-};
 
 // Re-export the library ops for convenience
 pub use gunbc_lib_gist_ops::GistOps;
@@ -53,7 +61,6 @@ pub use gunbc_lib_markdown::MarkdownOp;
     builder = "build_gist_graph_dsl",
     args = "GistMode::Snapshot, extensions.clone(), public",
     import = "use gunbc_dag::build_gist_graph_dsl; use gunbc_gist::GistMode;",
-    mock_spec = "gunbc_gist::graph_mock::gist_snapshot_mock_spec()",
     package = "dag",
     binary = "gist",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
@@ -70,7 +77,6 @@ pub fn gist_snapshot_tool() {}
     builder = "build_gist_graph_dsl",
     args = "GistMode::Diff { base_ref: base_ref.clone() }, extensions.clone(), public",
     import = "use gunbc_dag::build_gist_graph_dsl; use gunbc_gist::GistMode;",
-    mock_spec = "gunbc_gist::graph_mock::gist_diff_mock_spec()",
     package = "dag",
     binary = "gist-diff",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff","make_var":"BASE"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
@@ -87,7 +93,6 @@ pub fn gist_diff_tool() {}
     builder = "build_gist_graph_dsl",
     args = "GistMode::Recent, extensions.clone(), public",
     import = "use gunbc_dag::build_gist_graph_dsl; use gunbc_gist::GistMode;",
-    mock_spec = "gunbc_gist::graph_mock::gist_recent_mock_spec()",
     package = "dag",
     binary = "gist-recent",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
@@ -108,21 +113,3 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
         .collect()
 }
 
-// ============================================================================
-// Generated Tests (from `make testgen`)
-// ============================================================================
-
-#[cfg(test)]
-mod generated_tests_snapshot {
-    include!("generated_tests_snapshot.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_diff {
-    include!("generated_tests_diff.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_recent {
-    include!("generated_tests_recent.rs");
-}

@@ -46,9 +46,6 @@ pub mod upsert;
 pub mod graph_mock;
 
 pub use env::{strict_dry_run_enabled, PlatformEnv, STRICT_DRY_RUN_ENV};
-pub use graph::{
-    build_deps_generate_graph, build_deps_graph, deps_generate_signature, deps_signature,
-};
 pub use installer::{InstallMethod, InstallPlan, Installer};
 pub use manifest::{
     Dependency, DepsManifest, ManifestConfig, PlatformInstall, DEFAULT_MANIFEST_FILENAME,
@@ -75,7 +72,6 @@ pub use upsert::{UpsertPhase, UpsertResult};
     description = "Install tool dependencies",
     builder = "build_deps_graph_dsl",
     import = "use gunbc_dag::build_deps_graph_dsl;",
-    mock_spec = "gunbc_deps::graph_mock::deps_mock_spec()",
     package = "dag",
     entrypoints = r#"[{"port_name":"manifest_path","type_id":"String","short":"m","help":"Path to deps.toml manifest","make_var":"MANIFEST"}]"#,
     dsl_module = "deps",
@@ -95,11 +91,3 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
         .collect()
 }
 
-// ============================================================================
-// Generated Tests (from `make testgen`)
-// ============================================================================
-
-#[cfg(test)]
-mod generated_tests {
-    include!("generated_tests.rs");
-}

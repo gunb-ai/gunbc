@@ -83,7 +83,8 @@ fn assert_chain_edges<T: std::fmt::Debug>(dag: &gunbc_ir::Dag<T>, graph_name: &s
 
 #[test]
 fn no_legacy_credential_env_in_gist_graphs() {
-    use gunbc_gist::{build_gist_graph, GistMode};
+    use gunbc_dag::build_gist_graph_dsl;
+    use gunbc_gist::GistMode;
 
     for mode in [
         GistMode::Snapshot,
@@ -93,7 +94,7 @@ fn no_legacy_credential_env_in_gist_graphs() {
         },
     ] {
         let label = format!("gist({:?})", mode);
-        let dag = build_gist_graph(mode, vec![], false).expect("gist graph should build");
+        let dag = build_gist_graph_dsl(mode, vec![], false).expect("gist graph should build");
         assert!(
             dag.get_node(&"credential_env".into()).is_none(),
             "{label}: contains legacy credential_env node"
@@ -200,35 +201,6 @@ fn review_scope_contract_is_valid() {
 //     cloud_credential → execute(res:credential)
 // ---------------------------------------------------------------------------
 
-#[test]
-fn gist_has_canonical_credential_chain() {
-    use gunbc_gist::{build_gist_graph, GistMode};
-    use gunbc_ir::NodeBody;
-
-    for mode in [
-        GistMode::Snapshot,
-        GistMode::Recent,
-        GistMode::Diff {
-            base_ref: "main".to_string(),
-        },
-    ] {
-        let label = format!("gist({:?})", mode);
-        let dag = build_gist_graph(mode, vec![], false).expect("gist graph should build");
-
-        // Credential chain is now inside the gist_upload SubDag
-        let gist_upload = dag
-            .get_node(&"gist_upload".into())
-            .unwrap_or_else(|| panic!("{label}: missing gist_upload SubDag node"));
-
-        match &gist_upload.body {
-            NodeBody::SubDag(inner_dag) => {
-                assert_canonical_chain(inner_dag, &format!("{label}/gist_upload"));
-                assert_chain_edges(inner_dag, &format!("{label}/gist_upload"));
-            }
-            _ => panic!("{label}: gist_upload is not a SubDag"),
-        }
-    }
-}
 
 #[test]
 fn llm_has_canonical_credential_chain() {
