@@ -26,9 +26,8 @@ use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 use gunbc_testgen_registry::{iter_dag_specs, DagSpecDef};
 use std::fmt::Write;
-use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 #[derive(Clone)]
@@ -45,7 +44,7 @@ fn build_targets() -> Vec<&'static DagSpecDef> {
     targets
 }
 
-fn build_target_plans(targets: &[&'static DagSpecDef], output_dir: &PathBuf) -> Vec<TargetPlan> {
+fn build_target_plans(targets: &[&'static DagSpecDef], output_dir: &Path) -> Vec<TargetPlan> {
     targets
         .iter()
         .map(|spec| {
@@ -57,6 +56,22 @@ fn build_target_plans(targets: &[&'static DagSpecDef], output_dir: &PathBuf) -> 
             }
         })
         .collect()
+}
+
+fn read_existing_file(io: &dyn ResourceIo, path: &Path) -> Result<Option<String>, String> {
+    let exists = io
+        .file_exists(path)
+        .map_err(|e| format!("failed checking {}: {e}", path.display()))?;
+    if !exists {
+        return Ok(None);
+    }
+
+    let bytes = io
+        .read_file(path)
+        .map_err(|e| format!("failed reading {}: {e}", path.display()))?;
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|e| format!("{} is not valid UTF-8: {e}", path.display()))
 }
 
 fn render_target_content(target: &TargetPlan) -> Result<String, String> {
@@ -77,13 +92,13 @@ fn render_target_content(target: &TargetPlan) -> Result<String, String> {
     }
 }
 
-fn check_targets(plans: &[TargetPlan]) -> Result<Vec<String>, String> {
+fn check_targets(plans: &[TargetPlan], io: &dyn ResourceIo) -> Result<Vec<String>, String> {
     let mut ok_count = 0usize;
     let mut stale = Vec::new();
 
     for plan in plans {
         let content = render_target_content(plan)?;
-        let fresh = fs::read_to_string(&plan.output_path)
+        let fresh = read_existing_file(io, &plan.output_path)?
             .map(|existing| existing == content)
             .unwrap_or(false);
 
@@ -101,10 +116,14 @@ fn check_targets(plans: &[TargetPlan]) -> Result<Vec<String>, String> {
     Ok(stale)
 }
 
-fn generate_targets(plans: &[TargetPlan], dry_run: bool) -> Result<(), String> {
+fn generate_targets(
+    plans: &[TargetPlan],
+    dry_run: bool,
+    io: &dyn ResourceIo,
+) -> Result<(), String> {
     for plan in plans {
         let content = render_target_content(plan)?;
-        let fresh = fs::read_to_string(&plan.output_path)
+        let fresh = read_existing_file(io, &plan.output_path)?
             .map(|existing| existing == content)
             .unwrap_or(false);
 
@@ -118,16 +137,7 @@ fn generate_targets(plans: &[TargetPlan], dry_run: bool) -> Result<(), String> {
             continue;
         }
 
-        if let Some(parent) = plan.output_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| {
-                format!(
-                    "failed to create parent directory for {}: {e}",
-                    plan.output_path.display()
-                )
-            })?;
-        }
-
-        fs::write(&plan.output_path, content)
+        io.write_file(&plan.output_path, content.as_bytes())
             .map_err(|e| format!("failed to write {}: {e}", plan.output_path.display()))?;
         println!("[{}] wrote {}", plan.name, plan.output_path.display());
     }
@@ -158,9 +168,10 @@ fn main() {
     }
 
     let plans = build_target_plans(&targets, &output_dir);
+    let io = TransportIo::new();
 
     if resource_mode == ExecMode::Verify {
-        match check_targets(&plans) {
+        match check_targets(&plans, &io) {
             Ok(stale) => {
                 if !stale.is_empty() {
                     let mut body = String::new();
@@ -191,7 +202,7 @@ fn main() {
                 ("targets", targets.len().to_string()),
             ],
         );
-        if let Err(e) = generate_targets(&plans, dry_run) {
+        if let Err(e) = generate_targets(&plans, dry_run, &io) {
             print_attention(AttentionLevel::Error, "testgen generation failed", &e);
             process::exit(1);
         }

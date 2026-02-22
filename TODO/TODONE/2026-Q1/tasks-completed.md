@@ -385,3 +385,65 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | S12-8 | `--profile` CLI flag wired in daglang CLI/commands; parsing tests pass. | Done 2026-02-22 |
 | S12-5 | Pipeline `uses` interface resolution verified by successful `daglang compile --profile unit_test` and `--profile local` for `dsl/pipelines/sdlc.dag`. | Done 2026-02-22 |
 | TS-3 | Removed `Option<TypeRegistry>` fallback in testgen codegen (`TypeRegistry` now required by construction). | Done 2026-02-22 |
+
+---
+
+## Archived 2026-02-22 (full lane completion audit)
+
+### Lane 1: Type System + Graph Builders (all tasks)
+
+| ID | Task | Status |
+|----|------|--------|
+| TS-1 | GCP credential port types: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential/OIDC/token paths migrated. | Done 2026-02-22 |
+| TS-1b | Cloud-ops port types: 49 ports across 4 files. Runtime/config/auth ports migrated. | Done 2026-02-22 |
+| TS-1c | Review + LLM port types: 102+13 ports. Auth/provider ports migrated. | Done 2026-02-22 |
+| TS-1d | Remaining graph port types: aws/azure OIDC, gist, deps, testgen. | Done 2026-02-22 |
+
+### Lane 2: 100% Codegen Pipeline (all tasks)
+
+| ID | Task | Status |
+|----|------|--------|
+| L2-0 | Commit & PR session changes. | Done 2026-02-22 |
+| S12-9 | Credential binding via profile (`env(...)`/`secret(...)`). | Done 2026-02-22 |
+| S12-1 | IssueProvider interface wiring. | Done 2026-02-22 |
+| S12-2 | ClaimStore interface wiring. | Done 2026-02-22 |
+| S12-3 | OutcomeLedger interface wiring. | Done 2026-02-22 |
+| S12-4 | AgentProvider interface wiring. | Done 2026-02-22 |
+| S12-18 | SignalStore interface wiring. | Done 2026-02-22 |
+| S12-19 | ArtifactStore interface wiring. | Done 2026-02-22 |
+| S12-10 | SubDag node execution (`SubDagExecutorOp`). | Done 2026-02-22 |
+| S12-11 | Pipeline node execution (`PipelineDispatchOp`, `resolve_lowered_dag_flat`). | Done 2026-02-22 |
+| S12-12 | Worker DAG invocation (`CompiledStageDispatcher`). Deleted hand-written stage handlers. | Done 2026-02-22 |
+| S12-17 | Pipeline parameter injection (`--param key=value`). | Done 2026-02-22 |
+| S12-13 | Code review stage via `sdlc_stages.dag`. | Done 2026-02-22 |
+| S12-14 | Acceptance testing stage with pass/fail gating. | Done 2026-02-22 |
+| S12-15 | Agent branch management (spawn, push, PR). | Done 2026-02-22 |
+| S12-16 | Agent polling in worker sweep (`sweep_inflight_agents`). | Done 2026-02-22 |
+| L2-3 | SDLC compiled dry-run (all 8 stages via compiled pipeline). | Done 2026-02-22 |
+| L2-4 | Final workspace green (testgen/codegen fresh, all tests pass, clippy clean). | Done 2026-02-22 |
+
+### Post-Merge: Type System Hard Cutover (all tasks)
+
+| ID | Task | Status |
+|----|------|--------|
+| TS-7 | Deleted `types_match()` + `canonical_type_name()`; migrated to `TypeId`-based lookups. | Done 2026-02-22 |
+| TS-4 | Deleted `PortType::Any` enum variant entirely. | Done 2026-02-22 |
+
+### Lane 4: Codebase Polish (remaining tasks)
+
+| ID | Task | Status |
+|----|------|--------|
+| CU-2 | Narrowed `#[allow(dead_code)]` on Parser impl. | Done 2026-02-22 |
+| CU-7 | Typed API migration: removed untyped `port(...)` from all active graph builders. | Done 2026-02-22 |
+| CU-8 | Resource trait string port elimination: normalized `res:*` constructors to typed resource system. | Done 2026-02-22 |
+| CU-9 | Canonical port naming invariants: standardized `file:write` + `return` across lowering/runtime/snapshots. | Done 2026-02-22 |
+
+### Lane 5: GraphIR Decommission (completed tasks only)
+
+| ID | Task | Status |
+|----|------|--------|
+| GD-1 | Cut over DSL-module tool targets. | Done 2026-02-22 |
+| GD-2 | Interactive/external lowering + passthrough. | Done 2026-02-22 |
+| GD-3 | Replace manual workspace subdags. | Done 2026-02-22 |
+| GD-4 | Delete section 9C legacy tool graph stacks (testgen_dag deleted, registry-driven generation). | Done 2026-02-22 |
+| GD-6 | Fail-closed resolver + CI guardrails. | Done 2026-02-22 |

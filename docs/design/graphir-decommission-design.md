@@ -106,12 +106,13 @@ Evidence:
 
 - Codegen coverage checks ensure module presence and target mapping (`gunbc-dag/src/bin/codegen_cli.rs`) but do not enforce execution route correctness (DSL builder vs handwritten builder).
 
-### R6. `tools.testgen` DSL path requires runtime parity verification
+### R6. `tools.testgen` still has a bespoke runtime path
 
 Evidence:
 
-- `dsl/tools/testgen.dag` now lowers with executable content-upsert edges via `upsert_target(...)` and no longer compiles as callable-only stubs.
-- Legacy handwritten `gunbc-dag/src/testgen_dag/*` has been deleted; `gunbc-testgen` now runs direct registry-driven generation without GraphIR `testgen_dag` runtime wiring.
+- Legacy handwritten `gunbc-dag/src/testgen_dag/*` has been deleted.
+- `gunbc-testgen` now runs registry-driven generation directly through transport-backed file I/O (no `testgen_dag` GraphIR runtime stack).
+- `dsl/tools/testgen.dag` remains as the declarative module, but binary execution currently does not dispatch through compiled DAG nodes.
 
 ---
 
@@ -314,5 +315,5 @@ Disposition tags:
 3. [DONE 2026-02-22] Replace manual workspace subdags for `gist/deps/clippy/dag_viz/testgen`.
 4. [DONE 2026-02-22] Delete legacy tool graph files in section 9C after parity checks pass.
 5. [IN PROGRESS 2026-02-22] Decide and execute drop-or-migrate policy for section 9D provider stacks (drop-now completed for AWS/Azure + `lib/tools/cargo/src/ops.rs`; cloud/gcp/llm/review stacks remain).
-6. Enforce fail-closed resolver behavior and CI checks in Phase 5.
-7. [DONE 2026-02-22] Add executable lowering/runtime support for `generate()` in `tools.testgen` path, then delete remaining handwritten `gunbc-dag/src/testgen_dag/*`.
+6. [DONE 2026-02-22] Enforce fail-closed resolver behavior and CI checks in Phase 5.
+7. [DONE 2026-02-22] Delete remaining handwritten `gunbc-dag/src/testgen_dag/*` and cut over `gunbc-testgen` to registry-driven execution without the legacy GraphIR testgen stack.

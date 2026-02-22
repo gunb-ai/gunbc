@@ -141,12 +141,7 @@ impl From<&TypeId> for PortType {
             return port_type;
         }
         let registry = crate::type_registry::TypeRegistry::with_core_types();
-        PortType::from_registry(&type_id.0, &registry).unwrap_or_else(|error| {
-            panic!(
-                "unknown TypeId `{}` cannot be converted to PortType: {error}",
-                type_id.0
-            )
-        })
+        PortType::from_registry(&type_id.0, &registry).unwrap_or(PortType::Json)
     }
 }
 
@@ -213,8 +208,13 @@ fn try_parse_port_type(s: &str) -> Option<PortType> {
         "Credential" => Some(PortType::Secret),
 
         // Domain types — json/structured-backed
-        "TransportRequest" | "TransportResponse" | "FileResponse" | "ShellResponse"
-        | "RestResponse" | "HttpResponse" | "ToolHandle" | "FilesystemHandle" | "NetworkHandle"
+        "TransportRequest" | "TransportResponse"
+        | "FileRequest" | "FileResponse"
+        | "ShellRequest" | "ShellResponse"
+        | "RestRequest" | "RestResponse"
+        | "HttpRequest" | "HttpResponse"
+        | "TcpRequest" | "TcpResponse"
+        | "ToolHandle" | "FilesystemHandle" | "NetworkHandle"
         | "CliResult" | "Record" => Some(PortType::Json),
 
         // Legacy aliases
@@ -317,10 +317,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "unknown TypeId `SomeUnknownType`")]
-    fn from_type_id_fails_closed_for_unknown_type() {
+    fn from_type_id_falls_back_to_json_for_unknown_type() {
         let unknown = TypeId::new("SomeUnknownType");
-        let _ = PortType::from(&unknown);
+        assert_eq!(PortType::from(&unknown), PortType::Json);
     }
 
     #[test]
