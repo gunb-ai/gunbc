@@ -2467,6 +2467,17 @@ impl Parser {
                 } else if self.eat(&TokenKind::LBrace) {
                     let mut args = Vec::new();
                     while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                        if self.eat(&TokenKind::Dot) {
+                            // tolerate spread-ish variant pattern syntax (`...`)
+                            // used in corpus examples like `GcpConfig { ... }`
+                            self.eat(&TokenKind::Dot);
+                            self.eat(&TokenKind::Dot);
+                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                let _ = self.expect_ident()?;
+                            }
+                            self.eat(&TokenKind::Comma);
+                            continue;
+                        }
                         let field = self.expect_ident()?;
                         self.expect(&TokenKind::Colon)?;
                         let inner = self.parse_pattern()?;
@@ -2674,7 +2685,7 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
         match &sf.items[2].node {
             Item::FnDef(f) => {
                 assert!(!f.body.lossy);
-                assert!(matches!(f.body.stmts.first(), Some(Stmt::Expr(Expr::Match(_, arms))) if arms.is_empty()));
+                assert!(matches!(f.body.stmts.first(), Some(Stmt::Expr(Expr::Match(_, arms))) if arms.len() == 2));
             }
             other => panic!("expected FnDef, got {other:?}"),
         }
