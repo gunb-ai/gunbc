@@ -468,28 +468,14 @@ mod tests {
         writer.write_frame(&frame, &mut buf).unwrap();
 
         let output = String::from_utf8(buf).unwrap();
-        // After \x1b[2K, the visible content should be at most 20 chars
-        // (plus ANSI reset at end)
-        for line in output.lines() {
-            // Skip empty lines and ANSI-only lines
-            let stripped: String = line
-                .chars()
-                .filter(|c| !c.is_control() && *c != '\x1b')
-                .collect();
-            // Remove ANSI parameter chars ([, digits, ;)
-            let visible: String = stripped
-                .replace(['[', ';'], "")
-                .chars()
-                .filter(|c| !c.is_ascii_digit() || stripped.contains(*c))
-                .collect();
-            // The visible text should be truncated
-            if !visible.is_empty() {
-                assert!(
-                    visible.len() <= 20,
-                    "Line should be truncated to 20 cols: {:?}",
-                    line
-                );
-            }
-        }
+        // The visible content should be truncated to 20 chars
+        assert!(
+            output.contains("this line is definit"),
+            "Should contain truncated text: {output}"
+        );
+        assert!(
+            !output.contains("definitely"),
+            "Should NOT contain text beyond 20 cols: {output}"
+        );
     }
 }

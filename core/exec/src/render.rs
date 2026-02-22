@@ -191,7 +191,7 @@ mod tests {
     ) -> String {
         let frame = build_frame(progress, layout, mode, "◐", Tier::Unicode, &STANDARD);
         let mut buf = Vec::new();
-        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, false);
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, false, 0);
         writer.write_frame(&frame, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
     }
