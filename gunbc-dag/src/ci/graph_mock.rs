@@ -2,6 +2,7 @@
 
 use crate::ci::graph::build_ci_graph;
 use crate::resources::MAKEFILE_OUTPUT_PATH;
+use gunbc_ir::transport::{RestResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_test::MockSpec;
 use gunbc_testgen_registry::iter_dag_specs;
@@ -26,6 +27,26 @@ fn ci_path_for_node(node_id: &str) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+fn default_rest_transport_response() -> Value {
+    let mut response = RestResponse::new(
+        200,
+        serde_json::json!({
+            "access_token": "mock-access-token",
+            "accessToken": "mock-access-token",
+            "expires_in": "3600",
+            "token_type": "Bearer",
+            "name": "projects/mock-project/secrets/mock-secret/versions/latest",
+            "payload": { "data": "bW9jaw==" },
+            "bindings": [],
+            "etag": "mock-etag"
+        }),
+    );
+    response
+        .headers
+        .insert("x-oauth-scopes".to_string(), "github:api".to_string());
+    Value::Response(TransportResponse::Rest(response))
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
@@ -86,6 +107,19 @@ pub fn ci_mock_spec() -> MockSpec {
     );
     spec = spec.boundary("tools.codegen::codegen", "success", Value::Bool(true));
     spec = spec.boundary("tools.codegen::codegen", "ran", Value::Bool(false));
+    // CI includes GCP REST parse stages for credential-chain tests.
+    // Force REST-shaped transport mocks so baseline DryRun never falls
+    // into Shell-vs-REST parse mismatches.
+    spec = spec.transport_mock(
+        "execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion",
+        "response",
+        default_rest_transport_response(),
+    );
+    spec = spec.transport_mock(
+        "execute_transport_services_gcp_sts_gcp_STS_Exchange",
+        "response",
+        default_rest_transport_response(),
+    );
     spec = spec.boundary(
         "shared.dag_util::generated_header",
         "return",

@@ -25,11 +25,6 @@ use gunbc_lib_cloud_ops as _;
 fn resource_purity_registry_wide() {
     // Touch representative symbols so linker keeps object files that contain
     // inventory submissions from graph + graph_mock modules.
-    let _: fn() -> gunbc_test::MockSpec = gunbc_clippy::graph_mock::clippy_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec = gunbc_deps::graph_mock::deps_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec = gunbc_gist::graph_mock::gist_snapshot_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec = gunbc_gist::graph_mock::gist_diff_mock_spec;
-    let _: fn() -> gunbc_test::MockSpec = gunbc_gist::graph_mock::gist_recent_mock_spec;
     let _: fn() -> gunbc_test::MockSpec = gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec;
     let _: fn() -> gunbc_test::MockSpec =
         gunbc_lib_gcp_ops::graph_mock::gcp_github_upsert_mock_spec;

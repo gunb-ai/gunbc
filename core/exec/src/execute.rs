@@ -1893,34 +1893,16 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
 /// transport nodes without requiring graph_mock to reference their IDs
 /// (which aren't visible at the outer DAG level).
 fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> BoundaryMocks {
-    use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
-
     let mut augmented = existing.clone();
     for node in &body_dag.nodes {
         if is_transport_execution_node(node) {
             // Only add default mocks for outputs that don't already have one
             for port in &node.outputs {
                 if !existing.has_mock(&node.id, &port.name) {
-                    // Choose a type-appropriate default based on resource inputs:
-                    // nodes with FilesystemHandle inputs are file transports.
-                    let is_file_transport = node
-                        .inputs
-                        .iter()
-                        .any(|p| p.type_id.0 == "FilesystemHandle");
-                    let default_response = if is_file_transport {
-                        Value::Response(TransportResponse::File(FileResponse {
-                            path: String::new(),
-                            operation: FileOp::Read,
-                            success: true,
-                            content: Some(String::new()),
-                            bytes: None,
-                            exists: None,
-                            error: None,
-                        }))
-                    } else {
-                        Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
-                    };
-                    augmented.set_value(&node.id.0, &port.name.0, default_response);
+                    // Loop-body transport nodes may represent REST/File/Shell/TCP.
+                    // When no explicit mock exists, mark the execute output as skipped.
+                    // Downstream parse ops handle Skipped by emitting typed defaults.
+                    augmented.set_value(&node.id.0, &port.name.0, Value::Skipped);
                 }
             }
         }

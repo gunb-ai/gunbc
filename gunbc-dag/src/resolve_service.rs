@@ -149,6 +149,11 @@ impl Executable for GenericRestParseOp {
                 }
                 out.ok()
             }
+            Some(Value::Response(other_response)) => Err(ExecError::new(format!(
+                "expected REST response for {} parse, got {}",
+                self.spec.path_template,
+                transport_response_kind(other_response)
+            ))),
             Some(other) => Err(ExecError::new(format!(
                 "expected REST response for {} parse, got {:?}",
                 self.spec.path_template,
@@ -528,6 +533,16 @@ fn json_type_name(value: &serde_json::Value) -> &'static str {
         serde_json::Value::String(_) => "string",
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
+    }
+}
+
+fn transport_response_kind(response: &TransportResponse) -> &'static str {
+    match response {
+        TransportResponse::Rest(_) => "Rest",
+        TransportResponse::Http(_) => "Http",
+        TransportResponse::File(_) => "File",
+        TransportResponse::Tcp(_) => "Tcp",
+        TransportResponse::Shell(_) => "Shell",
     }
 }
 
