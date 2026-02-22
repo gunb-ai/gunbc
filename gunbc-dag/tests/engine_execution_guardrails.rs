@@ -24,6 +24,7 @@ const ALLOWED_FILES: &[&str] = &[
     "gunbc-dag/src/bin/infra.rs",
     "gunbc-dag/src/bin/sdlc.rs",
     "gunbc-dag/src/mock_defaults.rs",
+    "gunbc-dag/src/resolve.rs", // SubDagExecutorOp: inner DAG execution surface
 ];
 
 #[test]

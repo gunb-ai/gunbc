@@ -116,10 +116,10 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| 1: Type system + graph builders | **ACTIVE** | TS-1 (partial), TS-1b (partial), TS-1d (partial) |
-| 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-9 (partial), S12-17 (partial), S12-18 (partial), S12-19 (partial), S12-16 (partial). Commit: L2-0. Final: L2-3, L2-4 |
-| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-4 (needs both Lane 1 + Lane 2 done) |
-| 4: Codebase polish | **ACTIVE** | CU-2 (ready), CU-7..CU-9 |
+| 1: Type system + graph builders | **DONE** | All TS-1/1b/1c/1d complete |
+| 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-9 (partial), S12-17 (partial), S12-16 (partial). Commit: L2-0. Final: L2-3, L2-4 |
+| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-4 (needs Lane 2 done) |
+| 4: Codebase polish | **ACTIVE** | CU-7..CU-9 |
 | 5: GraphIR decommission (exclusive) | **ACTIVE** | GD-4 (ready)..GD-6 |
 
 ---
@@ -134,10 +134,10 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports -> `Secret`. Identity ports -> `GcpServiceAccountEmail`. Project ports -> `GcpProjectId`. Audience ports -> `NonEmptyString`. 2 duplicate graph functions share these ports. | -- | L | In Progress (specified domain types done; 24 generic String ports remain: `access_token`, `client_id`, `scheme`, etc.) |
-| **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | In Progress (~85% typed; 19 generic String ports remain: `runtime`, `access_token`, scope lists) |
-| **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` -> `NonEmptyString`. `secret_name` -> `SecretName`. | -- | L | Done (2026-02-22) -- specified ports converted; 30 auxiliary String ports (`question`, `answer`, `system_prompt`, `header_name`) out of scope |
-| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | -- | S | In Progress (aws/azure/testgen done; gist 4 + deps 8 String ports remain) |
+| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports -> `Secret`. Identity ports -> `GcpServiceAccountEmail`. Project ports -> `GcpProjectId`. Audience ports -> `NonEmptyString`. 2 duplicate graph functions share these ports. | -- | L | Done (2026-02-22) -- all 62 ports converted: `expires_at`→NonEmptyString, `version`→GcpSecretVersion, `client_id`→NonEmptyString |
+| **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | Done (2026-02-22) -- all ports already typed; no remaining String ports |
+| **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` -> `NonEmptyString`. `secret_name` -> `SecretName`. | -- | L | Done (2026-02-22) -- all ports converted including auxiliary: `question`, `answer`, `system_prompt`, `artifact`, `stats`, `dimension`, `depth`, `prior_findings`, `summary` → NonEmptyString |
+| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | -- | S | Done (2026-02-22) -- all ports converted: gist `result`/`markdown`/`contents`→NonEmptyString; deps `manifest_content`/`install_script`/`script`/`stdout`/`stderr`→NonEmptyString, `platform`→Platform |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
 
@@ -309,7 +309,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 
 | ID | Task | Location | Deps | Size | Status |
 |----|------|----------|------|------|--------|
-| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Ready (S12-6 done; lane dependency cleared) |
+| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | Done (2026-02-22) -- removed blanket `#[allow(dead_code)]`; no dead methods found |
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
 | **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | -- | L | |
 | **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | -- | S | |
