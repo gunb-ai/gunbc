@@ -8,6 +8,7 @@
 
 use gunbc_ir::render_ir::{AnsiText, CursorAction, Frame, FrameRenderer, OutputMedium, PlainText};
 use gunbc_ir::symbols::{SymbolSet, Tier, CURSOR_HIDE, CURSOR_SHOW};
+use std::borrow::Cow;
 use std::io::Write;
 
 // ---------------------------------------------------------------------------
@@ -19,14 +20,16 @@ pub struct AnsiFrameRenderer {
     medium: AnsiText,
     last_frame_lines: usize,
     is_tty: bool,
+    max_line_width: usize,
 }
 
 impl AnsiFrameRenderer {
-    pub fn new(medium: AnsiText, is_tty: bool) -> Self {
+    pub fn new(medium: AnsiText, is_tty: bool, max_line_width: usize) -> Self {
         Self {
             medium,
             last_frame_lines: 0,
             is_tty,
+            max_line_width,
         }
     }
 }
@@ -43,6 +46,7 @@ impl FrameRenderer<AnsiText> for AnsiFrameRenderer {
             sink,
             self.is_tty,
             &mut self.last_frame_lines,
+            self.max_line_width,
         )
     }
 }
@@ -57,14 +61,16 @@ pub struct PlainFrameRenderer {
     medium: PlainText,
     last_frame_lines: usize,
     is_tty: bool,
+    max_line_width: usize,
 }
 
 impl PlainFrameRenderer {
-    pub fn new(medium: PlainText, is_tty: bool) -> Self {
+    pub fn new(medium: PlainText, is_tty: bool, max_line_width: usize) -> Self {
         Self {
             medium,
             last_frame_lines: 0,
             is_tty,
+            max_line_width,
         }
     }
 }
@@ -81,6 +87,7 @@ impl FrameRenderer<PlainText> for PlainFrameRenderer {
             sink,
             self.is_tty,
             &mut self.last_frame_lines,
+            self.max_line_width,
         )
     }
 }
@@ -89,12 +96,58 @@ impl FrameRenderer<PlainText> for PlainFrameRenderer {
 // Shared cursor I/O logic
 // ---------------------------------------------------------------------------
 
+/// Truncate a rendered line to fit within `max_width` visible columns.
+///
+/// ANSI escape sequences are preserved (they occupy zero display width).
+/// If the line is truncated, a reset code is appended to close any open styles.
+fn truncate_to_width(rendered: &str, max_width: usize) -> Cow<'_, str> {
+    if max_width == 0 {
+        return Cow::Borrowed(rendered);
+    }
+
+    let mut visible_width: usize = 0;
+    let mut in_escape = false;
+    let mut truncate_at: Option<usize> = None;
+
+    for (byte_offset, c) in rendered.char_indices() {
+        if c == '\x1b' {
+            in_escape = true;
+            continue;
+        }
+        if in_escape {
+            // CSI sequences end with an ASCII letter
+            if c.is_ascii_alphabetic() {
+                in_escape = false;
+            }
+            continue;
+        }
+
+        let w = crate::frame_build::char_width(c);
+        if visible_width + w > max_width {
+            truncate_at = Some(byte_offset);
+            break;
+        }
+        visible_width += w;
+    }
+
+    match truncate_at {
+        None => Cow::Borrowed(rendered),
+        Some(pos) => {
+            let mut truncated = rendered[..pos].to_string();
+            // Reset any open ANSI styles
+            truncated.push_str("\x1b[0m");
+            Cow::Owned(truncated)
+        }
+    }
+}
+
 fn render_frame_common<M: OutputMedium<Output = String>>(
     medium: &M,
     frame: &Frame,
     sink: &mut dyn Write,
     is_tty: bool,
     last_frame_lines: &mut usize,
+    max_line_width: usize,
 ) -> std::io::Result<()> {
     let overwrite = is_tty && frame.cursor_action == CursorAction::Overwrite;
     let num_lines = frame.lines.len();
@@ -113,7 +166,14 @@ fn render_frame_common<M: OutputMedium<Output = String>>(
     // \x1b[2K clears the current line before writing, so old content is
     // overwritten in-place with no visible gap between frames.
     for line in &frame.lines {
-        let rendered = medium.render_line(line);
+        let raw = medium.render_line(line);
+        // Truncate lines to terminal width to prevent wrapping, which would
+        // cause cursor-up counts (based on logical lines) to be incorrect.
+        let rendered: Cow<str> = if overwrite && max_line_width > 0 {
+            truncate_to_width(&raw, max_line_width)
+        } else {
+            Cow::Borrowed(&raw)
+        };
         if overwrite {
             write!(buf, "\x1b[2K")?;
         }
@@ -156,21 +216,28 @@ pub enum FrameWriter {
 
 impl FrameWriter {
     /// Create the appropriate renderer for the given settings.
+    ///
+    /// `max_line_width` truncates rendered lines to this many visible columns,
+    /// preventing terminal line wrapping that would break cursor-up positioning.
+    /// Use 0 to disable truncation (non-TTY / non-overwrite modes).
     pub fn new(
         color_enabled: bool,
         tier: Tier,
         symbol_set: &'static SymbolSet,
         is_tty: bool,
+        max_line_width: usize,
     ) -> Self {
         if color_enabled {
             Self::Ansi(AnsiFrameRenderer::new(
                 AnsiText { tier, symbol_set },
                 is_tty,
+                max_line_width,
             ))
         } else {
             Self::Plain(PlainFrameRenderer::new(
                 PlainText { tier, symbol_set },
                 is_tty,
+                max_line_width,
             ))
         }
     }
@@ -261,7 +328,7 @@ mod tests {
     #[test]
     fn test_write_frame_plain_no_tty() {
         let mut buf = Vec::new();
-        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, false);
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, false, 0);
 
         let frame = make_frame(vec!["hello", "world"], CursorAction::Overwrite);
         writer.write_frame(&frame, &mut buf).unwrap();
@@ -279,7 +346,7 @@ mod tests {
     #[test]
     fn test_write_frame_tty_cursor_up_and_clear() {
         let mut buf = Vec::new();
-        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true);
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true, 0);
 
         // First frame
         let frame1 = make_frame(vec!["first"], CursorAction::Overwrite);
@@ -314,6 +381,7 @@ mod tests {
                 symbol_set: &STANDARD,
             },
             false,
+            0,
         );
 
         let frame = make_frame(vec!["a", "b", "c"], CursorAction::Overwrite);
@@ -324,7 +392,7 @@ mod tests {
     #[test]
     fn test_write_frame_shorter_frame_clears_leftover_lines() {
         let mut buf = Vec::new();
-        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true);
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true, 0);
 
         // First frame: 3 lines
         let frame1 = make_frame(vec!["a", "b", "c"], CursorAction::Overwrite);
@@ -352,5 +420,76 @@ mod tests {
             "Expected at least 3 per-line clears (1 content + 2 leftover), got {clear_count}"
         );
         assert!(output.contains("x\n"));
+    }
+
+    #[test]
+    fn test_truncate_to_width_preserves_short_line() {
+        let line = "abc";
+        let result = truncate_to_width(line, 80);
+        assert!(matches!(result, Cow::Borrowed(_)));
+        assert_eq!(&*result, "abc");
+    }
+
+    #[test]
+    fn test_truncate_to_width_truncates_long_line() {
+        let line = "abcdefghijklmnop";
+        let result = truncate_to_width(line, 5);
+        assert!(matches!(result, Cow::Owned(_)));
+        assert_eq!(&*result, "abcde\x1b[0m");
+    }
+
+    #[test]
+    fn test_truncate_to_width_preserves_ansi_codes() {
+        let line = "\x1b[31mred text\x1b[0m";
+        let result = truncate_to_width(line, 4);
+        // "red " = 4 visible chars, ANSI codes preserved
+        assert!(result.starts_with("\x1b[31mred "));
+        assert!(result.ends_with("\x1b[0m"));
+    }
+
+    #[test]
+    fn test_truncate_to_width_zero_disables() {
+        let line = "any length line";
+        let result = truncate_to_width(line, 0);
+        assert!(matches!(result, Cow::Borrowed(_)));
+        assert_eq!(&*result, line);
+    }
+
+    #[test]
+    fn test_tty_truncation_prevents_wrapping() {
+        let mut buf = Vec::new();
+        // Terminal width of 20 columns
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true, 20);
+
+        let frame = make_frame(
+            vec!["this line is definitely longer than twenty columns"],
+            CursorAction::Overwrite,
+        );
+        writer.write_frame(&frame, &mut buf).unwrap();
+
+        let output = String::from_utf8(buf).unwrap();
+        // After \x1b[2K, the visible content should be at most 20 chars
+        // (plus ANSI reset at end)
+        for line in output.lines() {
+            // Skip empty lines and ANSI-only lines
+            let stripped: String = line
+                .chars()
+                .filter(|c| !c.is_control() && *c != '\x1b')
+                .collect();
+            // Remove ANSI parameter chars ([, digits, ;)
+            let visible: String = stripped
+                .replace(['[', ';'], "")
+                .chars()
+                .filter(|c| !c.is_ascii_digit() || stripped.contains(*c))
+                .collect();
+            // The visible text should be truncated
+            if !visible.is_empty() {
+                assert!(
+                    visible.len() <= 20,
+                    "Line should be truncated to 20 cols: {:?}",
+                    line
+                );
+            }
+        }
     }
 }

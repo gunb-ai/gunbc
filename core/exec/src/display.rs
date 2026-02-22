@@ -25,8 +25,8 @@ use crate::progress::{
 use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
 use crate::{
-    execute_with_progress_and_mode_and_inputs, lower, topo_sort, ExecError, Executable,
-    ExecutionMode, NodeState,
+    execute_with_mode_and_inputs_and_detail, execute_with_progress_and_mode_and_inputs, lower,
+    topo_sort, ExecError, Executable, ExecutionMode, NodeState,
 };
 use gunbc_ir::layout::compute_layout;
 use gunbc_ir::render_ir::{CursorAction, Frame};
@@ -192,6 +192,34 @@ pub struct DisplayResult {
     /// True when execution completed but policy indicates non-zero exit
     /// (for example: `success_port=false`).
     pub should_fail: bool,
+}
+
+/// Run a fast dry-run preflight against the given DAG and inputs.
+///
+/// This catches wiring/input contract failures before real execution starts.
+/// Transport executors are intercepted in dry-run mode.
+pub fn run_small_preflight<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<(), ExecError> {
+    execute_with_mode_and_inputs_and_detail(
+        dag,
+        ExecutionMode::DryRun(BoundaryMocks::new()),
+        input_mocks,
+        gunbc_ir::LogDetailLevel::Basic,
+    )
+    .map(|_| ())
+    .map_err(|e| ExecError::new(format!("small-test preflight failed: {e}")))
+}
+
+/// Run a lowering-only preflight against the given DAG.
+///
+/// This is useful for composed graphs that should be structurally valid even
+/// before execution (for example freshness-composed DAGs).
+pub fn run_lowering_preflight<T: Clone>(dag: &Dag<T>) -> Result<(), ExecError> {
+    lower(dag)
+        .map(|_| ())
+        .map_err(|e| ExecError::new(format!("small-test lowering preflight failed: {e}")))
 }
 
 /// Execute a DAG and display results based on terminal capabilities.
@@ -433,6 +461,7 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
         profile.tier,
         &STANDARD,
         profile.is_tty,
+        profile.viewport.width as usize,
     );
     let mut stderr = io::stderr();
     let mut last_tick = Instant::now();
@@ -864,6 +893,7 @@ fn render_final_static_frame_seeded(
         profile.tier,
         &STANDARD,
         profile.is_tty,
+        profile.viewport.width as usize,
     );
     writer.seed_last_frame_lines(seed_lines);
     let _ = writer.write_frame(&frame, &mut io::stderr());

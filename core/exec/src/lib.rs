@@ -52,7 +52,8 @@ pub use ci_context::CiContext;
 pub use display::{
     execute_and_display, execute_and_display_with_result, execute_and_display_with_result_config,
     print_attention, print_error_boxes, print_preamble, print_preamble_auto, print_value,
-    AttentionLevel, DisplayConfig, DisplayMode, DisplayResult, DisplayVerbosity, Preamble,
+    run_lowering_preflight, run_small_preflight, AttentionLevel, DisplayConfig, DisplayMode,
+    DisplayResult, DisplayVerbosity, Preamble,
 };
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};

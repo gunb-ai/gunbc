@@ -288,6 +288,8 @@ fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bo
     let mut exec_items = vec![
         "compose_with_freshness".to_string(),
         "execute_and_display".to_string(),
+        "run_lowering_preflight".to_string(),
+        "run_small_preflight".to_string(),
         "BoundaryMocks".to_string(),
         "ExecutionMode".to_string(),
         "Preamble".to_string(),
@@ -697,12 +699,28 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          \n\
          // Parse arguments\n\
          {arg_parsing}\n\
-         // Build the graph and compose with freshness checks\n\
+         // Build the graph\n\
          let dag = {graph_builder_call};\n\
-         let steps = check_and_plan_freshness();\n\
-         let dag = compose_with_freshness(dag, steps);\n\
          \n\
          {input_mocks}\n\
+         // Small preflight: dry-run the tool DAG before real execution.\n\
+         if !dry_run {{\n\
+             if let Err(error) = run_small_preflight(&dag, Some(&input_mocks)) {{\n\
+                 eprintln!(\"ERROR: {}\", error);\n\
+                 process::exit(1);\n\
+             }}\n\
+         }}\n\
+         \n\
+         // Compose with freshness checks and validate lowering.\n\
+         let steps = check_and_plan_freshness();\n\
+         let dag = compose_with_freshness(dag, steps);\n\
+         if !dry_run {{\n\
+             if let Err(error) = run_lowering_preflight(&dag) {{\n\
+                 eprintln!(\"ERROR: {}\", error);\n\
+                 process::exit(1);\n\
+             }}\n\
+         }}\n\
+         \n\
          // Set up execution mode\n\
          {dry_run_block}\n\
          \n\
@@ -865,12 +883,28 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          args.extend_from_slice(raw_args);\n\
          \n\
          {arg_parsing}\n\
-         // Build the graph and compose with freshness checks\n\
+         // Build the graph\n\
          let dag = {graph_builder_call};\n\
-         let steps = check_and_plan_freshness();\n\
-         let dag = compose_with_freshness(dag, steps);\n\
          \n\
          {input_mocks}\n\
+         // Small preflight: dry-run the tool DAG before real execution.\n\
+         if !dry_run {{\n\
+             if let Err(error) = run_small_preflight(&dag, Some(&input_mocks)) {{\n\
+                 eprintln!(\"error: {}\", error);\n\
+                 process::exit(1);\n\
+             }}\n\
+         }}\n\
+         \n\
+         // Compose with freshness checks and validate lowering.\n\
+         let steps = check_and_plan_freshness();\n\
+         let dag = compose_with_freshness(dag, steps);\n\
+         if !dry_run {{\n\
+             if let Err(error) = run_lowering_preflight(&dag) {{\n\
+                 eprintln!(\"error: {}\", error);\n\
+                 process::exit(1);\n\
+             }}\n\
+         }}\n\
+         \n\
          // Set up execution mode\n\
          {dry_run_block}\n\
          \n\
