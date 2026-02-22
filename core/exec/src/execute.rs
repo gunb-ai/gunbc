@@ -39,6 +39,7 @@ use gunbc_ir::{
     canonical_edge_order, classify_coercion, detect_boundaries, detect_entrypoints,
     normalize_resource_id, AccessMode, AppliedCoercion, BoundaryInfo, Cardinality, Dag,
     LogDetailLevel, Node, NodeBody, NodeId, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    RESOURCE_PORT_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -768,6 +769,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             }
         }
 
+        if strict_dry_run_active(mode) {
+            validate_strict_dry_run_inputs(node, &inputs)?;
+        }
+
         // Capture the final input map for execution logs before ownership can move.
         let captured_inputs = capture_log_inputs_for_node(node, &inputs, log_detail);
 
@@ -1034,6 +1039,58 @@ fn runtime_file_guard_enabled() -> bool {
             )
         })
         .unwrap_or(false)
+}
+
+/// Parse strict dry-run toggle from `GUNBC_EXEC_STRICT_DRY_RUN`.
+///
+/// Enabled values: `1`, `true`, `yes`, `on` (case-insensitive).
+/// Disabled values (or unset): everything else.
+fn strict_dry_run_enabled() -> bool {
+    std::env::var("GUNBC_EXEC_STRICT_DRY_RUN")
+        .ok()
+        .map(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn strict_dry_run_active(mode: &ExecutionMode) -> bool {
+    strict_dry_run_enabled()
+        && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
+}
+
+fn validate_strict_dry_run_inputs<T>(
+    node: &Node<T>,
+    inputs: &HashMap<String, Value>,
+) -> Result<(), ExecError> {
+    for port in &node.inputs {
+        if !port.cardinality.requires_one() || port.name.0 == "after" {
+            continue;
+        }
+
+        let Some(value) = inputs.get(&port.name.0) else {
+            let kind = if port.name.0.starts_with(RESOURCE_PORT_PREFIX) {
+                "resource"
+            } else {
+                "data"
+            };
+            return Err(ExecError::new(format!(
+                "strict dry-run missing required {kind} input: node='{}' port='{}'",
+                node.id.0, port.name.0
+            )));
+        };
+
+        if matches!(value, Value::Skipped) {
+            return Err(ExecError::new(format!(
+                "strict dry-run consumed skipped required input: node='{}' port='{}'",
+                node.id.0, port.name.0
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn file_op_requires_write_declaration(op: FileOp) -> bool {
@@ -1335,6 +1392,10 @@ fn build_node_inputs<T>(
         {
             inputs.insert(port.name.0.clone(), Value::List(vec![]));
         }
+    }
+
+    if strict_dry_run_active(mode) {
+        validate_strict_dry_run_inputs(node, &inputs)?;
     }
 
     Ok((inputs, applied_coercions))
@@ -2066,7 +2127,7 @@ mod tests {
     use gunbc_ir::build::*;
     use gunbc_ir::Edge;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex, OnceLock};
 
     // Test operation: produces a fixed value, or passes through inputs if `pass_through` is set.
     #[derive(Debug, Clone)]
@@ -2110,6 +2171,29 @@ mod tests {
 
     // Backward-compat alias used in existing tests
     type Produce = TestOp;
+
+    fn with_strict_dry_run_env<F>(enabled: bool, f: F)
+    where
+        F: FnOnce() + std::panic::UnwindSafe,
+    {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        if enabled {
+            std::env::set_var("GUNBC_EXEC_STRICT_DRY_RUN", "true");
+        } else {
+            std::env::remove_var("GUNBC_EXEC_STRICT_DRY_RUN");
+        }
+
+        let result = std::panic::catch_unwind(f);
+        std::env::remove_var("GUNBC_EXEC_STRICT_DRY_RUN");
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
 
     fn file_response(path: &str, operation: FileOp) -> Value {
         Value::Response(TransportResponse::File(gunbc_ir::transport::FileResponse {
@@ -2729,6 +2813,67 @@ mod tests {
         // execute IS a transport executor — should be intercepted
         let execute_entry = log.get("execute").unwrap();
         assert!(execute_entry.was_intercepted);
+    }
+
+    #[test]
+    fn test_strict_dry_run_missing_required_input_fails() {
+        with_strict_dry_run_env(true, || {
+            let mut dag: Dag<Produce> = Dag::new();
+            dag.add_node(Node::opaque(
+                "consumer",
+                vec![port("payload", "String")],
+                vec![port("out", "String")],
+                TestOp::produce("out", Value::Str("ok".to_string())),
+            ));
+
+            let err = execute_with_mode(&dag, ExecutionMode::DryRun(BoundaryMocks::new()))
+                .expect_err("strict dry-run must fail on missing required input");
+            let message = err.to_string();
+            assert!(message.contains("strict dry-run missing required data input"));
+            assert!(message.contains("consumer"));
+            assert!(message.contains("payload"));
+        });
+    }
+
+    #[test]
+    fn test_strict_dry_run_accepts_explicit_input_mock() {
+        with_strict_dry_run_env(true, || {
+            let mut dag: Dag<Produce> = Dag::new();
+            dag.add_node(Node::opaque(
+                "consumer",
+                vec![port("payload", "String")],
+                vec![port("out", "String")],
+                TestOp::produce("out", Value::Str("ok".to_string())),
+            ));
+
+            let mut mocks = BoundaryMocks::new();
+            mocks.set_input("consumer", "payload", Value::Str("seed".to_string()));
+            let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))
+                .expect("strict dry-run should pass when required input is mocked");
+
+            let entry = log.get("consumer").expect("consumer node should execute");
+            assert_eq!(
+                entry.outputs.get("out"),
+                Some(&Value::Str("ok".to_string()))
+            );
+        });
+    }
+
+    #[test]
+    fn test_lenient_dry_run_keeps_missing_required_input_ergonomics() {
+        with_strict_dry_run_env(false, || {
+            let mut dag: Dag<Produce> = Dag::new();
+            dag.add_node(Node::opaque(
+                "consumer",
+                vec![port("payload", "String")],
+                vec![port("out", "String")],
+                TestOp::produce("out", Value::Str("ok".to_string())),
+            ));
+
+            let log = execute_with_mode(&dag, ExecutionMode::DryRun(BoundaryMocks::new()))
+                .expect("lenient dry-run should remain permissive for missing inputs");
+            assert!(log.get("consumer").is_some());
+        });
     }
 
     #[test]
