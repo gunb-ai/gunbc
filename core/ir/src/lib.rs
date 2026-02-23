@@ -70,7 +70,6 @@ pub mod node;
 pub mod patterns;
 pub mod plain_render;
 pub mod platform;
-pub mod port_type;
 pub mod render_ir;
 pub mod resource;
 pub mod signature;
@@ -158,7 +157,6 @@ pub use plain_render::PlainStructuredRenderer;
 pub use platform::{
     AbiEnv, Arch, ExecutionEnv, Os, RuntimePlatform, TargetTriple, ToolchainCommands, Vendor,
 };
-pub use port_type::PortType;
 pub use render_ir::{
     AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
     DocumentBody, DocumentRenderer, FileHeader, Frame, FrameRenderer, GraphicsElement,

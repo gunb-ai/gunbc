@@ -186,6 +186,66 @@ fn codegen_ensure_command() -> UnitCommand {
     )
 }
 
+fn gist_snapshot_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
+    let mut commands = BTreeMap::new();
+    commands.insert(
+        NodeId::from("gist.compilation_ensure"),
+        compilation_ensure_command(),
+    );
+    commands.insert(
+        NodeId::from("gist.codegen_ensure"),
+        codegen_ensure_command(),
+    );
+    commands.insert(
+        NodeId::from("gist.gist_create"),
+        UnitCommand::cargo(
+            "gist snapshot upload",
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-gist"],
+        ),
+    );
+    commands
+}
+
+fn gist_diff_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
+    let mut commands = BTreeMap::new();
+    commands.insert(
+        NodeId::from("gist.compilation_ensure"),
+        compilation_ensure_command(),
+    );
+    commands.insert(
+        NodeId::from("gist.codegen_ensure"),
+        codegen_ensure_command(),
+    );
+    commands.insert(
+        NodeId::from("gist.gist_create"),
+        UnitCommand::cargo(
+            "gist diff upload",
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-gist-diff"],
+        ),
+    );
+    commands
+}
+
+fn gist_recent_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
+    let mut commands = BTreeMap::new();
+    commands.insert(
+        NodeId::from("gist.compilation_ensure"),
+        compilation_ensure_command(),
+    );
+    commands.insert(
+        NodeId::from("gist.codegen_ensure"),
+        codegen_ensure_command(),
+    );
+    commands.insert(
+        NodeId::from("gist.gist_create"),
+        UnitCommand::cargo(
+            "gist recent upload",
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-gist-recent"],
+        ),
+    );
+    commands
+}
+
 fn bootstrap_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     let mut commands = BTreeMap::new();
     commands.insert(
@@ -363,6 +423,9 @@ pub fn workflow_unit_commands(
     let commands = match normalized.as_str() {
         "ci" => ci_unit_commands(),
         "test-all" => test_all_unit_commands(),
+        "gist" | "gist-snapshot" => gist_snapshot_unit_commands(),
+        "gist-diff" => gist_diff_unit_commands(),
+        "gist-recent" => gist_recent_unit_commands(),
         "bootstrap" => bootstrap_unit_commands(),
         "makegen" => makegen_unit_commands(),
         "pragma" => pragma_unit_commands(),
@@ -479,6 +542,14 @@ mod tests {
             test_all_codegen.args.contains(&"--mode=ensure".to_string()),
             "test_all.codegen should run wrapper in ensure mode"
         );
+    }
+
+    #[test]
+    fn workflow_unit_commands_supports_gist_aliases() {
+        let gist = workflow_unit_commands("gist").expect("gist");
+        let snapshot = workflow_unit_commands("gist-snapshot").expect("snapshot");
+        assert_eq!(gist.len(), snapshot.len());
+        assert!(gist.contains_key(&NodeId::from("gist.gist_create")));
     }
 
     #[test]

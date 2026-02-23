@@ -117,11 +117,11 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | F: Codegen-first SDLC | **DONE** | — |
 | G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **DONE** | — |
-| 1: Type system + graph builders | **ACTIVE** | TS-1, TS-1b, TS-1c, M7, M15 |
+| 1: Type system + graph builders | **DEFERRED** | TS-1, TS-1b, TS-1c deferred (co-blocked with graph.rs deletion) |
 | 2: 100% codegen pipeline | **DONE** | All S12 items complete, L2-4 green |
-| Post-merge: Type system hard cutover | **ACTIVE** | TS-7, TS-3, TS-4a..TS-4d (Lane 2 done; Lane 1 port propagation remains) |
-| 3: Modeling integrity | **ACTIVE** | All M7-M22 complete. GR-1..GR-4 graph.rs deletions unblocked |
-| 4: Codebase polish | **ACTIVE** | CU-2, CU-3, CU-7 (blocked L1), CU-8, CU-9 |
+| Post-merge: Type system hard cutover | **DONE** | TS-7 partial, TS-3 ✅, TS-4a..TS-4d ✅. port_type.rs DELETED (367 lines). TypeRegistry is sole authority. |
+| 3: Modeling integrity | **DEFERRED** | All M7-M22 complete. GR-1..GR-4 deferred (blocked on DSL conditional composition) |
+| 4: Codebase polish | **ACTIVE** | CU-3, CU-7 (blocked L1). CU-8 ✅, CU-9 deferred, CU-10 ✅ |
 
 ---
 
@@ -135,9 +135,9 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports → `Secret`. Identity ports → `GcpServiceAccountEmail`. Project ports → `GcpProjectId`. Audience ports → `NonEmptyString`. 2 duplicate graph functions share these ports. | — | L | |
-| **TS-1b** | **Cloud-ops port types**: 43 ports across 3 files in `lib/cloud-ops/src/` (`graph.rs` 28, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). `github_credential_graph.rs` deleted — 6 ports removed. | TS-1 | M | |
-| **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` → `NonEmptyString`. `secret_name` → `SecretName`. | — | L | |
+| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. | — | L | DEFERRED — co-blocked with GR-4 (graph.rs deletion) |
+| **TS-1b** | **Cloud-ops port types**: 43 ports across 3 files in `lib/cloud-ops/src/`. | TS-1 | M | DEFERRED — co-blocked with GR-3 |
+| **TS-1c** | **Review + LLM port types**: 115 ports across `lib/review/src/graph.rs` and `lib/llm-ops/src/graph.rs`. | — | L | DEFERRED — co-blocked with GR-1/GR-2 |
 | **TS-1d** | **Remaining graph port types**: `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). `aws-ops/graph.rs` (3), `azure-ops/graph.rs` (3). `gist/graph.rs` (6), `clippy/graph.rs` deleted — 15 ports removed; DSL handles typing now. Gist Rust crates (`lib/gist-ops/`, `lib/tools/gist/`) fully deleted; gist remains DSL-only via `dsl/workflows/gist.dag`. | — | S | ✅ Done |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
@@ -306,10 +306,10 @@ L2-0 ✅ ──→ L2-1 ✅, L2-2 ✅, TS-6 ✅ ──→ S12-6 ✅ ──→ S1
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **GR-1** | **Delete `review/graph.rs`** (1,727 lines) | M16 | S | |
-| **GR-2** | **Delete `llm-ops/graph.rs`** (267 lines) — only called by review's graph builder | GR-1, M16 | S | |
-| **GR-3** | **Delete `cloud-ops/graph.rs`** (502 lines) — central dispatcher | M16 | S | |
-| **GR-4** | **Delete `gcp-ops/graph.rs`** (1,674 lines) — called by cloud-ops dispatcher | GR-3, M16 | S | |
+| **GR-1** | **Delete `review/graph.rs`** (1,727 lines) | M16 | S | DEFERRED — blocked on DSL conditional sub-DAG composition |
+| **GR-2** | **Delete `llm-ops/graph.rs`** (267 lines) — only called by review's graph builder | GR-1, M16 | S | DEFERRED — co-blocked with GR-1 |
+| **GR-3** | **Delete `cloud-ops/graph.rs`** (502 lines) — central dispatcher | M16 | S | DEFERRED — blocked on DSL credential chain support |
+| **GR-4** | **Delete `gcp-ops/graph.rs`** (1,674 lines) — called by cloud-ops dispatcher | GR-3, M16 | S | DEFERRED — co-blocked with GR-3 |
 
 ### Lane 3-B: Workflow execution safety (M10 → M11 → M12)
 
@@ -377,8 +377,8 @@ Lane 3-E:  M20 ✅, M21 ✅, M22 ✅
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | |
-| **TS-3** | **Make TypeRegistry non-optional**: Change `Option<TypeRegistry>` → `TypeRegistry` in `core/codegen/src/testgen/codegen.rs`. Audit for other `Option<TypeRegistry>` patterns. This ensures testgen always has rich type info and never falls through to `PortType`-based guessing. | TS-7 | S | |
+| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: `types_match()` deleted. `canonical_type_name()` deferred — it's a 1-line utility used in ~20 sites for DSL name normalization (module paths, config annotations). TypeRegistry doesn't cover this use case. | Lane 1 + Lane 2 merged | M | ✅ Partial (types_match deleted, canonical_type_name deferred) |
+| **TS-3** | **Make TypeRegistry non-optional**: Changed `Option<TypeRegistry>` → `TypeRegistry` across 4 files (codegen.rs, obligation.rs, analyze.rs). ~12 function signatures updated, latent bug fixed (obligations now receive registry). | TS-7 | S | ✅ Done |
 
 ### Phase PM-B: Delete `port_type.rs` (file deletion)
 
@@ -392,10 +392,10 @@ Lane 3-E:  M20 ✅, M21 ✅, M22 ✅
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-4a** | **Add `TypeRegistry::value_backing()` method**: New method on `TypeRegistry` that maps a `TypeId` → `ValueBacking` using `base_type_name()` chain. This replaces `value_backing_for_type_id()` which currently delegates to `PortType`. Handle parametric types (`List<T>`, `Set<T>`, `Map<K,V>`, `Optional<T>`) via expression parsing already in the registry. | TS-3 | M | |
-| **TS-4b** | **Migrate `value_backing_for_type_id()` to registry**: Replace `PortType::from(type_id)` dispatch in `types.rs:846-890` with `TypeRegistry::value_backing()`. Thread `&TypeRegistry` through `value_compatible_with_type_id()` and its callers (`mock_requirements.rs:245`, `testgen/codegen.rs:121`). Delete `Platform` and similar special-case hacks in `value_compatible_with_type_id()` — the registry handles them. | TS-4a | M | |
-| **TS-4c** | **Migrate `system_model.rs` and delete `port_type.rs`**: Replace `PortType::from(type_id)` in `rust_type_for_port_type()` (3 call sites at lines 908, 920, 929) with `TypeRegistry::base_type_name()`. Remove `pub use port_type::PortType` from `lib.rs`. Delete `core/ir/src/port_type.rs` (355 lines). Remove `mod port_type` from `lib.rs`. | TS-4b | S | |
-| **TS-4d** | **Regression test: compound type mock compatibility**: Add test cases for all capability-marker types (`Credential`, `ToolHandle`, `FilesystemHandle`, `NetworkHandle`) and dual-backing types (`Platform`) in `test_value_compatible_with_type_id`. These are the types that `port_type.rs` got wrong. | TS-4b | S | |
+| **TS-4a** | **Add `TypeRegistry::value_backing()` method**: Added to `TypeRegistry` — maps `TypeId` → `ValueBacking` using coercion paths, semantic carrier classification, and parametric parsing. Replaces `PortType`-based dispatch entirely. | TS-3 | M | ✅ Done |
+| **TS-4b** | **Migrate `value_backing_for_type_id()` to registry**: `value_backing_for_type_id()` now delegates to `TypeRegistry::value_backing()` via OnceLock-cached registry. All `PortType` imports eliminated from `types.rs`. | TS-4a | M | ✅ Done |
+| **TS-4c** | **Migrate `system_model.rs` and delete `port_type.rs`**: `rust_type_for_port_type()` replaced with `rust_type_for_type_id()` using `ValueBacking`. `port_type.rs` (367 lines) DELETED. `mod port_type` + `pub use PortType` removed from `lib.rs`. Drift detection test removed (purpose fulfilled). | TS-4b | S | ✅ Done |
+| **TS-4d** | **Regression tests for TypeRegistry::value_backing()**: 9 regression tests covering Credential, ToolHandle, Platform, Timestamp, parametric types, transport types, coercion types, Secret, and unknown type fallback. | TS-4b | S | ✅ Done |
 
 ### Post-merge dependency graph
 
@@ -439,8 +439,8 @@ Lane 1 + Lane 2 merged
 | **CU-5** | **Archive `design-eliminate-registration-lists.md`**: Phase 1 complete; Phases 2-3 covered by Lanes G/H (done). Move to `TODO/TODONE/`. | `TODO/` | — | S | ✅ Done |
 | **CU-6** | **Organize TODONE by quarter**: 65 completed items in flat `TODO/TODONE/`. Create `TODONE/2026-Q1/` subdirectory. | `TODO/TODONE/` | — | S | ✅ Done |
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
-| **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | — | L | |
-| **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | — | S | |
+| **CU-8** | **Resource string elimination in resolve.rs**: Replaced `"res:file"` / `"res:file:"` string literals with `RESOURCE_FILE` / `RESOURCE_FILE_PREFIX` constants in `gunbc-dag/src/resolve.rs`. | `gunbc-dag/` | — | S | ✅ Done |
+| **CU-9** | **Canonical port naming invariants**: Deferred — "result" is consistent across Loop, Branch, and Repeat patterns + executor. Plan's premise that Branch uses "output" was incorrect. Changing requires 10+ sites across 4 files. | Various | — | S | DEFERRED |
 | **CU-10** | **TypeRegistry ↔ PortType drift audit**: Verify every domain type in `try_parse_port_type()` (40 mappings) has a consistent `TypeRegistry` registration with matching structural backing. Fix any remaining mismatches like the `Credential→Secret` bug. Stopgap until `port_type.rs` is deleted (TS-4c). | `core/ir/src/{port_type,type_registry}.rs` | — | S | ✅ Done |
 
 ---

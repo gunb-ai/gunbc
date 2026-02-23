@@ -2564,25 +2564,21 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     }
 }
 
-/// Check whether `got` is compatible with `expected` using the TypeRegistry
-/// for coercion path discovery, falling back to canonical name comparison.
+/// Check whether `got` is compatible with `expected` using the TypeRegistry.
 fn types_match(expected: &str, got: &str) -> bool {
     if expected == got {
         return true;
     }
-    // Canonicalize and check structural equality
-    let expected_canonical = canonical_type_name(expected);
-    let got_canonical = canonical_type_name(got);
-    if expected_canonical == got_canonical
-        || expected_canonical.rsplit('.').next() == got_canonical.rsplit('.').next()
-    {
+    // Short-name fallback for qualified DSL names (e.g. std.types.String == String)
+    if expected.rsplit('.').next() == got.rsplit('.').next() {
         return true;
     }
-    // Check TypeRegistry coercion paths (e.g. TextFilePath → FilePath → String)
+    // TypeRegistry coercion paths (e.g. TextFilePath → FilePath → String)
     use gunbc_ir::type_registry::TypeRegistry;
     let registry = TypeRegistry::with_core_types();
-    let got_id = gunbc_ir::TypeId::from(got_canonical.as_str());
-    let expected_id = gunbc_ir::TypeId::from(expected_canonical.as_str());
+    let got_id = gunbc_ir::TypeId::from(got.rsplit('.').next().unwrap_or(got));
+    let expected_id =
+        gunbc_ir::TypeId::from(expected.rsplit('.').next().unwrap_or(expected));
     registry.is_compatible(&got_id, &expected_id)
 }
 

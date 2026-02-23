@@ -105,7 +105,7 @@ pub fn analyze_dag<T>(dag: &Dag<T>) -> DagAnalysis {
 /// to generate tests.
 pub fn analyze_dag_with_obligations<T>(
     dag: &Dag<T>,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
     resource_accesses: Option<&[ResourceAccess]>,
 ) -> (DagAnalysis, ObligationSet) {
     let analysis = analyze_dag(dag);
@@ -348,7 +348,8 @@ mod tests {
         ));
         dag.add_edge(edge("a", "out", "b", "in"));
 
-        let (analysis, obligations) = analyze_dag_with_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let (analysis, obligations) = analyze_dag_with_obligations(&dag, &registry, None);
 
         assert_eq!(analysis.node_count, 2);
         assert!(obligations.stats().total > 0);

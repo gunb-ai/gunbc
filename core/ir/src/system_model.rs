@@ -5,7 +5,7 @@
 
 use crate::dag::{Edge, Port};
 use crate::node::Node;
-use crate::port_type::PortType;
+use crate::types::{parse_unary_generic_type_id, ValueBacking};
 use crate::type_registry::TypeExprError;
 use crate::InvocationContract;
 use crate::Predicate;
@@ -970,31 +970,40 @@ fn invocation_tag(invocation: &Invocation) -> String {
     }
 }
 
-fn rust_type_for_port_type(port_type: &PortType, original_type_id: &TypeId) -> String {
-    match port_type {
-        PortType::String => "String".to_string(),
-        PortType::Bool => "bool".to_string(),
-        PortType::Int => "i64".to_string(),
-        PortType::Float => "f64".to_string(),
-        PortType::Bytes => "Vec<u8>".to_string(),
-        PortType::Json => {
-            // Domain types with known Rust paths resolve to concrete types;
-            // generic Json falls back to serde_json::Value.
-            match original_type_id.0.as_str() {
-                "FileResponse" => "gunbc_ir::transport::FileResponse".to_string(),
-                "ShellResponse" => "gunbc_ir::transport::ShellResponse".to_string(),
-                "RestResponse" => "gunbc_ir::transport::RestResponse".to_string(),
-                "HttpResponse" => "gunbc_ir::transport::HttpResponse".to_string(),
-                _ => "serde_json::Value".to_string(),
-            }
-        }
-        PortType::Secret => "String".to_string(),
-        PortType::List(inner) => {
-            let inner_type =
-                rust_type_for_port_type(inner, &TypeId::new(inner.to_type_id().0.clone()));
-            format!("Vec<{inner_type}>")
-        }
-        PortType::Any => "gunbc_ir::Value".to_string(),
+fn rust_type_for_type_id(type_id: &TypeId) -> String {
+    let raw = &type_id.0;
+
+    // "Any" maps to our Value type.
+    if raw == "Any" {
+        return "gunbc_ir::Value".to_string();
+    }
+
+    // Domain types with known Rust paths.
+    match raw.as_str() {
+        "FileResponse" => return "gunbc_ir::transport::FileResponse".to_string(),
+        "ShellResponse" => return "gunbc_ir::transport::ShellResponse".to_string(),
+        "RestResponse" => return "gunbc_ir::transport::RestResponse".to_string(),
+        "HttpResponse" => return "gunbc_ir::transport::HttpResponse".to_string(),
+        _ => {}
+    }
+
+    // List<T> → Vec<T>
+    if let Some(inner) = parse_unary_generic_type_id(raw, "List") {
+        let inner_rust = rust_type_for_type_id(&TypeId::from(inner));
+        return format!("Vec<{inner_rust}>");
+    }
+
+    // Use ValueBacking for structural mapping.
+    match crate::types::value_backing_for_type_id(raw) {
+        ValueBacking::String => "String".to_string(),
+        ValueBacking::Bool => "bool".to_string(),
+        ValueBacking::Int => "i64".to_string(),
+        ValueBacking::Float => "f64".to_string(),
+        ValueBacking::Bytes => "Vec<u8>".to_string(),
+        ValueBacking::Unit => "()".to_string(),
+        ValueBacking::List => "Vec<serde_json::Value>".to_string(),
+        ValueBacking::Set => "Vec<serde_json::Value>".to_string(),
+        ValueBacking::Json | ValueBacking::Map => "serde_json::Value".to_string(),
     }
 }
 
@@ -1027,11 +1036,10 @@ pub fn render_contract_test_harness(spec: &ContractTestSpec) -> String {
         .iter()
         .map(|input| {
             let type_id = input.input_type.type_id();
-            let port_type = PortType::from(type_id);
             format!(
                 "{}: {}",
                 sanitize_ident(&input.name),
-                rust_type_for_port_type(&port_type, type_id)
+                rust_type_for_type_id(type_id)
             )
         })
         .collect::<Vec<_>>()
@@ -1039,8 +1047,7 @@ pub fn render_contract_test_harness(spec: &ContractTestSpec) -> String {
 
     let return_type = if spec.outputs.len() == 1 {
         let type_id = spec.outputs[0].output_type.type_id();
-        let port_type = PortType::from(type_id);
-        rust_type_for_port_type(&port_type, type_id).to_string()
+        rust_type_for_type_id(type_id)
     } else {
         format!(
             "({})",
@@ -1048,8 +1055,7 @@ pub fn render_contract_test_harness(spec: &ContractTestSpec) -> String {
                 .iter()
                 .map(|out| {
                     let type_id = out.output_type.type_id();
-                    let port_type = PortType::from(type_id);
-                    rust_type_for_port_type(&port_type, type_id)
+                    rust_type_for_type_id(type_id)
                 })
                 .collect::<Vec<_>>()
                 .join(", ")

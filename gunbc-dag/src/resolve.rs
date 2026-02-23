@@ -36,7 +36,7 @@ use daglang_syntax::parser;
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
-use gunbc_ir::resource::AccessMode;
+use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
@@ -595,7 +595,7 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
             resolved_node
                 .inputs
-                .push(Port::resource("res:file", "FilesystemHandle", mode));
+                .push(Port::resource(RESOURCE_FILE, "FilesystemHandle", mode));
         }
         resolved.add_node(resolved_node);
     }
@@ -1408,7 +1408,7 @@ fn needs_transport_resource(
     // Only add if not already present.
     let already_has = resolved.inputs.iter().any(|port| {
         port.type_id.0 == "FilesystemHandle"
-            && (port.name.0 == "res:file" || port.name.0.starts_with("res:file:"))
+            && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX))
     });
     if already_has {
         None
@@ -1422,7 +1422,7 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
     for node in &dag.nodes {
         for port in &node.inputs {
             let is_filesystem_resource_port = port.type_id.0 == "FilesystemHandle"
-                && (port.name.0 == "res:file" || port.name.0.starts_with("res:file:"));
+                && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX));
             if !is_filesystem_resource_port {
                 continue;
             }

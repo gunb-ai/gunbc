@@ -496,7 +496,7 @@ impl std::fmt::Display for ObligationStats {
 /// satisfaction, acyclicity) are either omitted or marked as `Verified`.
 pub fn collect_obligations<T>(
     dag: &Dag<T>,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
     resource_accesses: Option<&[ResourceAccess]>,
 ) -> ObligationSet {
     let mut obligations = Vec::new();
@@ -572,7 +572,7 @@ fn collect_execution_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObl
 /// Bucket B: Contract obligations.
 fn collect_contract_obligations<T>(
     dag: &Dag<T>,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
     obligations: &mut Vec<ProofObligation>,
 ) {
     // B.1: Edge predicate entailment
@@ -714,7 +714,7 @@ fn collect_contract_obligations<T>(
     // B.4: Coercion compatibility + coverage — validate edge contracts with
     // contract-aware coercion. Emit invalid obligations for incompatibilities,
     // and coverage obligations for implicit cardinality coercions.
-    let coercion_report = validate_coercions_with_registry(dag, registry);
+    let coercion_report = validate_coercions_with_registry(dag, Some(registry));
     for error in coercion_report.errors {
         let edge_label = format!(
             "{}.{} → {}.{}",
@@ -1086,7 +1086,7 @@ fn collect_resource_obligations<T>(
 fn check_predicate_entailment(
     from_type: &TypeId,
     to_type: &TypeId,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
 ) -> EntailmentStatus {
     // Same type → trivially verified
     if from_type.0 == to_type.0 {
@@ -1110,15 +1110,8 @@ fn check_predicate_entailment(
         };
     }
 
-    // If we have a registry, check contracts
-    let Some(reg) = registry else {
-        return EntailmentStatus::Unknown {
-            reason: "no type registry available".to_string(),
-        };
-    };
-
-    let from_dag = reg.get_by_name(&from_type.0);
-    let to_dag = reg.get_by_name(&to_type.0);
+    let from_dag = registry.get_by_name(&from_type.0);
+    let to_dag = registry.get_by_name(&to_type.0);
 
     match (from_dag, to_dag) {
         (Some(from_td), Some(to_td)) => {
@@ -1194,7 +1187,8 @@ mod tests {
         ));
         dag.add_edge(edge("source", "out", "sink", "in"));
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
         let stats = obligations.stats();
 
         // Should have obligations from all buckets
@@ -1230,7 +1224,8 @@ mod tests {
             (),
         ));
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
 
         assert!(obligations.all.iter().any(|o| matches!(
             &o.kind,
@@ -1273,7 +1268,8 @@ mod tests {
         dag.add_edge(edge("fs_env", "res:file", "execute", "res:file"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
 
         // Should have transport interception obligation
         assert!(obligations.all.iter().any(|o| matches!(
@@ -1315,7 +1311,8 @@ mod tests {
         ));
         dag.add_edge(edge("env", "tool:clippy", "lint", "tool:clippy"));
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
 
         // Resource input connected should be discharged (edge exists)
         let connected = obligations.all.iter().find(|o| {
@@ -1345,7 +1342,8 @@ mod tests {
         ));
         // No edge providing the tool!
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
 
         // Disconnected resource input is now Invalid (structural error),
         // not Unknown (needs test). There's nothing to test — the edge is missing.
@@ -1380,7 +1378,8 @@ mod tests {
             ResourceAccess::write("b", "file.txt"),
         ];
 
-        let obligations = collect_obligations(&dag, None, Some(&accesses));
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, Some(&accesses));
 
         // Conflict is a provable structural error, now Invalid
         let conflict = obligations.all.iter().find(|o| {
@@ -1415,7 +1414,8 @@ mod tests {
         ));
         dag.add_edge(edge("a", "out", "b", "in"));
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
         let stats = obligations.stats();
 
         assert!(stats.total > 0);
@@ -1427,29 +1427,37 @@ mod tests {
 
     #[test]
     fn test_entailment_same_type() {
+        let registry = TypeRegistry::with_core_types();
         let status =
-            check_predicate_entailment(&TypeId("String".into()), &TypeId("String".into()), None);
+            check_predicate_entailment(&TypeId("String".into()), &TypeId("String".into()), &registry);
         assert!(matches!(status, EntailmentStatus::Verified));
     }
 
     #[test]
     fn test_entailment_target_any() {
         // Target is Any → verified (accepts anything)
-        let status = check_predicate_entailment(&TypeId("Url".into()), &TypeId("Any".into()), None);
+        let registry = TypeRegistry::with_core_types();
+        let status = check_predicate_entailment(&TypeId("Url".into()), &TypeId("Any".into()), &registry);
         assert!(matches!(status, EntailmentStatus::Verified));
     }
 
     #[test]
     fn test_entailment_source_any_target_specific() {
         // Source is Any, target is specific → Unknown (can't prove satisfaction)
-        let status = check_predicate_entailment(&TypeId("Any".into()), &TypeId("Url".into()), None);
+        let registry = TypeRegistry::with_core_types();
+        let status = check_predicate_entailment(&TypeId("Any".into()), &TypeId("Url".into()), &registry);
         assert!(matches!(status, EntailmentStatus::Unknown { .. }));
     }
 
     #[test]
-    fn test_entailment_unknown_without_registry() {
-        let status =
-            check_predicate_entailment(&TypeId("Url".into()), &TypeId("String".into()), None);
+    fn test_entailment_unregistered_types() {
+        // Types not in registry → Unknown (can't check predicates)
+        let registry = TypeRegistry::with_core_types();
+        let status = check_predicate_entailment(
+            &TypeId("UnknownTypeA".into()),
+            &TypeId("UnknownTypeB".into()),
+            &registry,
+        );
         assert!(matches!(status, EntailmentStatus::Unknown { .. }));
     }
 
@@ -1471,7 +1479,8 @@ mod tests {
         ));
         dag.add_edge(edge("producer", "out", "consumer", "inputs"));
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
         let coercion_obs = obligations.coercion_obligations();
 
         assert_eq!(coercion_obs.len(), 1, "should detect one coercion");
@@ -1508,7 +1517,8 @@ mod tests {
         ));
         dag.add_edge(edge("a", "out", "b", "in"));
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
         let coercion_obs = obligations.coercion_obligations();
         assert!(
             coercion_obs.is_empty(),
@@ -1533,7 +1543,8 @@ mod tests {
         ));
         dag.add_edge(edge("list_producer", "out", "scalar_consumer", "in"));
 
-        let obligations = collect_obligations(&dag, None, None);
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
         let invalids = obligations.invalids();
         assert!(
             invalids

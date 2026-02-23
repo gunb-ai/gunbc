@@ -1,0 +1,79 @@
+// tools/gist.dag -- Gist creation tool (snapshot/diff/recent modes).
+//
+// Three modes:
+//   snapshot: list workspace files -> read content -> render markdown -> upload gist
+//   diff:     git diff against base_ref -> render diff markdown -> upload gist
+//   recent:   resolve recent base ref -> diff -> render diff markdown -> upload gist
+//
+// Composes shared/gist_modes.dag for branch detection and gist upload.
+//
+// Replaces: lib/tools/gist/src/graph.rs (~1,449 lines)
+
+module tools.gist
+
+import services.git
+import shared.gist_modes { branch_context, resolve_recent_base, share_content }
+import std.resources { Filesystem }
+import std.types { CommitSha, Url }
+
+fn render_snapshot_markdown(files: List<String>, branch: String) -> String {
+  let header = "# Snapshot: {branch}\n\n"
+  let listing = files
+    |> map(f => "- `{f}`")
+    |> join("\n")
+  "{header}{listing}\n"
+}
+
+fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> String {
+  "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
+}
+
+func gist_snapshot() -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+{
+  ctx = branch_context()
+  listing = git.Core.LsFiles()
+  markdown = render_snapshot_markdown(files: listing.files, branch: ctx.branch)
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: None)
+  return { url: result.url }
+}
+
+func gist_diff(base_ref: CommitSha = "HEAD~1") -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+{
+  ctx = branch_context()
+  changes = git.Core.Diff(base: base_ref)
+  markdown = render_diff_markdown(diff: changes.diff, branch: ctx.branch, base_ref: base_ref)
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref)
+  return { url: result.url }
+}
+
+func gist_recent(since: String = "3.days.ago") -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+{
+  recent = resolve_recent_base(since: since)
+  changes = git.Core.Diff(base: recent.base_ref)
+  markdown = render_diff_markdown(diff: changes.diff, branch: recent.branch, base_ref: recent.base_ref)
+  result = share_content(markdown: markdown, branch: recent.branch, base_ref: recent.base_ref)
+  return { url: result.url }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+test gist_snapshot_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}
+
+test gist_diff_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}
+
+test gist_recent_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}

@@ -120,6 +120,18 @@ pub fn build_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/review.dag")
 }
 
+pub fn build_gist_snapshot_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/gist.dag")
+}
+
+pub fn build_gist_diff_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/gist.dag")
+}
+
+pub fn build_gist_recent_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/gist.dag")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +193,12 @@ mod tests {
     #[test]
     fn builds_review_dsl_graph() {
         let dag = build_dsl_graph("tools/review.dag").expect("review DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_gist_dsl_graph() {
+        let dag = build_gist_snapshot_graph_dsl().expect("gist DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 

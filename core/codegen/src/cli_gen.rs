@@ -531,13 +531,13 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
 
 /// Generate the mock_spec dry-run setup expression.
 fn generate_mock_setup(mock_spec_call: &Option<Cow<'static, str>>) -> String {
-    let call = mock_spec_call
-        .as_deref()
-        .expect("all tools must have mock_spec_call set");
-    format!(
-        "let _spec = {};\nExecutionMode::DryRun(_spec.to_dry_run_mocks())",
-        call
-    )
+    match mock_spec_call.as_deref() {
+        Some(call) => format!(
+            "let _spec = {};\nExecutionMode::DryRun(_spec.to_dry_run_mocks())",
+            call
+        ),
+        None => "ExecutionMode::DryRun(Default::default())".to_string(),
+    }
 }
 
 /// Generate a `Vec<String>` expression that collects input args for the preamble body.

@@ -69,8 +69,12 @@ pub use spec_builders::{
     all_tool_workflow_names, bootstrap_workflow_spec, bootstrap_workflow_spec_with_registry,
     build_all_workflow_spec, build_all_workflow_spec_with_registry, ci_workflow_spec,
     ci_workflow_spec_with_registry, deps_workflow_spec, deps_workflow_spec_with_registry,
-    makegen_workflow_spec, makegen_workflow_spec_with_registry, pragma_workflow_spec,
-    pragma_workflow_spec_with_registry, sdlc_workflow_spec, sdlc_workflow_spec_with_registry,
-    test_all_workflow_spec, test_all_workflow_spec_with_registry, tool_workflow_spec,
+    gist_diff_workflow_spec, gist_diff_workflow_spec_with_registry, gist_recent_workflow_spec,
+    gist_recent_workflow_spec_with_registry, gist_snapshot_workflow_spec,
+    gist_snapshot_workflow_spec_with_registry, gist_workflow_spec,
+    gist_workflow_spec_with_registry, makegen_workflow_spec, makegen_workflow_spec_with_registry,
+    pragma_workflow_spec, pragma_workflow_spec_with_registry, sdlc_workflow_spec,
+    sdlc_workflow_spec_with_registry, test_all_workflow_spec, test_all_workflow_spec_with_registry,
+    tool_workflow_spec,
 };
 pub use unit_commands::{ci_unit_commands, test_all_unit_commands, workflow_unit_commands};

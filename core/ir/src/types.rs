@@ -672,7 +672,7 @@ pub fn parse_map_type_id(type_id: &str) -> Option<(String, String)> {
     Some((key.to_string(), value.to_string()))
 }
 
-fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'a str> {
+pub(crate) fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'a str> {
     let rest = type_id.strip_prefix(wrapper)?;
     let inner = rest.strip_prefix('<')?.strip_suffix('>')?.trim();
     if inner.is_empty() {
@@ -682,7 +682,7 @@ fn parse_unary_generic_type_id<'a>(type_id: &'a str, wrapper: &str) -> Option<&'
     }
 }
 
-fn optional_inner_type_id(type_id: &str) -> Option<&str> {
+pub(crate) fn optional_inner_type_id(type_id: &str) -> Option<&str> {
     if let Some(inner) = parse_unary_generic_type_id(type_id, "Optional") {
         return Some(inner);
     }
@@ -841,58 +841,14 @@ impl ValueBacking {
 
 /// Determine how a `TypeId` string serializes into a `Value` variant.
 ///
-/// Uses `PortType` for structurally known types, then falls back to
-/// domain-specific knowledge for opaque types that map to `PortType::Any`.
+/// Delegates to `TypeRegistry::value_backing()` using a cached core-types
+/// registry.
 pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
-    use crate::port_type::PortType;
-
-    // Credential remains a structured map payload at runtime.
-    if type_id == "Credential" {
-        return ValueBacking::Map;
-    }
-
-    // Check for parametric Map<K,V> first
-    if parse_map_type_id(type_id).is_some() {
-        return ValueBacking::Map;
-    }
-
-    if parse_unary_generic_type_id(type_id, "Set").is_some() {
-        return ValueBacking::Set;
-    }
-
-    if parse_unary_generic_type_id(type_id, "List").is_some() {
-        return ValueBacking::List;
-    }
-
-    if let Some(inner) = optional_inner_type_id(type_id) {
-        return value_backing_for_type_id(inner);
-    }
-
-    let port_type = PortType::from(type_id);
-    match port_type {
-        PortType::String => ValueBacking::String,
-        PortType::Bool => ValueBacking::Bool,
-        PortType::Int => ValueBacking::Int,
-        PortType::Float => ValueBacking::Float,
-        PortType::Json => ValueBacking::Json,
-        PortType::Bytes => ValueBacking::Bytes,
-        PortType::Secret => ValueBacking::String,
-        PortType::List(_) => ValueBacking::List,
-        PortType::Any => {
-            // Residual catch-all for types not structurally resolved.
-            // Most domain types now parse directly (FilePath→String, etc.).
-            match type_id {
-                // Legacy list aliases
-                s if s.ends_with("List") => ValueBacking::List,
-                // Legacy set aliases
-                s if s.ends_with("Set") => ValueBacking::Set,
-                // Optional wrappers inherit inner type's backing
-                s if s.starts_with("Optional") => value_backing_for_type_id(&s["Optional".len()..]),
-                // Default: Json accepts anything
-                _ => ValueBacking::Json,
-            }
-        }
-    }
+    use std::sync::OnceLock;
+    static REGISTRY: OnceLock<crate::type_registry::TypeRegistry> = OnceLock::new();
+    let registry =
+        REGISTRY.get_or_init(crate::type_registry::TypeRegistry::with_core_types);
+    registry.value_backing(&TypeId::from(type_id))
 }
 
 /// Canonical human-readable type label for a runtime value's kind.

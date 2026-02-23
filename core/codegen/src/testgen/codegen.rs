@@ -231,8 +231,8 @@ pub struct TestGenerator<'a, T> {
     signature_fn: Option<String>,
     /// CLI entrypoints for contract test generation: (tool_name, entrypoints).
     cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
-    /// Optional type registry for contract-derived witness values.
-    type_registry: Option<TypeRegistry>,
+    /// Type registry for contract-derived witness values.
+    type_registry: TypeRegistry,
 }
 
 struct ProbeObserverBundle {
@@ -257,7 +257,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             mock_spec_fn: None,
             signature_fn: None,
             cli_entrypoints: None,
-            type_registry: Some(TypeRegistry::with_core_types()),
+            type_registry: TypeRegistry::with_core_types(),
         }
     }
 
@@ -303,7 +303,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
     /// Set a type registry for contract-derived witness values.
     pub fn with_type_registry(mut self, registry: TypeRegistry) -> Self {
-        self.type_registry = Some(registry);
+        self.type_registry = registry;
         self
     }
 
@@ -555,7 +555,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
-        let mut obligations = collect_obligations(self.dag, None, None);
+        let mut obligations = collect_obligations(self.dag, &self.type_registry, None);
         if let Some((tool_name, entrypoints)) = &self.cli_entrypoints {
             if !entrypoints.is_empty() {
                 obligations.all.push(ProofObligation::runtime(
@@ -2000,7 +2000,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         type_id,
                         *cardinality,
                         count,
-                        self.type_registry.as_ref(),
+                        &self.type_registry,
                     );
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "cardinality coverage tests");
 
@@ -3468,9 +3468,9 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
 
             let value = if port.has_guard() {
-                select_guard_value(port, self.type_registry.as_ref())
+                select_guard_value(port, &self.type_registry)
             } else {
-                required_value_for_port(port, self.type_registry.as_ref())
+                required_value_for_port(port, &self.type_registry)
             };
 
             match value {
@@ -5330,9 +5330,8 @@ fn witness_value_for_count(
     type_id: &str,
     cardinality: Cardinality,
     count: u32,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
 ) -> Option<Value> {
-    let registry = registry?;
     let type_dag = registry.get_by_name(type_id)?;
     let witnesses = contract::witnesses(type_dag);
 
@@ -5365,7 +5364,7 @@ fn try_mock_value_for_count(
     type_id: &str,
     cardinality: Cardinality,
     count: u32,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
 ) -> Option<Value> {
     if let Some(value) = witness_value_for_count(type_id, cardinality, count, registry) {
         return Some(value);
@@ -5403,7 +5402,7 @@ fn required_count_for_port(port: &gunbc_ir::Port) -> Option<u32> {
 
 fn candidate_values_for_guard(
     port: &gunbc_ir::Port,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
 ) -> Vec<Value> {
     let Some(count) = required_count_for_port(port) else {
         return Vec::new();
@@ -5435,7 +5434,7 @@ fn candidate_values_for_guard(
     values
 }
 
-fn select_guard_value(port: &gunbc_ir::Port, registry: Option<&TypeRegistry>) -> Option<Value> {
+fn select_guard_value(port: &gunbc_ir::Port, registry: &TypeRegistry) -> Option<Value> {
     candidate_values_for_guard(port, registry)
         .into_iter()
         .find(|candidate| port.check_guard(candidate))
@@ -5443,7 +5442,7 @@ fn select_guard_value(port: &gunbc_ir::Port, registry: Option<&TypeRegistry>) ->
 
 fn required_value_for_port(
     port: &gunbc_ir::Port,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
 ) -> Option<Value> {
     let count = required_count_for_port(port)?;
     try_mock_value_for_count(port.type_id.0.as_str(), port.cardinality, count, registry)
@@ -5461,7 +5460,7 @@ fn mock_value_expr_for_count(
     type_id: &str,
     cardinality: Cardinality,
     count: u32,
-    registry: Option<&TypeRegistry>,
+    registry: &TypeRegistry,
 ) -> ValueExpr {
     if let Some(value) = witness_value_for_count(type_id, cardinality, count, registry) {
         return ValueExpr::from(&value);
@@ -6147,14 +6146,14 @@ mod tests {
     fn test_mock_value_respects_cardinality() {
         let registry = TypeRegistry::with_core_types();
         let list_expr =
-            mock_value_expr_for_count("String", Cardinality::ZERO_OR_MORE, 1, Some(&registry));
+            mock_value_expr_for_count("String", Cardinality::ZERO_OR_MORE, 1, &registry);
         assert_eq!(
             list_expr,
             ValueExpr::List(vec![ValueExpr::Str("example".to_string())])
         );
 
         let opt_zero =
-            mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, Some(&registry));
+            mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, &registry);
         assert_eq!(opt_zero, ValueExpr::Unit);
     }
 

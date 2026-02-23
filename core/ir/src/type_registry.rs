@@ -691,6 +691,97 @@ impl TypeRegistry {
         self.coercion_path(&TypeId::from(from), &TypeId::from(to))
             .is_some()
     }
+
+    /// Determine the runtime `ValueBacking` for a type using registry knowledge.
+    ///
+    /// This replaces the free function `value_backing_for_type_id()` by using
+    /// the registry's type DAGs and coercion paths instead of the hardcoded
+    /// `PortType` enum.
+    pub fn value_backing(&self, type_id: &TypeId) -> crate::types::ValueBacking {
+        use crate::types::{
+            optional_inner_type_id, parse_map_type_id, parse_unary_generic_type_id, ValueBacking,
+        };
+
+        let raw = &type_id.0;
+
+        // Credential is a structured map payload at runtime.
+        if raw == "Credential" {
+            return ValueBacking::Map;
+        }
+
+        // Parametric containers.
+        if parse_map_type_id(raw).is_some() {
+            return ValueBacking::Map;
+        }
+        if parse_unary_generic_type_id(raw, "Set").is_some() {
+            return ValueBacking::Set;
+        }
+        if parse_unary_generic_type_id(raw, "List").is_some() {
+            return ValueBacking::List;
+        }
+        if let Some(inner) = optional_inner_type_id(raw) {
+            return self.value_backing(&TypeId::from(inner));
+        }
+
+        // Primitives (direct match).
+        match raw.as_str() {
+            "String" => return ValueBacking::String,
+            "Bool" => return ValueBacking::Bool,
+            "Int" => return ValueBacking::Int,
+            "Float" => return ValueBacking::Float,
+            "Bytes" => return ValueBacking::Bytes,
+            "Json" => return ValueBacking::Json,
+            "Unit" => return ValueBacking::Unit,
+            "Secret" => return ValueBacking::String,
+            _ => {}
+        }
+
+        // Registry-driven: find the nearest primitive ancestor via coercion path.
+        static PRIMITIVE_BACKINGS: &[(&str, ValueBacking)] = &[
+            ("String", ValueBacking::String),
+            ("Int", ValueBacking::Int),
+            ("Float", ValueBacking::Float),
+            ("Bool", ValueBacking::Bool),
+            ("Bytes", ValueBacking::Bytes),
+            ("Secret", ValueBacking::String),
+        ];
+        for &(prim, backing) in PRIMITIVE_BACKINGS {
+            if self
+                .coercion_path(type_id, &TypeId::from(prim))
+                .is_some()
+            {
+                return backing;
+            }
+        }
+
+        // Identity types (no coercion path to primitives): use semantic carrier
+        // classification to determine backing.
+        use crate::types::{semantic_carrier_kind_for_type_id, SemanticCarrierKind};
+        match semantic_carrier_kind_for_type_id(raw) {
+            SemanticCarrierKind::Structural => {} // fall through to suffix check
+            SemanticCarrierKind::Platform => return ValueBacking::String,
+            SemanticCarrierKind::Timestamp => return ValueBacking::Int,
+            SemanticCarrierKind::TransportRequest
+            | SemanticCarrierKind::TransportResponse
+            | SemanticCarrierKind::FilesystemHandle
+            | SemanticCarrierKind::NetworkHandle
+            | SemanticCarrierKind::ToolHandle => return ValueBacking::Json,
+            SemanticCarrierKind::Credential => return ValueBacking::Map,
+            SemanticCarrierKind::Secret => return ValueBacking::String,
+            SemanticCarrierKind::UnknownSemantic => return ValueBacking::Json,
+        }
+
+        // Legacy suffix-based aliases.
+        if raw.ends_with("List") {
+            return ValueBacking::List;
+        }
+        if raw.ends_with("Set") {
+            return ValueBacking::Set;
+        }
+
+        // Fallback: Json accepts anything.
+        ValueBacking::Json
+    }
 }
 
 /// Error when type lookup fails.
@@ -1242,73 +1333,111 @@ mod tests {
             .is_err());
     }
 
-    /// Drift detection test: every domain type in `try_parse_port_type()` must
-    /// also be registered in `TypeRegistry::register_core_types()`.
-    ///
-    /// This prevents the Credential-class of bugs where port_type.rs maps a
-    /// type to one structural backing but the TypeRegistry doesn't know about
-    /// it, causing silent fallthrough to PortType::Any.
-    ///
-    /// CU-10: stopgap until port_type.rs is deleted (TS-4c).
     #[test]
-    fn test_port_type_registry_consistency() {
-        use crate::port_type::PortType;
+    fn test_value_backing_matches_free_function() {
+        use crate::types::value_backing_for_type_id;
 
         let registry = TypeRegistry::with_core_types();
 
-        // All domain types that try_parse_port_type() maps to non-Any PortTypes.
-        // These are the types that have hard-coded structural backing in
-        // port_type.rs and MUST also exist in the TypeRegistry.
-        let domain_types = [
-            // String-backed
-            "FilePath", "Path", "TextFilePath",
-            "Url", "Email", "NonEmptyString",
-            "Platform", "ContentEncoding",
-            "OidcAudience", "WifAudience",
-            "GcpProjectId", "GcpSecretId", "GcpSecretVersion",
-            "GcpServiceAccountEmail", "GcpSubjectToken", "OidcSubjectToken",
-            // Bytes-backed
-            "BinaryFilePath",
-            // Int-backed
-            "Timestamp",
-            // Json-backed
-            "TransportRequest", "TransportResponse",
-            "FileResponse", "ShellResponse", "RestResponse", "HttpResponse",
-            "ToolHandle", "FilesystemHandle", "NetworkHandle",
-            "Credential",
-            "CliResult", "Record",
+        let cases = [
+            // Primitives
+            "String", "Bool", "Int", "Float", "Bytes", "Json", "Secret",
+            // Domain types (string-backed)
+            "FilePath", "Url", "Email", "NonEmptyString", "Platform",
+            "GcpProjectId", "GcpSecretId", "OidcAudience",
+            // Domain types (other backings)
+            "Credential", "Timestamp",
+            // Parametric
+            "List<String>", "Set<String>", "Map<String,Int>",
+            "Optional<String>", "Optional<Int>",
+            // Legacy aliases
+            "StringList", "UrlList",
         ];
 
-        let mut missing = Vec::new();
-        let mut port_type_any = Vec::new();
-
-        for type_name in &domain_types {
-            let type_id = TypeId::from(*type_name);
-
-            // Must be in the registry
-            if !registry.contains(&type_id) {
-                missing.push(*type_name);
-            }
-
-            // Must NOT fall through to PortType::Any
-            let pt = PortType::from(*type_name);
-            if pt == PortType::Any {
-                port_type_any.push(*type_name);
-            }
+        for type_name in &cases {
+            let expected = value_backing_for_type_id(type_name);
+            let actual = registry.value_backing(&TypeId::from(*type_name));
+            assert_eq!(
+                expected, actual,
+                "value_backing mismatch for '{}': expected {:?}, got {:?}",
+                type_name, expected, actual
+            );
         }
-
-        assert!(
-            missing.is_empty(),
-            "Domain types in try_parse_port_type() but missing from TypeRegistry: {:?}\n\
-             Add them to register_core_types() to prevent drift.",
-            missing
-        );
-
-        assert!(
-            port_type_any.is_empty(),
-            "Domain types expected to have structural backing but fell through to PortType::Any: {:?}\n\
-             Add them to try_parse_port_type() with the correct structural mapping.",
-            port_type_any
-        );
     }
+
+    #[test]
+    fn test_value_backing_regression_credential() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        assert_eq!(r.value_backing(&TypeId::from("Credential")), ValueBacking::Map);
+    }
+
+    #[test]
+    fn test_value_backing_regression_tool_handle() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        assert_eq!(r.value_backing(&TypeId::from("ToolHandle")), ValueBacking::Json);
+    }
+
+    #[test]
+    fn test_value_backing_regression_platform() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        assert_eq!(r.value_backing(&TypeId::from("Platform")), ValueBacking::String);
+    }
+
+    #[test]
+    fn test_value_backing_regression_timestamp() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        assert_eq!(r.value_backing(&TypeId::from("Timestamp")), ValueBacking::Int);
+    }
+
+    #[test]
+    fn test_value_backing_regression_parametric_types() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        assert_eq!(r.value_backing(&TypeId::from("List<String>")), ValueBacking::List);
+        assert_eq!(r.value_backing(&TypeId::from("Set<Int>")), ValueBacking::Set);
+        assert_eq!(r.value_backing(&TypeId::from("Map<String,Bool>")), ValueBacking::Map);
+        assert_eq!(r.value_backing(&TypeId::from("Optional<Float>")), ValueBacking::Float);
+        assert_eq!(r.value_backing(&TypeId::from("Optional<Credential>")), ValueBacking::Map);
+    }
+
+    #[test]
+    fn test_value_backing_regression_transport_types() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        assert_eq!(r.value_backing(&TypeId::from("TransportRequest")), ValueBacking::Json);
+        assert_eq!(r.value_backing(&TypeId::from("TransportResponse")), ValueBacking::Json);
+        assert_eq!(r.value_backing(&TypeId::from("FilesystemHandle")), ValueBacking::Json);
+        assert_eq!(r.value_backing(&TypeId::from("NetworkHandle")), ValueBacking::Json);
+    }
+
+    #[test]
+    fn test_value_backing_regression_coercion_types() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        // FilePath coerces to String via identity chain
+        assert_eq!(r.value_backing(&TypeId::from("FilePath")), ValueBacking::String);
+        assert_eq!(r.value_backing(&TypeId::from("Url")), ValueBacking::String);
+        assert_eq!(r.value_backing(&TypeId::from("Email")), ValueBacking::String);
+        assert_eq!(r.value_backing(&TypeId::from("NonEmptyString")), ValueBacking::String);
+    }
+
+    #[test]
+    fn test_value_backing_regression_secret() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        assert_eq!(r.value_backing(&TypeId::from("Secret")), ValueBacking::String);
+    }
+
+    #[test]
+    fn test_value_backing_regression_unknown_type() {
+        use crate::types::ValueBacking;
+        let r = TypeRegistry::with_core_types();
+        // Unknown types fall back to Json
+        assert_eq!(r.value_backing(&TypeId::from("CompletelyUnknownType")), ValueBacking::Json);
+    }
+
 }

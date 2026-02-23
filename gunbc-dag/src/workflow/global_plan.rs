@@ -99,7 +99,7 @@ mod tests {
     use super::*;
     use crate::workflow::process_registry::default_process_unit_registry;
     use crate::workflow::spec_builders::{
-        ci_workflow_spec, bootstrap_workflow_spec, test_all_workflow_spec,
+        ci_workflow_spec, gist_snapshot_workflow_spec, test_all_workflow_spec,
     };
 
     fn temp_root() -> std::path::PathBuf {
@@ -143,13 +143,13 @@ mod tests {
     }
 
     /// WF14/WF15: compilation and codegen capabilities shared between
-    /// bootstrap and CI workflows via global dedup.
+    /// gist-snapshot and CI workflows via global dedup.
     #[test]
-    fn universal_capabilities_deduped_across_ci_and_bootstrap() {
+    fn universal_capabilities_deduped_across_ci_and_gist() {
         let root = temp_root();
         let specs = vec![
             ci_workflow_spec().expect("ci spec"),
-            bootstrap_workflow_spec().expect("bootstrap spec"),
+            gist_snapshot_workflow_spec().expect("gist-snapshot spec"),
         ];
         let registry = default_process_unit_registry();
         let global =
@@ -166,8 +166,8 @@ mod tests {
             compilation
                 .node_refs
                 .iter()
-                .any(|r| r.workflow_id == WorkflowId::new("bootstrap")),
-            "compilation_ensure should reference bootstrap workflow"
+                .any(|r| r.workflow_id == WorkflowId::new("gist-snapshot")),
+            "compilation_ensure should reference gist-snapshot workflow"
         );
 
         // codegen_ensure should appear as a shared vertex.
@@ -180,8 +180,8 @@ mod tests {
             codegen_ensure
                 .node_refs
                 .iter()
-                .any(|r| r.workflow_id == WorkflowId::new("bootstrap")),
-            "codegen_ensure should reference bootstrap workflow"
+                .any(|r| r.workflow_id == WorkflowId::new("gist-snapshot")),
+            "codegen_ensure should reference gist-snapshot workflow"
         );
 
         let _ = std::fs::remove_dir_all(root);

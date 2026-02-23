@@ -29,10 +29,13 @@ pub mod dry_run;
 pub(crate) mod dsl_builder;
 pub use dsl_builder::{
     build_aws_credential_graph_dsl, build_azure_credential_graph_dsl, build_clippy_graph_dsl,
+    build_gist_diff_graph_dsl, build_gist_recent_graph_dsl, build_gist_snapshot_graph_dsl,
     build_review_graph_dsl,
 };
 pub mod fs_env;
+pub mod gist;
 pub mod infra;
+
 pub mod makegen;
 pub mod mock_defaults;
 pub mod policy;
@@ -96,7 +99,11 @@ pub use workflow::{
     ci_workflow_spec_with_registry, claim_handle_type_id, codegen_key, compilation_key,
     coordination_status, default_process_unit_registry,
     default_slo_budgets, deps_workflow_spec, deps_workflow_spec_with_registry, derive_miss_reason,
-    execute_workflow_plan, explain_plan, has_required_unit_contract, load_global_ledger,
+    execute_workflow_plan, explain_plan, gist_diff_workflow_spec,
+    gist_diff_workflow_spec_with_registry, gist_recent_workflow_spec,
+    gist_recent_workflow_spec_with_registry, gist_snapshot_workflow_spec,
+    gist_snapshot_workflow_spec_with_registry, gist_workflow_spec,
+    gist_workflow_spec_with_registry, has_required_unit_contract, load_global_ledger,
     makegen_workflow_spec, makegen_workflow_spec_with_registry, plan_global_workflows,
     plan_workflow, plan_workflow_with_mode, pragma_workflow_spec,
     pragma_workflow_spec_with_registry, project_execute_set, prove_non_redundancy,
