@@ -298,6 +298,7 @@ impl TypeRegistry {
     /// These are structural refinements over primitives (e.g., Url is a refined String).
     pub fn register_core_types(&mut self) {
         self.register("NonEmptyString", type_lib::non_empty_string());
+        self.register("SecretName", type_lib::non_empty_string());
         self.register("Url", type_lib::url());
         self.register("FilePath", type_lib::file_path());
         self.register("Path", type_lib::file_path());

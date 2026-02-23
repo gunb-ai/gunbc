@@ -189,6 +189,7 @@ fn try_parse_port_type(s: &str) -> Option<PortType> {
         | "Url"
         | "Email"
         | "NonEmptyString"
+        | "SecretName"
         | "Platform"
         | "ContentEncoding"
         | "OidcAudience"
@@ -300,6 +301,7 @@ mod tests {
         assert_eq!(PortType::from("Platform"), PortType::String);
         assert_eq!(PortType::from("Url"), PortType::String);
         assert_eq!(PortType::from("GcpProjectId"), PortType::String);
+        assert_eq!(PortType::from("SecretName"), PortType::String);
 
         // Bytes-backed domain types
         assert_eq!(PortType::from("BinaryFilePath"), PortType::Bytes);

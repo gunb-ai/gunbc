@@ -751,7 +751,7 @@ pub fn semantic_carrier_kind_for_type_id(type_id: &str) -> SemanticCarrierKind {
         "String" | "Bool" | "Int" | "Float" | "Bytes" | "Unit" | "Json" | "Void" | "Any"
         | "Error"
         // Refined primitives.
-        | "NonEmptyString" | "Url" | "FilePath" | "Path" | "Email"
+        | "NonEmptyString" | "SecretName" | "Url" | "FilePath" | "Path" | "Email"
         | "PositiveInt" | "NonNegativeInt"
         // Refined GCP identity/resource aliases.
         | "OidcAudience" | "WifAudience"
@@ -1189,6 +1189,10 @@ mod tests {
             SemanticCarrierKind::Structural
         );
         assert_eq!(
+            semantic_carrier_kind_for_type_id("SecretName"),
+            SemanticCarrierKind::Structural
+        );
+        assert_eq!(
             semantic_carrier_kind_for_type_id("TransportRequest"),
             SemanticCarrierKind::TransportRequest
         );
@@ -1260,6 +1264,10 @@ mod tests {
         );
         assert_eq!(
             value_backing_for_type_id("GcpSubjectToken"),
+            ValueBacking::String
+        );
+        assert_eq!(
+            value_backing_for_type_id("SecretName"),
             ValueBacking::String
         );
     }
