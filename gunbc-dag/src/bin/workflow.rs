@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use gunbc_dag::{
     all_tool_workflow_names, check_slo, ci_workflow_spec, default_process_unit_registry,
@@ -14,6 +15,7 @@ use gunbc_dag::{
     render_execution_report, test_all_workflow_spec, tool_workflow_spec, workflow_unit_commands,
     CapabilityAction, DryRunMode, MissReason, PlannerInputs, SloBudget,
 };
+use gunbc_ir::{NodeId, PortName, Value};
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,7 +74,18 @@ fn main() {
     };
 
     let registry = default_process_unit_registry();
-    let inputs = PlannerInputs::new();
+    let mut inputs = PlannerInputs::new();
+    if args.workflow.starts_with("gist") {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+            .to_string();
+        inputs.insert(
+            NodeId::from("gist.gist_create"),
+            BTreeMap::from([(PortName::from("_nonce"), Value::Str(nonce))]),
+        );
+    }
     let plan = match plan_workflow_with_mode(
         &spec,
         &registry,
