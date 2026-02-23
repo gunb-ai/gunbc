@@ -768,11 +768,9 @@ fn run_worker(
         compile_sdlc_pipeline_for_runtime_profile(preflight.runtime_profile.as_str())?;
     }
     let compiled_stage_dispatcher = if dry_run {
-        None
+        compile_worker_stage_dispatch_dag_for_dry_run()?
     } else {
-        Some(compile_worker_stage_dispatch_dag(
-            preflight.runtime_profile.as_str(),
-        )?)
+        compile_worker_stage_dispatch_dag(preflight.runtime_profile.as_str())?
     };
 
     let ledger_path = intake_ledger_path();
@@ -903,6 +901,7 @@ fn run_worker(
     let mut awaiting_approval = Vec::new();
     let mut agent_polls = Vec::new();
     let mut agent_spawns = Vec::new();
+    let mut dry_run_dispatches = Vec::new();
     let mut processing_budget = if dry_run {
         None
     } else {
@@ -1101,95 +1100,113 @@ fn run_worker(
                     continue;
                 }
                 ready_to_run.push(intake_key.clone());
-                if !dry_run {
-                    let stage_dispatcher = compiled_stage_dispatcher
-                        .as_ref()
-                        .ok_or_else(|| "compiled stage dispatcher unavailable".to_string())?;
-                    match dispatch_pipeline_stage(
-                        stage_dispatcher,
-                        intake_key,
-                        record,
-                        &worker_id_str,
-                        &mut issue_transport,
-                        now,
-                    ) {
-                        Ok(StageDispatchOutcome::Advanced(next_stage)) => {
-                            // Mark the CURRENT run_key as completed before advancing.
-                            mark_run_completed(
-                                &mut run_state,
-                                intake_key,
-                                &record.run_key,
-                                record.stage.as_label(),
-                                now,
-                            );
-                            if next_stage != record.stage {
-                                // Release the claim for the old stage before advancing.
-                                if let Some(issue_id) = record.issue_id {
-                                    let old_claim_slot = claim_slot_key(issue_id, record.stage);
-                                    let old_claim_owner =
-                                        format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
-                                    release_claim(
-                                        &mut claim_ledger,
-                                        &old_claim_slot,
-                                        &old_claim_owner,
-                                    );
-                                }
-                                if record.stage == IssueLifecycleStage::Accepted
-                                    && next_stage == IssueLifecycleStage::Implementation
-                                {
-                                    if let Some(spawn) = ensure_agent_spawn_for_accepted_transition(
-                                        intake_key,
-                                        record,
-                                        &artifact_ledger,
-                                        &mut agent_ledger,
-                                        now,
-                                    )? {
-                                        agent_spawns.push(spawn);
-                                    }
-                                }
-                                record.stage = next_stage;
-                                record.awaiting_approval = false;
-                                record.awaiting_approval_since_epoch_ms = None;
-                                record.updated_at_epoch_ms = now;
-                            }
-                            executed_runs.push(intake_key.clone());
+                match dispatch_pipeline_stage(
+                    &compiled_stage_dispatcher,
+                    intake_key,
+                    record,
+                    &worker_id_str,
+                    &mut issue_transport,
+                    now,
+                    !dry_run,
+                ) {
+                    Ok(StageDispatchOutcome::Advanced(next_stage)) => {
+                        if dry_run {
+                            dry_run_dispatches.push(json!({
+                                "intake_key": intake_key,
+                                "from_stage": record.stage.as_label(),
+                                "next_stage": next_stage.as_label(),
+                                "awaiting_approval": false,
+                            }));
+                            continue;
                         }
-                        Ok(StageDispatchOutcome::AwaitingApproval) => {
-                            mark_run_completed(
-                                &mut run_state,
-                                intake_key,
-                                &record.run_key,
-                                record.stage.as_label(),
-                                now,
-                            );
+                        // Mark the CURRENT run_key as completed before advancing.
+                        mark_run_completed(
+                            &mut run_state,
+                            intake_key,
+                            &record.run_key,
+                            record.stage.as_label(),
+                            now,
+                        );
+                        if next_stage != record.stage {
+                            // Release the claim for the old stage before advancing.
                             if let Some(issue_id) = record.issue_id {
-                                let claim_slot = claim_slot_key(issue_id, record.stage);
-                                let claim_owner =
+                                let old_claim_slot = claim_slot_key(issue_id, record.stage);
+                                let old_claim_owner =
                                     format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
-                                if release_claim(&mut claim_ledger, &claim_slot, &claim_owner) {
-                                    released_claims.push(intake_key.clone());
+                                release_claim(&mut claim_ledger, &old_claim_slot, &old_claim_owner);
+                            }
+                            if record.stage == IssueLifecycleStage::Accepted
+                                && next_stage == IssueLifecycleStage::Implementation
+                            {
+                                if let Some(spawn) = ensure_agent_spawn_for_accepted_transition(
+                                    intake_key,
+                                    record,
+                                    &artifact_ledger,
+                                    &mut agent_ledger,
+                                    now,
+                                )? {
+                                    agent_spawns.push(spawn);
                                 }
                             }
-                            record.awaiting_approval = true;
-                            if record.awaiting_approval_since_epoch_ms.is_none() {
-                                record.awaiting_approval_since_epoch_ms = Some(now);
-                            }
+                            record.stage = next_stage;
+                            record.awaiting_approval = false;
+                            record.awaiting_approval_since_epoch_ms = None;
                             record.updated_at_epoch_ms = now;
-                            awaiting_approval.push(intake_key.clone());
-                            executed_runs.push(intake_key.clone());
                         }
-                        Err(e) => {
-                            let has_budget = register_retry_failure(
-                                &mut record.retry,
-                                now,
-                                RETRY_BASE_BACKOFF_MS,
-                                e.clone(),
-                            );
-                            if !has_budget {
-                                record.terminalized = true;
-                                terminal_failures.insert(intake_key.clone(), e);
-                                terminalized.push(intake_key.clone());
+                        executed_runs.push(intake_key.clone());
+                    }
+                    Ok(StageDispatchOutcome::AwaitingApproval) => {
+                        if dry_run {
+                            dry_run_dispatches.push(json!({
+                                "intake_key": intake_key,
+                                "from_stage": record.stage.as_label(),
+                                "next_stage": record.stage.as_label(),
+                                "awaiting_approval": true,
+                            }));
+                            continue;
+                        }
+                        mark_run_completed(
+                            &mut run_state,
+                            intake_key,
+                            &record.run_key,
+                            record.stage.as_label(),
+                            now,
+                        );
+                        if let Some(issue_id) = record.issue_id {
+                            let claim_slot = claim_slot_key(issue_id, record.stage);
+                            let claim_owner =
+                                format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
+                            if release_claim(&mut claim_ledger, &claim_slot, &claim_owner) {
+                                released_claims.push(intake_key.clone());
                             }
+                        }
+                        record.awaiting_approval = true;
+                        if record.awaiting_approval_since_epoch_ms.is_none() {
+                            record.awaiting_approval_since_epoch_ms = Some(now);
+                        }
+                        record.updated_at_epoch_ms = now;
+                        awaiting_approval.push(intake_key.clone());
+                        executed_runs.push(intake_key.clone());
+                    }
+                    Err(e) => {
+                        if dry_run {
+                            dry_run_dispatches.push(json!({
+                                "intake_key": intake_key,
+                                "from_stage": record.stage.as_label(),
+                                "error": e,
+                            }));
+                            continue;
+                        }
+                        let has_budget = register_retry_failure(
+                            &mut record.retry,
+                            now,
+                            RETRY_BASE_BACKOFF_MS,
+                            e.clone(),
+                        );
+                        if !has_budget {
+                            record.terminalized = true;
+                            terminal_failures.insert(intake_key.clone(), e);
+                            terminalized.push(intake_key.clone());
                         }
                     }
                 }
@@ -1303,6 +1320,10 @@ fn run_worker(
             "agent_spawns".to_string(),
             serde_json::Value::Array(agent_spawns),
         );
+        map.insert(
+            "dry_run_dispatches".to_string(),
+            serde_json::Value::Array(dry_run_dispatches),
+        );
     }
     if !dry_run {
         save_execution_report(&output)?;
@@ -1357,6 +1378,12 @@ fn load_sdlc_pipeline_stage_order(
     runtime_profile: &str,
 ) -> Result<Vec<IssueLifecycleStage>, String> {
     let dag_profile = dag_profile_for_runtime_profile(runtime_profile)?;
+    load_sdlc_pipeline_stage_order_for_dag_profile(dag_profile)
+}
+
+fn load_sdlc_pipeline_stage_order_for_dag_profile(
+    dag_profile: &str,
+) -> Result<Vec<IssueLifecycleStage>, String> {
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
         .map_err(|error| {
@@ -3076,6 +3103,17 @@ fn compile_worker_stage_dispatch_dag(
     runtime_profile: &str,
 ) -> Result<CompiledStageDispatcher, String> {
     let stage_order = load_sdlc_pipeline_stage_order(runtime_profile)?;
+    compile_worker_stage_dispatch_dag_with_stage_order(stage_order)
+}
+
+fn compile_worker_stage_dispatch_dag_for_dry_run() -> Result<CompiledStageDispatcher, String> {
+    let stage_order = load_sdlc_pipeline_stage_order_for_dag_profile("unit_test")?;
+    compile_worker_stage_dispatch_dag_with_stage_order(stage_order)
+}
+
+fn compile_worker_stage_dispatch_dag_with_stage_order(
+    stage_order: Vec<IssueLifecycleStage>,
+) -> Result<CompiledStageDispatcher, String> {
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
         .map_err(|error| {
@@ -3102,17 +3140,27 @@ fn dispatch_pipeline_stage(
     worker_id: &str,
     issue_transport: &mut IssueTransportLedger,
     now_epoch_ms: u128,
+    apply_side_effects: bool,
 ) -> Result<StageDispatchOutcome, String> {
     let issue_id = record
         .issue_id
         .ok_or_else(|| format!("no issue_id for intake key `{intake_key}`"))?;
 
     let decision = dispatcher.execute(intake_key, record, worker_id, issue_id)?;
-    if let (Some(marker), Some(message)) = (decision.marker.as_deref(), decision.message.as_deref())
-    {
-        issue_transport_upsert_comment(issue_transport, issue_id, marker, message, now_epoch_ms)?;
+    if apply_side_effects {
+        if let (Some(marker), Some(message)) =
+            (decision.marker.as_deref(), decision.message.as_deref())
+        {
+            issue_transport_upsert_comment(
+                issue_transport,
+                issue_id,
+                marker,
+                message,
+                now_epoch_ms,
+            )?;
+        }
     }
-    if !decision.awaiting_approval && decision.next_stage != record.stage {
+    if apply_side_effects && !decision.awaiting_approval && decision.next_stage != record.stage {
         advance_remote_stage(
             issue_transport,
             issue_id,
