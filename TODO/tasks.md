@@ -117,7 +117,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | F: Codegen-first SDLC | **DONE** | — |
 | G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **DONE** | — |
-| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, M7, M15 |
+| 1: Type system + graph builders | **ACTIVE** | TS-1, TS-1b, TS-1c, M7, M15 |
 | 2: 100% codegen pipeline | **DONE** | All S12 items complete, L2-4 green |
 | Post-merge: Type system hard cutover | **ACTIVE** | TS-7, TS-3, TS-4a..TS-4d (Lane 2 done; Lane 1 port propagation remains) |
 | 3: Modeling integrity | **ACTIVE** | All M7-M22 complete. GR-1..GR-4 graph.rs deletions unblocked |
@@ -146,7 +146,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-2** | **Regenerate CI generated tests**: 2197 CI tests fail (`invalid 'items' input: expected StringList`). Fix `typed_mock_for_response` catch-all in `daglang-emit/test_gen.rs` (line 155). | — | M | |
+| **TS-2** | **Regenerate CI generated tests**: 2197 CI tests fail (`invalid 'items' input: expected StringList`). Fix `typed_mock_for_response` catch-all in `daglang-emit/test_gen.rs` (line 155). | — | M | ✅ Done (all 4103 tests pass) |
 | **TS-5** | **Process all annotations in typecheck**: `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types` → extension→encoding map. | — | L | ✅ Done |
 
 ### Phase 1-C: Security + install modeling (from `TODO/modeling.md`)
