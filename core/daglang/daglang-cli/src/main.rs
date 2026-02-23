@@ -58,8 +58,7 @@ fn main() {
             "                      DAG visualization (default: {})",
             default_viz_format_label()
         );
-        eprintln!("  expand <file.dag> [--emit-collection-nodes]");
-        eprintln!("                      Optional: --profile <name>");
+        eprintln!("  expand <file.dag> [--emit-collection-nodes] [--profile <name>|--profile=<name>]");
         eprintln!("                      Show lowered GraphIR (nodes/edges/ports)");
         eprintln!(
             "  progress <file.dag> [--format text|json] [--emit-collection-nodes] [--profile <name>|--profile=<name>]"
@@ -182,24 +181,11 @@ fn compile_target_or_exit_with_compile_options(
             std::process::exit(1);
         }
     }
-    let context = if input.is_none() {
-        match resolve_default_roots(cwd) {
-            Ok(roots) => PipelineContext {
-                roots,
-                target_file: None,
-            },
-            Err(error) => {
-                eprintln!("{error}");
-                std::process::exit(1);
-            }
-        }
-    } else {
-        match build_context(cwd, input) {
-            Ok(context) => context,
-            Err(error) => {
-                eprintln!("{error}");
-                std::process::exit(1);
-            }
+    let context = match build_context(cwd, input) {
+        Ok(context) => context,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
         }
     };
     match compile_from_context_with_options(&context, options) {
@@ -275,6 +261,16 @@ struct CompileCommandArgs {
     out_dir: Option<String>,
 }
 
+impl CompileCommandArgs {
+    fn base_compile_options(&self) -> CompileOptions {
+        CompileOptions {
+            emit_collection_nodes: self.emit_collection_nodes,
+            profile: self.profile.clone(),
+            ..CompileOptions::default()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CompileOutputFormat {
     Summary,
@@ -287,6 +283,16 @@ struct ProgressCommandArgs {
     format: OutputFormat,
     emit_collection_nodes: bool,
     profile: Option<String>,
+}
+
+impl ProgressCommandArgs {
+    fn base_compile_options(&self) -> CompileOptions {
+        CompileOptions {
+            emit_collection_nodes: self.emit_collection_nodes,
+            profile: self.profile.clone(),
+            ..CompileOptions::default()
+        }
+    }
 }
 
 pub(crate) fn parse_compile_command_args(

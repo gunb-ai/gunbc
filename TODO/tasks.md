@@ -92,37 +92,44 @@ Verification after migration-wave closeout:
 
 ---
 
-## Lane 6: Topology Migration (Parallel Lanes)
+## Lane 6: Full Repo Migration — Rust to .dag
 
-**Goal**: Finish migrating remaining Rust graph authoring to `.dag` and migrate Rust `Executable` ops to generic interpreters / DSL primitives. Delete all handwritten `DagBuilder` graph files and per-op Rust structs. The DAG compiler itself stays in Rust; topology and service semantics move to DSL.
-
-**Continues from**: Lane 5 (GraphIR Decommission). Lane 5 migrated tool graphs and deleted legacy stacks. Lane 6 handles the retained cloud/GCP/LLM/review stacks plus remaining workspace subdags.
+**Goal**: Migrate ALL handwritten Rust behavior, policy, config, and ops off Rust and onto `.dag`, leaving only the compiler/runtime/transport layer in Rust. ~47K LOC migrated or deleted across 3 parallel lanes.
 
 **Execution constraint — no fallbacks**:
 - No `#[cfg(feature = "legacy")]` toggles or "try DSL, fall back to Rust" paths.
 - No temporary wrapper shims that keep both execution paths alive.
-- No `TODO(HACK)` escape hatches. Each task either fully replaces the Rust graph with `.dag` or it is not done.
-- If the DSL compiler needs new features to express a graph, that is a blocking prerequisite — not something to work around with Rust glue.
+- No `TODO(HACK)` escape hatches. Each task either fully replaces the Rust with `.dag` or it is not done.
+- If the DSL compiler needs new features to express something, that is a blocking prerequisite — not something to work around with Rust glue.
 
-**Parallelism**: 6A, 6B, and 6D are fully independent (disjoint file sets). 6C depends on 6B. All lanes are mutually exclusive by crate ownership — no two lanes touch the same crate.
+**Two fully parallel lanes**:
 
-**Shared infrastructure**: `gunbc-dag/src/dsl_builder.rs` and `gunbc-dag/src/resolve.rs` are append-only shared files. 6B appends cloud/gcp/llm builder functions, then 6C appends review builder functions (serialized by dependency). 6D modifies op resolution match arms (disjoint from 6B/6C changes). Commits to shared files are atomic per lane.
+| Lane | Scope | LOC | Parallel |
+|------|-------|-----|----------|
+| **Lane A** | All `lib/` crate behavior + lib-dependent binaries | ~35,200 | A ∥ B |
+| **Lane B** | All `gunbc-dag/src/` behavior + tool binaries | ~14,400 | A ∥ B |
 
-### Lane 6A: Cleanup + Workspace Subdags
+**Shared infrastructure**: `gunbc-dag/src/dsl_builder.rs` and `gunbc-dag/src/resolve.rs` are append-only shared files. Commits to shared files are atomic per lane.
 
-**Goal**: Delete tombstone files and replace manual workspace subdags with DSL wrappers.
+Sub-lane task definitions follow. Task IDs preserve their original numbering for traceability.
 
-**Mutually exclusive scope**: `lib/tools/{clippy,deps,gist}/src/`, `gunbc-dag/src/workspace/subdags/{bootstrap,makegen}.rs`
+### Lane A: lib/ Crates + lib-Dependent Binaries (~35K LOC)
+
+**Goal**: Migrate ALL handwritten Rust behavior in every `lib/` crate to `.dag`, then delete the binaries that depend on them. After this lane, `lib/` crates contain only `lib.rs` re-exports and `system_models.rs` registrations, and the 4 lib-dependent binaries are trivially generated entry points.
+
+**Mutually exclusive scope**: ALL `lib/` crate source files (excluding `lib/transport/` and `lib/primitives/`), plus `gunbc-dag/src/bin/{review,pipeline,infra,sdlc}.rs`.
+
+**Sub-lanes**: 6A-1 (tombstones), 6B (cloud/gcp/llm), 6C (review), 6E (git/blob/gist/markdown/design), 6G (clippy/deps), 6I-A (lib-dependent binaries)
+
+---
+
+#### Tombstone Cleanup (tasks 6A-*)
+
+**Scope**: `lib/tools/{clippy,deps,gist}/src/graph*.rs`
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **6A-1** | Delete tombstone `graph.rs`/`graph_mock.rs` in `lib/tools/{clippy,deps,gist}/src/` and remove `mod graph` / `mod graph_mock` declarations from their parent `lib.rs` files. | -- | S | Pending |
-| **6A-2** | Replace `gunbc-dag/src/workspace/subdags/bootstrap.rs` (174 LOC) with DSL wrapper: call `build_dsl_graph("tools/bootstrap.dag")` and wrap as `Node::subdag("bootstrap", dag)`. Delete the manual `DagBuilder` body. Follow the pattern in `gunbc-dag/src/bootstrap/graph.rs`. | 6A-1 | S | Pending |
-| **6A-3** | Replace `gunbc-dag/src/workspace/subdags/makegen.rs` (140 LOC) with DSL wrapper: call `build_dsl_graph("tools/makegen.dag")` and wrap as `Node::subdag("makegen", dag)`. Delete the manual `DagBuilder` body. | 6A-1 | S | Pending |
-
-**Explicitly kept in Rust**: `gunbc-dag/src/workspace/subdags/languages.rs` (124 LOC) — compile-time metadata composition over `LanguageOp`; no DSL module exists for language metadata. Requires a new DSL construct to migrate; out of scope.
-
-#### 6A Deletion Manifest
+| **6A-1** | Delete tombstone `graph.rs`/`graph_mock.rs` in `lib/tools/{clippy,deps,gist}/src/` and remove `mod graph` / `mod graph_mock` declarations from their parent `lib.rs` files. | -- | S | **Done** |
 
 | File | Action |
 |------|--------|
@@ -132,31 +139,16 @@ Verification after migration-wave closeout:
 | `lib/tools/deps/src/graph_mock.rs` | Delete |
 | `lib/tools/gist/src/graph.rs` | Delete |
 | `lib/tools/gist/src/graph_mock.rs` | Delete |
-| `gunbc-dag/src/workspace/subdags/bootstrap.rs` | Rewrite (manual `DagBuilder` body deleted, replaced with DSL call) |
-| `gunbc-dag/src/workspace/subdags/makegen.rs` | Rewrite (manual `DagBuilder` body deleted, replaced with DSL call) |
 
-#### 6A Exit Criteria
+> Tasks 6A-2 and 6A-3 (subdag rewrites) are in **Lane B** below.
 
-1. Zero tombstone `graph.rs` / `graph_mock.rs` files remain in `lib/tools/{clippy,deps,gist}/src/`.
-2. `bootstrap.rs` and `makegen.rs` subdags are thin DSL wrappers (under ~30 LOC each), no manual `DagBuilder` calls.
-3. No `mod graph` or `mod graph_mock` declarations referencing deleted files.
+---
 
-#### 6A Verification
+#### Cloud/GCP/LLM Full Stack (tasks 6B-*)
 
-```
-cargo check -p gunbc-lib-clippy
-cargo check -p gunbc-lib-deps
-cargo check -p gunbc-lib-gist
-cargo test -q -p gunbc-dag -- workspace
-cargo test -q -p gunbc-dag --test resource_registry_coverage
-cargo clippy --all-targets -- -D warnings
-```
+**Goal**: Migrate ALL handwritten Rust in `lib/gcp-ops/`, `lib/cloud-ops/`, and `lib/llm-ops/` to `.dag`. This includes graph builders, `Executable` ops, typed GCP REST service interfaces, cloud config/policy definitions, and LLM prepare/parse ops. After this lane, the only Rust remaining in these 3 crates is `lib.rs` re-exports and `system_models.rs` type registrations.
 
-### Lane 6B: Cloud/GCP/LLM Full Stack (Graph + Ops)
-
-**Goal**: Migrate all cloud credential, GCP, and LLM graph builders from manual Rust `DagBuilder` calls to `.dag` files, **and** migrate `Executable` ops in these crates to generic `ServiceOperationSpec` interpreters. Delete the Rust graph files, their mocks, and the per-op Rust structs.
-
-**Mutually exclusive scope**: `lib/gcp-ops/src/` (all files), `lib/cloud-ops/src/` (graph + ops files), `lib/llm-ops/src/` (all files), `dsl/cloud/`
+**Mutually exclusive scope**: `lib/gcp-ops/src/` (ALL files), `lib/cloud-ops/src/` (ALL files), `lib/llm-ops/src/` (ALL files), `dsl/cloud/`, `dsl/services/gcp/`, `dsl/config/gcp_project.dag`, `dsl/config/credential_policy.dag`
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
@@ -168,7 +160,13 @@ cargo clippy --all-targets -- -D warnings
 | **6B-6** | Delete all Rust graph/mock files. Remove `pub mod graph` / `pub mod graph_mock` / `pub mod discovery_graph` / `pub mod github_credential_graph` from parent `lib.rs` files. Update all downstream `use` imports to point to DSL-backed builders. | 6B-1..6B-5 | M | Pending |
 | **6B-7** | Migrate `lib/gcp-ops/src/ops.rs` (2,403 LOC) + `lib/gcp-ops/src/discovery_ops.rs` (810 LOC) to generic interpreters. GCP ops are predominantly REST prepare/parse pairs — each maps to `RestPrepareOp`/`RestParseOp` parameterized by `ServiceOperationSpec` extracted from `.dag` service definitions. Author `dsl/cloud/gcp/services.dag` with per-operation specs. Delete per-op Rust structs once the generic interpreter handles them. | 6B-1, 6B-3 | L | Pending |
 | **6B-8** | Migrate `lib/cloud-ops/src/ops.rs` (441 LOC) to generic interpreters. Provider-neutral dispatch ops become DSL-expressed routing or thin profile-bound adapters. Credential-policy ops that are pure config transforms become DSL `fn`. | 6B-4, 6B-7 | M | Pending |
-| **6B-9** | Final cleanup: delete emptied ops files, remove dead `mod` declarations, verify no Rust `Executable` impls remain in `lib/{gcp-ops,cloud-ops}/src/`. | 6B-6..6B-8 | S | Pending |
+| **6B-9** | Final graph+ops cleanup: delete emptied ops files, remove dead `mod` declarations, verify no Rust `Executable` impls remain in `lib/{gcp-ops,cloud-ops}/src/`. | 6B-6..6B-8 | S | Pending |
+| **6B-10** | Migrate `lib/gcp-ops/src/services/` (11 files, 3,328 LOC) to DSL service declarations. Each Rust typed API interface (IAM, Secret Manager, WIF, Cloud Run, Compute Engine, Storage, Resource Manager, Load Balancer, local_auth) becomes a `service` block in `dsl/services/gcp/*.dag`. The `MethodMeta` structs map directly to `@rest(METHOD, path)` annotations. Delete Rust service files once specs compile. | 6B-7 | L | Pending |
+| **6B-11** | Migrate `lib/cloud-ops/src/` config/policy files to DSL config: `project_spec.rs` (911 LOC) -> `dsl/config/gcp_project.dag`; `credential_policy.rs` (251 LOC) -> `dsl/config/credential_policy.dag`; `infra_spec.rs` (200 LOC) -> `dsl/config/infra_spec.dag`; `env_requirements.rs` (207 LOC) + `env_status.rs` (91 LOC) -> DSL config nodes. | 6B-4 | M | Pending |
+| **6B-12** | Migrate `lib/cloud-ops/src/` infra DAG builders to DSL: `infra_bootstrap.rs` (1,141 LOC) -> expand `dsl/infra/gcp/bootstrap.dag`; `infra_plan_apply.rs` (490 LOC) -> expand `dsl/infra/gcp/plan_apply.dag`. These are manual `DagBuilder` graphs — same migration pattern as 6B-1..6B-4. | 6B-10, 6B-11 | L | Pending |
+| **6B-13** | Migrate remaining `lib/cloud-ops/src/` behavior files: `config_loader.rs` (902 LOC) -> DSL config chain with profile resolution; `secret_cache.rs` (202 LOC), `secret_rotation.rs` (149 LOC), `secret_exports.rs` (112 LOC) -> DSL `fn`; `login_flow.rs` (180 LOC), `health_status.rs` (153 LOC), `project_registry.rs` (158 LOC), `config_resource.rs` (190 LOC) -> DSL config + `fn`. | 6B-11, 6B-12 | L | Pending |
+| **6B-14** | Migrate `lib/llm-ops/src/lib.rs` (1,009 LOC) — LLM prepare/parse ops (PrepareChatRequest, ParseChatResponse, etc.) to service operations in `dsl/services/llm/*.dag`. These follow the transport pattern and map to `RestPrepareOp`/`RestParseOp` generic interpreters. | 6B-5 | M | Pending |
+| **6B-15** | Full crate cleanup: delete all migrated files across `lib/{gcp-ops,cloud-ops,llm-ops}/src/`. Only `lib.rs` re-exports, `system_models.rs`, and `generated_tests*.rs` should remain. Remove dead `mod` declarations. | 6B-9..6B-14 | M | Pending |
 
 #### 6B Deletion Manifest
 
@@ -177,24 +175,55 @@ cargo clippy --all-targets -- -D warnings
 | `lib/gcp-ops/src/graph.rs` | 1,760 | Delete |
 | `lib/gcp-ops/src/graph_mock.rs` | 452 | Delete |
 | `lib/gcp-ops/src/discovery_graph.rs` | 463 | Delete |
-| `lib/gcp-ops/src/ops.rs` | 2,403 | Delete (replaced by generic interpreters + `.dag` service specs) |
-| `lib/gcp-ops/src/discovery_ops.rs` | 810 | Delete (replaced by generic interpreters + `.dag` service specs) |
+| `lib/gcp-ops/src/ops.rs` | 2,403 | Delete (generic interpreters + `.dag` service specs) |
+| `lib/gcp-ops/src/discovery_ops.rs` | 810 | Delete (generic interpreters + `.dag` service specs) |
+| `lib/gcp-ops/src/services/cloud_run.rs` | 366 | Delete (-> `dsl/services/gcp/cloud_run.dag`) |
+| `lib/gcp-ops/src/services/compute_engine.rs` | 402 | Delete (-> `dsl/services/gcp/compute_engine.dag`) |
+| `lib/gcp-ops/src/services/iam.rs` | 517 | Delete (-> `dsl/services/gcp/iam.dag`) |
+| `lib/gcp-ops/src/services/iam_policy.rs` | 109 | Delete (-> `dsl/services/gcp/iam_policy.dag`) |
+| `lib/gcp-ops/src/services/load_balancer.rs` | 408 | Delete (-> `dsl/services/gcp/load_balancer.dag`) |
+| `lib/gcp-ops/src/services/local_auth.rs` | 142 | Delete (-> `dsl/services/gcp/local_auth.dag`) |
+| `lib/gcp-ops/src/services/mod.rs` | 258 | Delete |
+| `lib/gcp-ops/src/services/resource_manager.rs` | 187 | Delete (-> `dsl/services/gcp/resource_manager.dag`) |
+| `lib/gcp-ops/src/services/secret_manager.rs` | 276 | Delete (-> `dsl/services/gcp/secret_manager.dag`) |
+| `lib/gcp-ops/src/services/storage.rs` | 243 | Delete (-> `dsl/services/gcp/storage.dag`) |
+| `lib/gcp-ops/src/services/workload_identity.rs` | 420 | Delete (-> `dsl/services/gcp/workload_identity.dag`) |
 | `lib/cloud-ops/src/graph.rs` | 460 | Delete |
 | `lib/cloud-ops/src/github_credential_graph.rs` | 391 | Delete |
-| `lib/cloud-ops/src/ops.rs` | 441 | Delete (replaced by generic interpreters + DSL `fn`) |
+| `lib/cloud-ops/src/ops.rs` | 441 | Delete (generic interpreters + DSL `fn`) |
+| `lib/cloud-ops/src/project_spec.rs` | 911 | Delete (-> `dsl/config/gcp_project.dag`) |
+| `lib/cloud-ops/src/config_loader.rs` | 902 | Delete (-> DSL config chain) |
+| `lib/cloud-ops/src/infra_bootstrap.rs` | 1,141 | Delete (-> `dsl/infra/gcp/bootstrap.dag`) |
+| `lib/cloud-ops/src/infra_plan_apply.rs` | 490 | Delete (-> `dsl/infra/gcp/plan_apply.dag`) |
+| `lib/cloud-ops/src/credential_policy.rs` | 251 | Delete (-> `dsl/config/credential_policy.dag`) |
+| `lib/cloud-ops/src/env_requirements.rs` | 207 | Delete (-> DSL config) |
+| `lib/cloud-ops/src/secret_cache.rs` | 202 | Delete (-> DSL `fn`) |
+| `lib/cloud-ops/src/infra_spec.rs` | 200 | Delete (-> `dsl/config/infra_spec.dag`) |
+| `lib/cloud-ops/src/config_resource.rs` | 190 | Delete (-> DSL config + `fn`) |
+| `lib/cloud-ops/src/login_flow.rs` | 180 | Delete (-> DSL config + `fn`) |
+| `lib/cloud-ops/src/project_registry.rs` | 158 | Delete (-> DSL config) |
+| `lib/cloud-ops/src/health_status.rs` | 153 | Delete (-> DSL config + `fn`) |
+| `lib/cloud-ops/src/secret_rotation.rs` | 149 | Delete (-> DSL `fn`) |
+| `lib/cloud-ops/src/secret_exports.rs` | 112 | Delete (-> DSL `fn`) |
+| `lib/cloud-ops/src/env_status.rs` | 91 | Delete (-> DSL config) |
 | `lib/llm-ops/src/graph.rs` | 268 | Delete |
 | `lib/llm-ops/src/graph_mock.rs` | 1,013 | Delete |
-| **Total** | **8,461** | |
+| `lib/llm-ops/src/lib.rs` | 1,009 | Shrink (only re-exports + `system_models` registration remain) |
+| **Total** | **~18,135** | |
 
 #### 6B Exit Criteria
 
 1. Zero `graph.rs`, `graph_mock.rs`, `discovery_graph.rs`, `github_credential_graph.rs`, `ops.rs`, or `discovery_ops.rs` files in `lib/{gcp-ops,cloud-ops,llm-ops}/src/`.
-2. All 3 GCP runtime variants (GitHub/Metadata/Local) for both credential and upsert graphs compile from `.dag` files.
-3. `dsl_builder.rs` has new builder functions for each migrated graph.
-4. No Rust `match` fallback dispatch remains for graph construction — runtime variant selection is either expressed in DSL or handled by per-variant `.dag` files selected at compile time.
-5. All downstream consumers (`lib/review/src/graph.rs`, `gunbc-dag/src/bin/review.rs`) that import these builders still compile (same public API, now backed by DSL).
-6. Zero hand-written `Executable` impls in `lib/{gcp-ops,cloud-ops}/src/` — all service operations use generic `RestPrepareOp`/`RestParseOp` or `ShellPrepareOp`/`ShellParseOp` interpreters parameterized by `ServiceOperationSpec`.
-7. `dsl/cloud/gcp/services.dag` is the authoritative source for all GCP service operation specs.
+2. Zero files in `lib/gcp-ops/src/services/` — entire directory deleted. All GCP service specs live in `dsl/services/gcp/*.dag`.
+3. Zero behavior files in `lib/cloud-ops/src/` — `project_spec.rs`, `config_loader.rs`, `infra_bootstrap.rs`, `infra_plan_apply.rs`, `credential_policy.rs`, `env_requirements.rs`, `secret_cache.rs`, `infra_spec.rs`, `config_resource.rs`, `login_flow.rs`, `project_registry.rs`, `health_status.rs`, `secret_rotation.rs`, `secret_exports.rs`, `env_status.rs` all deleted.
+4. `lib/llm-ops/src/lib.rs` contains only re-exports and `system_models` registration — zero `Executable` impls.
+5. All 3 GCP runtime variants (GitHub/Metadata/Local) for both credential and upsert graphs compile from `.dag` files.
+6. `dsl_builder.rs` has new builder functions for each migrated graph.
+7. No Rust `match` fallback dispatch remains for graph construction — runtime variant selection is either expressed in DSL or handled by per-variant `.dag` files selected at compile time.
+8. All downstream consumers (`lib/review/src/graph.rs`, `gunbc-dag/src/bin/review.rs`) that import these builders still compile (same public API, now backed by DSL).
+9. Zero hand-written `Executable` impls in `lib/{gcp-ops,cloud-ops,llm-ops}/src/` — all service operations use generic interpreters parameterized by `ServiceOperationSpec`.
+10. `dsl/services/gcp/*.dag` is the authoritative source for all GCP service operation specs.
+11. `dsl/config/gcp_project.dag`, `dsl/config/credential_policy.dag`, `dsl/config/infra_spec.dag` are authoritative for cloud config/policy.
 
 #### 6B Verification
 
@@ -207,14 +236,17 @@ cargo check -p gunbc-lib-llm-ops
 cargo test -q -p gunbc-lib-llm-ops
 cargo test -q -p gunbc-dag --test resource_registry_coverage
 cargo run -q -p gunbc-dag --bin gunbc-testgen -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-infra -- spec
 cargo clippy --all-targets -- -D warnings
 ```
 
-### Lane 6C: Review Graph Stack
+---
 
-**Goal**: Migrate the review graph builders and their mocks from Rust to `.dag`. Update binary entry points. Delete Rust graph files.
+#### Review Full Stack (tasks 6C-*)
 
-**Mutually exclusive scope**: `lib/review/src/graph*.rs`, `gunbc-dag/src/bin/{review,pipeline}.rs` (import changes only)
+**Goal**: Migrate ALL handwritten Rust in `lib/review/` to `.dag`. This includes graph builders, mocks, review ops (prompt building, response parsing), the 4-dimension review model, and review profiles. After this lane, the only Rust remaining in `lib/review/` is `lib.rs` re-exports and `system_models.rs` type registrations.
+
+**Mutually exclusive scope**: `lib/review/src/` (ALL files), `gunbc-dag/src/bin/{review,pipeline}.rs` (import changes only), `dsl/tools/review.dag`, `dsl/config/review_profiles.dag`, `dsl/config/review_dimensions.dag`
 
 **Depends on**: Lane 6B (review graphs compose cloud credential subdags from `lib/cloud-ops` and LLM subdags from `lib/llm-ops`)
 
@@ -225,6 +257,10 @@ cargo clippy --all-targets -- -D warnings
 | **6C-3** | Replace review `graph.rs` with thin DSL wrappers (same pattern as `gunbc-dag/src/bootstrap/graph.rs`). The public API (`build_review_phase_graph()`, etc.) stays but delegates to DSL builders. | 6C-2 | M | Pending |
 | **6C-4** | Update `gunbc-dag/src/bin/review.rs` and `gunbc-dag/src/bin/pipeline.rs` to use DSL-backed review graph builders. No direct `DagBuilder` construction in binaries. | 6C-3 | S | Pending |
 | **6C-5** | Delete `lib/review/src/graph.rs` and `lib/review/src/graph_mock.rs`. Remove `pub mod graph` / `pub mod graph_mock` from `lib/review/src/lib.rs`. Mocks are now auto-generated from `@auto_mock` test annotations in `.dag`. | 6C-3, 6C-4 | S | Pending |
+| **6C-6** | Migrate `lib/review/src/lib.rs` (1,313 LOC) review ops: prompt building (assemble system/user prompts for each dimension), response parsing (extract structured review output from LLM response), and any `Executable` trait impls. Prompt-building ops become DSL `fn` with string interpolation. Parse ops become DSL `fn` or generic `RestParseOp` parameterized by `ServiceOperationSpec`. | 6C-1 | L | Pending |
+| **6C-7** | Migrate `lib/review/src/dimension.rs` (968 LOC) — the 4-dimension review model (coherence, quality, requirements, aspirational). Dimension definitions, scoring, and merge logic become `dsl/config/review_dimensions.dag` (config) + DSL `fn` (scoring/merge). | 6C-6 | M | Pending |
+| **6C-8** | Migrate `lib/review/src/profile.rs` (449 LOC) — review profiles (dimension opt-in/out, severity thresholds, LLM model selection) become `dsl/config/review_profiles.dag`. | 6C-7 | S | Pending |
+| **6C-9** | Full crate cleanup: delete all migrated behavior files from `lib/review/src/`. Only `lib.rs` re-exports, `system_models.rs`, and `generated_tests*.rs` should remain. Remove dead `mod` declarations. | 6C-5..6C-8 | S | Pending |
 
 #### 6C Deletion Manifest
 
@@ -232,15 +268,20 @@ cargo clippy --all-targets -- -D warnings
 |------|-----|--------|
 | `lib/review/src/graph.rs` | 1,794 | Delete |
 | `lib/review/src/graph_mock.rs` | 585 | Delete |
-| **Total** | **2,379** | |
+| `lib/review/src/lib.rs` | 1,313 | Shrink (only re-exports + `system_models` registration remain) |
+| `lib/review/src/dimension.rs` | 968 | Delete (-> `dsl/config/review_dimensions.dag` + DSL `fn`) |
+| `lib/review/src/profile.rs` | 449 | Delete (-> `dsl/config/review_profiles.dag`) |
+| **Total** | **~5,109** | |
 
 #### 6C Exit Criteria
 
 1. Zero `graph.rs` or `graph_mock.rs` in `lib/review/src/`.
-2. `dsl/tools/review.dag` fully expresses all 4 review graph variants — no Rust `DagBuilder` calls for review topology anywhere in the codebase.
-3. `gunbc-review` and `gunbc-pipeline` binaries execute using DSL-compiled review graphs.
-4. All review-related tests pass, including entrypoint/boundary detection tests, dimension opt-out tests, and transport subdag assertions (currently in the deleted `graph.rs` — equivalent assertions must exist in `.dag` test blocks or in the wrapper module's tests).
-5. `DimensionGraphConfigOps` (currently private to `graph.rs`) either moves to `ops.rs` or is expressed as DSL config nodes.
+2. Zero `dimension.rs` or `profile.rs` in `lib/review/src/` — all review model definitions live in `dsl/config/review_dimensions.dag` and `dsl/config/review_profiles.dag`.
+3. `lib/review/src/lib.rs` contains only re-exports and `system_models` registration — zero `Executable` impls, zero prompt-building logic.
+4. `dsl/tools/review.dag` fully expresses all 4 review graph variants — no Rust `DagBuilder` calls for review topology anywhere in the codebase.
+5. `gunbc-review` and `gunbc-pipeline` binaries execute using DSL-compiled review graphs.
+6. All review-related tests pass, including entrypoint/boundary detection tests, dimension opt-out tests, and transport subdag assertions (equivalent assertions must exist in `.dag` test blocks or in the wrapper module's tests).
+7. `DimensionGraphConfigOps` (currently private to `graph.rs`) is expressed as DSL config nodes — not moved to `ops.rs`.
 
 #### 6C Verification
 
@@ -255,7 +296,117 @@ cargo test -q -p gunbc-dag --test resource_registry_coverage
 cargo clippy --all-targets -- -D warnings
 ```
 
-### Lane 6D: gunbc-dag Tool Ops to DSL
+---
+
+#### Pure lib/ Ops Crates (tasks 6E-*)
+
+**Scope**: `lib/git-ops/`, `lib/blob/`, `lib/gist-ops/`, `lib/markdown/`, `lib/design-ops/`
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6E-1** | Migrate `lib/git-ops/src/lib.rs` (1,014 LOC) — git prepare/parse ops to service operations in `dsl/services/git.dag`. Each prepare/parse pair maps to `ShellPrepareOp`/`ShellParseOp` parameterized by `ServiceOperationSpec`. | -- | M | Pending |
+| **6E-2** | Migrate `lib/gist-ops/src/lib.rs` (1,317 LOC) — gist prepare/parse ops to service operations in `dsl/services/github/gist.dag`. REST prepare/parse pairs mapping to `RestPrepareOp`/`RestParseOp`. | -- | M | Pending |
+| **6E-3** | Migrate `lib/blob/src/lib.rs` (942 LOC) — content acquisition ops to service operations in `dsl/services/blob.dag`. | -- | M | Pending |
+| **6E-4** | Migrate `lib/markdown/src/lib.rs` (484 LOC) — markdown rendering ops to DSL `fn` or `uses rust_fn`. Pure transforms with no transport interaction. | -- | S | Pending |
+| **6E-5** | Migrate `lib/design-ops/src/lib.rs` (141 LOC) — design review ops to DSL `fn`. Smallest crate, pure transforms. | -- | S | Pending |
+| **6E-6** | Full crate cleanup: delete all migrated behavior files across all 5 crates. Only `lib.rs` re-exports, `system_models.rs`, and `generated_tests*.rs` should remain. | 6E-1..6E-5 | S | Pending |
+
+| File | LOC | Action |
+|------|-----|--------|
+| `lib/git-ops/src/lib.rs` | 1,014 | Shrink |
+| `lib/gist-ops/src/lib.rs` | 1,317 | Shrink |
+| `lib/blob/src/lib.rs` | 942 | Shrink |
+| `lib/markdown/src/lib.rs` | 484 | Shrink |
+| `lib/design-ops/src/lib.rs` | 141 | Shrink |
+| **Total** | **~3,898** | |
+
+---
+
+#### Clippy + Deps Tool Internals (tasks 6G-*)
+
+**Scope**: `lib/tools/clippy/src/{config.rs, policy.rs, lint.rs}`, `lib/tools/deps/src/*.rs` (non-graph)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6G-1** | Migrate `lib/tools/clippy/src/` internals (config.rs, policy.rs, lint.rs — 932 LOC). Clippy config types and lint policy become DSL config in `dsl/config/clippy.dag`. Policy enforcement becomes DSL `fn`. | -- | M | Pending |
+| **6G-2** | Migrate `lib/tools/deps/src/` internals (7 files — 1,456 LOC). Manifest parsing, installer selection, platform detection become service operations in `dsl/services/deps.dag` + DSL config. | -- | L | Pending |
+| **6G-3** | Full crate cleanup: delete all migrated files. Only `lib.rs` re-exports, `system_models.rs`, and graph tombstones should remain. | 6G-1, 6G-2 | S | Pending |
+
+| File | LOC | Action |
+|------|-----|--------|
+| `lib/tools/clippy/src/{config,policy,lint}.rs` | ~932 | Delete |
+| `lib/tools/deps/src/{tool_upsert,installer,upsert,platform,manifest,env,package_manager}.rs` | ~1,456 | Delete |
+| **Total** | **~2,388** | |
+
+---
+
+#### lib-Dependent Binary Deletion (tasks 6I-A)
+
+After lib/ crate migration is complete, delete the 4 binaries that primarily consume lib/ APIs.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6I-3** | Delete `review.rs` (279 LOC) and `pipeline.rs` (411 LOC). After 6C, review graph construction is DSL-compiled. Remaining CLI ceremony migrates to `.dag`. Replace with generated entry points. | 6C | S | Pending |
+| **6I-7** | Delete `infra.rs` (1,035 LOC). After 6B, all infra DAG builders and cloud-ops are DSL-compiled. Migrate multi-command dispatch to `.dag` pipeline with command routing. Replace with generated entry point. | 6B | L | Pending |
+| **6I-9** | Delete `sdlc.rs` (3,942 LOC). Migrate ALL remaining orchestration to `.dag` pipelines: ledger management becomes service operations via file I/O transport; intent validation becomes DSL `fn`; command dispatch becomes per-command `.dag` pipelines; `CompiledStageDispatcher` is already DSL-compiled — extend to cover full binary. Replace with generated entry point. | 6B, 6E | XL | Pending |
+
+| File | LOC | Action |
+|------|-----|--------|
+| `gunbc-dag/src/bin/review.rs` | 279 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/pipeline.rs` | 411 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/infra.rs` | 1,035 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/sdlc.rs` | 3,942 | Delete (-> generated entry point) |
+| **Total** | **5,667** | |
+
+#### Lane A Exit Criteria
+
+1. Zero `Executable` trait impls in ANY `lib/` crate (except `lib/transport/` and `lib/primitives/`).
+2. Zero behavior files in any `lib/` crate beyond re-exports and `system_models`.
+3. All service operations use generic interpreters parameterized by `ServiceOperationSpec` from `dsl/services/*.dag`.
+4. All config/policy definitions live in `dsl/config/*.dag`.
+5. Each `lib/` crate's `lib.rs` contains only re-exports and `system_models` registration.
+6. `review.rs`, `pipeline.rs`, `infra.rs`, `sdlc.rs` are trivially generated entry points (≤30 LOC each).
+7. Zero ledger management, intent validation, or orchestration logic in any Lane A binary.
+
+#### Lane A Verification
+
+```
+cargo check --workspace
+cargo test --workspace --lib
+cargo test -q -p gunbc-dag --test resource_registry_coverage
+cargo run -q -p gunbc-dag --bin gunbc-review -- -n
+cargo run -q -p gunbc-dag --bin gunbc-pipeline -- --help
+cargo run -q -p gunbc-dag --bin gunbc-infra -- spec
+cargo run -q -p gunbc-dag --bin gunbc-sdlc -- help
+cargo clippy --all-targets -- -D warnings
+```
+
+---
+
+### Lane B: gunbc-dag/ Behavior + Tool Binaries (~14K LOC)
+
+**Goal**: Migrate ALL handwritten behavior in `gunbc-dag/src/` to `.dag`, then delete the tool binaries. Includes workspace subdags, tool ops, makegen/policy/config, workflow commands, and 11 tool binary entry points. After this lane, `gunbc-dag/src/` contains only DSL wrappers, `uses rust_fn` rendering stubs, Category D residuals (~1K LOC), and trivially generated entry points.
+
+**Mutually exclusive scope**: ALL `gunbc-dag/src/` non-binary behavior files, plus `gunbc-dag/src/bin/{build,bootstrap,ci,codegen,codegen_cli,docgen,pragma,makegen,testgen,deps_config,workflow}.rs`.
+
+**Sub-lanes**: 6A-2/3 (subdags), 6D (tool ops), 6F (makegen/policy/config), 6H (workflow), 6I-B (tool binaries)
+
+---
+
+#### Workspace Subdag Rewrites (tasks 6A-2, 6A-3)
+
+**Scope**: `gunbc-dag/src/workspace/subdags/{bootstrap,makegen}.rs`
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6A-2** | Replace `gunbc-dag/src/workspace/subdags/bootstrap.rs` (174 LOC) with DSL wrapper: call `build_dsl_graph("tools/bootstrap.dag")` and wrap as `Node::subdag("bootstrap", dag)`. Delete the manual `DagBuilder` body. Follow the pattern in `gunbc-dag/src/bootstrap/graph.rs`. | -- | S | **Done** |
+| **6A-3** | Replace `gunbc-dag/src/workspace/subdags/makegen.rs` (140 LOC) with DSL wrapper: call `build_dsl_graph("tools/makegen.dag")` and wrap as `Node::subdag("makegen", dag)`. Delete the manual `DagBuilder` body. | -- | S | **Done** |
+
+**Explicitly kept in Rust**: `languages.rs` (124 LOC) — compile-time metadata composition over `LanguageOp`; no DSL module exists.
+
+---
+
+#### Tool Ops to DSL (tasks 6D-*)
 
 **Goal**: Migrate `Executable` trait implementations for tool-level ops from hand-written Rust structs to generic interpreters parameterized by `ServiceOperationSpec` (for service ops) and DSL `fn` definitions (for pure renders and config transforms). Cloud/GCP ops are handled by Lane 6B.
 
@@ -435,22 +586,166 @@ cargo run -q -p gunbc-dag --bin gunbc-testgen -- --dry-run
 cargo clippy --all-targets -- -D warnings
 ```
 
+---
+
+#### makegen Behavior + Policy + Config (tasks 6F-*)
+
+**Goal**: Migrate the tool registry, Makefile/Justfile/gitignore/CI rendering inputs, pragma policy definitions, resource definitions, and binary invocation mappings from handwritten Rust to `.dag`. This is the most impactful lane — `registry.rs` (2,355 LOC) is the single source of truth for all build/test/lint commands. Migrating it to DSL means `dsl/config/tool_registry.dag` becomes authoritative, eliminating Rust<->DSL synchronization bugs.
+
+**Mutually exclusive scope**: `gunbc-dag/src/makegen/{registry.rs, render.rs, gitignore.rs, justfile.rs, ci_render.rs}`, `gunbc-dag/src/policy/pragma.rs`, `gunbc-dag/src/resources.rs`, `gunbc-dag/src/binaries.rs`, `dsl/config/tool_registry.dag`, `dsl/config/pragma_policy.dag`, `dsl/config/resources.dag`, `dsl/config/binaries.dag`, `dsl/config/gitignore_categories.dag`
+
+**Parallel with**: 6A, 6B, 6C, 6E, 6G (no file overlap with 6D — 6D owns only `*/ops.rs`)
+
+**Key dependency**: 6D's `dsl/services/tools/*.dag` should reference command specs from 6F's `dsl/config/tool_registry.dag` rather than hardcoding shell commands. 6F establishing the DSL config first makes 6D cleaner.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6F-1** | Migrate `makegen/registry.rs` (2,355 LOC) — `BuildConfig` + `ToolRegistry` to `dsl/config/tool_registry.dag` (currently an 18-line stub). This is the foundation: every tool binary name, test target, lint command, and cargo invocation becomes DSL-authoritative. Must include `iter_dag_specs()` output for testgen/CI. | -- | XL | Pending |
+| **6F-2** | Migrate `policy/pragma.rs` (411 LOC) — pragma policy definitions (clippy config, lint policy, disallowed methods) to expand `dsl/config/pragma_policy.dag` (currently a 28-line stub). Policy types, severity levels, and allowlist entries become DSL config. | -- | M | Pending |
+| **6F-3** | Migrate `resources.rs` (328 LOC) — `ResourceDef` constants (Makefile, .gitignore output paths, freshness markers) to `dsl/config/resources.dag`. | -- | S | Pending |
+| **6F-4** | Migrate `binaries.rs` (204 LOC) — binary invocation mappings (tool name -> cargo binary name, args) to `dsl/config/binaries.dag`. | -- | S | Pending |
+| **6F-5** | Migrate rendering inputs: `render.rs` (1,104 LOC), `gitignore.rs` (351 LOC), `justfile.rs` (395 LOC), `ci_render.rs` (192 LOC). Rendering functions stay as `uses rust_fn` but their config inputs (which tool targets to include, which sections to render, CI matrix entries) come from DSL config authored in 6F-1..6F-4. Delete the hardcoded Rust config; keep only the rendering logic behind `uses rust_fn`. | 6F-1..6F-4 | L | Pending |
+| **6F-6** | Final cleanup: delete `registry.rs`, `policy/pragma.rs`, `resources.rs`, `binaries.rs`. Shrink rendering files to pure `uses rust_fn` stubs. Remove dead `mod` declarations. | 6F-5 | M | Pending |
+
+#### 6F Deletion Manifest
+
+| File | LOC | Action |
+|------|-----|--------|
+| `gunbc-dag/src/makegen/registry.rs` | 2,355 | Delete (-> `dsl/config/tool_registry.dag`) |
+| `gunbc-dag/src/policy/pragma.rs` | 411 | Delete (-> `dsl/config/pragma_policy.dag`) |
+| `gunbc-dag/src/resources.rs` | 328 | Delete (-> `dsl/config/resources.dag`) |
+| `gunbc-dag/src/binaries.rs` | 204 | Delete (-> `dsl/config/binaries.dag`) |
+| `gunbc-dag/src/makegen/render.rs` | 1,104 | Shrink (keep rendering fn behind `uses rust_fn`, delete config) |
+| `gunbc-dag/src/makegen/gitignore.rs` | 351 | Shrink (keep rendering fn, delete config) |
+| `gunbc-dag/src/makegen/justfile.rs` | 395 | Shrink (keep rendering fn, delete config) |
+| `gunbc-dag/src/makegen/ci_render.rs` | 192 | Shrink (keep rendering fn, delete config) |
+| **Total** | **~5,340** | |
+
+#### 6F Exit Criteria
+
+1. Zero `registry.rs`, `pragma.rs`, `resources.rs`, or `binaries.rs` in their current locations — all config/policy lives in `dsl/config/*.dag`.
+2. `dsl/config/tool_registry.dag` is the single source of truth for all tool names, commands, and test targets — no `BuildConfig` or `ToolRegistry` Rust structs.
+3. Rendering files (`render.rs`, `gitignore.rs`, `justfile.rs`, `ci_render.rs`) contain only `uses rust_fn` rendering logic — zero hardcoded config.
+4. `dsl/config/pragma_policy.dag` is authoritative for all pragma policy.
+5. All tool binaries still produce identical output (verified by dry-run comparison).
+
+#### 6F Verification
+
+```
+cargo check -p gunbc-dag
+cargo test -q -p gunbc-dag
+cargo test -q -p gunbc-dag --test resource_registry_coverage
+cargo run -q -p gunbc-dag --bin gunbc-makegen -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-pragma -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-bootstrap -- --dry-run
+cargo clippy --all-targets -- -D warnings
+```
+
+#### Workflow Command Mappings (tasks 6H-*)
+
+**Goal**: Migrate workflow unit-to-command mappings and SLO budget definitions from handwritten Rust to `.dag`. After this lane, the workflow planner consumes DSL-authored command specs and SLO budgets — zero hardcoded Rust config.
+
+**Mutually exclusive scope**: `gunbc-dag/src/workflow/unit_commands.rs`, `gunbc-dag/src/workflow/slo.rs`, `dsl/config/slo.dag`, `dsl/config/workflow_commands.dag`
+
+**Depends on**: 6F (command specs must be in DSL first — `unit_commands.rs` references tool names from `registry.rs`)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6H-1** | Migrate `unit_commands.rs` (628 LOC) — workflow unit-to-shell-command mappings. These map process unit names to the shell commands that execute them. After 6F, tool command specs live in `dsl/config/tool_registry.dag`; `unit_commands.rs` becomes a DSL module that references those specs. Author `dsl/config/workflow_commands.dag`. | 6F-1 | M | Pending |
+| **6H-2** | Migrate `slo.rs` (303 LOC) — latency SLO budgets per workflow unit. Budget definitions become `dsl/config/slo.dag`. | -- | S | Pending |
+| **6H-3** | Cleanup: delete `unit_commands.rs` and `slo.rs`. Remove `mod` declarations from parent. | 6H-1, 6H-2 | S | Pending |
+
+#### 6H Deletion Manifest
+
+| File | LOC | Action |
+|------|-----|--------|
+| `gunbc-dag/src/workflow/unit_commands.rs` | 628 | Delete (-> `dsl/config/workflow_commands.dag`) |
+| `gunbc-dag/src/workflow/slo.rs` | 303 | Delete (-> `dsl/config/slo.dag`) |
+| **Total** | **931** | |
+
+#### 6H Exit Criteria
+
+1. Zero `unit_commands.rs` or `slo.rs` in `gunbc-dag/src/workflow/`.
+2. `dsl/config/workflow_commands.dag` is authoritative for unit-to-command mappings.
+3. `dsl/config/slo.dag` is authoritative for SLO budgets.
+4. Workflow planner produces identical plans before and after migration.
+
+#### 6H Verification
+
+```
+cargo check -p gunbc-dag
+cargo test -q -p gunbc-dag -- workflow
+cargo run -q -p gunbc-dag --bin gunbc-workflow -- --plan ci --dry-run
+cargo clippy --all-targets -- -D warnings
+```
+
+---
+
+#### Tool Binary Deletion (tasks 6I-B)
+
+After gunbc-dag/ behavior migration is complete, delete the 11 binaries that primarily consume tool DAGs.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6I-1** | Delete thin binaries: `build.rs` (83), `codegen.rs` (112), `docgen.rs` (170), `pragma.rs` (219), `testgen.rs` (285). Replace each with a trivially generated entry point. | 6D, 6F | M | Pending |
+| **6I-2** | Delete `bootstrap.rs` (380) and `deps_config.rs` (209). Migrate resource manifest ceremony, freshness logic to `.dag`. Replace with generated entry points. | 6D, 6F | M | Pending |
+| **6I-4** | Delete `makegen.rs` (420). After 6F, registry loading and config are DSL-authoritative. Replace with generated entry point. | 6F | S | Pending |
+| **6I-5** | Delete `ci.rs` (210). Bootstrap-safe constraint preserved — generated entry point compiles without generated sources. | 6D | S | Pending |
+| **6I-6** | Delete `workflow.rs` (708). After 6H, command mappings and SLOs are DSL-authoritative. Migrate planner to `.dag`. Replace with generated entry point. | 6H | M | Pending |
+| **6I-8** | Delete `codegen_cli.rs` (2,051). Migrate transaction-based code generation orchestration to `.dag` pipeline. Replace with generated entry point. | 6D, 6F | L | Pending |
+
+| File | LOC | Action |
+|------|-----|--------|
+| `gunbc-dag/src/bin/build.rs` | 83 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/codegen.rs` | 112 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/docgen.rs` | 170 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/pragma.rs` | 219 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/ci.rs` | 210 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/deps_config.rs` | 209 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/testgen.rs` | 285 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/bootstrap.rs` | 380 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/makegen.rs` | 420 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/workflow.rs` | 708 | Delete (-> generated entry point) |
+| `gunbc-dag/src/bin/codegen_cli.rs` | 2,051 | Delete (-> generated entry point) |
+| **Total** | **4,847** | |
+
+#### Lane B Exit Criteria
+
+1. Zero manual `DagBuilder` calls in `gunbc-dag/src/workspace/subdags/`.
+2. Every `Executable` impl in the 7 tool ops files is categorized and migrated per its category (see 6D audit).
+3. Zero Category A/B/C ops remain as hand-written Rust. Category D ops (~1K LOC) stay as `uses rust_fn`.
+4. Zero `registry.rs`, `policy/pragma.rs`, `resources.rs`, or `binaries.rs` — all config/policy in `dsl/config/*.dag`.
+5. Zero `unit_commands.rs` or `slo.rs` — workflow config in `dsl/config/*.dag`.
+6. 11 tool binaries are trivially generated entry points (≤30 LOC each).
+7. All tool binaries produce identical output before and after migration (dry-run comparison).
+
+#### Lane B Verification
+
+```
+cargo check -p gunbc-dag
+cargo test -q -p gunbc-dag
+cargo test -q -p gunbc-dag --test resource_registry_coverage
+cargo run -q -p gunbc-dag --bin gunbc-bootstrap -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-build -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-ci -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-makegen -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-pragma -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-workflow -- --plan ci --dry-run
+cargo clippy --all-targets -- -D warnings
+```
+
+---
+
 ### Lane 6 Summary
 
-| Lane | Scope | LOC Deleted | Size | Parallel With | Depends On |
-|------|-------|-------------|------|---------------|------------|
-| 6A | Tombstones + workspace subdags | ~320 (+ 2 rewrites) | S | 6B, 6D | -- |
-| 6B | Cloud/GCP/LLM graphs + ops (full crate) | 8,461 | XL | 6A, 6D | -- |
-| 6C | Review graph builders + binaries | 2,379 | L | 6D | 6B |
-| 6D | gunbc-dag tool ops → DSL/generic interpreters | 4,030 | XL | 6A, 6B | -- |
+| Lane | Scope | Sub-lanes | LOC | Parallel |
+|------|-------|-----------|-----|----------|
+| **A** | All `lib/` crate behavior + 4 lib-dependent binaries | 6A-1, 6B, 6C, 6E, 6G, 6I-A | ~35,200 | A ∥ B |
+| **B** | All `gunbc-dag/src/` behavior + 11 tool binaries | 6A-2/3, 6D, 6F, 6H, 6I-B | ~14,400 | A ∥ B |
 
-**Lanes 6A–6D total**: 15,190 LOC of Rust deleted or replaced by `.dag` files and generic interpreters.
+**Total**: ~47,000 LOC of Rust behavior deleted or replaced by `.dag` files. ~1,000 LOC of Category D residuals stay as `uses rust_fn`.
 
-**Mutual exclusivity by crate ownership**:
-- 6A owns `lib/tools/{clippy,deps,gist}/` and `gunbc-dag/src/workspace/subdags/`
-- 6B owns `lib/gcp-ops/`, `lib/cloud-ops/`, `lib/llm-ops/`, `dsl/cloud/`
-- 6C owns `lib/review/` and `gunbc-dag/src/bin/{review,pipeline}.rs`
-- 6D owns `gunbc-dag/src/{bootstrap,build,ci,codegen,docgen,makegen,pragma}/ops.rs` and `dsl/services/tools/`
+**Mutual exclusivity**: Lane A owns all `lib/` files + `bin/{review,pipeline,infra,sdlc}.rs`. Lane B owns all `gunbc-dag/src/` non-binary files + `bin/{build,bootstrap,ci,codegen,codegen_cli,docgen,pragma,makegen,testgen,deps_config,workflow}.rs`. Zero overlap.
 
 ---
 

@@ -1427,6 +1427,9 @@ fn makegen_runtime_smoke_per_target_with_toolchain_awareness() {
         RuntimeOutcome::Skipped { reason } => {
             panic!("rust runtime parity smoke should not skip: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL rust runtime parity smoke: {reason}");
+        }
     };
 
     for (target, outcome) in [("go", go), ("c", c), ("mips", mips)] {
@@ -1465,6 +1468,9 @@ fn makegen_runtime_differential_interpreter_vs_generated_rust_layer1() {
         RuntimeOutcome::Skipped { reason } => {
             panic!("generated rust layer1 runtime should not skip in differential test: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL generated rust layer1 runtime differential test: {reason}");
+        }
     };
 
     let interpreter_makefile = match interpreter {
@@ -1477,6 +1483,9 @@ fn makegen_runtime_differential_interpreter_vs_generated_rust_layer1() {
         }
         RuntimeOutcome::Skipped { reason } => {
             panic!("daglang interpreter differential run should not skip: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL daglang interpreter differential run: {reason}");
         }
     };
 
@@ -1507,6 +1516,9 @@ fn makegen_runtime_differential_interpreter_vs_generated_native_backends() {
         }
         RuntimeOutcome::Skipped { reason } => {
             panic!("daglang interpreter differential run should not skip: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL daglang interpreter differential run: {reason}");
         }
     };
 
@@ -1553,6 +1565,9 @@ fn makegen_c_runtime_asan_ubsan_differential_matches_interpreter() {
         RuntimeOutcome::Skipped { reason } => {
             panic!("daglang interpreter differential run should not skip: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL daglang interpreter differential run: {reason}");
+        }
     };
 
     let c = run_makegen_generated_c_with_asan_ubsan(&native_out_root.join("c"));
@@ -1570,6 +1585,9 @@ fn makegen_c_runtime_asan_ubsan_differential_matches_interpreter() {
         }
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP interpreter vs c(asan+ubsan) differential: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL interpreter vs c(asan+ubsan) differential: {reason}");
         }
     }
 
@@ -1593,6 +1611,9 @@ fn infra_tool_rust_layer1_execution_trace_matches_interpreter() {
         RuntimeOutcome::Ran { stderr, .. } => stderr,
         RuntimeOutcome::Skipped { reason } => {
             panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL generated rust layer1 runtime for {module}: {reason}");
         }
     };
     let generated_nodes = parse_trace_json_nodes(&generated_stderr);
@@ -1642,6 +1663,9 @@ fn sdlc_control_plane_rust_layer1_execution_trace_matches_interpreter() {
         RuntimeOutcome::Skipped { reason } => {
             panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL generated rust layer1 runtime for {module}: {reason}");
+        }
     };
     let generated_nodes = parse_trace_json_nodes(&generated_stderr);
     assert!(
@@ -1686,6 +1710,9 @@ fn infra_runtime_smoke_rust_layer1_executes_entrypoint() {
         }
         RuntimeOutcome::Skipped { reason } => {
             panic!("rust infra runtime smoke should not skip: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL rust infra runtime smoke: {reason}");
         }
     }
 
@@ -1739,6 +1766,9 @@ fn sdlc_control_plane_runtime_smoke_rust_layer1_executes_entrypoint() {
         RuntimeOutcome::Skipped { reason } => {
             panic!("rust sdlc control-plane runtime smoke should not skip: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL rust sdlc control-plane runtime smoke: {reason}");
+        }
     }
 
     std::fs::remove_dir_all(&rust_layer1_out)
@@ -1764,6 +1794,9 @@ fn infra_runtime_smoke_go_and_c_emit_runnable_binaries() {
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP infra go runtime smoke: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL infra go runtime smoke: {reason}");
+        }
     }
 
     match c {
@@ -1775,6 +1808,9 @@ fn infra_runtime_smoke_go_and_c_emit_runnable_binaries() {
         }
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP infra c runtime smoke: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL infra c runtime smoke: {reason}");
         }
     }
 
@@ -1794,6 +1830,9 @@ fn infra_runtime_smoke_mips_emits_runnable_binary_when_available() {
         }
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP infra mips runtime smoke: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL infra mips runtime smoke: {reason}");
         }
     }
 
@@ -1821,6 +1860,9 @@ fn infra_go_runtime_executes_when_go_available() {
         }
         RuntimeOutcome::Skipped { reason } => {
             panic!("infra go runtime should not skip when go is available: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL infra go runtime: {reason}");
         }
     }
 
@@ -1855,6 +1897,9 @@ fn sdlc_control_plane_go_runtime_executes_when_go_available() {
         RuntimeOutcome::Skipped { reason } => {
             panic!("sdlc control-plane go runtime should not skip when go is available: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL sdlc control-plane go runtime: {reason}");
+        }
     }
 
     std::fs::remove_dir_all(&native_out_root)
@@ -1881,6 +1926,9 @@ fn infra_c_runtime_executes_when_cc_and_curl_headers_available() {
         }
         RuntimeOutcome::Skipped { reason } => {
             panic!("infra c runtime should not skip when C compiler/curl headers are available: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL infra c runtime: {reason}");
         }
     }
 
@@ -1918,6 +1966,9 @@ fn sdlc_control_plane_c_runtime_executes_when_cc_and_curl_headers_available() {
                 "sdlc control-plane c runtime should not skip when C compiler/curl headers are available: {reason}"
             );
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL sdlc control-plane c runtime: {reason}");
+        }
     }
 
     std::fs::remove_dir_all(&native_out_root)
@@ -1939,6 +1990,9 @@ fn infra_mips_runtime_executes_when_mips_toolchain_available() {
         RuntimeOutcome::Ran { .. } => {}
         RuntimeOutcome::Skipped { reason } => {
             panic!("infra mips runtime should not skip when toolchain is available: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL infra mips runtime: {reason}");
         }
     }
 
@@ -1970,6 +2024,9 @@ fn sdlc_control_plane_mips_runtime_executes_when_mips_toolchain_available() {
                 "sdlc control-plane mips runtime should not skip when toolchain is available: {reason}"
             );
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL sdlc control-plane mips runtime: {reason}");
+        }
     }
 
     std::fs::remove_dir_all(&native_out_root)
@@ -2000,6 +2057,9 @@ fn sdlc_control_plane_runtime_smoke_go_and_c_emit_runnable_binaries() {
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP sdlc control-plane go runtime smoke: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL sdlc control-plane go runtime smoke: {reason}");
+        }
     }
 
     match c {
@@ -2011,6 +2071,9 @@ fn sdlc_control_plane_runtime_smoke_go_and_c_emit_runnable_binaries() {
         }
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP sdlc control-plane c runtime smoke: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL sdlc control-plane c runtime smoke: {reason}");
         }
     }
 
@@ -2033,6 +2096,9 @@ fn sdlc_control_plane_runtime_smoke_mips_emits_runnable_binary_when_available() 
         RuntimeOutcome::Ran { .. } => {}
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP sdlc control-plane mips runtime smoke: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL sdlc control-plane mips runtime smoke: {reason}");
         }
     }
 
@@ -2057,6 +2123,9 @@ fn infra_c_runtime_asan_smoke_when_available() {
         }
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP infra c asan smoke: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL infra c asan smoke: {reason}");
         }
     }
     std::fs::remove_dir_all(&native_out_root)
@@ -2086,6 +2155,9 @@ fn sdlc_control_plane_c_runtime_asan_smoke_when_available() {
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP sdlc control-plane c asan smoke: {reason}");
         }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL sdlc control-plane c asan smoke: {reason}");
+        }
     }
     std::fs::remove_dir_all(&native_out_root)
         .expect("failed to cleanup native sdlc control-plane c asan out root");
@@ -2108,6 +2180,9 @@ fn infra_c_runtime_asan_ubsan_smoke_when_available() {
         }
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP infra c asan+ubsan smoke: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL infra c asan+ubsan smoke: {reason}");
         }
     }
     std::fs::remove_dir_all(&native_out_root)
@@ -2137,6 +2212,9 @@ fn sdlc_control_plane_c_runtime_asan_ubsan_smoke_when_available() {
         }
         RuntimeOutcome::Skipped { reason } => {
             eprintln!("SKIP sdlc control-plane c asan+ubsan smoke: {reason}");
+        }
+        RuntimeOutcome::Failed { reason } => {
+            panic!("FAIL sdlc control-plane c asan+ubsan smoke: {reason}");
         }
     }
     std::fs::remove_dir_all(&native_out_root)

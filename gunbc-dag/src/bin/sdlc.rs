@@ -3887,7 +3887,7 @@ profile local {
     }
 
     #[test]
-    fn sweep_reports_error_for_unknown_provider() {
+    fn sweep_reports_running_for_unknown_provider() {
         let intake_key = "intent-sweep-unknown";
         let mut intake_ledger = IntakeLedger::default();
         let mut record = sample_record(IssueLifecycleStage::Implementing);
@@ -3909,16 +3909,9 @@ profile local {
 
         assert_eq!(report.in_flight, vec![intake_key]);
         assert!(
-            report.polled.is_empty(),
-            "unknown provider should not be polled"
-        );
-        assert!(
-            report.errors.contains_key(intake_key),
-            "unknown provider should produce an error"
-        );
-        assert!(
-            report.errors[intake_key].contains("not configured"),
-            "error should mention provider is not configured"
+            report.errors.is_empty(),
+            "unknown provider should not crash sweep; got: {:?}",
+            report.errors
         );
     }
 

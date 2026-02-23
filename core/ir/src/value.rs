@@ -515,6 +515,18 @@ impl Value {
         }
     }
 
+    /// Returns `true` if this value is `Skipped` or is a container
+    /// (List/Set) with any `Skipped` item. Used for skip-propagation
+    /// checks where a partially-computed collection signals the entire
+    /// output should be treated as absent.
+    pub fn contains_skipped(&self) -> bool {
+        match self {
+            Value::Skipped => true,
+            Value::List(items) | Value::Set(items) => items.iter().any(|v| v.contains_skipped()),
+            _ => false,
+        }
+    }
+
     /// Try to extract a set of strings.
     ///
     /// Returns `Some` only if the value is a `Set` where every element

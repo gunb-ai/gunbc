@@ -310,13 +310,18 @@ pub fn optional_str_list_strict(
     match inputs.get(key) {
         None => Ok(None),
         Some(Value::Skipped) => Ok(None),
-        Some(v) => coerce_string_list(v).map(Some).ok_or_else(|| {
-            ExecError::new(format!(
-                "invalid '{}' input: expected StringList (got {})",
-                key,
-                v.kind().type_name()
-            ))
-        }),
+        Some(v) => {
+            if v.contains_skipped() {
+                return Ok(None);
+            }
+            coerce_string_list(v).map(Some).ok_or_else(|| {
+                ExecError::new(format!(
+                    "invalid '{}' input: expected StringList (got {})",
+                    key,
+                    v.kind().type_name()
+                ))
+            })
+        }
     }
 }
 

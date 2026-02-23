@@ -31,18 +31,12 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 true,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
+            let options = parsed.base_compile_options();
             let input = parsed
                 .input
                 .expect("expand parser should require input target");
-            let output = compile_target_or_exit_with_compile_options(
-                cwd,
-                Some(&input),
-                CompileOptions {
-                    emit_collection_nodes: parsed.emit_collection_nodes,
-                    profile: parsed.profile.clone(),
-                    ..CompileOptions::default()
-                },
-            );
+            let output =
+                compile_target_or_exit_with_compile_options(cwd, Some(&input), options);
             println!("{}", render_expand(&output.lowered_dag));
         }
         "manifest" => {
@@ -53,11 +47,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let output = compile_target_or_exit_with_compile_options(
                 cwd,
                 Some(&parsed.input),
-                CompileOptions {
-                    emit_collection_nodes: parsed.emit_collection_nodes,
-                    profile: parsed.profile.clone(),
-                    ..CompileOptions::default()
-                },
+                parsed.base_compile_options(),
             );
             println!(
                 "{}",
@@ -70,11 +60,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let output = compile_target_or_exit_with_compile_options(
                 cwd,
                 Some(&parsed.input),
-                CompileOptions {
-                    emit_collection_nodes: parsed.emit_collection_nodes,
-                    profile: parsed.profile.clone(),
-                    ..CompileOptions::default()
-                },
+                parsed.base_compile_options(),
             );
             println!(
                 "{}",

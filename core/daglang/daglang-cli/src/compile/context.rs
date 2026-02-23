@@ -12,17 +12,26 @@ use super::{resolve_lowered_dag, CheckOutput, CompileError, CompileOptions, Comp
 
 /// Builds compile pipeline context from CLI input.
 ///
-/// Paths ending in `.dag` that are regular files are treated as single-file
-/// targets. Directories named with a `.dag` suffix are rejected with an
-/// explicit error — callers should pass the directory path without the
-/// `.dag` suffix or reference a `.dag` file inside it.
+/// When `input` is `None`, consults `daglang.toml` for configured roots
+/// before falling back to the cwd-relative default. This ensures the
+/// config-driven root discovery is the default path for all callers.
 pub fn build_context(
     cwd: &std::path::Path,
     input: Option<&String>,
 ) -> Result<PipelineContext, String> {
-    build_context_with_default_roots(cwd, input, None)
+    let configured = if input.is_none() {
+        resolve_configured_roots(cwd)?
+    } else {
+        None
+    };
+    build_context_with_default_roots(cwd, input, configured.as_deref())
 }
 
+/// Read `daglang.toml` from `cwd` and return configured discovery roots.
+///
+/// This is the **single blessed call-site** for filesystem config I/O in
+/// the CLI. All other command paths should go through `build_context`
+/// (which delegates here) rather than adding their own config reads.
 #[allow(clippy::disallowed_methods)]
 pub fn resolve_configured_roots(cwd: &std::path::Path) -> Result<Option<Vec<PathBuf>>, String> {
     let config_path = cwd.join("daglang.toml");

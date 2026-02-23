@@ -384,6 +384,13 @@ fn generate_graph_builder_call(tool: &ToolMeta) -> String {
     }
 }
 
+fn uses_modeled_base_ref_default(entrypoint: &CliEntrypoint) -> bool {
+    entrypoint.port_name == "base_ref"
+        && matches!(entrypoint.type_id, ParamType::Str)
+        && entrypoint.default_value.as_deref() == Some("main")
+        && !entrypoint.is_repeatable()
+}
+
 /// Generate arg-parsing code using `gunbc_cli::parse()`.
 ///
 /// Emits a schema definition + parse call, then extracts local variables from
@@ -391,6 +398,7 @@ fn generate_graph_builder_call(tool: &ToolMeta) -> String {
 /// by name) still compiles.
 fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
+    let needs_mutable_cli_inputs = entrypoints.iter().any(uses_modeled_base_ref_default);
 
     // Build schema
     code.push_str("let schema = vec![\n");
@@ -413,7 +421,9 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
             write!(code, ".short('{}')", c).unwrap();
         }
         if let Some(ref d) = ep.default_value {
-            write!(code, ".default(\"{}\")", d).unwrap();
+            if !uses_modeled_base_ref_default(ep) {
+                write!(code, ".default(\"{}\")", d).unwrap();
+            }
         }
         code.push_str(",\n");
     }
@@ -461,7 +471,11 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
 
     // Extract dry_run and cli_inputs (take ownership of values map)
     code.push_str("let dry_run = parsed.dry_run;\n");
-    code.push_str("let cli_inputs = parsed.values;\n");
+    if needs_mutable_cli_inputs {
+        code.push_str("let mut cli_inputs = parsed.values;\n");
+    } else {
+        code.push_str("let cli_inputs = parsed.values;\n");
+    }
     code.push_str("if print_inputs_json {\n");
     code.push_str("    let mut ordered_inputs = std::collections::BTreeMap::new();\n");
     code.push_str("    for (port, value) in &cli_inputs {\n");
@@ -510,11 +524,29 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                 }
                 ParamType::Str => {
                     if ep.default_value.is_some() {
-                        let default = ep.default_value.as_deref().unwrap_or("");
-                        writeln!(code,
-                            "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Str(s)) => s.clone(), _ => \"{}\".to_string() }};",
-                            ep.var_name(), ep.port_name, default
-                        ).unwrap();
+                        if uses_modeled_base_ref_default(ep) {
+                            writeln!(
+                                code,
+                                "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Str(s)) => s.clone(), _ => gunbc_ir::GitConfig::default().default_branch }};",
+                                ep.var_name(),
+                                ep.port_name
+                            )
+                            .unwrap();
+                            writeln!(
+                                code,
+                                "if !cli_inputs.contains_key(\"{}\") {{ cli_inputs.insert(\"{}\".to_string(), Value::Str({}.clone())); }}",
+                                ep.port_name,
+                                ep.port_name,
+                                ep.var_name()
+                            )
+                            .unwrap();
+                        } else {
+                            let default = ep.default_value.as_deref().unwrap_or("");
+                            writeln!(code,
+                                "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Str(s)) => s.clone(), _ => \"{}\".to_string() }};",
+                                ep.var_name(), ep.port_name, default
+                            ).unwrap();
+                        }
                     } else {
                         writeln!(code,
                             "let {}: Option<String> = cli_inputs.get(\"{}\").and_then(|v| match v {{ Value::Str(s) => Some(s.clone()), _ => None }});",
@@ -1311,6 +1343,30 @@ mod tests {
         assert!(code.contains("match build_ci_graph()"));
         assert!(code.contains("Ok(d) => d"));
         assert!(code.contains("process::exit(1)"));
+    }
+
+    #[test]
+    fn test_base_ref_uses_modeled_default_branch() {
+        let tool = ToolMeta {
+            crate_name: "gunbc-gist".into(),
+            tool_name: "gist-recent".into(),
+            description: "Recent gist".into(),
+            graph_builder_call: "build_gist_graph".into(),
+            graph_builder_args: "".into(),
+            returns_result: false,
+            success_port: None,
+            enable_step_mode: false,
+            mock_spec_call: Some("mock()".into()),
+        };
+        let entrypoints = vec![CliEntrypoint::new("base_ref", ParamType::Str)
+            .short('b')
+            .default("main")
+            .help("Fallback base branch")];
+
+        let code = generate_cli(&tool, &entrypoints);
+        assert!(!code.contains(".default(\"main\")"));
+        assert!(code.contains("gunbc_ir::GitConfig::default().default_branch"));
+        assert!(code.contains("cli_inputs.insert(\"base_ref\".to_string()"));
     }
 
     #[test]
