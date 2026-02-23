@@ -20,12 +20,13 @@
 //! - `@contract` annotation validation (behavioral specs are well-typed)
 //! - Subtyping via the bounded lattice (§4.1.4 of dsl-design.md)
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Param, ProvidesClause, SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
+    Annotation, Expr, Field, Item, Literal, Param, ProvidesClause, SourceFile, Stmt, TypeBody,
+    TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     canonical_type_name, resource_type_name, service_call_lookup_keys,
@@ -3042,46 +3043,35 @@ fn validate_type_expr(
                             }
                         }
                     }
-                    "content" => {
-                        // @content(encoding) — validates encoding is a known ContentEncoding variant
-                        if let Some(encoding_name) = annotation.args.first().and_then(expr_as_string) {
-                            let valid = matches!(
-                                encoding_name.as_str(),
-                                "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown"
-                            );
-                            if !valid {
+                    "content" | "brand" | "non_empty" | "pattern" | "file_types" => {
+                        match process_supported_annotation(annotation) {
+                            Ok(processed) => match processed {
+                                ProcessedAnnotation::PredicateContent(encoding) => {
+                                    debug_assert!(!encoding.is_empty());
+                                }
+                                ProcessedAnnotation::TypeOpBrand(brand) => {
+                                    debug_assert!(!brand.is_empty());
+                                }
+                                ProcessedAnnotation::PredicateNonEmpty => {}
+                                ProcessedAnnotation::PredicateMatches(regex) => {
+                                    debug_assert!(!regex.is_empty());
+                                }
+                                ProcessedAnnotation::FileTypes(mapping) => {
+                                    if mapping.is_empty() {
+                                        errors.push(TypeError::UnsatisfiableRefinement {
+                                            ty: type_expr_to_string(inner),
+                                            constraint: "@file_types must define at least one extension or default mapping".to_string(),
+                                        });
+                                    }
+                                }
+                            },
+                            Err(constraint) => {
                                 errors.push(TypeError::UnsatisfiableRefinement {
                                     ty: type_expr_to_string(inner),
-                                    constraint: format!(
-                                        "unknown content encoding `{encoding_name}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
-                                    ),
+                                    constraint,
                                 });
                             }
                         }
-                    }
-                    "brand" => {
-                        // @brand(name) — validates the brand name is non-empty
-                        if annotation.args.is_empty() {
-                            errors.push(TypeError::UnsatisfiableRefinement {
-                                ty: type_expr_to_string(inner),
-                                constraint: "@brand requires a name argument".to_string(),
-                            });
-                        }
-                    }
-                    "non_empty" => {
-                        // @non_empty — no arguments needed, just recognized
-                    }
-                    "pattern" => {
-                        // @pattern(regex) — validates a pattern argument is present
-                        if annotation.args.is_empty() {
-                            errors.push(TypeError::UnsatisfiableRefinement {
-                                ty: type_expr_to_string(inner),
-                                constraint: "@pattern requires a regex argument".to_string(),
-                            });
-                        }
-                    }
-                    "file_types" => {
-                        // @file_types { text: [...], binary: [...] } — recognized, validated at lower level
                     }
                     _ => {
                         // Unknown annotations are silently accepted for forward compatibility
@@ -3124,8 +3114,156 @@ fn resolve_generic_arity(
 /// Extract a string value from an expression (string literal or identifier).
 fn expr_as_string(expr: &Expr) -> Option<String> {
     match expr {
-        Expr::Literal(daglang_syntax::ast::Literal::String(s)) => Some(s.clone()),
+        Expr::Literal(Literal::String(s)) => Some(s.clone()),
         Expr::Ident(name) => Some(name.clone()),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProcessedAnnotation {
+    PredicateContent(String),
+    TypeOpBrand(String),
+    PredicateNonEmpty,
+    PredicateMatches(String),
+    FileTypes(BTreeMap<String, String>),
+}
+
+fn process_supported_annotation(annotation: &Annotation) -> Result<ProcessedAnnotation, String> {
+    match annotation.name.as_str() {
+        "content" => {
+            if annotation.args.len() != 1 {
+                return Err("@content requires exactly one encoding argument".to_string());
+            }
+            let encoding_name = annotation
+                .args
+                .first()
+                .and_then(expr_as_string)
+                .ok_or_else(|| "@content encoding argument must be a string/identifier".to_string())?;
+            let canonical = canonical_content_encoding(&encoding_name).ok_or_else(|| {
+                format!(
+                    "unknown content encoding `{encoding_name}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
+                )
+            })?;
+            Ok(ProcessedAnnotation::PredicateContent(canonical))
+        }
+        "brand" => {
+            if annotation.args.len() != 1 {
+                return Err("@brand requires exactly one name argument".to_string());
+            }
+            let brand = annotation
+                .args
+                .first()
+                .and_then(expr_as_string)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "@brand requires a non-empty name argument".to_string())?;
+            Ok(ProcessedAnnotation::TypeOpBrand(brand))
+        }
+        "non_empty" => {
+            if !annotation.args.is_empty() {
+                return Err("@non_empty does not accept arguments".to_string());
+            }
+            Ok(ProcessedAnnotation::PredicateNonEmpty)
+        }
+        "pattern" => {
+            if annotation.args.len() != 1 {
+                return Err("@pattern requires exactly one regex argument".to_string());
+            }
+            let regex = annotation
+                .args
+                .first()
+                .and_then(expr_as_string)
+                .ok_or_else(|| "@pattern regex argument must be a string/identifier".to_string())?;
+            if regex.trim().is_empty() {
+                return Err("@pattern requires a non-empty regex".to_string());
+            }
+            Ok(ProcessedAnnotation::PredicateMatches(regex))
+        }
+        "file_types" => process_file_types_annotation(annotation),
+        _ => Err(format!(
+            "unsupported annotation processor `{}`",
+            annotation.name
+        )),
+    }
+}
+
+fn process_file_types_annotation(annotation: &Annotation) -> Result<ProcessedAnnotation, String> {
+    if annotation.args.len() != 1 {
+        return Err("@file_types requires exactly one record argument".to_string());
+    }
+    let record = annotation
+        .args
+        .first()
+        .ok_or_else(|| "@file_types requires one record argument".to_string())?;
+    let Expr::Record(_, fields) = record else {
+        return Err("@file_types argument must be a record".to_string());
+    };
+
+    let mut mapping: BTreeMap<String, String> = BTreeMap::new();
+    for (field_name, field_expr) in fields {
+        match field_name.as_str() {
+            "text" => {
+                for ext in expr_as_string_list(field_expr)? {
+                    validate_file_extension(&ext)?;
+                    mapping.insert(ext, "Text".to_string());
+                }
+            }
+            "binary" => {
+                for ext in expr_as_string_list(field_expr)? {
+                    validate_file_extension(&ext)?;
+                    mapping.insert(ext, "Binary".to_string());
+                }
+            }
+            "default" => {
+                let default_encoding = expr_as_string(field_expr).ok_or_else(|| {
+                    "@file_types.default must be a string/identifier encoding".to_string()
+                })?;
+                let canonical = canonical_content_encoding(&default_encoding).ok_or_else(|| {
+                    format!(
+                        "unknown @file_types.default encoding `{default_encoding}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
+                    )
+                })?;
+                mapping.insert("*".to_string(), canonical);
+            }
+            other => {
+                return Err(format!(
+                    "@file_types field `{other}` is unsupported (expected text|binary|default)"
+                ));
+            }
+        }
+    }
+
+    Ok(ProcessedAnnotation::FileTypes(mapping))
+}
+
+fn expr_as_string_list(expr: &Expr) -> Result<Vec<String>, String> {
+    let Expr::List(items) = expr else {
+        return Err("expected list of string extensions".to_string());
+    };
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let value = expr_as_string(item)
+            .ok_or_else(|| "file extension list items must be strings/identifiers".to_string())?;
+        out.push(value);
+    }
+    Ok(out)
+}
+
+fn validate_file_extension(ext: &str) -> Result<(), String> {
+    if !ext.starts_with('.') || ext.trim().len() < 2 {
+        return Err(format!(
+            "invalid file extension `{ext}` — expected dot-prefixed suffix like `.rs`"
+        ));
+    }
+    Ok(())
+}
+
+fn canonical_content_encoding(raw: &str) -> Option<String> {
+    match raw {
+        "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown" => {
+            Some(raw.to_string())
+        }
         _ => None,
     }
 }
@@ -3158,7 +3296,7 @@ fn extract_range_bounds(args: &[Expr]) -> (Option<i64>, Option<i64>) {
 
 fn extract_int_literal(expr: &Expr) -> Option<i64> {
     match expr {
-        Expr::Literal(daglang_syntax::ast::Literal::Int(value)) => Some(*value),
+        Expr::Literal(Literal::Int(value)) => Some(*value),
         _ => None,
     }
 }
@@ -3193,6 +3331,85 @@ mod tests {
             })
             .collect();
         ModuleGraph { modules }
+    }
+
+    fn ann(name: &str, args: Vec<Expr>) -> Annotation {
+        Annotation {
+            name: name.to_string(),
+            args,
+        }
+    }
+
+    #[test]
+    fn process_supported_annotation_content_maps_to_predicate_content() {
+        let processed = process_supported_annotation(&ann("content", vec![Expr::Ident("UTF8".into())]))
+            .expect("content annotation should process");
+        assert_eq!(
+            processed,
+            ProcessedAnnotation::PredicateContent("UTF8".to_string())
+        );
+    }
+
+    #[test]
+    fn process_supported_annotation_brand_requires_name() {
+        let err = process_supported_annotation(&ann("brand", vec![]))
+            .expect_err("brand without name should fail");
+        assert!(err.contains("@brand requires exactly one name argument"));
+    }
+
+    #[test]
+    fn process_supported_annotation_non_empty_rejects_args() {
+        let err = process_supported_annotation(&ann(
+            "non_empty",
+            vec![Expr::Literal(Literal::String("oops".into()))],
+        ))
+        .expect_err("non_empty should reject arguments");
+        assert!(err.contains("@non_empty does not accept arguments"));
+    }
+
+    #[test]
+    fn process_supported_annotation_file_types_maps_extensions() {
+        let processed = process_supported_annotation(&ann(
+            "file_types",
+            vec![Expr::Record(
+                None,
+                vec![
+                    (
+                        "text".to_string(),
+                        Expr::List(vec![Expr::Literal(Literal::String(".rs".into()))]),
+                    ),
+                    (
+                        "binary".to_string(),
+                        Expr::List(vec![Expr::Literal(Literal::String(".png".into()))]),
+                    ),
+                    ("default".to_string(), Expr::Ident("Binary".into())),
+                ],
+            )],
+        ))
+        .expect("file_types should process");
+
+        let ProcessedAnnotation::FileTypes(mapping) = processed else {
+            panic!("expected file_types annotation mapping");
+        };
+        assert_eq!(mapping.get(".rs").map(String::as_str), Some("Text"));
+        assert_eq!(mapping.get(".png").map(String::as_str), Some("Binary"));
+        assert_eq!(mapping.get("*").map(String::as_str), Some("Binary"));
+    }
+
+    #[test]
+    fn process_supported_annotation_file_types_rejects_non_dot_extensions() {
+        let err = process_supported_annotation(&ann(
+            "file_types",
+            vec![Expr::Record(
+                None,
+                vec![(
+                    "text".to_string(),
+                    Expr::List(vec![Expr::Literal(Literal::String("rs".into()))]),
+                )],
+            )],
+        ))
+        .expect_err("invalid extension should fail");
+        assert!(err.contains("invalid file extension"));
     }
 
     // Test infrastructure: filesystem access for test fixtures
