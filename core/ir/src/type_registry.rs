@@ -1294,9 +1294,9 @@ mod tests {
                 missing.push(*type_name);
             }
 
-            // Must NOT fall through to PortType::Any
-            let pt = PortType::from(*type_name);
-            if pt == PortType::Any {
+            // Must resolve to a structural PortType (not unknown/None).
+            let pt = crate::port_type::try_parse_port_type(type_name);
+            if pt.is_none() || pt == Some(PortType::Any) {
                 port_type_any.push(*type_name);
             }
         }

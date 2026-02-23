@@ -844,7 +844,7 @@ impl ValueBacking {
 /// Uses `PortType` for structurally known types, then falls back to
 /// domain-specific knowledge for opaque types that map to `PortType::Any`.
 pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
-    use crate::port_type::PortType;
+    use crate::port_type::{try_parse_port_type, PortType};
 
     // Credential remains a structured map payload at runtime.
     if type_id == "Credential" {
@@ -868,30 +868,30 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
         return value_backing_for_type_id(inner);
     }
 
-    let port_type = PortType::from(type_id);
-    match port_type {
-        PortType::String => ValueBacking::String,
-        PortType::Bool => ValueBacking::Bool,
-        PortType::Int => ValueBacking::Int,
-        PortType::Float => ValueBacking::Float,
-        PortType::Json => ValueBacking::Json,
-        PortType::Bytes => ValueBacking::Bytes,
-        PortType::Secret => ValueBacking::String,
-        PortType::List(_) => ValueBacking::List,
-        PortType::Any => {
-            // Residual catch-all for types not structurally resolved.
-            // Most domain types now parse directly (FilePath→String, etc.).
-            match type_id {
-                // Legacy list aliases
-                s if s.ends_with("List") => ValueBacking::List,
-                // Legacy set aliases
-                s if s.ends_with("Set") => ValueBacking::Set,
-                // Optional wrappers inherit inner type's backing
-                s if s.starts_with("Optional") => value_backing_for_type_id(&s["Optional".len()..]),
-                // Default: Json accepts anything
-                _ => ValueBacking::Json,
-            }
-        }
+    if let Some(port_type) = try_parse_port_type(type_id) {
+        return match port_type {
+            PortType::String => ValueBacking::String,
+            PortType::Bool => ValueBacking::Bool,
+            PortType::Int => ValueBacking::Int,
+            PortType::Float => ValueBacking::Float,
+            PortType::Json => ValueBacking::Json,
+            PortType::Bytes => ValueBacking::Bytes,
+            PortType::Secret => ValueBacking::String,
+            PortType::List(_) => ValueBacking::List,
+            PortType::Any => ValueBacking::Json,
+        };
+    }
+
+    // Residual catch-all for non-structural aliases.
+    match type_id {
+        // Legacy list aliases
+        s if s.ends_with("List") => ValueBacking::List,
+        // Legacy set aliases
+        s if s.ends_with("Set") => ValueBacking::Set,
+        // Optional wrappers inherit inner type's backing
+        s if s.starts_with("Optional") => value_backing_for_type_id(&s["Optional".len()..]),
+        // Default: Json accepts anything
+        _ => ValueBacking::Json,
     }
 }
 

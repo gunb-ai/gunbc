@@ -876,6 +876,16 @@ fn rust_type_for_port_type(port_type: &PortType, original_type_id: &TypeId) -> S
     }
 }
 
+fn strict_port_type_for_type_id(type_id: &TypeId) -> PortType {
+    let registry = crate::type_registry::TypeRegistry::with_core_types();
+    PortType::from_registry(type_id.0.as_str(), &registry).unwrap_or_else(|err| {
+        panic!(
+            "unknown contract harness type `{}`: {}",
+            type_id.0, err
+        )
+    })
+}
+
 fn sanitize_ident(input: &str) -> String {
     let mut out = String::new();
     for ch in input.chars() {
@@ -905,7 +915,7 @@ pub fn render_contract_test_harness(spec: &ContractTestSpec) -> String {
         .iter()
         .map(|input| {
             let type_id = input.input_type.type_id();
-            let port_type = PortType::from(type_id);
+            let port_type = strict_port_type_for_type_id(type_id);
             format!(
                 "{}: {}",
                 sanitize_ident(&input.name),
@@ -917,7 +927,7 @@ pub fn render_contract_test_harness(spec: &ContractTestSpec) -> String {
 
     let return_type = if spec.outputs.len() == 1 {
         let type_id = spec.outputs[0].output_type.type_id();
-        let port_type = PortType::from(type_id);
+        let port_type = strict_port_type_for_type_id(type_id);
         rust_type_for_port_type(&port_type, type_id).to_string()
     } else {
         format!(
@@ -926,7 +936,7 @@ pub fn render_contract_test_harness(spec: &ContractTestSpec) -> String {
                 .iter()
                 .map(|out| {
                     let type_id = out.output_type.type_id();
-                    let port_type = PortType::from(type_id);
+                    let port_type = strict_port_type_for_type_id(type_id);
                     rust_type_for_port_type(&port_type, type_id)
                 })
                 .collect::<Vec<_>>()

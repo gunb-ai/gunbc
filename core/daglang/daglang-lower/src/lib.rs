@@ -20,9 +20,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{Annotation, Expr, Item, Literal, OperationDef, ServiceDef, Stmt};
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name as canonical_type_name, resource_type_name,
-    service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
-    walk_stmts,
+    resource_type_name, service_call_lookup_keys,
+    should_track_call_name as should_track_call, type_expr_to_string, walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
@@ -615,8 +614,18 @@ fn provider_hint_from_resource_properties(properties: &[(String, Expr)]) -> Opti
     None
 }
 
+fn normalize_type_id_key(name: &str) -> String {
+    let trimmed = name.trim();
+    let base_without_config = trimmed.split('(').next().unwrap_or(trimmed).trim();
+    let base_without_annotations = base_without_config
+        .split_whitespace()
+        .next()
+        .unwrap_or(base_without_config);
+    gunbc_ir::TypeId::from(base_without_annotations).0
+}
+
 fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
-    let canonical = canonical_type_name(name);
+    let canonical = normalize_type_id_key(name);
     let short = canonical
         .rsplit('.')
         .next()
@@ -627,7 +636,7 @@ fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
 }
 
 fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
-    let canonical = canonical_type_name(name);
+    let canonical = normalize_type_id_key(name);
     set.contains(&canonical)
         || set.contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
 }
@@ -4608,7 +4617,7 @@ fn resolve_interface_resource_endpoint(
     project: &TypedProject,
     registry: &ResourceLifecycleRegistry,
 ) -> ResourceEndpointResolution {
-    let target_canonical = canonical_type_name(resource_type);
+    let target_canonical = normalize_type_id_key(resource_type);
     let target_short = target_canonical
         .rsplit('.')
         .next()
@@ -4624,7 +4633,7 @@ fn resolve_interface_resource_endpoint(
             let Some(implemented) = &resource.implements else {
                 continue;
             };
-            let implemented_canonical = canonical_type_name(implemented);
+            let implemented_canonical = normalize_type_id_key(implemented);
             let implemented_short = implemented_canonical
                 .rsplit('.')
                 .next()
@@ -4817,7 +4826,7 @@ fn add_interface_contract_verification_nodes(
                     sanitize_identifier(&format!(
                         "{module_name}_{}_{}_{}",
                         resource.name,
-                        canonical_type_name(interface_name),
+                        normalize_type_id_key(interface_name),
                         index
                     ))
                 );
@@ -4831,7 +4840,7 @@ fn add_interface_contract_verification_nodes(
                         name: format!(
                             "interface_contract::{}::{}::{}",
                             resource.name,
-                            canonical_type_name(interface_name),
+                            normalize_type_id_key(interface_name),
                             index
                         ),
                         obligation: ObligationCategory::InterfaceContractVerification,
@@ -4857,7 +4866,7 @@ fn add_interface_contract_verification_nodes(
 }
 
 fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str) -> usize {
-    let target = canonical_type_name(interface_name);
+    let target = normalize_type_id_key(interface_name);
     let target_short = target.rsplit('.').next().unwrap_or(target.as_str());
     let mut counts = Vec::new();
     for module in &project.modules {
@@ -4867,7 +4876,7 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
                 continue;
             };
             let qualified = format!("{module_name}.{}", interface.name);
-            let qualified_canonical = canonical_type_name(&qualified);
+            let qualified_canonical = normalize_type_id_key(&qualified);
             let interface_short = interface
                 .name
                 .rsplit('.')

@@ -29,8 +29,8 @@ use daglang_syntax::ast::{
     TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
-    canonical_type_name, resource_type_name, service_call_lookup_keys,
-    should_track_call_name as should_validate_call_name, type_expr_to_string, walk_stmts,
+    resource_type_name, service_call_lookup_keys, should_track_call_name as should_validate_call_name,
+    type_expr_to_string, walk_stmts,
 };
 
 /// A typechecked project snapshot.
@@ -2225,7 +2225,7 @@ fn infer_expr_type_for_expected_named_record(
             compatible = false;
             continue;
         };
-        if !types_match(expected_field_ty, &inferred_name) {
+        if !type_ids_compatible(expected_field_ty, &inferred_name) {
             eprintln!("[DEBUG field_mismatch] expected_type={expected_type:?} field={name:?} expected_field_ty={expected_field_ty:?} inferred={inferred_name:?}");
             errors.push(TypeError::TypeMismatch {
                 expected: expected_field_ty.clone(),
@@ -2364,7 +2364,7 @@ fn infer_expr_type(
                 daglang_syntax::ast::BinOp::NullCoalesce => lhs_ty,
                 _ => match (lhs_ty, rhs_ty) {
                     (ValueType::Named(lhs), ValueType::Named(rhs))
-                        if canonical_type_name(&lhs) == canonical_type_name(&rhs) =>
+                        if type_ids_compatible(&lhs, &rhs) && type_ids_compatible(&rhs, &lhs) =>
                     {
                         ValueType::Named(lhs)
                     }
@@ -2534,7 +2534,7 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     let Some(got) = inferred.display_name() else {
         return Vec::new();
     };
-    if !types_match(expected, &got) {
+    if !type_ids_compatible(expected, &got) {
         eprintln!("[DEBUG type_mismatch] expected={expected:?} got={got:?} inferred={inferred:?} backtrace:");
         // Print a short backtrace to identify call site
         let bt = std::backtrace::Backtrace::force_capture();
@@ -2551,39 +2551,91 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     }
 }
 
-/// Check whether `got` is compatible with `expected` using the TypeRegistry
-/// for coercion path discovery, falling back to canonical name comparison.
-fn types_match(expected: &str, got: &str) -> bool {
-    if expected == got {
-        return true;
+fn normalize_type_id_text(name: &str) -> String {
+    let trimmed = name.trim();
+    let base_without_config = trimmed.split('(').next().unwrap_or(trimmed).trim();
+    let base_without_annotations = base_without_config
+        .split_whitespace()
+        .next()
+        .unwrap_or(base_without_config);
+    if let Some(inner) = base_without_annotations.strip_suffix('?') {
+        return format!("Optional<{}>", normalize_type_id_text(inner));
     }
-    // Canonicalize and check structural equality
-    let expected_canonical = canonical_type_name(expected);
-    let got_canonical = canonical_type_name(got);
-    if expected_canonical == got_canonical
-        || expected_canonical.rsplit('.').next() == got_canonical.rsplit('.').next()
-    {
-        return true;
+    base_without_annotations.to_string()
+}
+
+fn erase_generic_args(type_id: &str) -> String {
+    let mut depth = 0usize;
+    let mut out = String::with_capacity(type_id.len());
+    for ch in type_id.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(ch),
+            _ => {}
+        }
     }
-    // Check TypeRegistry coercion paths (e.g. TextFilePath → FilePath → String)
-    use gunbc_ir::type_registry::TypeRegistry;
-    let registry = TypeRegistry::with_core_types();
-    let got_id = gunbc_ir::TypeId::from(got_canonical.as_str());
-    let expected_id = gunbc_ir::TypeId::from(expected_canonical.as_str());
-    registry.is_compatible(&got_id, &expected_id)
+    out.trim().to_string()
+}
+
+fn type_id_candidates(name: &str) -> Vec<gunbc_ir::TypeId> {
+    let normalized = normalize_type_id_text(name);
+    let mut candidates = Vec::<gunbc_ir::TypeId>::new();
+
+    let mut add_candidate = |candidate: String| {
+        if !candidate.is_empty() {
+            let candidate_id = gunbc_ir::TypeId::from(candidate.as_str());
+            if !candidates.contains(&candidate_id) {
+                candidates.push(candidate_id);
+            }
+        }
+    };
+
+    let erased = erase_generic_args(&normalized);
+    for raw in [normalized.clone(), erased.clone()] {
+        add_candidate(raw.clone());
+        let short = raw.rsplit('.').next().unwrap_or(raw.as_str()).to_string();
+        add_candidate(short);
+    }
+
+    candidates
+}
+
+/// Check whether `got` is compatible with `expected` using TypeId-based lookups
+/// and TypeRegistry coercion/compatibility rules.
+fn type_ids_compatible(expected: &str, got: &str) -> bool {
+    let registry = gunbc_ir::type_registry::TypeRegistry::with_core_types();
+    let expected_ids = type_id_candidates(expected);
+    let got_ids = type_id_candidates(got);
+    for expected_id in &expected_ids {
+        for got_id in &got_ids {
+            if got_id == expected_id || registry.is_compatible(got_id, expected_id) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn resolve_record_fields(
     ty: &str,
     registry: &RecordTypeRegistry,
 ) -> Option<HashMap<String, String>> {
-    let canonical = canonical_type_name(ty);
+    let canonical = normalize_type_id_text(ty);
+    let erased = erase_generic_args(&canonical);
     if let Some(fields) = registry.full.get(&canonical) {
+        return Some(fields.clone());
+    }
+    if let Some(fields) = registry.full.get(&erased) {
         return Some(fields.clone());
     }
     let short = canonical.rsplit('.').next().unwrap_or(canonical.as_str());
     let Some(Some(full_name)) = registry.short.get(short) else {
-        return None;
+        let short_erased = erased.rsplit('.').next().unwrap_or(erased.as_str());
+        let Some(Some(full_name)) = registry.short.get(short_erased) else {
+            return None;
+        };
+        return registry.full.get(full_name).cloned();
     };
     registry.full.get(full_name).cloned()
 }
@@ -2791,7 +2843,7 @@ fn resolve_interface_contract(
     implemented: &str,
     registry: &InterfaceRegistry,
 ) -> InterfaceResolution {
-    let canonical = canonical_type_name(implemented);
+    let canonical = erase_generic_args(&normalize_type_id_text(implemented));
     if let Some(contract) = registry.full.get(&canonical) {
         return InterfaceResolution::Resolved(contract.clone());
     }
@@ -2804,7 +2856,7 @@ fn resolve_interface_contract(
 }
 
 fn canonical_interface_name(name: &str) -> String {
-    canonical_type_name(name)
+    erase_generic_args(&normalize_type_id_text(name))
 }
 
 fn resolve_resource_type_name(
