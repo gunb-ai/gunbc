@@ -2096,7 +2096,7 @@ fn run_diff_review(branch: &str, dry_run: bool) -> Result<DiffReviewResult, Stri
 
     if !output.status.success() {
         return Ok(DiffReviewResult {
-            blocking_count: 0,
+            blocking_count: 1,
             blocking_summaries: vec![format!(
                 "diff review skipped: branch '{branch}' not reachable from main"
             )],
@@ -3407,6 +3407,12 @@ fn validate_implementation_stage_for_close(
     };
     let validation_dry_run = agent_record.handle.provider == "stub";
     let review_result = run_diff_review(&branch, validation_dry_run)?;
+    if review_result.blocking_count > 0 {
+        return Err(format!(
+            "implementation validation failed for intake `{intake_key}` due to blocking code review findings: {}",
+            review_result.blocking_summaries.join("; ")
+        ));
+    }
     let ci_result = run_ci_validation(&branch, validation_dry_run)?;
     let review_passed = review_result.blocking_count == 0;
     let ci_passed = ci_result.success;

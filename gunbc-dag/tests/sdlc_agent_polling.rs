@@ -643,3 +643,74 @@ fn implementation_to_closed_emits_validation_summary() {
         serde_json::Value::Bool(true)
     );
 }
+
+#[test]
+fn implementation_stage_fails_closed_on_blocking_code_review_findings() {
+    let ctx = CliTestContext::new("implementation_review_gate", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    progress_intake_to_accepted(
+        &ctx,
+        &root,
+        "intent-impl-review-gate",
+        "intent-impl-review-gate",
+        808,
+    );
+
+    let accepted_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run accepted stage worker");
+    assert!(
+        accepted_worker.status.success(),
+        "accepted worker should succeed: {}",
+        String::from_utf8_lossy(&accepted_worker.stderr)
+    );
+
+    let agent_ledger_path = root.join("target/sdlc/agent-ledger.json");
+    let mut agent_ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&agent_ledger_path).expect("read agent ledger"),
+    )
+    .expect("parse agent ledger");
+    agent_ledger["entries"]["intent-impl-review-gate"]["handle"]["provider"] =
+        serde_json::Value::String("codex".to_string());
+    agent_ledger["entries"]["intent-impl-review-gate"]["status"]["Completed"]["branch"] =
+        serde_json::Value::String("branch-not-present-in-fixture".to_string());
+    std::fs::write(
+        &agent_ledger_path,
+        serde_json::to_vec_pretty(&agent_ledger).expect("serialize updated agent ledger"),
+    )
+    .expect("write updated agent ledger");
+
+    let implementation_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run implementation stage worker");
+    assert!(
+        !implementation_worker.status.success(),
+        "implementation worker should fail closed on blocking review findings"
+    );
+    let dispatch_error = String::from_utf8_lossy(&implementation_worker.stderr);
+    assert!(
+        dispatch_error.contains("blocking code review findings"),
+        "expected review-gate failure details in dispatch error: {dispatch_error}"
+    );
+
+    let intake_ledger_path = root.join("target/sdlc/intake-ledger.json");
+    let intake_ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&intake_ledger_path).expect("read intake ledger"),
+    )
+    .expect("parse intake ledger");
+    assert_eq!(
+        intake_ledger["entries"]["intent-impl-review-gate"]["stage"],
+        serde_json::Value::String("Implementation".to_string())
+    );
+}
