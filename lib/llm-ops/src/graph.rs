@@ -75,10 +75,10 @@ pub fn build_chat_completion_graph_with_config(
     // Node 1: Resolve auth requirements (pure)
     let resolve_auth = builder.add_root_node(Node::opaque(
         "resolve_auth",
-        vec![port("provider", "String")],
+        vec![port("provider", "NonEmptyString")],
         vec![
             port("service", "String"),
-            port("secret_name", "String"),
+            port("secret_name", "SecretName"),
             optional("allow_impersonation", "OptionalBool"),
             port("scheme", "String"),
             port("header_name", "String"),
@@ -95,7 +95,7 @@ pub fn build_chat_completion_graph_with_config(
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "String"),
-                port("secret_name", "String"),
+                port("secret_name", "SecretName"),
             ],
             vec![port("config", "CloudSecretConfig")],
             DynOp::new(CloudOps::BindSecretName),
@@ -129,8 +129,8 @@ pub fn build_chat_completion_graph_with_config(
         "execute",
         "parse",
         vec![
-            port("provider", "String"),
-            port("model", "String"),
+            port("provider", "NonEmptyString"),
+            port("model", "NonEmptyString"),
             port("messages", "Json"),
             optional("system_prompt", "OptionalString"),
             optional("temperature", "OptionalJson"),
@@ -140,10 +140,10 @@ pub fn build_chat_completion_graph_with_config(
             optional("scope_verified", "OptionalBool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
-        vec![port("provider", "String")],
+        vec![port("provider", "NonEmptyString")],
         vec![
-            port("content", "String"),
-            port("model", "String"),
+            port("content", "NonEmptyString"),
+            port("model", "NonEmptyString"),
             port("finish_reason", "String"),
             port("input_tokens", "Int"),
             port("output_tokens", "Int"),
