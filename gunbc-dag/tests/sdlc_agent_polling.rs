@@ -166,6 +166,63 @@ notes: "test fixture"
     std::fs::write(path, content).expect("write intent fixture");
 }
 
+fn progress_intake_to_accepted(
+    ctx: &CliTestContext,
+    root: &Path,
+    intent_id: &str,
+    intake_key: &str,
+    issue_id: u64,
+) {
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(&intent_path, intent_id, intake_key, Some(issue_id));
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    for _ in 0..3 {
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
+            .current_dir(root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    let approve = ctx
+        .command()
+        .arg("transition")
+        .arg("--intake-key")
+        .arg(intake_key)
+        .arg("--stage")
+        .arg("accepted")
+        .current_dir(root)
+        .output()
+        .expect("transition to accepted");
+    assert!(
+        approve.status.success(),
+        "approval transition should succeed: {}",
+        String::from_utf8_lossy(&approve.stderr)
+    );
+}
+
 #[test]
 fn worker_polls_running_agent_records_during_sweep() {
     let ctx = CliTestContext::new("worker_agent_polling", sdlc_bin());
@@ -273,59 +330,7 @@ fn worker_spawns_agent_record_when_advancing_from_accepted() {
     let ctx = CliTestContext::new("worker_agent_spawn", sdlc_bin());
     let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
-    let intent_path = root.join("intent.yaml");
-    write_intent_file(
-        &intent_path,
-        "intent-agent-spawn",
-        "intent-agent-spawn",
-        Some(84),
-    );
-
-    let intake = ctx
-        .command()
-        .arg("intake")
-        .arg("--intent")
-        .arg(&intent_path)
-        .current_dir(&root)
-        .output()
-        .expect("run intake");
-    assert!(
-        intake.status.success(),
-        "intake should succeed: {}",
-        String::from_utf8_lossy(&intake.stderr)
-    );
-
-    for _ in 0..3 {
-        let worker = ctx
-            .command()
-            .arg("worker")
-            .arg("--worker-id")
-            .arg("test-worker-id")
-            .current_dir(&root)
-            .output()
-            .expect("run worker");
-        assert!(
-            worker.status.success(),
-            "worker should succeed: {}",
-            String::from_utf8_lossy(&worker.stderr)
-        );
-    }
-
-    let approve = ctx
-        .command()
-        .arg("transition")
-        .arg("--intake-key")
-        .arg("intent-agent-spawn")
-        .arg("--stage")
-        .arg("accepted")
-        .current_dir(&root)
-        .output()
-        .expect("transition to accepted");
-    assert!(
-        approve.status.success(),
-        "approval transition should succeed: {}",
-        String::from_utf8_lossy(&approve.stderr)
-    );
+    progress_intake_to_accepted(&ctx, &root, "intent-agent-spawn", "intent-agent-spawn", 84);
 
     let worker = ctx
         .command()
@@ -362,5 +367,143 @@ fn worker_spawns_agent_record_when_advancing_from_accepted() {
     assert_eq!(
         agent_ledger["entries"]["intent-agent-spawn"]["status"]["Completed"]["branch"],
         serde_json::Value::String("feature/intent-agent-spawn".to_string())
+    );
+}
+
+#[test]
+fn agent_spawn_command_records_completed_handle_for_accepted_intake() {
+    let ctx = CliTestContext::new("agent_spawn_command", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    progress_intake_to_accepted(
+        &ctx,
+        &root,
+        "intent-agent-command",
+        "intent-agent-command",
+        333,
+    );
+
+    let spawn = ctx
+        .command()
+        .arg("agent-spawn")
+        .arg("--intake-key")
+        .arg("intent-agent-command")
+        .current_dir(&root)
+        .output()
+        .expect("run agent-spawn command");
+    assert!(
+        spawn.status.success(),
+        "agent-spawn should succeed: {}",
+        String::from_utf8_lossy(&spawn.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&spawn.stdout).expect("agent-spawn output should be JSON");
+    assert_eq!(
+        payload["target_branch"],
+        serde_json::Value::String("feature/intent-agent-command".to_string())
+    );
+    assert_eq!(
+        payload["status"]["Completed"]["branch"],
+        serde_json::Value::String("feature/intent-agent-command".to_string())
+    );
+
+    let agent_ledger_path = root.join("target/sdlc/agent-ledger.json");
+    let ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(agent_ledger_path).expect("read agent ledger"),
+    )
+    .expect("parse agent ledger");
+    assert_eq!(
+        ledger["entries"]["intent-agent-command"]["status"]["Completed"]["branch"],
+        serde_json::Value::String("feature/intent-agent-command".to_string())
+    );
+}
+
+#[test]
+fn validate_pr_dry_run_requires_agent_record() {
+    let ctx = CliTestContext::new("validate_pr_requires_agent", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    progress_intake_to_accepted(
+        &ctx,
+        &root,
+        "intent-validate-missing-agent",
+        "intent-validate-missing-agent",
+        404,
+    );
+
+    let validate = ctx
+        .command()
+        .arg("validate-pr")
+        .arg("--intake-key")
+        .arg("intent-validate-missing-agent")
+        .arg("--dry-run")
+        .current_dir(&root)
+        .output()
+        .expect("run validate-pr dry-run");
+    assert!(
+        !validate.status.success(),
+        "validate-pr should fail without an agent record"
+    );
+    let stderr = String::from_utf8_lossy(&validate.stderr);
+    assert!(
+        stderr.contains("no agent record for intake key"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn validate_pr_dry_run_reports_ci_and_review_summary_for_completed_agent() {
+    let ctx = CliTestContext::new("validate_pr_dry_run", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    progress_intake_to_accepted(
+        &ctx,
+        &root,
+        "intent-validate-success",
+        "intent-validate-success",
+        505,
+    );
+
+    let spawn = ctx
+        .command()
+        .arg("agent-spawn")
+        .arg("--intake-key")
+        .arg("intent-validate-success")
+        .current_dir(&root)
+        .output()
+        .expect("run agent-spawn command");
+    assert!(
+        spawn.status.success(),
+        "agent-spawn should succeed: {}",
+        String::from_utf8_lossy(&spawn.stderr)
+    );
+
+    let validate = ctx
+        .command()
+        .arg("validate-pr")
+        .arg("--intake-key")
+        .arg("intent-validate-success")
+        .arg("--dry-run")
+        .current_dir(&root)
+        .output()
+        .expect("run validate-pr dry-run");
+    assert!(
+        validate.status.success(),
+        "validate-pr dry-run should succeed: {}",
+        String::from_utf8_lossy(&validate.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&validate.stdout);
+    let mut stream = serde_json::Deserializer::from_str(&stdout).into_iter::<serde_json::Value>();
+    let mut payload = None;
+    for entry in &mut stream {
+        payload = Some(entry.expect("validate-pr output stream should contain valid JSON values"));
+    }
+    let payload = payload.expect("validate-pr output stream should include final summary JSON");
+    assert_eq!(payload["review_passed"], serde_json::Value::Bool(true));
+    assert_eq!(payload["ci_passed"], serde_json::Value::Bool(true));
+    assert_eq!(payload["all_passed"], serde_json::Value::Bool(true));
+    assert_eq!(
+        payload["stage_after"],
+        serde_json::Value::String("closed".to_string())
     );
 }
