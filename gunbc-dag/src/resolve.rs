@@ -101,13 +101,15 @@ impl Executable for PassthroughOp {
 ///
 /// When a pipeline is invoked as a node in another DAG, this op represents
 /// the execution dispatch to the compiled pipeline's stages. The individual
-/// stage nodes are expanded by the lowering pass; this op handles the
-/// pipeline-level passthrough of inputs to outputs.
+/// stage bodies are lowered elsewhere; this op provides deterministic stage
+/// ordering metadata and next-stage progression derived from the lowered
+/// stage sequence.
 #[derive(Debug, Clone)]
 struct PipelineDispatchOp {
     _module: String,
     _name: String,
     stage_count: usize,
+    stage_names: Vec<String>,
     output_port_names: Vec<String>,
 }
 
@@ -116,6 +118,23 @@ impl Executable for PipelineDispatchOp {
         let mut outputs =
             execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
         outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
+        outputs.insert(
+            "stage_order".to_string(),
+            Value::str_list(self.stage_names.clone()),
+        );
+        if let Some(first) = self.stage_names.first() {
+            outputs.insert("active_stage".to_string(), Value::Str(first.clone()));
+        }
+        if let Some(current_stage) = outputs.get("current_stage").and_then(Value::as_str) {
+            let next_stage = self
+                .stage_names
+                .iter()
+                .position(|stage| stage == current_stage)
+                .and_then(|index| self.stage_names.get(index + 1))
+                .cloned()
+                .unwrap_or_else(|| current_stage.to_string());
+            outputs.insert("next_stage".to_string(), Value::Str(next_stage));
+        }
         Ok(outputs)
     }
 }
@@ -532,11 +551,12 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             module,
             name,
             stages,
-            ..
+            stage_names,
         } => Ok(DynOp::new(PipelineDispatchOp {
             _module: module.clone(),
             _name: name.clone(),
             stage_count: *stages,
+            stage_names: stage_names.clone(),
             output_port_names: declared_output_names(outputs),
         })),
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
@@ -1108,10 +1128,36 @@ mod tests {
             },
         );
         let op = resolve_node(&node).expect("pipeline node should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "current_stage".to_string(),
+            Value::Str("design_review".to_string()),
+        );
         let outputs = op
-            .execute(HashMap::new())
+            .execute(inputs)
             .expect("pipeline dispatch should execute");
         assert_eq!(outputs.get("stages"), Some(&Value::Int(8)));
+        assert_eq!(
+            outputs.get("active_stage"),
+            Some(&Value::Str("fetch".to_string()))
+        );
+        assert_eq!(
+            outputs.get("next_stage"),
+            Some(&Value::Str("record_design_outcome".to_string()))
+        );
+        assert_eq!(
+            outputs.get("stage_order"),
+            Some(&Value::str_list(vec![
+                "fetch".to_string(),
+                "claim_design".to_string(),
+                "design".to_string(),
+                "design_review".to_string(),
+                "record_design_outcome".to_string(),
+                "accept_design".to_string(),
+                "implementation".to_string(),
+                "close".to_string(),
+            ]))
+        );
     }
 
     #[test]
