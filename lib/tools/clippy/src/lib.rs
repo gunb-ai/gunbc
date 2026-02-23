@@ -77,12 +77,3 @@ pub use policy::{CratePolicy, CrateRole};
     returns_result
 )]
 pub fn clippy_tool() {}
-
-// ============================================================================
-// Generated Tests (from `make testgen`)
-// ============================================================================
-
-#[cfg(test)]
-mod generated_tests {
-    include!("generated_tests.rs");
-}

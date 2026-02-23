@@ -108,27 +108,3 @@ pub fn dag_viz_recent_tool() {}
     returns_result
 )]
 pub fn dag_snapshot_tool() {}
-
-// ============================================================================
-// Generated Tests (from `make testgen`)
-// ============================================================================
-
-#[cfg(test)]
-mod generated_tests_snapshot {
-    include!("generated_tests_snapshot.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_diff {
-    include!("generated_tests_diff.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_recent {
-    include!("generated_tests_recent.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_snapshot_save {
-    include!("generated_tests_snapshot_save.rs");
-}

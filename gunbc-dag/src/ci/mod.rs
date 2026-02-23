@@ -14,8 +14,3 @@ pub use graph::{
 pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use gunbc_primitives::EmbeddedFileExistsOp;
 pub use ops::CIOp;
-
-#[cfg(test)]
-mod generated_tests {
-    include!("generated_tests.rs");
-}

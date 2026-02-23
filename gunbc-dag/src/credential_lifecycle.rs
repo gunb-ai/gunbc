@@ -215,9 +215,3 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
             &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
         )
 }
-
-// Generated tests (from `make testgen`)
-#[cfg(test)]
-mod generated_tests {
-    include!("generated_tests_credential_github.rs");
-}

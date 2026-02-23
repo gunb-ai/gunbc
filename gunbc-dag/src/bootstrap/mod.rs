@@ -28,8 +28,3 @@ pub use ops::BootstrapOp;
     returns_result
 )]
 pub fn bootstrap_tool() {}
-
-#[cfg(test)]
-mod generated_tests {
-    include!("generated_tests.rs");
-}

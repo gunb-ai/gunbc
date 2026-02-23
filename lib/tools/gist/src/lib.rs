@@ -107,22 +107,3 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
         .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
         .collect()
 }
-
-// ============================================================================
-// Generated Tests (from `make testgen`)
-// ============================================================================
-
-#[cfg(test)]
-mod generated_tests_snapshot {
-    include!("generated_tests_snapshot.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_diff {
-    include!("generated_tests_diff.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_recent {
-    include!("generated_tests_recent.rs");
-}

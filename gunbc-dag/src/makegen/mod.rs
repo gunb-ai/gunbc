@@ -46,8 +46,3 @@ pub use render::{render_makefile, render_makefile_with_config};
     returns_result
 )]
 pub fn makegen_tool() {}
-
-#[cfg(test)]
-mod generated_tests {
-    include!("generated_tests.rs");
-}

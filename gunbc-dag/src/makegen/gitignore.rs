@@ -166,6 +166,16 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
         items: vec!["/.gunbc/".into()],
         rationale: Some("Local execution ledger and config; not source-of-truth".into()),
     });
+    categories.push(Category {
+        name: "Scratch and debug artifacts".into(),
+        source: Some("dev".into()),
+        items: vec![
+            "/*.png".into(),
+            "/*.diff".into(),
+            "/test_out.txt".into(),
+        ],
+        rationale: Some("Screenshots, diffs, and temp output from local dev; not source-of-truth".into()),
+    });
 
     categories
 }

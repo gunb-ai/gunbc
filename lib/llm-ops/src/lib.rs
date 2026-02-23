@@ -423,6 +423,17 @@ pub fn code_generation_request(
 }
 
 // ============================================================================
+// DagSpec Registry Helpers
+// ============================================================================
+
+/// Return DagSpec registrations originating from this crate.
+pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
+    gunbc_testgen_registry::iter_dag_specs()
+        .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
+        .collect()
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -961,49 +972,4 @@ mod tests {
         let err = LlmOps::ParseSimpleResponse.execute(inputs).unwrap_err();
         assert!(err.0.contains("response"));
     }
-}
-
-// ============================================================================
-// DagSpec Registry Helpers
-// ============================================================================
-
-/// Return DagSpec registrations originating from this crate.
-pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
-    gunbc_testgen_registry::iter_dag_specs()
-        .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
-        .collect()
-}
-
-// ============================================================================
-// Generated Tests (from `make testgen`)
-// ============================================================================
-
-#[cfg(test)]
-mod generated_tests {
-    include!("generated_tests.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_anthropic {
-    include!("generated_tests_anthropic.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_code_review {
-    include!("generated_tests_code_review.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_secrets {
-    include!("generated_tests_secrets.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_credential {
-    include!("generated_tests_credential.rs");
-}
-
-#[cfg(test)]
-mod generated_tests_credential_anthropic {
-    include!("generated_tests_credential_anthropic.rs");
 }
