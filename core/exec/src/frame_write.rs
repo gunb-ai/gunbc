@@ -19,14 +19,16 @@ pub struct AnsiFrameRenderer {
     medium: AnsiText,
     last_frame_lines: usize,
     is_tty: bool,
+    viewport_width: Option<usize>,
 }
 
 impl AnsiFrameRenderer {
-    pub fn new(medium: AnsiText, is_tty: bool) -> Self {
+    pub fn new(medium: AnsiText, is_tty: bool, viewport_width: Option<usize>) -> Self {
         Self {
             medium,
             last_frame_lines: 0,
             is_tty,
+            viewport_width,
         }
     }
 }
@@ -43,6 +45,7 @@ impl FrameRenderer<AnsiText> for AnsiFrameRenderer {
             sink,
             self.is_tty,
             &mut self.last_frame_lines,
+            self.viewport_width,
         )
     }
 }
@@ -57,14 +60,16 @@ pub struct PlainFrameRenderer {
     medium: PlainText,
     last_frame_lines: usize,
     is_tty: bool,
+    viewport_width: Option<usize>,
 }
 
 impl PlainFrameRenderer {
-    pub fn new(medium: PlainText, is_tty: bool) -> Self {
+    pub fn new(medium: PlainText, is_tty: bool, viewport_width: Option<usize>) -> Self {
         Self {
             medium,
             last_frame_lines: 0,
             is_tty,
+            viewport_width,
         }
     }
 }
@@ -81,6 +86,7 @@ impl FrameRenderer<PlainText> for PlainFrameRenderer {
             sink,
             self.is_tty,
             &mut self.last_frame_lines,
+            self.viewport_width,
         )
     }
 }
@@ -95,6 +101,7 @@ fn render_frame_common<M: OutputMedium<Output = String>>(
     sink: &mut dyn Write,
     is_tty: bool,
     last_frame_lines: &mut usize,
+    viewport_width: Option<usize>,
 ) -> std::io::Result<()> {
     let overwrite = is_tty && frame.cursor_action == CursorAction::Overwrite;
     let num_lines = frame.lines.len();
@@ -113,9 +120,12 @@ fn render_frame_common<M: OutputMedium<Output = String>>(
     // \x1b[2K clears the current line before writing, so old content is
     // overwritten in-place with no visible gap between frames.
     for line in &frame.lines {
-        let rendered = medium.render_line(line);
+        let mut rendered = medium.render_line(line);
         if overwrite {
             write!(buf, "\x1b[2K")?;
+            if let Some(max_w) = viewport_width {
+                rendered = truncate_ansi_to_visible_width(&rendered, max_w);
+            }
         }
         writeln!(buf, "{}", rendered)?;
     }
@@ -141,6 +151,39 @@ fn render_frame_common<M: OutputMedium<Output = String>>(
     Ok(())
 }
 
+/// Truncate a string (possibly containing ANSI escape sequences) to at most
+/// `max_visible` visible characters. ANSI sequences are invisible and don't
+/// count toward the width. If truncated, an ANSI reset is appended to avoid
+/// leaking color state.
+fn truncate_ansi_to_visible_width(s: &str, max_visible: usize) -> String {
+    let mut visible = 0usize;
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    let mut truncated = false;
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            result.push(ch);
+            while let Some(&next) = chars.peek() {
+                result.push(chars.next().unwrap());
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            continue;
+        }
+        if visible >= max_visible {
+            truncated = true;
+            break;
+        }
+        result.push(ch);
+        visible += 1;
+    }
+    if truncated {
+        result.push_str("\x1b[0m");
+    }
+    result
+}
+
 // ---------------------------------------------------------------------------
 // FrameWriter — enum dispatch wrapper
 // ---------------------------------------------------------------------------
@@ -162,15 +205,28 @@ impl FrameWriter {
         symbol_set: &'static SymbolSet,
         is_tty: bool,
     ) -> Self {
+        Self::with_viewport(color_enabled, tier, symbol_set, is_tty, None)
+    }
+
+    /// Create the renderer with a known viewport width for line truncation.
+    pub fn with_viewport(
+        color_enabled: bool,
+        tier: Tier,
+        symbol_set: &'static SymbolSet,
+        is_tty: bool,
+        viewport_width: Option<usize>,
+    ) -> Self {
         if color_enabled {
             Self::Ansi(AnsiFrameRenderer::new(
                 AnsiText { tier, symbol_set },
                 is_tty,
+                viewport_width,
             ))
         } else {
             Self::Plain(PlainFrameRenderer::new(
                 PlainText { tier, symbol_set },
                 is_tty,
+                viewport_width,
             ))
         }
     }
@@ -314,6 +370,7 @@ mod tests {
                 symbol_set: &STANDARD,
             },
             false,
+            None,
         );
 
         let frame = make_frame(vec!["a", "b", "c"], CursorAction::Overwrite);

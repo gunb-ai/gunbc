@@ -427,11 +427,12 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
     let _cursor_guard = crate::frame_write::CursorGuard::new(profile.is_tty);
     let spinner_frames = resolve_spinner_frames(profile.tier);
     let mut spinner = Animation::cycle(spinner_frames, PROGRESS_TICK);
-    let mut writer = FrameWriter::new(
+    let mut writer = FrameWriter::with_viewport(
         profile.supports_color,
         profile.tier,
         &STANDARD,
         profile.is_tty,
+        Some(profile.viewport.width as usize),
     );
     let mut stderr = io::stderr();
     let mut last_tick = Instant::now();
@@ -502,11 +503,13 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
 
     // Wait for executor to finish (workers may still be draining after failure)
     let log_result = exec_handle.join().unwrap();
-    let log = log_result?;
 
     // Render a clean final frame with static icons (no spinner animation),
     // seeded with the last animated frame's line count for seamless overwrite.
+    // This MUST happen before the `?` so the display is cleaned up even on failure.
     render_final_static_frame_seeded(&progress, &layout, &profile, last_lines);
+
+    let log = log_result?;
 
     // Check final node states for hard failures
     let mut should_fail = progress
@@ -868,11 +871,12 @@ fn render_final_static_frame_seeded(
     }
     // #endregion
 
-    let mut writer = FrameWriter::new(
+    let mut writer = FrameWriter::with_viewport(
         profile.supports_color,
         profile.tier,
         &STANDARD,
         profile.is_tty,
+        Some(profile.viewport.width as usize),
     );
     writer.seed_last_frame_lines(seed_lines);
     let _ = writer.write_frame(&frame, &mut io::stderr());
