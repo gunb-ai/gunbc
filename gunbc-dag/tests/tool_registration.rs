@@ -10,7 +10,7 @@ use std::path::Path;
 // Without these references, the linker may dead-strip the inventory symbols
 // and iter_tool_targets() would return an empty iterator.
 use gunbc_clippy::clippy_tool;
-use gunbc_deps::deps_tool;
+use gunbc_dag::deps_tool::deps_tool;
 use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
 use gunbc_lib_review::review_tool;
 // These are in gunbc-dag itself (same binary), but reference for completeness.

@@ -100,6 +100,10 @@ pub(crate) fn build_pragma_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/pragma.dag")
 }
 
+pub(crate) fn build_deps_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/deps.dag")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,6 +147,30 @@ mod tests {
     #[test]
     fn builds_infra_dsl_graph() {
         let dag = build_infra_graph_dsl().expect("infra DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_clippy_dsl_graph() {
+        let dag = build_dsl_graph("tools/clippy.dag").expect("clippy DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_deps_dsl_graph() {
+        let dag = build_deps_graph_dsl().expect("deps DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_gist_dsl_graph() {
+        let dag = build_dsl_graph("tools/gist.dag").expect("gist DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_review_dsl_graph() {
+        let dag = build_dsl_graph("tools/review.dag").expect("review DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 

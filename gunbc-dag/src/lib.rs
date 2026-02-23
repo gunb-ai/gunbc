@@ -25,6 +25,7 @@ pub mod cloud_env;
 pub mod codegen;
 pub mod credential_lifecycle;
 pub mod dag_viz;
+pub mod deps_tool;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
 pub mod dry_run;

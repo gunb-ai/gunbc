@@ -25,12 +25,11 @@
 //!
 //! # Generated File Ownership
 //!
-//! This crate owns `deps.toml` generation via `build_deps_generate_graph()`.
+//! The `deps.toml` generation is handled via the DSL (dsl/tools/deps.dag).
 //! The filename is centralized in `DEFAULT_MANIFEST_FILENAME`.
 //!
 #![deny(dead_code)]
 pub mod env;
-pub mod graph;
 pub mod installer;
 pub mod manifest;
 pub mod ops;
@@ -40,9 +39,6 @@ pub mod tool_upsert;
 pub mod upsert;
 
 pub use env::{strict_dry_run_enabled, PlatformEnv, STRICT_DRY_RUN_ENV};
-pub use graph::{
-    build_deps_generate_graph, build_deps_graph, deps_generate_signature, deps_signature,
-};
 pub use installer::{InstallMethod, InstallPlan, Installer};
 pub use manifest::{
     Dependency, DepsManifest, ManifestConfig, PlatformInstall, DEFAULT_MANIFEST_FILENAME,
@@ -58,25 +54,6 @@ pub use tool_upsert::{
     InstallSelectionPolicy,
 };
 pub use upsert::{UpsertPhase, UpsertResult};
-
-// ============================================================================
-// Tool Target Registrations
-// ============================================================================
-
-#[gunbc_tool_registry_macros::tool_target(
-    name = "deps",
-    crate_name = "gunbc-deps",
-    description = "Install tool dependencies",
-    builder = "build_deps_graph",
-    import = "use gunbc_deps::build_deps_graph;",
-    package = "deps",
-    entrypoints = r#"[{"port_name":"manifest_path","type_id":"String","short":"m","help":"Path to deps.toml manifest","make_var":"MANIFEST"}]"#,
-    dsl_module = "deps",
-    outputs = "deps.toml",
-    has_invocation,
-    returns_result
-)]
-pub fn deps_tool() {}
 
 // ============================================================================
 // DagSpec Registry Helpers

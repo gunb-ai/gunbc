@@ -1,11 +1,32 @@
 # Modeling Queue — Semantic Erasure Elimination
 
-**Last updated**: 2026-02-19  
-**Source**: external modeling feedback (items 7-16)  
+**Last updated**: 2026-02-23
+**Source**: external modeling feedback (items 7-16)
 **Scope**: CI/testing process modeling and adjacent semantic-integrity work
 
 Use this as the intake queue for modeling-first hardening work. When an item is
 prioritized, move it into a sprint table in `TODO/tasks.md` with the same ID.
+
+## Compositional Modeling Frame
+
+Every task in this queue serves one of two goals from the **Foundation Close-Out**
+meta-lane (see `docs/handbook.md` § "Compositional Modeling Philosophy"):
+
+- **Lane A ("One Representation")**: Delete every shadow, fallback, or parallel
+  description. Each concept has exactly one canonical source. Tasks: M9, M14, M16, M18.
+- **Lane B ("Proven Correct")**: Make invariants machine-enforced. Undeclared I/O is
+  rejected, missing data poisons execution, coercions are shape-checked, equivalent work
+  is deduplicated. Tasks: M7, M8, M10, M11, M12, M13, M17, M19.
+
+The guiding principle: external systems are **compositions of layered concerns**
+(TCP → TLS → HTTP → REST → provider → operation). Each layer imposes invariants.
+The compiler derives transport code, mocks, and test obligations from the composition.
+Where the Rust substrate currently hand-wires what the DSL can derive, the modeling
+tasks in this queue eliminate that gap.
+
+Inspirational reference: `the-gunbai` Understanding pattern — external systems modeled
+as structured data (behaviors, constraints, assumptions, dependencies) from which blocks,
+tests, and prerequisites are automatically derived.
 
 ## Design-First Policy (Required)
 

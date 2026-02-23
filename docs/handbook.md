@@ -44,6 +44,93 @@ Core claims:
 - Service operations (REST, Shell, File) are defined once in `.dag` and compiled to all target languages.
 - If it validates, it is structurally sound.
 
+## Compositional Modeling Philosophy
+
+**Principle:** Every external system is modeled as a **composition of layered concerns**, where each layer imposes its own invariants on the final generated code. Workflows never interact with lower layers directly — the abstractions handle it — but the model is complete and the generated code reflects every layer.
+
+This principle is inspired by the `the-gunbai` Understanding pattern: external systems are described as structured data (behaviors, constraints, assumptions, dependencies), and the system derives blocks, tests, and prerequisites from those declarations. In gunbc, the DSL's type system, interface contracts, and annotation composition serve the same role.
+
+### Example 1: Network stack layers (TCP → TLS → HTTP → REST → GitHub → Gist)
+
+Consider what happens when the gist tool calls `github.Gist.Create()`:
+
+```text
+Layer 0: TCP        — reliable byte stream, port 443
+Layer 1: TLS        — encrypted channel, certificate validation
+Layer 2: HTTP       — request/response framing, status code semantics (RFC 9110)
+Layer 3: REST       — policy overrides on HTTP (e.g., 304 = success), content-type negotiation
+Layer 4: GitHub API — base URL, API versioning header, Bearer token auth, rate limiting
+Layer 5: Gist       — POST /gists, file map payload, permission scopes
+```
+
+Each layer adds constraints:
+- **TCP/TLS** are implicit in the transport executor (handled by the HTTP client library)
+- **HTTP** imposes status code classification — 4xx is client error, 5xx is server error
+- **REST** overrides HTTP where needed — 304 Not Modified is success, not error
+- **GitHub API** adds `@endpoint`, `@auth(BearerToken)`, API version headers
+- **Gist** adds `@rest(POST, "/gists")`, `@permissions(["gist"])`, typed input/output shapes
+
+The workflow author writes `github.Gist.Create(files: files)` and sees none of this. But the compiler composes all six layers into the generated transport code: the correct URL, the correct headers, the correct auth scheme, the correct error classification, and the correct mock responses for testing.
+
+**Key insight:** Layers 0-2 are handled by infrastructure (the transport executor). Layers 3-5 are captured in DSL annotations. The workflow only names Layer 5 (the operation). But the model is **complete** — every layer's invariants are enforced.
+
+### Example 2: External dependency composition
+
+External dependencies follow the same layered pattern. A tool like `curl` doesn't just "exist" — it has a dependency chain:
+
+```text
+curl/download
+  → requires: network connectivity (infra/network)
+    → requires: DNS resolution (resolve_dns)
+    → requires: TCP connectivity (check_port)
+  → requires: TLS certificates (system trust store)
+  → requires: tool:curl binary (package manager install)
+```
+
+Each requirement imposes invariants:
+- **Network** — if offline, fail before attempting download
+- **DNS** — if resolution fails, fail with specific diagnostic
+- **Tool binary** — if not installed, trigger upsert (check → install → resolve)
+
+In the DSL, this is captured via `uses` declarations and interface contracts:
+```
+func download(url: Url) -> { content: Bytes }
+  uses net: Network
+  uses fs: Filesystem(mode: Write)
+```
+
+The compiler resolves `uses net: Network` transitively — the bound implementation's requirements (DNS, TCP) become prerequisites of the pipeline stage. The workflow author writes `download(url: url)` and the system ensures all prerequisites are satisfied.
+
+### Example 3: Package manager modeling (typed install planning)
+
+gunbc's deps tool demonstrates this pattern concretely. A package install is not just "run a shell command" — it's a composition:
+
+```text
+Layer 0: Platform     — Linux/macOS/Windows (determines available package managers)
+Layer 1: PackageManager — apt/brew/cargo/script (typed enum, not strings)
+Layer 2: SelectionPolicy — deterministic priority ranking (not declaration-order)
+Layer 3: InstallPlan  — validated per-PM field requirements (apt needs packages, script needs body)
+Layer 4: Upsert pattern — check installed → install if missing → verify
+```
+
+Each layer imposes invariants:
+- **Platform** constrains which package managers are available
+- **PackageManagerId** fails closed on unknown IDs (no string fallbacks)
+- **SelectionPolicy** ensures reproducible selection across runs
+- **InstallPlan::validate()** enforces per-PM field requirements
+- **Upsert** ensures idempotency — running twice is safe
+
+### What this means for extending the system
+
+When adding a new service, tool, or external dependency:
+
+1. **Identify the layer stack** — what protocols, auth schemes, and platform constraints does this involve?
+2. **Declare each layer's invariants in the DSL** — `@rest`, `@auth`, `@endpoint`, `@permissions`, `@idempotent`, `@hermetic`, typed inputs/outputs
+3. **Let the compiler compose them** — the generated transport code, mock specs, and test obligations reflect every layer's constraints
+4. **The workflow author names only the top layer** — `github.Gist.Create()`, not "make an authenticated REST POST to the GitHub API over HTTPS on port 443"
+
+This is the target state. Where the Rust substrate currently hand-wires what the DSL can derive (e.g., credential chains repeated across graph builders), those are consolidation targets — see `TODO/tasks.md` for the active lanes.
+
 ## Core IR: Dag, Node, Port, Edge
 
 The Graph IR is the **compilation target** — you rarely construct it by hand. Instead, write `.dag` files and let the compiler produce `Dag<LoweredOp>`.
@@ -270,9 +357,10 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 Most new work is done by writing or modifying `.dag` files. The compiler handles lowering, type checking, and multi-language emission.
 
 **Add a new REST/Shell service:**
-1. Create `dsl/services/<provider>/<name>.dag` with `service` block and `operation` definitions.
-2. Use `@rest(METHOD, "/path")` for REST or `@shell(["cmd", "arg"])` for shell operations.
-3. The compiler extracts `ServiceOperationSpec` from annotations and generates transport code for all backends.
+1. Identify the layer stack: what protocol (HTTP/REST/gRPC), what auth scheme (Bearer, Header, Basic), what provider (GitHub, GCP, Stripe), what operations?
+2. Create `dsl/services/<provider>/<name>.dag` with `service` block and `operation` definitions.
+3. Express each layer's invariants via annotations: `@endpoint` (provider base URL), `@auth` (auth scheme), `@rest`/`@shell` (transport method + path), `@permissions` (required scopes), `@idempotent`/`@readonly` (behavioral properties), `@mock_response` (test data).
+4. Each annotation composes additively — the compiler generates transport code, mock specs, and test obligations reflecting all layers. The workflow author names only the top-level operation.
 
 Example (adding a new REST service):
 ```

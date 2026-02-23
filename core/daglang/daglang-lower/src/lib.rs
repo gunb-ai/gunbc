@@ -6140,7 +6140,7 @@ mod tests {
         build_bootstrap_graph, build_build_graph, build_ci_graph, build_codegen_graph,
         build_docgen_graph, build_makegen_graph, build_pragma_graph,
     };
-    use gunbc_deps::build_deps_graph;
+    use gunbc_dag::deps_tool::build_deps_graph;
     use gunbc_gist::{build_gist_graph, GistMode};
     use gunbc_ir::{Edge, Port};
     use gunbc_lib_aws_ops::build_aws_secrets_manager_credential_graph;
