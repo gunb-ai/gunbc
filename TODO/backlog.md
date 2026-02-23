@@ -48,4 +48,4 @@ Some backlog items overlap with Lane 4 (polish) tasks that handle incremental pr
 |--------------|-------------|-------------|
 | H11 (DAG typing) | CU-7 (Typed API migration) | CU-7 is the mechanical migration; H11 is the full design. |
 | H7 (Resource trait) | CU-8 (Resource string port elimination) | CU-8 is incremental cleanup; H7 is the full replacement. |
-| — | CU-9 (Canonical port naming) | Standalone polish, no backlog equivalent. |
+| — | CU-9 (Canonical port naming) | Won't-fix: "result" is already consistent across all patterns. |

@@ -119,13 +119,13 @@ func acquire_gcp_credential(
 fn acquire_aws_credential_stub(
   secret_name: NonEmptyStr,
   source_id: NonEmptyStr
-) -> { token: AccessToken } {
-  return { token: { value: "<AWS_STUB_NOT_IMPLEMENTED>", source_type: "stub", scheme: "none" } }
+) -> { token: String } {
+  return { token: "<AWS_STUB_NOT_IMPLEMENTED>" }
 }
 
 fn acquire_azure_credential_stub(
   secret_name: NonEmptyStr,
   source_id: NonEmptyStr
-) -> { token: AccessToken } {
-  return { token: { value: "<AZURE_STUB_NOT_IMPLEMENTED>", source_type: "stub", scheme: "none" } }
+) -> { token: String } {
+  return { token: "<AZURE_STUB_NOT_IMPLEMENTED>" }
 }

@@ -17,28 +17,7 @@
 
 module proofs.d1_dimension_review
 
-import std.types { NonEmptyStr, AccessToken }
-import std.resources { AuthContext }
-
-// ── Types ───────────────────────────────────────────────────────────
-
-type ReviewCriteria = {
-  name: String,
-  description: String,
-  checks: List<{ id: String, question: String, examples: List<String> }>
-}
-
-type FermiDepth = XS | S | M | L | XL
-
-type DimensionOutput = {
-  output: Json,
-  errors: Json
-}
-
-type MergedReviewOutput = {
-  output: Json,
-  summary: String
-}
+import std.types { NonEmptyStr }
 
 // ── Reusable dimension func ─────────────────────────────────────────
 // One func handles any single dimension. The caller instantiates it
@@ -99,7 +78,6 @@ func diff_dimension_review(
   depth: String
 ) -> { output: Json, summary: String }
 {
-  // Acquire diff artifact
   diff = git.Core.Diff(repo_path: repo_path, base_ref: base_ref)
   artifact = FormatDiffArtifact(diff_files: diff.diff_files)
 

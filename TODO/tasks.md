@@ -117,11 +117,11 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | F: Codegen-first SDLC | **DONE** | — |
 | G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **DONE** | — |
-| 1: Type system + graph builders | **DEFERRED** | TS-1, TS-1b, TS-1c deferred (co-blocked with graph.rs deletion) |
+| 1: Type system + graph builders | **DEFERRED** | Phase 1-A deferred (TS-1, TS-1b, TS-1c co-blocked with graph.rs deletion — cancel if GR-* succeeds). Phase 1-B done (TS-2 ✅, TS-5 ✅). |
 | 2: 100% codegen pipeline | **DONE** | All S12 items complete, L2-4 green |
-| Post-merge: Type system hard cutover | **DONE** | TS-7 partial, TS-3 ✅, TS-4a..TS-4d ✅. port_type.rs DELETED (367 lines). TypeRegistry is sole authority. |
-| 3: Modeling integrity | **DEFERRED** | All M7-M22 complete. GR-1..GR-4 deferred (blocked on DSL conditional composition) |
-| 4: Codebase polish | **ACTIVE** | CU-3, CU-7 (blocked L1). CU-8 ✅, CU-9 deferred, CU-10 ✅ |
+| Post-merge: Type system hard cutover | **DONE** | TS-7 ✅, TS-3 ✅, TS-4a..TS-4d ✅. port_type.rs DELETED (367 lines). TypeRegistry is sole authority. |
+| 3: Modeling integrity | **DEFERRED** | All M7-M22 complete. GR-1..GR-4 reclassified: DSL syntax is sufficient (validated by PoC), blocker is authoring work (D-3a..D-3d for GR-3/4, service op defs for GR-1/2). |
+| 4: Codebase polish | **ACTIVE** | CU-3, CU-7 (blocked L1). CU-8 ✅, CU-9 ✅ (won't-fix), CU-10 ✅ |
 
 ---
 
@@ -135,9 +135,9 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. | — | L | DEFERRED — co-blocked with GR-4 (graph.rs deletion) |
-| **TS-1b** | **Cloud-ops port types**: 43 ports across 3 files in `lib/cloud-ops/src/`. | TS-1 | M | DEFERRED — co-blocked with GR-3 |
-| **TS-1c** | **Review + LLM port types**: 115 ports across `lib/review/src/graph.rs` and `lib/llm-ops/src/graph.rs`. | — | L | DEFERRED — co-blocked with GR-1/GR-2 |
+| **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. | — | L | DEFERRED — cancel if GR-4 deletes the file |
+| **TS-1b** | **Cloud-ops port types**: 43 ports across 3 files in `lib/cloud-ops/src/`. | TS-1 | M | DEFERRED — cancel if GR-3 deletes the file |
+| **TS-1c** | **Review + LLM port types**: 115 ports across `lib/review/src/graph.rs` and `lib/llm-ops/src/graph.rs`. | — | L | DEFERRED — cancel if GR-1/GR-2 deletes the files |
 | **TS-1d** | **Remaining graph port types**: `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). `aws-ops/graph.rs` (3), `azure-ops/graph.rs` (3). `gist/graph.rs` (6), `clippy/graph.rs` deleted — 15 ports removed; DSL handles typing now. Gist Rust crates (`lib/gist-ops/`, `lib/tools/gist/`) fully deleted; gist remains DSL-only via `dsl/workflows/gist.dag`. | — | S | ✅ Done |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
@@ -289,7 +289,7 @@ L2-0 ✅ ──→ L2-1 ✅, L2-2 ✅, TS-6 ✅ ──→ S12-6 ✅ ──→ S1
 
 **Source**: `TODO/modeling.md` — 13 intake tasks for semantic-integrity hardening.
 **Design-first policy**: Every M* task requires a paired M*-D design review before implementation.
-**Status**: All 16 modeling tasks (M7-M22) COMPLETE. Graph.rs cleanup (GR-1..GR-4) blocked on Lane 2 S12 (profile binding).
+**Status**: All 16 modeling tasks (M7-M22) COMPLETE. Graph.rs cleanup (GR-1..GR-4) reclassified: DSL syntax is sufficient (PoC validated), blocker is authoring work. See D-3a..D-3d sub-tasks.
 
 ### Lane 3-A: Graph semantics (M8 → M9 → M16)
 
@@ -304,12 +304,23 @@ L2-0 ✅ ──→ L2-1 ✅, L2-2 ✅, TS-6 ✅ ──→ S12-6 ✅ ──→ S1
 
 ### Lane 3-A+ : Graph.rs Cleanup (Unblocked — M16 done)
 
+**Blocker reclassified (2026-02-23)**: D-1/D-2 PoC validation confirmed the DSL *can* express these patterns with existing syntax (`func` + `if` + `match`). The blocker is authoring work, not missing DSL features. See `dsl/proofs/d1_dimension_review.dag` and `dsl/proofs/d2_provider_dispatch.dag`.
+
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **GR-1** | **Delete `review/graph.rs`** (1,727 lines) | M16 | S | DEFERRED — blocked on DSL conditional sub-DAG composition |
+| **GR-1** | **Delete `review/graph.rs`** (1,727 lines): Author `dimension_review` func + `diff_dimension_review` caller using `func` + `if` pattern. Define `PrepareDimensionPrompt`, `ParseDimensionResponse`, `LLM.Complete` as DSL service ops. | M16 | M | DEFERRED — authoring: dimension review func + 3 service op definitions |
 | **GR-2** | **Delete `llm-ops/graph.rs`** (267 lines) — only called by review's graph builder | GR-1, M16 | S | DEFERRED — co-blocked with GR-1 |
-| **GR-3** | **Delete `cloud-ops/graph.rs`** (502 lines) — central dispatcher | M16 | S | DEFERRED — blocked on DSL credential chain support |
+| **GR-3** | **Delete `cloud-ops/graph.rs`** (502 lines): Replace Rust dispatch with DSL `match provider` expression. Author OIDC implementations (D-3a), local auth upsert (D-3b), IAM preflight (D-3c). | M16, D-3a..D-3d | M | DEFERRED — authoring: credential chain funcs (3 S + 1 M sub-tasks) |
 | **GR-4** | **Delete `gcp-ops/graph.rs`** (1,674 lines) — called by cloud-ops dispatcher | GR-3, M16 | S | DEFERRED — co-blocked with GR-3 |
+
+#### GR-3/GR-4 Sub-Tasks (D-3a..D-3d)
+
+| ID | Task | Rust Lines | New DSL Ops | Size | Status |
+|----|------|-----------|-------------|------|--------|
+| **D-3a** | **OIDC implementations**: Replace `github_oidc()`, `metadata_oidc()` stubs in `dsl/std/patterns.dag` with real funcs. GCP service ops already exist (`gcp.STS.Exchange`, `github.OIDC.GetToken`, `gcp.Metadata.GetIdentityToken`). | ~181 | 0 | S | |
+| **D-3b** | **Local auth upsert**: Author `local_auth()` func — ADC check → OAuth2 refresh → conditional re-auth via gcloud → merge. Needs 1 new DSL service op (`oauth2.googleapis.com` refresh). | ~725 | 1 | M | |
+| **D-3c** | **IAM preflight**: Author IAM ensure pattern — `getIamPolicy` → check → conditional `setIamPolicy`. GCP service ops already exist (`gcp.ResourceManager.{Get,Set}IamPolicy`). | ~308 | 0 | S | |
+| **D-3d** | **Cloud-ops dispatch**: Replace Rust `match provider/runtime` with DSL `match` expression. PoC validated in `dsl/proofs/d2_provider_dispatch.dag`. | ~291 | 0 | S | |
 
 ### Lane 3-B: Workflow execution safety (M10 → M11 → M12)
 
@@ -360,7 +371,7 @@ Lane 3-C:  M13 ✅ → M14 ✅
 Lane 3-D:  M17 ✅ → M18 ✅ → M19 ✅
 Lane 3-E:  M20 ✅, M21 ✅, M22 ✅
 
-3-A graph.rs cleanup is the critical path (blocked on M16 completion).
+3-A graph.rs cleanup is the critical path (authoring work: D-3a..D-3d for GR-3/4, service op defs for GR-1/2).
 ```
 
 ---
@@ -377,7 +388,7 @@ Lane 3-E:  M20 ✅, M21 ✅, M22 ✅
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: `types_match()` deleted. `canonical_type_name()` deferred — it's a 1-line utility used in ~20 sites for DSL name normalization (module paths, config annotations). TypeRegistry doesn't cover this use case. | Lane 1 + Lane 2 merged | M | ✅ Partial (types_match deleted, canonical_type_name deferred) |
+| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: `types_match()` deleted. `canonical_type_name()` retained — 1-line utility (`name.split('<').next()`) used in ~20 sites for DSL name normalization (module paths, config annotations). TypeRegistry doesn't cover this use case; deletion has no payoff. | Lane 1 + Lane 2 merged | M | ✅ Done (types_match deleted, canonical_type_name retained) |
 | **TS-3** | **Make TypeRegistry non-optional**: Changed `Option<TypeRegistry>` → `TypeRegistry` across 4 files (codegen.rs, obligation.rs, analyze.rs). ~12 function signatures updated, latent bug fixed (obligations now receive registry). | TS-7 | S | ✅ Done |
 
 ### Phase PM-B: Delete `port_type.rs` (file deletion)
@@ -440,7 +451,7 @@ Lane 1 + Lane 2 merged
 | **CU-6** | **Organize TODONE by quarter**: 65 completed items in flat `TODO/TODONE/`. Create `TODONE/2026-Q1/` subdirectory. | `TODO/TODONE/` | — | S | ✅ Done |
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
 | **CU-8** | **Resource string elimination in resolve.rs**: Replaced `"res:file"` / `"res:file:"` string literals with `RESOURCE_FILE` / `RESOURCE_FILE_PREFIX` constants in `gunbc-dag/src/resolve.rs`. | `gunbc-dag/` | — | S | ✅ Done |
-| **CU-9** | **Canonical port naming invariants**: Deferred — "result" is consistent across Loop, Branch, and Repeat patterns + executor. Plan's premise that Branch uses "output" was incorrect. Changing requires 10+ sites across 4 files. | Various | — | S | DEFERRED |
+| **CU-9** | **Canonical port naming invariants**: Closed — "result" is already consistent across Loop, Branch, and Repeat patterns + executor. Original premise (Branch uses "output") was incorrect. No action needed. | Various | — | S | ✅ Won't-fix (consistent) |
 | **CU-10** | **TypeRegistry ↔ PortType drift audit**: Verify every domain type in `try_parse_port_type()` (40 mappings) has a consistent `TypeRegistry` registration with matching structural backing. Fix any remaining mismatches like the `Credential→Secret` bug. Stopgap until `port_type.rs` is deleted (TS-4c). | `core/ir/src/{port_type,type_registry}.rs` | — | S | ✅ Done |
 
 ---

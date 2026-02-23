@@ -51,7 +51,7 @@ Promotion rule:
 
 Verified: `cargo test --workspace` (127/127 suites pass), `cargo clippy --all-targets -- -D warnings` (0 errors).
 
-Remaining follow-up: 4 graph.rs file deletions (~4,170 lines) blocked on Lane 2 S12 (DSL credential chain compilation). See § Cloud Modeling Gap Inventory below.
+Remaining follow-up: 4 graph.rs file deletions (~4,170 lines). Blocker reclassified (2026-02-23): DSL syntax validated via PoC (`dsl/proofs/d1_dimension_review.dag`, `dsl/proofs/d2_provider_dispatch.dag`). Remaining work is authoring (D-3a..D-3d sub-tasks in `TODO/tasks.md`). See § Cloud Modeling Gap Inventory below.
 
 ## Intake Tasks
 
@@ -99,25 +99,26 @@ standard; AWS/Azure need the same treatment.
 5. **`GitHubCredentialOps` orphaned**: After `github_credential_graph.rs` deletion, ops in `cloud-ops/src/github_ops.rs` exist but aren't reachable from DSL resolver.
 6. **AWS/Azure tested only in dry-run**: Tests use `@auto_mock(true)`, never exercise real credential paths.
 
-### Remaining Rust Graph Builders (Blocked on M16)
+### Remaining Rust Graph Builders (Authoring Backlog)
 
-These `graph.rs` files (~4,170 lines total) cannot be deleted until M16 enables
-the DSL to express parameterized credential chains as composable protocol layers:
+These `graph.rs` files (~4,170 lines total) require DSL authoring work to replace.
+M16 is done. DSL syntax validated via PoC (2026-02-23). See `TODO/tasks.md` GR-1..GR-4
+and D-3a..D-3d sub-tasks.
 
-| File | Lines | Blocker |
-|------|-------|---------|
-| `lib/review/src/graph.rs` | 1,727 | DSL `review.dag` has no `func` — needs config parameterization |
-| `lib/gcp-ops/src/graph.rs` | 1,674 | Called by `cloud-ops/graph.rs` dispatcher |
-| `lib/cloud-ops/src/graph.rs` | 502 | Central dispatcher — blocked until all callers use DSL |
-| `lib/llm-ops/src/graph.rs` | 267 | Called only by review's graph builder |
+| File | Lines | Remaining Work |
+|------|-------|----------------|
+| `lib/review/src/graph.rs` | 1,727 | Author `dimension_review` func + define 3 service ops (GR-1) |
+| `lib/gcp-ops/src/graph.rs` | 1,674 | Author OIDC + local auth + IAM funcs (D-3a..D-3c, GR-4) |
+| `lib/cloud-ops/src/graph.rs` | 502 | Replace Rust dispatch with DSL `match` (D-3d, GR-3) |
+| `lib/llm-ops/src/graph.rs` | 267 | Subsumed by GR-1 (GR-2) |
 
 ### Resolution Path
 
-These gaps resolve when M16 (protocol stack layering) is implemented:
-- Credential chains become composable protocol layers (`OIDC -> STS -> secret_fetch`)
-- Each provider's service definitions derive transport code from the composition
-- The resolver auto-wires service transport ops via generic REST/Shell handlers
-- Stubs are replaced by real ops following GCP's pattern
+No new DSL syntax needed (validated by `dsl/proofs/d1_dimension_review.dag` and
+`dsl/proofs/d2_provider_dispatch.dag`). Remaining work:
+- Author credential chain funcs (D-3a..D-3d, ~M total)
+- Define review service ops as DSL services (~S)
+- Wire dispatch via `match` expression (existing syntax)
 
 ## Execution Checklists (Review Gate)
 
