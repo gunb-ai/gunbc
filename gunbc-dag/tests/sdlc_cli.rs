@@ -1401,6 +1401,125 @@ fn worker_rejects_malformed_param_flag() {
 }
 
 #[test]
+fn worker_real_mode_runtime_param_overrides_dispatch_run_key_input() {
+    let ctx = CliTestContext::new("worker_runtime_param_run_key_override", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-runtime-param-run-key",
+        "intent-20260221-runtime-param-run-key",
+        Some(4243),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    // First pass advances Idea -> Design.
+    let first_pass = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run first worker pass");
+    assert!(
+        first_pass.status.success(),
+        "first worker pass should succeed: {}",
+        String::from_utf8_lossy(&first_pass.stderr)
+    );
+
+    // Second pass executes Design stage with explicit run_key override.
+    let second_pass = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--param")
+        .arg("run_key=override-run-key")
+        .current_dir(&root)
+        .output()
+        .expect("run second worker pass with runtime param");
+    assert!(
+        second_pass.status.success(),
+        "second worker pass should succeed: {}",
+        String::from_utf8_lossy(&second_pass.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&second_pass.stdout).expect("worker output should be JSON");
+    assert_eq!(
+        payload["runtime_params"]["run_key"],
+        serde_json::Value::String("override-run-key".to_string())
+    );
+
+    let issue_transport_path = root.join("target/sdlc/issue-transport-ledger.json");
+    let issue_transport_raw =
+        std::fs::read_to_string(&issue_transport_path).expect("read issue transport ledger");
+    let issue_transport: serde_json::Value =
+        serde_json::from_str(&issue_transport_raw).expect("parse issue transport ledger");
+    let design_review_comment = issue_transport["issues"]["4243"]["comments_by_marker"]
+        ["sdlc:design-review"]
+        .as_str()
+        .expect("design-review marker comment should be string")
+        .to_string();
+    assert!(
+        design_review_comment.contains("override-run-key"),
+        "compiled dispatch should consume overridden run_key in stage message: {design_review_comment}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn intake_rejects_param_flag_fail_closed() {
+    let ctx = CliTestContext::new("intake_rejects_param_flag", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-intake-param-reject",
+        "intent-20260221-intake-param-reject",
+        Some(5152),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .arg("--param")
+        .arg("run_key=unexpected")
+        .current_dir(&root)
+        .output()
+        .expect("run intake with invalid --param");
+    assert!(
+        !intake.status.success(),
+        "intake should fail closed for unsupported --param flag"
+    );
+    let stderr = String::from_utf8_lossy(&intake.stderr);
+    assert!(
+        stderr.contains("--param is only valid for worker or issue"),
+        "stderr should explain unsupported --param scope: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn worker_real_mode_persists_retry_state_on_claim_conflict() {
     let ctx = CliTestContext::new("worker_conflict_retry", sdlc_bin());
     let root = ctx.path().to_path_buf();
