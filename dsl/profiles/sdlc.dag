@@ -58,3 +58,42 @@ import interfaces.artifact_store { ArtifactStore }
 //   AgentProvider   -> codex_agent.codex.AgentProvider
 //   SignalStore     -> stubs.stub.SignalStore   (TODO: pubsub)
 //   ArtifactStore   -> stubs.stub.ArtifactStore (TODO: gcs)
+
+profile unit_test {
+  bind IssueProvider -> services.sdlc.providers.stub_providers.stub.IssueProvider
+  bind ClaimStore -> services.sdlc.providers.stub_providers.stub.ClaimStore
+  bind OutcomeLedger -> services.sdlc.providers.stub_providers.stub.OutcomeLedger
+  bind AgentProvider -> services.sdlc.providers.stub_providers.stub.AgentProvider
+  bind SignalStore -> services.sdlc.providers.stub_providers.stub.SignalStore
+  bind ArtifactStore -> services.sdlc.providers.stub_providers.stub.ArtifactStore
+}
+
+profile local {
+  bind IssueProvider -> services.sdlc.providers.github_issue_provider.github.IssueProvider {
+    owner: "gunb-ai",
+    repo: "gunbc",
+    credential: env("GITHUB_TOKEN")
+  }
+  bind ClaimStore -> services.sdlc.providers.file_claim_store.file.ClaimStore
+  bind OutcomeLedger -> services.sdlc.providers.file_outcome_ledger.file.OutcomeLedger
+  bind AgentProvider -> services.sdlc.providers.codex_agent_provider.codex.AgentProvider {
+    credential: env("CODEX_API_KEY")
+  }
+  bind SignalStore -> profiles.local.FileSignalStore
+  bind ArtifactStore -> profiles.local.InlineArtifactStore
+}
+
+profile cloud_run {
+  bind IssueProvider -> services.sdlc.providers.github_issue_provider.github.IssueProvider {
+    owner: "gunb-ai",
+    repo: "gunbc",
+    credential: secret("github-token")
+  }
+  bind ClaimStore -> services.sdlc.providers.gcs_claim_store.gcs.ClaimStore
+  bind OutcomeLedger -> services.sdlc.providers.gcs_outcome_ledger.gcs.OutcomeLedger
+  bind AgentProvider -> services.sdlc.providers.codex_agent_provider.codex.AgentProvider {
+    credential: secret("codex-api-key")
+  }
+  bind SignalStore -> profiles.cloud_run.PubSubSignalStore
+  bind ArtifactStore -> profiles.cloud_run.GcsArtifactStore
+}

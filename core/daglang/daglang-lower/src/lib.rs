@@ -5196,8 +5196,8 @@ fn wire_profile_binding_config_inputs(
     }
 }
 
-fn resolve_profile_interface_key<'a>(
-    bindings: &'a HashMap<String, ActiveProfileBinding>,
+fn resolve_profile_interface_key(
+    bindings: &HashMap<String, ActiveProfileBinding>,
     interface_type: &str,
 ) -> Option<String> {
     let canonical = canonical_type_name(interface_type);

@@ -219,6 +219,8 @@ impl Parser {
             TokenKind::Resource => "resource",
             TokenKind::Interface => "interface",
             TokenKind::Pipeline => "pipeline",
+            TokenKind::Profile => "profile",
+            TokenKind::Bind => "bind",
             TokenKind::Let => "let",
             TokenKind::Return => "return",
             TokenKind::Match => "match",
@@ -284,6 +286,7 @@ impl Parser {
                 | TokenKind::Resource
                 | TokenKind::Interface
                 | TokenKind::Pipeline
+                | TokenKind::Profile
                 | TokenKind::Test
                 | TokenKind::Fixture
                 | TokenKind::Project
@@ -503,6 +506,7 @@ impl Parser {
             TokenKind::Resource => Item::ResourceDef(self.parse_resource_def()?),
             TokenKind::Interface => Item::InterfaceDef(self.parse_interface_def()?),
             TokenKind::Pipeline => Item::PipelineDef(self.parse_pipeline_def()?),
+            TokenKind::Profile => Item::ProfileDef(self.parse_profile_def()?),
             TokenKind::Test => Item::TestDef(self.parse_test_def(leading_anns)?),
             TokenKind::Fixture => Item::FixtureDef(self.parse_fixture_def()?),
             TokenKind::Project => Item::ProjectDef(self.parse_project_def()?),
@@ -1267,6 +1271,45 @@ impl Parser {
         }
         self.expect(&TokenKind::RBrace)?;
         Ok(PipelineDef { name, uses, stages })
+    }
+
+    fn parse_profile_def(&mut self) -> Result<ProfileDef, ParseError> {
+        self.expect(&TokenKind::Profile)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let mut binds = Vec::new();
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            if self.check(&TokenKind::Bind) {
+                binds.push(self.parse_profile_bind()?);
+            } else {
+                self.advance();
+            }
+        }
+        self.expect(&TokenKind::RBrace)?;
+        Ok(ProfileDef { name, binds })
+    }
+
+    fn parse_profile_bind(&mut self) -> Result<ProfileBind, ParseError> {
+        self.expect(&TokenKind::Bind)?;
+        let interface_type = self.parse_dotted_ident()?;
+        self.expect(&TokenKind::Arrow)?;
+        let implementation_type = self.parse_dotted_ident()?;
+        let mut config_entries = Vec::new();
+        if self.eat(&TokenKind::LBrace) {
+            while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                let key = self.expect_ident()?;
+                self.expect(&TokenKind::Colon)?;
+                let value = self.parse_expr(0)?;
+                config_entries.push((key, value));
+                self.eat(&TokenKind::Comma);
+            }
+            self.expect(&TokenKind::RBrace)?;
+        }
+        Ok(ProfileBind {
+            interface_type,
+            implementation_type,
+            config_entries,
+        })
     }
 
     fn parse_stage_def(&mut self) -> Result<StageDef, ParseError> {
@@ -2439,7 +2482,11 @@ impl Parser {
             };
             self.expect(&TokenKind::FatArrow)?;
             let body = self.parse_expr(0)?;
-            arms.push(MatchArm { pattern, guard, body });
+            arms.push(MatchArm {
+                pattern,
+                guard,
+                body,
+            });
             self.eat(&TokenKind::Comma);
         }
         self.expect(&TokenKind::RBrace)?;
@@ -2467,6 +2514,16 @@ impl Parser {
                 } else if self.eat(&TokenKind::LBrace) {
                     let mut args = Vec::new();
                     while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                        if self.eat(&TokenKind::Dot) {
+                            // tolerate spread-ish syntax (`...`) in match patterns
+                            self.eat(&TokenKind::Dot);
+                            self.eat(&TokenKind::Dot);
+                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                let _ = self.expect_ident()?;
+                            }
+                            self.eat(&TokenKind::Comma);
+                            continue;
+                        }
                         let field = self.expect_ident()?;
                         self.expect(&TokenKind::Colon)?;
                         let inner = self.parse_pattern()?;
@@ -2674,7 +2731,10 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
         match &sf.items[2].node {
             Item::FnDef(f) => {
                 assert!(!f.body.lossy);
-                assert!(matches!(f.body.stmts.first(), Some(Stmt::Expr(Expr::Match(_, arms))) if arms.is_empty()));
+                assert!(matches!(
+                    f.body.stmts.first(),
+                    Some(Stmt::Expr(Expr::Match(_, arms))) if arms.len() == 2
+                ));
             }
             other => panic!("expected FnDef, got {other:?}"),
         }
@@ -2819,6 +2879,33 @@ interface Storage {
                 assert_eq!(def.contracts[0].name, "contract");
             }
             other => panic!("expected InterfaceDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_profile_definition_with_binds_and_config() {
+        let sf = parse_or_panic(
+            r#"module profiles.sdlc
+profile unit_test {
+  bind IssueProvider -> stub.IssueProvider
+  bind AgentProvider -> stub.AgentProvider {
+    approval_mode: "full_auto"
+  }
+}
+"#,
+        );
+        match &sf.items[0].node {
+            Item::ProfileDef(def) => {
+                assert_eq!(def.name, "unit_test");
+                assert_eq!(def.binds.len(), 2);
+                assert_eq!(def.binds[0].interface_type, "IssueProvider");
+                assert_eq!(def.binds[0].implementation_type, "stub.IssueProvider");
+                assert!(def.binds[0].config_entries.is_empty());
+                assert_eq!(def.binds[1].interface_type, "AgentProvider");
+                assert_eq!(def.binds[1].implementation_type, "stub.AgentProvider");
+                assert_eq!(def.binds[1].config_entries.len(), 1);
+            }
+            other => panic!("expected ProfileDef, got {other:?}"),
         }
     }
 

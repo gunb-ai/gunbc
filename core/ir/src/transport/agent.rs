@@ -62,7 +62,13 @@ impl AgentConstraints {
 pub fn target_branch_for_intent(intent_id: &str) -> String {
     let normalized: String = intent_id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect();
     let trimmed = normalized.trim_matches('-');
     format!("feature/{trimmed}")
@@ -80,22 +86,17 @@ pub struct AgentHandle {
 /// Agent execution status as reported by the adapter.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentStatus {
-    Running {
-        progress: Option<String>,
-    },
-    Completed {
-        branch: String,
-        commit_sha: String,
-    },
-    Failed {
-        reason: String,
-        recoverable: bool,
-    },
+    Running { progress: Option<String> },
+    Completed { branch: String, commit_sha: String },
+    Failed { reason: String, recoverable: bool },
 }
 
 impl AgentStatus {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, AgentStatus::Completed { .. } | AgentStatus::Failed { .. })
+        matches!(
+            self,
+            AgentStatus::Completed { .. } | AgentStatus::Failed { .. }
+        )
     }
 }
 
@@ -108,11 +109,17 @@ pub struct AgentError {
 
 impl AgentError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into(), retryable: false }
+        Self {
+            message: message.into(),
+            retryable: false,
+        }
     }
 
     pub fn retryable(message: impl Into<String>) -> Self {
-        Self { message: message.into(), retryable: true }
+        Self {
+            message: message.into(),
+            retryable: true,
+        }
     }
 }
 

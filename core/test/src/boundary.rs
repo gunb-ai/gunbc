@@ -10,7 +10,7 @@
 //! > "World I/O is performed only by transport executor nodes"
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"
 
-use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_with_mode, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{Dag, Value};
 
 /// Result of a transport interception test.
@@ -109,6 +109,19 @@ pub fn assert_boundary_mockable<T: gunbc_exec::Executable + Clone + Send>(
             error: Some(format!("Execution failed: {}", e)),
         },
     }
+}
+
+/// Execute a DAG through the canonical engine surface with optional entrypoint mocks.
+///
+/// This adapter centralizes direct `gunbc_exec` invocation for callers that need
+/// explicit input mocks while preserving the same execution semantics as
+/// `execute_with_mode_and_inputs`.
+pub fn execute_via_engine_with_inputs<T: gunbc_exec::Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<gunbc_exec::ExecutionLog, gunbc_exec::ExecError> {
+    execute_with_mode_and_inputs(dag, mode, input_mocks)
 }
 
 /// Create empty mocks for boundary testing.

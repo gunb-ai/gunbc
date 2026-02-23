@@ -131,9 +131,7 @@ fn execute_resolve_auth(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let provider_id = require_str(&inputs, "provider")?;
     if llm::provider_by_id(provider_id).is_none() {
-        return Err(ExecError::new(format!(
-            "unknown provider '{provider_id}'"
-        )));
+        return Err(ExecError::new(format!("unknown provider '{provider_id}'")));
     }
     let base_intent = llm::LlmScopeContract::new(provider_id).credential_intent();
     let intent_key = format!("llm.{}.chat_completion", base_intent.provider);

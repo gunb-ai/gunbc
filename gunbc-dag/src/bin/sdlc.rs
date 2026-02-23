@@ -19,7 +19,7 @@ use gunbc_dag::{
     ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
-use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, DynOp, ExecutionMode};
+use gunbc_exec::{BoundaryMocks, DynOp, ExecutionMode};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::transport::agent::{
     target_branch_for_intent, AgentConstraints, DesignArtifact, HandoffSpec,
@@ -35,6 +35,7 @@ use gunbc_ir::transport::github::{
     SdlcIssueCapabilities,
 };
 use gunbc_ir::{detect_entrypoints, Dag, Value, WorkspaceLayout};
+use gunbc_test::boundary::execute_via_engine_with_inputs;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1107,9 +1108,11 @@ fn run_worker(
                     record,
                     &worker_id_str,
                     &agent_ledger,
-                    &mut issue_transport,
-                    now,
-                    !dry_run,
+                    StageDispatchRuntime {
+                        issue_transport: &mut issue_transport,
+                        now_epoch_ms: now,
+                        apply_side_effects: !dry_run,
+                    },
                 ) {
                     Ok(StageDispatchOutcome::Advanced(next_stage)) => {
                         if dry_run {
@@ -3028,7 +3031,7 @@ impl CompiledStageDispatcher {
         }
 
         let execution =
-            execute_with_mode_and_inputs(&self.dag, ExecutionMode::Real, Some(&input_mocks))
+            execute_via_engine_with_inputs(&self.dag, ExecutionMode::Real, Some(&input_mocks))
                 .map_err(|error| {
                     format!(
                         "compiled stage dispatcher execution failed for `{intake_key}`: {error}"
@@ -3147,6 +3150,12 @@ fn compile_worker_stage_dispatch_dag_with_stage_order(
     Ok(CompiledStageDispatcher { dag, stage_order })
 }
 
+struct StageDispatchRuntime<'a> {
+    issue_transport: &'a mut IssueTransportLedger,
+    now_epoch_ms: u128,
+    apply_side_effects: bool,
+}
+
 /// Dispatch a compiled SDLC stage policy graph for execution.
 fn dispatch_pipeline_stage(
     dispatcher: &CompiledStageDispatcher,
@@ -3154,9 +3163,7 @@ fn dispatch_pipeline_stage(
     record: &IntakeRecord,
     worker_id: &str,
     agent_ledger: &AgentLedger,
-    issue_transport: &mut IssueTransportLedger,
-    now_epoch_ms: u128,
-    apply_side_effects: bool,
+    runtime: StageDispatchRuntime<'_>,
 ) -> Result<StageDispatchOutcome, String> {
     let issue_id = record
         .issue_id
@@ -3164,26 +3171,29 @@ fn dispatch_pipeline_stage(
 
     let decision = dispatcher.execute(intake_key, record, worker_id, issue_id)?;
     ensure_stage_gate_requirements(record, intake_key, agent_ledger, &decision)?;
-    if apply_side_effects {
+    if runtime.apply_side_effects {
         if let (Some(marker), Some(message)) =
             (decision.marker.as_deref(), decision.message.as_deref())
         {
             issue_transport_upsert_comment(
-                issue_transport,
+                runtime.issue_transport,
                 issue_id,
                 marker,
                 message,
-                now_epoch_ms,
+                runtime.now_epoch_ms,
             )?;
         }
     }
-    if apply_side_effects && !decision.awaiting_approval && decision.next_stage != record.stage {
+    if runtime.apply_side_effects
+        && !decision.awaiting_approval
+        && decision.next_stage != record.stage
+    {
         advance_remote_stage(
-            issue_transport,
+            runtime.issue_transport,
             issue_id,
             record.stage,
             decision.next_stage,
-            now_epoch_ms,
+            runtime.now_epoch_ms,
         )?;
     }
 

@@ -41,6 +41,8 @@ use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
 use crate::makegen::MakegenOp;
+use crate::pragma::PragmaOp;
+use crate::bootstrap::BootstrapOp;
 use crate::resolve_service::{
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
 };
@@ -77,9 +79,79 @@ fn execute_with_declared_output_passthrough(
         outputs.insert(key.clone(), value.clone());
     }
     for port_name in output_port_names {
-        outputs.entry(port_name.clone()).or_insert(Value::Skipped);
+        outputs.entry(port_name.clone()).or_insert_with(|| {
+            passthrough_fallback_value(port_name, &inputs).unwrap_or(Value::Skipped)
+        });
     }
     Ok(outputs)
+}
+
+fn passthrough_fallback_value(port_name: &str, inputs: &HashMap<String, Value>) -> Option<Value> {
+    let aliases: &[&str] = match port_name {
+        "result" => &["input", "value", "content", "document"],
+        "return" => &[
+            "value",
+            "content",
+            "document",
+            "input",
+            "result",
+            "directives",
+            "sections",
+            "lines",
+            "text",
+            "items",
+        ],
+        _ => &[],
+    };
+
+    let candidate = aliases
+        .iter()
+        .find_map(|alias| inputs.get(*alias).cloned())?;
+
+    if port_name != "return" {
+        return Some(candidate);
+    }
+
+    Some(match candidate {
+        Value::Str(_) => candidate,
+        Value::Int(value) => Value::Str(value.to_string()),
+        Value::Bool(value) => Value::Str(value.to_string()),
+        Value::Float(value) => Value::Str(value.to_string()),
+        Value::Unit => Value::Str(String::new()),
+        Value::List(values) | Value::Set(values) => Value::Str(
+            values
+                .iter()
+                .map(passthrough_value_to_text)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        Value::Map(values) => Value::Str(format!("{values:?}")),
+        Value::Json(value) => Value::Str(value.to_string()),
+        Value::Bytes(bytes) => Value::Str(format!("{bytes:?}")),
+        Value::Secret(secret) => Value::Str(secret.to_string()),
+        Value::Request(request) => Value::Str(format!("{request:?}")),
+        Value::Response(response) => Value::Str(format!("{response:?}")),
+        Value::Skipped => Value::Skipped,
+    })
+}
+
+fn passthrough_value_to_text(value: &Value) -> String {
+    match value {
+        Value::Str(value) => value.clone(),
+        Value::Int(value) => value.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Float(value) => value.to_string(),
+        Value::Unit => String::new(),
+        Value::Json(value) => value.to_string(),
+        Value::Map(value) => format!("{value:?}"),
+        Value::Bytes(value) => format!("{value:?}"),
+        Value::Secret(value) => value.to_string(),
+        Value::Request(value) => format!("{value:?}"),
+        Value::Response(value) => format!("{value:?}"),
+        Value::List(values) => format!("{values:?}"),
+        Value::Set(values) => format!("{values:?}"),
+        Value::Skipped => String::new(),
+    }
 }
 
 /// Single passthrough op that replaces all `domain_passthrough_op!` macro
@@ -187,7 +259,7 @@ impl Executable for SubDagDispatchOp {
                 input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
             }
         }
-        let execution = gunbc_exec::execute_with_mode_and_inputs(
+        let execution = gunbc_test::boundary::execute_via_engine_with_inputs(
             &self.dag,
             gunbc_exec::ExecutionMode::Real,
             Some(&input_mocks),
@@ -645,7 +717,10 @@ fn resolve_domain(
     //    None for unknown (which falls through to passthrough).
     let custom = match module {
         "std.resources" => Some(resolve_std_resources(name)),
+        "tools.bootstrap" => resolve_tools_bootstrap(name),
         "tools.makegen" => resolve_tools_makegen(name),
+        "tools.infra" => resolve_tools_infra(name),
+        "tools.pragma" => resolve_tools_pragma(name),
         "funcs.sdlc_dispatch_runtime" => resolve_sdlc_dispatch_runtime(name),
         _ => None,
     };
@@ -690,6 +765,99 @@ fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
         _ => return None,
     };
     Some(DynOp::new(op))
+}
+
+fn resolve_tools_bootstrap(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "prepare_scan_workspace" => BootstrapOp::PrepareScanWorkspace,
+        "parse_scan_result" => BootstrapOp::ParseScanResult,
+        "render_bootstrap_makefile" => BootstrapOp::GenerateMakefile,
+        "render_bootstrap_gitignore" => BootstrapOp::GenerateGitignore,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
+}
+
+fn resolve_tools_pragma(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "render_clippy_toml" => PragmaOp::RenderClippy,
+        "render_disallowed_methods_allowlist" => PragmaOp::RenderAllowlist,
+        "render_pragma_lint_policy" => PragmaOp::RenderLintPolicy,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
+}
+
+fn resolve_tools_infra(name: &str) -> Option<DynOp> {
+    match name {
+        "infra" => Some(DynOp::new(InfraDispatchOp)),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct InfraDispatchOp;
+
+impl Executable for InfraDispatchOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let environment = inputs
+            .get("environment")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("missing required 'environment' input for tools.infra::infra"))?
+            .to_string();
+        let runtime = inputs
+            .get("runtime")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("missing required 'runtime' input for tools.infra::infra"))?
+            .to_string();
+        let spec_targets = inputs
+            .get("spec_targets")
+            .and_then(Value::as_str_list)
+            .ok_or_else(|| {
+                ExecError::new("missing required 'spec_targets' input for tools.infra::infra")
+            })?;
+        let target = inputs
+            .get("target")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let skip = inputs
+            .get("skip")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let execute = inputs
+            .get("execute")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let targeted = if target.is_empty() {
+            spec_targets.clone()
+        } else {
+            spec_targets
+                .iter()
+                .filter(|item| target.iter().any(|selected| selected == *item))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let planned_targets = targeted
+            .into_iter()
+            .filter(|item| !skip.iter().any(|excluded| excluded == item))
+            .collect::<Vec<_>>();
+        let target_count = planned_targets.len() as i64;
+        let mode = if execute { "apply" } else { "plan" };
+        let applied_count = if execute { target_count } else { 0 };
+        let report =
+            format!("infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)");
+
+        OutputMap::new()
+            .str("environment", environment)
+            .str("runtime", runtime)
+            .str("mode", mode)
+            .str_list("planned_targets", planned_targets)
+            .int("target_count", target_count)
+            .int("applied_count", applied_count)
+            .str("report", report)
+            .ok()
+    }
 }
 
 fn resolve_sdlc_dispatch_runtime(name: &str) -> Option<DynOp> {
@@ -1014,6 +1182,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn passthrough_result_port_falls_back_to_input_alias() {
+        let op = PassthroughOp {
+            output_port_names: vec!["result".to_string()],
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("input".to_string(), Value::Str("ok".to_string()));
+        let outputs = op.execute(inputs).expect("passthrough should execute");
+        assert_eq!(outputs.get("result"), Some(&Value::Str("ok".to_string())));
+    }
+
+    #[test]
+    fn passthrough_return_port_falls_back_to_content_alias() {
+        let op = PassthroughOp {
+            output_port_names: vec!["return".to_string()],
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("content".to_string(), Value::Str("rendered".to_string()));
+        let outputs = op.execute(inputs).expect("passthrough should execute");
+        assert_eq!(
+            outputs.get("return"),
+            Some(&Value::Str("rendered".to_string()))
+        );
+    }
+
     fn collection_node(id: &str, kind: CollectionOpKind) -> Node<LoweredOp> {
         Node::opaque(
             id,
@@ -1046,9 +1239,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_pragma_render_ops_as_passthrough() {
-        // tools.pragma callables resolve to passthrough — domain ops
-        // (PragmaOp) are invoked via the graph builder, not the resolver.
+    fn resolve_pragma_render_ops_emit_content() {
         let cases = [
             "render_clippy_toml",
             "render_disallowed_methods_allowlist",
@@ -1057,7 +1248,33 @@ mod tests {
         for name in cases {
             let node = callable_node(name, "tools.pragma", name, ObligationCategory::None);
             let result = resolve_node(&node).expect(name);
-            assert_passthrough_behavior(&result);
+            let outputs = result.execute(HashMap::new()).expect(name);
+            assert!(
+                outputs
+                    .get("return")
+                    .and_then(Value::as_str)
+                    .map(|content| !content.is_empty())
+                    .unwrap_or(false),
+                "resolver should execute pragma renderer `{name}` and emit non-empty return"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_bootstrap_render_ops_emit_content() {
+        let cases = ["render_bootstrap_makefile", "render_bootstrap_gitignore"];
+        for name in cases {
+            let node = callable_node(name, "tools.bootstrap", name, ObligationCategory::None);
+            let result = resolve_node(&node).expect(name);
+            let outputs = result.execute(HashMap::new()).expect(name);
+            assert!(
+                outputs
+                    .get("return")
+                    .and_then(Value::as_str)
+                    .map(|content| !content.is_empty())
+                    .unwrap_or(false),
+                "resolver should execute bootstrap renderer `{name}` and emit non-empty return"
+            );
         }
     }
 
@@ -1121,6 +1338,32 @@ mod tests {
         );
         let outputs = result.execute(inputs).expect("makegen should execute");
         assert_eq!(outputs.get("written"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn resolve_tools_infra_entrypoint_emits_plan_summary() {
+        let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
+        let result = resolve_node(&node).expect("tools.infra::infra");
+        let mut inputs = HashMap::new();
+        inputs.insert("environment".to_string(), Value::Str("dev".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert(
+            "spec_targets".to_string(),
+            Value::str_list(vec!["secret:a".to_string(), "secret:b".to_string()]),
+        );
+        inputs.insert(
+            "target".to_string(),
+            Value::str_list(vec!["secret:b".to_string()]),
+        );
+        inputs.insert("skip".to_string(), Value::str_list(Vec::<String>::new()));
+        inputs.insert("execute".to_string(), Value::Bool(false));
+        let outputs = result.execute(inputs).expect("infra op should execute");
+        assert_eq!(
+            outputs.get("planned_targets"),
+            Some(&Value::str_list(vec!["secret:b".to_string()]))
+        );
+        assert_eq!(outputs.get("target_count"), Some(&Value::Int(1)));
+        assert_eq!(outputs.get("applied_count"), Some(&Value::Int(0)));
     }
 
     #[test]
@@ -1785,10 +2028,22 @@ mod tests {
     }
 
     #[test]
-    fn resolve_infra_callable_uses_default_passthrough() {
+    fn resolve_infra_callable_maps_to_infra_dispatch_op() {
         let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
         let result = resolve_node(&node).expect("infra");
-        assert_passthrough_behavior(&result);
+        let mut inputs = HashMap::new();
+        inputs.insert("environment".to_string(), Value::Str("dev".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert(
+            "spec_targets".to_string(),
+            Value::str_list(vec!["secret:github-token".to_string()]),
+        );
+        inputs.insert("target".to_string(), Value::str_list(Vec::<String>::new()));
+        inputs.insert("skip".to_string(), Value::str_list(Vec::<String>::new()));
+        inputs.insert("execute".to_string(), Value::Bool(false));
+        let outputs = result.execute(inputs).expect("infra op should execute");
+        assert_eq!(outputs.get("mode"), Some(&Value::Str("plan".to_string())));
+        assert_eq!(outputs.get("target_count"), Some(&Value::Int(1)));
     }
 
     #[test]

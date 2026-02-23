@@ -7,8 +7,8 @@ use gunbc_dag::{
     check_slo, ci_unit_commands, ci_workflow_spec, default_process_unit_registry,
     default_slo_budgets, execute_workflow_plan, explain_plan, plan_workflow,
     render_execution_report, sdlc_workflow_spec, test_all_unit_commands, test_all_workflow_spec,
-    top_slow_units, workflow_unit_commands, ExecutionSummary, MissReason, PlannerInputs,
-    SloBudget, SloResult, UnitResult,
+    top_slow_units, workflow_unit_commands, ExecutionSummary, MissReason, PlannerInputs, SloBudget,
+    SloResult, UnitResult,
 };
 use gunbc_ir::NodeId;
 

@@ -204,9 +204,18 @@ mod tests {
 
     #[test]
     fn normalize_path_components_clamps_parent_at_root_to_root() {
-        assert_eq!(normalize_path_components(&PathBuf::from("/..")), PathBuf::from("/"));
-        assert_eq!(normalize_path_components(&PathBuf::from("/../..")), PathBuf::from("/"));
-        assert_eq!(normalize_path_components(&PathBuf::from("/../../../../")), PathBuf::from("/"));
+        assert_eq!(
+            normalize_path_components(&PathBuf::from("/..")),
+            PathBuf::from("/")
+        );
+        assert_eq!(
+            normalize_path_components(&PathBuf::from("/../..")),
+            PathBuf::from("/")
+        );
+        assert_eq!(
+            normalize_path_components(&PathBuf::from("/../../../../")),
+            PathBuf::from("/")
+        );
     }
 
     #[test]

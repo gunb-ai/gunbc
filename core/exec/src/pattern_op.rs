@@ -1,8 +1,7 @@
 //! Executable semantics for pattern-internal operations.
 
 use crate::helpers::{
-    optional_int, optional_str_list_strict, propagate_skipped, require_bool, require_int,
-    require_value, OutputMap,
+    optional_int, propagate_skipped, require_bool, require_int, require_value, OutputMap,
 };
 use crate::{ExecError, Executable};
 use gunbc_ir::patterns::PatternOp;
@@ -40,11 +39,11 @@ impl Executable for PatternOp {
                     return result;
                 }
 
-                let list = optional_str_list_strict(&inputs, input_port)?.unwrap_or_default();
+                let list = list_values(&inputs, input_port);
                 let count = list.len() as i64;
 
                 let mut out = OutputMap::new()
-                    .str_list(element_port, list)
+                    .value(element_port, Value::List(list))
                     .int("index", 0)
                     .int("count", count);
 
@@ -59,12 +58,12 @@ impl Executable for PatternOp {
                 out.ok()
             }
             PatternOp::LoopPack { output_port } => {
-                let list = optional_str_list_strict(&inputs, "result")?.unwrap_or_default();
+                let list = list_values(&inputs, "result");
 
                 let count = optional_int(&inputs, "count").unwrap_or(list.len() as i64);
 
                 OutputMap::new()
-                    .str_list(output_port, list)
+                    .value(output_port, Value::List(list))
                     .int("iterations", count)
                     .ok()
             }
@@ -154,6 +153,14 @@ impl Executable for PatternOp {
     }
 }
 
+fn list_values(inputs: &HashMap<String, Value>, key: &str) -> Vec<Value> {
+    match inputs.get(key) {
+        None | Some(Value::Skipped) => Vec::new(),
+        Some(Value::List(values)) | Some(Value::Set(values)) => values.clone(),
+        Some(value) => vec![value.clone()],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +176,20 @@ mod tests {
         let result = op.execute(inputs).unwrap();
         assert_eq!(result.get("filename"), Some(&Value::Skipped));
         assert_eq!(result.get("count"), Some(&Value::Skipped));
+    }
+
+    #[test]
+    fn loop_pack_wraps_scalar_result_into_list() {
+        let op = PatternOp::LoopPack {
+            output_port: "items".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("result".to_string(), Value::Str("one".to_string()));
+        let result = op.execute(inputs).expect("loop pack should accept scalar");
+        assert_eq!(
+            result.get("items"),
+            Some(&Value::List(vec![Value::Str("one".to_string())]))
+        );
+        assert_eq!(result.get("iterations"), Some(&Value::Int(1)));
     }
 }

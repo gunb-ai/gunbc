@@ -9,8 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use gunbc_dag::{
     append_global_ledger_entry, ci_workflow_spec, default_process_unit_registry, plan_workflow,
     required_input_contract, required_output_contract, store_output_payload, LedgerStatus,
-    MissReason, PlanAction, PlannerInputs, ProcessUnitRef, ProcessUnitRegistry, RunLedgerEntry,
-    PlannerWorkflowSpec, WorkflowId, WorkflowOp, WorkflowPlannerError, WorkflowUnit,
+    MissReason, PlanAction, PlannerInputs, PlannerWorkflowSpec, ProcessUnitRef,
+    ProcessUnitRegistry, RunLedgerEntry, WorkflowId, WorkflowOp, WorkflowPlannerError,
+    WorkflowUnit,
 };
 use gunbc_ir::{Dag, Node, NodeId, PortName, Value};
 
@@ -208,8 +209,11 @@ fn corrupted_cached_payload_fails_with_ledger_error() {
 
     let ledger_root = root.join(".gunbc").join("workflow-ledger");
     fs::create_dir_all(ledger_root.join("cas")).expect("create cas dir");
-    fs::write(ledger_root.join("cas").join("broken-payload.json"), b"not-json")
-        .expect("write invalid cas payload");
+    fs::write(
+        ledger_root.join("cas").join("broken-payload.json"),
+        b"not-json",
+    )
+    .expect("write invalid cas payload");
 
     append_global_ledger_entry(
         &root,

@@ -236,7 +236,11 @@ impl VirtualTransportBackend {
                         resp.content.unwrap_or_default().into_bytes(),
                     )
                 } else {
-                    FileResponse::error(&request.path, FileOp::ReadBytes, resp.error.unwrap_or_default())
+                    FileResponse::error(
+                        &request.path,
+                        FileOp::ReadBytes,
+                        resp.error.unwrap_or_default(),
+                    )
                 }
             }
             FileOp::Write => fs.write_file(

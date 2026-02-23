@@ -199,7 +199,7 @@ mod tests {
     };
     use gunbc_ir::{AuthScheme, Secret, Value};
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, OnceLock};
 
     #[derive(Debug, Clone)]
     struct CaptureBackend {
@@ -218,6 +218,11 @@ mod tests {
         }
     }
 
+    fn transport_backend_test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
     #[test]
     fn test_transport_ops_requires_request() {
         let op = TransportOps::Execute;
@@ -227,6 +232,9 @@ mod tests {
 
     #[test]
     fn test_execute_request_file_exists() {
+        let _lock = transport_backend_test_lock()
+            .lock()
+            .expect("transport backend test lock");
         // Test with a file that exists
         let request = TransportRequest::File(FileRequest::exists("Cargo.toml"));
         let response = execute_request(&request);
@@ -248,6 +256,9 @@ mod tests {
 
     #[test]
     fn test_res_credential_applies_to_rest_request() {
+        let _lock = transport_backend_test_lock()
+            .lock()
+            .expect("transport backend test lock");
         use gunbc_ir::transport::rest::RestRequest;
 
         // Build a REST request wrapped in a TransportRequest
@@ -292,6 +303,9 @@ mod tests {
 
     #[test]
     fn test_res_credential_header_scheme() {
+        let _lock = transport_backend_test_lock()
+            .lock()
+            .expect("transport backend test lock");
         use gunbc_ir::transport::rest::RestRequest;
 
         let rest_req = RestRequest::get("https://api.example.com/test");
@@ -339,6 +353,9 @@ mod tests {
 
     #[test]
     fn test_transport_ops_shell_outputs() {
+        let _lock = transport_backend_test_lock()
+            .lock()
+            .expect("transport backend test lock");
         let request = ShellRequest::new("echo")
             .arg("hello")
             .into_transport_request();

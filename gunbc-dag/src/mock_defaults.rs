@@ -7,8 +7,8 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use gunbc_ir::{
-    detect_boundaries, detect_entrypoints, value_backing_for_type_id, Dag, NodeId, PortName, Value,
-    ValueBacking,
+    detect_boundaries, detect_entrypoints, value_backing_for_type_id, Cardinality, Dag, NodeId,
+    PortName, Value, ValueBacking,
 };
 use gunbc_primitives::filename;
 use gunbc_test::extract_mock_requirements;
@@ -103,6 +103,27 @@ fn default_value_for_type(type_id: &str) -> Value {
     }
 }
 
+fn default_value_for_port(type_id: &str, cardinality: Cardinality) -> Value {
+    if type_id == "Any" && cardinality.max != Some(1) {
+        let count = cardinality.min.max(1) as usize;
+        return Value::List(vec![Value::Str("mock".to_string()); count]);
+    }
+
+    let base = default_value_for_type(type_id);
+    if cardinality.max == Some(1) {
+        return base;
+    }
+
+    match base {
+        Value::List(_) => base,
+        Value::Set(values) => Value::List(values),
+        value => {
+            let count = cardinality.min.max(1) as usize;
+            Value::List(vec![value; count])
+        }
+    }
+}
+
 fn default_cloud_secret_config() -> Value {
     CloudSecretConfig {
         provider: CloudProviderKind::Gcp,
@@ -167,9 +188,10 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
     node_id: &str,
     port_name: &str,
     type_id: &str,
+    cardinality: Cardinality,
 ) -> Value {
     if type_id != "TransportResponse" {
-        return default_value_for_type(type_id);
+        return default_value_for_port(type_id, cardinality);
     }
 
     // Pick a response variant compatible with downstream parse nodes.
@@ -223,7 +245,9 @@ fn response_candidate_satisfies_consumers<T: Executable + Clone + Send>(
             }
             probe_inputs
                 .entry(input.name.0.clone())
-                .or_insert_with(|| default_value_for_type(input.type_id.0.as_str()));
+                .or_insert_with(|| {
+                    default_value_for_port(input.type_id.0.as_str(), input.cardinality)
+                });
         }
 
         if execute_single_node(
@@ -278,11 +302,23 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             break;
         }
         for (node, port, type_id) in missing {
+            let cardinality = lowered
+                .dag
+                .get_node(&NodeId::from(node.as_str()))
+                .and_then(|candidate| {
+                    candidate
+                        .outputs
+                        .iter()
+                        .find(|output| output.name.0 == port)
+                        .map(|output| output.cardinality)
+                })
+                .unwrap_or(Cardinality::ONE);
             let value = default_value_for_slot(
                 &lowered.dag,
                 node.as_str(),
                 port.as_str(),
                 type_id.as_str(),
+                cardinality,
             );
             reqs = reqs
                 .boundary(node.as_str(), port.as_str(), value)
@@ -308,6 +344,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
                 node_id.0.as_str(),
                 port_name.0.as_str(),
                 port.type_id.0.as_str(),
+                port.cardinality,
             ),
         );
     }
@@ -315,8 +352,19 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
     // These are DAG entry points that need values injected at runtime.
     let entrypoints = detect_entrypoints(&lowered.dag);
     for (node_id, port_name, type_id) in &entrypoints.entrypoint_ports {
+        let cardinality = lowered
+            .dag
+            .get_node(node_id)
+            .and_then(|candidate| {
+                candidate
+                    .inputs
+                    .iter()
+                    .find(|input| input.name == *port_name)
+                    .map(|input| input.cardinality)
+            })
+            .unwrap_or(Cardinality::ONE);
         let value = gcp_field_value(type_id.0.as_str(), port_name.0.as_str())
-            .unwrap_or_else(|| default_value_for_type(type_id.0.as_str()));
+            .unwrap_or_else(|| default_value_for_port(type_id.0.as_str(), cardinality));
         spec = spec.input_mock(node_id.0.as_str(), port_name.0.as_str(), value);
     }
 
@@ -359,8 +407,9 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             let value = if input_port.name.0 == "skip" && input_port.type_id.0 == "Bool" {
                 Value::Bool(false)
             } else {
-                gcp_field_value(input_port.type_id.0.as_str(), input_port.name.0.as_str())
-                    .unwrap_or_else(|| default_value_for_type(input_port.type_id.0.as_str()))
+                gcp_field_value(input_port.type_id.0.as_str(), input_port.name.0.as_str()).unwrap_or_else(|| {
+                    default_value_for_port(input_port.type_id.0.as_str(), input_port.cardinality)
+                })
             };
             required_inputs.insert(input_port.name.0.clone(), value);
         }
@@ -432,7 +481,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             let passthrough_value = if output.name.0 == "skip" && output.type_id.0 == "Bool" {
                 Value::Bool(false)
             } else {
-                default_value_for_type(output.type_id.0.as_str())
+                default_value_for_port(output.type_id.0.as_str(), output.cardinality)
             };
             example = example.input(output.name.0.as_str(), passthrough_value);
         }
@@ -506,5 +555,24 @@ mod tests {
             Some(Value::Str("mock-project".to_string()))
         );
         assert_eq!(gcp_field_value("String", "not_a_gcp_field"), None);
+    }
+
+    #[test]
+    fn auto_mock_spec_uses_list_values_for_list_entrypoints_with_any_type() {
+        let dag = crate::ci::graph::build_ci_graph().expect("build ci graph");
+        let spec = auto_mock_spec(&dag, "ci");
+        let items = spec
+            .input_mocks
+            .iter()
+            .find(|mock| {
+                mock.node == "std.patterns::classify_files::cf_for_0/unpack"
+                    && mock.port == "items"
+            })
+            .map(|mock| mock.value.clone())
+            .expect("list entrypoint mock for classify_files loop unpack");
+        assert!(
+            matches!(items, Value::List(_)),
+            "expected list-typed mock for list cardinality port, got {items:?}"
+        );
     }
 }

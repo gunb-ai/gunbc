@@ -827,6 +827,7 @@ fn collect_signatures(
             | Item::DesignDef(_)
             | Item::ComponentDef(_)
             | Item::EnvironmentDef(_)
+            | Item::ProfileDef(_)
             | Item::ParamDecl(_)
             | Item::DataDef(_) => {}
         }
@@ -3044,7 +3045,9 @@ fn validate_type_expr(
                     }
                     "content" => {
                         // @content(encoding) — validates encoding is a known ContentEncoding variant
-                        if let Some(encoding_name) = annotation.args.first().and_then(expr_as_string) {
+                        if let Some(encoding_name) =
+                            annotation.args.first().and_then(expr_as_string)
+                        {
                             let valid = matches!(
                                 encoding_name.as_str(),
                                 "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown"

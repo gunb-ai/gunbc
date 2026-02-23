@@ -50,31 +50,6 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     ))
 }
 
-fn unique_workspace_target_dir(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    workspace_root().join("target").join(format!(
-        "daglang_cli_{name}_{}_{}",
-        std::process::id(),
-        nanos
-    ))
-}
-
-fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
-    main_rs
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            let rest = trimmed.strip_prefix("input_mocks.set_input(\"")?;
-            let (node_id, after_node) = rest.split_once("\", \"")?;
-            let (port_name, _) = after_node.split_once("\", Value::Str(val.clone()));")?;
-            Some((node_id.to_string(), port_name.to_string()))
-        })
-        .collect()
-}
-
 fn assert_no_compile_stage_banners(stderr: &str) {
     assert!(
         !stderr.contains("typecheck errors"),
@@ -13256,8 +13231,6 @@ fn compile_non_rust_layer_one_reports_error() {
 }
 
 #[test]
-#[test]
-#[test]
 fn viz_without_self_defaults_to_compiled_ascii_graph() {
     let output = Command::new(daglang_bin())
         .arg("viz")
@@ -13399,7 +13372,6 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
 }
 
 /// D1.8 — Compile pragma.dag to exec-runtime layer and verify generated files.
-#[test]
 
 /// D1.8 — Full end-to-end test: compile pragma.dag to exec-runtime binary,
 /// build it, run it, and verify the pragma config files are generated.

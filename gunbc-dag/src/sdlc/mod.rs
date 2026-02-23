@@ -8,6 +8,10 @@ pub mod retry;
 pub mod state;
 pub mod transaction;
 
+pub use agent_ledger::{
+    update_agent_pr, update_agent_status, upsert_agent_record, AgentLedger, AgentLedgerRecord,
+    AgentUpsertOutcome,
+};
 pub use artifacts::{
     canonical_marker, content_hash_for_payload, promote_to_canonical_artifact,
     promote_to_canonical_artifact_with_payload, provisional_marker, upsert_provisional_artifact,
@@ -23,9 +27,5 @@ pub use retry::{register_retry_failure, retry_ready, RetryState};
 pub use state::{
     mark_run_completed, mark_run_failed, should_replay_skip, RunExecutionStatus, RunStateLedger,
     RunStateRecord,
-};
-pub use agent_ledger::{
-    update_agent_pr, update_agent_status, upsert_agent_record, AgentLedger, AgentLedgerRecord,
-    AgentUpsertOutcome,
 };
 pub use transaction::validate_stage_transition;

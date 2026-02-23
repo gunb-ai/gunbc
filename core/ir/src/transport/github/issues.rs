@@ -115,7 +115,9 @@ impl std::error::Error for StageLabelError {}
 
 /// Map a GitHub issue record into canonical tracked-issue form.
 pub fn map_github_issue(record: GitHubIssueRecord) -> Result<TrackedIssue, String> {
-    let stage = stage_from_labels(&record.labels).map_err(|e| e.to_string())?.unwrap_or(IssueLifecycleStage::Idea);
+    let stage = stage_from_labels(&record.labels)
+        .map_err(|e| e.to_string())?
+        .unwrap_or(IssueLifecycleStage::Idea);
     Ok(TrackedIssue {
         reference: IssueRef {
             owner: record.owner,
@@ -132,7 +134,9 @@ pub fn map_github_issue(record: GitHubIssueRecord) -> Result<TrackedIssue, Strin
 
 /// Resolve lifecycle stage from issue labels. Returns `None` when no stage
 /// label is present.
-pub fn stage_from_labels(labels: &[String]) -> Result<Option<IssueLifecycleStage>, StageLabelError> {
+pub fn stage_from_labels(
+    labels: &[String],
+) -> Result<Option<IssueLifecycleStage>, StageLabelError> {
     let mut stages = Vec::new();
     let has = |label: &'static str| labels.iter().any(|candidate| candidate == label);
     if has(IssueLifecycleStage::Idea.as_label()) {
@@ -182,7 +186,9 @@ pub fn compare_and_set_stage_label(
     expected_stage: IssueLifecycleStage,
     next_stage: IssueLifecycleStage,
 ) -> Result<Vec<String>, String> {
-    let current_stage = stage_from_labels(existing_labels).map_err(|e| e.to_string())?.unwrap_or(IssueLifecycleStage::Idea);
+    let current_stage = stage_from_labels(existing_labels)
+        .map_err(|e| e.to_string())?
+        .unwrap_or(IssueLifecycleStage::Idea);
     if current_stage != expected_stage {
         return Err(format!(
             "stage compare-and-set failed: expected `{}`, found `{}`",
@@ -244,7 +250,8 @@ mod tests {
             body: "Details".to_string(),
             state: "open".to_string(),
             labels: vec!["priority:M".to_string()],
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(tracked.stage, IssueLifecycleStage::Idea);
     }
 
@@ -256,7 +263,9 @@ mod tests {
             "priority:M".to_string(),
         ];
         let err = stage_from_labels(&labels).unwrap_err();
-        assert!(err.to_string().contains("issue has multiple conflicting stage labels"));
+        assert!(err
+            .to_string()
+            .contains("issue has multiple conflicting stage labels"));
     }
 
     #[test]

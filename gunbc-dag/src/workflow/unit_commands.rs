@@ -31,10 +31,7 @@ pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
             ],
         ),
     );
-    commands.insert(
-        NodeId::from("ci.codegen"),
-        codegen_ensure_command(),
-    );
+    commands.insert(NodeId::from("ci.codegen"), codegen_ensure_command());
     commands.insert(
         NodeId::from("ci.bootstrap"),
         UnitCommand::cargo(
@@ -130,10 +127,7 @@ pub fn test_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
             ],
         ),
     );
-    commands.insert(
-        NodeId::from("test_all.codegen"),
-        codegen_ensure_command(),
-    );
+    commands.insert(NodeId::from("test_all.codegen"), codegen_ensure_command());
     commands.insert(
         NodeId::from("test_all.testgen"),
         UnitCommand::cargo(

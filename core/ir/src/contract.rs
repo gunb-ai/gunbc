@@ -224,7 +224,10 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
                     match &wrapper {
                         None => {
                             // Scalar type: add as count=1 witnesses
-                            result.push(BoundaryWitness { count: 1, value: bv });
+                            result.push(BoundaryWitness {
+                                count: 1,
+                                value: bv,
+                            });
                         }
                         Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
                             // Collections: add single-element witnesses per boundary value
@@ -477,9 +480,8 @@ impl TypeLayer {
         }
 
         // Recurse into inner type for containers/brands
-        let inner = inner_type_dag(type_dag).map(|inner_dag| {
-            Box::new(TypeLayer::from_type_dag(inner_dag))
-        });
+        let inner =
+            inner_type_dag(type_dag).map(|inner_dag| Box::new(TypeLayer::from_type_dag(inner_dag)));
 
         TypeLayer {
             cardinality: card,
@@ -705,9 +707,10 @@ impl TypeContract {
         }
 
         // For Brand nodes, recurse into the SubDag to pick up inner predicates.
-        let has_brand = type_dag.nodes.iter().any(|n| {
-            matches!(&n.body, NodeBody::Opaque(TypeOp::Brand(..)))
-        });
+        let has_brand = type_dag
+            .nodes
+            .iter()
+            .any(|n| matches!(&n.body, NodeBody::Opaque(TypeOp::Brand(..))));
         if has_brand {
             if let Some(inner) = inner_type_dag(type_dag) {
                 let inner_contract = TypeContract::from_type_dag(inner);
@@ -873,7 +876,7 @@ impl crate::algebra::PartialOrder for TypeContract {
                     return false;
                 }
             }
-            (Some(_), None) => {} // known ≤ unknown (wildcard)
+            (Some(_), None) => {}            // known ≤ unknown (wildcard)
             (None, Some(_)) => return false, // unknown cannot prove ≤ known
             (None, None) => {}
         }
@@ -1277,8 +1280,12 @@ mod tests {
         let witnesses = cross_product_witnesses(&list_str, 3);
 
         // List<String> → empty list, single-element lists, possibly multi-element
-        assert!(witnesses.iter().any(|w| matches!(w, Value::List(v) if v.is_empty())));
-        assert!(witnesses.iter().any(|w| matches!(w, Value::List(v) if !v.is_empty())));
+        assert!(witnesses
+            .iter()
+            .any(|w| matches!(w, Value::List(v) if v.is_empty())));
+        assert!(witnesses
+            .iter()
+            .any(|w| matches!(w, Value::List(v) if !v.is_empty())));
     }
 
     #[test]
@@ -1320,10 +1327,7 @@ mod tests {
     #[test]
     fn test_witnesses_with_range_predicate_include_lattice_boundaries() {
         // Build a type with a range predicate: Int @range(min: 0, max: 100)
-        let range_int = type_lib::refined(
-            "Int",
-            vec![Predicate::InRange { min: 0, max: 100 }],
-        );
+        let range_int = type_lib::refined("Int", vec![Predicate::InRange { min: 0, max: 100 }]);
         let w = witnesses(&range_int);
 
         // Should have the base scalar witness (count=1) PLUS
@@ -1336,18 +1340,22 @@ mod tests {
 
         // Verify boundary values are present
         let values: Vec<&Value> = w.iter().map(|bw| &bw.value).collect();
-        assert!(values.contains(&&Value::Int(0)), "should contain min boundary 0");
-        assert!(values.contains(&&Value::Int(100)), "should contain max boundary 100");
+        assert!(
+            values.contains(&&Value::Int(0)),
+            "should contain min boundary 0"
+        );
+        assert!(
+            values.contains(&&Value::Int(100)),
+            "should contain max boundary 100"
+        );
     }
 
     #[test]
     fn test_witnesses_with_content_encoding_include_lattice_boundaries() {
         use crate::type_op::ContentEncoding;
         // Build a type with content encoding: String @content(UTF8)
-        let utf8_string = type_lib::refined(
-            "String",
-            vec![Predicate::Content(ContentEncoding::UTF8)],
-        );
+        let utf8_string =
+            type_lib::refined("String", vec![Predicate::Content(ContentEncoding::UTF8)]);
         let w = witnesses(&utf8_string);
 
         // Should have base witness + encoding-specific witnesses

@@ -1213,10 +1213,6 @@ fn should_intercept_for_mode<T>(node: &Node<T>, mode: &ExecutionMode) -> bool {
 /// - **OptionalToList**: Unit from empty-allowing port → None (skipped)
 /// - **Widen**: list value from list port → flattened elements
 fn collect_fan_in(val: &Value, from_cardinality: Cardinality) -> Option<Vec<Value>> {
-    // Optional/list outputs represent absence as Unit — skip those.
-    if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
-        return None;
-    }
     // Skipped outputs should not become list elements.
     if matches!(val, Value::Skipped) {
         return None;
@@ -3009,7 +3005,8 @@ mod tests {
 
     #[test]
     fn test_optional_to_list_skips_unit() {
-        // Optional output (Unit) feeding a list input should not insert Unit.
+        // Optional output (Unit) feeding a list input should preserve Unit as
+        // an explicit dependency token.
         let mut dag: Dag<TestOp> = Dag::new();
         dag.add_node(Node::opaque(
             "A",
@@ -3029,8 +3026,8 @@ mod tests {
 
         let b_entry = log.get("B").unwrap();
         match b_entry.outputs.get("items") {
-            Some(Value::List(items)) => assert!(items.is_empty()),
-            other => panic!("expected empty Value::List, got {:?}", other),
+            Some(Value::List(items)) => assert_eq!(items, &vec![Value::Unit]),
+            other => panic!("expected Value::List([Unit]), got {:?}", other),
         }
     }
 
@@ -3078,8 +3075,10 @@ mod tests {
 
     #[test]
     fn fan_in_skips_absent_optional() {
-        // OptionalToList (absent): Unit from [0,1] port → None (skipped)
-        assert!(collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_ONE).is_none());
+        // OptionalToList uses Unit as a dependency token for absent optionals,
+        // so it should be retained when flowing into list fan-in ports.
+        let elements = collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_ONE).unwrap();
+        assert_eq!(elements, vec![Value::Unit]);
     }
 
     #[test]
@@ -3127,8 +3126,9 @@ mod tests {
 
     #[test]
     fn fan_in_skips_unit_from_empty_list() {
-        // Unit from a [0,∞) port is skipped (allows_empty = true)
-        assert!(collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_MORE).is_none());
+        // Unit from a [0,∞) port is retained as an explicit dependency token.
+        let elements = collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_MORE).unwrap();
+        assert_eq!(elements, vec![Value::Unit]);
     }
 
     #[test]
