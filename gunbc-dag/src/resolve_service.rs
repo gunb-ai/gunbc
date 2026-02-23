@@ -101,7 +101,8 @@ impl Executable for GenericRestPrepareOp {
 
         // 5. Add custom headers.
         for (key, value) in &self.spec.headers {
-            request = request.header(key, value);
+            let header_value = interpolate_template(value, &inputs, &self.spec.input_fields);
+            request = request.header(key, header_value);
         }
 
         OutputMap::new()
@@ -727,6 +728,48 @@ mod tests {
                 assert!(r.url.contains("my-secret"));
                 assert!(r.url.contains("latest")); // default
                 assert!(r.body.is_none()); // GET request
+            }
+            other => panic!("expected REST request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rest_prepare_interpolates_auth_header_template() {
+        let spec = RestOperationSpec {
+            endpoint: "https://api.example.com".to_string(),
+            method: "GET".to_string(),
+            path_template: "/v1/issues/42".to_string(),
+            input_fields: vec![FieldSpec {
+                name: "config.credential".to_string(),
+                type_id: "Secret".to_string(),
+                default: None,
+                is_secret: true,
+                is_path_param: false,
+            }],
+            output_fields: vec![],
+            body_template: None,
+            headers: vec![(
+                "Authorization".to_string(),
+                "Bearer {config.credential}".to_string(),
+            )],
+        };
+        let op = GenericRestPrepareOp { spec };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "config.credential".to_string(),
+            Value::Str("test-token".to_string()),
+        );
+
+        let outputs = op.execute(inputs).expect("rest prepare should execute");
+        let request = outputs
+            .get("request")
+            .expect("request output should be present");
+        match request {
+            Value::Request(TransportRequest::Rest(rest)) => {
+                assert_eq!(
+                    rest.headers.get("Authorization").map(String::as_str),
+                    Some("Bearer test-token")
+                );
             }
             other => panic!("expected REST request, got {other:?}"),
         }

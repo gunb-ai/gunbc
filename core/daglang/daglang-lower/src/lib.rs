@@ -4164,10 +4164,10 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     let (method, path_template) =
         annotation_rest_details(&operation.annotations, &service.annotations)?;
 
-    let input_fields = derive_input_fields(&operation.inputs, &path_template);
+    let headers = annotation_headers(&operation.annotations, &service.annotations);
+    let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers);
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = annotation_body_template(&operation.annotations);
-    let headers = annotation_headers(&operation.annotations, &service.annotations);
 
     Some(RestOperationSpec {
         endpoint,
@@ -4380,15 +4380,51 @@ fn annotation_headers(
             }
         }
     }
+    if let Some(auth_header) = annotation_auth_header(op_annotations, service_annotations) {
+        if !headers
+            .iter()
+            .any(|(key, _)| key.eq_ignore_ascii_case(auth_header.0.as_str()))
+        {
+            headers.push(auth_header);
+        }
+    }
     headers
+}
+
+fn annotation_auth_header(
+    op_annotations: &[Annotation],
+    service_annotations: &[Annotation],
+) -> Option<(String, String)> {
+    let auth = op_annotations
+        .iter()
+        .chain(service_annotations.iter())
+        .find(|annotation| annotation.name == "auth")?;
+    let scheme = auth.args.first()?;
+    match scheme {
+        Expr::Ident(value) if value == "BearerToken" => Some((
+            "Authorization".to_string(),
+            "Bearer {config.credential}".to_string(),
+        )),
+        Expr::Call(name, args) if name == "Header" => {
+            let header = match args.first() {
+                Some((None, Expr::Literal(Literal::String(value)))) if !value.is_empty() => {
+                    value.clone()
+                }
+                _ => return None,
+            };
+            Some((header, "{config.credential}".to_string()))
+        }
+        _ => None,
+    }
 }
 
 /// Derive input field specs from operation inputs.
 fn derive_input_fields(
     inputs: &[daglang_syntax::ast::Field],
     path_template: &str,
+    headers: &[(String, String)],
 ) -> Vec<FieldSpec> {
-    inputs
+    let mut fields = inputs
         .iter()
         .map(|field| {
             let type_id = type_expr_to_string(&field.ty);
@@ -4401,7 +4437,54 @@ fn derive_input_fields(
                 is_path_param,
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    let mut placeholders = collect_template_placeholders(path_template);
+    for (_, value) in headers {
+        placeholders.extend(collect_template_placeholders(value));
+    }
+    let mut placeholders = placeholders.into_iter().collect::<Vec<_>>();
+    placeholders.sort();
+    for placeholder in placeholders {
+        if fields.iter().any(|field| field.name == placeholder) {
+            continue;
+        }
+        let is_path_param = path_template.contains(&format!("{{{placeholder}}}"));
+        fields.push(FieldSpec {
+            name: placeholder.clone(),
+            type_id: "String".to_string(),
+            default: None,
+            is_secret: placeholder.ends_with("credential"),
+            is_path_param,
+        });
+    }
+
+    fields
+}
+
+fn collect_template_placeholders(template: &str) -> HashSet<String> {
+    let mut placeholders = HashSet::new();
+    let mut current = String::new();
+    let mut in_placeholder = false;
+    for ch in template.chars() {
+        if ch == '{' {
+            current.clear();
+            in_placeholder = true;
+            continue;
+        }
+        if ch == '}' {
+            if in_placeholder && !current.is_empty() {
+                placeholders.insert(current.trim().to_string());
+            }
+            current.clear();
+            in_placeholder = false;
+            continue;
+        }
+        if in_placeholder {
+            current.push(ch);
+        }
+    }
+    placeholders
 }
 
 /// Derive input field specs for shell operations.
@@ -4497,20 +4580,31 @@ fn expr_to_template_string(expr: &Expr) -> Option<String> {
             for part in parts {
                 match part {
                     StringPart::Literal(s) => result.push_str(s),
-                    StringPart::Expr(Expr::Ident(name)) => {
-                        result.push('{');
-                        result.push_str(name);
-                        result.push('}');
-                    }
-                    StringPart::Expr(other) => {
-                        // Complex expressions inside interpolation — stringify as-is.
-                        result.push('{');
-                        result.push_str(&format!("{other:?}"));
-                        result.push('}');
+                    StringPart::Expr(expr) => {
+                        if let Some(name) = expr_template_ref(expr) {
+                            result.push('{');
+                            result.push_str(name.as_str());
+                            result.push('}');
+                        } else {
+                            // Complex expressions inside interpolation — stringify as-is.
+                            result.push('{');
+                            result.push_str(&format!("{expr:?}"));
+                            result.push('}');
+                        }
                     }
                 }
             }
             Some(result)
+        }
+        _ => None,
+    }
+}
+
+fn expr_template_ref(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Ident(name) => Some(name.clone()),
+        Expr::FieldAccess(base, field) => {
+            expr_template_ref(base).map(|prefix| format!("{prefix}.{field}"))
         }
         _ => None,
     }
@@ -4560,6 +4654,33 @@ fn collect_required_service_call_keys(
     required
 }
 
+fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadata) -> Vec<Port> {
+    let declared_inputs = match metadata.spec.as_ref() {
+        Some(ServiceOperationSpec::Rest(spec)) => spec
+            .input_fields
+            .iter()
+            .map(|field| (field.name.clone(), field.type_id.clone()))
+            .collect::<Vec<_>>(),
+        Some(ServiceOperationSpec::Shell(spec)) => spec
+            .input_fields
+            .iter()
+            .map(|field| (field.name.clone(), field.type_id.clone()))
+            .collect::<Vec<_>>(),
+        None => operation
+            .inputs
+            .iter()
+            .map(|field| {
+                let ty = type_expr_to_string(&field.ty);
+                (field.name.clone(), ty)
+            })
+            .collect::<Vec<_>>(),
+    };
+    declared_inputs
+        .into_iter()
+        .map(|(name, ty)| Port::with_cardinality(name.as_str(), ty.as_str(), Cardinality::ONE))
+        .collect()
+}
+
 fn add_service_transport_triplets(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -4599,21 +4720,15 @@ fn add_service_transport_triplets(
                 let prepare_id = format!("prepare_transport_{suffix}");
                 let execute_id = format!("execute_transport_{suffix}");
                 let parse_id = format!("parse_transport_{suffix}");
+                let prepare_ports = service_prepare_ports(operation, &service_metadata);
+                let prepare_inputs = prepare_ports
+                    .iter()
+                    .map(|port| port.name.0.clone())
+                    .collect::<Vec<_>>();
 
                 builder.add_node(Node::opaque(
                     prepare_id.clone(),
-                    operation
-                        .inputs
-                        .iter()
-                        .map(|field| {
-                            let ty = type_expr_to_string(&field.ty);
-                            Port::with_cardinality(
-                                field.name.as_str(),
-                                ty.as_str(),
-                                Cardinality::ONE,
-                            )
-                        })
-                        .collect::<Vec<_>>(),
+                    prepare_ports,
                     vec![Port::scalar("request", "TransportRequest")],
                     LoweredOp::Callable {
                         module: module_name.clone(),
@@ -4703,11 +4818,7 @@ fn add_service_transport_triplets(
                         primary_output: parse_output,
                     },
                     prepare_node_id: prepare_id,
-                    prepare_inputs: operation
-                        .inputs
-                        .iter()
-                        .map(|field| field.name.clone())
-                        .collect::<Vec<_>>(),
+                    prepare_inputs,
                 };
                 registry.register(
                     format!("{}.{}", service.name, operation.name),
@@ -7512,34 +7623,45 @@ func run() -> { ok: Bool } uses issues: IssueProvider {
             r#"module sample.profile
 interface IssueProvider {
   capability get {
-    input {}
+    input { id: String }
     output { ok: Bool }
   }
 }
 service impl.Provider : IssueProvider {
+  @endpoint("https://api.github.com")
+  @auth(BearerToken)
   operation get {
-    input {}
+    input { id: String }
     output { ok: Bool }
-    @rest(GET, "/ok")
+    @rest(GET, "/repos/{config.owner}/{config.repo}/issues/{id}")
   }
 }
 profile unit_test {
   bind IssueProvider -> impl.Provider {
+    owner: "gunb-ai"
+    repo: "gunbc"
     credential: secret("github-token")
   }
 }
-func run() -> { ok: Bool } uses issues: IssueProvider {
-  result = issues.get()
+func run(id: String) -> { ok: Bool } uses issues: IssueProvider {
+  result = issues.get(id: id)
   return { ok: result.ok }
 }"#,
         )]);
 
         let dag = lower_typed_project_with_profile(&typed, Some("unit_test"))
             .expect("lowering should succeed with secret profile config binding");
-        assert!(dag.nodes.iter().any(|node| {
-            node.id
-                .0
-                .starts_with("parse_transport_sample_profile_impl_Provider_get")
+        let prepare_node_id = "prepare_transport_sample_profile_impl_Provider_get";
+        assert!(dag
+            .edges
+            .iter()
+            .any(|edge| edge.to_node.0 == prepare_node_id && edge.to_port.0 == "config.owner"));
+        assert!(dag
+            .edges
+            .iter()
+            .any(|edge| edge.to_node.0 == prepare_node_id && edge.to_port.0 == "config.repo"));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.to_node.0 == prepare_node_id && edge.to_port.0 == "config.credential"
         }));
     }
 
