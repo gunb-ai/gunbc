@@ -235,7 +235,7 @@ type Seconds      = Int @brand("Seconds") @range(min: 0)
 type DateRange {
   start: String @pattern("^\\d{4}-\\d{2}-\\d{2}$")
   end: String @pattern("^\\d{4}-\\d{2}-\\d{2}$")
-  @invariant: start <= end
+  @contract("start <= end")
 }
 
 

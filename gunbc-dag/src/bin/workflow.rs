@@ -606,7 +606,7 @@ mod tests {
     fn parse_args_rejects_unknown_flags_in_run_mode() {
         let error = parse_args(vec![
             "gunbc-workflow".to_string(),
-            "dag-viz".to_string(),
+            "deps".to_string(),
             "--repo-path".to_string(),
             ".".to_string(),
         ])
@@ -619,7 +619,7 @@ mod tests {
         let error = parse_args(vec![
             "gunbc-workflow".to_string(),
             "--plan".to_string(),
-            "dag-viz".to_string(),
+            "deps".to_string(),
             "--repo-path".to_string(),
             ".".to_string(),
         ])

@@ -209,13 +209,9 @@ dependencies = [
  "daglang-resolve",
  "daglang-syntax",
  "daglang-typecheck",
- "gunbc-clippy",
  "gunbc-dag",
  "gunbc-deps",
- "gunbc-gist",
  "gunbc-ir",
- "gunbc-lib-aws-ops",
- "gunbc-lib-azure-ops",
  "gunbc-lib-gcp-ops",
  "serde",
  "serde_json",
@@ -343,12 +339,7 @@ dependencies = [
 name = "gunbc-clippy"
 version = "0.1.0"
 dependencies = [
- "gunbc-exec",
  "gunbc-ir",
- "gunbc-lib-transport",
- "gunbc-test",
- "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
  "gunbc-tool-registry",
  "gunbc-tool-registry-macros",
 ]
@@ -460,22 +451,12 @@ dependencies = [
 name = "gunbc-gist"
 version = "0.1.0"
 dependencies = [
- "gunbc-cli",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-cloud-ops",
- "gunbc-lib-gcp-ops",
  "gunbc-lib-gist-ops",
  "gunbc-lib-git-ops",
  "gunbc-lib-markdown",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-test",
  "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
  "gunbc-tool-registry",
  "gunbc-tool-registry-macros",
- "serde_json",
 ]
 
 [[package]]
@@ -506,28 +487,20 @@ dependencies = [
 name = "gunbc-lib-aws-ops"
 version = "0.1.0"
 dependencies = [
- "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-test",
  "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
  "serde",
- "serde_json",
 ]
 
 [[package]]
 name = "gunbc-lib-azure-ops"
 version = "0.1.0"
 dependencies = [
- "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-test",
  "gunbc-testgen-registry",
- "gunbc-testgen-registry-macros",
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -554,7 +527,6 @@ dependencies = [
  "gunbc-lib-azure-ops",
  "gunbc-lib-gcp-ops",
  "gunbc-lib-transport",
- "gunbc-test",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
  "serde",

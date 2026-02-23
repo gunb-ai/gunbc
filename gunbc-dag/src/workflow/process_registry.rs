@@ -259,40 +259,16 @@ mod tests {
         assert!(registry.contains(&ProcessUnitRef::new("makegen", "makegen.load_registry")));
         assert!(registry.contains(&ProcessUnitRef::new("pragma", "pragma.render_clippy")));
         assert!(registry.contains(&ProcessUnitRef::new("deps", "deps.load_manifest")));
-        assert!(registry.contains(&ProcessUnitRef::new("dag_viz", "dag_viz.branch_resolution")));
-        assert!(registry.contains(&ProcessUnitRef::new(
-            "dag_snapshot",
-            "dag_snapshot.list_files"
-        )));
         assert!(registry.contains(&ProcessUnitRef::new("build_all", "build_all.build")));
         assert!(registry.contains(&ProcessUnitRef::new("sdlc", "sdlc.intake")));
     }
 
-    #[test]
-    fn gist_create_unit_has_network_write_claim() {
-        let registry = default_process_unit_registry();
-        let spec = registry
-            .get(&ProcessUnitRef::new("gist", "gist.gist_create"))
-            .expect("gist.gist_create");
-        assert!(spec
-            .required_claims
-            .iter()
-            .any(|claim| claim.claim_id.0 == "network:github_gist"
-                && claim.access_mode == AccessMode::Write));
-    }
-
-    #[test]
-    fn gist_credential_unit_has_credential_read_claim() {
-        let registry = default_process_unit_registry();
-        let spec = registry
-            .get(&ProcessUnitRef::new("gist", "gist.credential_resolve"))
-            .expect("gist.credential_resolve");
-        assert!(spec
-            .required_claims
-            .iter()
-            .any(|claim| claim.claim_id.0 == "credential:github"
-                && claim.access_mode == AccessMode::Read));
-    }
+    // gist_create_unit_has_network_write_claim and
+    // gist_credential_unit_has_credential_read_claim removed:
+    // M22 deleted @network(WRITE, "github_gist") and @credential(READ, "github")
+    // from gist.dag. These claims will be re-introduced via mandatory resource
+    // declarations (M10) once the resource port system replaces annotation-based
+    // claim inference.
 
     #[test]
     fn universal_capabilities_are_registered_once_without_workflow_duplication() {
@@ -321,43 +297,6 @@ mod tests {
             "codegen capability should be registered once"
         );
         assert_eq!(codegen_specs[0].reference.unit_id.0, CODEGEN_ENSURE_UNIT);
-    }
-
-    #[test]
-    fn dag_viz_and_dag_snapshot_share_base_capability_identities() {
-        let registry = default_process_unit_registry();
-        let viz_branch = registry
-            .get(&ProcessUnitRef::new("dag_viz", "dag_viz.branch_resolution"))
-            .expect("dag_viz.branch_resolution");
-        let snap_branch = registry
-            .get(&ProcessUnitRef::new(
-                "dag_snapshot",
-                "dag_snapshot.branch_resolution",
-            ))
-            .expect("dag_snapshot.branch_resolution");
-        assert_eq!(
-            viz_branch.canonical_work_identity(),
-            snap_branch.canonical_work_identity(),
-            "branch_resolution should share identity across dag_viz and dag_snapshot"
-        );
-
-        let viz_cred = registry
-            .get(&ProcessUnitRef::new(
-                "dag_viz",
-                "dag_viz.credential_resolve",
-            ))
-            .expect("dag_viz.credential_resolve");
-        let snap_cred = registry
-            .get(&ProcessUnitRef::new(
-                "dag_snapshot",
-                "dag_snapshot.credential_resolve",
-            ))
-            .expect("dag_snapshot.credential_resolve");
-        assert_eq!(
-            viz_cred.canonical_work_identity(),
-            snap_cred.canonical_work_identity(),
-            "credential_resolve should share identity across dag_viz and dag_snapshot"
-        );
     }
 
     #[test]

@@ -77,6 +77,10 @@ pub struct ToolRegistration {
     pub dsl_module: Option<&'static str>,
     /// Generated output file paths (for gitignore auto-derivation and clean).
     pub outputs: &'static [&'static str],
+    /// Files/artifacts this tool produces (for generator edge graph derivation).
+    pub provides: &'static [&'static str],
+    /// Files/artifacts this tool reads as inputs (for generator edge graph derivation).
+    pub consumes: &'static [&'static str],
 }
 
 impl ToolRegistration {

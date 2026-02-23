@@ -133,46 +133,6 @@ pub fn deps_workflow_spec_with_registry(
     workflow_spec_with_registry("deps", registry)
 }
 
-pub fn dag_viz_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("dag-viz")
-}
-
-pub fn dag_viz_workflow_spec_with_registry(
-    registry: &ProcessUnitRegistry,
-) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("dag-viz", registry)
-}
-
-pub fn dag_viz_diff_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("dag-viz-diff")
-}
-
-pub fn dag_viz_diff_workflow_spec_with_registry(
-    registry: &ProcessUnitRegistry,
-) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("dag-viz-diff", registry)
-}
-
-pub fn dag_viz_recent_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("dag-viz-recent")
-}
-
-pub fn dag_viz_recent_workflow_spec_with_registry(
-    registry: &ProcessUnitRegistry,
-) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("dag-viz-recent", registry)
-}
-
-pub fn dag_snapshot_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("dag-snapshot")
-}
-
-pub fn dag_snapshot_workflow_spec_with_registry(
-    registry: &ProcessUnitRegistry,
-) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("dag-snapshot", registry)
-}
-
 pub fn build_all_workflow_spec() -> Result<WorkflowSpec, String> {
     workflow_spec("build-all")
 }

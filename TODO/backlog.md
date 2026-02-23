@@ -1,83 +1,51 @@
-# Backlog — Feature Ideas (Not Scheduled)
+# Backlog — Prioritized
 
-These are large-scope or speculative features parked for future consideration.
-They are **not on the active roadmap** — move to `tasks.md` when prioritized.
+**Last updated**: 2026-02-23
+**Policy**: Items reviewed quarterly. P3 items not promoted within 2 quarters are deleted.
+**Promotion**: Move to `TODO/tasks.md` when scheduled for active work.
 
----
+## Priority Tiers
 
-## Display Reactive DSL (was H1)
-
-**Size**: XL | **Design**: `docs/design/horizon/h1-display-reactive-dsl.md`
-
-Channel-driven event loop with `on`/`tick` triggers for display orchestration.
-Requires new DSL parser primitives (`reactive`, `on`, `tick`), IR nodes
-(`ReactiveSubDag`, typed channels), and a runtime scheduler.
-
-**Why backlogged**: Requires significant new DSL infrastructure that doesn't exist.
-Core process needs stress-testing with existing primitives first.
+- **P1**: Feeds active lanes or unblocks near-term work. Promote next.
+- **P2**: Valuable, clear use case, but not urgent. Promote when capacity opens.
+- **P3**: Speculative or low-urgency. Subject to deletion if stale.
 
 ---
 
-## Compute Stack Provision/Apply Orchestration (was H10, remaining work)
+## P1 — Promote Next
 
-**Size**: L | **Design**: `docs/design/horizon/h10-compute-stack-services.md`
+| ID | Item | Size | Design Doc | Feeds | Added |
+|----|------|------|------------|-------|-------|
+| **H11** | **DAG typing hardening**: Typed node I/O wrappers at DAG boundaries, fail-closed semantic carrier refinement. | M | `docs/design/horizon/h11-dag-typing-hardening.md` | Lane 1 (type system), Lane 3 (M8 metadata) | 2026-02 |
+| **H2** | **Testgen dynamic targets**: Generate test targets by iterating `DagSpecDef` inventory at codegen time instead of manual enumeration. | M | `docs/design/horizon/h2-testgen-dynamic-targets.md` | M14 (single inventory), M20 (repo self-model) | 2026-02 |
+| **H3** | **Makegen tool registry**: Make `#[tool_target]` the single source of truth for tool registry instead of hand-maintained lists. | S | `docs/design/horizon/h3-makegen-tool-registry.md` | M14 (single inventory), M20 (repo self-model) | 2026-02 |
+| **DG1** | **Daggen (dynamic DAG generation)**: `needs_daggen()` returns false. Re-enable to scale the pipeline by dynamically generating steps based on git diffs. | L | — | Lane 2 (compiled pipeline) | 2026-02 |
 
-Service trait definitions and REST adapters for Cloud Run, GCS, LB, and Compute Engine
-are implemented (`lib/gcp-ops/src/services/`). Discovery DAG exists. What's missing:
+## P2 — Promote When Capacity Opens
 
-- Provision/apply DAG builder (create/update/release lifecycle)
-- DSL resource declarations → Rust codegen integration
-- Cross-service composition planner
+| ID | Item | Size | Design Doc | Feeds | Added |
+|----|------|------|------------|-------|-------|
+| **H8** | **Justfile rendering**: Adopt Justfile as a second workflow renderer to validate model portability. | M | `docs/design/horizon/h8-workflow-rendering-justfile.md` | M18 (projection-only surfaces) | 2026-02 |
+| **H9** | **GitHub Actions rendering**: GitHub Actions YAML as additional CI provider generated from shared `WorkflowSpec`. | M | `docs/design/horizon/h9-workflow-rendering-github-actions.md` | M18 (projection-only surfaces) | 2026-02 |
+| **H10** | **Compute stack orchestration**: Provision/apply DAG builder for Cloud Run, GCS, LB lifecycle. Service layer exists; orchestration missing. | L | `docs/design/horizon/h10-compute-stack-services.md` | Lane 2 (SDLC infra) | 2026-02 |
+| **S12-E** | **Multi-worker CAS**: `GcsClaimStore` with generation-based CAS (`x-goog-if-generation-match`). DSL exists; wiring deferred until cloud_run profile needed. | M | — | Lane 2 (cloud deployment) | 2026-02 |
+| **H4** | **Loop extra inputs passthrough**: Support additional context (config, auth, branch) through loop bodies. | S | `docs/design/horizon/h4-loop-extra-inputs-passthrough.md` | — | 2026-02 |
 
-**Why backlogged**: Service layer works, but orchestration is XL scope and not needed
-until infra provisioning is an active use case.
+## P3 — Speculative (Review 2026-Q3, Delete if Not Promoted)
 
----
-
-## Typed API Migration (H11 follow-up)
-
-`TypedPort<T>`, `TypedInput<T>`, `TypedOutput<T>` exist and work. Legacy untyped
-`Port` API still active. Full migration to typed-only would touch most builders.
-
-**Why backlogged**: Typed wrappers are available for new code. Migration of existing
-builders is mechanical but wide-blast-radius — lower priority than business flows.
-
----
-
-## Resource Trait String Port Elimination (H7 follow-up)
-
-`Resource` trait, `AccessMode`, `ManagedResource` all exist. String `res:*` ports
-still coexist with the typed resource system.
-
-Current guardrail state:
-- wildcard file ports (for example `res:file:*`, `res:file:src/*`) are normalized
-  to coarse `res:file` for resource accounting/admission.
-- scheduler admission treats coarse `res:file` as conflicting with any specific
-  `res:file:<path>` lock.
-- generated makegen graphs now use coarse `res:file` directly.
-- true glob-aware admission semantics are intentionally deferred.
-
-**Why backlogged**: Resource trait works for new code. Full elimination of string ports
-is a cross-cutting migration with many touchpoints.
-
-### Deferred follow-up: Glob-aware Resource Admission
-
-Define and implement wildcard semantics end-to-end for resource locks (not just file guard):
-- canonical pattern model (`*`, prefix/suffix/infix) and conflict matrix.
-- shared matcher used by scheduler admission + runtime guard.
-- deterministic tie-breaking and fairness when wildcard and specific locks contend.
-- decide migration path for legacy `res:file:*` acceptance in runtime guard.
-
-**Why backlogged**: This is policy-sensitive concurrency behavior and needs explicit
-design before enabling in runtime scheduling.
+| ID | Item | Size | Design Doc | Notes | Added |
+|----|------|------|------------|-------|-------|
+| **H1** | **Display reactive DSL**: Channel-driven event loop with `on`/`tick` triggers. Requires new DSL parser primitives, IR nodes, runtime scheduler. | XL | `docs/design/horizon/h1-display-reactive-dsl.md` | No current use case. Requires significant new DSL infra. | 2026-02 |
+| **H7** | **Resource abstraction trait**: Full `Resource` trait migration eliminating string `res:*` ports. Includes glob-aware resource admission (wildcard semantics, conflict matrix, deterministic tie-breaking). | L | `docs/design/horizon/h7-resource-abstraction-trait.md` | Typed resource system works for new code. Migration is wide-blast-radius. Tracked as CU-8 in Lane 4 for incremental work. | 2026-02 |
 
 ---
 
-## Canonical Port Naming Invariants (R1 follow-up)
+## Cross-References
 
-Some paths still rely on module-specific port aliases in normalization/parity logic
-(for example makegen transport output aliases). The long-term direction is one
-canonical port name per semantic role across lowering, runtime emission, and snapshots.
+Some backlog items overlap with Lane 4 (polish) tasks that handle incremental progress:
 
-**Why backlogged**: Mechanical cleanup is easy, but cutover needs careful snapshot
-and parity coordination to avoid false regressions across multiple toolchains.
+| Backlog Item | Lane 4 Task | Relationship |
+|--------------|-------------|-------------|
+| H11 (DAG typing) | CU-7 (Typed API migration) | CU-7 is the mechanical migration; H11 is the full design. |
+| H7 (Resource trait) | CU-8 (Resource string port elimination) | CU-8 is incremental cleanup; H7 is the full replacement. |
+| — | CU-9 (Canonical port naming) | Standalone polish, no backlog equivalent. |

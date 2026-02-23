@@ -1,8 +1,6 @@
 //! Clippy operations.
 //!
 //! Re-exports the generic `CliToolOp` configured for Clippy.
-//! Most code should use `build_clippy_upsert()` from the graph module
-//! to get a fractal sub-DAG, but direct operations are available here.
 
 use gunbc_ir::transport::cli;
 pub use gunbc_ir::transport::cli::CliToolOp;

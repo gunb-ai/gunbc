@@ -241,6 +241,11 @@ pub enum TypeError {
         binding: String,
         resource_type: String,
     },
+    /// Unknown type-level annotation encountered during validation.
+    UnknownAnnotation {
+        context: String,
+        annotation: String,
+    },
 }
 
 impl std::fmt::Display for TypeError {
@@ -430,6 +435,13 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "ambiguous provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
+            ),
+            Self::UnknownAnnotation {
+                context,
+                annotation,
+            } => write!(
+                f,
+                "unknown type annotation `@{annotation}` in `{context}`"
             ),
         }
     }
@@ -3074,8 +3086,16 @@ fn validate_type_expr(
                             }
                         }
                     }
-                    _ => {
-                        // Unknown annotations are silently accepted for forward compatibility
+                    // Known-but-deferred: these annotations are valid but not yet
+                    // lowered to TypeOp. They will be migrated in future modeling
+                    // phases (M8 + MetadataPayload extensions for AccessMode/ServiceMode).
+                    "json" | "format" | "invariant" | "contract"
+                    | "tool" | "mode" => {}
+                    other => {
+                        errors.push(TypeError::UnknownAnnotation {
+                            context: context.to_string(),
+                            annotation: other.to_string(),
+                        });
                     }
                 }
             }

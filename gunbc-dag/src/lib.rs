@@ -23,13 +23,16 @@ pub mod build;
 pub mod ci;
 pub mod cloud_env;
 pub mod codegen;
-pub mod credential_lifecycle;
-pub mod dag_viz;
 pub mod deps_tool;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
 pub mod dry_run;
 pub(crate) mod dsl_builder;
+pub use dsl_builder::{
+    build_aws_credential_graph_dsl, build_azure_credential_graph_dsl, build_clippy_graph_dsl,
+    build_gist_diff_graph_dsl, build_gist_recent_graph_dsl, build_gist_snapshot_graph_dsl,
+    build_review_graph_dsl,
+};
 pub mod fs_env;
 pub mod infra;
 pub mod makegen;
@@ -44,8 +47,6 @@ pub mod testgen_dag;
 pub mod tool_runner;
 pub mod viewer;
 pub mod workflow;
-pub mod workspace;
-
 // Re-exports for convenience
 pub use binaries::WorkspaceBinary;
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp, BootstrapOp};
@@ -57,7 +58,6 @@ pub use cloud_env::{
     CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use codegen::{build_codegen_graph, codegen_signature, CodegenGraphOp, CodegenOp};
-pub use dag_viz::{build_dag_viz_graph, dag_viz_signature, DagVizGraphOp, DagVizMode};
 pub use docgen::{
     build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS,
 };
@@ -96,10 +96,7 @@ pub use workflow::{
     bootstrap_workflow_spec, bootstrap_workflow_spec_with_registry, build_all_workflow_spec,
     build_all_workflow_spec_with_registry, check_slo, ci_unit_commands, ci_workflow_spec,
     ci_workflow_spec_with_registry, claim_handle_type_id, codegen_key, compilation_key,
-    coordination_status, dag_snapshot_workflow_spec, dag_snapshot_workflow_spec_with_registry,
-    dag_viz_diff_workflow_spec, dag_viz_diff_workflow_spec_with_registry,
-    dag_viz_recent_workflow_spec, dag_viz_recent_workflow_spec_with_registry,
-    dag_viz_workflow_spec, dag_viz_workflow_spec_with_registry, default_process_unit_registry,
+    coordination_status, default_process_unit_registry,
     default_slo_budgets, deps_workflow_spec, deps_workflow_spec_with_registry, derive_miss_reason,
     execute_workflow_plan, explain_plan, gist_diff_workflow_spec,
     gist_diff_workflow_spec_with_registry, gist_recent_workflow_spec,
@@ -128,13 +125,6 @@ pub use workflow::{
     CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID, PORT_AFTER, PORT_COMMIT,
     PORT_RESULT, TYPE_WORKFLOW_RESULT,
 };
-pub use workspace::{
-    build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,
-    build_clippy_subdag, build_codegen_subdag, build_dag_viz_subdag, build_deps_generate_subdag,
-    build_deps_install_subdag, build_docgen_subdag, build_gist_rust_subdag, build_gist_subdag,
-    build_infra_subdag, build_languages_subdag, build_makegen_subdag, build_pragma_subdag,
-    build_testgen_subdag, build_workspace_dag, WorkspaceOp,
-};
 
 // ============================================================================
 // DagSpec Registry Helpers
@@ -146,6 +136,20 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
         .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
         .collect()
 }
+
+// ============================================================================
+// Test linker hints
+// ============================================================================
+// Force the linker to include inventory submissions from dependency crates
+// in the lib test binary. Without these, tool_target registrations from
+// external crates are dead-stripped and derive_tool_defs() returns an
+// incomplete set.
+#[cfg(test)]
+extern crate gunbc_clippy;
+#[cfg(test)]
+extern crate gunbc_gist;
+#[cfg(test)]
+extern crate gunbc_lib_review;
 
 // ============================================================================
 // Cross-crate system model integration tests

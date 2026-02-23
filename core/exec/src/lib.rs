@@ -60,7 +60,8 @@ pub use execute::{
     execute, execute_single_node, execute_with_mode, execute_with_mode_and_inputs,
     execute_with_mode_and_inputs_and_detail, execute_with_progress, execute_with_progress_and_mode,
     execute_with_progress_and_mode_and_detail, execute_with_progress_and_mode_and_inputs,
-    execute_with_progress_and_mode_and_inputs_and_detail, ExecutionLog, ExecutionMode, LogEntry,
+    execute_with_progress_and_mode_and_inputs_and_detail, DryRunStrictness, ExecutionLog,
+    ExecutionMode, LogEntry,
 };
 pub use freshness::{
     compose_with_freshness, run_freshness_step, run_freshness_steps, FreshnessStep, WithFreshness,

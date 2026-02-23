@@ -3,13 +3,8 @@
 //!
 //! Placeholder implementation to keep provider-neutral modeling honest.
 
-mod graph;
 mod ops;
 
-pub use graph::{
-    build_azure_key_vault_credential_graph, build_azure_key_vault_upsert_graph,
-    AzureKeyVaultGraphOp,
-};
 pub use ops::AzureOps;
 
 // ============================================================================

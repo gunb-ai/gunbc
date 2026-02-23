@@ -15,7 +15,6 @@ service gcloud.Auth {
     input { update_adc: Bool = true }
     output { ok: Bool }
     @shell(["gcloud", "auth", "login", "--update-adc"])
-    @external   // requires user interaction (browser)
   }
 
   operation ReadADC {

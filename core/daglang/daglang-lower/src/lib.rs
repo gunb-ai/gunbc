@@ -1450,8 +1450,8 @@ fn lower_typed_project_with_callable_scope(
 }
 
 pub use parity::{
-    canonical_ir_json, compare_ci_topology, compare_gcp_credential_topology, compare_gist_topology,
-    compare_ir, compare_makegen_topology, compare_topology, GistParityMode,
+    canonical_ir_json, compare_ci_topology, compare_gcp_credential_topology,
+    compare_ir, compare_makegen_topology, compare_topology,
 };
 #[cfg(test)]
 use parity::{normalize_makegen_candidate, normalize_makegen_reference};
@@ -1682,23 +1682,6 @@ mod parity {
         let normalized_candidate = normalize_gcp_credential_candidate(candidate);
         let normalized_reference = normalize_gcp_credential_reference(reference);
         compare_ir(&normalized_candidate, &normalized_reference)
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum GistParityMode {
-        Snapshot,
-        Diff,
-        Recent,
-    }
-
-    pub fn compare_gist_topology<T>(
-        candidate: &Dag<LoweredOp>,
-        reference: &Dag<T>,
-        mode: GistParityMode,
-    ) -> ParityReport {
-        let normalized_candidate = normalize_gist_candidate(candidate, mode);
-        let normalized_reference = normalize_gist_reference(reference, mode);
-        compare_topology(&normalized_candidate, &normalized_reference)
     }
 
     pub fn compare_ci_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
@@ -1991,71 +1974,6 @@ mod parity {
         }
         build_gcp_credential_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
             module: "parity.gcp_credential".to_string(),
-            kind: CallableKind::Pattern,
-            name: id.to_string(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-        })
-    }
-
-    fn normalize_gist_candidate(
-        candidate: &Dag<LoweredOp>,
-        mode: GistParityMode,
-    ) -> Dag<LoweredOp> {
-        let candidate_ids = candidate
-            .nodes
-            .iter()
-            .map(|node| node.id.0.clone())
-            .collect::<HashSet<_>>();
-        let mut canonical_nodes = HashSet::<String>::new();
-        if candidate_ids.contains("acquire_resource_std_resources_Filesystem") {
-            canonical_nodes.insert("fs_env".to_string());
-        }
-        if candidate_ids.contains("shared.gist_modes::branch_context") {
-            canonical_nodes.insert("branch_resolution".to_string());
-        }
-        if candidate_ids.contains("shared.gist_modes::gist_upload") {
-            canonical_nodes.insert("gist_upload".to_string());
-        }
-        match mode {
-            GistParityMode::Snapshot => {
-                if candidate_ids.contains("parse_transport_services_git_git_Core_LsFiles") {
-                    canonical_nodes.insert("list_files".to_string());
-                }
-                if candidate_ids.contains("std.patterns::read_text_files") {
-                    canonical_nodes.insert("read_files_loop".to_string());
-                }
-                if candidate_ids.contains("std.patterns::classify_files") {
-                    canonical_nodes.insert("collect_file_contents".to_string());
-                }
-                if candidate_ids.contains("tools.gist::render_snapshot") {
-                    canonical_nodes.insert("render_markdown".to_string());
-                }
-            }
-            GistParityMode::Diff => {
-                if candidate_ids.contains("parse_transport_services_git_git_Core_Diff") {
-                    canonical_nodes.insert("diff".to_string());
-                }
-                if candidate_ids.contains("tools.gist::render_diff") {
-                    canonical_nodes.insert("render_markdown".to_string());
-                }
-            }
-            GistParityMode::Recent => {
-                if candidate_ids.contains("parse_transport_services_git_git_Core_Diff") {
-                    canonical_nodes.insert("diff".to_string());
-                }
-                if candidate_ids.contains("parse_transport_services_git_git_Core_RevList") {
-                    canonical_nodes.insert("rev_list".to_string());
-                }
-                if candidate_ids.contains("tools.gist::render_recent") {
-                    canonical_nodes.insert("render_markdown".to_string());
-                }
-            }
-        }
-        build_gist_canonical_graph(&canonical_nodes, mode, |id| LoweredOp::Callable {
-            module: "parity.gist".to_string(),
             kind: CallableKind::Pattern,
             name: id.to_string(),
             obligation: ObligationCategory::None,
@@ -2548,246 +2466,6 @@ mod parity {
                 "verify_testgen_success",
             ),
         ]
-    }
-
-    fn normalize_gist_reference<T>(reference: &Dag<T>, mode: GistParityMode) -> Dag<()> {
-        let reference_ids = reference
-            .nodes
-            .iter()
-            .map(|node| node.id.0.clone())
-            .collect::<HashSet<_>>();
-        build_gist_canonical_graph(&reference_ids, mode, |_| ())
-    }
-
-    fn build_gist_canonical_graph<T>(
-        kept_ids: &HashSet<String>,
-        mode: GistParityMode,
-        body_for: impl Fn(&str) -> T,
-    ) -> Dag<T> {
-        let mut normalized = Dag::new();
-        for (id, inputs, outputs) in gist_canonical_nodes(mode) {
-            if !kept_ids.contains(id) {
-                continue;
-            }
-            normalized.add_node(Node::opaque(id.to_string(), inputs, outputs, body_for(id)));
-        }
-        let present = normalized
-            .nodes
-            .iter()
-            .map(|node| node.id.0.clone())
-            .collect::<HashSet<_>>();
-        for (from_node, from_port, to_node, to_port) in gist_canonical_edges(mode) {
-            if !present.contains(from_node) || !present.contains(to_node) {
-                continue;
-            }
-            normalized.add_edge(Edge::new(
-                from_node.to_string(),
-                from_port.to_string(),
-                to_node.to_string(),
-                to_port.to_string(),
-            ));
-        }
-        normalized
-    }
-
-    fn gist_canonical_nodes(mode: GistParityMode) -> Vec<(&'static str, Vec<Port>, Vec<Port>)> {
-        let mut gist_upload_inputs = vec![
-            Port::with_cardinality("branch", "OptionalString", Cardinality::ZERO_OR_ONE),
-            Port::with_cardinality("remote_branch", "OptionalString", Cardinality::ZERO_OR_ONE),
-            Port::with_cardinality("markdown", "String", Cardinality::ONE),
-        ];
-        if matches!(mode, GistParityMode::Recent) {
-            gist_upload_inputs.push(Port::with_cardinality(
-                "base_ref",
-                "OptionalString",
-                Cardinality::ZERO_OR_ONE,
-            ));
-        }
-        let render_markdown_inputs = if matches!(mode, GistParityMode::Snapshot) {
-            vec![Port::with_cardinality("contents", "Map", Cardinality::ONE)]
-        } else {
-            vec![
-                Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
-                Port::with_cardinality("stats", "String", Cardinality::ONE),
-            ]
-        };
-        let mut nodes = vec![
-            (
-                "fs_env",
-                vec![],
-                vec![Port::with_cardinality(
-                    "file:write",
-                    "FilesystemHandle",
-                    Cardinality::ONE,
-                )],
-            ),
-            (
-                "branch_resolution",
-                vec![
-                    Port::with_cardinality("repo_path", "String", Cardinality::ONE),
-                    Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                ],
-                vec![
-                    Port::with_cardinality("branch", "OptionalString", Cardinality::ZERO_OR_ONE),
-                    Port::with_cardinality(
-                        "remote_branch",
-                        "OptionalString",
-                        Cardinality::ZERO_OR_ONE,
-                    ),
-                ],
-            ),
-            (
-                "gist_upload",
-                gist_upload_inputs,
-                vec![Port::with_cardinality("url", "Url", Cardinality::ONE)],
-            ),
-            (
-                "render_markdown",
-                render_markdown_inputs,
-                vec![Port::with_cardinality(
-                    "markdown",
-                    "String",
-                    Cardinality::ONE,
-                )],
-            ),
-        ];
-        match mode {
-            GistParityMode::Snapshot => {
-                nodes.push((
-                    "list_files",
-                    vec![
-                        Port::with_cardinality("repo_path", "String", Cardinality::ONE),
-                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                    ],
-                    vec![Port::with_cardinality(
-                        "files",
-                        "String",
-                        Cardinality::ZERO_OR_MORE,
-                    )],
-                ));
-                nodes.push((
-                    "read_files_loop",
-                    vec![
-                        Port::with_cardinality("files", "String", Cardinality::ZERO_OR_MORE),
-                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                    ],
-                    vec![Port::with_cardinality(
-                        "contents",
-                        "String",
-                        Cardinality::ZERO_OR_MORE,
-                    )],
-                ));
-                nodes.push((
-                    "collect_file_contents",
-                    vec![
-                        Port::with_cardinality("filenames", "String", Cardinality::ZERO_OR_MORE),
-                        Port::with_cardinality(
-                            "contents_list",
-                            "String",
-                            Cardinality::ZERO_OR_MORE,
-                        ),
-                    ],
-                    vec![Port::with_cardinality("contents", "Map", Cardinality::ONE)],
-                ));
-            }
-            GistParityMode::Diff => {
-                nodes.push((
-                    "diff",
-                    vec![
-                        Port::with_cardinality(
-                            "base_ref",
-                            "OptionalString",
-                            Cardinality::ZERO_OR_ONE,
-                        ),
-                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                    ],
-                    vec![
-                        Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
-                        Port::with_cardinality("stats", "String", Cardinality::ONE),
-                    ],
-                ));
-            }
-            GistParityMode::Recent => {
-                nodes.push((
-                    "rev_list",
-                    vec![
-                        Port::with_cardinality("since", "OptionalString", Cardinality::ZERO_OR_ONE),
-                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                    ],
-                    vec![Port::with_cardinality(
-                        "base_ref",
-                        "OptionalString",
-                        Cardinality::ZERO_OR_ONE,
-                    )],
-                ));
-                nodes.push((
-                    "diff",
-                    vec![
-                        Port::with_cardinality(
-                            "base_ref",
-                            "OptionalString",
-                            Cardinality::ZERO_OR_ONE,
-                        ),
-                        Port::with_cardinality("res:file", "FilesystemHandle", Cardinality::ONE),
-                    ],
-                    vec![
-                        Port::with_cardinality("diff_files", "String", Cardinality::ZERO_OR_MORE),
-                        Port::with_cardinality("stats", "String", Cardinality::ONE),
-                    ],
-                ));
-            }
-        }
-        nodes
-    }
-
-    fn gist_canonical_edges(
-        mode: GistParityMode,
-    ) -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
-        let mut edges = vec![
-            ("fs_env", "file:write", "branch_resolution", "res:file"),
-            ("branch_resolution", "branch", "gist_upload", "branch"),
-            (
-                "branch_resolution",
-                "remote_branch",
-                "gist_upload",
-                "remote_branch",
-            ),
-            ("render_markdown", "markdown", "gist_upload", "markdown"),
-        ];
-        match mode {
-            GistParityMode::Snapshot => {
-                edges.push(("fs_env", "file:write", "list_files", "res:file"));
-                edges.push(("fs_env", "file:write", "read_files_loop", "res:file"));
-                edges.push(("list_files", "files", "read_files_loop", "files"));
-                edges.push(("list_files", "files", "collect_file_contents", "filenames"));
-                edges.push((
-                    "read_files_loop",
-                    "contents",
-                    "collect_file_contents",
-                    "contents_list",
-                ));
-                edges.push((
-                    "collect_file_contents",
-                    "contents",
-                    "render_markdown",
-                    "contents",
-                ));
-            }
-            GistParityMode::Diff => {
-                edges.push(("fs_env", "file:write", "diff", "res:file"));
-                edges.push(("diff", "diff_files", "render_markdown", "diff_files"));
-                edges.push(("diff", "stats", "render_markdown", "stats"));
-            }
-            GistParityMode::Recent => {
-                edges.push(("fs_env", "file:write", "rev_list", "res:file"));
-                edges.push(("fs_env", "file:write", "diff", "res:file"));
-                edges.push(("rev_list", "base_ref", "diff", "base_ref"));
-                edges.push(("rev_list", "base_ref", "gist_upload", "base_ref"));
-                edges.push(("diff", "diff_files", "render_markdown", "diff_files"));
-                edges.push(("diff", "stats", "render_markdown", "stats"));
-            }
-        }
-        edges
     }
 
     fn normalize_gcp_credential_reference<T>(reference: &Dag<T>) -> Dag<()> {
@@ -6129,22 +5807,44 @@ fn collect_output_paths_recursive(
     }
 }
 
+/// Extract output path declarations from `@outputs` annotations on `func` items.
+///
+/// Walks the typed project looking for `func` definitions annotated with
+/// `@outputs("pattern")`. Each string argument is collected as a declared
+/// output path (typically a glob for dynamic outputs like testgen).
+/// Returns a sorted, deduplicated list.
+pub fn extract_outputs_annotation(project: &TypedProject) -> Vec<String> {
+    let mut paths = std::collections::BTreeSet::new();
+    for module in &project.modules {
+        for item in &module.ast.items {
+            if let Item::FuncDef(def) = &item.node {
+                for ann in &def.annotations {
+                    if ann.name == "outputs" {
+                        for arg in &ann.args {
+                            if let Expr::Literal(Literal::String(s)) = arg {
+                                paths.insert(s.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    paths.into_iter().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use daglang_resolve::{ModuleGraph, ResolvedModule};
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
-    use gunbc_clippy::build_clippy_graph_lint_all;
     use gunbc_dag::{
         build_bootstrap_graph, build_build_graph, build_ci_graph, build_codegen_graph,
         build_docgen_graph, build_makegen_graph, build_pragma_graph,
     };
     use gunbc_dag::deps_tool::build_deps_graph;
-    use gunbc_gist::{build_gist_graph, GistMode};
     use gunbc_ir::{Edge, Port};
-    use gunbc_lib_aws_ops::build_aws_secrets_manager_credential_graph;
-    use gunbc_lib_azure_ops::build_azure_key_vault_credential_graph;
     use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use std::collections::{HashMap, HashSet, VecDeque};
     use std::fs;
@@ -6649,18 +6349,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
         assert!(report_a.reference_nodes > 0);
     }
 
-    #[test]
-    fn clippy_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.clippy");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.clippy");
-        let reference = build_clippy_graph_lint_all();
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
 
     #[test]
     fn deps_parity_report_is_deterministic() {
@@ -6673,33 +6361,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
         assert_eq!(report_a, report_b);
         assert!(report_a.candidate_nodes > 0);
         assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
-    fn gist_snapshot_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
-        let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
-            .expect("gist builder graph should be available");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
-    fn gist_snapshot_normalized_parity_can_reach_exact_match() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
-        let reference = build_gist_graph(GistMode::Snapshot, Vec::new(), false)
-            .expect("gist builder graph should be available");
-        let report = compare_gist_topology(&dag, &reference, GistParityMode::Snapshot);
-        assert!(
-            report.is_exact_match(),
-            "normalized gist snapshot parity should match reference topology: {report:?}"
-        );
     }
 
     #[test]
@@ -6729,134 +6390,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
             report_a.is_exact_match(),
             "normalized gcp parity should remain exact-match"
         );
-    }
-
-    #[test]
-    fn gist_diff_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
-        let reference = build_gist_graph(
-            GistMode::Diff {
-                base_ref: "main".to_string(),
-            },
-            Vec::new(),
-            false,
-        )
-        .expect("gist builder graph should be available");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
-    fn gist_diff_normalized_parity_can_reach_exact_match() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
-        let reference = build_gist_graph(
-            GistMode::Diff {
-                base_ref: "main".to_string(),
-            },
-            Vec::new(),
-            false,
-        )
-        .expect("gist builder graph should be available");
-        let report = compare_gist_topology(&dag, &reference, GistParityMode::Diff);
-        assert!(
-            report.is_exact_match(),
-            "normalized gist diff parity should match reference topology: {report:?}"
-        );
-    }
-
-    #[test]
-    fn gist_recent_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
-        let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
-            .expect("gist builder graph should be available");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
-    fn gist_recent_normalized_parity_can_reach_exact_match() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.gist");
-        let reference = build_gist_graph(GistMode::Recent, Vec::new(), false)
-            .expect("gist builder graph should be available");
-        let report = compare_gist_topology(&dag, &reference, GistParityMode::Recent);
-        assert!(
-            report.is_exact_match(),
-            "normalized gist recent parity should match reference topology: {report:?}"
-        );
-    }
-
-    #[test]
-    fn gist_dependency_closure_lowering_reuses_shared_credential_chain() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.gist");
-        let scope = typed
-            .modules
-            .iter()
-            .map(|module| module.module_path.join("."))
-            .collect::<HashSet<_>>();
-        let dag = lower_typed_project_for_modules(&typed, &scope).expect("lowering should succeed");
-
-        assert!(dag
-            .nodes
-            .iter()
-            .any(|node| node.id.0 == "shared.gist_modes::share_content"));
-        assert!(dag
-            .nodes
-            .iter()
-            .any(|node| node.id.0 == "shared.gist_modes::gist_upload"));
-        assert!(dag
-            .nodes
-            .iter()
-            .any(|node| node.id.0 == "std.patterns::credential_chain"));
-        assert!(dag.edges.iter().any(|edge| {
-            edge.from_node.0 == "std.patterns::credential_chain"
-                && edge.to_node.0 == "shared.gist_modes::gist_upload"
-                && edge.to_port.0 == "__deps"
-        }));
-        assert!(dag.edges.iter().any(|edge| {
-            edge.from_node.0 == "shared.gist_modes::share_content"
-                && edge.to_node.0 == "tools.gist::gist_snapshot"
-                && edge.to_port.0 == "__deps"
-        }));
-    }
-
-    #[test]
-    fn aws_credential_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("cloud.aws.credential");
-        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.aws.credential");
-        let reference = build_aws_secrets_manager_credential_graph()
-            .expect("aws credential graph should build");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
-    fn azure_credential_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("cloud.azure.credential");
-        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.azure.credential");
-        let reference =
-            build_azure_key_vault_credential_graph().expect("azure credential graph should build");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
     }
 
     #[test]

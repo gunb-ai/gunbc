@@ -60,6 +60,8 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     binary = "makegen",
     entrypoints = r#"[{"port_name":"path","type_id":"String","short":"o","default":"Makefile","help":"Output Makefile path","make_var":"OUTPUT"}]"#,
     dsl_module = "makegen",
+    outputs = "Makefile",
+    provides = "Makefile",
     has_invocation,
     returns_result
 )]

@@ -73,7 +73,7 @@ pub fn build_gcp_secret_manager_model() -> SystemModel {
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
     .with_dependencies(vec![Dependency::secret(
-        "secret:GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_APPLICATION_CREDENTIALS",
     )])
 }
 
@@ -179,7 +179,7 @@ pub fn build_gcp_iam_model() -> SystemModel {
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
     .with_dependencies(vec![Dependency::secret(
-        "secret:GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_APPLICATION_CREDENTIALS",
     )])
 }
 
@@ -255,7 +255,7 @@ pub fn build_gcp_gcs_model() -> SystemModel {
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
     .with_dependencies(vec![Dependency::secret(
-        "secret:GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_APPLICATION_CREDENTIALS",
     )])
 }
 
@@ -279,7 +279,7 @@ mod tests {
         assert!(model.dependencies.iter().any(|dep| {
             dep.kind
                 == DependencyKind::Secret(SecretDependencyId::new(
-                    "secret:GOOGLE_APPLICATION_CREDENTIALS",
+                    "GOOGLE_APPLICATION_CREDENTIALS",
                 ))
         }));
     }

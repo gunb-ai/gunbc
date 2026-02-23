@@ -43,6 +43,8 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     binary = "bootstrap",
     dsl_module = "bootstrap",
     outputs = "Makefile,.gitignore",
+    provides = "Makefile,.gitignore",
+    consumes = "deps.toml",
     has_invocation,
     returns_result
 )]

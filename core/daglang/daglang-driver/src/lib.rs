@@ -32,6 +32,9 @@ pub struct CompileOutput {
     pub lowered_dag: Dag<LoweredOp>,
     pub derived: DerivedArtifacts,
     pub emitted: EmissionBundle,
+    /// All output file paths this tool produces, auto-extracted from
+    /// `content_upsert` literal paths and `@outputs` annotations.
+    pub output_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,6 +187,10 @@ pub fn compile_from_module_graph_with_options(
         lower_typed_project_with_profile(&typed, options.profile.as_deref())
     }
     .map_err(|error| format!("lower error: {error}"))?;
+    let dag_paths = daglang_lower::extract_output_paths(&lowered);
+    let annotation_paths = daglang_lower::extract_outputs_annotation(&typed);
+    let output_paths = merge_dedup_paths(dag_paths, annotation_paths);
+
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
     let emitted = emit_with_options(&lowered, &derived, options)
         .map_err(|error| format!("emit error: {error}"))?;
@@ -192,6 +199,7 @@ pub fn compile_from_module_graph_with_options(
         lowered_dag: lowered,
         derived,
         emitted,
+        output_paths,
     })
 }
 
@@ -695,6 +703,13 @@ fn module_has_callable_items(module: &ResolvedModule) -> bool {
             Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
         )
     })
+}
+
+/// Merge two sorted path lists into one sorted, deduplicated list.
+fn merge_dedup_paths(a: Vec<String>, b: Vec<String>) -> Vec<String> {
+    let mut set: std::collections::BTreeSet<String> = a.into_iter().collect();
+    set.extend(b);
+    set.into_iter().collect()
 }
 
 fn format_resolve_error(error: ResolveError) -> CompileError {

@@ -12,11 +12,11 @@ use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gunbc_dag::{
-    all_tool_workflow_names, bootstrap_workflow_spec, ci_workflow_spec, dag_snapshot_workflow_spec,
-    dag_viz_workflow_spec, default_process_unit_registry, deps_workflow_spec,
-    makegen_workflow_spec, plan_global_workflows, pragma_workflow_spec, project_execute_set,
-    prove_non_redundancy, test_all_workflow_spec, tool_workflow_spec,
-    validate_projection_equivalence, PlannerInputsByWorkflow,
+    all_tool_workflow_names, bootstrap_workflow_spec, ci_workflow_spec,
+    default_process_unit_registry, deps_workflow_spec, makegen_workflow_spec,
+    plan_global_workflows, pragma_workflow_spec, project_execute_set, prove_non_redundancy,
+    test_all_workflow_spec, tool_workflow_spec, validate_projection_equivalence,
+    PlannerInputsByWorkflow,
 };
 use gunbc_ir::NodeId;
 
@@ -68,8 +68,6 @@ fn compilation_ensure_is_deduped_across_all_tool_workflows() {
         makegen_workflow_spec().expect("makegen"),
         pragma_workflow_spec().expect("pragma"),
         deps_workflow_spec().expect("deps"),
-        dag_viz_workflow_spec().expect("dag-viz"),
-        dag_snapshot_workflow_spec().expect("dag-snapshot"),
     ];
     let registry = default_process_unit_registry();
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
@@ -82,7 +80,7 @@ fn compilation_ensure_is_deduped_across_all_tool_workflows() {
         .find(|vertex| vertex.work_id.unit_id == NodeId::from("compilation_ensure"))
         .expect("expected canonical compilation_ensure vertex in global plan");
 
-    // All 6 tool workflows should reference this single vertex
+    // All 4 tool workflows should reference this single vertex
     let workflows: BTreeSet<_> = compilation
         .node_refs
         .iter()
@@ -90,8 +88,8 @@ fn compilation_ensure_is_deduped_across_all_tool_workflows() {
         .collect();
     assert_eq!(
         workflows.len(),
-        6,
-        "compilation_ensure should be shared across all 6 tool workflows, found: {workflows:?}"
+        4,
+        "compilation_ensure should be shared across all 4 tool workflows, found: {workflows:?}"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -105,8 +103,6 @@ fn codegen_ensure_is_deduped_across_all_tool_workflows() {
         makegen_workflow_spec().expect("makegen"),
         pragma_workflow_spec().expect("pragma"),
         deps_workflow_spec().expect("deps"),
-        dag_viz_workflow_spec().expect("dag-viz"),
-        dag_snapshot_workflow_spec().expect("dag-snapshot"),
     ];
     let registry = default_process_unit_registry();
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
@@ -125,58 +121,8 @@ fn codegen_ensure_is_deduped_across_all_tool_workflows() {
         .collect();
     assert_eq!(
         workflows.len(),
-        6,
-        "codegen_ensure should be shared across all 6 tool workflows, found: {workflows:?}"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn branch_resolution_is_shared_between_dag_viz_and_dag_snapshot() {
-    let root = temp_root();
-    let specs = vec![
-        dag_viz_workflow_spec().expect("dag-viz"),
-        dag_snapshot_workflow_spec().expect("dag-snapshot"),
-    ];
-    let registry = default_process_unit_registry();
-    let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
-        .expect("global plan");
-
-    let branch = global
-        .vertices
-        .iter()
-        .find(|vertex| vertex.work_id.unit_id == NodeId::from("branch_resolution"))
-        .expect("expected canonical branch_resolution vertex");
-    assert_eq!(
-        branch.node_refs.len(),
-        2,
-        "branch_resolution should be shared between dag-viz and dag-snapshot"
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn credential_resolve_is_shared_between_dag_viz_and_dag_snapshot() {
-    let root = temp_root();
-    let specs = vec![
-        dag_viz_workflow_spec().expect("dag-viz"),
-        dag_snapshot_workflow_spec().expect("dag-snapshot"),
-    ];
-    let registry = default_process_unit_registry();
-    let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
-        .expect("global plan");
-
-    let cred = global
-        .vertices
-        .iter()
-        .find(|vertex| vertex.work_id.unit_id == NodeId::from("credential_resolve"))
-        .expect("expected canonical credential_resolve vertex");
-    assert_eq!(
-        cred.node_refs.len(),
-        2,
-        "credential_resolve should be shared between dag-viz and dag-snapshot"
+        4,
+        "codegen_ensure should be shared across all 4 tool workflows, found: {workflows:?}"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -196,8 +142,6 @@ fn global_plan_with_all_workflows_satisfies_non_redundancy_proof() {
         makegen_workflow_spec().expect("makegen"),
         pragma_workflow_spec().expect("pragma"),
         deps_workflow_spec().expect("deps"),
-        dag_viz_workflow_spec().expect("dag-viz"),
-        dag_snapshot_workflow_spec().expect("dag-snapshot"),
     ];
     let registry = default_process_unit_registry();
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
@@ -218,8 +162,6 @@ fn global_plan_with_all_workflows_satisfies_projection_equivalence() {
         makegen_workflow_spec().expect("makegen"),
         pragma_workflow_spec().expect("pragma"),
         deps_workflow_spec().expect("deps"),
-        dag_viz_workflow_spec().expect("dag-viz"),
-        dag_snapshot_workflow_spec().expect("dag-snapshot"),
     ];
     let registry = default_process_unit_registry();
     let global = plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
@@ -269,12 +211,4 @@ fn deps_workflow_has_parallel_install_and_generate_chains() {
     assert!(node_ids.contains(&"deps.execute_installs".to_string()));
     // Generate chain
     assert!(node_ids.contains(&"deps.write_deps_toml".to_string()));
-}
-
-#[test]
-fn dag_viz_workflow_contains_gist_upload() {
-    let spec = dag_viz_workflow_spec().expect("dag-viz spec");
-    let node_ids: Vec<String> = spec.dag.nodes.iter().map(|n| n.id.0.clone()).collect();
-    assert!(node_ids.contains(&"dag_viz.gist_upload".to_string()));
-    assert!(node_ids.contains(&"dag_viz.credential_resolve".to_string()));
 }

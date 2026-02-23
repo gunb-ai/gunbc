@@ -5,12 +5,8 @@ use gunbc_exec::DynOp;
 use gunbc_ir::build::{list, optional, port};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
 use gunbc_ir::{BuilderError, Dag, DagBuilder, Node};
-use gunbc_lib_aws_ops::{
-    build_aws_secrets_manager_credential_graph, build_aws_secrets_manager_upsert_graph,
-};
-use gunbc_lib_azure_ops::{
-    build_azure_key_vault_credential_graph, build_azure_key_vault_upsert_graph,
-};
+use gunbc_lib_aws_ops::AwsOps;
+use gunbc_lib_azure_ops::AzureOps;
 use gunbc_lib_gcp_ops::{
     build_gcp_secret_manager_credential_graph_github,
     build_gcp_secret_manager_credential_graph_local,
@@ -81,7 +77,23 @@ pub fn build_cloud_secret_manager_credential_graph_gcp_local(
 )]
 pub fn build_cloud_secret_manager_credential_graph_aws_stub(
 ) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
-    Ok(lift_aws(build_aws_secrets_manager_credential_graph()?))
+    let mut builder: DagBuilder<CloudSecretManagerGraphOp> = DagBuilder::new();
+    builder.add_root_node(Node::opaque(
+        "aws_secrets_manager_stub",
+        vec![
+            port("config", "CloudSecretConfig"),
+            port("scheme", "NonEmptyString"),
+            optional("header_name", "OptionalString"),
+            port("source_id", "NonEmptyString"),
+            list("required_scopes", "String"),
+            optional("lifetime_seconds", "OptionalInt"),
+            optional("request_url", "OptionalString"),
+            optional("request_token", "OptionalString"),
+        ],
+        vec![port("credential", "Credential")],
+        DynOp::new(AwsOps::Unsupported),
+    ))?;
+    Ok(builder.build())
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
@@ -91,7 +103,23 @@ pub fn build_cloud_secret_manager_credential_graph_aws_stub(
 )]
 pub fn build_cloud_secret_manager_credential_graph_azure_stub(
 ) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
-    Ok(lift_azure(build_azure_key_vault_credential_graph()?))
+    let mut builder: DagBuilder<CloudSecretManagerGraphOp> = DagBuilder::new();
+    builder.add_root_node(Node::opaque(
+        "azure_key_vault_stub",
+        vec![
+            port("config", "CloudSecretConfig"),
+            port("scheme", "NonEmptyString"),
+            optional("header_name", "OptionalString"),
+            port("source_id", "NonEmptyString"),
+            list("required_scopes", "String"),
+            optional("lifetime_seconds", "OptionalInt"),
+            optional("request_url", "OptionalString"),
+            optional("request_token", "OptionalString"),
+        ],
+        vec![port("credential", "Credential")],
+        DynOp::new(AzureOps::Unsupported),
+    ))?;
+    Ok(builder.build())
 }
 
 /// Build a cloud secret upsert graph based on a concrete config.
@@ -148,7 +176,17 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_local(
 )]
 pub fn build_cloud_secret_manager_upsert_graph_aws_stub(
 ) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
-    Ok(lift_aws(build_aws_secrets_manager_upsert_graph()?))
+    let mut builder: DagBuilder<CloudSecretManagerGraphOp> = DagBuilder::new();
+    builder.add_root_node(Node::opaque(
+        "aws_secrets_manager_upsert_stub",
+        vec![
+            port("config", "CloudSecretConfig"),
+            port("secret_value", "Secret"),
+        ],
+        vec![port("version", "NonEmptyString")],
+        DynOp::new(AwsOps::Unsupported),
+    ))?;
+    Ok(builder.build())
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
@@ -158,7 +196,17 @@ pub fn build_cloud_secret_manager_upsert_graph_aws_stub(
 )]
 pub fn build_cloud_secret_manager_upsert_graph_azure_stub(
 ) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
-    Ok(lift_azure(build_azure_key_vault_upsert_graph()?))
+    let mut builder: DagBuilder<CloudSecretManagerGraphOp> = DagBuilder::new();
+    builder.add_root_node(Node::opaque(
+        "azure_key_vault_upsert_stub",
+        vec![
+            port("config", "CloudSecretConfig"),
+            port("secret_value", "Secret"),
+        ],
+        vec![port("version", "NonEmptyString")],
+        DynOp::new(AzureOps::Unsupported),
+    ))?;
+    Ok(builder.build())
 }
 
 // ---------------------------------------------------------------------------
@@ -466,13 +514,6 @@ fn lift_gcp(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
     dag
 }
 
-fn lift_aws(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
-    dag
-}
-
-fn lift_azure(dag: Dag<DynOp>) -> Dag<CloudSecretManagerGraphOp> {
-    dag
-}
 
 #[cfg(test)]
 mod tests {

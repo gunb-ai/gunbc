@@ -236,4 +236,75 @@ mod tests {
             migration_tags.join("\n")
         );
     }
+
+    /// M7 audit: expose_plaintext_for_transport() callsites are in approved modules only.
+    ///
+    /// This test greps the source tree and asserts that non-test, non-doc callsites
+    /// appear only in modules that are explicitly approved transport boundaries.
+    #[test]
+    fn expose_plaintext_callsites_are_in_approved_modules() {
+        let approved = &[
+            "core/ir/src/transport/credential.rs",
+            "core/ir/src/resource/mod.rs",
+            "core/ir/src/resource/handle.rs",
+            "core/ir/src/value.rs",
+            "core/exec/src/execute.rs",
+            "core/exec/src/display.rs",
+            "gunbc-dag/src/resolve_service.rs",
+            "lib/gcp-ops/src/ops.rs",
+            "lib/tools/clippy/src/config.rs",
+        ];
+
+        let workspace_root = repo_root();
+        let mut files = Vec::new();
+        for dir in ["core", "lib", "gunbc-dag"] {
+            collect_rs_files(&workspace_root.join(dir), &mut files);
+        }
+
+        let mut unapproved = Vec::new();
+        for file in files {
+            let rel = file
+                .strip_prefix(&workspace_root)
+                .unwrap_or(&file)
+                .to_string_lossy()
+                .replace('\\', "/");
+
+            let Ok(content) = fs::read_to_string(&file) else {
+                continue;
+            };
+
+            let mut in_test_mod = false;
+            for line in content.lines() {
+                let trimmed = line.trim();
+
+                if trimmed == "#[cfg(test)]" {
+                    in_test_mod = true;
+                    continue;
+                }
+
+                if trimmed.starts_with("//") {
+                    continue;
+                }
+
+                if in_test_mod {
+                    continue;
+                }
+
+                if !trimmed.contains(".expose_plaintext_for_transport()") {
+                    continue;
+                }
+
+                if !approved.iter().any(|a| rel == *a) {
+                    unapproved.push(rel.clone());
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            unapproved.is_empty(),
+            "expose_plaintext_for_transport() called in unapproved modules: {unapproved:?}\n\
+             If these are legitimate transport boundaries, add them to the approved list."
+        );
+    }
 }

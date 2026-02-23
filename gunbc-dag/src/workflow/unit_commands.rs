@@ -358,53 +358,6 @@ fn deps_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     commands
 }
 
-fn dag_viz_unit_commands(binary: &'static str) -> BTreeMap<NodeId, UnitCommand> {
-    let mut commands = BTreeMap::new();
-    commands.insert(
-        NodeId::from("dag_viz.compilation_ensure"),
-        compilation_ensure_command(),
-    );
-    commands.insert(
-        NodeId::from("dag_viz.codegen_ensure"),
-        codegen_ensure_command(),
-    );
-    commands.insert(
-        NodeId::from("dag_viz.gist_upload"),
-        UnitCommand::cargo(
-            "dag-viz upload",
-            vec!["run", "-p", "gunbc-dag", "--bin", binary, "--"],
-        ),
-    );
-    commands
-}
-
-fn dag_snapshot_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
-    let mut commands = BTreeMap::new();
-    commands.insert(
-        NodeId::from("dag_snapshot.compilation_ensure"),
-        compilation_ensure_command(),
-    );
-    commands.insert(
-        NodeId::from("dag_snapshot.codegen_ensure"),
-        codegen_ensure_command(),
-    );
-    commands.insert(
-        NodeId::from("dag_snapshot.gist_upload"),
-        UnitCommand::cargo(
-            "dag-snapshot upload",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-dag-snapshot",
-                "--",
-            ],
-        ),
-    );
-    commands
-}
-
 fn build_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     let mut commands = BTreeMap::new();
     commands.insert(
@@ -484,10 +437,6 @@ pub fn workflow_unit_commands(
         "makegen" => makegen_unit_commands(),
         "pragma" => pragma_unit_commands(),
         "deps" => deps_unit_commands(),
-        "dag-viz" => dag_viz_unit_commands("gunbc-dag-viz"),
-        "dag-viz-diff" => dag_viz_unit_commands("gunbc-dag-viz-diff"),
-        "dag-viz-recent" => dag_viz_unit_commands("gunbc-dag-viz-recent"),
-        "dag-snapshot" => dag_snapshot_unit_commands(),
         "build-all" => build_all_unit_commands(),
         "sdlc" => sdlc_unit_commands(),
         other => {

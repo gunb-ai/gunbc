@@ -46,6 +46,20 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// Whether strict or lenient dry-run mode is used.
+///
+/// In lenient mode (current default), missing resource/env inputs get default
+/// mocks. In strict mode, missing inputs produce poison values that fail on
+/// consumption — this surfaces modeling gaps that lenient mode masks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DryRunStrictness {
+    /// Current behavior: missing inputs get default mocks.
+    #[default]
+    Lenient,
+    /// Missing resource/env inputs produce poison values that fail on consumption.
+    Strict,
+}
+
 /// Execution mode: real, dry-run, or simulate.
 #[derive(Debug, Clone, Default)]
 pub enum ExecutionMode {
@@ -56,6 +70,18 @@ pub enum ExecutionMode {
     DryRun(BoundaryMocks),
     /// Simulate execution with timing and resource tracking
     Simulate(SimConfig),
+}
+
+impl ExecutionMode {
+    /// Create a dry-run mode with the given mocks and strictness.
+    pub fn dry_run_with_strictness(
+        mocks: BoundaryMocks,
+        _strictness: DryRunStrictness,
+    ) -> Self {
+        // Phase 1: strictness stored but behavior unchanged (always lenient).
+        // Phase 2+3 will wire strictness into mock generation and poison values.
+        ExecutionMode::DryRun(mocks)
+    }
 }
 
 /// Configuration for simulation mode.

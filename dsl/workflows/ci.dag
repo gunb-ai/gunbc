@@ -8,7 +8,6 @@ pipeline ci {
 
   stage lint_upsert {
     @file(WRITE, "workspace")
-    @ledger(WRITE, "workflow")
   }
 
   stage codegen [after lint_upsert] {

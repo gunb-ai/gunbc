@@ -134,9 +134,9 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports → `Secret`. Identity ports → `GcpServiceAccountEmail`. Project ports → `GcpProjectId`. Audience ports → `NonEmptyString`. 2 duplicate graph functions share these ports. | — | L | |
-| **TS-1b** | **Cloud-ops port types**: 49 ports across 4 files in `lib/cloud-ops/src/` (`graph.rs` 28, `github_credential_graph.rs` 6, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). | TS-1 | M | |
+| **TS-1b** | **Cloud-ops port types**: 43 ports across 3 files in `lib/cloud-ops/src/` (`graph.rs` 28, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). `github_credential_graph.rs` deleted — 6 ports removed. | TS-1 | M | |
 | **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` → `NonEmptyString`. `secret_name` → `SecretName`. | — | L | |
-| **TS-1d** | **Remaining graph port types**: `lib/aws-ops/src/graph.rs` (3), `lib/azure-ops/src/graph.rs` (3), `lib/tools/gist/src/graph.rs` (6), `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). | — | S | |
+| **TS-1d** | **Remaining graph port types**: `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). `aws-ops/graph.rs` (3), `azure-ops/graph.rs` (3), `gist/graph.rs` (6), `clippy/graph.rs` deleted — 15 ports removed; DSL handles typing now. | — | S | |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
 
@@ -161,12 +161,9 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | File | Changes |
 |------|---------|
 | `lib/gcp-ops/src/graph.rs` | 62 port type updates (TS-1) |
-| `lib/cloud-ops/src/*.rs` | 49 port type updates across 4 files (TS-1b) |
+| `lib/cloud-ops/src/*.rs` | 43 port type updates across 3 files (TS-1b) — `github_credential_graph.rs` deleted |
 | `lib/review/src/graph.rs` | 102 port type updates (TS-1c) |
 | `lib/llm-ops/src/graph.rs` | 13 port type updates (TS-1c) |
-| `lib/aws-ops/src/graph.rs` | 3 port type updates (TS-1d) |
-| `lib/azure-ops/src/graph.rs` | 3 port type updates (TS-1d) |
-| `lib/tools/gist/src/graph.rs` | 6 port type updates (TS-1d) |
 | `lib/tools/deps/src/graph.rs` | 1 port type update (TS-1d) |
 | `gunbc-dag/src/testgen_dag/graph.rs` | 1 port type update (TS-1d) |
 | `core/daglang/daglang-emit/src/test_gen.rs` | Fix mock generation (TS-2) |
@@ -425,46 +422,9 @@ Lane 1 + Lane 2 merged
 
 ---
 
-## Horizon: Forward-Looking Design (Unscheduled)
+## Backlog & Deferred
 
-Design docs exist in `docs/design/horizon/`. These are speculative features — promote to a lane when prioritized.
+All unscheduled work is in `TODO/backlog.md` — prioritized (P1/P2/P3), reviewed
+quarterly, P3 items deleted if not promoted within 2 quarters.
 
-| ID | Design Doc | Summary | Size |
-|----|-----------|---------|------|
-| **H1** | `h1-display-reactive-dsl.md` | Channel-driven event loop with `on`/`tick` triggers for display orchestration | XL |
-| **H2** | `h2-testgen-dynamic-targets.md` | Dynamic testgen target discovery (currently static registration) | M |
-| **H3** | `h3-makegen-tool-registry.md` | Makegen tool registry improvements | S |
-| **H4** | `h4-loop-extra-inputs-passthrough.md` | Loop node extra inputs passthrough | S |
-| **H7** | `h7-resource-abstraction-trait.md` | Full resource trait migration (eliminate string `res:*` ports) | L |
-| **H8** | `h8-workflow-rendering-justfile.md` | Justfile rendering from workflow specs | M |
-| **H9** | `h9-workflow-rendering-github-actions.md` | GitHub Actions YAML rendering from workflow specs | M |
-| **H10** | `h10-compute-stack-services.md` | Cloud Run/GCS/LB provision/apply orchestration | L |
-| **H11** | `h11-dag-typing-hardening.md` | DAG typing hardening (related to Lane I) | M |
-
----
-
-## Backlog (Feature Ideas — Not Scheduled)
-
-See `TODO/backlog.md` for details. Parked for future consideration:
-
-- Display Reactive DSL (XL) — requires new DSL infra
-- Compute Stack Provision/Apply (L) — service layer works, orchestration is XL
-- Typed API Migration (M) — `TypedPort<T>` exists, legacy `Port` migration is wide
-- Resource Trait String Port Elimination (L) — typed resource system exists, string coexistence
-- Glob-aware Resource Admission (M) — policy-sensitive concurrency, needs explicit design
-- Canonical Port Naming Invariants (S) — mechanical but needs snapshot coordination
-
----
-
-## Deferred
-
-| ID | Task | Context | Size | Status |
-|----|------|---------|------|--------|
-| **DG1** | **Daggen (Dynamic DAG Generation)** | `needs_daggen()` returns false. Re-enable to scale the pipeline by dynamically generating steps based on git diffs. | L | **DEFERRED** |
-| **S12-E** | **Multi-worker CAS** | Gap E: `GcsClaimStore` with generation-based CAS (`x-goog-if-generation-match`). DSL exists (`gcs_claim_store.dag`); wiring deferred until cloud_run profile needed. | M | **DEFERRED** |
-
----
-
-## Active Open Items (Deferred)
-
-1. Resource wildcard pattern semantics remain explicitly deferred (`R2` + `backlog.md`).
+Design docs for backlog items remain in `docs/design/horizon/`.

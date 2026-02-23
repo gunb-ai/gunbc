@@ -42,6 +42,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     package = "dag",
     dsl_module = "pragma",
     outputs = "clippy.toml,tools/disallowed-methods-allowlist.txt,tools/pragma-lint-policy.txt",
+    provides = "clippy.toml,tools/disallowed-methods-allowlist.txt,tools/pragma-lint-policy.txt",
     has_invocation,
     returns_result
 )]

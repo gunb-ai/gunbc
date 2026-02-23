@@ -82,26 +82,6 @@ fn assert_chain_edges<T: std::fmt::Debug>(dag: &gunbc_ir::Dag<T>, graph_name: &s
 // ---------------------------------------------------------------------------
 
 #[test]
-fn no_legacy_credential_env_in_gist_graphs() {
-    use gunbc_gist::{build_gist_graph, GistMode};
-
-    for mode in [
-        GistMode::Snapshot,
-        GistMode::Recent,
-        GistMode::Diff {
-            base_ref: "main".to_string(),
-        },
-    ] {
-        let label = format!("gist({:?})", mode);
-        let dag = build_gist_graph(mode, vec![], false).expect("gist graph should build");
-        assert!(
-            dag.get_node(&"credential_env".into()).is_none(),
-            "{label}: contains legacy credential_env node"
-        );
-    }
-}
-
-#[test]
 fn no_legacy_credential_env_in_llm_graph() {
     let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
     assert!(
@@ -122,15 +102,6 @@ fn no_legacy_credential_env_in_review_graphs() {
     assert!(
         dag.get_node(&"credential_env".into()).is_none(),
         "review-diff: contains legacy credential_env node"
-    );
-}
-
-#[test]
-fn no_legacy_credential_env_in_github_credential_graph() {
-    let dag = gunbc_lib_cloud_ops::build_github_credential_graph().unwrap();
-    assert!(
-        dag.get_node(&"credential_env".into()).is_none(),
-        "github-credential: contains legacy credential_env node"
     );
 }
 
@@ -201,36 +172,6 @@ fn review_scope_contract_is_valid() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn gist_has_canonical_credential_chain() {
-    use gunbc_gist::{build_gist_graph, GistMode};
-    use gunbc_ir::NodeBody;
-
-    for mode in [
-        GistMode::Snapshot,
-        GistMode::Recent,
-        GistMode::Diff {
-            base_ref: "main".to_string(),
-        },
-    ] {
-        let label = format!("gist({:?})", mode);
-        let dag = build_gist_graph(mode, vec![], false).expect("gist graph should build");
-
-        // Credential chain is now inside the gist_upload SubDag
-        let gist_upload = dag
-            .get_node(&"gist_upload".into())
-            .unwrap_or_else(|| panic!("{label}: missing gist_upload SubDag node"));
-
-        match &gist_upload.body {
-            NodeBody::SubDag(inner_dag) => {
-                assert_canonical_chain(inner_dag, &format!("{label}/gist_upload"));
-                assert_chain_edges(inner_dag, &format!("{label}/gist_upload"));
-            }
-            _ => panic!("{label}: gist_upload is not a SubDag"),
-        }
-    }
-}
-
-#[test]
 fn llm_has_canonical_credential_chain() {
     let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
     assert_canonical_chain(&dag, "llm");
@@ -249,11 +190,4 @@ fn review_diff_has_canonical_credential_chain() {
     let dag = gunbc_lib_review::graph::build_diff_review_graph().unwrap();
     assert_canonical_chain(&dag, "review-diff");
     assert_chain_edges(&dag, "review-diff");
-}
-
-#[test]
-fn github_credential_has_canonical_chain() {
-    let dag = gunbc_lib_cloud_ops::build_github_credential_graph().unwrap();
-    assert_canonical_chain(&dag, "github-credential");
-    assert_chain_edges(&dag, "github-credential");
 }

@@ -44,6 +44,8 @@ use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 // Force-link crates that register tool targets needed for DSL coverage validation.
+use gunbc_clippy as _;
+use gunbc_gist as _;
 use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 
@@ -1707,10 +1709,6 @@ pub fn sample_tool() {}
             "gist-diff",
             "gist-recent",
             "makegen",
-            "dag-viz",
-            "dag-viz-diff",
-            "dag-viz-recent",
-            "dag-snapshot",
             "review",
         ] {
             assert!(
@@ -1735,7 +1733,6 @@ pub fn sample_tool() {}
             "bootstrap",
             "clippy",
             "codegen",
-            "dag_viz",
             "deps",
             "docgen",
             "gist",

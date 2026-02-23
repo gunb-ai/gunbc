@@ -665,4 +665,74 @@ mod tests {
         assert_eq!(cred.access_mode(), AccessMode::Read);
         assert_eq!(cred.kind(), ResourceKind::Capability);
     }
+
+    /// M7 regression: Secret must never leak plaintext through Display, Debug,
+    /// or to_string -- only expose_plaintext_for_transport() returns the value.
+    #[test]
+    fn secret_display_debug_to_string_never_leak_plaintext() {
+        let secret = Secret::static_value("super-secret-cred-99999");
+
+        // Display must redact
+        let display = format!("{secret}");
+        assert!(
+            !display.contains("super-secret"),
+            "Display leaked plaintext: {display}"
+        );
+        assert_eq!(display, "***");
+
+        // Debug must redact
+        let debug = format!("{secret:?}");
+        assert!(
+            !debug.contains("super-secret"),
+            "Debug leaked plaintext: {debug}"
+        );
+        assert_eq!(debug, "Secret(***)");
+
+        // to_string() must redact (delegates to Display)
+        let to_str = secret.to_string();
+        assert!(
+            !to_str.contains("super-secret"),
+            "to_string() leaked plaintext: {to_str}"
+        );
+        assert_eq!(to_str, "***");
+
+        // Only the explicit transport path exposes plaintext
+        assert_eq!(
+            secret.expose_plaintext_for_transport(),
+            "super-secret-cred-99999"
+        );
+    }
+
+    /// M7 regression: Credential Debug must not leak the inner secret value.
+    #[test]
+    fn credential_debug_never_leaks_secret() {
+        let cred = Credential::new(
+            Secret::static_value("ghp_leaked_token_abc123"),
+            AuthScheme::Bearer,
+        );
+
+        let debug = format!("{cred:?}");
+        assert!(
+            !debug.contains("ghp_leaked_token"),
+            "Credential Debug leaked secret: {debug}"
+        );
+        // Should contain the redacted form
+        assert!(
+            debug.contains("Secret(***)"),
+            "Credential Debug should show redacted secret: {debug}"
+        );
+    }
+
+    /// M7 intentional: serde_json::to_string on Secret serializes plaintext.
+    /// This is by design for persistence and wire transport.
+    #[test]
+    fn secret_serde_serializes_plaintext_intentionally() {
+        let secret = Secret::static_value("persistence-token-xyz");
+        let json = serde_json::to_string(&secret).expect("serialization should succeed");
+        assert!(
+            json.contains("persistence-token-xyz"),
+            "serde should serialize plaintext for storage: {json}"
+        );
+    }
+
 }

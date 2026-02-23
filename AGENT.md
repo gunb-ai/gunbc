@@ -71,6 +71,7 @@ Every external system is modeled as a **composition of layered concerns** (TCP �
 - Tool ports are excluded from user-facing workflow signatures.
 - Errors are explicit; there are no silent fallbacks or warning-only failures.
 - External systems are layered compositions — each DSL annotation (`@rest`, `@auth`, `@endpoint`, etc.) adds invariants that the compiler enforces in generated code, mocks, and tests.
+- Generated files are never committed — the compiler extracts all output paths from `content_upsert` and `@outputs` annotations, propagates them to the tool registry and `.gitignore`, and CI enforces that no generated file is tracked in git.
 
 ## Common Tasks
 

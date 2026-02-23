@@ -26,6 +26,10 @@ pub enum SystemKind {
     StorageProvider,
     Transport,
     IdentityProvider,
+    /// Convention-level system (e.g., TCP socket layer).
+    Convention,
+    /// Protocol-level system (e.g., HTTP on top of TCP).
+    Protocol,
 }
 
 /// Invocation style for a behavior.
@@ -44,6 +48,8 @@ pub enum Property {
     Retryable,
     SecretScoped,
     PermissionScoped,
+    /// Declares that the behavior requires JSON content-type encoding.
+    JsonContentType,
 }
 
 /// Input type mapping for behavior contracts.
@@ -208,7 +214,17 @@ pub struct SecretDependencyId(pub String);
 
 impl SecretDependencyId {
     pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
+        let v = value.into();
+        debug_assert!(
+            !v.starts_with("secret:"),
+            "SecretDependencyId should contain the bare name, not the 'secret:' prefix: {v}"
+        );
+        Self(v)
+    }
+
+    /// Create a secret dependency ID for an environment variable.
+    pub fn env_var(name: impl Into<String>) -> Self {
+        Self::new(name)
     }
 }
 
@@ -575,8 +591,6 @@ fn behavior_properties_from_type_dag(
         if let crate::node::NodeBody::Opaque(op) = &node.body {
             let marker = match op {
                 TypeOp::Meta(crate::MetadataPayload::Property(raw)) => Some(raw.as_str()),
-                // Legacy compatibility path during migration.
-                TypeOp::Validate(Predicate::Custom(marker)) => marker.strip_prefix("property:"),
                 _ => None,
             };
             if let Some(raw) = marker {
@@ -603,6 +617,7 @@ fn parse_property_marker(raw: &str) -> Option<Property> {
         "Retryable" => Some(Property::Retryable),
         "SecretScoped" => Some(Property::SecretScoped),
         "PermissionScoped" => Some(Property::PermissionScoped),
+        "JsonContentType" => Some(Property::JsonContentType),
         _ => None,
     }
 }
@@ -783,6 +798,14 @@ fn append_meta_step(
                 "output_{}_{}",
                 sanitize_ident(name),
                 sanitize_ident(type_id)
+            )
+        }
+        crate::MetadataPayload::PlatformRepr(repr) => {
+            format!(
+                "platform_repr_{}_{}_{}",
+                repr.bits,
+                if repr.signed { "s" } else { "u" },
+                if repr.float { "f" } else { "i" }
             )
         }
     };
@@ -1035,16 +1058,6 @@ fn behavior_contract_shape(
                 TypeOp::Meta(crate::MetadataPayload::OutputContract { name, type_id }) => {
                     outputs.push((name.clone(), type_id.clone()));
                 }
-                // Legacy compatibility markers during migration.
-                TypeOp::Validate(Predicate::Custom(marker)) => {
-                    if let Some(raw) = marker.strip_prefix("property:") {
-                        properties.push(raw.to_string());
-                    } else if let Some(parsed) = parse_input_marker_legacy(marker) {
-                        inputs.push(parsed);
-                    } else if let Some(parsed) = parse_output_marker_legacy(marker) {
-                        outputs.push(parsed);
-                    }
-                }
                 TypeOp::Wrap(WrapperKind::Optional) => {
                     optional_wrap_count += 1;
                 }
@@ -1068,24 +1081,6 @@ fn behavior_contract_shape(
     })
 }
 
-fn parse_input_marker_legacy(marker: &str) -> Option<(String, String, bool)> {
-    let marker = marker.strip_prefix("input:")?;
-    let (left, required_raw) = marker.rsplit_once(":required=")?;
-    let required = match required_raw {
-        "true" => true,
-        "false" => false,
-        _ => return None,
-    };
-    let (name, type_id) = left.split_once(':')?;
-    Some((name.to_string(), type_id.to_string(), required))
-}
-
-fn parse_output_marker_legacy(marker: &str) -> Option<(String, String)> {
-    let marker = marker.strip_prefix("output:")?;
-    let (name, type_id) = marker.split_once(':')?;
-    Some((name.to_string(), type_id.to_string()))
-}
-
 /// Built-in system models discovered via inventory registration.
 ///
 /// Each owning crate (gcp-ops, aws-ops, transport) registers its models via
@@ -1098,7 +1093,7 @@ pub fn default_system_models() -> Vec<SystemModel> {
 // Model data distributed to owning crates:
 // - lib/gcp-ops/src/system_models.rs (gcp.secret_manager, gcp.iam, gcp.gcs)
 // - lib/aws-ops/src/system_models.rs (aws.secrets_manager, aws.iam, aws.s3)
-// - lib/transport/src/system_models.rs (transport.file, transport.shell, transport.http_rest)
+// - lib/transport/src/system_models.rs (transport.file, transport.shell, transport.tcp, transport.http, transport.rest)
 
 #[cfg(test)]
 mod tests {
@@ -1152,6 +1147,49 @@ mod tests {
         }
         validate_dependency_graph_acyclic(&models)
             .expect("default system model dependencies must be acyclic");
+    }
+
+    #[test]
+    fn dependency_roundtrip_preserves_typed_kind() {
+        let model = SystemModel::new(
+            "test.dep_roundtrip",
+            "Test Dep Roundtrip",
+            SystemKind::Sdk,
+            "v1",
+            "roundtrip test",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "op",
+            "Op",
+            Invocation::Sdk {
+                function: "op".to_string(),
+                docs: "test".to_string(),
+            },
+        )
+        .with_outputs(vec![BehaviorOutput::new(
+            "ok",
+            OutputType::TypeId(TypeId::from("Bool")),
+        )])])
+        .with_dependencies(vec![
+            Dependency::system("other.system"),
+            Dependency::secret(SecretDependencyId::env_var("MY_SECRET_KEY")),
+        ]);
+
+        let json = serde_json::to_string(&model).expect("serialize");
+        let parsed: SystemModel = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(parsed.dependencies.len(), 2);
+        assert!(matches!(
+            &parsed.dependencies[0].kind,
+            DependencyKind::System(id) if id.0 == "other.system"
+        ));
+        assert!(matches!(
+            &parsed.dependencies[1].kind,
+            DependencyKind::Secret(id) if id.0 == "MY_SECRET_KEY"
+        ));
+
+        // No string-prefix parsing exists in validation
+        validate_dependency_graph_acyclic(&[parsed]).expect("acyclic");
     }
 
     #[test]
@@ -1487,6 +1525,92 @@ mod tests {
         )])]);
 
         validate_system_model(&model).expect("placeholder-bound REST model should validate");
+    }
+
+    #[test]
+    fn behavior_contract_dag_erasure_invariance() {
+        let model = SystemModel::new(
+            "provider.erasure",
+            "Provider Erasure",
+            SystemKind::Sdk,
+            "v1",
+            "test provider",
+        )
+        .with_behaviors(vec![Behavior::new(
+            "query",
+            "Query operation",
+            Invocation::Sdk {
+                function: "query".to_string(),
+                docs: "query docs".to_string(),
+            },
+        )
+        .with_inputs(vec![BehaviorInput::required(
+            "id",
+            InputType::TypeId(TypeId::from("String")),
+        )])
+        .with_outputs(vec![BehaviorOutput::new(
+            "result",
+            OutputType::TypeId(TypeId::from("Json")),
+        )])
+        .with_properties(&[Property::ReadOnly, Property::Deterministic])]);
+
+        let mut registry = TypeRegistry::with_core_types();
+        let dag = build_behavior_contract_dag(&model, &model.behaviors[0], &registry)
+            .expect("should build contract DAG");
+
+        // Strip all Meta nodes — remaining structure should still be valid
+        // (Identity bookends + Optional wraps only).
+        let non_meta_nodes: Vec<_> = dag
+            .nodes
+            .iter()
+            .filter(|n| {
+                !matches!(
+                    &n.body,
+                    crate::node::NodeBody::Opaque(TypeOp::Meta(_))
+                )
+            })
+            .collect();
+
+        // Must have at least the two Identity bookends.
+        assert!(
+            non_meta_nodes.len() >= 2,
+            "expected at least 2 non-Meta nodes (bookends), got {}",
+            non_meta_nodes.len()
+        );
+
+        // Bookend nodes must be Identity.
+        let first = &non_meta_nodes[0];
+        let last = &non_meta_nodes[non_meta_nodes.len() - 1];
+        assert!(
+            matches!(
+                &first.body,
+                crate::node::NodeBody::Opaque(TypeOp::Identity)
+            ),
+            "first non-Meta node should be Identity"
+        );
+        assert!(
+            matches!(
+                &last.body,
+                crate::node::NodeBody::Opaque(TypeOp::Identity)
+            ),
+            "last non-Meta node should be Identity"
+        );
+
+        // No legacy Validate(Custom) nodes should exist.
+        let has_validate_custom = dag.nodes.iter().any(|n| {
+            matches!(
+                &n.body,
+                crate::node::NodeBody::Opaque(TypeOp::Validate(Predicate::Custom(_)))
+            )
+        });
+        assert!(
+            !has_validate_custom,
+            "contract DAG must not contain legacy Validate(Custom) nodes"
+        );
+
+        // Registration with the DAG should succeed.
+        register_system_behavior_type_dags(&mut registry, &[model])
+            .expect("registration with clean contract DAG should succeed");
     }
 
     // Model-specific behavior tests (GCP, AWS, transport) moved to owning crates:

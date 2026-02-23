@@ -783,4 +783,65 @@ mod tests {
         assert_eq!(format!("{secret:?}"), "SecretString(***)");
         assert_eq!(secret.to_string(), "***");
     }
+
+    /// M7 regression: Value::Secret must never leak plaintext through any
+    /// format path (Display, Debug, to_string).
+    #[test]
+    fn secret_value_display_and_debug_never_leak_plaintext() {
+        let secret = SecretString::new("super-secret-token-12345");
+        let value = Value::Secret(secret);
+
+        // Display must redact
+        let display = format!("{value}");
+        assert!(
+            !display.contains("super-secret"),
+            "Display leaked plaintext: {display}"
+        );
+        assert_eq!(display, "***");
+
+        // Debug must redact (derived Debug delegates to SecretString::Debug)
+        let debug = format!("{value:?}");
+        assert!(
+            !debug.contains("super-secret"),
+            "Debug leaked plaintext: {debug}"
+        );
+
+        // to_string() must redact (delegates to Display)
+        let to_str = value.to_string();
+        assert!(
+            !to_str.contains("super-secret"),
+            "to_string() leaked plaintext: {to_str}"
+        );
+
+        // display_redacted() must redact
+        let redacted = value.display_redacted();
+        assert!(
+            !redacted.contains("super-secret"),
+            "display_redacted() leaked plaintext: {redacted}"
+        );
+        assert_eq!(redacted, "***");
+
+        // display_redacted_truncated() must redact
+        let truncated = value.display_redacted_truncated(10, 500);
+        assert!(
+            !truncated.contains("super-secret"),
+            "display_redacted_truncated() leaked plaintext: {truncated}"
+        );
+        assert_eq!(truncated, "***");
+    }
+
+    /// M7 intentional: serde_json::to_string serializes plaintext for storage/wire.
+    /// This is by design -- secrets must be materializable at transport boundaries.
+    /// This test documents the deliberate choice rather than testing for redaction.
+    #[test]
+    fn secret_value_serde_serializes_plaintext_intentionally() {
+        let secret = SecretString::new("storage-token-xyz");
+        let value = Value::Secret(secret);
+        let json = serde_json::to_string(&value).expect("serialization should succeed");
+        // Serde DOES contain the plaintext -- this is intentional for persistence/transport.
+        assert!(
+            json.contains("storage-token-xyz"),
+            "serde should serialize plaintext for storage: {json}"
+        );
+    }
 }

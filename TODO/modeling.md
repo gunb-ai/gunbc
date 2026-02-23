@@ -13,10 +13,10 @@ Every task in this queue serves one of two goals from the **Foundation Close-Out
 meta-lane (see `docs/handbook.md` § "Compositional Modeling Philosophy"):
 
 - **Lane A ("One Representation")**: Delete every shadow, fallback, or parallel
-  description. Each concept has exactly one canonical source. Tasks: M9, M14, M16, M18.
+  description. Each concept has exactly one canonical source. Tasks: M9, M14, M16, M18, M20, M22.
 - **Lane B ("Proven Correct")**: Make invariants machine-enforced. Undeclared I/O is
   rejected, missing data poisons execution, coercions are shape-checked, equivalent work
-  is deduplicated. Tasks: M7, M8, M10, M11, M12, M13, M17, M19.
+  is deduplicated. Tasks: M7, M8, M10, M11, M12, M13, M17, M19, M20, M22.
 
 The guiding principle: external systems are **compositions of layered concerns**
 (TCP → TLS → HTTP → REST → provider → operation). Each layer imposes invariants.
@@ -68,6 +68,9 @@ Promotion rule:
 | **M17** | **Global flattening + context-free work identity**: guarantee dedup across intra/inter workflow boundaries. | Flattening pass from orchestration refs to one global typed execution DAG + `WorkIdentity` model independent of orchestration node names. | Equivalent work from different workflow entrypoints unifies into one execution vertex; dependents fan out from one commit/result. | Planner resolves/merges equivalent work identities before scheduling; key payload does not depend on workflow node names; tests prove `ci` and `test-all` share hits for same work/data. | WF1-D, WF3-D, WF4-D | L |
 | **M18** | **Single semantic authority / projection-only surfaces**: eliminate parallel truths across DAG, Make, CLI, and reports. | Canonical semantic model with generated projections (wrappers/views), plus drift validators. | Projections cannot author new dependencies/effects/claims; only canonical graph/contracts can. | Make/CLI/report definitions are generated or validated against canonical model; drift fails CI; no duplicate authored dependency graphs remain. | M17 | M |
 | **M19** | **Formal non-redundancy proof harness**: encode planner invariants as executable property tests. | Invariant suite over resolved global DAG + ledger/key behavior. | Preflight/CI must prove at-most-once execution, minimal dirty closure, and single-writer ordering constraints. | Property/integration tests fail on duplicate execution opportunities, non-minimal execute sets, or concurrent unordered writers; planner emits proof diagnostics. | M17, M18 | M |
+| **M20** | **Repository self-understanding model**: model the repo's own structure (workspace graph, generator edges, commit policies, toolchain requirements) as canonical data from which .gitignore, Makefile, CI, and bootstrap derive. Inspired by `the-gunbai` `understanding/repo.rs` + `workspace.rs` + `generator.rs` + `codegen_layering.rs`. | Workspace model (`CrateTier` + `CrateSpec`), generator edge graph (producer→consumer from `#[tool_target]` outputs), commit policy model (replaces handwritten `.gitignore`), toolchain requirements. | Workspace model is single source of truth; layering violations (Foundation depending on Application) fail tests; generator graph is acyclic; `.gitignore` is derived from commit policies; adding a new crate requires one `CrateSpec` entry. | Workspace model matches Cargo.toml (test); tier layering invariants enforced (test); generator cycle detection (test); `.gitignore` derived from policies not handwritten; toolchain requirements canonical. | — | L |
+| **M21** | **Structural primitives for consistent cross-backend codegen**: decompose opaque identity primitives (Bool, Int, etc.) into structural type DAGs; add `PlatformRepr` metadata; replace per-backend hardcoded `map_to_*_type()` with shared `TypeShape` derivation + per-backend rendering. | `TypeShape` enum (Platform/Coproduct/Product/Brand/Container/Opaque), `PlatformRepr` metadata payload, `type_shape()` extractor, per-backend `render_*_type(TypeShape)`. | All emit backends derive types from DAG structure, not string-name matching; adding a new type to the registry automatically gets correct representations in Rust/Go/C/MIPS; `TypeShape::Opaque` is a diagnostic (strict mode: error). | Bool is structural Coproduct; Int/Float carry PlatformRepr; all 4 backends use shared derivation; exhaustiveness test fails on Opaque; adding a Product/Coproduct type requires zero per-backend code. | M8 | L |
+| **M22** | **Annotation-to-DAG modeling migration**: Eliminate 17 inert/unused annotations by modeling their intent as first-class DAG concerns. Phase 0: delete noise annotations + add unknown-annotation warnings. Phase 1: `@contract` → compile-time proof obligations. Phase 2: `@error_map` → transport error classification nodes. Phase 3: `@retry` → transport retry policy nodes. Phase 4: `@requires` → resource/capability edges. Phase 5: `@testgen_skip` → emit consumption. | Annotation census (43→~26 active + zero inert); `@contract` generates typed test obligations per implementation; `@error_map`/`@retry` compose into protocol stack transport DAG; `@requires` becomes structural resource edges. | `@contract` → proof obligation tests generated for every interface implementation; `@error_map` → error classification in transport DAG + per-status testgen; `@retry` → retry wrapper in transport DAG; `@requires` → DAG resource edges; unknown annotations warn (strict: error). | Zero inert annotations remain; `@contract` has CI-gated test coverage for all implementations; `@error_map`/`@retry` compose with protocol stack; `@requires` feeds M10 resource admission; unknown annotation warnings in default mode, errors in strict. | M8, M10, M12, M16 | L |
 
 ## Execution Checklists (Review Gate)
 
@@ -127,7 +130,11 @@ until its checklist is reviewed, and not complete until all checklist items are 
 
 ### M16 Checklist — SystemModel/TransportBehavior Unification
 
+**Design**: `docs/design/modeling/protocol-stack-layering.md`
+
+- [ ] Split `transport.http_rest` into `transport.http` and `transport.rest` system models with `depends_on`.
 - [ ] Define shared invocation contract model consumed by both SystemModel and transport behavior specs.
+- [ ] Implement behavioral property inheritance across protocol layers (REST inherits HTTP properties).
 - [ ] Migrate `Invocation::Rest`/equivalents to use shared transport behavior representations.
 - [ ] Ensure request construction/routing validation/testgen derive from the shared contract layer.
 - [ ] Add parity tests proving SystemModel-derived behavior and TransportBehavior-derived behavior are structurally equivalent.
@@ -157,6 +164,66 @@ until its checklist is reviewed, and not complete until all checklist items are 
 - [ ] Add projection-equivalence tests proving generated wrappers cannot alter execute set.
 - [ ] Emit actionable diagnostics (which invariant failed, nodes/resources involved) on proof failure.
 
+### M20 Checklist — Repository Self-Understanding Model
+
+**Design**: `docs/design/modeling/repo-self-understanding.md`
+
+- [ ] Add `workspace_model.rs` to `core/infra` with `CrateTier`, `CrateSpec`, `workspace_crates()`.
+- [ ] Add layering validation: Foundation cannot depend on Core/Application, Core cannot depend on Application.
+- [ ] Add test proving workspace model matches Cargo.toml workspace members (bidirectional).
+- [ ] Add generator edge derivation from `iter_tool_targets()` outputs — producer→consumer graph.
+- [ ] Add cycle detection for generator graph; acyclicity test.
+- [ ] Add commit policy model (`CommitPolicy`, `CommitReason`) replacing handwritten `.gitignore` logic.
+- [ ] Derive `.gitignore` from commit policies; replace `all_tool_outputs_gitignored` test with policy validation.
+- [ ] Add toolchain requirements model with canonical version pins.
+
+### M21 Checklist — Structural Primitives for Consistent Codegen
+
+**Design**: `docs/design/modeling/structural-primitives-codegen.md`
+
+- [ ] Add `TypeShape` enum to `core/ir` (Platform, Coproduct, Product, Brand, Container, Opaque).
+- [ ] Add `PlatformRepr` metadata payload to `MetadataPayload` (bits, signed, float, discrete).
+- [ ] Add `type_shape()` extractor: `Dag<TypeOp>` → `TypeShape` via root node classification.
+- [ ] Decompose `type_lib::bool()` from `identity("Bool")` to `coproduct("Bool", [("True", "Unit"), ("False", "Unit")])`.
+- [ ] Add `PlatformRepr` metadata to `type_lib::int()` and `type_lib::float()`.
+- [ ] Add per-backend `render_*_type(TypeShape)` functions (Rust, Go, C).
+- [ ] Replace hardcoded `map_to_rust_type()`, `map_to_go_type()`, `map_to_c_type()` with shared derivation.
+- [ ] Add exhaustiveness test: every registered type produces non-Opaque TypeShape (or documented exception).
+- [ ] Add cross-backend consistency test: same TypeShape yields semantically equivalent types in all backends.
+
+### M22 Checklist — Annotation-to-DAG Modeling Migration
+
+**Design**: `docs/design/modeling/annotation-to-dag-modeling.md`
+
+Phase 0 (cleanup):
+- [ ] Delete noise annotations: `@network`, `@credential`, `@external`, `@derived_from`, `@ledger`.
+- [ ] Migrate duplicates: `@test_hermetic` → `@hermetic`, `@test_integration` → `@tier(Integration)`, `@invariant` → `@contract`.
+- [ ] Migrate `@format(uuid)` → `@pattern(UUID_REGEX)`.
+- [ ] Migrate `@tool(READ/WRITE)` and `@mode(...)` to `TypeOp::Meta` payloads (requires M8).
+- [ ] Add unknown-annotation compiler warning (strict mode: error). Remove silent forward-compat acceptance.
+
+Phase 1 (`@contract`):
+- [ ] Generate typed test obligations from `@contract` annotations for every interface implementation.
+- [ ] Add CI gate that fails if any implementation lacks contract test coverage.
+- [ ] Connect to M12 proof obligation framework.
+
+Phase 2 (`@error_map`):
+- [ ] Wire `@error_map` into transport DAG as error classification node.
+- [ ] Compose with protocol stack default status classification (M16).
+- [ ] Testgen derives per-status-code test from error map.
+
+Phase 3 (`@retry`):
+- [ ] Wire `@retry` into transport DAG as retry wrapper node.
+- [ ] Compose with error classification (retryable status codes).
+- [ ] Testgen derives retry + exhaustion tests.
+
+Phase 4 (`@requires`):
+- [ ] Wire `@requires` as structural resource/capability edges in DAG.
+- [ ] Feed into M10 resource admission checks.
+
+Phase 5 (`@testgen_skip`):
+- [ ] Wire `@testgen_skip` into `daglang-emit` test generation to exclude marked items.
+
 ## Suggested Dependency Lanes
 
 ```
@@ -165,4 +232,7 @@ Lane B (workflow execution safety):  M10 -> M11 -> M12
 Lane C (process contract drift):     M13 -> M14
 Lane D (security/install typing):    M7, M15
 Lane E (global minimality proof):    M17 -> M18 -> M19
+Lane F (repo self-model):            M20 -> M14, M18
+Lane G (codegen consistency):        M8 -> M21
+Lane H (annotation modeling):        M8 + M10 + M12 + M16 -> M22
 ```

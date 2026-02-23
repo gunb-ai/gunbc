@@ -6,30 +6,8 @@
 //! - `gunbc_lib_git_ops` for git operations (ls-files, diff)
 //! - `gunbc_lib_markdown` for markdown rendering
 //! - `gunbc_lib_gist_ops` for gist creation
-//!
-//! The graph mode is selected at build time via [`GistMode`]:
-//!
-//! **Snapshot** (`make gist`):
-//! ```text
-//! ls-files → Execute → parse → read-files → Execute → parse → render → gist
-//! ```
-//!
-//! **Diff** (`make gist-diff`):
-//! ```text
-//! git-diff → Execute → parse-diff → render-diff → gist
-//! ```
-//!
-//! Extension filtering is pushed into git via pathspecs, not separate filter nodes.
-//! All I/O happens through `TransportOps::Execute` boundary nodes.
-//!
-#![deny(dead_code)]
-pub mod graph;
 
-// Re-export public API
-pub use graph::{
-    build_gist_graph, build_gist_graph_with_config, build_read_file_body_dag, gist_signature,
-    GistGraphOp, GistMode,
-};
+#![deny(dead_code)]
 
 // Re-export the library ops for convenience
 pub use gunbc_lib_gist_ops::GistOps;
@@ -44,10 +22,9 @@ pub use gunbc_lib_markdown::MarkdownOp;
     name = "gist",
     crate_name = "gunbc-gist",
     description = "Create a GitHub gist from code files",
-    builder = "build_gist_graph",
-    args = "GistMode::Snapshot, extensions.clone(), public",
-    import = "use gunbc_gist::{build_gist_graph, GistMode};",
-    package = "gist",
+    builder = "build_gist_snapshot_graph_dsl",
+    import = "use gunbc_dag::build_gist_snapshot_graph_dsl;",
+    package = "dag",
     binary = "gist",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     dsl_module = "gist",
@@ -60,10 +37,9 @@ pub fn gist_snapshot_tool() {}
     name = "gist-diff",
     crate_name = "gunbc-gist",
     description = "Create a GitHub gist from branch diff",
-    builder = "build_gist_graph",
-    args = "GistMode::Diff { base_ref: base_ref.clone() }, extensions.clone(), public",
-    import = "use gunbc_gist::{build_gist_graph, GistMode};",
-    package = "gist",
+    builder = "build_gist_diff_graph_dsl",
+    import = "use gunbc_dag::build_gist_diff_graph_dsl;",
+    package = "dag",
     binary = "gist-diff",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff","make_var":"BASE"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     dsl_module = "gist",
@@ -76,10 +52,9 @@ pub fn gist_diff_tool() {}
     name = "gist-recent",
     crate_name = "gunbc-gist",
     description = "Create a GitHub gist from recent changes (last 7 days)",
-    builder = "build_gist_graph",
-    args = "GistMode::Recent, extensions.clone(), public",
-    import = "use gunbc_gist::{build_gist_graph, GistMode};",
-    package = "gist",
+    builder = "build_gist_recent_graph_dsl",
+    import = "use gunbc_dag::build_gist_recent_graph_dsl;",
+    package = "dag",
     binary = "gist-recent",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     dsl_module = "gist",

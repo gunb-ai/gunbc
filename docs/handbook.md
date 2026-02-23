@@ -131,6 +131,17 @@ When adding a new service, tool, or external dependency:
 
 This is the target state. Where the Rust substrate currently hand-wires what the DSL can derive (e.g., credential chains repeated across graph builders), those are consolidation targets — see `TODO/tasks.md` for the active lanes.
 
+### File generation as a layer
+
+Every file the system generates flows through `content_upsert` (literal paths) or is declared via `@outputs` (dynamic paths). The compiler extracts these paths during lowering and propagates them to `CompileOutput.output_paths`, which feeds the tool registry. The bootstrap tool reads the registry and generates `.gitignore` rules. CI verifies no generated files are committed. The base repo contains only source-of-truth.
+
+```text
+Layer 2: content_upsert     — "I write this file" (path is structural data, auto-extracted)
+Layer 3: @outputs("glob")   — "I write dynamic files matching this" (annotation declaration)
+Layer 4: Tool                — composes layers 2+3, carries outputs in ToolRegistration
+Layer 5: Repository          — enforces: all outputs are gitignored + not committed
+```
+
 ## Core IR: Dag, Node, Port, Edge
 
 The Graph IR is the **compilation target** — you rarely construct it by hand. Instead, write `.dag` files and let the compiler produce `Dag<LoweredOp>`.

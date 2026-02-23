@@ -16,6 +16,7 @@ fn generate_tests(target: CodegenTarget) -> String {
   target |> generate()
 }
 
+@outputs("**/generated_tests*.rs")
 func testgen(targets: List<CodegenTarget>) -> { all_fresh: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {

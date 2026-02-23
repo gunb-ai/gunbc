@@ -397,7 +397,6 @@ func upload_artifact(key: NonEmptyStr, content: Bytes) -> { url: Url, stored: Bo
 // with real file diversity. Cheap: local-only, no network calls.
 //
 //   @test(tier: Integration, cost: S, hermetic: false)
-//   @derived_from(file_types: repo_scan)
 //   func test_snapshot_real_file_diversity() {
 //     // Real git ls-files against the actual repo
 //     files = git.Core.LsFiles()

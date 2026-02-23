@@ -27,7 +27,6 @@ pipeline sdlc {
 
   stage worker [after intake] {
     @file(WRITE, "target")
-    @network(READ, "github_issue")
   }
 
   stage report [after worker] {}

@@ -104,6 +104,34 @@ pub(crate) fn build_deps_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/deps.dag")
 }
 
+pub fn build_clippy_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/clippy.dag")
+}
+
+pub fn build_aws_credential_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("cloud/aws/credential.dag")
+}
+
+pub fn build_azure_credential_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("cloud/azure/credential.dag")
+}
+
+pub fn build_gist_snapshot_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/gist.dag")
+}
+
+pub fn build_gist_diff_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/gist.dag")
+}
+
+pub fn build_gist_recent_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/gist.dag")
+}
+
+pub fn build_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("tools/review.dag")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

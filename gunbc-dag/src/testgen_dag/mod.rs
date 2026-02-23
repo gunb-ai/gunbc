@@ -19,6 +19,8 @@ pub use ops::TestgenOp;
     description = "Generate tests from DAG mock specifications",
     builder = "build_testgen_graph_for_test",
     outputs = "**/generated_tests*.rs",
+    provides = "**/generated_tests*.rs",
+    consumes = "target/codegen/.stamp",
     returns_result
 )]
 pub fn testgen_tool() {}

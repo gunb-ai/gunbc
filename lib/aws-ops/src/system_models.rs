@@ -94,8 +94,8 @@ pub fn build_aws_secrets_manager_model() -> SystemModel {
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
     .with_dependencies(vec![
-        Dependency::secret("secret:AWS_ACCESS_KEY_ID"),
-        Dependency::secret("secret:AWS_SECRET_ACCESS_KEY"),
+        Dependency::secret("AWS_ACCESS_KEY_ID"),
+        Dependency::secret("AWS_SECRET_ACCESS_KEY"),
     ])
 }
 
@@ -155,8 +155,8 @@ pub fn build_aws_iam_model() -> SystemModel {
         .with_properties(&[Property::WritesWorld]),
     ])
     .with_dependencies(vec![
-        Dependency::secret("secret:AWS_ACCESS_KEY_ID"),
-        Dependency::secret("secret:AWS_SECRET_ACCESS_KEY"),
+        Dependency::secret("AWS_ACCESS_KEY_ID"),
+        Dependency::secret("AWS_SECRET_ACCESS_KEY"),
     ])
 }
 
@@ -231,8 +231,8 @@ pub fn build_aws_s3_model() -> SystemModel {
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
     .with_dependencies(vec![
-        Dependency::secret("secret:AWS_ACCESS_KEY_ID"),
-        Dependency::secret("secret:AWS_SECRET_ACCESS_KEY"),
+        Dependency::secret("AWS_ACCESS_KEY_ID"),
+        Dependency::secret("AWS_SECRET_ACCESS_KEY"),
     ])
 }
 

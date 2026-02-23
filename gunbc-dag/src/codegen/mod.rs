@@ -45,6 +45,7 @@ pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
     builder = "build_codegen_graph",
     dsl_module = "codegen",
     outputs = "target/codegen/.stamp",
+    provides = "target/codegen/.stamp",
     returns_result
 )]
 pub fn codegen_tool() {}

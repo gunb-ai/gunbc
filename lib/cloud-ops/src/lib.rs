@@ -8,7 +8,7 @@ pub mod config_resource;
 pub mod credential_policy;
 pub mod env_requirements;
 mod env_status;
-mod github_credential_graph;
+mod github_ops;
 mod graph;
 pub mod health_status;
 pub mod infra_bootstrap;
@@ -39,7 +39,7 @@ pub use env_requirements::{
     requirements_for, CloudEnvRequirements, MissingCloudEnvRequirements, CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use env_status::CloudEnvStatus;
-pub use github_credential_graph::{build_github_credential_graph, GitHubCredentialGraphOp};
+pub use github_ops::GitHubCredentialOps;
 pub use graph::{
     build_cloud_secret_manager_credential_graph_aws_stub,
     build_cloud_secret_manager_credential_graph_azure_stub,

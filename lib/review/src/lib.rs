@@ -1323,8 +1323,9 @@ Please fix these issues."#;
     name = "review",
     crate_name = "gunbc-lib-review",
     description = "Review code changes using LLM analysis",
-    builder = "build_diff_review_graph",
-    import = "use gunbc_lib_review::graph::build_diff_review_graph;",
+    builder = "build_review_graph_dsl",
+    import = "use gunbc_dag::build_review_graph_dsl;",
+    package = "dag",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","help":"Repository path to diff","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff (default: main)"}]"#,
     dsl_module = "review",
     returns_result

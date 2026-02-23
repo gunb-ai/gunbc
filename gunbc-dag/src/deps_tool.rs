@@ -27,6 +27,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     entrypoints = r#"[{"port_name":"manifest_path","type_id":"String","short":"m","help":"Path to deps.toml manifest","make_var":"MANIFEST"}]"#,
     dsl_module = "deps",
     outputs = "deps.toml",
+    provides = "deps.toml",
     has_invocation,
     returns_result
 )]

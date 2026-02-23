@@ -72,6 +72,29 @@ pub enum TypeOp {
     Brand(String, TypeId),
 }
 
+/// Machine representation contract for platform-primitive types.
+///
+/// Tells backends: "this type maps to a well-known machine primitive
+/// with these properties." Backends derive their native type from
+/// the hint, not from the type name string.
+///
+/// Examples:
+/// - `PlatformRepr { bits: 64, signed: true, float: false, discrete: true }` → `i64` / `int64` / `int64_t`
+/// - `PlatformRepr { bits: 64, signed: true, float: true, discrete: false }` → `f64` / `float64` / `double`
+/// - `PlatformRepr { bits: 8, signed: false, float: false, discrete: true }` → `u8` / `byte` / `uint8_t`
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlatformRepr {
+    /// Minimum bit width required to represent all values.
+    pub bits: u16,
+    /// Signedness.
+    pub signed: bool,
+    /// IEEE 754 floating-point (changes representation rules).
+    pub float: bool,
+    /// Whether the type has exactly 2^bits distinct values (integers)
+    /// or a continuous range (floats).
+    pub discrete: bool,
+}
+
 /// Typed inert metadata payload carried by [`TypeOp::Meta`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MetadataPayload {
@@ -89,6 +112,12 @@ pub enum MetadataPayload {
         name: String,
         type_id: String,
     },
+    /// Platform-level representation hint for code generation.
+    ///
+    /// Tells backends: "this type maps to a well-known machine primitive
+    /// with these properties." Backends derive their native type from
+    /// the hint, not from the type name string.
+    PlatformRepr(PlatformRepr),
 }
 
 /// Content encoding lattice for file content classification.

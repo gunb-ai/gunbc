@@ -96,22 +96,6 @@ path = "src/bin/deps_config.rs"
 
 
 [[bin]]
-name = "gunbc-dag-viz"
-path = "../target/codegen/bin/dag-viz/main.rs"
-
-[[bin]]
-name = "gunbc-dag-viz-diff"
-path = "../target/codegen/bin/dag-viz-diff/main.rs"
-
-[[bin]]
-name = "gunbc-dag-viz-recent"
-path = "../target/codegen/bin/dag-viz-recent/main.rs"
-
-[[bin]]
-name = "gunbc-dag-snapshot"
-path = "../target/codegen/bin/dag-snapshot/main.rs"
-
-[[bin]]
 name = "gunbc-infra"
 path = "src/bin/infra.rs"
 

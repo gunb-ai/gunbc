@@ -80,6 +80,7 @@ pub mod transport;
 pub mod type_lib;
 pub mod type_op;
 pub mod type_registry;
+pub mod type_shape;
 pub mod typed_io;
 pub mod types;
 pub mod validate;
@@ -88,10 +89,6 @@ pub mod value_bridge;
 pub mod value_expr;
 pub mod workspace_layout;
 
-// ── DSL codegen IR tiers (dsl-codegen-tasks.md) ────────────────────
-pub mod c_ir; // Task 5: C-level AST types (CStyleIR)
-pub mod go_ir; // Task 7: Go-specific code_ir extensions (ManagedIR)
-pub mod register_ir; // Task 6: MIPS instruction model (RegisterIR)
 
 // Codegen output locations used by the bootstrapper and codegen DAG.
 pub const CODEGEN_OUT_DIR: &str = "target/codegen";
@@ -187,9 +184,10 @@ pub use transport::{
     TransportKind, TransportRequest, TransportResponse,
 };
 pub use type_op::{
-    BaseType, Coercion, ContentEncoding, MetadataPayload, Predicate, PredicateValue, TypeOp,
-    WrapperKind,
+    BaseType, Coercion, ContentEncoding, MetadataPayload, PlatformRepr, Predicate, PredicateValue,
+    TypeOp, WrapperKind,
 };
+pub use type_shape::{type_shape, ContainerShape, TypeShape};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use typed_io::{
     typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,

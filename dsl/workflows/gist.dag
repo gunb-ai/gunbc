@@ -39,7 +39,6 @@ pipeline gist {
   }
 
   stage credential_resolve [after codegen_ensure] {
-    @credential(READ, "github")
   }
 
   stage list_files [after codegen_ensure, when mode == "gist" || mode == "gist-snapshot"] {
@@ -71,7 +70,6 @@ pipeline gist {
       || mode == "gist-diff"
       || mode == "gist-recent"
   ] {
-    @network(WRITE, "github_gist")
   }
 
   stage report [after gist_create] {}

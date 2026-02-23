@@ -23,6 +23,8 @@ use syn::{parse_macro_input, AttributeArgs, ItemFn, Lit, Meta, NestedMeta};
 /// - `binary = "..."` — Binary name (defaults to tool name)
 /// - `dsl_module = "..."` — DSL module name (file stem in `dsl/tools/` or `dsl/pipelines/`)
 /// - `outputs = "..."` — Comma-separated output file paths (for gitignore and clean)
+/// - `provides = "..."` — Comma-separated files/artifacts this tool produces (for generator edge graph)
+/// - `consumes = "..."` — Comma-separated files/artifacts this tool reads (for generator edge graph)
 /// - `has_invocation` — Tool has a runnable binary (generates CargoInvocation)
 /// - `returns_result` — Graph builder returns `Result<Dag, BuilderError>`
 /// - `enable_step_mode` — Generate step subcommand for CI
@@ -62,6 +64,8 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut binary: Option<syn::LitStr> = None;
     let mut dsl_module: Option<syn::LitStr> = None;
     let mut outputs: Option<syn::LitStr> = None;
+    let mut provides: Option<syn::LitStr> = None;
+    let mut consumes: Option<syn::LitStr> = None;
     let mut has_invocation = false;
     let mut returns_result = false;
     let mut enable_step_mode = false;
@@ -210,6 +214,30 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                             .into();
                         }
                     }
+                    Some("provides") => {
+                        if let Lit::Str(s) = nv.lit {
+                            provides = Some(s);
+                        } else {
+                            return syn::Error::new_spanned(
+                                nv,
+                                "provides must be a string literal",
+                            )
+                            .to_compile_error()
+                            .into();
+                        }
+                    }
+                    Some("consumes") => {
+                        if let Lit::Str(s) = nv.lit {
+                            consumes = Some(s);
+                        } else {
+                            return syn::Error::new_spanned(
+                                nv,
+                                "consumes must be a string literal",
+                            )
+                            .to_compile_error()
+                            .into();
+                        }
+                    }
                     _ => {
                         return syn::Error::new_spanned(nv, "unknown tool_target argument")
                             .to_compile_error()
@@ -255,6 +283,8 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || binary.is_some()
             || dsl_module.is_some()
             || outputs.is_some()
+            || provides.is_some()
+            || consumes.is_some()
             || has_invocation
             || returns_result
             || enable_step_mode
@@ -369,6 +399,34 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
         None => quote!(&[]),
     };
 
+    let provides_tokens = match provides {
+        Some(s) => {
+            let items: Vec<syn::LitStr> = s
+                .value()
+                .split(',')
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .map(|p| syn::LitStr::new(p, s.span()))
+                .collect();
+            quote!(&[#(#items),*])
+        }
+        None => quote!(&[]),
+    };
+
+    let consumes_tokens = match consumes {
+        Some(s) => {
+            let items: Vec<syn::LitStr> = s
+                .value()
+                .split(',')
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .map(|p| syn::LitStr::new(p, s.span()))
+                .collect();
+            quote!(&[#(#items),*])
+        }
+        None => quote!(&[]),
+    };
+
     let expanded = quote! {
         #input_fn
 
@@ -391,6 +449,8 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 has_invocation: #has_invocation,
                 dsl_module: #dsl_module_tokens,
                 outputs: #outputs_tokens,
+                provides: #provides_tokens,
+                consumes: #consumes_tokens,
             }
         }
     };
