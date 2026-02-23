@@ -596,6 +596,262 @@ fn provider_hint_from_resource_properties(properties: &[(String, Expr)]) -> Opti
     None
 }
 
+#[derive(Debug, Clone, Default)]
+struct NameAliasRegistry {
+    full: HashSet<String>,
+    aliases: HashMap<String, Option<String>>,
+}
+
+impl NameAliasRegistry {
+    fn register(&mut self, full: String, aliases: &[String]) {
+        self.full.insert(full.clone());
+        for alias in aliases {
+            self.aliases
+                .entry(alias.clone())
+                .and_modify(|existing| {
+                    if existing.as_ref() != Some(&full) {
+                        *existing = None;
+                    }
+                })
+                .or_insert_with(|| Some(full.clone()));
+        }
+    }
+
+    fn resolve(&self, name: &str) -> NameResolution {
+        let canonical = canonical_type_name(name);
+        if self.full.contains(&canonical) {
+            return NameResolution::Resolved(canonical);
+        }
+        match self.aliases.get(&canonical) {
+            Some(Some(full)) => NameResolution::Resolved(full.clone()),
+            Some(None) => NameResolution::Ambiguous,
+            None => NameResolution::Missing,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NameResolution {
+    Resolved(String),
+    Ambiguous,
+    Missing,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ProfileBindingRegistry {
+    by_full: HashMap<String, HashMap<String, String>>,
+    by_alias: HashMap<String, Option<String>>,
+}
+
+fn collect_profile_binding_registry(
+    project: &TypedProject,
+    require_implementation_resolution: bool,
+) -> Result<ProfileBindingRegistry, LowerError> {
+    let mut interface_registry = NameAliasRegistry::default();
+    let mut service_registry = NameAliasRegistry::default();
+
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            match &item.node {
+                Item::InterfaceDef(def) => {
+                    let full = format!("{module_name}.{}", def.name);
+                    interface_registry.register(full, &[def.name.clone()]);
+                }
+                Item::ServiceDef(def) => {
+                    let full = format!("{module_name}.{}", def.name);
+                    let tail = def
+                        .name
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(def.name.as_str())
+                        .to_string();
+                    service_registry.register(full, &[def.name.clone(), tail]);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut registry = ProfileBindingRegistry::default();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ProfileDef(def) = &item.node else {
+                continue;
+            };
+            let profile_full = format!("{module_name}.{}", def.name);
+            let mut bindings = HashMap::<String, String>::new();
+            for bind in &def.binds {
+                let resolved_interface = match interface_registry.resolve(&bind.interface_type) {
+                    NameResolution::Resolved(full) => full,
+                    NameResolution::Ambiguous => {
+                        return Err(LowerError::InvalidProfileBinding {
+                            profile: profile_full.clone(),
+                            detail: format!("interface `{}` is ambiguous", bind.interface_type),
+                        })
+                    }
+                    NameResolution::Missing => {
+                        return Err(LowerError::InvalidProfileBinding {
+                            profile: profile_full.clone(),
+                            detail: format!("interface `{}` is unresolved", bind.interface_type),
+                        })
+                    }
+                };
+                let resolved_impl = match service_registry.resolve(&bind.implementation_type) {
+                    NameResolution::Resolved(full) => full,
+                    NameResolution::Ambiguous => {
+                        return Err(LowerError::InvalidProfileBinding {
+                            profile: profile_full.clone(),
+                            detail: format!(
+                                "implementation `{}` is ambiguous",
+                                bind.implementation_type
+                            ),
+                        })
+                    }
+                    NameResolution::Missing => {
+                        if require_implementation_resolution {
+                            return Err(LowerError::InvalidProfileBinding {
+                                profile: profile_full.clone(),
+                                detail: format!(
+                                    "implementation `{}` is unresolved",
+                                    bind.implementation_type
+                                ),
+                            });
+                        }
+                        canonical_type_name(&bind.implementation_type)
+                    }
+                };
+                if bindings
+                    .insert(resolved_interface.clone(), resolved_impl)
+                    .is_some()
+                {
+                    return Err(LowerError::InvalidProfileBinding {
+                        profile: profile_full.clone(),
+                        detail: format!("duplicate binding for `{resolved_interface}`"),
+                    });
+                }
+            }
+            registry
+                .by_alias
+                .entry(def.name.clone())
+                .and_modify(|existing| {
+                    if existing.as_ref() != Some(&profile_full) {
+                        *existing = None;
+                    }
+                })
+                .or_insert_with(|| Some(profile_full.clone()));
+            registry.by_full.insert(profile_full, bindings);
+        }
+    }
+    Ok(registry)
+}
+
+fn resolve_active_profile_bindings<'a>(
+    registry: &'a ProfileBindingRegistry,
+    active_profile: Option<&str>,
+) -> Result<Option<(&'a str, &'a HashMap<String, String>)>, LowerError> {
+    let Some(profile) = active_profile else {
+        return Ok(None);
+    };
+    if let Some((full_name, bindings)) = registry.by_full.get_key_value(profile) {
+        return Ok(Some((full_name.as_str(), bindings)));
+    }
+    match registry.by_alias.get(profile) {
+        Some(Some(full)) => registry
+            .by_full
+            .get(full)
+            .map(|bindings| Some((full.as_str(), bindings)))
+            .ok_or_else(|| LowerError::UnknownProfile {
+                profile: profile.to_string(),
+            }),
+        Some(None) => Err(LowerError::AmbiguousProfile {
+            profile: profile.to_string(),
+        }),
+        None => Err(LowerError::UnknownProfile {
+            profile: profile.to_string(),
+        }),
+    }
+}
+
+fn collect_profile_bound_interface_names(registry: &ProfileBindingRegistry) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for bindings in registry.by_full.values() {
+        for interface in bindings.keys() {
+            let canonical = canonical_type_name(interface);
+            names.insert(canonical.clone());
+            if let Some(short) = canonical.rsplit('.').next() {
+                names.insert(short.to_string());
+            }
+        }
+    }
+    names
+}
+
+fn collect_interface_type_names(project: &TypedProject) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::InterfaceDef(def) = &item.node else {
+                continue;
+            };
+            let full = format!("{module_name}.{}", def.name);
+            names.insert(canonical_type_name(&full));
+            names.insert(canonical_type_name(&def.name));
+            if let Some(tail) = def.name.rsplit('.').next() {
+                names.insert(tail.to_string());
+            }
+        }
+    }
+    names
+}
+
+fn is_bound_interface_type_name(names: &HashSet<String>, interface_type: &str) -> bool {
+    let canonical = canonical_type_name(interface_type);
+    if names.contains(&canonical) {
+        return true;
+    }
+    let short = canonical.rsplit('.').next().unwrap_or(canonical.as_str());
+    names.contains(short)
+}
+
+fn enforce_profile_for_bound_uses(
+    project: &TypedProject,
+    active_profile: Option<&str>,
+    profile_bound_interfaces: &HashSet<String>,
+) -> Result<(), LowerError> {
+    if active_profile.is_some() || profile_bound_interfaces.is_empty() {
+        return Ok(());
+    }
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let (caller, uses) = match &item.node {
+                Item::FuncDef(def) => (format!("{module_name}::{}", def.name), def.uses.as_slice()),
+                Item::PatternDef(def) => {
+                    (format!("{module_name}::{}", def.name), def.uses.as_slice())
+                }
+                Item::PipelineDef(def) => {
+                    (format!("{module_name}::{}", def.name), def.uses.as_slice())
+                }
+                _ => continue,
+            };
+            for usage in uses {
+                let interface_type = resource_type_name(&usage.resource_type);
+                if is_bound_interface_type_name(profile_bound_interfaces, interface_type.as_str()) {
+                    return Err(LowerError::ProfileRequiredForBoundServiceCall {
+                        caller: caller.clone(),
+                        binding: usage.binding.clone(),
+                        interface_type,
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
     let canonical = canonical_type_name(name);
     let short = canonical
@@ -697,6 +953,23 @@ pub enum LowerError {
         binding: String,
         resource_type: String,
     },
+    /// Requested profile name is not declared in the DSL corpus.
+    UnknownProfile { profile: String },
+    /// Requested profile name matches multiple declarations.
+    AmbiguousProfile { profile: String },
+    /// Profile declaration contains an invalid bind entry.
+    InvalidProfileBinding { profile: String, detail: String },
+    /// A bound interface call requires an active profile selection.
+    ProfileRequiredForBoundServiceCall {
+        caller: String,
+        binding: String,
+        interface_type: String,
+    },
+    /// Active profile does not bind an interface used by a callable.
+    MissingProfileBinding {
+        profile: String,
+        interface_type: String,
+    },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
 }
@@ -753,6 +1026,30 @@ impl std::fmt::Display for LowerError {
                 f,
                 "ambiguous provided resource `{binding}: {resource_type}` in `{caller}`; use a concrete resource type"
             ),
+            Self::UnknownProfile { profile } => {
+                write!(f, "unknown profile `{profile}`")
+            }
+            Self::AmbiguousProfile { profile } => {
+                write!(f, "ambiguous profile `{profile}`; use fully-qualified profile name")
+            }
+            Self::InvalidProfileBinding { profile, detail } => {
+                write!(f, "invalid profile binding in `{profile}`: {detail}")
+            }
+            Self::ProfileRequiredForBoundServiceCall {
+                caller,
+                binding,
+                interface_type,
+            } => write!(
+                f,
+                "bound service call `{binding}` in `{caller}` targets interface `{interface_type}`; compile with --profile <name>"
+            ),
+            Self::MissingProfileBinding {
+                profile,
+                interface_type,
+            } => write!(
+                f,
+                "profile `{profile}` does not bind interface `{interface_type}`"
+            ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
     }
@@ -766,21 +1063,43 @@ impl std::fmt::Display for LowerError {
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, false)
+    lower_typed_project_with_callable_scope(project, None, false, None)
+}
+
+pub fn lower_typed_project_with_profile(
+    project: &TypedProject,
+    active_profile: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, None, false, active_profile)
 }
 
 /// Lowers typed modules while emitting explicit collection pipeline nodes.
 pub fn lower_typed_project_with_collection_nodes(
     project: &TypedProject,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, true)
+    lower_typed_project_with_callable_scope(project, None, true, None)
+}
+
+pub fn lower_typed_project_with_profile_and_collection_nodes(
+    project: &TypedProject,
+    active_profile: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, None, true, active_profile)
 }
 
 pub fn lower_typed_project_for_modules(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), false)
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), false, None)
+}
+
+pub fn lower_typed_project_for_modules_with_profile(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+    active_profile: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), false, active_profile)
 }
 
 /// Lowers only scoped modules while emitting explicit collection pipeline nodes.
@@ -788,13 +1107,22 @@ pub fn lower_typed_project_for_modules_with_collection_nodes(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), true)
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), true, None)
+}
+
+pub fn lower_typed_project_for_modules_with_profile_and_collection_nodes(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+    active_profile: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), true, active_profile)
 }
 
 fn lower_typed_project_with_callable_scope(
     project: &TypedProject,
     callable_modules: Option<&HashSet<String>>,
     emit_collection_nodes: bool,
+    active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
@@ -914,13 +1242,27 @@ fn lower_typed_project_with_callable_scope(
         emit_collection_nodes,
     );
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
-    let service_registry = if callable_modules.is_some() {
+    let service_registry = if callable_modules.is_some() && active_profile.is_none() {
         let required_service_calls = collect_required_service_call_keys(project, callable_modules);
         add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))
     } else {
         add_service_transport_triplets(&mut builder, project, None)
     };
-    add_service_call_edges(&mut builder, project, &endpoints_by_full, &service_registry)?;
+    let profile_registry = collect_profile_binding_registry(project, active_profile.is_some())?;
+    let active_profile_bindings =
+        resolve_active_profile_bindings(&profile_registry, active_profile)?;
+    let profile_bound_interfaces = collect_profile_bound_interface_names(&profile_registry);
+    enforce_profile_for_bound_uses(project, active_profile, &profile_bound_interfaces)?;
+    let known_interface_types = collect_interface_type_names(project);
+    add_service_call_edges(
+        &mut builder,
+        project,
+        &endpoints_by_full,
+        &service_registry,
+        active_profile_bindings,
+        &profile_bound_interfaces,
+        &known_interface_types,
+    )?;
     let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
     let mut wired_release_targets = HashSet::new();
@@ -3122,10 +3464,8 @@ fn add_control_flow_pattern_nodes(
         let node_id = format!("{}::cf_if_{index}", target.node_id);
 
         if site.has_else {
-            let true_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "true");
-            let false_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "false");
+            let true_dag = make_branch_body_dag(module_name, &target.node_id, index, "true");
+            let false_dag = make_branch_body_dag(module_name, &target.node_id, index, "false");
             let branch_node = BranchBuilder::new(node_id.clone())
                 .with_true_branch(true_dag)
                 .with_false_branch(false_dag)
@@ -3133,8 +3473,7 @@ fn add_control_flow_pattern_nodes(
                 .build();
             builder.add_node(branch_node);
         } else {
-            let then_dag =
-                make_branch_body_dag(module_name, &target.node_id, index, "then");
+            let then_dag = make_branch_body_dag(module_name, &target.node_id, index, "then");
             let if_node = IfBuilder::new(node_id.clone())
                 .with_then(then_dag)
                 .with_output("result", "Any")
@@ -3844,9 +4183,7 @@ fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOu
         let parsing = match mode.as_str() {
             "trim" | "trim_stdout" | "string" => Some(ShellOutputParsing::TrimStdout),
             "split_lines" | "lines" | "line_list" => Some(ShellOutputParsing::SplitLines),
-            "exit_code_bool" | "bool" | "success_bool" => {
-                Some(ShellOutputParsing::ExitCodeBool)
-            }
+            "exit_code_bool" | "bool" | "success_bool" => Some(ShellOutputParsing::ExitCodeBool),
             "success_stdout_stderr" | "triple" | "result" => {
                 Some(ShellOutputParsing::SuccessStdoutStderr)
             }
@@ -4260,16 +4597,19 @@ fn add_service_call_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     service_registry: &ServiceEndpointRegistry,
+    active_profile_bindings: Option<(&str, &HashMap<String, String>)>,
+    profile_bound_interfaces: &HashSet<String>,
+    known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
-            let (item_name, params, stmts, uses_bindings) = match &item.node {
+            let (item_name, params, stmts, uses_binding_types) = match &item.node {
                 Item::FnDef(def) => (
                     &def.name,
                     &def.params,
                     def.body.stmts.as_slice(),
-                    HashSet::new(),
+                    HashMap::new(),
                 ),
                 Item::FuncDef(def) => (
                     &def.name,
@@ -4277,8 +4617,13 @@ fn add_service_call_edges(
                     def.body.stmts.as_slice(),
                     def.uses
                         .iter()
-                        .map(|usage| usage.binding.clone())
-                        .collect::<HashSet<_>>(),
+                        .map(|usage| {
+                            (
+                                usage.binding.clone(),
+                                resource_type_name(&usage.resource_type),
+                            )
+                        })
+                        .collect::<HashMap<_, _>>(),
                 ),
                 Item::PatternDef(def) => (
                     &def.name,
@@ -4286,8 +4631,13 @@ fn add_service_call_edges(
                     def.body.stmts.as_slice(),
                     def.uses
                         .iter()
-                        .map(|usage| usage.binding.clone())
-                        .collect::<HashSet<_>>(),
+                        .map(|usage| {
+                            (
+                                usage.binding.clone(),
+                                resource_type_name(&usage.resource_type),
+                            )
+                        })
+                        .collect::<HashMap<_, _>>(),
                 ),
                 _ => continue,
             };
@@ -4304,18 +4654,18 @@ fn add_service_call_edges(
             let mut service_calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut service_calls);
             for (call_index, call) in service_calls.into_iter().enumerate() {
-                let Some(source) = resolve_service_endpoint(&call.path, service_registry) else {
-                    if call
-                        .path
-                        .first()
-                        .is_some_and(|segment| uses_bindings.contains(segment))
-                    {
-                        continue;
-                    }
-                    return Err(LowerError::UnresolvedServiceCall {
-                        caller: format!("{module_name}::{item_name}"),
-                        service_call: call.path.join("."),
-                    });
+                let caller = format!("{module_name}::{item_name}");
+                let Some(source) = resolve_service_call_source(
+                    caller.as_str(),
+                    &call.path,
+                    &uses_binding_types,
+                    service_registry,
+                    active_profile_bindings,
+                    profile_bound_interfaces,
+                    known_interface_types,
+                )?
+                else {
+                    continue;
                 };
                 builder.add_edge(
                     source.parse.node_id.as_str(),
@@ -4383,7 +4733,141 @@ fn add_service_call_edges(
             }
         }
     }
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::PipelineDef(def) = &item.node else {
+                continue;
+            };
+            let Some(target) = endpoints_by_full.get(&(module_name.clone(), def.name.clone()))
+            else {
+                continue;
+            };
+            let uses_binding_types = def
+                .uses
+                .iter()
+                .map(|usage| {
+                    (
+                        usage.binding.clone(),
+                        resource_type_name(&usage.resource_type),
+                    )
+                })
+                .collect::<HashMap<_, _>>();
+            for stage in &def.stages {
+                let mut service_calls = Vec::<ServiceCallSite>::new();
+                collect_service_calls_from_stmts(stage.body.stmts.as_slice(), &mut service_calls);
+                for call in service_calls {
+                    let caller = format!("{module_name}::{}::{}", def.name, stage.name);
+                    let Some(source) = resolve_service_call_source(
+                        caller.as_str(),
+                        &call.path,
+                        &uses_binding_types,
+                        service_registry,
+                        active_profile_bindings,
+                        profile_bound_interfaces,
+                        known_interface_types,
+                    )?
+                    else {
+                        continue;
+                    };
+                    builder.add_edge(
+                        source.parse.node_id.as_str(),
+                        source.parse.primary_output.as_str(),
+                        target.node_id.as_str(),
+                        "__deps",
+                    );
+                }
+            }
+        }
+    }
     Ok(())
+}
+
+fn resolve_service_call_source(
+    caller: &str,
+    call_path: &[String],
+    uses_binding_types: &HashMap<String, String>,
+    service_registry: &ServiceEndpointRegistry,
+    active_profile_bindings: Option<(&str, &HashMap<String, String>)>,
+    profile_bound_interfaces: &HashSet<String>,
+    known_interface_types: &HashSet<String>,
+) -> Result<Option<ServiceTransportEndpoint>, LowerError> {
+    if let Some(endpoint) = resolve_service_endpoint(call_path, service_registry) {
+        return Ok(Some(endpoint));
+    }
+    let Some(binding) = call_path.first() else {
+        return Err(LowerError::UnresolvedServiceCall {
+            caller: caller.to_string(),
+            service_call: call_path.join("."),
+        });
+    };
+    let Some(interface_type) = uses_binding_types.get(binding) else {
+        return Err(LowerError::UnresolvedServiceCall {
+            caller: caller.to_string(),
+            service_call: call_path.join("."),
+        });
+    };
+    if !is_bound_interface_type_name(profile_bound_interfaces, interface_type) {
+        if is_bound_interface_type_name(known_interface_types, interface_type) {
+            // Interface-backed resource lifecycles are handled by dedicated
+            // resource wiring paths.
+            return Ok(None);
+        }
+        // Non-interface `uses` bindings are also handled by dedicated lifecycle
+        // lowering paths.
+        return Ok(None);
+    }
+    let Some((profile_name, bindings)) = active_profile_bindings else {
+        return Err(LowerError::ProfileRequiredForBoundServiceCall {
+            caller: caller.to_string(),
+            binding: binding.clone(),
+            interface_type: interface_type.clone(),
+        });
+    };
+    let Some(interface_key) = resolve_profile_interface_key(bindings, interface_type.as_str())
+    else {
+        return Err(LowerError::MissingProfileBinding {
+            profile: profile_name.to_string(),
+            interface_type: canonical_type_name(interface_type),
+        });
+    };
+    let Some(implementation_type) = bindings.get(interface_key.as_str()) else {
+        return Err(LowerError::MissingProfileBinding {
+            profile: profile_name.to_string(),
+            interface_type: interface_key,
+        });
+    };
+    let capability = call_path.last().cloned().unwrap_or_default();
+    let mut implementation_call_path = implementation_type
+        .split('.')
+        .map(|segment| segment.to_string())
+        .collect::<Vec<_>>();
+    implementation_call_path.push(capability);
+    let endpoint = resolve_service_endpoint(&implementation_call_path, service_registry)
+        .ok_or_else(|| LowerError::UnresolvedServiceCall {
+            caller: caller.to_string(),
+            service_call: implementation_call_path.join("."),
+        })?;
+    Ok(Some(endpoint))
+}
+
+fn resolve_profile_interface_key<'a>(
+    bindings: &'a HashMap<String, String>,
+    interface_type: &str,
+) -> Option<String> {
+    let canonical = canonical_type_name(interface_type);
+    if bindings.contains_key(&canonical) {
+        return Some(canonical);
+    }
+    let short = canonical.rsplit('.').next().unwrap_or(canonical.as_str());
+    let mut matched = bindings
+        .keys()
+        .filter(|key| key.rsplit('.').next().is_some_and(|tail| tail == short));
+    let first = matched.next()?;
+    if matched.next().is_some() {
+        return None;
+    }
+    Some(first.clone())
 }
 
 fn add_used_resource_edges(
@@ -6449,7 +6933,10 @@ func run() -> { out: String } {
             ServiceOperationSpec::Shell(shell) => shell,
             other => panic!("expected shell operation spec, got {other:?}"),
         };
-        assert_eq!(shell.argv_template[0], ArgvSegment::Literal("echo".to_string()));
+        assert_eq!(
+            shell.argv_template[0],
+            ArgvSegment::Literal("echo".to_string())
+        );
         assert_eq!(
             shell.argv_template[1],
             ArgvSegment::Literal("{value}:{suffix}".to_string())
@@ -6648,6 +7135,182 @@ func run() -> { body: String } {
                 && edge.to_node.0 == "prepare_transport_sample_services_FsStorage_read"
                 && edge.to_port.0 == "path"
         }));
+    }
+
+    #[test]
+    fn interface_bound_service_call_requires_active_profile() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/profiles/interface_binding.dag",
+            r#"module sample.profile
+interface IssueProvider {
+  capability get {
+    input {}
+    output { ok: Bool }
+  }
+}
+service impl.Provider : IssueProvider {
+  operation get {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/ok")
+  }
+}
+profile unit_test {
+  bind IssueProvider -> impl.Provider
+}
+func run() -> { ok: Bool } uses issues: IssueProvider {
+  result = issues.get()
+  return { ok: result.ok }
+}"#,
+        )]);
+
+        let error = lower_typed_project(&typed).expect_err("lowering should require --profile");
+        assert!(matches!(
+            error,
+            LowerError::ProfileRequiredForBoundServiceCall {
+                caller,
+                binding,
+                interface_type,
+            } if caller == "sample.profile::run"
+                && binding == "issues"
+                && interface_type == "IssueProvider"
+        ));
+    }
+
+    #[test]
+    fn interface_bound_service_call_resolves_via_active_profile_binding() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/profiles/interface_binding.dag",
+            r#"module sample.profile
+interface IssueProvider {
+  capability get {
+    input {}
+    output { ok: Bool }
+  }
+}
+service impl.Provider : IssueProvider {
+  operation get {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/ok")
+  }
+}
+profile unit_test {
+  bind IssueProvider -> impl.Provider
+}
+func run() -> { ok: Bool } uses issues: IssueProvider {
+  result = issues.get()
+  return { ok: result.ok }
+}"#,
+        )]);
+
+        let dag = lower_typed_project_with_profile(&typed, Some("unit_test"))
+            .expect("lowering should succeed with active profile");
+        assert!(
+            dag.nodes.iter().any(|node| {
+                node.id
+                    .0
+                    .starts_with("parse_transport_sample_profile_impl_Provider_get")
+            }),
+            "profile binding should add transport triplet nodes for bound implementation"
+        );
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.from_node
+                    .0
+                    .starts_with("parse_transport_sample_profile_impl_Provider_get")
+                    && edge.to_node.0 == "sample.profile::run"
+                    && edge.to_port.0 == "__deps"
+            }),
+            "bound parse node should feed caller dependencies"
+        );
+    }
+
+    #[test]
+    fn pipeline_stage_bound_service_call_requires_active_profile() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/profiles/pipeline_interface_binding.dag",
+            r#"module sample.profile
+interface IssueProvider {
+  capability get {
+    input {}
+    output { ok: Bool }
+  }
+}
+service impl.Provider : IssueProvider {
+  operation get {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/ok")
+  }
+}
+profile unit_test {
+  bind IssueProvider -> impl.Provider
+}
+pipeline sdlc uses issues: IssueProvider {
+  stage fetch {
+    issue = issues.get()
+  }
+}"#,
+        )]);
+
+        let error = lower_typed_project(&typed).expect_err("lowering should require --profile");
+        assert!(matches!(
+            error,
+            LowerError::ProfileRequiredForBoundServiceCall {
+                caller,
+                binding,
+                interface_type,
+            } if caller == "sample.profile::sdlc"
+                && binding == "issues"
+                && interface_type == "IssueProvider"
+        ));
+    }
+
+    #[test]
+    fn pipeline_stage_bound_service_call_resolves_via_active_profile_binding() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/profiles/pipeline_interface_binding.dag",
+            r#"module sample.profile
+interface IssueProvider {
+  capability get {
+    input {}
+    output { ok: Bool }
+  }
+}
+service impl.Provider : IssueProvider {
+  operation get {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/ok")
+  }
+}
+profile unit_test {
+  bind IssueProvider -> impl.Provider
+}
+pipeline sdlc uses issues: IssueProvider {
+  stage fetch {
+    issue = issues.get()
+  }
+}"#,
+        )]);
+
+        let dag = lower_typed_project_with_profile(&typed, Some("unit_test"))
+            .expect("lowering should succeed with active profile");
+        assert!(
+            dag.nodes
+                .iter()
+                .any(|node| node.id.0 == "sample.profile::sdlc"),
+            "pipeline node should be lowered"
+        );
+        assert!(
+            dag.nodes.iter().any(|node| {
+                node.id
+                    .0
+                    .starts_with("parse_transport_sample_profile_impl_Provider_get")
+            }),
+            "profile binding should include transport triplet nodes for bound implementation"
+        );
     }
 
     #[test]
