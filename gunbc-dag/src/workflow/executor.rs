@@ -238,7 +238,10 @@ enum CommandExecutionOutcome {
 }
 
 fn run_unit_command(cmd: &UnitCommand) -> CommandExecutionOutcome {
-    let result = Command::new(&cmd.program).args(&cmd.args).status();
+    let result = Command::new(&cmd.program)
+        .args(&cmd.args)
+        .env(gunbc_exec::freshness::FRESHNESS_ACTIVE_ENV, "1")
+        .status();
     match result {
         Ok(status) if status.success() => CommandExecutionOutcome::Success,
         Ok(status) if status.code() == Some(PENDING_APPROVAL_EXIT_CODE) => {

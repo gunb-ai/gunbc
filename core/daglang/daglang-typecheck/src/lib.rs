@@ -2569,6 +2569,14 @@ fn types_match(expected: &str, got: &str) -> bool {
     if expected == got {
         return true;
     }
+    // Unparameterized generic base matches any parameterized version.
+    // Builtin operators (map, filter, append, etc.) infer `List` without
+    // propagating generic parameters; accept `List` where `List<T>` is expected.
+    if let Some(base) = expected.split('<').next() {
+        if base == got {
+            return true;
+        }
+    }
     // Short-name fallback for qualified DSL names (e.g. std.types.String == String)
     if expected.rsplit('.').next() == got.rsplit('.').next() {
         return true;
