@@ -22,7 +22,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::OnceLock;
+
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
@@ -2721,8 +2721,7 @@ fn type_ids_structurally_match(lhs: &TypeId, rhs: &TypeId) -> bool {
 }
 
 fn core_type_registry() -> &'static TypeRegistry {
-    static REGISTRY: OnceLock<TypeRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(TypeRegistry::with_core_types)
+    TypeRegistry::global_core()
 }
 
 fn type_ids_compatible(expected: &str, got: &str) -> bool {

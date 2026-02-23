@@ -2084,8 +2084,8 @@ impl Parser {
         let mut fields = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.eat(&TokenKind::Dot) {
-                self.eat(&TokenKind::Dot);
-                self.eat(&TokenKind::Dot);
+                self.expect(&TokenKind::Dot)?;
+                self.expect(&TokenKind::Dot)?;
                 let name = if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                     Some(self.expect_ident()?)
                 } else {
@@ -2515,8 +2515,8 @@ impl Parser {
                     let mut args = Vec::new();
                     while !self.check(&TokenKind::RBrace) && !self.at_eof() {
                         if self.eat(&TokenKind::Dot) {
-                            self.eat(&TokenKind::Dot);
-                            self.eat(&TokenKind::Dot);
+                            self.expect(&TokenKind::Dot)?;
+                            self.expect(&TokenKind::Dot)?;
                             let spread_name = if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                                 Some(self.expect_ident()?)
                             } else {

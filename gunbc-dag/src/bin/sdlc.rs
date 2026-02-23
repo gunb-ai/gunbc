@@ -2691,10 +2691,13 @@ fn poll_agent_provider_status(
             Box::new(StubAgentAdapter::new(branch, "0000000"))
         }
         other => {
-            return Err(format!(
-                "agent provider `{other}` is not implemented; \
-                 add an AgentAdapter impl and register it here"
-            ));
+            eprintln!(
+                "WARN: agent provider `{other}` has no polling adapter; \
+                 reporting as running until an AgentAdapter impl is registered"
+            );
+            return Ok(AgentStatus::Running {
+                progress: Some(format!("provider `{other}` not yet implemented")),
+            });
         }
     };
     adapter

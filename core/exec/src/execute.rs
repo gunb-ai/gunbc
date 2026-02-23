@@ -1053,20 +1053,40 @@ fn runtime_file_guard_enabled() -> bool {
         .unwrap_or(false)
 }
 
+thread_local! {
+    static STRICT_DRY_RUN_CACHED: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
 /// Parse strict dry-run toggle from `GUNBC_EXEC_STRICT_DRY_RUN`.
 ///
 /// Enabled values: `1`, `true`, `yes`, `on` (case-insensitive).
 /// Disabled values (or unset): everything else.
+///
+/// The result is cached per-thread to avoid a syscall on every node
+/// execution. Tests that toggle the env var use
+/// `reset_strict_dry_run_cache()` to invalidate the cached value.
 fn strict_dry_run_enabled() -> bool {
-    std::env::var("GUNBC_EXEC_STRICT_DRY_RUN")
-        .ok()
-        .map(|raw| {
-            matches!(
-                raw.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
+    STRICT_DRY_RUN_CACHED.with(|cell| {
+        if let Some(v) = cell.get() {
+            return v;
+        }
+        let v = std::env::var("GUNBC_EXEC_STRICT_DRY_RUN")
+            .ok()
+            .map(|raw| {
+                matches!(
+                    raw.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
+        cell.set(Some(v));
+        v
+    })
+}
+
+#[cfg(test)]
+fn reset_strict_dry_run_cache() {
+    STRICT_DRY_RUN_CACHED.with(|cell| cell.set(None));
 }
 
 fn strict_dry_run_active(mode: &ExecutionMode) -> bool {
@@ -2248,9 +2268,11 @@ mod tests {
         } else {
             std::env::remove_var("GUNBC_EXEC_STRICT_DRY_RUN");
         }
+        reset_strict_dry_run_cache();
 
         let result = std::panic::catch_unwind(f);
         std::env::remove_var("GUNBC_EXEC_STRICT_DRY_RUN");
+        reset_strict_dry_run_cache();
         if let Err(panic) = result {
             std::panic::resume_unwind(panic);
         }

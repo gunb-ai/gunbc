@@ -140,9 +140,7 @@ impl From<&TypeId> for PortType {
         if let Some(port_type) = try_parse_port_type(&type_id.0) {
             return port_type;
         }
-        static CORE_REGISTRY: std::sync::OnceLock<crate::type_registry::TypeRegistry> =
-            std::sync::OnceLock::new();
-        let registry = CORE_REGISTRY.get_or_init(crate::type_registry::TypeRegistry::with_core_types);
+        let registry = crate::type_registry::TypeRegistry::global_core();
         PortType::from_registry(&type_id.0, registry).unwrap_or(PortType::Json)
     }
 }

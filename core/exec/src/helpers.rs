@@ -281,9 +281,6 @@ pub fn optional_str_list_strict(
                     }
                     true
                 }
-                // Loop/guard pipelines may emit skipped placeholders inside
-                // packed lists. Treat them as absent entries.
-                Value::Skipped => true,
                 _ => false,
             }
         }

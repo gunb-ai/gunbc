@@ -105,36 +105,70 @@ fn truncate_to_width(rendered: &str, max_width: usize) -> Cow<'_, str> {
         return Cow::Borrowed(rendered);
     }
 
+    #[derive(Clone, Copy, PartialEq)]
+    enum EscState {
+        Normal,
+        /// Saw `\x1b`, waiting for `[` (CSI) or `]` (OSC) or letter (two-char seq).
+        EscStart,
+        /// Inside a CSI sequence (`\x1b[…`), ends at ASCII letter.
+        Csi,
+        /// Inside an OSC sequence (`\x1b]…`), ends at BEL (`\x07`) or ST (`\x1b\\`).
+        Osc,
+        /// Saw `\x1b` inside an OSC sequence — could be the `\x1b\\` terminator.
+        OscEscSeen,
+    }
+
     let mut visible_width: usize = 0;
-    let mut in_escape = false;
+    let mut state = EscState::Normal;
     let mut truncate_at: Option<usize> = None;
 
     for (byte_offset, c) in rendered.char_indices() {
-        if c == '\x1b' {
-            in_escape = true;
-            continue;
-        }
-        if in_escape {
-            // CSI sequences end with an ASCII letter
-            if c.is_ascii_alphabetic() {
-                in_escape = false;
+        match state {
+            EscState::Normal => {
+                if c == '\x1b' {
+                    state = EscState::EscStart;
+                    continue;
+                }
+                let w = crate::frame_build::char_width(c);
+                if visible_width + w > max_width {
+                    truncate_at = Some(byte_offset);
+                    break;
+                }
+                visible_width += w;
             }
-            continue;
+            EscState::EscStart => {
+                state = match c {
+                    '[' => EscState::Csi,
+                    ']' => EscState::Osc,
+                    _ => EscState::Normal,
+                };
+            }
+            EscState::Csi => {
+                if c.is_ascii_alphabetic() {
+                    state = EscState::Normal;
+                }
+            }
+            EscState::Osc => {
+                if c == '\x07' {
+                    state = EscState::Normal;
+                } else if c == '\x1b' {
+                    state = EscState::OscEscSeen;
+                }
+            }
+            EscState::OscEscSeen => {
+                state = if c == '\\' {
+                    EscState::Normal
+                } else {
+                    EscState::Osc
+                };
+            }
         }
-
-        let w = crate::frame_build::char_width(c);
-        if visible_width + w > max_width {
-            truncate_at = Some(byte_offset);
-            break;
-        }
-        visible_width += w;
     }
 
     match truncate_at {
         None => Cow::Borrowed(rendered),
         Some(pos) => {
             let mut truncated = rendered[..pos].to_string();
-            // Reset any open ANSI styles
             truncated.push_str("\x1b[0m");
             Cow::Owned(truncated)
         }

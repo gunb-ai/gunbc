@@ -383,6 +383,15 @@ impl TypeRegistry {
         registry
     }
 
+    /// Shared, lazily-initialized core type registry.
+    ///
+    /// All callers that need a read-only view of the standard core types
+    /// should use this instead of constructing their own `OnceLock`.
+    pub fn global_core() -> &'static Self {
+        static INSTANCE: std::sync::OnceLock<TypeRegistry> = std::sync::OnceLock::new();
+        INSTANCE.get_or_init(Self::with_core_types)
+    }
+
     /// Register a type DAG with a name.
     pub fn register(&mut self, name: impl Into<TypeId>, type_dag: Dag<TypeOp>) {
         self.types.insert(name.into(), type_dag);
