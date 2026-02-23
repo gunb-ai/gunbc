@@ -77,12 +77,6 @@ impl SecretString {
         &self.inner
     }
 
-    /// Backward-compatible alias; prefer `expose_plaintext_for_transport`.
-    #[deprecated(note = "use expose_plaintext_for_transport instead")]
-    pub fn expose(&self) -> &str {
-        self.expose_plaintext_for_transport()
-    }
-
     /// Length of the secret (safe to expose for diagnostics).
     pub fn len(&self) -> usize {
         self.inner.len()

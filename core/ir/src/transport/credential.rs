@@ -128,12 +128,6 @@ impl Secret {
         &self.value
     }
 
-    /// Backward-compatible alias; prefer `expose_plaintext_for_transport`.
-    #[deprecated(note = "use expose_plaintext_for_transport instead")]
-    pub fn expose(&self) -> &str {
-        self.expose_plaintext_for_transport()
-    }
-
     /// When this secret expires, if ever.
     pub fn expires_at(&self) -> Option<SystemTime> {
         self.expires_at

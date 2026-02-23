@@ -64,7 +64,7 @@ impl From<&Value> for ValueExpr {
             Value::Response(r) => response_to_value_expr(r),
             Value::Float(f) => ValueExpr::Json(serde_json::json!(*f)),
             Value::Bytes(b) => ValueExpr::Json(serde_json::json!({"__bytes": b.len()})),
-            Value::Secret(s) => ValueExpr::Secret(s.expose_plaintext_for_transport().to_string()),
+            Value::Secret(_) => ValueExpr::Secret("***".to_string()),
             Value::Skipped => ValueExpr::Skipped,
         }
     }
@@ -299,5 +299,12 @@ mod tests {
                 ("b".into(), ValueExpr::Bool(false)),
             ])
         );
+    }
+
+    #[test]
+    fn secret_conversion_is_redacted_for_rendering() {
+        let v = Value::Secret(crate::value::SecretString::new("top-secret-token"));
+        let expr = ValueExpr::from(&v);
+        assert_eq!(expr, ValueExpr::Secret("***".to_string()));
     }
 }
