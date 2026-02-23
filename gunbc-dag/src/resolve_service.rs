@@ -5,7 +5,7 @@
 //! a single `GenericShellPrepareOp` handles *all* shell service operations.
 //! The behaviour is parameterised by the spec extracted from `.dag` annotations.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use daglang_lower::{
     ArgvSegment, BodyEntry, FieldSpec, OutputFieldSpec, RestOperationSpec, ShellOperationSpec,
@@ -27,6 +27,8 @@ pub struct GenericRestPrepareOp {
 
 impl Executable for GenericRestPrepareOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        ensure_required_profile_config_inputs(&self.spec, &inputs)?;
+
         // 1. Interpolate path parameters.
         let mut path = self.spec.path_template.clone();
         for field in &self.spec.input_fields {
@@ -461,6 +463,78 @@ fn interpolate_template(
     result
 }
 
+fn ensure_required_profile_config_inputs(
+    spec: &RestOperationSpec,
+    inputs: &HashMap<String, Value>,
+) -> Result<(), ExecError> {
+    let mut placeholders = collect_template_placeholders(&spec.path_template);
+    for (_, value) in &spec.headers {
+        placeholders.extend(collect_template_placeholders(value));
+    }
+    if let Some(body_template) = &spec.body_template {
+        for entry in body_template {
+            if let BodyEntry::InputRef(_, input_name) = entry {
+                placeholders.insert(input_name.clone());
+            }
+        }
+    }
+
+    for placeholder in placeholders {
+        if !placeholder.starts_with("config.") {
+            continue;
+        }
+        let field = spec
+            .input_fields
+            .iter()
+            .find(|field| field.name == placeholder);
+        let default = field.and_then(|field| field.default.as_deref());
+        match inputs.get(&placeholder) {
+            Some(Value::Str(_))
+            | Some(Value::Secret(_))
+            | Some(Value::Int(_))
+            | Some(Value::Bool(_)) => {}
+            Some(_) if default.is_some() => {}
+            Some(_) => {
+                return Err(ExecError::new(format!(
+                    "profile config input `{placeholder}` has unsupported value kind for REST template interpolation"
+                )));
+            }
+            None if default.is_some() => {}
+            None => {
+                return Err(ExecError::new(format!(
+                    "missing required profile config input `{placeholder}` for REST transport template interpolation"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn collect_template_placeholders(template: &str) -> BTreeSet<String> {
+    let mut placeholders = BTreeSet::new();
+    let mut current = String::new();
+    let mut in_placeholder = false;
+    for ch in template.chars() {
+        if ch == '{' {
+            current.clear();
+            in_placeholder = true;
+            continue;
+        }
+        if ch == '}' {
+            if in_placeholder && !current.trim().is_empty() {
+                placeholders.insert(current.trim().to_string());
+            }
+            current.clear();
+            in_placeholder = false;
+            continue;
+        }
+        if in_placeholder {
+            current.push(ch);
+        }
+    }
+    placeholders
+}
+
 /// Insert a `Value` into a JSON map with appropriate conversion.
 fn insert_value_as_json(
     map: &mut serde_json::Map<String, serde_json::Value>,
@@ -773,6 +847,35 @@ mod tests {
             }
             other => panic!("expected REST request, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rest_prepare_fails_closed_when_required_config_placeholder_is_missing() {
+        let spec = RestOperationSpec {
+            endpoint: "https://api.example.com".to_string(),
+            method: "GET".to_string(),
+            path_template: "/repos/{config.owner}/issues/42".to_string(),
+            input_fields: vec![FieldSpec {
+                name: "config.owner".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: true,
+            }],
+            output_fields: vec![],
+            body_template: None,
+            headers: vec![],
+        };
+        let op = GenericRestPrepareOp { spec };
+        let error = op
+            .execute(HashMap::new())
+            .expect_err("missing config placeholder input should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("missing required profile config input `config.owner`"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
