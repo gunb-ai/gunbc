@@ -7003,6 +7003,11 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
                 && edge.to_node.0 == "prepare_write_makegen"
                 && edge.to_port.0 == "path"
         }));
+        assert!(dag.edges.iter().any(|edge| {
+            edge.from_node.0 == "tools.makegen::render_makefile"
+                && edge.to_node.0 == "prepare_write_makegen"
+                && edge.to_port.0 == "content"
+        }));
     }
 
     #[test]

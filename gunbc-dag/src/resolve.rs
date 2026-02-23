@@ -40,6 +40,7 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
+use crate::makegen::MakegenOp;
 use crate::resolve_service::{
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
 };
@@ -398,21 +399,39 @@ struct PrepareFileWriteCompatOp;
 
 impl Executable for PrepareFileWriteCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let input_keys = {
+            let mut keys = inputs.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            keys.join(", ")
+        };
         if matches!(inputs.get("path"), Some(Value::Skipped)) {
             return OutputMap::new()
                 .value("request", Value::Skipped)
                 .bool("skip", true)
                 .ok();
         }
-        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+        let path_value = inputs
+            .get("path")
+            .or_else(|| inputs.get("target_path"))
+            .or_else(|| inputs.get("filepath"));
+        if matches!(path_value, Some(Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
+        let path = path_value.and_then(Value::as_str).ok_or_else(|| {
             ExecError::new(
-                "PrepareFileWrite: missing required `path` input — check content-upsert wiring",
+                format!(
+                    "PrepareFileWrite: missing required `path` input — check content-upsert wiring (available inputs: {input_keys})"
+                ),
             )
         })?;
         let content_value = inputs
             .get("content")
             .or_else(|| inputs.get("return"))
-            .or_else(|| inputs.get("expected_content"));
+            .or_else(|| inputs.get("expected_content"))
+            .or_else(|| inputs.get("makefile_content"));
         if matches!(content_value, Some(Value::Skipped)) {
             return OutputMap::new()
                 .value("request", Value::Skipped)
@@ -422,9 +441,9 @@ impl Executable for PrepareFileWriteCompatOp {
         let content = content_value
             .and_then(Value::as_str)
             .ok_or_else(|| {
-                ExecError::new(
-                    "PrepareFileWrite: missing content input (expected `content`, `return`, or `expected_content`)",
-                )
+                ExecError::new(format!(
+                    "PrepareFileWrite: missing content input (expected `content`, `return`, or `expected_content`; available inputs: {input_keys})"
+                ))
             })?;
         OutputMap::new()
             .request(
@@ -581,6 +600,7 @@ fn resolve_domain(
     //    None for unknown (which falls through to passthrough).
     let custom = match module {
         "std.resources" => Some(resolve_std_resources(name)),
+        "tools.makegen" => resolve_tools_makegen(name),
         "funcs.sdlc_dispatch_runtime" => resolve_sdlc_dispatch_runtime(name),
         _ => None,
     };
@@ -615,6 +635,16 @@ fn resolve_std_resources(name: &str) -> DynOp {
     }
     // Other std.resources callables pass through as identity.
     DynOp::new(IdentityCallableOp)
+}
+
+fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "load_registry" => MakegenOp::LoadRegistry,
+        "render_makefile" => MakegenOp::RenderMakefile,
+        "makegen" => MakegenOp::Entrypoint,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
 }
 
 fn resolve_sdlc_dispatch_runtime(name: &str) -> Option<DynOp> {
@@ -995,7 +1025,13 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("load_registry");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        let outputs = result
+            .execute(HashMap::new())
+            .expect("load_registry should execute");
+        assert!(
+            matches!(outputs.get("registry"), Some(Value::Json(_))),
+            "load_registry should emit registry json"
+        );
 
         let node = callable_node(
             "render_makefile",
@@ -1004,7 +1040,17 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("render_makefile");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        let outputs = result
+            .execute(HashMap::new())
+            .expect("render_makefile should execute");
+        assert!(
+            outputs
+                .get("return")
+                .and_then(Value::as_str)
+                .map(|content| content.contains(".PHONY"))
+                .unwrap_or(false),
+            "render_makefile should emit rendered makefile content"
+        );
 
         let node = callable_node(
             "makegen",
@@ -1013,7 +1059,23 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("makegen");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "__deps".to_string(),
+            Value::List(vec![Value::Response(
+                gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse {
+                    success: true,
+                    content: None,
+                    operation: gunbc_ir::transport::FileOp::Write,
+                    path: "Makefile".to_string(),
+                    exists: None,
+                    error: None,
+                    bytes: None,
+                }),
+            )]),
+        );
+        let outputs = result.execute(inputs).expect("makegen should execute");
+        assert_eq!(outputs.get("written"), Some(&Value::Bool(true)));
     }
 
     #[test]
@@ -1076,7 +1138,10 @@ mod tests {
         inputs.insert("worker_id".to_string(), Value::Str("worker-7".to_string()));
         inputs.insert("issue_id".to_string(), Value::Int(42));
         let outputs = op.execute(inputs).expect("dispatch op should execute");
-        assert_eq!(outputs.get("next_stage"), Some(&Value::Str("design".to_string())));
+        assert_eq!(
+            outputs.get("next_stage"),
+            Some(&Value::Str("design".to_string()))
+        );
         assert_eq!(outputs.get("awaiting_approval"), Some(&Value::Bool(false)));
         assert_eq!(
             outputs.get("marker"),

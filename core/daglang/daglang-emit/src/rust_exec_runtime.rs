@@ -78,8 +78,7 @@ pub fn emit_exec_runtime_with_config(
     output_dir: Option<&Path>,
     config: &EmitConfig,
 ) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
-    let classified =
-        classify_nodes_with_config(dag, config.allow_unimplemented_passthrough)?;
+    let classified = classify_nodes_with_config(dag, config.allow_unimplemented_passthrough)?;
     let handler_kinds = collect_handler_kinds(&classified);
     let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
     let main_rs = crate::render_rust::render_rust_source(&source);
@@ -143,6 +142,9 @@ enum HandlerKind {
     FsEnv,
     ParamSource,
     LiteralSource,
+    MakegenLoadRegistry,
+    MakegenRenderMakefile,
+    MakegenEntrypoint,
     PrepareReadContent,
     ExecuteReadContent,
     PrepareWriteContent,
@@ -161,6 +163,9 @@ impl HandlerKind {
             Self::FsEnv => "FsEnv",
             Self::ParamSource => "ParamSource",
             Self::LiteralSource => "LiteralSource",
+            Self::MakegenLoadRegistry => "MakegenLoadRegistry",
+            Self::MakegenRenderMakefile => "MakegenRenderMakefile",
+            Self::MakegenEntrypoint => "MakegenEntrypoint",
             Self::PrepareReadContent => "PrepareReadContent",
             Self::ExecuteReadContent => "ExecuteReadContent",
             Self::PrepareWriteContent => "PrepareWriteContent",
@@ -207,12 +212,8 @@ fn classify_nodes_with_config(
 
         if handler == HandlerKind::UnimplementedPassthrough && !allow_unimplemented_passthrough {
             let (module, name) = match op {
-                LoweredOp::Callable { module, name, .. } => {
-                    (module.as_str(), name.as_str())
-                }
-                LoweredOp::Pipeline { module, name, .. } => {
-                    (module.as_str(), name.as_str())
-                }
+                LoweredOp::Callable { module, name, .. } => (module.as_str(), name.as_str()),
+                LoweredOp::Pipeline { module, name, .. } => (module.as_str(), name.as_str()),
                 _ => ("unknown", "unknown"),
             };
             return Err(ExecRuntimeError::UnresolvableNode {
@@ -317,6 +318,9 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         ("std.resources", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("pipelines.ci", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("tools.infra", _) => Some(HandlerKind::UnimplementedPassthrough),
+        ("tools.makegen", "load_registry") => Some(HandlerKind::MakegenLoadRegistry),
+        ("tools.makegen", "render_makefile") => Some(HandlerKind::MakegenRenderMakefile),
+        ("tools.makegen", "makegen") => Some(HandlerKind::MakegenEntrypoint),
         ("tools.makegen", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("tools.pragma", _) => Some(HandlerKind::UnimplementedPassthrough),
         (module, _) if module.starts_with("services.") => {
@@ -389,6 +393,33 @@ fn handler_body(kind: HandlerKind) -> &'static str {
             r##"    OutputMap::new().value(output_port, value.clone()).ok()
 "##
         }
+        HandlerKind::MakegenLoadRegistry => {
+            r##"    OutputMap::new().str("registry", "{}").ok()
+"##
+        }
+        HandlerKind::MakegenRenderMakefile => {
+            r##"    let _registry = inputs.get("registry");
+    let content = include_str!("embedded_makefile.txt").to_string();
+    OutputMap::new().str("return", content).ok()
+"##
+        }
+        HandlerKind::MakegenEntrypoint => {
+            r##"    let written = inputs
+        .get("__deps")
+        .and_then(Value::as_list)
+        .map(|deps| {
+            deps.iter().any(|value| {
+                matches!(
+                    value,
+                    Value::Response(TransportResponse::File(response))
+                        if response.operation == FileOp::Write && response.success
+                )
+            })
+        })
+        .unwrap_or(false);
+    OutputMap::new().bool("written", written).ok()
+"##
+        }
         HandlerKind::PrepareReadContent => {
             r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
     if path.is_empty() {
@@ -411,10 +442,26 @@ fn handler_body(kind: HandlerKind) -> &'static str {
 "##
         }
         HandlerKind::PrepareWriteContent => {
-            r##"    let path = inputs.get("path").and_then(Value::as_str).unwrap_or("");
-    let content = inputs.get("content").and_then(Value::as_str).unwrap_or("");
+            r##"    let mut input_keys: Vec<&str> = inputs.keys().map(|k| k.as_str()).collect();
+    input_keys.sort_unstable();
+    let path = inputs
+        .get("path")
+        .or_else(|| inputs.get("target_path"))
+        .or_else(|| inputs.get("filepath"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let content = inputs
+        .get("content")
+        .or_else(|| inputs.get("return"))
+        .or_else(|| inputs.get("expected_content"))
+        .or_else(|| inputs.get("makefile_content"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
     if path.is_empty() || content.is_empty() {
-        return Err(ExecError::new("missing required `path` or `content` input for prepare_write_content"));
+        return Err(ExecError::new(format!(
+            "missing required `path` or `content` input for prepare_write_content (available inputs: {})",
+            input_keys.join(", ")
+        )));
     }
     OutputMap::new().request("request", TransportRequest::File(FileRequest::write(path, content))).ok()
 "##
@@ -928,7 +975,7 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
     writeln!(text, r#"                let nodes_json: Vec<String> = nodes.iter().map(|n| format!("\"{{}}\"", n)).collect();"#).unwrap();
     writeln!(text, r#"                let entries_json: Vec<String> = log.entries.iter().map(|e| format!("{{{{\"node_id\":\"{{}}\",\"intercepted\":{{}}}}}}", e.node_id, e.was_intercepted)).collect();"#).unwrap();
     writeln!(text, r#"                eprintln!("{{{{\"nodes\":[{{}}],\"entries\":[{{}}]}}}}", nodes_json.join(","), entries_json.join(","));"#).unwrap();
-    writeln!(text, "            }} else {{").unwrap();
+    writeln!(text, "            }}").unwrap();
     writeln!(
         text,
         r#"                eprintln!("execution completed: {{}} nodes executed", log.entries.len());"#
@@ -941,7 +988,6 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
     )
     .unwrap();
     writeln!(text, "                }}").unwrap();
-    writeln!(text, "            }}").unwrap();
     writeln!(text, "        }}").unwrap();
     writeln!(text, "        Err(e) => {{").unwrap();
     writeln!(text, r#"            eprintln!("execution failed: {{e}}");"#).unwrap();
