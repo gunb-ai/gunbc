@@ -902,6 +902,7 @@ fn run_worker(
     let mut claim_acquire_attempts: u64 = 0;
     let mut awaiting_approval = Vec::new();
     let mut agent_polls = Vec::new();
+    let mut agent_spawns = Vec::new();
     let mut processing_budget = if dry_run {
         None
     } else {
@@ -1133,6 +1134,19 @@ fn run_worker(
                                         &old_claim_owner,
                                     );
                                 }
+                                if record.stage == IssueLifecycleStage::Accepted
+                                    && next_stage == IssueLifecycleStage::Implementation
+                                {
+                                    if let Some(spawn) = ensure_agent_spawn_for_accepted_transition(
+                                        intake_key,
+                                        record,
+                                        &artifact_ledger,
+                                        &mut agent_ledger,
+                                        now,
+                                    )? {
+                                        agent_spawns.push(spawn);
+                                    }
+                                }
                                 record.stage = next_stage;
                                 record.awaiting_approval = false;
                                 record.awaiting_approval_since_epoch_ms = None;
@@ -1284,6 +1298,10 @@ fn run_worker(
         map.insert(
             "agent_polls".to_string(),
             serde_json::Value::Array(agent_polls),
+        );
+        map.insert(
+            "agent_spawns".to_string(),
+            serde_json::Value::Array(agent_spawns),
         );
     }
     if !dry_run {
@@ -1627,49 +1645,7 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
         ));
     }
 
-    let canonical_key = canonical_marker(intake_key);
-    let artifact = artifact_ledger
-        .records
-        .get(&canonical_key)
-        .ok_or_else(|| format!("no canonical artifact found for intake key '{intake_key}'"))?;
-
-    let design_content = match &artifact.payload {
-        Some(ArtifactPayload::Inline { body }) => body.clone(),
-        Some(ArtifactPayload::BlobRef { uri, .. }) => {
-            format!("[design artifact at: {uri}]")
-        }
-        None => String::new(),
-    };
-
-    let issue_id = record
-        .issue_id
-        .ok_or_else(|| format!("intake record '{intake_key}' has no bound issue_id"))?;
-
-    let target_branch = target_branch_for_intent(&record.intent_id);
-
-    let repo_url = detect_repo_url().unwrap_or_else(|| "unknown".to_string());
-
-    let mut constraints = AgentConstraints::default_rust();
-    constraints.success_criteria = record
-        .trace_linkage
-        .as_ref()
-        .map(|_| vec!["all tests pass".to_string(), "clippy clean".to_string()])
-        .unwrap_or_default();
-
-    let spec = HandoffSpec {
-        intent_id: record.intent_id.clone(),
-        issue_id,
-        intake_key: intake_key.to_string(),
-        run_key: record.run_key.clone(),
-        repo_url,
-        base_branch: "main".to_string(),
-        target_branch: target_branch.clone(),
-        design_artifact: DesignArtifact {
-            content: design_content,
-            content_hash: artifact.content_hash.clone(),
-        },
-        constraints,
-    };
+    let spec = build_agent_handoff_spec(intake_key, record, &artifact_ledger)?;
 
     if dry_run {
         println!(
@@ -1688,24 +1664,9 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
         return Ok(());
     }
 
-    let adapter = StubAgentAdapter::new(&target_branch, "0000000");
-    let handle = adapter
-        .spawn(&spec)
-        .map_err(|e| format!("agent spawn failed: {e}"))?;
-
-    let status = adapter
-        .poll_status(&handle)
-        .map_err(|e| format!("agent poll failed: {e}"))?;
-
     let now = epoch_millis();
     let mut agent_ledger = load_agent_ledger(&agent_ledger_path)?;
-    upsert_agent_record(
-        &mut agent_ledger,
-        intake_key,
-        handle.clone(),
-        status.clone(),
-        now,
-    );
+    let (handle, status) = spawn_agent_for_spec(intake_key, &spec, &mut agent_ledger, now)?;
     save_agent_ledger(&agent_ledger_path, &agent_ledger)?;
 
     println!(
@@ -1724,6 +1685,95 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
         .map_err(|e| format!("failed to serialize: {e}"))?
     );
     Ok(())
+}
+
+fn build_agent_handoff_spec(
+    intake_key: &str,
+    record: &IntakeRecord,
+    artifact_ledger: &ArtifactLedger,
+) -> Result<HandoffSpec, String> {
+    let canonical_key = canonical_marker(intake_key);
+    let artifact = artifact_ledger
+        .records
+        .get(&canonical_key)
+        .ok_or_else(|| format!("no canonical artifact found for intake key '{intake_key}'"))?;
+    let issue_id = record
+        .issue_id
+        .ok_or_else(|| format!("intake record '{intake_key}' has no bound issue_id"))?;
+    let design_content = match &artifact.payload {
+        Some(ArtifactPayload::Inline { body }) => body.clone(),
+        Some(ArtifactPayload::BlobRef { uri, .. }) => {
+            format!("[design artifact at: {uri}]")
+        }
+        None => String::new(),
+    };
+    let mut constraints = AgentConstraints::default_rust();
+    constraints.success_criteria = record
+        .trace_linkage
+        .as_ref()
+        .map(|_| vec!["all tests pass".to_string(), "clippy clean".to_string()])
+        .unwrap_or_default();
+    Ok(HandoffSpec {
+        intent_id: record.intent_id.clone(),
+        issue_id,
+        intake_key: intake_key.to_string(),
+        run_key: record.run_key.clone(),
+        repo_url: detect_repo_url().unwrap_or_else(|| "unknown".to_string()),
+        base_branch: "main".to_string(),
+        target_branch: target_branch_for_intent(&record.intent_id),
+        design_artifact: DesignArtifact {
+            content: design_content,
+            content_hash: artifact.content_hash.clone(),
+        },
+        constraints,
+    })
+}
+
+fn spawn_agent_for_spec(
+    intake_key: &str,
+    spec: &HandoffSpec,
+    agent_ledger: &mut AgentLedger,
+    now_epoch_ms: u128,
+) -> Result<(gunbc_ir::transport::agent::AgentHandle, AgentStatus), String> {
+    let adapter = StubAgentAdapter::new(&spec.target_branch, "0000000");
+    let handle = adapter
+        .spawn(spec)
+        .map_err(|e| format!("agent spawn failed for intake `{intake_key}`: {e}"))?;
+    let status = adapter
+        .poll_status(&handle)
+        .map_err(|e| format!("agent poll failed for intake `{intake_key}`: {e}"))?;
+    upsert_agent_record(
+        agent_ledger,
+        intake_key,
+        handle.clone(),
+        status.clone(),
+        now_epoch_ms,
+    );
+    Ok((handle, status))
+}
+
+fn ensure_agent_spawn_for_accepted_transition(
+    intake_key: &str,
+    record: &IntakeRecord,
+    artifact_ledger: &ArtifactLedger,
+    agent_ledger: &mut AgentLedger,
+    now_epoch_ms: u128,
+) -> Result<Option<serde_json::Value>, String> {
+    if record.stage != IssueLifecycleStage::Accepted {
+        return Ok(None);
+    }
+    if agent_ledger.entries.contains_key(intake_key) {
+        return Ok(None);
+    }
+    let spec = build_agent_handoff_spec(intake_key, record, artifact_ledger)?;
+    let (handle, status) = spawn_agent_for_spec(intake_key, &spec, agent_ledger, now_epoch_ms)?;
+    Ok(Some(json!({
+        "intake_key": intake_key,
+        "provider": handle.provider,
+        "session_id": handle.session_id,
+        "target_branch": spec.target_branch,
+        "status": status,
+    })))
 }
 
 fn detect_repo_url() -> Option<String> {

@@ -267,3 +267,100 @@ fn worker_polls_running_agent_records_during_sweep() {
         serde_json::Value::String(run_key.to_string())
     );
 }
+
+#[test]
+fn worker_spawns_agent_record_when_advancing_from_accepted() {
+    let ctx = CliTestContext::new("worker_agent_spawn", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-agent-spawn",
+        "intent-agent-spawn",
+        Some(84),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake");
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    for _ in 0..3 {
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker");
+        assert!(
+            worker.status.success(),
+            "worker should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    let approve = ctx
+        .command()
+        .arg("transition")
+        .arg("--intake-key")
+        .arg("intent-agent-spawn")
+        .arg("--stage")
+        .arg("accepted")
+        .current_dir(&root)
+        .output()
+        .expect("transition to accepted");
+    assert!(
+        approve.status.success(),
+        "approval transition should succeed: {}",
+        String::from_utf8_lossy(&approve.stderr)
+    );
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run worker accepted stage");
+    assert!(
+        worker.status.success(),
+        "worker should succeed: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(
+        payload["agent_spawns"][0]["intake_key"],
+        serde_json::Value::String("intent-agent-spawn".to_string())
+    );
+    assert_eq!(
+        payload["agent_spawns"][0]["target_branch"],
+        serde_json::Value::String("feature/intent-agent-spawn".to_string())
+    );
+    assert_eq!(
+        payload["agent_spawns"][0]["status"]["Completed"]["branch"],
+        serde_json::Value::String("feature/intent-agent-spawn".to_string())
+    );
+
+    let agent_ledger_path = root.join("target/sdlc/agent-ledger.json");
+    let agent_ledger_raw = std::fs::read_to_string(&agent_ledger_path).expect("read agent ledger");
+    let agent_ledger: serde_json::Value =
+        serde_json::from_str(&agent_ledger_raw).expect("parse agent ledger");
+    assert_eq!(
+        agent_ledger["entries"]["intent-agent-spawn"]["status"]["Completed"]["branch"],
+        serde_json::Value::String("feature/intent-agent-spawn".to_string())
+    );
+}
