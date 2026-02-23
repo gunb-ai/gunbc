@@ -507,3 +507,79 @@ fn validate_pr_dry_run_reports_ci_and_review_summary_for_completed_agent() {
         serde_json::Value::String("closed".to_string())
     );
 }
+
+#[test]
+fn implementation_stage_fails_closed_without_agent_record() {
+    let ctx = CliTestContext::new("implementation_requires_agent", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    progress_intake_to_accepted(
+        &ctx,
+        &root,
+        "intent-impl-no-agent",
+        "intent-impl-no-agent",
+        606,
+    );
+
+    // Advance Accepted -> Implementation once, which normally creates agent ledger entry.
+    let first_impl_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run worker accepted stage");
+    assert!(
+        first_impl_worker.status.success(),
+        "worker should succeed: {}",
+        String::from_utf8_lossy(&first_impl_worker.stderr)
+    );
+
+    let agent_ledger_path = root.join("target/sdlc/agent-ledger.json");
+    std::fs::write(
+        &agent_ledger_path,
+        serde_json::to_vec_pretty(&serde_json::json!({"entries": {}}))
+            .expect("serialize empty agent ledger"),
+    )
+    .expect("clear agent ledger entries");
+
+    // Next pass attempts Implementation -> Closed and must fail closed without agent record.
+    let second_impl_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run worker implementation stage");
+    assert!(
+        second_impl_worker.status.success(),
+        "worker should return report even when implementation dispatch fails: {}",
+        String::from_utf8_lossy(&second_impl_worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&second_impl_worker.stdout).expect("worker output should be JSON");
+    assert_eq!(
+        payload["executed_runs"]
+            .as_array()
+            .expect("executed_runs should be an array")
+            .len(),
+        0,
+        "implementation dispatch must not execute without required agent record"
+    );
+
+    let intake_ledger_path = root.join("target/sdlc/intake-ledger.json");
+    let intake_ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&intake_ledger_path).expect("read intake ledger"),
+    )
+    .expect("parse intake ledger");
+    assert_eq!(
+        intake_ledger["entries"]["intent-impl-no-agent"]["stage"],
+        serde_json::Value::String("Implementation".to_string())
+    );
+    assert_eq!(
+        intake_ledger["entries"]["intent-impl-no-agent"]["retry"]["attempts"],
+        serde_json::Value::Number(serde_json::Number::from(1))
+    );
+}

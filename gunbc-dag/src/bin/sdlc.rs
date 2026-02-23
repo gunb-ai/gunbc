@@ -1105,6 +1105,7 @@ fn run_worker(
                     intake_key,
                     record,
                     &worker_id_str,
+                    &agent_ledger,
                     &mut issue_transport,
                     now,
                     !dry_run,
@@ -3138,6 +3139,7 @@ fn dispatch_pipeline_stage(
     intake_key: &str,
     record: &IntakeRecord,
     worker_id: &str,
+    agent_ledger: &AgentLedger,
     issue_transport: &mut IssueTransportLedger,
     now_epoch_ms: u128,
     apply_side_effects: bool,
@@ -3147,6 +3149,7 @@ fn dispatch_pipeline_stage(
         .ok_or_else(|| format!("no issue_id for intake key `{intake_key}`"))?;
 
     let decision = dispatcher.execute(intake_key, record, worker_id, issue_id)?;
+    ensure_stage_gate_requirements(record, intake_key, agent_ledger, &decision)?;
     if apply_side_effects {
         if let (Some(marker), Some(message)) =
             (decision.marker.as_deref(), decision.message.as_deref())
@@ -3175,4 +3178,36 @@ fn dispatch_pipeline_stage(
     } else {
         Ok(StageDispatchOutcome::Advanced(decision.next_stage))
     }
+}
+
+fn ensure_stage_gate_requirements(
+    record: &IntakeRecord,
+    intake_key: &str,
+    agent_ledger: &AgentLedger,
+    decision: &StageDispatchDecision,
+) -> Result<(), String> {
+    if record.stage == IssueLifecycleStage::Implementation
+        && !decision.awaiting_approval
+        && decision.next_stage == IssueLifecycleStage::Closed
+    {
+        let agent_record = agent_ledger.entries.get(intake_key).ok_or_else(|| {
+            format!(
+                "implementation stage for intake `{intake_key}` requires an agent record before closing"
+            )
+        })?;
+        match &agent_record.status {
+            AgentStatus::Completed { .. } => Ok(()),
+            AgentStatus::Running { progress } => Err(format!(
+                "implementation stage for intake `{intake_key}` cannot close while agent is running{}",
+                progress
+                    .as_ref()
+                    .map(|value| format!(" (progress: {value})"))
+                    .unwrap_or_default()
+            )),
+            AgentStatus::Failed { reason, .. } => Err(format!(
+                "implementation stage for intake `{intake_key}` cannot close because agent failed: {reason}"
+            )),
+        }?;
+    }
+    Ok(())
 }
