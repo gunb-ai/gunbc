@@ -11,7 +11,7 @@ use std::fmt::Write;
 
 use daglang_derive::TestObligations;
 use daglang_lower::LoweredOp;
-use gunbc_ir::Dag;
+use gunbc_ir::{value_backing_for_type_id, Dag, ValueBacking};
 
 use crate::computation::{classify_computation, Computation};
 use crate::EmittedFile;
@@ -152,7 +152,24 @@ fn typed_mock_for_response(response_type: &str) -> &'static str {
         "FileResponse" => r#"{"path":"/tmp/test.txt","success":true,"operation":"read"}"#,
         "RestResponse" => r#"{"status":200,"body":{"ok":true}}"#,
         "ShellResponse" => r#"{"exit_code":0,"stdout":"output"}"#,
-        _ => "mock-response",
+        "StringList" | "NonEmptyStringList" | "List<String>" => r#"["mock-item"]"#,
+        "IntList" | "List<Int>" => r#"[1]"#,
+        "BoolList" | "List<Bool>" => r#"[true]"#,
+        "JsonList" | "List<Json>" => r#"[{"mock":true}]"#,
+        _ => mock_for_backing_type(response_type),
+    }
+}
+
+fn mock_for_backing_type(type_id: &str) -> &'static str {
+    match value_backing_for_type_id(type_id) {
+        ValueBacking::String => "mock-response",
+        ValueBacking::Bool => "true",
+        ValueBacking::Int | ValueBacking::Float => "1",
+        ValueBacking::Json => r#"{"ok":true}"#,
+        ValueBacking::Map => r#"{"mock":"value"}"#,
+        ValueBacking::List | ValueBacking::Set => r#"["mock-item"]"#,
+        ValueBacking::Unit => "null",
+        ValueBacking::Bytes => "[0]",
     }
 }
 
@@ -178,7 +195,20 @@ pub fn witness_mock_responses(response_type: &str) -> Vec<String> {
             r#"{"exit_code":0,"stdout":"ok"}"#.to_string(),
             r#"{"exit_code":1,"stderr":"error"}"#.to_string(),
         ],
-        _ => vec!["mock-response".to_string()],
+        _ => {
+            let one = typed_mock_for_response(response_type).to_string();
+            let alternate = match value_backing_for_type_id(response_type) {
+                ValueBacking::String => "alt-mock-response".to_string(),
+                ValueBacking::Bool => "false".to_string(),
+                ValueBacking::Int | ValueBacking::Float => "2".to_string(),
+                ValueBacking::Json => r#"{"ok":false}"#.to_string(),
+                ValueBacking::Map => r#"{"mock":"alternate"}"#.to_string(),
+                ValueBacking::List | ValueBacking::Set => r#"["mock-item","alt-item"]"#.to_string(),
+                ValueBacking::Unit => "null".to_string(),
+                ValueBacking::Bytes => "[1]".to_string(),
+            };
+            vec![one, alternate]
+        }
     }
 }
 
@@ -629,6 +659,12 @@ mod tests {
         assert!(emit_transport_mock_tests("rust", &dag_without_transport_nodes()).is_none());
         assert!(emit_transport_mock_tests("go", &dag_without_transport_nodes()).is_none());
         assert!(emit_transport_mock_tests("c", &dag_without_transport_nodes()).is_none());
+    }
+
+    #[test]
+    fn typed_mock_for_response_emits_list_shape_for_string_list() {
+        assert_eq!(typed_mock_for_response("StringList"), r#"["mock-item"]"#);
+        assert_eq!(typed_mock_for_response("List<String>"), r#"["mock-item"]"#);
     }
 
     // ===== E3.4-E3.6: TestSpec-based generation tests =====

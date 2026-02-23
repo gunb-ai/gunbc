@@ -113,7 +113,7 @@ pub fn build_infra_plan_dag(
             "plan",
             vec![],
             vec![
-                port("environment", "String"),
+                port("environment", "NonEmptyString"),
                 list("planned_targets", "String"),
                 port("target_count", "Int"),
             ],
@@ -160,7 +160,7 @@ pub fn build_infra_apply_dag(
             "plan",
             vec![],
             vec![
-                port("environment", "String"),
+                port("environment", "NonEmptyString"),
                 list("planned_targets", "String"),
                 port("target_count", "Int"),
             ],
@@ -177,7 +177,7 @@ pub fn build_infra_apply_dag(
                 "runtime_reconcile",
                 vec![],
                 vec![
-                    port("environment", "String"),
+                    port("environment", "NonEmptyString"),
                     list("reconciled_targets", "String"),
                     port("reconciled_count", "Int"),
                 ],
@@ -204,9 +204,9 @@ pub fn build_infra_apply_dag(
                 "apply_summary",
                 vec![port("target_count", "Int"), port("reconciled_count", "Int")],
                 vec![
-                    port("environment", "String"),
+                    port("environment", "NonEmptyString"),
                     port("applied_count", "Int"),
-                    port("report", "String"),
+                    port("report", "NonEmptyString"),
                 ],
                 InfraPlanApplyGraphOp::Infra(InfraPlanApplyOps::SummarizeApply {
                     environment: infra_spec.environment.to_string(),

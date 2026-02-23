@@ -240,10 +240,10 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // PrepareReadFile node — needs both filename (element) and repo_path (extra input)
     dag.add_node(Node::opaque(
         "prepare",
-        vec![port("filename", "String"), port("repo_path", "FilePath")],
+        vec![port("filename", "FilePath"), port("repo_path", "FilePath")],
         vec![
             port("request", "TransportRequest"),
-            port("filename", "String"),
+            port("filename", "FilePath"),
             port("skip", "Bool"),
         ],
         DynOp::new(PrepareReadFileOp),
@@ -266,7 +266,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
         "parse",
         vec![
             port("response", "TransportResponse"),
-            port("filename", "String"),
+            port("filename", "FilePath"),
         ],
         vec![port("result", "String")],
         DynOp::new(ParseReadFileOp),
