@@ -8,6 +8,7 @@
 #![allow(clippy::disallowed_methods)] // CLI-owned local ledgers and git metadata probes are intentional entrypoint concerns.
 
 use daglang_driver::{compile_from_context_with_options, CompileOptions, DriverContext};
+use daglang_lower::LoweredOp;
 use gunbc_dag::{
     canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
     promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
@@ -19,6 +20,7 @@ use gunbc_dag::{
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, DynOp, ExecutionMode};
+use gunbc_ir::node::NodeBody;
 use gunbc_ir::transport::agent::{
     target_branch_for_intent, AgentConstraints, DesignArtifact, HandoffSpec,
 };
@@ -768,7 +770,9 @@ fn run_worker(
     let compiled_stage_dispatcher = if dry_run {
         None
     } else {
-        Some(compile_worker_stage_dispatch_dag()?)
+        Some(compile_worker_stage_dispatch_dag(
+            preflight.runtime_profile.as_str(),
+        )?)
     };
 
     let ledger_path = intake_ledger_path();
@@ -1296,16 +1300,18 @@ fn run_worker(
     Ok(())
 }
 
+fn dag_profile_for_runtime_profile(runtime_profile: &str) -> Result<&'static str, String> {
+    match runtime_profile {
+        "local-co-located" => Ok("local"),
+        "stateless-fleet" => Ok("cloud_run"),
+        other => Err(format!(
+            "unsupported infra runtime_profile `{other}` for compiled SDLC pipeline preflight"
+        )),
+    }
+}
+
 fn compile_sdlc_pipeline_for_runtime_profile(runtime_profile: &str) -> Result<(), String> {
-    let dag_profile = match runtime_profile {
-        "local-co-located" => "local",
-        "stateless-fleet" => "cloud_run",
-        other => {
-            return Err(format!(
-                "unsupported infra runtime_profile `{other}` for compiled SDLC pipeline preflight"
-            ));
-        }
-    };
+    let dag_profile = dag_profile_for_runtime_profile(runtime_profile)?;
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
         .map_err(|error| {
@@ -1327,6 +1333,67 @@ fn compile_sdlc_pipeline_for_runtime_profile(runtime_profile: &str) -> Result<()
         format!("compiled SDLC pipeline preflight failed for profile `{dag_profile}`: {error}")
     })?;
     Ok(())
+}
+
+fn load_sdlc_pipeline_stage_order(
+    runtime_profile: &str,
+) -> Result<Vec<IssueLifecycleStage>, String> {
+    let dag_profile = dag_profile_for_runtime_profile(runtime_profile)?;
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .map_err(|error| {
+            format!("failed to resolve workspace layout for SDLC pipeline stage order: {error}")
+        })?;
+    let dsl_root = layout.workspace_root.join("dsl");
+    let context = DriverContext {
+        roots: vec![dsl_root.clone()],
+        target_file: Some(dsl_root.join("pipelines/sdlc.dag")),
+    };
+    let output = compile_from_context_with_options(
+        &context,
+        CompileOptions {
+            profile: Some(dag_profile.to_string()),
+            ..CompileOptions::default()
+        },
+    )
+    .map_err(|error| {
+        format!("failed to compile SDLC pipeline stage order for profile `{dag_profile}`: {error}")
+    })?;
+    let pipeline_node = output
+        .lowered_dag
+        .get_node(&"pipelines.sdlc::sdlc".into())
+        .ok_or_else(|| "compiled SDLC pipeline missing `pipelines.sdlc::sdlc` node".to_string())?;
+    let NodeBody::Opaque(LoweredOp::Pipeline { stage_names, .. }) = &pipeline_node.body else {
+        return Err("compiled SDLC pipeline node is not a pipeline operation".to_string());
+    };
+    if stage_names.is_empty() {
+        return Err("compiled SDLC pipeline produced empty stage order".to_string());
+    }
+    let mut parsed_stage_order = Vec::new();
+    for stage_name in stage_names {
+        let Some(issue_stage) = pipeline_stage_name_to_issue_stage(stage_name) else {
+            continue;
+        };
+        if parsed_stage_order.last().copied() != Some(issue_stage) {
+            parsed_stage_order.push(issue_stage);
+        }
+    }
+    if parsed_stage_order.is_empty() {
+        return Err("compiled SDLC pipeline stage order produced no lifecycle stages".to_string());
+    }
+    Ok(parsed_stage_order)
+}
+
+fn pipeline_stage_name_to_issue_stage(stage_name: &str) -> Option<IssueLifecycleStage> {
+    match stage_name {
+        "fetch" => Some(IssueLifecycleStage::Idea),
+        "design" => Some(IssueLifecycleStage::Design),
+        "design_review" => Some(IssueLifecycleStage::DesignReview),
+        "accept_design" => Some(IssueLifecycleStage::Accepted),
+        "implementation" => Some(IssueLifecycleStage::Implementation),
+        "close" => Some(IssueLifecycleStage::Closed),
+        _ => None,
+    }
 }
 
 fn run_await_approval(intake_key: Option<&str>, dry_run: bool) -> Result<(), String> {
@@ -2805,9 +2872,31 @@ struct StageDispatchDecision {
 
 struct CompiledStageDispatcher {
     dag: Dag<DynOp>,
+    stage_order: Vec<IssueLifecycleStage>,
 }
 
 impl CompiledStageDispatcher {
+    fn expected_next_stage(
+        &self,
+        current_stage: IssueLifecycleStage,
+    ) -> Result<IssueLifecycleStage, String> {
+        let index = self
+            .stage_order
+            .iter()
+            .position(|stage| *stage == current_stage)
+            .ok_or_else(|| {
+                format!(
+                    "compiled SDLC pipeline stage order does not include current stage `{}`",
+                    current_stage.as_label()
+                )
+            })?;
+        Ok(self
+            .stage_order
+            .get(index + 1)
+            .copied()
+            .unwrap_or(current_stage))
+    }
+
     fn execute(
         &self,
         intake_key: &str,
@@ -2895,6 +2984,21 @@ impl CompiledStageDispatcher {
             marker,
             message,
         })
+        .and_then(|decision| {
+            if decision.awaiting_approval {
+                return Ok(decision);
+            }
+            let expected_next = self.expected_next_stage(record.stage)?;
+            if decision.next_stage != expected_next {
+                return Err(format!(
+                    "compiled stage dispatcher returned next_stage `{}` for current stage `{}` but compiled pipeline order requires `{}`",
+                    decision.next_stage.as_label(),
+                    record.stage.as_label(),
+                    expected_next.as_label(),
+                ));
+            }
+            Ok(decision)
+        })
     }
 }
 
@@ -2918,7 +3022,10 @@ fn value_as_optional_string(value: &Value) -> Option<String> {
     }
 }
 
-fn compile_worker_stage_dispatch_dag() -> Result<CompiledStageDispatcher, String> {
+fn compile_worker_stage_dispatch_dag(
+    runtime_profile: &str,
+) -> Result<CompiledStageDispatcher, String> {
+    let stage_order = load_sdlc_pipeline_stage_order(runtime_profile)?;
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
         .map_err(|error| {
@@ -2934,7 +3041,7 @@ fn compile_worker_stage_dispatch_dag() -> Result<CompiledStageDispatcher, String
     })?;
     let dag = resolve_lowered_dag(&output.lowered_dag)
         .map_err(|error| format!("failed to resolve compiled stage dispatcher DAG: {error}"))?;
-    Ok(CompiledStageDispatcher { dag })
+    Ok(CompiledStageDispatcher { dag, stage_order })
 }
 
 /// Dispatch a compiled SDLC stage policy graph for execution.
