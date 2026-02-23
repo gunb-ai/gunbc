@@ -294,7 +294,7 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 | **M9-D** | **Design: Typed dependency markers**: `DependencyNodeId` typed constructor replacing `dep:system::<target>` string conventions. | M8-D | S | |
 | **M9** | **Typed dependency markers**: Replace string-encoded dependency IDs with typed edge metadata. Remove runtime logic that infers kind from string prefixes. Round-trip tests for system/secret dependency mapping. | M9-D, M8 | S | |
 | **M16-D** | **Design: SystemModel/TransportBehavior unification**: Shared invocation contract model consumed by both SystemModel and transport behavior specs. | M8-D | S | |
-| **M16** | **Unify invocation contracts**: Migrate `Invocation::Rest` to shared transport spec types. Parity tests proving SystemModel and TransportBehavior are structurally equivalent. Remove duplicate spec surfaces. | M16-D, M8 | M | |
+| **M16** | **Unify invocation contracts**: Migrate `Invocation::Rest` to shared transport spec types. Parity tests proving SystemModel and TransportBehavior are structurally equivalent. Remove duplicate spec surfaces. **Unblocks**: deletion of 4 remaining `graph.rs` files (~4,170 lines) + AWS/Azure cloud modeling completion. See `TODO/modeling.md` § "Cloud Modeling Gap Inventory". | M16-D, M8 | M | |
 
 ### Lane 3-B: Workflow execution safety (M10 → M11 → M12)
 
@@ -330,7 +330,8 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 ### Lane 3 dependency graph
 
 ```
-Lane 3-A:  M8 → M9 → M16
+Lane 3-A:  M8 → M9 → M16 → [graph.rs cleanup: review, llm, cloud-ops, gcp-ops]
+                               → [cloud gap: AWS services, Azure services, GitHub ops wiring]
 Lane 3-B:  M10 → M11 → M12
 Lane 3-C:  M13 → M14
 Lane 3-D:  M17 → M18 → M19
@@ -338,6 +339,7 @@ Lane 3-D:  M17 → M18 → M19
 3-A and 3-B are independent.
 3-C is independent.
 3-D is independent but highest complexity.
+M16 is the critical path for cloud modeling completion (see TODO/modeling.md § Cloud Modeling Gap Inventory).
 ```
 
 ---

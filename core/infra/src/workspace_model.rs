@@ -330,6 +330,298 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
     ]
 }
 
+// ── Generator Graph ──────────────────────────────────────────────────
+
+/// A producer→consumer edge in the generation graph.
+///
+/// Represents a tool whose output artifacts are consumed by another tool
+/// or crate during the build/bootstrap process.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneratorEdge {
+    /// Tool that produces the artifact.
+    pub producer: &'static str,
+    /// Tool or crate that consumes the artifact.
+    pub consumer: &'static str,
+    /// The artifact path pattern connecting them.
+    pub artifact: &'static str,
+}
+
+/// Known generator edges in the workspace.
+///
+/// These are the canonical producer→consumer relationships derived from
+/// the tool registry's `provides`/`consumes` fields and build ordering.
+pub fn known_generator_edges() -> Vec<GeneratorEdge> {
+    vec![
+        GeneratorEdge {
+            producer: "codegen",
+            consumer: "bootstrap",
+            artifact: "target/codegen/.stamp",
+        },
+        GeneratorEdge {
+            producer: "codegen",
+            consumer: "makegen",
+            artifact: "target/codegen/.stamp",
+        },
+        GeneratorEdge {
+            producer: "pragma",
+            consumer: "clippy",
+            artifact: "clippy.toml",
+        },
+        GeneratorEdge {
+            producer: "testgen",
+            consumer: "cargo-test",
+            artifact: "**/generated_tests*.rs",
+        },
+        GeneratorEdge {
+            producer: "makegen",
+            consumer: "make",
+            artifact: "Makefile",
+        },
+        GeneratorEdge {
+            producer: "bootstrap",
+            consumer: "make",
+            artifact: ".gitignore",
+        },
+    ]
+}
+
+/// Check for cycles in a generator edge graph.
+///
+/// Returns `Some(cycle_path)` if a cycle is found, `None` if the graph is acyclic.
+pub fn check_generator_cycles(edges: &[GeneratorEdge]) -> Option<Vec<&str>> {
+    let mut nodes: BTreeSet<&str> = BTreeSet::new();
+    let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for edge in edges {
+        nodes.insert(edge.producer);
+        nodes.insert(edge.consumer);
+        adj.entry(edge.producer).or_default().push(edge.consumer);
+    }
+
+    // DFS-based cycle detection
+    let mut visited: BTreeSet<&str> = BTreeSet::new();
+    let mut on_stack: BTreeSet<&str> = BTreeSet::new();
+    let mut path: Vec<&str> = Vec::new();
+
+    fn dfs<'a>(
+        node: &'a str,
+        adj: &BTreeMap<&'a str, Vec<&'a str>>,
+        visited: &mut BTreeSet<&'a str>,
+        on_stack: &mut BTreeSet<&'a str>,
+        path: &mut Vec<&'a str>,
+    ) -> Option<Vec<&'a str>> {
+        visited.insert(node);
+        on_stack.insert(node);
+        path.push(node);
+
+        if let Some(neighbors) = adj.get(node) {
+            for &next in neighbors {
+                if !visited.contains(next) {
+                    if let Some(cycle) = dfs(next, adj, visited, on_stack, path) {
+                        return Some(cycle);
+                    }
+                } else if on_stack.contains(next) {
+                    // Found cycle — extract cycle path
+                    let start = path.iter().position(|&n| n == next).unwrap();
+                    let mut cycle: Vec<&str> = path[start..].to_vec();
+                    cycle.push(next);
+                    return Some(cycle);
+                }
+            }
+        }
+
+        on_stack.remove(node);
+        path.pop();
+        None
+    }
+
+    for &node in &nodes {
+        if !visited.contains(node) {
+            if let Some(cycle) = dfs(node, &adj, &mut visited, &mut on_stack, &mut path) {
+                return Some(cycle);
+            }
+        }
+    }
+    None
+}
+
+/// Derive execution order from a generator edge graph (topological sort).
+///
+/// Returns tool names in dependency order. Tools with no dependencies come first.
+/// Returns `Err` with a cycle path if the graph has cycles.
+pub fn generator_execution_order(edges: &[GeneratorEdge]) -> Result<Vec<&str>, Vec<&str>> {
+    if let Some(cycle) = check_generator_cycles(edges) {
+        return Err(cycle);
+    }
+
+    let mut nodes: BTreeSet<&str> = BTreeSet::new();
+    let mut in_degree: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+
+    for edge in edges {
+        nodes.insert(edge.producer);
+        nodes.insert(edge.consumer);
+        adj.entry(edge.producer).or_default().push(edge.consumer);
+        *in_degree.entry(edge.consumer).or_default() += 1;
+        in_degree.entry(edge.producer).or_default();
+    }
+
+    let mut queue: std::collections::VecDeque<&str> = nodes
+        .iter()
+        .filter(|&&n| *in_degree.get(n).unwrap_or(&0) == 0)
+        .copied()
+        .collect();
+
+    let mut order = Vec::new();
+    while let Some(node) = queue.pop_front() {
+        order.push(node);
+        if let Some(neighbors) = adj.get(node) {
+            for &next in neighbors {
+                let deg = in_degree.get_mut(next).unwrap();
+                *deg -= 1;
+                if *deg == 0 {
+                    queue.push_back(next);
+                }
+            }
+        }
+    }
+
+    Ok(order)
+}
+
+// ── Commit Policy ───────────────────────────────────────────────────
+
+/// Reason a file pattern has a particular commit policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitReason {
+    /// Generated artifact — never committed.
+    Generated,
+    /// Build artifact — never committed.
+    BuildOutput,
+    /// Seed file — generated but committed for bootstrap.
+    BootstrapSeed,
+    /// Sensitive — never committed.
+    Secret,
+}
+
+/// Commit policy for a file pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitPolicy {
+    /// Glob pattern (gitignore-style).
+    pub pattern: &'static str,
+    /// Why this pattern exists.
+    pub reason: CommitReason,
+    /// The tool or system that generates this artifact.
+    pub producer: Option<&'static str>,
+}
+
+impl CommitPolicy {
+    /// Whether this pattern should be in .gitignore.
+    pub fn should_gitignore(&self) -> bool {
+        matches!(
+            self.reason,
+            CommitReason::Generated | CommitReason::BuildOutput | CommitReason::Secret
+        )
+    }
+}
+
+/// Canonical commit policies for the workspace.
+///
+/// These are the baseline policies; tool-specific policies are derived
+/// from the tool registry's `outputs` field at a higher layer.
+pub fn baseline_commit_policies() -> Vec<CommitPolicy> {
+    vec![
+        CommitPolicy {
+            pattern: "target/",
+            reason: CommitReason::BuildOutput,
+            producer: None,
+        },
+        CommitPolicy {
+            pattern: ".env",
+            reason: CommitReason::Secret,
+            producer: None,
+        },
+        CommitPolicy {
+            pattern: "*.pem",
+            reason: CommitReason::Secret,
+            producer: None,
+        },
+        CommitPolicy {
+            pattern: "target/codegen/.stamp",
+            reason: CommitReason::Generated,
+            producer: Some("codegen"),
+        },
+        CommitPolicy {
+            pattern: "Makefile",
+            reason: CommitReason::Generated,
+            producer: Some("makegen"),
+        },
+        // Bootstrap seed files — generated but committed
+        CommitPolicy {
+            pattern: ".gitignore",
+            reason: CommitReason::BootstrapSeed,
+            producer: Some("bootstrap"),
+        },
+        CommitPolicy {
+            pattern: "clippy.toml",
+            reason: CommitReason::BootstrapSeed,
+            producer: Some("pragma"),
+        },
+        CommitPolicy {
+            pattern: "deps.toml",
+            reason: CommitReason::BootstrapSeed,
+            producer: Some("deps-config"),
+        },
+    ]
+}
+
+/// Generate .gitignore content from commit policies.
+pub fn derive_gitignore(policies: &[CommitPolicy]) -> String {
+    let mut lines = Vec::new();
+    for policy in policies {
+        if policy.should_gitignore() {
+            lines.push(policy.pattern.to_string());
+        }
+    }
+    lines.sort();
+    lines.dedup();
+    lines.join("\n")
+}
+
+// ── Toolchain Requirements ──────────────────────────────────────────
+
+/// A toolchain requirement for building/running the repo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolchainRequirement {
+    pub tool: &'static str,
+    pub min_version: Option<&'static str>,
+    pub purpose: &'static str,
+    pub install_hint: &'static str,
+}
+
+/// Canonical toolchain requirements.
+pub fn toolchain_requirements() -> Vec<ToolchainRequirement> {
+    vec![
+        ToolchainRequirement {
+            tool: "rustc",
+            min_version: Some("1.75.0"),
+            purpose: "Rust compiler",
+            install_hint: "rustup update stable",
+        },
+        ToolchainRequirement {
+            tool: "cargo",
+            min_version: Some("1.75.0"),
+            purpose: "Rust package manager",
+            install_hint: "rustup update stable",
+        },
+        ToolchainRequirement {
+            tool: "make",
+            min_version: None,
+            purpose: "Build orchestration",
+            install_hint: "apt install make",
+        },
+    ]
+}
+
 /// Workspace invariant violation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceViolation {
@@ -455,6 +747,160 @@ mod tests {
                 seen.insert(spec.name),
                 "duplicate crate name in workspace_crates(): {}",
                 spec.name
+            );
+        }
+    }
+
+    // ── Generator graph tests ───────────────────────────────────────
+
+    #[test]
+    fn generator_graph_is_acyclic() {
+        let edges = known_generator_edges();
+        assert!(
+            check_generator_cycles(&edges).is_none(),
+            "generator graph must be acyclic"
+        );
+    }
+
+    #[test]
+    fn generator_execution_order_is_valid() {
+        let edges = known_generator_edges();
+        let order = generator_execution_order(&edges).expect("should produce valid order");
+        // Producers must appear before consumers
+        for edge in &edges {
+            let prod_pos = order.iter().position(|&n| n == edge.producer);
+            let cons_pos = order.iter().position(|&n| n == edge.consumer);
+            if let (Some(p), Some(c)) = (prod_pos, cons_pos) {
+                assert!(
+                    p < c,
+                    "producer '{}' must come before consumer '{}' in execution order",
+                    edge.producer,
+                    edge.consumer
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cycle_detection_finds_cycles() {
+        let edges = vec![
+            GeneratorEdge {
+                producer: "a",
+                consumer: "b",
+                artifact: "x",
+            },
+            GeneratorEdge {
+                producer: "b",
+                consumer: "c",
+                artifact: "y",
+            },
+            GeneratorEdge {
+                producer: "c",
+                consumer: "a",
+                artifact: "z",
+            },
+        ];
+        let cycle = check_generator_cycles(&edges);
+        assert!(cycle.is_some(), "should detect cycle a→b→c→a");
+    }
+
+    #[test]
+    fn cycle_detection_returns_none_for_dag() {
+        let edges = vec![
+            GeneratorEdge {
+                producer: "a",
+                consumer: "b",
+                artifact: "x",
+            },
+            GeneratorEdge {
+                producer: "a",
+                consumer: "c",
+                artifact: "y",
+            },
+            GeneratorEdge {
+                producer: "b",
+                consumer: "c",
+                artifact: "z",
+            },
+        ];
+        assert!(check_generator_cycles(&edges).is_none());
+    }
+
+    // ── Commit policy tests ─────────────────────────────────────────
+
+    #[test]
+    fn baseline_policies_include_build_output() {
+        let policies = baseline_commit_policies();
+        assert!(
+            policies.iter().any(|p| p.pattern == "target/"),
+            "baseline must include target/"
+        );
+    }
+
+    #[test]
+    fn bootstrap_seeds_are_not_gitignored() {
+        let policies = baseline_commit_policies();
+        for policy in &policies {
+            if policy.reason == CommitReason::BootstrapSeed {
+                assert!(
+                    !policy.should_gitignore(),
+                    "bootstrap seed '{}' should NOT be gitignored",
+                    policy.pattern
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn derive_gitignore_excludes_seeds() {
+        let policies = baseline_commit_policies();
+        let gitignore = derive_gitignore(&policies);
+        // Seeds should NOT appear
+        assert!(
+            !gitignore.contains(".gitignore"),
+            ".gitignore is a seed and should not be in derived gitignore"
+        );
+        // Build output should appear
+        assert!(
+            gitignore.contains("target/"),
+            "target/ should be in derived gitignore"
+        );
+    }
+
+    #[test]
+    fn derive_gitignore_includes_secrets() {
+        let policies = baseline_commit_policies();
+        let gitignore = derive_gitignore(&policies);
+        assert!(
+            gitignore.contains(".env"),
+            ".env should be in derived gitignore"
+        );
+    }
+
+    // ── Toolchain requirement tests ─────────────────────────────────
+
+    #[test]
+    fn toolchain_requirements_include_rustc() {
+        let reqs = toolchain_requirements();
+        assert!(
+            reqs.iter().any(|r| r.tool == "rustc"),
+            "must require rustc"
+        );
+    }
+
+    #[test]
+    fn producer_crates_exist_in_workspace() {
+        let crates = workspace_crates();
+        let producers: Vec<_> = crates.iter().filter(|c| c.is_producer).collect();
+        assert!(
+            !producers.is_empty(),
+            "workspace should have at least one producer crate"
+        );
+        for p in &producers {
+            assert!(
+                crates.iter().any(|c| c.name == p.name),
+                "producer '{}' must be in workspace_crates()",
+                p.name
             );
         }
     }

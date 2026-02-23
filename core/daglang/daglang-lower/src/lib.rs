@@ -235,6 +235,9 @@ pub struct ServiceCallMetadata {
     /// Used by generic protocol interpreters to replace per-service adapters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<ServiceOperationSpec>,
+    /// M22 Phase 3: Retry policy from `@retry` annotations.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_policy: Option<RetryPolicy>,
 }
 
 // ============================================================================
@@ -267,6 +270,55 @@ pub struct RestOperationSpec {
     pub body_template: Option<Vec<BodyEntry>>,
     /// Extra HTTP headers from `@headers({...})`.
     pub headers: Vec<(String, String)>,
+    /// M22 Phase 2: Error classification from `@error_map` annotations.
+    /// Maps HTTP status codes to semantic error categories.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub error_mappings: Vec<ErrorMapping>,
+}
+
+// ============================================================================
+// M22 Phase 2: Error classification from @error_map annotations
+// ============================================================================
+
+/// A single error classification entry from `@error_map`.
+///
+/// Maps an HTTP status code to a semantic error category. These compose
+/// with protocol-stack defaults (M16): service-specific mappings override
+/// the default HTTP status classification.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ErrorMapping {
+    /// HTTP status code (e.g., 404, 412, 422).
+    pub status: u16,
+    /// Expected response body pattern (for status-code + body matching).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body_pattern: Option<String>,
+}
+
+// ============================================================================
+// M22 Phase 3: Retry policy from @retry annotations
+// ============================================================================
+
+/// Retry policy extracted from `@retry` annotations.
+///
+/// Composes with the protocol stack's error classification to determine
+/// which errors are retryable.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct RetryPolicy {
+    /// Maximum number of retry attempts.
+    pub max_attempts: u32,
+    /// Backoff strategy.
+    pub backoff: BackoffStrategy,
+    /// HTTP status codes that trigger a retry (e.g., 429, 503).
+    pub retryable_statuses: Vec<u16>,
+}
+
+/// Backoff strategy for retries.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub enum BackoffStrategy {
+    /// Fixed delay between retries.
+    Fixed { delay_ms: u64 },
+    /// Exponential backoff with base delay.
+    Exponential { base_ms: u64 },
 }
 
 /// Shell protocol specification: argv template + output parsing.
@@ -3832,6 +3884,7 @@ fn derive_service_call_metadata(
             || has_annotation(&service.annotations, "readonly"),
         permissions,
         spec,
+        retry_policy: None, // M22 Phase 3: populated when @retry extraction is wired
     }
 }
 
@@ -3874,6 +3927,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         output_fields,
         body_template,
         headers,
+        error_mappings: vec![], // M22 Phase 2: populated when @error_map extraction is wired
     })
 }
 

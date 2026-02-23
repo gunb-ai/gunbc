@@ -256,6 +256,7 @@ pub fn build_transport_http_model() -> SystemModel {
         .with_properties(&[Property::ReadOnly]),
     ])
     .with_dependencies(vec![Dependency::system("transport.tcp")])
+    .with_depends_on(&["transport.tcp"])
 }
 
 gunbc_ir::submit_system_model!(build_transport_http_model);
@@ -349,6 +350,7 @@ pub fn build_transport_rest_model() -> SystemModel {
         ]),
     ])
     .with_dependencies(vec![Dependency::system("transport.http")])
+    .with_depends_on(&["transport.http"])
 }
 
 gunbc_ir::submit_system_model!(build_transport_rest_model);
@@ -623,5 +625,59 @@ mod tests {
         assert_eq!(build_transport_rest_model().kind, SystemKind::RestApi);
         assert_eq!(build_transport_file_model().kind, SystemKind::Transport);
         assert_eq!(build_transport_shell_model().kind, SystemKind::Transport);
+    }
+
+    #[test]
+    fn tcp_model_depends_on_field_is_empty() {
+        let tcp_model = build_transport_tcp_model();
+        assert!(tcp_model.depends_on.is_empty(), "TCP is the base layer");
+    }
+
+    #[test]
+    fn http_model_depends_on_field_contains_tcp() {
+        let http_model = build_transport_http_model();
+        assert_eq!(http_model.depends_on, vec!["transport.tcp".to_string()]);
+    }
+
+    #[test]
+    fn rest_model_depends_on_field_contains_http() {
+        let rest_model = build_transport_rest_model();
+        assert_eq!(rest_model.depends_on, vec!["transport.http".to_string()]);
+    }
+
+    #[test]
+    fn depends_on_references_are_valid() {
+        use gunbc_ir::system_model::validate_depends_on_references;
+        let models = vec![
+            build_transport_tcp_model(),
+            build_transport_http_model(),
+            build_transport_rest_model(),
+            build_transport_file_model(),
+            build_transport_shell_model(),
+        ];
+        validate_depends_on_references(&models)
+            .expect("all transport depends_on references should be valid");
+    }
+
+    #[test]
+    fn inherited_properties_flow_through_protocol_stack() {
+        use gunbc_ir::system_model::collect_inherited_properties;
+        let models = vec![
+            build_transport_tcp_model(),
+            build_transport_http_model(),
+            build_transport_rest_model(),
+        ];
+
+        // REST inherits from HTTP which inherits from TCP
+        let rest_props = collect_inherited_properties("transport.rest", &models);
+
+        // From TCP: WritesWorld
+        assert!(rest_props.contains(&Property::WritesWorld));
+        // From HTTP: ReadOnly, Deterministic, Idempotent
+        assert!(rest_props.contains(&Property::ReadOnly));
+        assert!(rest_props.contains(&Property::Deterministic));
+        assert!(rest_props.contains(&Property::Idempotent));
+        // From REST itself: JsonContentType
+        assert!(rest_props.contains(&Property::JsonContentType));
     }
 }

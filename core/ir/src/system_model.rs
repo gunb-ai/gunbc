@@ -36,7 +36,7 @@ pub enum SystemKind {
 pub type Invocation = InvocationContract;
 
 /// Behavior properties relevant to contract/test generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Property {
     ReadOnly,
     WritesWorld,
@@ -270,6 +270,13 @@ pub struct SystemModel {
     pub docs: String,
     pub behaviors: Vec<Behavior>,
     pub dependencies: Vec<Dependency>,
+    /// System model IDs this model depends on (protocol stack layering).
+    ///
+    /// This is a convenience field for declaring system-level dependencies
+    /// using plain IDs. It is merged with `dependencies` during graph
+    /// validation — entries here are equivalent to `Dependency::system(id)`.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 /// Upsert-oriented lifecycle phases used for contract tests.
@@ -314,6 +321,7 @@ impl SystemModel {
             docs: docs.into(),
             behaviors: Vec::new(),
             dependencies: Vec::new(),
+            depends_on: Vec::new(),
         }
     }
 
@@ -325,6 +333,26 @@ impl SystemModel {
     pub fn with_dependencies(mut self, dependencies: Vec<Dependency>) -> Self {
         self.dependencies = dependencies;
         self
+    }
+
+    pub fn with_depends_on(mut self, depends_on: &[&str]) -> Self {
+        self.depends_on = depends_on.iter().map(|s| s.to_string()).collect();
+        self
+    }
+
+    /// Return all system model IDs this model depends on, merging both
+    /// `depends_on` and system-typed entries from `dependencies`.
+    pub fn all_system_deps(&self) -> BTreeSet<String> {
+        let mut deps = BTreeSet::new();
+        for id in &self.depends_on {
+            deps.insert(id.clone());
+        }
+        for dep in &self.dependencies {
+            if let DependencyKind::System(sys_id) = &dep.kind {
+                deps.insert(sys_id.0.clone());
+            }
+        }
+        deps
     }
 }
 
@@ -469,6 +497,8 @@ fn rest_path_placeholders(path: &str) -> Result<BTreeSet<String>, String> {
 }
 
 /// Ensure the system dependency graph is acyclic.
+///
+/// Considers both the `dependencies` (system-typed) and `depends_on` fields.
 pub fn validate_dependency_graph_acyclic(models: &[SystemModel]) -> Result<(), String> {
     let mut indegree = BTreeMap::<String, usize>::new();
     let mut outgoing = BTreeMap::<String, Vec<String>>::new();
@@ -479,15 +509,15 @@ pub fn validate_dependency_graph_acyclic(models: &[SystemModel]) -> Result<(), S
     }
 
     for model in models {
-        for dep in &model.dependencies {
-            if let DependencyKind::System(target) = &dep.kind {
-                if indegree.contains_key(&target.0) {
-                    *indegree.get_mut(&target.0).expect("target indegree exists") += 1;
-                    outgoing
-                        .get_mut(&model.id)
-                        .expect("source entry exists")
-                        .push(target.0.clone());
-                }
+        // Collect all system deps from both fields.
+        let all_deps = model.all_system_deps();
+        for target_id in all_deps {
+            if indegree.contains_key(&target_id) {
+                *indegree.get_mut(&target_id).expect("target indegree exists") += 1;
+                outgoing
+                    .get_mut(&model.id)
+                    .expect("source entry exists")
+                    .push(target_id);
             }
         }
     }
@@ -518,6 +548,75 @@ pub fn validate_dependency_graph_acyclic(models: &[SystemModel]) -> Result<(), S
     }
 
     Ok(())
+}
+
+/// Validate that all `depends_on` entries reference valid system model IDs
+/// and that no model depends on itself.
+pub fn validate_depends_on_references(models: &[SystemModel]) -> Result<(), String> {
+    let known_ids: BTreeSet<&str> = models.iter().map(|m| m.id.as_str()).collect();
+    for model in models {
+        for dep_id in &model.depends_on {
+            if dep_id == &model.id {
+                return Err(format!(
+                    "system model '{}' depends on itself via depends_on",
+                    model.id
+                ));
+            }
+            if !known_ids.contains(dep_id.as_str()) {
+                return Err(format!(
+                    "system model '{}' depends_on unknown model '{}'",
+                    model.id, dep_id
+                ));
+            }
+        }
+        // Also check self-reference in system dependencies.
+        for dep in &model.dependencies {
+            if let DependencyKind::System(sys_id) = &dep.kind {
+                if sys_id.0 == model.id {
+                    return Err(format!(
+                        "system model '{}' depends on itself via dependencies",
+                        model.id
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Collect the transitive set of properties inherited through the dependency
+/// chain for a given model.
+///
+/// Properties are gathered from the model itself and all models it transitively
+/// depends on (via `depends_on` and system-typed `dependencies`).
+pub fn collect_inherited_properties(
+    model_id: &str,
+    models: &[SystemModel],
+) -> BTreeSet<Property> {
+    let model_map: BTreeMap<String, &SystemModel> =
+        models.iter().map(|m| (m.id.clone(), m)).collect();
+    let mut visited = BTreeSet::new();
+    let mut properties = BTreeSet::new();
+    let mut queue = VecDeque::new();
+    queue.push_back(model_id.to_string());
+    while let Some(current_id) = queue.pop_front() {
+        if !visited.insert(current_id.clone()) {
+            continue;
+        }
+        if let Some(model) = model_map.get(&current_id) {
+            for behavior in &model.behaviors {
+                for prop in &behavior.properties {
+                    properties.insert(*prop);
+                }
+            }
+            for dep_id in model.all_system_deps() {
+                if !visited.contains(&dep_id) {
+                    queue.push_back(dep_id);
+                }
+            }
+        }
+    }
+    properties
 }
 
 /// Derive contract-test specs from system models and behavior properties.
@@ -1611,6 +1710,241 @@ mod tests {
         // Registration with the DAG should succeed.
         register_system_behavior_type_dags(&mut registry, &[model])
             .expect("registration with clean contract DAG should succeed");
+    }
+
+    // --- depends_on layering tests ---
+
+    fn make_layered_models() -> Vec<SystemModel> {
+        let mk_behavior = |id: &str| {
+            Behavior::new(
+                id,
+                format!("{id} behavior"),
+                Invocation::Sdk {
+                    function: id.to_string(),
+                    docs: "docs".to_string(),
+                },
+            )
+            .with_outputs(vec![BehaviorOutput::new(
+                "ok",
+                OutputType::TypeId(TypeId::from("Bool")),
+            )])
+        };
+
+        vec![
+            SystemModel::new("layer.tcp", "TCP", SystemKind::Convention, "v1", "tcp layer")
+                .with_behaviors(vec![
+                    mk_behavior("connect").with_properties(&[Property::WritesWorld]),
+                ])
+                .with_depends_on(&[]),
+            SystemModel::new("layer.http", "HTTP", SystemKind::Protocol, "v1", "http layer")
+                .with_behaviors(vec![
+                    mk_behavior("get").with_properties(&[Property::ReadOnly, Property::Deterministic]),
+                    mk_behavior("post").with_properties(&[Property::WritesWorld, Property::Idempotent]),
+                ])
+                .with_depends_on(&["layer.tcp"]),
+            SystemModel::new("layer.rest", "REST", SystemKind::Protocol, "v1", "rest layer")
+                .with_behaviors(vec![
+                    mk_behavior("get").with_properties(&[
+                        Property::ReadOnly,
+                        Property::Deterministic,
+                        Property::JsonContentType,
+                    ]),
+                    mk_behavior("post").with_properties(&[
+                        Property::WritesWorld,
+                        Property::Idempotent,
+                        Property::JsonContentType,
+                    ]),
+                ])
+                .with_depends_on(&["layer.http"]),
+        ]
+    }
+
+    #[test]
+    fn depends_on_references_must_be_valid() {
+        let models = make_layered_models();
+        validate_depends_on_references(&models).expect("layered models should validate");
+    }
+
+    #[test]
+    fn depends_on_rejects_unknown_reference() {
+        let mk_behavior = |id: &str| {
+            Behavior::new(
+                id,
+                format!("{id} behavior"),
+                Invocation::Sdk {
+                    function: id.to_string(),
+                    docs: "docs".to_string(),
+                },
+            )
+            .with_outputs(vec![BehaviorOutput::new(
+                "ok",
+                OutputType::TypeId(TypeId::from("Bool")),
+            )])
+        };
+
+        let models = vec![
+            SystemModel::new("x.a", "A", SystemKind::Sdk, "v1", "a")
+                .with_behaviors(vec![mk_behavior("op")])
+                .with_depends_on(&["x.nonexistent"]),
+        ];
+
+        let err = validate_depends_on_references(&models)
+            .expect_err("unknown depends_on target should fail");
+        assert!(
+            err.contains("x.nonexistent"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn depends_on_rejects_self_reference() {
+        let mk_behavior = |id: &str| {
+            Behavior::new(
+                id,
+                format!("{id} behavior"),
+                Invocation::Sdk {
+                    function: id.to_string(),
+                    docs: "docs".to_string(),
+                },
+            )
+            .with_outputs(vec![BehaviorOutput::new(
+                "ok",
+                OutputType::TypeId(TypeId::from("Bool")),
+            )])
+        };
+
+        let models = vec![
+            SystemModel::new("x.self", "Self", SystemKind::Sdk, "v1", "self ref")
+                .with_behaviors(vec![mk_behavior("op")])
+                .with_depends_on(&["x.self"]),
+        ];
+
+        let err = validate_depends_on_references(&models)
+            .expect_err("self-referencing depends_on should fail");
+        assert!(
+            err.contains("depends on itself"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn layered_models_are_acyclic() {
+        let models = make_layered_models();
+        validate_dependency_graph_acyclic(&models)
+            .expect("TCP -> HTTP -> REST should be acyclic");
+    }
+
+    #[test]
+    fn layered_models_detect_cycle_via_depends_on() {
+        let mk_behavior = |id: &str| {
+            Behavior::new(
+                id,
+                format!("{id} behavior"),
+                Invocation::Sdk {
+                    function: id.to_string(),
+                    docs: "docs".to_string(),
+                },
+            )
+            .with_outputs(vec![BehaviorOutput::new(
+                "ok",
+                OutputType::TypeId(TypeId::from("Bool")),
+            )])
+        };
+
+        let models = vec![
+            SystemModel::new("cycle.a", "A", SystemKind::Sdk, "v1", "a")
+                .with_behaviors(vec![mk_behavior("op")])
+                .with_depends_on(&["cycle.b"]),
+            SystemModel::new("cycle.b", "B", SystemKind::Sdk, "v1", "b")
+                .with_behaviors(vec![mk_behavior("op")])
+                .with_depends_on(&["cycle.a"]),
+        ];
+
+        let err = validate_dependency_graph_acyclic(&models)
+            .expect_err("cycle should be detected");
+        assert!(err.contains("cycle"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn inherited_properties_flow_through_layered_chain() {
+        let models = make_layered_models();
+
+        // TCP layer only has WritesWorld
+        let tcp_props = collect_inherited_properties("layer.tcp", &models);
+        assert!(tcp_props.contains(&Property::WritesWorld));
+        assert!(!tcp_props.contains(&Property::JsonContentType));
+
+        // HTTP layer has its own properties + TCP's WritesWorld
+        let http_props = collect_inherited_properties("layer.http", &models);
+        assert!(http_props.contains(&Property::WritesWorld));
+        assert!(http_props.contains(&Property::ReadOnly));
+        assert!(http_props.contains(&Property::Deterministic));
+        assert!(http_props.contains(&Property::Idempotent));
+        assert!(!http_props.contains(&Property::JsonContentType));
+
+        // REST layer inherits everything from HTTP + TCP, plus JsonContentType
+        let rest_props = collect_inherited_properties("layer.rest", &models);
+        assert!(rest_props.contains(&Property::WritesWorld));
+        assert!(rest_props.contains(&Property::ReadOnly));
+        assert!(rest_props.contains(&Property::Deterministic));
+        assert!(rest_props.contains(&Property::Idempotent));
+        assert!(rest_props.contains(&Property::JsonContentType));
+    }
+
+    #[test]
+    fn all_system_deps_merges_both_fields() {
+        let model = SystemModel::new("test.merge", "Merge", SystemKind::Sdk, "v1", "merge test")
+            .with_behaviors(vec![Behavior::new(
+                "op",
+                "Op",
+                Invocation::Sdk {
+                    function: "op".to_string(),
+                    docs: "test".to_string(),
+                },
+            )
+            .with_outputs(vec![BehaviorOutput::new(
+                "ok",
+                OutputType::TypeId(TypeId::from("Bool")),
+            )])])
+            .with_dependencies(vec![Dependency::system("dep.via_dependency")])
+            .with_depends_on(&["dep.via_depends_on"]);
+
+        let all_deps = model.all_system_deps();
+        assert!(all_deps.contains("dep.via_dependency"));
+        assert!(all_deps.contains("dep.via_depends_on"));
+        assert_eq!(all_deps.len(), 2);
+    }
+
+    #[test]
+    fn depends_on_defaults_to_empty_on_deserialization() {
+        let json = r#"{"id":"test.serde","name":"Serde Test","kind":"Sdk","version":"v1","docs":"serde test","behaviors":[{"id":"op","description":"Op","invocation":{"Sdk":{"function":"op","docs":"test"}},"inputs":[],"outputs":[{"name":"ok","output_type":{"TypeId":"Bool"}}],"properties":[]}],"dependencies":[]}"#;
+        let model: SystemModel = serde_json::from_str(json).expect("deserialize model");
+        assert!(
+            model.depends_on.is_empty(),
+            "depends_on should default to empty when missing from JSON"
+        );
+    }
+
+    #[test]
+    fn depends_on_roundtrips_through_serde() {
+        let model = SystemModel::new("test.roundtrip", "Roundtrip", SystemKind::Sdk, "v1", "rt")
+            .with_behaviors(vec![Behavior::new(
+                "op",
+                "Op",
+                Invocation::Sdk {
+                    function: "op".to_string(),
+                    docs: "test".to_string(),
+                },
+            )
+            .with_outputs(vec![BehaviorOutput::new(
+                "ok",
+                OutputType::TypeId(TypeId::from("Bool")),
+            )])])
+            .with_depends_on(&["other.model"]);
+
+        let json = serde_json::to_string(&model).expect("serialize");
+        let parsed: SystemModel = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(parsed.depends_on, vec!["other.model".to_string()]);
     }
 
     // Model-specific behavior tests (GCP, AWS, transport) moved to owning crates:

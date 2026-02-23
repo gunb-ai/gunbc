@@ -29,7 +29,7 @@ use crate::type_op::{MetadataPayload, PlatformRepr, TypeOp, WrapperKind};
 ///
 /// Each variant represents an algebraic shape that backends can
 /// pattern-match on to derive their native representation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeShape {
     /// Platform primitive with machine representation contract.
     ///
@@ -69,7 +69,7 @@ pub enum TypeShape {
 }
 
 /// Container shape variants.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContainerShape {
     /// Optional wrapping: zero or one value.
     Optional(Box<TypeShape>),

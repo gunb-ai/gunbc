@@ -338,58 +338,62 @@ fn all_tool_outputs_gitignored() {
 // M14: Single Inventory Authority
 // ============================================================================
 
-/// Every inventory tool with `has_invocation` must have a corresponding
-/// `WorkspaceBinary` variant. Every `WorkspaceBinary` that resolves via
-/// `registry_invocation()` must appear in the inventory with `has_invocation`.
+/// Every inventory tool with `has_invocation` must produce a valid
+/// `CargoInvocation` (non-empty binary name and package). Every
+/// `WorkspaceBinary` variant must resolve a working invocation
+/// (either from registry or from the composed fallback).
 ///
-/// `WorkspaceBinary` may contain extra entries (e.g., internal binaries like
-/// `codegen-dag`, `deps-config`, `sdlc`) that have no `#[tool_target]`
-/// registration. Those are expected — the enum is a superset. But any tool
-/// that *does* register with `has_invocation` must be in the enum.
+/// `WorkspaceBinary` may contain variants whose `ToolRegistration` has
+/// `has_invocation = false` (e.g., codegen, testgen) — these use the
+/// composed fallback in `invocation()`. Tools with `has_invocation`
+/// that are NOT in `WorkspaceBinary` are also fine (codegen-generated
+/// binaries like gist, gist-diff, gist-recent, deps).
 #[test]
-fn workspace_binary_enum_matches_inventory_binaries() {
+fn workspace_binary_registry_invocations_are_consistent() {
     use gunbc_dag::WorkspaceBinary;
 
     force_linker_include();
 
-    let inventory_with_invocation: BTreeSet<&str> = iter_tool_targets()
-        .filter(|t| t.has_invocation)
-        .map(|t| t.tool_name)
-        .collect();
+    let mut violations = Vec::new();
 
-    let enum_tool_names: BTreeSet<&str> = WorkspaceBinary::ALL
-        .iter()
-        .map(|b| b.tool_name())
-        .collect();
-
-    // Forward: every inventory tool with has_invocation must be in the enum.
-    let missing_from_enum: BTreeSet<&&str> = inventory_with_invocation
-        .iter()
-        .filter(|name| !enum_tool_names.contains(*name))
-        .collect();
-    assert!(
-        missing_from_enum.is_empty(),
-        "inventory tools with has_invocation missing from WorkspaceBinary: {:?}",
-        missing_from_enum,
-    );
-
-    // Reverse: every enum variant that resolves from the registry must have
-    // has_invocation in inventory (no phantom registry lookups).
+    // Every WorkspaceBinary variant must resolve to a non-empty invocation.
     for binary in WorkspaceBinary::ALL {
-        let tool_name = binary.tool_name();
-        let reg = iter_tool_targets().find(|t| t.tool_name == tool_name);
-        if let Some(reg) = reg {
-            // If the tool is registered, it must have has_invocation.
-            assert!(
-                reg.has_invocation,
-                "WorkspaceBinary variant '{}' has a ToolRegistration but \
-                 has_invocation=false — either set has_invocation or remove \
-                 the enum variant",
-                tool_name,
-            );
+        let inv = binary.invocation();
+        if inv.binary.is_empty() {
+            violations.push(format!(
+                "WorkspaceBinary variant '{}' resolves to empty binary name",
+                binary.tool_name(),
+            ));
         }
-        // Tools without a ToolRegistration are allowed (internal binaries).
     }
+
+    // Every inventory tool with has_invocation must have a valid package
+    // and binary name for constructing a CargoInvocation.
+    for tool in iter_tool_targets() {
+        if !tool.has_invocation {
+            continue;
+        }
+        let binary_name = tool.binary.unwrap_or(tool.tool_name);
+        if binary_name.is_empty() {
+            violations.push(format!(
+                "tool '{}' has has_invocation=true but empty binary name",
+                tool.tool_name,
+            ));
+        }
+        if tool.package.is_none() {
+            violations.push(format!(
+                "tool '{}' has has_invocation=true but no package — \
+                 cannot construct a CargoInvocation",
+                tool.tool_name,
+            ));
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "WorkspaceBinary↔inventory consistency violations:\n{}",
+        violations.join("\n"),
+    );
 }
 
 /// Verify that provides/consumes metadata is consistent: every `consumes`
@@ -454,6 +458,101 @@ fn provides_is_subset_of_outputs() {
         "provides entries not found in outputs:\n{}",
         violations.join("\n"),
     );
+}
+
+/// Every inventory tool with `has_invocation` must be reachable either as
+/// a `WorkspaceBinary` variant OR as a codegen-generated CLI binary (those
+/// that produce `ToolDef.invocation.is_some()` via `derive_tool_defs()`).
+///
+/// The enum may contain extra entries (internal binaries without tool
+/// registration), but every invocable registry entry must be covered by
+/// at least one dispatch path.
+///
+/// This catches the case where someone adds a `#[tool_target]` with
+/// `has_invocation: true` but forgets to add either a `workspace_binaries!`
+/// entry or a codegen-generated CLI.
+#[test]
+fn workspace_binary_enum_matches_invocable_registry_entries() {
+    use gunbc_dag::WorkspaceBinary;
+
+    force_linker_include();
+
+    // Codegen-generated CLIs: tools whose ToolDef has an invocation derived
+    // from the registry (gist, gist-diff, gist-recent, deps, etc.).
+    let codegen_generated: BTreeSet<String> = derive_tool_defs()
+        .into_iter()
+        .filter(|tool| tool.invocation.is_some())
+        .map(|tool| tool.meta.tool_name.to_string())
+        .collect();
+
+    let registry_binaries: BTreeSet<&str> = iter_tool_targets()
+        .filter(|t| t.has_invocation)
+        .map(|t| t.tool_name)
+        .collect();
+    let enum_binaries: BTreeSet<&str> = WorkspaceBinary::ALL
+        .iter()
+        .map(|b| b.tool_name())
+        .collect();
+
+    // Every invocable registry entry should be in the enum OR be a
+    // codegen-generated CLI binary.
+    let missing: BTreeSet<_> = registry_binaries
+        .iter()
+        .filter(|name| !enum_binaries.contains(*name))
+        .filter(|name| !codegen_generated.contains(**name))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "invocable tool registrations missing from both WorkspaceBinary \
+         and codegen-generated CLIs: {:?}",
+        missing
+    );
+}
+
+/// Tools with non-empty `outputs` are producers — they generate files.
+/// This test validates that producer tools are aware of the provides/consumes
+/// metadata fields and will catch regressions when generator edge derivation
+/// starts relying on `provides` being populated for all producers.
+///
+/// Currently informational: logs tools with outputs but empty provides.
+/// Will be promoted to a hard assertion when generator edge derivation
+/// uses provides/consumes for automatic dependency wiring.
+#[test]
+fn producer_tools_declare_provides() {
+    force_linker_include();
+
+    for tool in iter_tool_targets() {
+        if !tool.outputs.is_empty() {
+            // Tools with outputs should ideally declare what they provide.
+            // This is informational for now — will be enforced when generator
+            // edge derivation uses provides/consumes.
+            if tool.provides.is_empty() {
+                eprintln!(
+                    "info: tool '{}' has {} output(s) but empty provides — \
+                     consider populating provides for generator edge derivation",
+                    tool.tool_name,
+                    tool.outputs.len(),
+                );
+            }
+        }
+    }
+}
+
+/// Every tool registration must have a unique `tool_name`. Duplicate names
+/// would cause ambiguous lookups in `WorkspaceBinary::from_tool_name()`,
+/// `derive_tool_defs()`, and Makefile target generation.
+#[test]
+fn tool_names_are_unique() {
+    force_linker_include();
+
+    let mut seen = BTreeSet::new();
+    for tool in iter_tool_targets() {
+        assert!(
+            seen.insert(tool.tool_name),
+            "duplicate tool_name in registry: {}",
+            tool.tool_name
+        );
+    }
 }
 
 // ============================================================================

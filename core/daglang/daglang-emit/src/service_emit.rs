@@ -701,6 +701,7 @@ mod tests {
             ],
             body_template: None,
             headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
+            error_mappings: vec![],
         }
     }
 
@@ -746,6 +747,7 @@ mod tests {
             }],
             body_template: None,
             headers: vec![],
+            error_mappings: vec![],
         }
     }
 
@@ -789,6 +791,7 @@ mod tests {
             ],
             body_template: None,
             headers: vec![],
+            error_mappings: vec![],
         }
     }
 

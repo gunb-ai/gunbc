@@ -82,7 +82,7 @@ pub enum TypeOp {
 /// - `PlatformRepr { bits: 64, signed: true, float: false, discrete: true }` → `i64` / `int64` / `int64_t`
 /// - `PlatformRepr { bits: 64, signed: true, float: true, discrete: false }` → `f64` / `float64` / `double`
 /// - `PlatformRepr { bits: 8, signed: false, float: false, discrete: true }` → `u8` / `byte` / `uint8_t`
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlatformRepr {
     /// Minimum bit width required to represent all values.
     pub bits: u16,

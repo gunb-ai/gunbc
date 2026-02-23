@@ -670,6 +670,218 @@ fn predicate_boundary_witnesses(pred: &Predicate, base_type: &Option<String>) ->
     }
 }
 
+// ============================================================================
+// M12: Shape contracts for coercion proof nodes
+// ============================================================================
+
+/// A shape assertion that can be checked against a runtime value.
+///
+/// Used by coercion proof nodes to verify that a coercion produced the
+/// expected shape. Failures produce localized diagnostics instead of
+/// confusing errors far downstream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShapeContract {
+    /// Expected value kind (e.g., List, Bool, Str).
+    pub expected_kind: crate::value::ValueKind,
+    /// Optional cardinality constraint (for list values: min/max length).
+    pub expected_cardinality: Option<Cardinality>,
+    /// Human-readable description for diagnostics.
+    pub description: String,
+}
+
+/// Error when a shape contract check fails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShapeViolation {
+    /// The contract that was violated.
+    pub contract: ShapeContract,
+    /// What was actually observed.
+    pub actual_kind: crate::value::ValueKind,
+    /// Actual length (for list/set/map values).
+    pub actual_length: Option<usize>,
+}
+
+impl fmt::Display for ShapeViolation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "shape violation: expected {} but got {}",
+            self.contract.expected_kind, self.actual_kind
+        )?;
+        if let (Some(expected_card), Some(actual_len)) =
+            (&self.contract.expected_cardinality, self.actual_length)
+        {
+            write!(
+                f,
+                " (expected cardinality {}, actual length {})",
+                expected_card, actual_len
+            )?;
+        }
+        if !self.contract.description.is_empty() {
+            write!(f, " [{}]", self.contract.description)?;
+        }
+        Ok(())
+    }
+}
+
+impl ShapeContract {
+    /// Create a shape contract for an expected value kind.
+    pub fn new(expected_kind: crate::value::ValueKind, description: impl Into<String>) -> Self {
+        Self {
+            expected_kind,
+            expected_cardinality: None,
+            description: description.into(),
+        }
+    }
+
+    /// Add a cardinality constraint.
+    pub fn with_cardinality(mut self, cardinality: Cardinality) -> Self {
+        self.expected_cardinality = Some(cardinality);
+        self
+    }
+
+    /// Check a runtime value against this contract.
+    pub fn check(&self, value: &Value) -> Result<(), ShapeViolation> {
+        let actual_kind = value.kind();
+        if actual_kind != self.expected_kind {
+            return Err(ShapeViolation {
+                contract: self.clone(),
+                actual_kind,
+                actual_length: collection_length(value),
+            });
+        }
+
+        if let Some(expected_card) = &self.expected_cardinality {
+            if let Some(len) = collection_length(value) {
+                let len32 = len as u32;
+                let in_range = len32 >= expected_card.min
+                    && expected_card.max.is_none_or(|m| len32 <= m);
+                if !in_range {
+                    return Err(ShapeViolation {
+                        contract: self.clone(),
+                        actual_kind,
+                        actual_length: Some(len),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Get the length of a collection value, if applicable.
+fn collection_length(value: &Value) -> Option<usize> {
+    match value {
+        Value::List(items) => Some(items.len()),
+        Value::Set(items) => Some(items.len()),
+        Value::Map(entries) => Some(entries.len()),
+        _ => None,
+    }
+}
+
+// ============================================================================
+// M22 Phase 1: Contract proof obligations from @contract annotations
+// ============================================================================
+
+/// A proof obligation derived from a `@contract` annotation on an interface
+/// capability. Every implementation must satisfy this obligation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContractObligation {
+    /// The interface this obligation comes from (e.g., "ObjectStorage").
+    pub interface_name: String,
+    /// The capability this obligation is on (e.g., "read", "write").
+    pub capability_name: String,
+    /// The contract text from the annotation (e.g., "read(k) after write(k, v) => { body: v }").
+    pub contract_text: String,
+    /// Index of this obligation within the capability's contracts.
+    pub index: usize,
+    /// Optional shape contract for runtime value verification.
+    /// Set when the contract can be expressed as a ShapeContract (value kind + cardinality).
+    pub shape: Option<ShapeContract>,
+}
+
+impl ContractObligation {
+    /// Create a new contract obligation.
+    pub fn new(
+        interface_name: impl Into<String>,
+        capability_name: impl Into<String>,
+        contract_text: impl Into<String>,
+        index: usize,
+    ) -> Self {
+        Self {
+            interface_name: interface_name.into(),
+            capability_name: capability_name.into(),
+            contract_text: contract_text.into(),
+            index,
+            shape: None,
+        }
+    }
+
+    /// Attach a shape contract to this obligation.
+    pub fn with_shape(mut self, shape: ShapeContract) -> Self {
+        self.shape = Some(shape);
+        self
+    }
+
+    /// Unique identifier for this obligation (for test naming).
+    pub fn obligation_id(&self) -> String {
+        format!(
+            "{}::{}::{}",
+            self.interface_name, self.capability_name, self.index
+        )
+    }
+}
+
+impl fmt::Display for ContractObligation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "@contract on {}.{}: {}",
+            self.interface_name, self.capability_name, self.contract_text
+        )
+    }
+}
+
+// ============================================================================
+// M22 Phase 4: Resource requirements from @requires annotations
+// ============================================================================
+
+/// A resource requirement declared via `@requires` annotation.
+///
+/// These map to resource edges in the DAG and feed into M10's
+/// `validate_resource_completeness()` for admission checking.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResourceRequirement {
+    /// Requires a specific tool at minimum version.
+    Tool {
+        name: String,
+        min_version: Option<String>,
+    },
+    /// Requires network access.
+    Network,
+    /// Requires an environment variable to be set.
+    EnvVar(String),
+    /// Requires a minimum cost tier (for test gating).
+    CostTier(String),
+}
+
+impl fmt::Display for ResourceRequirement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResourceRequirement::Tool { name, min_version } => {
+                write!(f, "tool:{name}")?;
+                if let Some(v) = min_version {
+                    write!(f, ">={v}")?;
+                }
+                Ok(())
+            }
+            ResourceRequirement::Network => write!(f, "network"),
+            ResourceRequirement::EnvVar(var) => write!(f, "env:{var}"),
+            ResourceRequirement::CostTier(tier) => write!(f, "cost>={tier}"),
+        }
+    }
+}
+
 /// Full contract summary for a type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeContract {
@@ -1473,5 +1685,130 @@ mod tests {
             assert!(absorbed.leq(&url_contract));
             assert!(url_contract.leq(&absorbed));
         }
+    }
+
+    // ============ M12: ShapeContract tests ============
+
+    #[test]
+    fn test_shape_contract_check_matching_kind() {
+        use crate::value::ValueKind;
+
+        let contract = ShapeContract::new(ValueKind::List, "after scalar-to-list coercion");
+        assert!(contract.check(&Value::List(vec![Value::Int(1)])).is_ok());
+    }
+
+    #[test]
+    fn test_shape_contract_check_wrong_kind() {
+        use crate::value::ValueKind;
+
+        let contract = ShapeContract::new(ValueKind::List, "after scalar-to-list coercion");
+        let result = contract.check(&Value::Int(42));
+        assert!(result.is_err());
+        let violation = result.unwrap_err();
+        assert_eq!(violation.actual_kind, ValueKind::Int);
+        assert_eq!(violation.contract.expected_kind, ValueKind::List);
+    }
+
+    #[test]
+    fn test_shape_contract_with_cardinality() {
+        use crate::value::ValueKind;
+
+        let contract = ShapeContract::new(ValueKind::List, "non-empty list")
+            .with_cardinality(Cardinality::ONE_OR_MORE);
+
+        // Non-empty list passes
+        assert!(contract.check(&Value::List(vec![Value::Int(1)])).is_ok());
+
+        // Empty list fails cardinality
+        let result = contract.check(&Value::List(vec![]));
+        assert!(result.is_err());
+        let violation = result.unwrap_err();
+        assert_eq!(violation.actual_length, Some(0));
+    }
+
+    #[test]
+    fn test_shape_contract_display() {
+        use crate::value::ValueKind;
+
+        let contract = ShapeContract::new(ValueKind::List, "scalar-to-list");
+        let violation = ShapeViolation {
+            contract,
+            actual_kind: ValueKind::Int,
+            actual_length: None,
+        };
+        let msg = violation.to_string();
+        assert!(msg.contains("expected List"));
+        assert!(msg.contains("got Int"));
+        assert!(msg.contains("scalar-to-list"));
+    }
+
+    #[test]
+    fn test_shape_contract_unit_check() {
+        use crate::value::ValueKind;
+
+        let contract = ShapeContract::new(ValueKind::Unit, "unwrapped optional");
+        assert!(contract.check(&Value::Unit).is_ok());
+        assert!(contract.check(&Value::Bool(true)).is_err());
+    }
+
+    // ============ M22 Phase 1: ContractObligation tests ============
+
+    #[test]
+    fn test_contract_obligation_id() {
+        let obligation = ContractObligation::new("ObjectStorage", "read", "read(k) => v", 0);
+        assert_eq!(obligation.obligation_id(), "ObjectStorage::read::0");
+    }
+
+    #[test]
+    fn test_contract_obligation_display() {
+        let obligation = ContractObligation::new("ClaimStore", "acquire", "returns valid claim", 0);
+        let display = obligation.to_string();
+        assert!(display.contains("ClaimStore.acquire"));
+        assert!(display.contains("returns valid claim"));
+    }
+
+    #[test]
+    fn test_contract_obligation_with_shape() {
+        use crate::value::ValueKind;
+
+        let obligation = ContractObligation::new("ObjectStorage", "read", "body is string", 0)
+            .with_shape(ShapeContract::new(ValueKind::String, "read result"));
+        assert!(obligation.shape.is_some());
+        assert_eq!(obligation.shape.unwrap().expected_kind, ValueKind::String);
+    }
+
+    // ============ M22 Phase 4: ResourceRequirement tests ============
+
+    #[test]
+    fn test_resource_requirement_display() {
+        assert_eq!(
+            ResourceRequirement::Tool {
+                name: "cargo".to_string(),
+                min_version: Some("1.75.0".to_string()),
+            }
+            .to_string(),
+            "tool:cargo>=1.75.0"
+        );
+        assert_eq!(ResourceRequirement::Network.to_string(), "network");
+        assert_eq!(
+            ResourceRequirement::EnvVar("GCP_WIF_PROVIDER".to_string()).to_string(),
+            "env:GCP_WIF_PROVIDER"
+        );
+        assert_eq!(
+            ResourceRequirement::CostTier("M".to_string()).to_string(),
+            "cost>=M"
+        );
+    }
+
+    #[test]
+    fn test_resource_requirement_tool_without_version() {
+        assert_eq!(
+            ResourceRequirement::Tool {
+                name: "make".to_string(),
+                min_version: None,
+            }
+            .to_string(),
+            "tool:make"
+        );
     }
 }

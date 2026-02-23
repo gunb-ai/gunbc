@@ -672,6 +672,7 @@ mod tests {
             }],
             body_template: None,
             headers: vec![],
+            error_mappings: vec![],
         }
     }
 
@@ -722,6 +723,7 @@ mod tests {
             ],
             body_template: None,
             headers: vec![],
+            error_mappings: vec![],
         }
     }
 
@@ -826,6 +828,7 @@ mod tests {
                 "Authorization".to_string(),
                 "Bearer {config.credential}".to_string(),
             )],
+            error_mappings: vec![],
         };
         let op = GenericRestPrepareOp { spec };
         let mut inputs = HashMap::new();
@@ -865,6 +868,7 @@ mod tests {
             output_fields: vec![],
             body_template: None,
             headers: vec![],
+            error_mappings: vec![],
         };
         let op = GenericRestPrepareOp { spec };
         let error = op
@@ -919,6 +923,7 @@ mod tests {
             ],
             body_template: None,
             headers: vec![],
+            error_mappings: vec![],
         };
         let op = GenericRestParseOp { spec };
         let response = RestResponse::ok(serde_json::json!({
@@ -1137,6 +1142,7 @@ mod tests {
                 BodyEntry::InputRef("subject_token".to_string(), "subject_token".to_string()),
             ]),
             headers: vec![],
+            error_mappings: vec![],
         };
 
         let op = GenericRestPrepareOp { spec };

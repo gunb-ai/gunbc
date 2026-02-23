@@ -72,6 +72,51 @@ Promotion rule:
 | **M21** | **Structural primitives for consistent cross-backend codegen**: decompose opaque identity primitives (Bool, Int, etc.) into structural type DAGs; add `PlatformRepr` metadata; replace per-backend hardcoded `map_to_*_type()` with shared `TypeShape` derivation + per-backend rendering. | `TypeShape` enum (Platform/Coproduct/Product/Brand/Container/Opaque), `PlatformRepr` metadata payload, `type_shape()` extractor, per-backend `render_*_type(TypeShape)`. | All emit backends derive types from DAG structure, not string-name matching; adding a new type to the registry automatically gets correct representations in Rust/Go/C/MIPS; `TypeShape::Opaque` is a diagnostic (strict mode: error). | Bool is structural Coproduct; Int/Float carry PlatformRepr; all 4 backends use shared derivation; exhaustiveness test fails on Opaque; adding a Product/Coproduct type requires zero per-backend code. | M8 | L |
 | **M22** | **Annotation-to-DAG modeling migration**: Eliminate 17 inert/unused annotations by modeling their intent as first-class DAG concerns. Phase 0: delete noise annotations + add unknown-annotation warnings. Phase 1: `@contract` → compile-time proof obligations. Phase 2: `@error_map` → transport error classification nodes. Phase 3: `@retry` → transport retry policy nodes. Phase 4: `@requires` → resource/capability edges. Phase 5: `@testgen_skip` → emit consumption. | Annotation census (43→~26 active + zero inert); `@contract` generates typed test obligations per implementation; `@error_map`/`@retry` compose into protocol stack transport DAG; `@requires` becomes structural resource edges. | `@contract` → proof obligation tests generated for every interface implementation; `@error_map` → error classification in transport DAG + per-status testgen; `@retry` → retry wrapper in transport DAG; `@requires` → DAG resource edges; unknown annotations warn (strict: error). | Zero inert annotations remain; `@contract` has CI-gated test coverage for all implementations; `@error_map`/`@retry` compose with protocol stack; `@requires` feeds M10 resource admission; unknown annotation warnings in default mode, errors in strict. | M8, M10, M12, M16 | L |
 
+## Cloud Modeling Gap Inventory (M16 Sub-Items)
+
+**Source**: Cloud modeling audit (2026-02-23). These gaps were caught between the
+DSL migration (which deleted Rust graph builders) and M16 implementation (which
+will model credential chains as composable protocol layers). GCP is the gold
+standard; AWS/Azure need the same treatment.
+
+### Current State by Provider
+
+| Provider | DSL Credential | DSL Services | Rust Ops | Status |
+|----------|---------------|-------------|----------|--------|
+| **GCP** | Full (`gcp/credential.dag`) | Full (`sts`, `iam`, `secret_manager`) | Full (20+ ops) | **Ready** |
+| **AWS** | Skeleton (`aws/credential.dag`) | Missing (`dsl/services/aws/` absent) | Stub (`AwsOps::Unsupported`) | **Stub** |
+| **Azure** | Temp bridge (`azure/credential.dag`) | Missing (`dsl/services/azure/` absent) | Stub (`AzureOps::Unsupported`) | **Bridge** |
+| **GitHub** | Via `gist.dag` | Full (`pull_request`, `issues`, `gist`) | `GitHubCredentialOps` orphaned from resolver | **Partial** |
+
+### Specific Gaps
+
+1. **AWS service definitions missing**: `aws/credential.dag` calls `aws.STS.AssumeRoleWithWebIdentity()` and `aws.SecretsManager.GetSecretValue()` but `dsl/services/aws/` doesn't exist. Need `sts.dag` + `secrets_manager.dag`.
+2. **Azure service definitions missing**: `azure/credential.dag` uses temporary `shell.Azure.GetAccessToken()` bridge (not in official shell service catalog). Need `dsl/services/azure/identity.dag` + `key_vault.dag`.
+3. **Azure temporary bridge**: Comment at `azure/credential.dag:43-44` explicitly marks shell-based token flow as interim until federated flow is modeled.
+4. **`AwsOps::Unsupported` / `AzureOps::Unsupported` stubs**: Return hardcoded `<*_STUB_NOT_IMPLEMENTED>` strings. `cloud-ops/src/graph.rs` wraps these as single-node graphs.
+5. **`GitHubCredentialOps` orphaned**: After `github_credential_graph.rs` deletion, ops in `cloud-ops/src/github_ops.rs` exist but aren't reachable from DSL resolver.
+6. **AWS/Azure tested only in dry-run**: Tests use `@auto_mock(true)`, never exercise real credential paths.
+
+### Remaining Rust Graph Builders (Blocked on M16)
+
+These `graph.rs` files (~4,170 lines total) cannot be deleted until M16 enables
+the DSL to express parameterized credential chains as composable protocol layers:
+
+| File | Lines | Blocker |
+|------|-------|---------|
+| `lib/review/src/graph.rs` | 1,727 | DSL `review.dag` has no `func` — needs config parameterization |
+| `lib/gcp-ops/src/graph.rs` | 1,674 | Called by `cloud-ops/graph.rs` dispatcher |
+| `lib/cloud-ops/src/graph.rs` | 502 | Central dispatcher — blocked until all callers use DSL |
+| `lib/llm-ops/src/graph.rs` | 267 | Called only by review's graph builder |
+
+### Resolution Path
+
+These gaps resolve when M16 (protocol stack layering) is implemented:
+- Credential chains become composable protocol layers (`OIDC -> STS -> secret_fetch`)
+- Each provider's service definitions derive transport code from the composition
+- The resolver auto-wires service transport ops via generic REST/Shell handlers
+- Stubs are replaced by real ops following GCP's pattern
+
 ## Execution Checklists (Review Gate)
 
 Use these checklists as implementation gates. A task is not implementation-ready

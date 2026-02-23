@@ -1952,6 +1952,7 @@ mod tests {
                 }],
                 output_parsing: ShellOutputParsing::ExitCodeBool,
             })),
+            retry_policy: None,
         }
     }
 
@@ -2001,6 +2002,7 @@ mod tests {
                 ],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
             })),
+            retry_policy: None,
         }
     }
 
@@ -2224,7 +2226,9 @@ mod tests {
                 ],
                 body_template: None,
                 headers: vec![],
+                error_mappings: vec![],
             })),
+            retry_policy: None,
         }
     }
 
