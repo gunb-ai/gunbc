@@ -137,11 +137,18 @@ impl Executable for PipelineDispatchOp {
             outputs.insert("active_stage".to_string(), Value::Str(first.clone()));
         }
         if let Some(current_stage) = outputs.get("current_stage").and_then(Value::as_str) {
-            let next_stage = self
+            let Some(position) = self
                 .stage_names
                 .iter()
                 .position(|stage| stage == current_stage)
-                .and_then(|index| self.stage_names.get(index + 1))
+            else {
+                return Err(ExecError::new(format!(
+                    "pipeline dispatch received unknown `current_stage` value `{current_stage}`"
+                )));
+            };
+            let next_stage = self
+                .stage_names
+                .get(position + 1)
                 .cloned()
                 .unwrap_or_else(|| current_stage.to_string());
             outputs.insert("next_stage".to_string(), Value::Str(next_stage));
@@ -1168,6 +1175,36 @@ mod tests {
                 "implementation".to_string(),
                 "close".to_string(),
             ]))
+        );
+    }
+
+    #[test]
+    fn resolve_pipeline_dispatch_fails_closed_for_unknown_stage() {
+        let node = Node::opaque(
+            "pipeline_sdlc",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.sdlc".to_string(),
+                name: "sdlc".to_string(),
+                stages: 2,
+                stage_names: vec!["fetch".to_string(), "design".to_string()],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline node should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "current_stage".to_string(),
+            Value::Str("unknown-stage".to_string()),
+        );
+        let error = op
+            .execute(inputs)
+            .expect_err("unknown stage should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("pipeline dispatch received unknown `current_stage`"),
+            "unexpected error: {error}"
         );
     }
 
