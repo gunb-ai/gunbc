@@ -639,8 +639,32 @@ enum NameResolution {
 
 #[derive(Debug, Clone, Default)]
 struct ProfileBindingRegistry {
-    by_full: HashMap<String, HashMap<String, String>>,
+    by_full: HashMap<String, HashMap<String, ProfileBindingRecord>>,
     by_alias: HashMap<String, Option<String>>,
+}
+
+#[derive(Debug, Clone)]
+struct ProfileBindingRecord {
+    implementation_type: String,
+    config_entries: Vec<(String, Expr)>,
+}
+
+#[derive(Debug, Clone)]
+struct ActiveProfileBindings {
+    profile_name: String,
+    by_interface: HashMap<String, ActiveProfileBinding>,
+}
+
+#[derive(Debug, Clone)]
+struct ActiveProfileBinding {
+    implementation_type: String,
+    config_values: HashMap<String, ProfileConfigValue>,
+}
+
+#[derive(Debug, Clone)]
+enum ProfileConfigValue {
+    Literal(String),
+    SecretRef(String),
 }
 
 fn collect_profile_binding_registry(
@@ -681,7 +705,7 @@ fn collect_profile_binding_registry(
                 continue;
             };
             let profile_full = format!("{module_name}.{}", def.name);
-            let mut bindings = HashMap::<String, String>::new();
+            let mut bindings = HashMap::<String, ProfileBindingRecord>::new();
             for bind in &def.binds {
                 let resolved_interface = match interface_registry.resolve(&bind.interface_type) {
                     NameResolution::Resolved(full) => full,
@@ -723,7 +747,13 @@ fn collect_profile_binding_registry(
                     }
                 };
                 if bindings
-                    .insert(resolved_interface.clone(), resolved_impl)
+                    .insert(
+                        resolved_interface.clone(),
+                        ProfileBindingRecord {
+                            implementation_type: resolved_impl,
+                            config_entries: bind.config_entries.clone(),
+                        },
+                    )
                     .is_some()
                 {
                     return Err(LowerError::InvalidProfileBinding {
@@ -747,30 +777,124 @@ fn collect_profile_binding_registry(
     Ok(registry)
 }
 
-fn resolve_active_profile_bindings<'a>(
-    registry: &'a ProfileBindingRegistry,
+fn resolve_active_profile_bindings(
+    registry: &ProfileBindingRegistry,
     active_profile: Option<&str>,
-) -> Result<Option<(&'a str, &'a HashMap<String, String>)>, LowerError> {
+) -> Result<Option<ActiveProfileBindings>, LowerError> {
     let Some(profile) = active_profile else {
         return Ok(None);
     };
-    if let Some((full_name, bindings)) = registry.by_full.get_key_value(profile) {
-        return Ok(Some((full_name.as_str(), bindings)));
+    let (profile_name, bindings) =
+        if let Some((full_name, bindings)) = registry.by_full.get_key_value(profile) {
+            (full_name.clone(), bindings)
+        } else {
+            match registry.by_alias.get(profile) {
+                Some(Some(full)) => (
+                    full.clone(),
+                    registry
+                        .by_full
+                        .get(full)
+                        .ok_or_else(|| LowerError::UnknownProfile {
+                            profile: profile.to_string(),
+                        })?,
+                ),
+                Some(None) => {
+                    return Err(LowerError::AmbiguousProfile {
+                        profile: profile.to_string(),
+                    })
+                }
+                None => {
+                    return Err(LowerError::UnknownProfile {
+                        profile: profile.to_string(),
+                    })
+                }
+            }
+        };
+
+    let mut resolved = HashMap::<String, ActiveProfileBinding>::new();
+    for (interface, binding) in bindings {
+        let mut config_values = HashMap::new();
+        for (key, value_expr) in &binding.config_entries {
+            let value = resolve_profile_config_value(
+                profile_name.as_str(),
+                interface.as_str(),
+                key.as_str(),
+                value_expr,
+            )?;
+            config_values.insert(key.clone(), value);
+        }
+        resolved.insert(
+            interface.clone(),
+            ActiveProfileBinding {
+                implementation_type: binding.implementation_type.clone(),
+                config_values,
+            },
+        );
     }
-    match registry.by_alias.get(profile) {
-        Some(Some(full)) => registry
-            .by_full
-            .get(full)
-            .map(|bindings| Some((full.as_str(), bindings)))
-            .ok_or_else(|| LowerError::UnknownProfile {
-                profile: profile.to_string(),
-            }),
-        Some(None) => Err(LowerError::AmbiguousProfile {
+    Ok(Some(ActiveProfileBindings {
+        profile_name,
+        by_interface: resolved,
+    }))
+}
+
+fn resolve_profile_config_value(
+    profile: &str,
+    interface_type: &str,
+    key: &str,
+    expr: &Expr,
+) -> Result<ProfileConfigValue, LowerError> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Ok(ProfileConfigValue::Literal(value.clone())),
+        Expr::Call(name, args) if name == "env" => {
+            let env_var = parse_single_string_call_arg(args).ok_or_else(|| {
+                LowerError::InvalidProfileBinding {
+                    profile: profile.to_string(),
+                    detail: format!(
+                        "config `{key}` for `{interface_type}` must be `env(\"VAR\")`"
+                    ),
+                }
+            })?;
+            let env_value = std::env::var(env_var.as_str())
+                .ok()
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| LowerError::MissingProfileConfigEnv {
+                    profile: profile.to_string(),
+                    interface_type: interface_type.to_string(),
+                    key: key.to_string(),
+                    env_var: env_var.clone(),
+                })?;
+            Ok(ProfileConfigValue::Literal(env_value))
+        }
+        Expr::Call(name, args) if name == "secret" => {
+            let secret_name = parse_single_string_call_arg(args).ok_or_else(|| {
+                LowerError::InvalidProfileBinding {
+                    profile: profile.to_string(),
+                    detail: format!(
+                        "config `{key}` for `{interface_type}` must be `secret(\"name\")`"
+                    ),
+                }
+            })?;
+            Ok(ProfileConfigValue::SecretRef(secret_name))
+        }
+        _ => Err(LowerError::InvalidProfileBinding {
             profile: profile.to_string(),
+            detail: format!(
+                "unsupported config expression for `{interface_type}.{key}`; expected string literal, env(\"VAR\"), or secret(\"name\")"
+            ),
         }),
-        None => Err(LowerError::UnknownProfile {
-            profile: profile.to_string(),
-        }),
+    }
+}
+
+fn parse_single_string_call_arg(args: &[(Option<String>, Expr)]) -> Option<String> {
+    let [(name, value)] = args else {
+        return None;
+    };
+    if name.is_some() {
+        return None;
+    }
+    match value {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        _ => None,
     }
 }
 
@@ -970,6 +1094,13 @@ pub enum LowerError {
         profile: String,
         interface_type: String,
     },
+    /// Active profile uses an env(...) config binding that is not set.
+    MissingProfileConfigEnv {
+        profile: String,
+        interface_type: String,
+        key: String,
+        env_var: String,
+    },
     /// No executable declarations were available for lowering.
     NoLowerableItems,
 }
@@ -1049,6 +1180,15 @@ impl std::fmt::Display for LowerError {
             } => write!(
                 f,
                 "profile `{profile}` does not bind interface `{interface_type}`"
+            ),
+            Self::MissingProfileConfigEnv {
+                profile,
+                interface_type,
+                key,
+                env_var,
+            } => write!(
+                f,
+                "profile `{profile}` binding `{interface_type}` requires config `{key}` from env var `{env_var}`, but it is not set"
             ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
@@ -1259,7 +1399,7 @@ fn lower_typed_project_with_callable_scope(
         project,
         &endpoints_by_full,
         &service_registry,
-        active_profile_bindings,
+        active_profile_bindings.as_ref(),
         &profile_bound_interfaces,
         &known_interface_types,
     )?;
@@ -4597,7 +4737,7 @@ fn add_service_call_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     service_registry: &ServiceEndpointRegistry,
-    active_profile_bindings: Option<(&str, &HashMap<String, String>)>,
+    active_profile_bindings: Option<&ActiveProfileBindings>,
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
@@ -4667,20 +4807,24 @@ fn add_service_call_edges(
                 else {
                     continue;
                 };
+                let source_endpoint = &source.endpoint;
                 builder.add_edge(
-                    source.parse.node_id.as_str(),
-                    source.parse.primary_output.as_str(),
+                    source_endpoint.parse.node_id.as_str(),
+                    source_endpoint.parse.primary_output.as_str(),
                     target.node_id.as_str(),
                     "__deps",
                 );
+                let mut supplied_prepare_inputs = HashSet::<String>::new();
                 for (index, arg) in call.args.iter().enumerate() {
-                    let Some(prepare_input) = arg
-                        .name
-                        .as_deref()
-                        .or_else(|| source.prepare_inputs.get(index).map(String::as_str))
-                    else {
+                    let Some(prepare_input) = arg.name.as_deref().or_else(|| {
+                        source_endpoint
+                            .prepare_inputs
+                            .get(index)
+                            .map(String::as_str)
+                    }) else {
                         continue;
                     };
+                    supplied_prepare_inputs.insert(prepare_input.to_string());
                     if let Some(arg_ident) = arg.ident.as_deref() {
                         let Some(param_ty) = param_types.get(arg_ident) else {
                             continue;
@@ -4695,17 +4839,17 @@ fn add_service_call_edges(
                         builder.add_edge(
                             param_source.as_str(),
                             arg_ident,
-                            source.prepare_node_id.as_str(),
+                            source_endpoint.prepare_node_id.as_str(),
                             prepare_input,
                         );
                         continue;
                     }
                     if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
-                        if let Some(source_endpoint) = bound_callable_sources.get(base_ident) {
+                        if let Some(bound_source) = bound_callable_sources.get(base_ident) {
                             builder.add_edge(
-                                source_endpoint.node_id.as_str(),
+                                bound_source.node_id.as_str(),
                                 field_name.as_str(),
-                                source.prepare_node_id.as_str(),
+                                source_endpoint.prepare_node_id.as_str(),
                                 prepare_input,
                             );
                             continue;
@@ -4726,10 +4870,19 @@ fn add_service_call_edges(
                     builder.add_edge(
                         literal_source.as_str(),
                         prepare_input,
-                        source.prepare_node_id.as_str(),
+                        source_endpoint.prepare_node_id.as_str(),
                         prepare_input,
                     );
                 }
+                wire_profile_binding_config_inputs(
+                    builder,
+                    source.binding_config.as_ref(),
+                    &supplied_prepare_inputs,
+                    source_endpoint,
+                    module_name.as_str(),
+                    item_name,
+                    call_index,
+                );
             }
         }
     }
@@ -4756,7 +4909,7 @@ fn add_service_call_edges(
             for stage in &def.stages {
                 let mut service_calls = Vec::<ServiceCallSite>::new();
                 collect_service_calls_from_stmts(stage.body.stmts.as_slice(), &mut service_calls);
-                for call in service_calls {
+                for (call_index, call) in service_calls.into_iter().enumerate() {
                     let caller = format!("{module_name}::{}::{}", def.name, stage.name);
                     let Some(source) = resolve_service_call_source(
                         caller.as_str(),
@@ -4770,11 +4923,21 @@ fn add_service_call_edges(
                     else {
                         continue;
                     };
+                    let source_endpoint = &source.endpoint;
                     builder.add_edge(
-                        source.parse.node_id.as_str(),
-                        source.parse.primary_output.as_str(),
+                        source_endpoint.parse.node_id.as_str(),
+                        source_endpoint.parse.primary_output.as_str(),
                         target.node_id.as_str(),
                         "__deps",
+                    );
+                    wire_profile_binding_config_inputs(
+                        builder,
+                        source.binding_config.as_ref(),
+                        &HashSet::new(),
+                        source_endpoint,
+                        module_name.as_str(),
+                        def.name.as_str(),
+                        call_index,
                     );
                 }
             }
@@ -4783,17 +4946,26 @@ fn add_service_call_edges(
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+struct ServiceCallResolvedSource {
+    endpoint: ServiceTransportEndpoint,
+    binding_config: Option<HashMap<String, ProfileConfigValue>>,
+}
+
 fn resolve_service_call_source(
     caller: &str,
     call_path: &[String],
     uses_binding_types: &HashMap<String, String>,
     service_registry: &ServiceEndpointRegistry,
-    active_profile_bindings: Option<(&str, &HashMap<String, String>)>,
+    active_profile_bindings: Option<&ActiveProfileBindings>,
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
-) -> Result<Option<ServiceTransportEndpoint>, LowerError> {
+) -> Result<Option<ServiceCallResolvedSource>, LowerError> {
     if let Some(endpoint) = resolve_service_endpoint(call_path, service_registry) {
-        return Ok(Some(endpoint));
+        return Ok(Some(ServiceCallResolvedSource {
+            endpoint,
+            binding_config: None,
+        }));
     }
     let Some(binding) = call_path.first() else {
         return Err(LowerError::UnresolvedServiceCall {
@@ -4817,26 +4989,32 @@ fn resolve_service_call_source(
         // lowering paths.
         return Ok(None);
     }
-    let Some((profile_name, bindings)) = active_profile_bindings else {
+    let Some(active_profile_bindings) = active_profile_bindings else {
         return Err(LowerError::ProfileRequiredForBoundServiceCall {
             caller: caller.to_string(),
             binding: binding.clone(),
             interface_type: interface_type.clone(),
         });
     };
-    let Some(interface_key) = resolve_profile_interface_key(bindings, interface_type.as_str())
-    else {
+    let Some(interface_key) = resolve_profile_interface_key(
+        &active_profile_bindings.by_interface,
+        interface_type.as_str(),
+    ) else {
         return Err(LowerError::MissingProfileBinding {
-            profile: profile_name.to_string(),
+            profile: active_profile_bindings.profile_name.clone(),
             interface_type: canonical_type_name(interface_type),
         });
     };
-    let Some(implementation_type) = bindings.get(interface_key.as_str()) else {
+    let Some(binding) = active_profile_bindings
+        .by_interface
+        .get(interface_key.as_str())
+    else {
         return Err(LowerError::MissingProfileBinding {
-            profile: profile_name.to_string(),
+            profile: active_profile_bindings.profile_name.clone(),
             interface_type: interface_key,
         });
     };
+    let implementation_type = binding.implementation_type.as_str();
     let capability = call_path.last().cloned().unwrap_or_default();
     let mut implementation_call_path = implementation_type
         .split('.')
@@ -4848,11 +5026,67 @@ fn resolve_service_call_source(
             caller: caller.to_string(),
             service_call: implementation_call_path.join("."),
         })?;
-    Ok(Some(endpoint))
+    Ok(Some(ServiceCallResolvedSource {
+        endpoint,
+        binding_config: Some(binding.config_values.clone()),
+    }))
+}
+
+fn wire_profile_binding_config_inputs(
+    builder: &mut DagBuilder,
+    binding_config: Option<&HashMap<String, ProfileConfigValue>>,
+    supplied_prepare_inputs: &HashSet<String>,
+    source_endpoint: &ServiceTransportEndpoint,
+    module_name: &str,
+    item_name: &str,
+    call_index: usize,
+) {
+    let Some(binding_config) = binding_config else {
+        return;
+    };
+    for (key, value) in binding_config {
+        let candidates = [key.to_string(), format!("config.{key}")];
+        let Some(prepare_input) = candidates.iter().find(|candidate| {
+            source_endpoint
+                .prepare_inputs
+                .iter()
+                .any(|input| input == *candidate)
+                && !supplied_prepare_inputs.contains(candidate.as_str())
+        }) else {
+            continue;
+        };
+        let literal = match value {
+            ProfileConfigValue::Literal(value) => ServiceCallArgLiteral::String(value.clone()),
+            ProfileConfigValue::SecretRef(name) => {
+                ServiceCallArgLiteral::String(format!("secret:{name}"))
+            }
+        };
+        let suffix = format!(
+            "{call_index}_profile_{}",
+            key.chars()
+                .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+                .collect::<String>()
+        );
+        let literal_source = ensure_literal_source_node(
+            builder,
+            module_name,
+            item_name,
+            prepare_input.as_str(),
+            "String",
+            &literal,
+            suffix.as_str(),
+        );
+        builder.add_edge(
+            literal_source.as_str(),
+            prepare_input.as_str(),
+            source_endpoint.prepare_node_id.as_str(),
+            prepare_input.as_str(),
+        );
+    }
 }
 
 fn resolve_profile_interface_key<'a>(
-    bindings: &'a HashMap<String, String>,
+    bindings: &'a HashMap<String, ActiveProfileBinding>,
     interface_type: &str,
 ) -> Option<String> {
     let canonical = canonical_type_name(interface_type);
@@ -7224,6 +7458,89 @@ func run() -> { ok: Bool } uses issues: IssueProvider {
             }),
             "bound parse node should feed caller dependencies"
         );
+    }
+
+    #[test]
+    fn active_profile_env_config_requires_present_environment_variable() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/profiles/interface_env_binding.dag",
+            r#"module sample.profile
+interface IssueProvider {
+  capability get {
+    input {}
+    output { ok: Bool }
+  }
+}
+service impl.Provider : IssueProvider {
+  operation get {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/ok")
+  }
+}
+profile local {
+  bind IssueProvider -> impl.Provider {
+    credential: env("DAGLANG_TEST_PROFILE_ENV_MISSING_9F8C")
+  }
+}
+func run() -> { ok: Bool } uses issues: IssueProvider {
+  result = issues.get()
+  return { ok: result.ok }
+}"#,
+        )]);
+
+        let error = lower_typed_project_with_profile(&typed, Some("local"))
+            .expect_err("lowering should fail when env profile config is unset");
+        assert!(matches!(
+            error,
+            LowerError::MissingProfileConfigEnv {
+                profile,
+                interface_type,
+                key,
+                env_var,
+            } if profile == "sample.profile.local"
+                && interface_type == "sample.profile.IssueProvider"
+                && key == "credential"
+                && env_var == "DAGLANG_TEST_PROFILE_ENV_MISSING_9F8C"
+        ));
+    }
+
+    #[test]
+    fn active_profile_secret_config_is_accepted_for_active_profile() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/profiles/interface_secret_binding.dag",
+            r#"module sample.profile
+interface IssueProvider {
+  capability get {
+    input {}
+    output { ok: Bool }
+  }
+}
+service impl.Provider : IssueProvider {
+  operation get {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/ok")
+  }
+}
+profile unit_test {
+  bind IssueProvider -> impl.Provider {
+    credential: secret("github-token")
+  }
+}
+func run() -> { ok: Bool } uses issues: IssueProvider {
+  result = issues.get()
+  return { ok: result.ok }
+}"#,
+        )]);
+
+        let dag = lower_typed_project_with_profile(&typed, Some("unit_test"))
+            .expect("lowering should succeed with secret profile config binding");
+        assert!(dag.nodes.iter().any(|node| {
+            node.id
+                .0
+                .starts_with("parse_transport_sample_profile_impl_Provider_get")
+        }));
     }
 
     #[test]
