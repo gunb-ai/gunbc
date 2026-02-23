@@ -4,7 +4,7 @@ use daglang_derive::derive_artifacts;
 use daglang_lower::{
     CallableKind, LoweredOp, ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
-use gunbc_exec::{lower, BoundaryMocks, Executable, ExecutionMode};
+use gunbc_exec::{lower, Executable, ExecutionMode};
 use gunbc_ir::{node::NodeBody, Dag, Edge, Node, Port};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -25,19 +25,6 @@ fn unique_temp_file(name: &str) -> PathBuf {
     fixture_root.join(format!("{name}.dag"))
 }
 
-fn unique_temp_output_file(name: &str, extension: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "daglang_cli_compile_{name}_{}_{}.{}",
-        std::process::id(),
-        nanos,
-        extension
-    ))
-}
-
 fn workspace_dsl_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl")
 }
@@ -47,32 +34,6 @@ fn workspace_single_file_context(relative_path: &str) -> PipelineContext {
     PipelineContext {
         roots: vec![root.clone()],
         target_file: Some(root.join(relative_path)),
-    }
-}
-
-struct MakegenOutputFixture {
-    context: PipelineContext,
-    output_path: PathBuf,
-    input_mocks: BoundaryMocks,
-}
-
-impl MakegenOutputFixture {
-    fn new(name: &str) -> Self {
-        let context = workspace_single_file_context("tools/makegen.dag");
-        let output_path = unique_temp_output_file(name, "mk");
-        let output_path_str = output_path.to_string_lossy().to_string();
-        let input_mocks = makegen_entrypoint_mocks(&output_path_str);
-        Self {
-            context,
-            output_path,
-            input_mocks,
-        }
-    }
-}
-
-impl Drop for MakegenOutputFixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.output_path);
     }
 }
 
@@ -430,8 +391,6 @@ fn compile_single_file_makegen_produces_non_empty_outputs() {
 }
 
 #[test]
-
-#[test]
 fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
     let mut dag = Dag::new();
     dag.add_node(Node::opaque(
@@ -490,12 +449,6 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         .expect("passthrough op should execute");
     assert!(result.contains_key("out"));
 }
-
-#[test]
-
-#[test]
-
-#[test]
 
 #[test]
 fn compile_resolve_execute_end_to_end_function_body_expressions() {
