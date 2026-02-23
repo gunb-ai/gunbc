@@ -83,7 +83,26 @@ impl From<PatternOp> for LoweredOp {
             },
             PatternOp::LoopPack { output_port } => LoweredOp::LoopPack { output_port },
             PatternOp::BranchMerge { output_port } => LoweredOp::BranchMerge { output_port },
-            other => panic!("unsupported PatternOp in daglang lowering: {other:?}"),
+            // Exhaustive arms for patterns not yet supported in daglang lowering.
+            // Explicit match ensures compile-time failure when new variants are added.
+            PatternOp::RetryController { .. } => {
+                panic!("RetryController pattern not yet supported in daglang lowering")
+            }
+            PatternOp::RetryCollector { .. } => {
+                panic!("RetryCollector pattern not yet supported in daglang lowering")
+            }
+            PatternOp::WhileInit { .. } => {
+                panic!("WhileInit pattern not yet supported in daglang lowering")
+            }
+            PatternOp::WhileController { .. } => {
+                panic!("WhileController pattern not yet supported in daglang lowering")
+            }
+            PatternOp::PollTimer { .. } => {
+                panic!("PollTimer pattern not yet supported in daglang lowering")
+            }
+            PatternOp::PollCollector { .. } => {
+                panic!("PollCollector pattern not yet supported in daglang lowering")
+            }
         }
     }
 }

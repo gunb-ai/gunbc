@@ -117,9 +117,9 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | H: DSL expression language | **DONE** | — |
 | 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, M7, M15 |
 | 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19 |
-| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4 (needs both Lane 1 + Lane 2 done) |
+| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4a..TS-4d (needs both Lane 1 + Lane 2 done) |
 | 3: Modeling integrity | **QUEUED** | M8..M14, M16..M19 |
-| 4: Codebase polish | **ACTIVE** | CU-1..CU-9 |
+| 4: Codebase polish | **ACTIVE** | CU-1..CU-10 |
 
 ---
 
@@ -351,11 +351,41 @@ Lane 3-D:  M17 → M18 → M19
 
 **Why post-merge**: TS-7 touches `daglang-lower` (Lane 2's domain) and depends on TS-1* (Lane 1's output). TS-3/TS-4 delete fallback paths that Lane 1 makes unnecessary. These tasks span both lanes' file boundaries and cannot run in parallel with either.
 
+**Motivation**: `port_type.rs` is a redundant, less-expressive shadow of `TypeRegistry` that hard-codes ~40 domain type mappings in a giant match statement. Every time the type system evolves, this shadow gets stale and causes bugs (e.g., `Credential` was mapped to `PortType::Secret` but serializes to `Value::Map`; `Platform` needed a special-case hack for dual backing). The `TypeRegistry` already has all this information in structured form — `port_type.rs` must be deleted.
+
+### Phase PM-A: Make TypeRegistry the sole authority
+
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | |
-| **TS-3** | **Make TypeRegistry non-optional**: Change `Option<TypeRegistry>` → `TypeRegistry` in `core/codegen/src/testgen/codegen.rs`. Audit for other `Option<TypeRegistry>` patterns. | TS-7 | S | |
-| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | |
+| **TS-3** | **Make TypeRegistry non-optional**: Change `Option<TypeRegistry>` → `TypeRegistry` in `core/codegen/src/testgen/codegen.rs`. Audit for other `Option<TypeRegistry>` patterns. This ensures testgen always has rich type info and never falls through to `PortType`-based guessing. | TS-7 | S | |
+
+### Phase PM-B: Delete `port_type.rs` (file deletion)
+
+**Goal**: Eliminate `core/ir/src/port_type.rs` entirely (355 lines). Three consumers to migrate:
+
+| Consumer | Location | What it uses | Replacement |
+|----------|----------|-------------|-------------|
+| `value_backing_for_type_id()` | `types.rs:846` | `PortType::from()` → match on 9 variants | `TypeRegistry::value_backing()` (new method) |
+| `rust_type_for_port_type()` | `system_model.rs:851` | `PortType::from()` → Rust type string | `TypeRegistry::base_type_name()` → same match |
+| `PortType::from_registry()` | `port_type.rs:80` | Registry-aware resolution | Replace callers with direct `TypeRegistry` queries |
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **TS-4a** | **Add `TypeRegistry::value_backing()` method**: New method on `TypeRegistry` that maps a `TypeId` → `ValueBacking` using `base_type_name()` chain. This replaces `value_backing_for_type_id()` which currently delegates to `PortType`. Handle parametric types (`List<T>`, `Set<T>`, `Map<K,V>`, `Optional<T>`) via expression parsing already in the registry. | TS-3 | M | |
+| **TS-4b** | **Migrate `value_backing_for_type_id()` to registry**: Replace `PortType::from(type_id)` dispatch in `types.rs:846-890` with `TypeRegistry::value_backing()`. Thread `&TypeRegistry` through `value_compatible_with_type_id()` and its callers (`mock_requirements.rs:245`, `testgen/codegen.rs:121`). Delete `Platform` and similar special-case hacks in `value_compatible_with_type_id()` — the registry handles them. | TS-4a | M | |
+| **TS-4c** | **Migrate `system_model.rs` and delete `port_type.rs`**: Replace `PortType::from(type_id)` in `rust_type_for_port_type()` (3 call sites at lines 908, 920, 929) with `TypeRegistry::base_type_name()`. Remove `pub use port_type::PortType` from `lib.rs`. Delete `core/ir/src/port_type.rs` (355 lines). Remove `mod port_type` from `lib.rs`. | TS-4b | S | |
+| **TS-4d** | **Regression test: compound type mock compatibility**: Add test cases for all capability-marker types (`Credential`, `ToolHandle`, `FilesystemHandle`, `NetworkHandle`) and dual-backing types (`Platform`) in `test_value_compatible_with_type_id`. These are the types that `port_type.rs` got wrong. | TS-4b | S | |
+
+### Post-merge dependency graph
+
+```
+Lane 1 + Lane 2 merged
+        │
+       TS-7 ──→ TS-3 ──→ TS-4a ──→ TS-4b ──→ TS-4c (port_type.rs DELETED)
+                                       │
+                                      TS-4d (regression tests)
+```
 
 ### Post-merge files touched
 
@@ -364,10 +394,13 @@ Lane 3-D:  M17 → M18 → M19
 | `core/daglang/daglang-typecheck/src/lib.rs` | Delete `types_match()` (TS-7) |
 | `core/daglang/daglang-syntax/src/ast_utils.rs` | Delete `canonical_type_name()` (TS-7) |
 | `core/daglang/daglang-lower/src/lib.rs` | Replace 8 `canonical_type_name()` call sites (TS-7) |
-| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3) |
-| `core/ir/src/port_type.rs` | Delete `PortType::Any` catch-all (TS-4) |
-| `core/ir/src/types.rs` | Update `PortType::Any` arm (TS-4) |
-| `core/ir/src/system_model.rs` | Update `PortType::Any` arm (TS-4) |
+| `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` → `TypeRegistry` (TS-3), thread registry to `mock_types_compatible` (TS-4b) |
+| `core/ir/src/type_registry.rs` | Add `value_backing()` method (TS-4a) |
+| `core/ir/src/types.rs` | Migrate `value_backing_for_type_id()` + `value_compatible_with_type_id()` to use registry (TS-4b), delete special-case hacks |
+| `core/ir/src/system_model.rs` | Replace `PortType::from()` with registry queries (TS-4c) |
+| `core/ir/src/port_type.rs` | **DELETE** (TS-4c) |
+| `core/ir/src/lib.rs` | Remove `mod port_type` + `pub use` (TS-4c) |
+| `core/test/src/mock_requirements.rs` | Thread `&TypeRegistry` through `types_compatible()` (TS-4b) |
 
 ---
 
@@ -388,6 +421,7 @@ Lane 3-D:  M17 → M18 → M19
 | **CU-7** | **Typed API migration**: Migrate remaining legacy untyped `Port` API to `TypedPort<T>` wrappers. | `lib/*/src/graph.rs` | After Lane 1 TS-1* | L | |
 | **CU-8** | **Resource trait string port elimination**: Migrate remaining string `res:*` ports to typed resource system. | `core/exec/`, `gunbc-dag/` | — | L | |
 | **CU-9** | **Canonical port naming invariants**: Migrate to one canonical port name per semantic role across lowering, runtime, and snapshots. | Various | — | S | |
+| **CU-10** | **TypeRegistry ↔ PortType drift audit**: Verify every domain type in `try_parse_port_type()` (40 mappings) has a consistent `TypeRegistry` registration with matching structural backing. Fix any remaining mismatches like the `Credential→Secret` bug. Stopgap until `port_type.rs` is deleted (TS-4c). | `core/ir/src/{port_type,type_registry}.rs` | — | S | ✅ Done |
 
 ---
 
