@@ -1,0 +1,131 @@
+// proofs/d2_provider_dispatch.dag -- Proof-of-concept: provider/runtime
+// dispatch using existing match syntax.
+//
+// Validates D-2: the DSL can express the provider/runtime dispatch from
+// lib/cloud-ops/src/graph.rs (502 lines) using existing match expressions.
+//
+// Key finding: match already exists in the DSL. Used by:
+//   - std/patterns.dag: acquire_subject_token (match runtime)
+//   - sdlc_stages.dag: execute_stage (match stage)
+//
+// This replaces the Rust dispatch:
+//   match config.provider {
+//       Gcp => match config.runtime { ... },
+//       Aws => build_aws_stub(),
+//       Azure => build_azure_stub(),
+//   }
+//
+// Conclusion: nested if chains (plan Option A) are unnecessary.
+// match (plan Option B) already exists and is the natural choice.
+
+module proofs.d2_provider_dispatch
+
+import std.types {
+  CloudRuntime,
+  NonEmptyStr,
+  ProjectId,
+  ServiceAccountEmail,
+  AccessToken,
+  AuthScheme
+}
+import std.patterns { credential_chain }
+
+// ── Provider dispatch ───────────────────────────────────────────────
+// Replaces build_cloud_secret_manager_credential_graph_from_config().
+//
+// Two-level dispatch: provider → runtime. Each arm calls the
+// appropriate credential acquisition func.
+//
+// The match expression compiles to Branch patterns in the IR, which
+// is exactly what the Rust code does (match on enums to select
+// different DAG builders).
+
+func acquire_cloud_credential(
+  provider: String,
+  runtime: CloudRuntime,
+  project_id: ProjectId,
+  secret_name: NonEmptyStr,
+  audience: NonEmptyStr,
+  service_account: ServiceAccountEmail?,
+  scheme: AuthScheme,
+  header_name: String?,
+  source_id: NonEmptyStr,
+  required_scopes: List<String>
+) -> { token: AccessToken }
+{
+  result = match provider {
+    "gcp" => acquire_gcp_credential(
+               runtime: runtime,
+               project_id: project_id,
+               secret_name: secret_name,
+               audience: audience,
+               service_account: service_account,
+               scheme: scheme,
+               header_name: header_name,
+               source_id: source_id,
+               required_scopes: required_scopes
+             )
+    "aws" => acquire_aws_credential_stub(
+               secret_name: secret_name,
+               source_id: source_id
+             )
+    "azure" => acquire_azure_credential_stub(
+                 secret_name: secret_name,
+                 source_id: source_id
+               )
+  }
+
+  return { token: result.token }
+}
+
+// ── GCP credential (runtime dispatch) ───────────────────────────────
+// Second-level dispatch by runtime. Each arm uses the appropriate
+// subject token acquisition strategy.
+//
+// This is structurally identical to the existing acquire_subject_token
+// pattern in std/patterns.dag, which already uses match runtime.
+
+func acquire_gcp_credential(
+  runtime: CloudRuntime,
+  project_id: ProjectId,
+  secret_name: NonEmptyStr,
+  audience: NonEmptyStr,
+  service_account: ServiceAccountEmail?,
+  scheme: AuthScheme,
+  header_name: String?,
+  source_id: NonEmptyStr,
+  required_scopes: List<String>
+) -> { token: AccessToken }
+{
+  cred = credential_chain(
+    runtime: runtime,
+    audience: audience,
+    service_account: service_account,
+    secret_name: secret_name,
+    project_id: project_id,
+    scheme: scheme,
+    header_name: header_name,
+    source_id: source_id,
+    required_scopes: required_scopes
+  )
+
+  return { token: cred.token }
+}
+
+// ── AWS / Azure stubs ───────────────────────────────────────────────
+// Placeholder funcs matching the Rust AwsOps::Unsupported /
+// AzureOps::Unsupported behavior.
+
+fn acquire_aws_credential_stub(
+  secret_name: NonEmptyStr,
+  source_id: NonEmptyStr
+) -> { token: AccessToken } {
+  return { token: { value: "<AWS_STUB_NOT_IMPLEMENTED>", source_type: "stub", scheme: "none" } }
+}
+
+fn acquire_azure_credential_stub(
+  secret_name: NonEmptyStr,
+  source_id: NonEmptyStr
+) -> { token: AccessToken } {
+  return { token: { value: "<AZURE_STUB_NOT_IMPLEMENTED>", source_type: "stub", scheme: "none" } }
+}

@@ -208,9 +208,7 @@ fn classify_nodes_with_config(
 
         let op = match &node.body {
             NodeBody::Opaque(op) => op,
-            NodeBody::SubDag(_) => {
-                return Err(ExecRuntimeError::SubDagNotSupported { node_id });
-            }
+            NodeBody::SubDag(_) => continue,
         };
 
         let handler = classify_handler(op).ok_or_else(|| ExecRuntimeError::UnresolvableNode {
@@ -956,8 +954,16 @@ fn build_build_dag_ir(
         ))));
     }
 
-    // Edges.
+    // Edges — only emit edges whose endpoints are classified (SubDag nodes
+    // are skipped during classification, so their edges are excluded too).
+    let classified_ids: std::collections::HashSet<&str> =
+        classified.iter().map(|cn| cn.node_id.as_str()).collect();
     for edge in &dag.edges {
+        if !classified_ids.contains(edge.from_node.0.as_str())
+            || !classified_ids.contains(edge.to_node.0.as_str())
+        {
+            continue;
+        }
         body.push(Stmt::Expr(Expr::raw(format!(
             r#"dag.add_edge(Edge::new("{}", "{}", "{}", "{}"))"#,
             edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0

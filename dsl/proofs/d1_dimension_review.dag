@@ -1,0 +1,172 @@
+// proofs/d1_dimension_review.dag -- Proof-of-concept: review dimension
+// sub-DAG generation using existing func + if syntax.
+//
+// Validates D-1: the DSL can express the four-dimension review pipeline
+// from lib/review/src/graph.rs (1,727 lines) without new syntax.
+//
+// Key patterns demonstrated:
+//   1. Reusable func for one dimension (dimension_review)
+//   2. Explicit per-dimension calls with if guards (compile-time opt-out)
+//   3. Implicit parallelism (coherence/quality/requirements have no data deps)
+//   4. Aspirational depends on prior findings (sequential after parallel)
+//   5. Merge with optional inputs
+//
+// This replaces the Rust loop:
+//   for &dimension in ReviewDimension::parallel_dimensions() { ... }
+//   if let Some(criteria) = profile.criteria_for(Aspirational) { ... }
+
+module proofs.d1_dimension_review
+
+import std.types { NonEmptyStr, AccessToken }
+import std.resources { AuthContext }
+
+// ── Types ───────────────────────────────────────────────────────────
+
+type ReviewCriteria = {
+  name: String,
+  description: String,
+  checks: List<{ id: String, question: String, examples: List<String> }>
+}
+
+type FermiDepth = XS | S | M | L | XL
+
+type DimensionOutput = {
+  output: Json,
+  errors: Json
+}
+
+type MergedReviewOutput = {
+  output: Json,
+  summary: String
+}
+
+// ── Reusable dimension func ─────────────────────────────────────────
+// One func handles any single dimension. The caller instantiates it
+// once per active dimension. This replaces the Rust loop body.
+
+func dimension_review(
+  artifact: NonEmptyStr,
+  criteria: Json,
+  dimension: String,
+  depth: String,
+  provider: NonEmptyStr,
+  model: NonEmptyStr,
+  prior_findings: String?
+) -> { output: Json, errors: Json }
+{
+  prompt = PrepareDimensionPrompt(
+    artifact: artifact,
+    criteria: criteria,
+    dimension: dimension,
+    depth: depth,
+    prior_findings: prior_findings
+  )
+
+  llm_response = LLM.Complete(
+    content: artifact,
+    question: prompt.question,
+    system_prompt: prompt.system_prompt,
+    provider: provider,
+    model: model
+  )
+
+  parsed = ParseDimensionResponse(
+    answer: llm_response.answer,
+    criteria: criteria,
+    dimension: dimension
+  )
+
+  return { output: parsed.output, errors: parsed.errors }
+}
+
+// ── Full review pipeline ────────────────────────────────────────────
+// Replaces build_dimension_diff_review_graph_with_cloud_config().
+//
+// The four dimensions are a fixed enum. Instead of a loop, we call
+// dimension_review() once per dimension, guarded by if. The compiler
+// sees that coherence/quality/requirements have no data dependencies
+// and can schedule them in parallel.
+
+func diff_dimension_review(
+  repo_path: String,
+  base_ref: String,
+  provider: NonEmptyStr,
+  model: NonEmptyStr,
+  coherence_criteria: Json?,
+  quality_criteria: Json?,
+  requirements_criteria: Json?,
+  aspirational_criteria: Json?,
+  depth: String
+) -> { output: Json, summary: String }
+{
+  // Acquire diff artifact
+  diff = git.Core.Diff(repo_path: repo_path, base_ref: base_ref)
+  artifact = FormatDiffArtifact(diff_files: diff.diff_files)
+
+  // ── Parallel dimensions ─────────────────────────────────────────
+  // No data dependencies between these three → implicit parallelism.
+
+  coherence_result = if coherence_criteria != None {
+    dimension_review(
+      artifact: artifact.artifact,
+      criteria: coherence_criteria,
+      dimension: "coherence",
+      depth: depth,
+      provider: provider,
+      model: model
+    )
+  }
+
+  quality_result = if quality_criteria != None {
+    dimension_review(
+      artifact: artifact.artifact,
+      criteria: quality_criteria,
+      dimension: "quality",
+      depth: depth,
+      provider: provider,
+      model: model
+    )
+  }
+
+  requirements_result = if requirements_criteria != None {
+    dimension_review(
+      artifact: artifact.artifact,
+      criteria: requirements_criteria,
+      dimension: "requirements",
+      depth: depth,
+      provider: provider,
+      model: model
+    )
+  }
+
+  // ── Aspirational dimension ──────────────────────────────────────
+  // Runs AFTER parallel dimensions. Receives prior findings as context.
+
+  aspirational_result = if aspirational_criteria != None {
+    prior = FormatPriorFindings(
+      coherence_output: coherence_result?.output,
+      quality_output: quality_result?.output,
+      requirements_output: requirements_result?.output
+    )
+
+    dimension_review(
+      artifact: artifact.artifact,
+      criteria: aspirational_criteria,
+      dimension: "aspirational",
+      depth: depth,
+      provider: provider,
+      model: model,
+      prior_findings: prior.prior_findings
+    )
+  }
+
+  // ── Merge all outputs ───────────────────────────────────────────
+  merged = MergeDimensionOutputs(
+    coherence_output: coherence_result?.output,
+    quality_output: quality_result?.output,
+    requirements_output: requirements_result?.output,
+    aspirational_output: aspirational_result?.output
+  )
+
+  return { output: merged.output, summary: merged.summary }
+}

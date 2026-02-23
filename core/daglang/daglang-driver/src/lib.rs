@@ -192,7 +192,29 @@ pub fn compile_from_module_graph_with_options(
     let output_paths = merge_dedup_paths(dag_paths, annotation_paths);
 
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
-    let emitted = emit_with_options(&lowered, &derived, options)
+
+    let target_module_name = context
+        .target_file
+        .as_ref()
+        .and_then(|tf| {
+            let canonical = {
+                #[allow(clippy::disallowed_methods)]
+                std::fs::canonicalize(tf).ok()
+            };
+            discover_module_graph_for_context(context)
+                .ok()?
+                .modules
+                .into_iter()
+                .find(|m| {
+                    m.path == *tf
+                        || canonical
+                            .as_ref()
+                            .is_some_and(|c| m.path == *c)
+                })
+                .map(|m| m.module_path.join("."))
+        });
+
+    let emitted = emit_with_options(&lowered, &derived, options, target_module_name.as_deref())
         .map_err(|error| format!("emit error: {error}"))?;
 
     Ok(CompileOutput {
@@ -233,6 +255,7 @@ fn emit_with_options(
     dag: &Dag<LoweredOp>,
     derived: &DerivedArtifacts,
     options: CompileOptions,
+    target_module_name: Option<&str>,
 ) -> Result<EmissionBundle, CompileError> {
     match (options.target, options.layer) {
         (CodegenTarget::Rust, CodegenLayer::Native) => {
@@ -253,11 +276,14 @@ fn emit_with_options(
                 .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}")))
         }
         (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {
-            let module_name = derived
-                .tool_metadata
-                .modules
-                .first()
-                .map(|module| module.module.as_str())
+            let module_name = target_module_name
+                .or_else(|| {
+                    derived
+                        .tool_metadata
+                        .modules
+                        .first()
+                        .map(|module| module.module.as_str())
+                })
                 .unwrap_or("daglang.generated");
             let files = emit_exec_runtime_with_output_dir(dag, module_name, options.output_dir.as_deref())
                 .map_err(|error| {
@@ -666,16 +692,7 @@ fn callable_scope_for_context(
     if !has_callable_items {
         return Ok(None);
     }
-    let has_pipeline_items = target_module
-        .ast
-        .items
-        .iter()
-        .any(|item| matches!(item.node, Item::PipelineDef(_)));
     let mut scope = HashSet::new();
-    if !has_pipeline_items {
-        scope.insert(target_module.module_path.join("."));
-        return Ok(Some(scope));
-    }
     let mut visited = HashSet::new();
     let mut queue = VecDeque::from([target_index]);
     while let Some(module_index) = queue.pop_front() {
@@ -1022,7 +1039,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_single_function_target_keeps_callable_scope_local() {
+    fn compile_single_function_target_includes_callable_dependency_closure() {
         let root = unique_temp_dir("compile_function_scope_local");
         std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
         std::fs::write(
@@ -1049,8 +1066,8 @@ mod tests {
             .map(|node| node.id.0.clone())
             .collect::<HashSet<_>>();
         assert!(
-            !node_ids.contains("sample.helper::dep_task"),
-            "function single-file compile should keep callable scope local"
+            node_ids.contains("sample.helper::dep_task"),
+            "function single-file compile should include callable dependencies"
         );
         assert!(node_ids.contains("sample.main::run"));
 
@@ -1416,24 +1433,36 @@ fn run() -> Bool {
         );
 
         // ---- DAG topology ----
-        // The number of add_node calls should match the lowered DAG node count.
-        let expected_nodes = output.lowered_dag.nodes.len();
+        // Exec-runtime skips SubDag nodes (e.g. for-loop expansions from
+        // unreachable callables), so compare against Opaque-only counts.
+        let opaque_nodes: Vec<_> = output
+            .lowered_dag
+            .nodes
+            .iter()
+            .filter(|n| matches!(n.body, gunbc_ir::node::NodeBody::Opaque(_)))
+            .collect();
+        let opaque_ids: std::collections::HashSet<_> =
+            opaque_nodes.iter().map(|n| &n.id).collect();
+        let expected_nodes = opaque_nodes.len();
         let actual_nodes = main_rs.matches("dag.add_node").count();
         assert_eq!(
             actual_nodes, expected_nodes,
             "generated DAG should have {expected_nodes} nodes, got {actual_nodes}"
         );
 
-        // The number of add_edge calls should match the lowered DAG edge count.
-        let expected_edges = output.lowered_dag.edges.len();
+        let expected_edges = output
+            .lowered_dag
+            .edges
+            .iter()
+            .filter(|e| opaque_ids.contains(&e.from_node) && opaque_ids.contains(&e.to_node))
+            .count();
         let actual_edges = main_rs.matches("dag.add_edge").count();
         assert_eq!(
             actual_edges, expected_edges,
             "generated DAG should have {expected_edges} edges, got {actual_edges}"
         );
 
-        // Every node ID from the lowered DAG should appear in the generated code.
-        for node in &output.lowered_dag.nodes {
+        for node in &opaque_nodes {
             assert!(
                 main_rs.contains(&node.id.0),
                 "generated code should reference node `{}`",
@@ -1598,22 +1627,35 @@ fn run() -> Bool {
         // ---- DAG topology ----
         // Pragma has 3 parallel chains (clippy, allowlist, policy) each with
         // 5 content-upsert nodes, plus render nodes, fs_env, and entrypoint.
-        let expected_nodes = output.lowered_dag.nodes.len();
+        // Exec-runtime skips SubDag nodes, so compare against Opaque-only counts.
+        let opaque_nodes: Vec<_> = output
+            .lowered_dag
+            .nodes
+            .iter()
+            .filter(|n| matches!(n.body, gunbc_ir::node::NodeBody::Opaque(_)))
+            .collect();
+        let opaque_ids: std::collections::HashSet<_> =
+            opaque_nodes.iter().map(|n| &n.id).collect();
+        let expected_nodes = opaque_nodes.len();
         let actual_nodes = main_rs.matches("dag.add_node").count();
         assert_eq!(
             actual_nodes, expected_nodes,
             "generated DAG should have {expected_nodes} nodes, got {actual_nodes}"
         );
 
-        let expected_edges = output.lowered_dag.edges.len();
+        let expected_edges = output
+            .lowered_dag
+            .edges
+            .iter()
+            .filter(|e| opaque_ids.contains(&e.from_node) && opaque_ids.contains(&e.to_node))
+            .count();
         let actual_edges = main_rs.matches("dag.add_edge").count();
         assert_eq!(
             actual_edges, expected_edges,
             "generated DAG should have {expected_edges} edges, got {actual_edges}"
         );
 
-        // Every node ID from the lowered DAG should appear in the generated code.
-        for node in &output.lowered_dag.nodes {
+        for node in &opaque_nodes {
             assert!(
                 main_rs.contains(&node.id.0),
                 "generated code should reference node `{}`",
