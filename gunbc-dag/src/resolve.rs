@@ -104,13 +104,24 @@ impl Executable for PassthroughOp {
 /// stage bodies are lowered elsewhere; this op provides deterministic stage
 /// ordering metadata and next-stage progression derived from the lowered
 /// stage sequence.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct PipelineDispatchOp {
     _module: String,
     _name: String,
     stage_count: usize,
     stage_names: Vec<String>,
     output_port_names: Vec<String>,
+}
+
+impl std::fmt::Debug for PipelineDispatchOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PipelineDispatchOp")
+            .field("compat_mode", &"PassthroughOp")
+            .field("stage_count", &self.stage_count)
+            .field("stage_names", &self.stage_names)
+            .field("output_port_names", &self.output_port_names)
+            .finish()
+    }
 }
 
 impl Executable for PipelineDispatchOp {
