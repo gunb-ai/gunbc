@@ -509,6 +509,77 @@ fn validate_pr_dry_run_reports_ci_and_review_summary_for_completed_agent() {
 }
 
 #[test]
+fn validate_pr_real_mode_skips_ci_when_review_findings_block() {
+    let ctx = CliTestContext::new("validate_pr_review_blocks_ci", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    progress_intake_to_accepted(
+        &ctx,
+        &root,
+        "intent-validate-review-block",
+        "intent-validate-review-block",
+        515,
+    );
+
+    let spawn = ctx
+        .command()
+        .arg("agent-spawn")
+        .arg("--intake-key")
+        .arg("intent-validate-review-block")
+        .current_dir(&root)
+        .output()
+        .expect("run agent-spawn command");
+    assert!(
+        spawn.status.success(),
+        "agent-spawn should succeed: {}",
+        String::from_utf8_lossy(&spawn.stderr)
+    );
+
+    let agent_ledger_path = root.join("target/sdlc/agent-ledger.json");
+    let mut agent_ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&agent_ledger_path).expect("read agent ledger"),
+    )
+    .expect("parse agent ledger");
+    agent_ledger["entries"]["intent-validate-review-block"]["pr_number"] =
+        serde_json::Value::Number(serde_json::Number::from(515));
+    agent_ledger["entries"]["intent-validate-review-block"]["pr_url"] =
+        serde_json::Value::String("https://example.test/pr/515".to_string());
+    std::fs::write(
+        &agent_ledger_path,
+        serde_json::to_vec_pretty(&agent_ledger).expect("serialize updated agent ledger"),
+    )
+    .expect("write updated agent ledger");
+
+    let validate = ctx
+        .command()
+        .arg("validate-pr")
+        .arg("--intake-key")
+        .arg("intent-validate-review-block")
+        .current_dir(&root)
+        .output()
+        .expect("run validate-pr in real mode");
+    assert!(
+        validate.status.success(),
+        "validate-pr should succeed with blocked review summary output: {}",
+        String::from_utf8_lossy(&validate.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&validate.stdout);
+    let mut stream = serde_json::Deserializer::from_str(&stdout).into_iter::<serde_json::Value>();
+    let mut payload = None;
+    for entry in &mut stream {
+        payload = Some(entry.expect("validate-pr output stream should contain valid JSON values"));
+    }
+    let payload = payload.expect("validate-pr output stream should include final summary JSON");
+    assert_eq!(payload["review_passed"], serde_json::Value::Bool(false));
+    assert_eq!(payload["ci_passed"], serde_json::Value::Bool(false));
+    assert_eq!(payload["all_passed"], serde_json::Value::Bool(false));
+    assert_eq!(
+        payload["ci_summary"],
+        serde_json::Value::String("skipped: blocking code review findings".to_string())
+    );
+}
+
+#[test]
 fn implementation_stage_fails_closed_without_agent_record() {
     let ctx = CliTestContext::new("implementation_requires_agent", sdlc_bin());
     let root = ctx.path().to_path_buf();

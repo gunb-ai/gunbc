@@ -2026,7 +2026,14 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
     let review_result = run_diff_review(&branch, dry_run)?;
 
     // --- Step 3: CI validation (PR2) ---
-    let ci_result = run_ci_validation(&branch, dry_run)?;
+    let ci_result = if review_result.blocking_count > 0 {
+        CiValidationResult {
+            success: false,
+            summary: "skipped: blocking code review findings".to_string(),
+        }
+    } else {
+        run_ci_validation(&branch, dry_run)?
+    };
 
     let validation = PrValidationResult {
         review_passed: review_result.blocking_count == 0,
