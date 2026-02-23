@@ -336,7 +336,7 @@ impl TypeRegistry {
         );
         self.register(
             "Credential",
-            type_lib::refined("String", vec![crate::type_op::Predicate::NonEmpty]),
+            type_lib::identity("Credential"),
         );
         self.register("FilesystemHandle", type_lib::identity("FilesystemHandle"));
         self.register("NetworkHandle", type_lib::identity("NetworkHandle"));

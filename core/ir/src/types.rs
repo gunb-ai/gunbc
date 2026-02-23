@@ -951,12 +951,6 @@ pub fn value_compatible_with_type_id(type_id: &str, value: &crate::value::Value)
         return true;
     }
 
-    // Credential serializes to Value::Map (capability-marker pattern) despite
-    // its PortType being Secret.  Accept Map values for Credential ports.
-    if type_id == "Credential" && kind == ValueKind::Map {
-        return true;
-    }
-
     // Default to structural backing compatibility
     value_backing_for_type_id(type_id).accepts_value_kind(kind)
 }

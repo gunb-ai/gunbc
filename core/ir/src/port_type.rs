@@ -20,7 +20,7 @@
 //! | `Any` | `"Any"` |
 //!
 //! Domain types are resolved to their structural backing types:
-//! `FilePath` → `String`, `BinaryFilePath` → `Bytes`, `Credential` → `Secret`, etc.
+//! `FilePath` → `String`, `BinaryFilePath` → `Bytes`, `Credential` → `Json`, etc.
 
 use serde::{Deserialize, Serialize};
 
@@ -195,13 +195,13 @@ fn try_parse_port_type(s: &str) -> Option<PortType> {
         // Domain types — int-backed
         "Timestamp" => Some(PortType::Int),
 
-        // Domain types — secret-backed
-        "Credential" => Some(PortType::Secret),
-
         // Domain types — json/structured-backed
+        // Credential is a compound type (secret + scheme) that serializes to
+        // Value::Map via the capability-marker pattern, like ToolHandle.
         "TransportRequest" | "TransportResponse"
         | "FileResponse" | "ShellResponse" | "RestResponse" | "HttpResponse"
         | "ToolHandle" | "FilesystemHandle" | "NetworkHandle"
+        | "Credential"
         | "CliResult" | "Record" => Some(PortType::Json),
 
         // Legacy aliases
@@ -297,8 +297,8 @@ mod tests {
         // Int-backed domain types
         assert_eq!(PortType::from("Timestamp"), PortType::Int);
 
-        // Secret-backed domain types
-        assert_eq!(PortType::from("Credential"), PortType::Secret);
+        // Credential is a compound type, not a scalar secret
+        assert_eq!(PortType::from("Credential"), PortType::Json);
 
         // Json/structured-backed domain types
         assert_eq!(PortType::from("TransportRequest"), PortType::Json);
