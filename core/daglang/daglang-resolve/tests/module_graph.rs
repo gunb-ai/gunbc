@@ -153,6 +153,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("examples.rich_types".into(), 0),
         ("funcs.sdlc_dispatch_runtime".into(), 0),
         ("funcs.sdlc_stages".into(), 9),
+        ("funcs.sdlc_validation_runtime".into(), 0),
         ("funcs.sdlc_worker".into(), 7),
         ("funcs.test_control_flow".into(), 1),
         ("infra.aws.config".into(), 2),

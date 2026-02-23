@@ -38,7 +38,7 @@ use gunbc_ir::{detect_entrypoints, Dag, Value, WorkspaceLayout};
 use gunbc_test::boundary::execute_via_engine_with_inputs;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -826,6 +826,7 @@ fn run_worker(
     } else {
         compile_worker_stage_dispatch_dag(preflight.runtime_profile.as_str())?
     };
+    let compiled_validation_dispatcher = compile_sdlc_validation_policy_dag()?;
     let parsed_runtime_params = compiled_stage_dispatcher.validate_runtime_params(runtime_params)?;
 
     let ledger_path = intake_ledger_path();
@@ -1201,6 +1202,7 @@ fn run_worker(
                                 let validation = validate_implementation_stage_for_close(
                                     intake_key,
                                     &agent_ledger,
+                                    &compiled_validation_dispatcher,
                                 )?;
                                 implementation_validations.push(validation);
                             }
@@ -1927,6 +1929,7 @@ fn save_agent_ledger(path: &Path, ledger: &AgentLedger) -> Result<(), String> {
 
 fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String> {
     let intake_key = intake_key.ok_or("validate-pr requires --intake-key")?;
+    let validation_dispatcher = compile_sdlc_validation_policy_dag()?;
 
     let intake_ledger = load_intake_ledger(&intake_ledger_path())?;
     let mut agent_ledger = load_agent_ledger(&agent_ledger_path())?;
@@ -2024,19 +2027,23 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
 
     // --- Step 2: Diff review (PR1) ---
     let review_result = run_diff_review(&branch, dry_run)?;
+    let review_gate = validation_dispatcher
+        .evaluate_review_gate(review_result.blocking_count, &review_result.blocking_summaries)?;
 
     // --- Step 3: CI validation (PR2) ---
-    let ci_result = if review_result.blocking_count > 0 {
+    let ci_result = if review_gate.should_run_ci {
+        run_ci_validation(&branch, dry_run)?
+    } else {
         CiValidationResult {
             success: false,
-            summary: "skipped: blocking code review findings".to_string(),
+            summary: review_gate.ci_summary.clone(),
         }
-    } else {
-        run_ci_validation(&branch, dry_run)?
     };
+    let status_summary = validation_dispatcher
+        .summarize_validation_status(review_gate.review_passed, ci_result.success)?;
 
     let validation = PrValidationResult {
-        review_passed: review_result.blocking_count == 0,
+        review_passed: review_gate.review_passed,
         ci_passed: ci_result.success,
         blocking_findings: review_result.blocking_summaries.clone(),
         ci_summary: Some(ci_result.summary.clone()),
@@ -2054,7 +2061,7 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
     }
 
     // --- Step 5: Close loop (PR3) ---
-    if validation.all_passed() && !dry_run {
+    if status_summary.all_passed && !dry_run {
         let mut intake_ledger = load_intake_ledger(&intake_ledger_path())?;
         if let Some(entry) = intake_ledger.entries.get_mut(intake_key) {
             entry.stage = IssueLifecycleStage::Closed;
@@ -2073,10 +2080,10 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
             "pr_url": pr_url,
             "review_passed": validation.review_passed,
             "ci_passed": validation.ci_passed,
-            "all_passed": validation.all_passed(),
+            "all_passed": status_summary.all_passed,
             "blocking_findings_count": validation.blocking_findings.len(),
             "ci_summary": validation.ci_summary,
-            "stage_after": if validation.all_passed() { "closed" } else { "implementation" },
+            "stage_after": status_summary.stage_after,
         }))
         .map_err(|e| format!("serialize: {e}"))?
     );
@@ -3044,11 +3051,21 @@ struct CompiledStageDispatcher {
     stage_order: Vec<IssueLifecycleStage>,
 }
 
+struct CompiledValidationDispatcher {
+    dag: Dag<DynOp>,
+}
+
 impl CompiledStageDispatcher {
     fn collect_entrypoint_param_types(&self) -> Result<BTreeMap<String, String>, String> {
         let mut types_by_param = BTreeMap::new();
         let entrypoints = detect_entrypoints(&self.dag);
-        for (_, port_name, type_id) in entrypoints.entrypoint_ports {
+        for (node_id, port_name, type_id) in entrypoints.entrypoint_ports {
+            if !node_id
+                .0
+                .starts_with("funcs.sdlc_dispatch_runtime::dispatch_")
+            {
+                continue;
+            }
             if port_name.0 == "__deps" {
                 continue;
             }
@@ -3116,83 +3133,35 @@ impl CompiledStageDispatcher {
         runtime_params: &BTreeMap<String, Value>,
     ) -> Result<StageDispatchDecision, String> {
         let callable_name = stage_dispatch_callable_name(record.stage);
-        let target_node_id = format!("funcs.sdlc_dispatch_runtime::{callable_name}");
         let default_owner = detect_repo_owner().unwrap_or_else(|| "unknown".to_string());
         let default_repo = detect_repo_name().unwrap_or_else(|| "unknown".to_string());
-        let entrypoints = detect_entrypoints(&self.dag);
-        let mut input_mocks = BoundaryMocks::new();
-        let mut unsupported_ports = Vec::new();
-        for (node_id, port_name, _) in entrypoints.entrypoint_ports {
-            if port_name.0 == "__deps" {
-                input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
-                continue;
-            }
-            if let Some(value) = runtime_params.get(&port_name.0) {
-                input_mocks.set_input(node_id.0, port_name.0.clone(), value.clone());
-                continue;
-            }
-            match port_name.0.as_str() {
-                "run_key" => input_mocks.set_input(
-                    node_id.0,
-                    port_name.0,
-                    Value::Str(record.run_key.clone()),
-                ),
-                "worker_id" => {
-                    input_mocks.set_input(node_id.0, port_name.0, Value::Str(worker_id.to_string()))
-                }
-                "issue_id" => {
-                    input_mocks.set_input(node_id.0, port_name.0, Value::Int(issue_id as i64))
-                }
-                "owner" => input_mocks.set_input(
-                    node_id.0,
-                    port_name.0,
-                    Value::Str(default_owner.clone()),
-                ),
-                "repo" => input_mocks.set_input(
-                    node_id.0,
-                    port_name.0,
-                    Value::Str(default_repo.clone()),
-                ),
-                other => unsupported_ports.push(format!("{}.{other}", node_id.0)),
-            }
+        let mut callable_inputs = BTreeMap::new();
+        callable_inputs.insert("run_key".to_string(), Value::Str(record.run_key.clone()));
+        callable_inputs.insert("worker_id".to_string(), Value::Str(worker_id.to_string()));
+        callable_inputs.insert("issue_id".to_string(), Value::Int(issue_id as i64));
+        callable_inputs.insert("owner".to_string(), Value::Str(default_owner));
+        callable_inputs.insert("repo".to_string(), Value::Str(default_repo));
+        for (key, value) in runtime_params {
+            callable_inputs.insert(key.clone(), value.clone());
         }
-        if !unsupported_ports.is_empty() {
-            unsupported_ports.sort();
-            unsupported_ports.dedup();
-            return Err(format!(
-                "compiled stage dispatcher for `{intake_key}` has unsupported entrypoint ports: {}",
-                unsupported_ports.join(", ")
-            ));
-        }
-
-        let execution =
-            execute_via_engine_with_inputs(&self.dag, ExecutionMode::Real, Some(&input_mocks))
-                .map_err(|error| {
-                    format!(
-                        "compiled stage dispatcher execution failed for `{intake_key}`: {error}"
-                    )
-                })?;
-        let entry = execution
-            .entries
-            .iter()
-            .find(|entry| entry.node_id == target_node_id)
-            .ok_or_else(|| {
-                format!(
-                    "compiled stage dispatcher execution for `{intake_key}` did not execute target node `{target_node_id}`"
-                )
-            })?;
-        let next_stage_label = entry
-            .outputs
+        let outputs = execute_compiled_callable(
+            &self.dag,
+            "funcs.sdlc_dispatch_runtime",
+            callable_name,
+            &callable_inputs,
+            intake_key,
+            "stage dispatcher",
+        )?;
+        let next_stage_label = outputs
             .get("next_stage")
             .and_then(Value::as_str)
             .ok_or_else(|| {
                 format!(
                     "compiled stage dispatcher output `next_stage` is missing or non-string for `{intake_key}` (outputs: {:?})",
-                    entry.outputs
+                    outputs
                 )
             })?;
-        let awaiting_approval = entry
-            .outputs
+        let awaiting_approval = outputs
             .get("awaiting_approval")
             .and_then(Value::as_bool)
             .ok_or_else(|| {
@@ -3200,12 +3169,10 @@ impl CompiledStageDispatcher {
                     "compiled stage dispatcher output `awaiting_approval` is missing or non-bool for `{intake_key}`"
                 )
             })?;
-        let marker = entry
-            .outputs
+        let marker = outputs
             .get("marker")
             .and_then(value_as_optional_string);
-        let message = entry
-            .outputs
+        let message = outputs
             .get("message")
             .and_then(value_as_optional_string);
         Ok(StageDispatchDecision {
@@ -3232,6 +3199,164 @@ impl CompiledStageDispatcher {
     }
 }
 
+struct ReviewGateDecision {
+    review_passed: bool,
+    should_run_ci: bool,
+    ci_summary: String,
+    review_failure: String,
+}
+
+struct ValidationStatusSummary {
+    all_passed: bool,
+    stage_after: String,
+}
+
+struct ImplementationValidationDecision {
+    passed: bool,
+    failure_message: String,
+}
+
+impl CompiledValidationDispatcher {
+    fn evaluate_review_gate(
+        &self,
+        blocking_count: usize,
+        blocking_summaries: &[String],
+    ) -> Result<ReviewGateDecision, String> {
+        let mut inputs = BTreeMap::new();
+        inputs.insert("blocking_count".to_string(), Value::Int(blocking_count as i64));
+        inputs.insert(
+            "blocking_summaries".to_string(),
+            Value::Str(blocking_summaries.join("; ")),
+        );
+        let outputs = execute_compiled_callable(
+            &self.dag,
+            "funcs.sdlc_validation_runtime",
+            "evaluate_review_gate",
+            &inputs,
+            "sdlc-validation",
+            "validation dispatcher",
+        )?;
+        let review_passed = outputs
+            .get("review_passed")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| {
+                "compiled validation policy output `review_passed` is missing or non-bool"
+                    .to_string()
+            })?;
+        let should_run_ci = outputs
+            .get("should_run_ci")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| {
+                "compiled validation policy output `should_run_ci` is missing or non-bool"
+                    .to_string()
+            })?;
+        let ci_summary = outputs
+            .get("ci_summary")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                "compiled validation policy output `ci_summary` is missing or non-string"
+                    .to_string()
+            })?
+            .to_string();
+        let review_failure = outputs
+            .get("review_failure")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                "compiled validation policy output `review_failure` is missing or non-string"
+                    .to_string()
+            })?
+            .to_string();
+        Ok(ReviewGateDecision {
+            review_passed,
+            should_run_ci,
+            ci_summary,
+            review_failure,
+        })
+    }
+
+    fn summarize_validation_status(
+        &self,
+        review_passed: bool,
+        ci_passed: bool,
+    ) -> Result<ValidationStatusSummary, String> {
+        let mut inputs = BTreeMap::new();
+        inputs.insert("review_passed".to_string(), Value::Bool(review_passed));
+        inputs.insert("ci_passed".to_string(), Value::Bool(ci_passed));
+        let outputs = execute_compiled_callable(
+            &self.dag,
+            "funcs.sdlc_validation_runtime",
+            "summarize_validation_status",
+            &inputs,
+            "sdlc-validation",
+            "validation dispatcher",
+        )?;
+        let all_passed = outputs
+            .get("all_passed")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| {
+                "compiled validation policy output `all_passed` is missing or non-bool"
+                    .to_string()
+            })?;
+        let stage_after = outputs
+            .get("stage_after")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                "compiled validation policy output `stage_after` is missing or non-string"
+                    .to_string()
+            })?
+            .to_string();
+        Ok(ValidationStatusSummary {
+            all_passed,
+            stage_after,
+        })
+    }
+
+    fn implementation_validation_failure(
+        &self,
+        intake_key: &str,
+        review_passed: bool,
+        ci_passed: bool,
+        ci_summary: &str,
+        review_failure: &str,
+    ) -> Result<ImplementationValidationDecision, String> {
+        let mut inputs = BTreeMap::new();
+        inputs.insert("intake_key".to_string(), Value::Str(intake_key.to_string()));
+        inputs.insert("review_passed".to_string(), Value::Bool(review_passed));
+        inputs.insert("ci_passed".to_string(), Value::Bool(ci_passed));
+        inputs.insert("ci_summary".to_string(), Value::Str(ci_summary.to_string()));
+        inputs.insert(
+            "review_failure".to_string(),
+            Value::Str(review_failure.to_string()),
+        );
+        let outputs = execute_compiled_callable(
+            &self.dag,
+            "funcs.sdlc_validation_runtime",
+            "implementation_validation_failure",
+            &inputs,
+            "sdlc-validation",
+            "validation dispatcher",
+        )?;
+        let passed = outputs
+            .get("passed")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| {
+                "compiled validation policy output `passed` is missing or non-bool".to_string()
+            })?;
+        let failure_message = outputs
+            .get("failure_message")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                "compiled validation policy output `failure_message` is missing or non-string"
+                    .to_string()
+            })?
+            .to_string();
+        Ok(ImplementationValidationDecision {
+            passed,
+            failure_message,
+        })
+    }
+}
+
 fn parse_entrypoint_param_value(key: &str, type_id: &str, raw: &str) -> Result<Value, String> {
     match type_id {
         "Int" => raw.parse::<i64>().map(Value::Int).map_err(|_| {
@@ -3246,6 +3371,55 @@ fn parse_entrypoint_param_value(key: &str, type_id: &str, raw: &str) -> Result<V
         },
         _ => Ok(Value::Str(raw.to_string())),
     }
+}
+
+fn execute_compiled_callable(
+    dag: &Dag<DynOp>,
+    module_name: &str,
+    callable_name: &str,
+    inputs: &BTreeMap<String, Value>,
+    context_key: &str,
+    context_label: &str,
+) -> Result<HashMap<String, Value>, String> {
+    let target_node_id = format!("{module_name}::{callable_name}");
+    let node = dag
+        .get_node(&target_node_id.clone().into())
+        .ok_or_else(|| {
+            format!(
+                "compiled {context_label} for `{context_key}` does not contain target node `{target_node_id}`"
+            )
+        })?;
+    let mut isolated_dag = Dag::new();
+    isolated_dag.add_node(node.clone());
+    let mut input_mocks = BoundaryMocks::new();
+    for port in &node.inputs {
+        let port_name = port.name.0.as_str();
+        let value = if port_name == "__deps" {
+            Value::List(Vec::new())
+        } else {
+            inputs.get(port_name).cloned().ok_or_else(|| {
+                format!(
+                    "compiled {context_label} for `{context_key}` missing required input `{port_name}` for node `{target_node_id}`"
+                )
+            })?
+        };
+        input_mocks.set_input(target_node_id.clone(), port_name.to_string(), value);
+    }
+    let execution =
+        execute_via_engine_with_inputs(&isolated_dag, ExecutionMode::Real, Some(&input_mocks))
+            .map_err(|error| {
+                format!("compiled {context_label} execution failed for `{context_key}`: {error}")
+            })?;
+    let entry = execution
+        .entries
+        .iter()
+        .find(|entry| entry.node_id == target_node_id)
+        .ok_or_else(|| {
+            format!(
+                "compiled {context_label} execution for `{context_key}` did not execute target node `{target_node_id}`"
+            )
+        })?;
+    Ok(entry.outputs.clone())
 }
 
 fn stage_dispatch_callable_name(stage: IssueLifecycleStage) -> &'static str {
@@ -3278,6 +3452,29 @@ fn compile_worker_stage_dispatch_dag(
 fn compile_worker_stage_dispatch_dag_for_dry_run() -> Result<CompiledStageDispatcher, String> {
     let stage_order = load_sdlc_pipeline_stage_order_for_dag_profile("unit_test")?;
     compile_worker_stage_dispatch_dag_with_stage_order(stage_order)
+}
+
+fn compile_sdlc_validation_policy_dag() -> Result<CompiledValidationDispatcher, String> {
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .map_err(|error| {
+            format!("failed to resolve workspace layout for compiled validation policy: {error}")
+        })?;
+    let dsl_root = layout.workspace_root.join("dsl");
+    let context = DriverContext {
+        roots: vec![dsl_root.clone()],
+        target_file: Some(dsl_root.join("funcs/sdlc_validation_runtime.dag")),
+    };
+    let output = compile_from_context_with_options(&context, CompileOptions::default()).map_err(
+        |error| {
+            format!(
+                "failed to compile validation policy DAG from funcs/sdlc_validation_runtime.dag: {error}"
+            )
+        },
+    )?;
+    let dag = resolve_lowered_dag(&output.lowered_dag)
+        .map_err(|error| format!("failed to resolve compiled validation policy DAG: {error}"))?;
+    Ok(CompiledValidationDispatcher { dag })
 }
 
 fn compile_worker_stage_dispatch_dag_with_stage_order(
@@ -3391,6 +3588,7 @@ fn ensure_stage_gate_requirements(
 fn validate_implementation_stage_for_close(
     intake_key: &str,
     agent_ledger: &AgentLedger,
+    validation_dispatcher: &CompiledValidationDispatcher,
 ) -> Result<serde_json::Value, String> {
     let agent_record = agent_ledger.entries.get(intake_key).ok_or_else(|| {
         format!("implementation validation requires agent record for intake `{intake_key}`")
@@ -3414,20 +3612,27 @@ fn validate_implementation_stage_for_close(
     };
     let validation_dry_run = agent_record.handle.provider == "stub";
     let review_result = run_diff_review(&branch, validation_dry_run)?;
-    if review_result.blocking_count > 0 {
-        return Err(format!(
-            "implementation validation failed for intake `{intake_key}` due to blocking code review findings: {}",
-            review_result.blocking_summaries.join("; ")
-        ));
-    }
-    let ci_result = run_ci_validation(&branch, validation_dry_run)?;
-    let review_passed = review_result.blocking_count == 0;
+    let review_gate = validation_dispatcher
+        .evaluate_review_gate(review_result.blocking_count, &review_result.blocking_summaries)?;
+    let ci_result = if review_gate.should_run_ci {
+        run_ci_validation(&branch, validation_dry_run)?
+    } else {
+        CiValidationResult {
+            success: false,
+            summary: review_gate.ci_summary.clone(),
+        }
+    };
+    let review_passed = review_gate.review_passed;
     let ci_passed = ci_result.success;
-    if !(review_passed && ci_passed) {
-        return Err(format!(
-            "implementation validation failed for intake `{intake_key}`: review_passed={review_passed}, ci_passed={ci_passed}, ci_summary={}",
-            ci_result.summary
-        ));
+    let decision = validation_dispatcher.implementation_validation_failure(
+        intake_key,
+        review_passed,
+        ci_passed,
+        ci_result.summary.as_str(),
+        review_gate.review_failure.as_str(),
+    )?;
+    if !decision.passed {
+        return Err(decision.failure_message);
     }
     Ok(json!({
         "intake_key": intake_key,

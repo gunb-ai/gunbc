@@ -24,12 +24,15 @@
 //!   module path and map each callable to its `DynOp`.
 //! - Infrastructure nodes (content_upsert, fs_env) are handled automatically.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::OnceLock;
 
 use daglang_lower::{
     CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
     ServiceCallMetadata, ServiceOperationSpec,
 };
+use daglang_syntax::ast::{BinOp, Expr, Item, Literal, Stmt, StringPart, UnaryOp};
+use daglang_syntax::parser;
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
@@ -721,7 +724,12 @@ fn resolve_domain(
         "tools.makegen" => resolve_tools_makegen(name),
         "tools.infra" => resolve_tools_infra(name),
         "tools.pragma" => resolve_tools_pragma(name),
-        "funcs.sdlc_dispatch_runtime" => resolve_sdlc_dispatch_runtime(name),
+        "funcs.sdlc_dispatch_runtime" | "funcs.sdlc_validation_runtime" => {
+            resolve_sdlc_runtime_callable(module, name).map_err(|reason| ResolveError {
+                node_id: node_id.to_string(),
+                reason,
+            })?
+        }
         _ => None,
     };
     if let Some(op) = custom {
@@ -860,111 +868,436 @@ impl Executable for InfraDispatchOp {
     }
 }
 
-fn resolve_sdlc_dispatch_runtime(name: &str) -> Option<DynOp> {
-    let directive = match name {
-        "dispatch_idea" => Some(SdlcStageDirective {
-            next_stage: "design",
-            awaiting_approval: false,
-            marker: Some("design-marker"),
-            message_template: Some("Generated design prompt"),
-        }),
-        "dispatch_design" => Some(SdlcStageDirective {
-            next_stage: "design-review",
-            awaiting_approval: false,
-            marker: Some("sdlc:design-review"),
-            message_template: Some("Design review initiated for run_key `{run_key}`"),
-        }),
-        "dispatch_design_review" => Some(SdlcStageDirective {
-            next_stage: "design-review",
-            awaiting_approval: true,
-            marker: Some("sdlc:approval-gate"),
-            message_template: Some(
-                "Awaiting explicit approval for run_key `{run_key}`; transition to `accepted` after review sign-off.",
-            ),
-        }),
-        "dispatch_accepted" => Some(SdlcStageDirective {
-            next_stage: "implementation",
-            awaiting_approval: false,
-            marker: Some("sdlc:implementation"),
-            message_template: Some(
-                "Implementation started on branch `sdlc/issue-{issue_id}` for `{owner}/{repo}` (worker: `{worker_id}`)",
-            ),
-        }),
-        "dispatch_implementation" => Some(SdlcStageDirective {
-            next_stage: "closed",
-            awaiting_approval: false,
-            marker: Some("sdlc:acceptance"),
-            message_template: Some(
-                "Acceptance testing and close for run_key `{run_key}` in `{owner}/{repo}` (worker: `{worker_id}`)",
-            ),
-        }),
-        "dispatch_closed" => Some(SdlcStageDirective {
-            next_stage: "closed",
-            awaiting_approval: false,
-            marker: None,
-            message_template: None,
-        }),
-        _ => None,
-    }?;
-    Some(DynOp::new(SdlcStageDirectiveOp { directive }))
+const SDLC_DISPATCH_RUNTIME_SOURCE: &str = include_str!("../../dsl/funcs/sdlc_dispatch_runtime.dag");
+const SDLC_VALIDATION_RUNTIME_SOURCE: &str =
+    include_str!("../../dsl/funcs/sdlc_validation_runtime.dag");
+
+type SdlcCallableRegistry = BTreeMap<String, ParsedSdlcCallable>;
+
+static SDLC_DISPATCH_RUNTIME_REGISTRY: OnceLock<Result<SdlcCallableRegistry, String>> =
+    OnceLock::new();
+static SDLC_VALIDATION_RUNTIME_REGISTRY: OnceLock<Result<SdlcCallableRegistry, String>> =
+    OnceLock::new();
+
+#[derive(Debug, Clone)]
+struct ParsedSdlcCallable {
+    params: Vec<String>,
+    stmts: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone)]
-struct SdlcStageDirective {
-    next_stage: &'static str,
-    awaiting_approval: bool,
-    marker: Option<&'static str>,
-    message_template: Option<&'static str>,
+struct SdlcDslCallableOp {
+    module: String,
+    callable: String,
 }
 
-#[derive(Debug, Clone)]
-struct SdlcStageDirectiveOp {
-    directive: SdlcStageDirective,
-}
-
-impl Executable for SdlcStageDirectiveOp {
+impl Executable for SdlcDslCallableOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let run_key = input_as_string(&inputs, "run_key");
-        let worker_id = input_as_string(&inputs, "worker_id");
-        let issue_id = input_as_string(&inputs, "issue_id");
-        let owner = input_as_string(&inputs, "owner");
-        let repo = input_as_string(&inputs, "repo");
-        let marker = self.directive.marker.unwrap_or_default();
-        let message = self
-            .directive
-            .message_template
-            .map(|template| {
-                template
-                    .replace("{run_key}", run_key.as_str())
-                    .replace("{worker_id}", worker_id.as_str())
-                    .replace("{issue_id}", issue_id.as_str())
-                    .replace("{owner}", owner.as_str())
-                    .replace("{repo}", repo.as_str())
-            })
-            .unwrap_or_default();
-
-        OutputMap::new()
-            .str("next_stage", self.directive.next_stage)
-            .bool("awaiting_approval", self.directive.awaiting_approval)
-            .str("marker", marker)
-            .str("message", message)
-            .json(
-                "value",
-                serde_json::json!({
-                    "next_stage": self.directive.next_stage,
-                    "awaiting_approval": self.directive.awaiting_approval,
-                }),
-            )
-            .ok()
+        let registry = sdlc_callable_registry(self.module.as_str()).map_err(ExecError::new)?;
+        let callable = registry.get(self.callable.as_str()).ok_or_else(|| {
+            ExecError::new(format!(
+                "callable `{}` not found in module `{}`",
+                self.callable, self.module
+            ))
+        })?;
+        evaluate_sdlc_callable(callable, inputs)
     }
 }
 
-fn input_as_string(inputs: &HashMap<String, Value>, key: &str) -> String {
-    match inputs.get(key) {
-        Some(Value::Str(value)) => value.clone(),
-        Some(Value::Int(value)) => value.to_string(),
-        Some(Value::Bool(value)) => value.to_string(),
-        _ => String::new(),
+fn resolve_sdlc_runtime_callable(module: &str, name: &str) -> Result<Option<DynOp>, String> {
+    let registry = sdlc_callable_registry(module)?;
+    if registry.contains_key(name) {
+        Ok(Some(DynOp::new(SdlcDslCallableOp {
+            module: module.to_string(),
+            callable: name.to_string(),
+        })))
+    } else {
+        Ok(None)
+    }
+}
+
+fn sdlc_callable_registry(module: &str) -> Result<&'static SdlcCallableRegistry, String> {
+    match module {
+        "funcs.sdlc_dispatch_runtime" => registry_from_once_lock(
+            &SDLC_DISPATCH_RUNTIME_REGISTRY,
+            SDLC_DISPATCH_RUNTIME_SOURCE,
+            module,
+        ),
+        "funcs.sdlc_validation_runtime" => registry_from_once_lock(
+            &SDLC_VALIDATION_RUNTIME_REGISTRY,
+            SDLC_VALIDATION_RUNTIME_SOURCE,
+            module,
+        ),
+        other => Err(format!("unsupported SDLC runtime module `{other}`")),
+    }
+}
+
+fn registry_from_once_lock(
+    registry: &'static OnceLock<Result<SdlcCallableRegistry, String>>,
+    source: &str,
+    expected_module: &str,
+) -> Result<&'static SdlcCallableRegistry, String> {
+    match registry.get_or_init(|| parse_sdlc_callable_registry(source, expected_module)) {
+        Ok(value) => Ok(value),
+        Err(error) => Err(error.clone()),
+    }
+}
+
+fn parse_sdlc_callable_registry(
+    source: &str,
+    expected_module: &str,
+) -> Result<SdlcCallableRegistry, String> {
+    let parsed = parser::parse(source).map_err(|errors| {
+        errors
+            .iter()
+            .map(|error| error.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ")
+    })?;
+    let module = parsed
+        .module_path
+        .as_ref()
+        .map(|path| path.node.segments.join("."))
+        .ok_or_else(|| format!("missing module declaration in `{expected_module}` source"))?;
+    if module != expected_module {
+        return Err(format!(
+            "SDLC runtime source module mismatch: expected `{expected_module}`, found `{module}`"
+        ));
+    }
+    let mut registry = BTreeMap::new();
+    for item in &parsed.items {
+        if let Item::FuncDef(func) = &item.node {
+            registry.insert(
+                func.name.clone(),
+                ParsedSdlcCallable {
+                    params: func.params.iter().map(|param| param.name.clone()).collect(),
+                    stmts: func.body.stmts.clone(),
+                },
+            );
+        }
+    }
+    if registry.is_empty() {
+        return Err(format!(
+            "no callable `func` definitions found in module `{expected_module}`"
+        ));
+    }
+    Ok(registry)
+}
+
+fn evaluate_sdlc_callable(
+    callable: &ParsedSdlcCallable,
+    mut inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let mut scope = BTreeMap::new();
+    for param in &callable.params {
+        scope.insert(param.clone(), Value::Unit);
+    }
+    let expected_params = callable
+        .params
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    for (key, value) in inputs.drain() {
+        if expected_params.contains(key.as_str()) {
+            scope.insert(key.clone(), value.clone());
+        } else {
+            for alias in [key.rsplit('.').next(), key.rsplit('/').next()]
+                .into_iter()
+                .flatten()
+            {
+                if expected_params.contains(alias) {
+                    scope.insert(alias.to_string(), value.clone());
+                }
+            }
+        }
+        scope.insert(key, value);
+    }
+    for stmt in &callable.stmts {
+        match stmt {
+            Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                let value = eval_sdlc_expr(expr, &scope)?;
+                scope.insert(name.clone(), value);
+            }
+            Stmt::Expr(expr) => {
+                let _ = eval_sdlc_expr(expr, &scope)?;
+            }
+            Stmt::Return(entries) => {
+                return eval_sdlc_return(entries, &scope);
+            }
+        }
+    }
+    Err(ExecError::new(
+        "SDLC runtime callable execution reached end of body without return",
+    ))
+}
+
+fn eval_sdlc_return(
+    entries: &[(String, Expr)],
+    scope: &BTreeMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let mut output = HashMap::new();
+    for (key, expr) in entries {
+        let value = eval_sdlc_expr(expr, scope)?;
+        output.insert(key.clone(), value);
+    }
+    Ok(output)
+}
+
+fn eval_sdlc_expr(expr: &Expr, scope: &BTreeMap<String, Value>) -> Result<Value, ExecError> {
+    match expr {
+        Expr::Literal(literal) => Ok(match literal {
+            Literal::Int(value) => Value::Int(*value),
+            Literal::Float(value) => Value::Float(*value),
+            Literal::String(value) => Value::Str(value.clone()),
+            Literal::Bool(value) => Value::Bool(*value),
+            Literal::None => Value::Unit,
+        }),
+        Expr::Ident(name) => scope.get(name).cloned().ok_or_else(|| {
+            ExecError::new(format!(
+                "unknown identifier `{name}` in SDLC runtime callable scope"
+            ))
+        }),
+        Expr::FieldAccess(base, field) => {
+            let base_value = eval_sdlc_expr(base, scope)?;
+            match base_value {
+                Value::Map(map) => Ok(map.get(field).cloned().unwrap_or(Value::Unit)),
+                Value::Json(serde_json::Value::Object(map)) => Ok(map
+                    .get(field)
+                    .map(json_to_runtime_value)
+                    .unwrap_or(Value::Unit)),
+                _ => Ok(Value::Unit),
+            }
+        }
+        Expr::BinOp(lhs, op, rhs) => eval_sdlc_bin_op(op, lhs, rhs, scope),
+        Expr::UnaryOp(op, value) => {
+            let value = eval_sdlc_expr(value, scope)?;
+            match (op, value) {
+                (UnaryOp::Not, Value::Bool(flag)) => Ok(Value::Bool(!flag)),
+                (UnaryOp::Neg, Value::Int(number)) => Ok(Value::Int(-number)),
+                (UnaryOp::Neg, Value::Float(number)) => Ok(Value::Float(-number)),
+                (UnaryOp::Not, other) | (UnaryOp::Neg, other) => Err(ExecError::new(format!(
+                    "unsupported unary operation `{op:?}` for value kind `{}`",
+                    other.kind()
+                ))),
+            }
+        }
+        Expr::StringInterp(parts) => {
+            let mut rendered = String::new();
+            for part in parts {
+                match part {
+                    StringPart::Literal(literal) => rendered.push_str(literal),
+                    StringPart::Expr(inner) => {
+                        let value = eval_sdlc_expr(inner, scope)?;
+                        rendered.push_str(value_to_runtime_string(&value).as_str());
+                    }
+                }
+            }
+            Ok(Value::Str(rendered))
+        }
+        Expr::Map(entries) => {
+            let mut map = BTreeMap::new();
+            for (key_expr, value_expr) in entries {
+                let key = eval_sdlc_expr(key_expr, scope)?;
+                let key = value_to_runtime_string(&key);
+                let value = eval_sdlc_expr(value_expr, scope)?;
+                map.insert(key, value);
+            }
+            Ok(Value::Map(map))
+        }
+        Expr::If(condition, then_branch, else_branch) => {
+            let condition = eval_sdlc_expr(condition, scope)?;
+            let condition = condition.as_bool().ok_or_else(|| {
+                ExecError::new("SDLC runtime `if` condition must evaluate to Bool")
+            })?;
+            if condition {
+                eval_sdlc_expr(then_branch, scope)
+            } else if let Some(else_branch) = else_branch {
+                eval_sdlc_expr(else_branch, scope)
+            } else {
+                Ok(Value::Unit)
+            }
+        }
+        Expr::Return(entries) => {
+            let mut map = serde_json::Map::new();
+            for (key, value_expr) in entries {
+                let value = eval_sdlc_expr(value_expr, scope)?;
+                map.insert(key.clone(), runtime_value_to_json(&value));
+            }
+            Ok(Value::Json(serde_json::Value::Object(map)))
+        }
+        other => Err(ExecError::new(format!(
+            "unsupported SDLC runtime expression variant: {other:?}"
+        ))),
+    }
+}
+
+fn eval_sdlc_bin_op(
+    op: &BinOp,
+    lhs: &Expr,
+    rhs: &Expr,
+    scope: &BTreeMap<String, Value>,
+) -> Result<Value, ExecError> {
+    let lhs = eval_sdlc_expr(lhs, scope)?;
+    let rhs = eval_sdlc_expr(rhs, scope)?;
+    match op {
+        BinOp::Eq => Ok(Value::Bool(lhs == rhs)),
+        BinOp::Ne => Ok(Value::Bool(lhs != rhs)),
+        BinOp::And => Ok(Value::Bool(
+            lhs.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "left operand for `&&` must be Bool in SDLC runtime callable (got `{}` value: {:?})",
+                    lhs.kind(),
+                    lhs
+                ))
+            })? && rhs.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "right operand for `&&` must be Bool in SDLC runtime callable (got `{}` value: {:?})",
+                    rhs.kind(),
+                    rhs
+                ))
+            })?,
+        )),
+        BinOp::Or => Ok(Value::Bool(
+            lhs.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "left operand for `||` must be Bool in SDLC runtime callable (got `{}` value: {:?})",
+                    lhs.kind(),
+                    lhs
+                ))
+            })? || rhs.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "right operand for `||` must be Bool in SDLC runtime callable (got `{}` value: {:?})",
+                    rhs.kind(),
+                    rhs
+                ))
+            })?,
+        )),
+        BinOp::Gt => compare_runtime_values(lhs, rhs, std::cmp::Ordering::Greater),
+        BinOp::Ge => compare_runtime_values_ge(lhs, rhs),
+        BinOp::Lt => compare_runtime_values(lhs, rhs, std::cmp::Ordering::Less),
+        BinOp::Le => compare_runtime_values_le(lhs, rhs),
+        BinOp::Add => match (lhs, rhs) {
+            (Value::Int(left), Value::Int(right)) => Ok(Value::Int(left + right)),
+            (Value::Float(left), Value::Float(right)) => Ok(Value::Float(left + right)),
+            (Value::Str(left), Value::Str(right)) => Ok(Value::Str(format!("{left}{right}"))),
+            (left, right) => Ok(Value::Str(format!(
+                "{}{}",
+                value_to_runtime_string(&left),
+                value_to_runtime_string(&right)
+            ))),
+        },
+        other => Err(ExecError::new(format!(
+            "unsupported SDLC runtime binary operator: {other:?}"
+        ))),
+    }
+}
+
+fn compare_runtime_values(
+    lhs: Value,
+    rhs: Value,
+    expected: std::cmp::Ordering,
+) -> Result<Value, ExecError> {
+    compare_runtime_values_with(lhs, rhs, |ordering| ordering == expected)
+}
+
+fn compare_runtime_values_ge(lhs: Value, rhs: Value) -> Result<Value, ExecError> {
+    compare_runtime_values_with(lhs, rhs, |ordering| {
+        ordering == std::cmp::Ordering::Greater || ordering == std::cmp::Ordering::Equal
+    })
+}
+
+fn compare_runtime_values_le(lhs: Value, rhs: Value) -> Result<Value, ExecError> {
+    compare_runtime_values_with(lhs, rhs, |ordering| {
+        ordering == std::cmp::Ordering::Less || ordering == std::cmp::Ordering::Equal
+    })
+}
+
+fn compare_runtime_values_with(
+    lhs: Value,
+    rhs: Value,
+    predicate: impl FnOnce(std::cmp::Ordering) -> bool,
+) -> Result<Value, ExecError> {
+    let ordering = match (lhs, rhs) {
+        (Value::Int(left), Value::Int(right)) => left.cmp(&right),
+        (Value::Float(left), Value::Float(right)) => left
+            .partial_cmp(&right)
+            .ok_or_else(|| ExecError::new("cannot compare NaN values in SDLC runtime callable"))?,
+        (Value::Str(left), Value::Str(right)) => left.cmp(&right),
+        (left, right) => {
+            return Err(ExecError::new(format!(
+                "unsupported comparison between `{}` and `{}` in SDLC runtime callable",
+                left.kind(),
+                right.kind()
+            )));
+        }
+    };
+    Ok(Value::Bool(predicate(ordering)))
+}
+
+fn value_to_runtime_string(value: &Value) -> String {
+    match value {
+        Value::Str(value) => value.clone(),
+        Value::Int(value) => value.to_string(),
+        Value::Float(value) => value.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Unit => String::new(),
+        Value::Map(value) => format!("{value:?}"),
+        Value::Json(value) => value.to_string(),
+        Value::List(value) => format!("{value:?}"),
+        Value::Set(value) => format!("{value:?}"),
+        Value::Bytes(value) => format!("{value:?}"),
+        Value::Secret(value) => value.to_string(),
+        Value::Request(value) => format!("{value:?}"),
+        Value::Response(value) => format!("{value:?}"),
+        Value::Skipped => String::new(),
+    }
+}
+
+fn runtime_value_to_json(value: &Value) -> serde_json::Value {
+    match value {
+        Value::Unit | Value::Skipped => serde_json::Value::Null,
+        Value::Bool(value) => serde_json::Value::Bool(*value),
+        Value::Str(value) => serde_json::Value::String(value.clone()),
+        Value::Int(value) => serde_json::Value::Number((*value).into()),
+        Value::Float(value) => serde_json::Number::from_f64(*value)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        Value::Bytes(value) => serde_json::Value::String(format!("{value:?}")),
+        Value::List(values) | Value::Set(values) => {
+            serde_json::Value::Array(values.iter().map(runtime_value_to_json).collect())
+        }
+        Value::Map(values) => serde_json::Value::Object(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), runtime_value_to_json(value)))
+                .collect(),
+        ),
+        Value::Json(value) => value.clone(),
+        Value::Request(value) => serde_json::Value::String(format!("{value:?}")),
+        Value::Response(value) => serde_json::Value::String(format!("{value:?}")),
+        Value::Secret(value) => serde_json::Value::String(value.to_string()),
+    }
+}
+
+fn json_to_runtime_value(value: &serde_json::Value) -> Value {
+    match value {
+        serde_json::Value::Null => Value::Unit,
+        serde_json::Value::Bool(value) => Value::Bool(*value),
+        serde_json::Value::String(value) => Value::Str(value.clone()),
+        serde_json::Value::Number(value) => value
+            .as_i64()
+            .map(Value::Int)
+            .or_else(|| value.as_f64().map(Value::Float))
+            .unwrap_or(Value::Unit),
+        serde_json::Value::Array(values) => {
+            Value::List(values.iter().map(json_to_runtime_value).collect())
+        }
+        serde_json::Value::Object(values) => Value::Map(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), json_to_runtime_value(value)))
+                .collect(),
+        ),
     }
 }
 
@@ -1521,6 +1854,52 @@ mod tests {
         assert_eq!(
             outputs.get("message"),
             Some(&Value::Str("Generated design prompt".to_string()))
+        );
+    }
+
+    #[test]
+    fn resolve_sdlc_validation_runtime_callable_evaluates_review_gate_policy() {
+        let node = Node::opaque(
+            "evaluate_review_gate",
+            vec![
+                Port::new("blocking_count", "Int"),
+                Port::new("blocking_summaries", "String"),
+            ],
+            vec![
+                Port::new("review_passed", "Bool"),
+                Port::new("should_run_ci", "Bool"),
+                Port::new("ci_summary", "String"),
+                Port::new("review_failure", "String"),
+            ],
+            LoweredOp::Callable {
+                module: "funcs.sdlc_validation_runtime".to_string(),
+                kind: CallableKind::Func,
+                name: "evaluate_review_gate".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        );
+        let op = resolve_node(&node).expect("evaluate_review_gate should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("blocking_count".to_string(), Value::Int(1));
+        inputs.insert(
+            "blocking_summaries".to_string(),
+            Value::Str("review blocked by fixture".to_string()),
+        );
+        let outputs = op.execute(inputs).expect("validation op should execute");
+        assert_eq!(outputs.get("review_passed"), Some(&Value::Bool(false)));
+        assert_eq!(outputs.get("should_run_ci"), Some(&Value::Bool(false)));
+        assert_eq!(
+            outputs.get("ci_summary"),
+            Some(&Value::Str(
+                "skipped: blocking code review findings".to_string()
+            ))
+        );
+        assert_eq!(
+            outputs.get("review_failure"),
+            Some(&Value::Str("review blocked by fixture".to_string()))
         );
     }
 

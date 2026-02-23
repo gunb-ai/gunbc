@@ -35,6 +35,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "examples/rich_types.dag",
         "funcs/sdlc_dispatch_runtime.dag",
         "funcs/sdlc_stages.dag",
+        "funcs/sdlc_validation_runtime.dag",
         "funcs/sdlc_worker.dag",
         "funcs/test_control_flow.dag",
         "infra/aws/config.dag",
