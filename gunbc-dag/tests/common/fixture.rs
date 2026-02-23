@@ -20,6 +20,11 @@ impl CliTestContext {
         let mut cmd = Command::new(self.bin_path);
         cmd.env("HOME", &self.root);
         cmd.env("USERPROFILE", &self.root);
+        if self.bin_path.ends_with("gunbc-sdlc") {
+            // SDLC compiled profile preflight expects local credential env vars.
+            cmd.env("GITHUB_TOKEN", "test-gh-token");
+            cmd.env("CODEX_API_KEY", "test-codex-token");
+        }
         cmd
     }
 

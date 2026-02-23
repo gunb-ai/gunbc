@@ -7,15 +7,16 @@
 #![deny(dead_code)]
 #![allow(clippy::disallowed_methods)] // CLI-owned local ledgers and git metadata probes are intentional entrypoint concerns.
 
+use daglang_driver::{compile_from_context_with_options, CompileOptions, DriverContext};
 use gunbc_dag::{
     canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
     promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
     reconcile_entries, register_retry_failure, release_claim, retry_ready, should_replay_skip,
     try_acquire_claim, upsert_agent_record, upsert_provisional_artifact_with_payload,
-    validate_stage_transition, AgentLedger, ArtifactLedger, ArtifactPayload,
-    ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry,
-    RetryState, RunStateLedger,
+    validate_stage_transition, AgentLedger, ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome,
+    ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
 };
+use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::agent::{
     target_branch_for_intent, AgentConstraints, DesignArtifact, HandoffSpec,
 };
@@ -24,13 +25,12 @@ use gunbc_ir::transport::agent_adapter::{AgentAdapter, StubAgentAdapter};
 use gunbc_ir::transport::github::pull_request::{
     build_pr_comment_request, build_pr_create_request, parse_pr_create_response,
 };
-use gunbc_design_ops::{build_design_prompt, DesignRequest};
 use gunbc_ir::transport::github::IssueLifecycleStage;
 use gunbc_ir::transport::github::{
-    compare_and_set_stage_label as compare_issue_stage_labels,
-    ensure_sdlc_issue_capabilities,
+    compare_and_set_stage_label as compare_issue_stage_labels, ensure_sdlc_issue_capabilities,
     SdlcIssueCapabilities,
 };
+use gunbc_ir::WorkspaceLayout;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -760,6 +760,9 @@ fn run_worker(
             .unwrap_or_else(default_infra_intent_path);
         run_worker_preflight(&path)?
     };
+    if !dry_run {
+        compile_sdlc_pipeline_for_runtime_profile(preflight.runtime_profile.as_str())?;
+    }
 
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
@@ -773,9 +776,10 @@ fn run_worker(
     let mut issue_transport = load_issue_transport_ledger(&issue_transport_ledger_path)?;
     let mode = if dry_run { "dry-run" } else { "real" };
     let now = epoch_millis();
-    let worker_id_str = worker_id
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| std::env::var("SDLC_WORKER_ID").unwrap_or_else(|_| format!("worker-{}-{}", std::process::id(), now)));
+    let worker_id_str = worker_id.map(|s| s.to_string()).unwrap_or_else(|| {
+        std::env::var("SDLC_WORKER_ID")
+            .unwrap_or_else(|_| format!("worker-{}-{}", std::process::id(), now))
+    });
 
     let drain_flag = drain_flag_path();
     let drain_active = !dry_run && drain_flag.exists();
@@ -1077,8 +1081,13 @@ fn run_worker(
                                 // Release the claim for the old stage before advancing.
                                 if let Some(issue_id) = record.issue_id {
                                     let old_claim_slot = claim_slot_key(issue_id, record.stage);
-                                    let old_claim_owner = format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
-                                    release_claim(&mut claim_ledger, &old_claim_slot, &old_claim_owner);
+                                    let old_claim_owner =
+                                        format!("gunbc-sdlc-worker:{worker_id_str}:{intake_key}");
+                                    release_claim(
+                                        &mut claim_ledger,
+                                        &old_claim_slot,
+                                        &old_claim_owner,
+                                    );
                                 }
                                 record.stage = next_stage;
                                 record.awaiting_approval = false;
@@ -1236,6 +1245,39 @@ fn run_worker(
     if emit_pending_exit_code && !awaiting_approval.is_empty() {
         std::process::exit(42);
     }
+    Ok(())
+}
+
+fn compile_sdlc_pipeline_for_runtime_profile(runtime_profile: &str) -> Result<(), String> {
+    let dag_profile = match runtime_profile {
+        "local-co-located" => "local",
+        "stateless-fleet" => "cloud_run",
+        other => {
+            return Err(format!(
+                "unsupported infra runtime_profile `{other}` for compiled SDLC pipeline preflight"
+            ));
+        }
+    };
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .map_err(|error| {
+            format!("failed to resolve workspace layout for SDLC pipeline preflight: {error}")
+        })?;
+    let dsl_root = layout.workspace_root.join("dsl");
+    let context = DriverContext {
+        roots: vec![dsl_root.clone()],
+        target_file: Some(dsl_root.join("pipelines/sdlc.dag")),
+    };
+    compile_from_context_with_options(
+        &context,
+        CompileOptions {
+            profile: Some(dag_profile.to_string()),
+            ..CompileOptions::default()
+        },
+    )
+    .map_err(|error| {
+        format!("compiled SDLC pipeline preflight failed for profile `{dag_profile}`: {error}")
+    })?;
     Ok(())
 }
 
@@ -1474,9 +1516,7 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
     let artifact = artifact_ledger
         .records
         .get(&canonical_key)
-        .ok_or_else(|| {
-            format!("no canonical artifact found for intake key '{intake_key}'")
-        })?;
+        .ok_or_else(|| format!("no canonical artifact found for intake key '{intake_key}'"))?;
 
     let design_content = match &artifact.payload {
         Some(ArtifactPayload::Inline { body }) => body.clone(),
@@ -1486,9 +1526,9 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
         None => String::new(),
     };
 
-    let issue_id = record.issue_id.ok_or_else(|| {
-        format!("intake record '{intake_key}' has no bound issue_id")
-    })?;
+    let issue_id = record
+        .issue_id
+        .ok_or_else(|| format!("intake record '{intake_key}' has no bound issue_id"))?;
 
     let target_branch = target_branch_for_intent(&record.intent_id);
 
@@ -1544,7 +1584,13 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
 
     let now = epoch_millis();
     let mut agent_ledger = load_agent_ledger(&agent_ledger_path)?;
-    upsert_agent_record(&mut agent_ledger, intake_key, handle.clone(), status.clone(), now);
+    upsert_agent_record(
+        &mut agent_ledger,
+        intake_key,
+        handle.clone(),
+        status.clone(),
+        now,
+    );
     save_agent_ledger(&agent_ledger_path, &agent_ledger)?;
 
     println!(
@@ -1633,10 +1679,7 @@ fn run_validate_pr(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
     let (branch, _commit_sha) = match &agent_record.status {
         AgentStatus::Completed { branch, commit_sha } => (branch.clone(), commit_sha.clone()),
         other => {
-            return Err(format!(
-                "agent is not in Completed state: {:?}",
-                other
-            ));
+            return Err(format!("agent is not in Completed state: {:?}", other));
         }
     };
 
@@ -1777,9 +1820,9 @@ fn run_diff_review(branch: &str, dry_run: bool) -> Result<DiffReviewResult, Stri
     if !output.status.success() {
         return Ok(DiffReviewResult {
             blocking_count: 0,
-            blocking_summaries: vec![
-                format!("diff review skipped: branch '{branch}' not reachable from main"),
-            ],
+            blocking_summaries: vec![format!(
+                "diff review skipped: branch '{branch}' not reachable from main"
+            )],
         });
     }
 
@@ -1815,7 +1858,9 @@ fn run_ci_validation(branch: &str, dry_run: bool) -> Result<CiValidationResult, 
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .output()
         .map_err(|e| format!("git rev-parse failed: {e}"))?;
-    let original_branch = String::from_utf8_lossy(&original_branch.stdout).trim().to_string();
+    let original_branch = String::from_utf8_lossy(&original_branch.stdout)
+        .trim()
+        .to_string();
 
     // Checkout the agent branch so CI runs against the correct code.
     let checkout = Command::new("git")
@@ -1888,16 +1933,17 @@ fn format_validation_comment(
 
     lines.push(format!(
         "| Check | Status |\n|-------|--------|\n| Diff Review | {} |\n| CI (test + clippy) | {} |",
-        if validation.review_passed { "PASS" } else { "FAIL" },
+        if validation.review_passed {
+            "PASS"
+        } else {
+            "FAIL"
+        },
         if validation.ci_passed { "PASS" } else { "FAIL" },
     ));
 
     if review.blocking_count > 0 {
         lines.push(String::new());
-        lines.push(format!(
-            "### Blocking findings ({})",
-            review.blocking_count
-        ));
+        lines.push(format!("### Blocking findings ({})", review.blocking_count));
         for finding in &review.blocking_summaries {
             lines.push(format!("- {finding}"));
         }
@@ -1922,10 +1968,7 @@ fn detect_repo_name() -> Option<String> {
 }
 
 fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
-    let cleaned = url
-        .trim()
-        .trim_end_matches(".git")
-        .trim_end_matches('/');
+    let cleaned = url.trim().trim_end_matches(".git").trim_end_matches('/');
     // Handle SSH URLs like git@github.com:org/repo
     // by normalizing the colon separator to a slash.
     let normalized = if let Some(colon_pos) = cleaned.find(':') {
@@ -2668,9 +2711,7 @@ fn issue_transport_compare_and_set_stage_label(
 ) -> Result<bool, String> {
     let entry = issue_transport_record_mut(ledger, issue_id, now_epoch_ms);
     let labels = compare_issue_stage_labels(&entry.labels, from, to).map_err(|error| {
-        format!(
-            "issue transport stage compare-and-set failed for issue {issue_id}: {error}"
-        )
+        format!("issue transport stage compare-and-set failed for issue {issue_id}: {error}")
     })?;
     entry.labels = labels;
     entry.updated_at_epoch_ms = now_epoch_ms;
@@ -2711,8 +2752,13 @@ fn advance_remote_stage(
     to: IssueLifecycleStage,
     now_epoch_ms: u128,
 ) -> Result<(), String> {
-    let transitioned =
-        issue_transport_compare_and_set_stage_label(issue_transport, issue_id, from, to, now_epoch_ms)?;
+    let transitioned = issue_transport_compare_and_set_stage_label(
+        issue_transport,
+        issue_id,
+        from,
+        to,
+        now_epoch_ms,
+    )?;
     if transitioned {
         Ok(())
     } else {
@@ -2804,9 +2850,7 @@ fn dispatch_pipeline_stage(
                 issue_transport,
                 issue_id,
                 "sdlc:implementation",
-                &format!(
-                    "Implementation started on branch `{branch}` (worker: `{worker_id}`)"
-                ),
+                &format!("Implementation started on branch `{branch}` (worker: `{worker_id}`)"),
                 now_epoch_ms,
             )?;
             advance_remote_stage(
