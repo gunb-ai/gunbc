@@ -110,7 +110,7 @@ fn makegen_default_registry_matches_codegen_registry_plus_manual_targets() {
         .filter(|tool| !tool.needs_generated_cli)
         .map(|tool| tool.short_name.as_str())
         .collect();
-    let expected_manual: HashSet<&str> = ["build-all", "pragma"].into_iter().collect();
+    let expected_manual: HashSet<&str> = ["build-all"].into_iter().collect();
     assert_eq!(
         manual_targets, expected_manual,
         "makegen manual targets must stay explicit and auditable"

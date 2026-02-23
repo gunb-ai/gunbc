@@ -17,7 +17,11 @@ pub use ops::PragmaOp;
     crate_name = "gunbc-pragma",
     description = "Generate clippy pragmas and lint policy",
     builder = "build_pragma_graph",
+    import = "use gunbc_pragma::build_pragma_graph;",
+    package = "dag",
     dsl_module = "pragma",
+    outputs = "clippy.toml,tools/disallowed-methods-allowlist.txt,tools/pragma-lint-policy.txt",
+    has_invocation,
     returns_result
 )]
 pub fn pragma_tool() {}

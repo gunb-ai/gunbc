@@ -2306,18 +2306,22 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let codegen_tools = gunbc_codegen::registry::derive_tool_defs();
 
-        // Tools without invocation should NOT appear (unless manually added)
+        // Tools without invocation should NOT appear unless manually registered
+        // (e.g., pragma is registered via ManualToolDef with needs_generated_cli=false)
         for tool_def in &codegen_tools {
             if tool_def.invocation.is_none() {
                 let found = registry
                     .tools
                     .iter()
-                    .any(|t| t.short_name == tool_def.meta.tool_name);
-                assert!(
-                    !found,
-                    "Tool '{}' has no invocation but appeared in makegen registry",
-                    tool_def.meta.tool_name
-                );
+                    .find(|t| t.short_name == tool_def.meta.tool_name);
+                if let Some(tool_info) = found {
+                    assert!(
+                        !tool_info.needs_generated_cli,
+                        "Tool '{}' has no invocation but appeared in makegen registry \
+                         with needs_generated_cli=true",
+                        tool_def.meta.tool_name
+                    );
+                }
             }
         }
     }

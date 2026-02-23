@@ -95,6 +95,7 @@ pub fn dag_viz_recent_tool() {}
     binary = "dag-snapshot",
     entrypoints = r#"[]"#,
     dsl_module = "dag_viz",
+    outputs = ".dag-snapshots/*.json",
     has_invocation,
     returns_result
 )]

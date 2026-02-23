@@ -18,6 +18,7 @@ pub use ops::TestgenOp;
     crate_name = "gunbc-testgen",
     description = "Generate tests from DAG mock specifications",
     builder = "build_testgen_graph_for_test",
+    outputs = "**/generated_tests*.rs",
     returns_result
 )]
 pub fn testgen_tool() {}

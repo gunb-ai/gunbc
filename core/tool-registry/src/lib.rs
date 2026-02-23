@@ -75,6 +75,8 @@ pub struct ToolRegistration {
     /// Multiple tools can share a DSL module (e.g., "gist" → gist, gist-diff, gist-recent).
     /// Used by codegen and makegen to validate DSL coverage without hardcoded lists.
     pub dsl_module: Option<&'static str>,
+    /// Generated output file paths (for gitignore auto-derivation and clean).
+    pub outputs: &'static [&'static str],
 }
 
 impl ToolRegistration {

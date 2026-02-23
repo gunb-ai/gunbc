@@ -21,6 +21,7 @@ pub use ops::BootstrapOp;
     package = "dag",
     binary = "bootstrap",
     dsl_module = "bootstrap",
+    outputs = "Makefile,.gitignore",
     has_invocation,
     returns_result
 )]

@@ -267,6 +267,11 @@ pub fn derive_tool_defs() -> Vec<ToolDef> {
                 tool = tool.entrypoints_json(reg.entrypoints_json);
             }
 
+            // Map outputs from ToolRegistration
+            for path in reg.outputs {
+                tool = tool.output(*path);
+            }
+
             // Derive CargoInvocation from has_invocation + package + binary
             if reg.has_invocation {
                 let binary_component = reg.binary.unwrap_or(reg.tool_name);
