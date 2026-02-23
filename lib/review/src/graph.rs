@@ -307,7 +307,7 @@ pub fn build_review_phase_graph_with_config(
     let prepare_prompt = builder.add_root_node(Node::opaque(
         "prepare_prompt",
         vec![
-            port("artifact", "String"),
+            port("artifact", "NonEmptyString"),
             port("criteria", "Json"),
             optional("context", "OptionalString"),
         ],
@@ -454,7 +454,7 @@ pub fn build_inline_review_graph_with_config(
     let prepare_prompt = builder.add_root_node(Node::opaque(
         "prepare_prompt",
         vec![
-            port("artifact", "String"),
+            port("artifact", "NonEmptyString"),
             port("criteria", "Json"),
             optional("context", "OptionalString"),
         ],
@@ -667,7 +667,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         Node::opaque(
             "format_artifact",
             vec![port("diff_files", "Map")],
-            vec![port("artifact", "String")],
+            vec![port("artifact", "NonEmptyString")],
             DynOp::new(ReviewOps::FormatDiffArtifact),
         ),
         &diff_triplet,
@@ -681,7 +681,7 @@ pub fn build_diff_review_graph_with_cloud_config(
         Node::opaque(
             "prepare_prompt",
             vec![
-                port("artifact", "String"),
+                port("artifact", "NonEmptyString"),
                 port("criteria", "Json"),
                 optional("context", "OptionalString"),
             ],
@@ -900,7 +900,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         Node::opaque(
             "prepare_prompt",
             vec![
-                port("artifact", "String"),
+                port("artifact", "NonEmptyString"),
                 port("criteria", "Json"),
                 optional("context", "OptionalString"),
             ],
@@ -1107,7 +1107,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
         Node::opaque(
             "format_artifact",
             vec![port("diff_files", "Map")],
-            vec![port("artifact", "String")],
+            vec![port("artifact", "NonEmptyString")],
             DynOp::new(ReviewOps::FormatDiffArtifact),
         ),
         &diff_triplet,
@@ -1174,7 +1174,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 format!("{prefix}_prepare_prompt"),
                 vec![
-                    port("artifact", "String"),
+                    port("artifact", "NonEmptyString"),
                     port("criteria", "Json"),
                     port("dimension", "String"),
                     port("depth", "String"),
@@ -1331,7 +1331,7 @@ pub fn build_dimension_diff_review_graph_with_cloud_config(
             Node::opaque(
                 "aspirational_prepare_prompt",
                 vec![
-                    port("artifact", "String"),
+                    port("artifact", "NonEmptyString"),
                     port("criteria", "Json"),
                     port("dimension", "String"),
                     port("depth", "String"),

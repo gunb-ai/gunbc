@@ -846,6 +846,11 @@ impl ValueBacking {
 pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
     use crate::port_type::PortType;
 
+    // Credential remains a structured map payload at runtime.
+    if type_id == "Credential" {
+        return ValueBacking::Map;
+    }
+
     // Check for parametric Map<K,V> first
     if parse_map_type_id(type_id).is_some() {
         return ValueBacking::Map;
@@ -1270,6 +1275,7 @@ mod tests {
             value_backing_for_type_id("SecretName"),
             ValueBacking::String
         );
+        assert_eq!(value_backing_for_type_id("Credential"), ValueBacking::Map);
     }
 
     #[test]
@@ -1301,6 +1307,13 @@ mod tests {
         assert!(value_compatible_with_type_id(
             "Platform",
             &Value::Str("linux".into())
+        ));
+        assert!(value_compatible_with_type_id(
+            "Credential",
+            &Value::Map(BTreeMap::from([(
+                "token".to_string(),
+                Value::Secret(crate::SecretString::new("secret-token")),
+            )]))
         ));
         assert!(value_compatible_with_type_id("Any", &Value::Skipped));
 
