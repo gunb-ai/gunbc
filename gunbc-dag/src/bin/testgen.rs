@@ -2,11 +2,7 @@
 //!
 //! Generates test files from DAG structures and MockSpecs.
 //! Progress display is automatic based on terminal capabilities.
-//!
-//! TODO: Migrate to DAG-orchestrated execution via `dsl/tools/testgen.dag`
-//! so that file I/O flows through the transport layer and DryRun mode
-//! can intercept writes. The current imperative loop+catch_unwind approach
-//! bypasses the DAG engine; see review item #8.
+//! See `RV-5` for planned migration to DAG-orchestrated execution.
 //!
 //! Usage:
 //!     cargo run -p gunbc-dag --bin gunbc-testgen

@@ -478,6 +478,10 @@ fn parse_trace_json_nodes(stderr: &str) -> Vec<String> {
     panic!("no --trace-json output found in stderr")
 }
 
+/// Normalize execution trace nodes for comparison.
+///
+/// Filters `fs_env` (auto-injected at resolve time, see `RV-1`) and
+/// deduplicates. See `RV-4` for structured trace improvements.
 fn normalize_execution_nodes(mut nodes: Vec<String>) -> Vec<String> {
     nodes.retain(|node| node != "fs_env");
     nodes.sort();
@@ -600,7 +604,7 @@ fn run_makegen_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
     };
     if !build.status.success() {
         let _ = std::fs::remove_dir_all(&output_dir);
-        return RuntimeOutcome::Skipped {
+        return RuntimeOutcome::Failed {
             reason: format!(
                 "generated c compile failed: {}",
                 String::from_utf8_lossy(&build.stderr)
@@ -619,7 +623,7 @@ fn run_makegen_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
     };
     if !run.status.success() {
         let _ = std::fs::remove_dir_all(&output_dir);
-        return RuntimeOutcome::Skipped {
+        return RuntimeOutcome::Failed {
             reason: format!(
                 "generated c binary exited nonzero: {}",
                 String::from_utf8_lossy(&run.stderr)
@@ -713,7 +717,7 @@ fn run_makegen_generated_c_with_asan_ubsan(native_out_dir: &Path) -> RuntimeOutc
     };
     if !run.status.success() {
         let _ = std::fs::remove_dir_all(&output_dir);
-        return RuntimeOutcome::Skipped {
+        return RuntimeOutcome::Failed {
             reason: format!(
                 "generated c asan+ubsan binary exited nonzero: {}",
                 String::from_utf8_lossy(&run.stderr)
@@ -1017,7 +1021,7 @@ fn run_infra_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
     };
     if !compile.status.success() {
         let _ = std::fs::remove_dir_all(&out_dir);
-        return RuntimeOutcome::Skipped {
+        return RuntimeOutcome::Failed {
             reason: format!(
                 "generated c compile failed: {}",
                 String::from_utf8_lossy(&compile.stderr)
@@ -1035,7 +1039,7 @@ fn run_infra_generated_c(native_out_dir: &Path) -> RuntimeOutcome {
     };
     let _ = std::fs::remove_dir_all(&out_dir);
     if !run.status.success() {
-        return RuntimeOutcome::Skipped {
+        return RuntimeOutcome::Failed {
             reason: format!(
                 "generated c binary failed: {}",
                 String::from_utf8_lossy(&run.stderr)
@@ -1107,7 +1111,7 @@ fn run_generated_c_with_asan(native_out_dir: &Path) -> RuntimeOutcome {
     };
     let _ = std::fs::remove_dir_all(&out_dir);
     if !run.status.success() {
-        return RuntimeOutcome::Skipped {
+        return RuntimeOutcome::Failed {
             reason: format!(
                 "generated c ASAN binary failed: {}",
                 String::from_utf8_lossy(&run.stderr)
@@ -1179,7 +1183,7 @@ fn run_generated_c_with_asan_ubsan(native_out_dir: &Path) -> RuntimeOutcome {
     };
     let _ = std::fs::remove_dir_all(&out_dir);
     if !run.status.success() {
-        return RuntimeOutcome::Skipped {
+        return RuntimeOutcome::Failed {
             reason: format!(
                 "generated c ASAN+UBSAN binary failed: {}",
                 String::from_utf8_lossy(&run.stderr)
@@ -1437,6 +1441,9 @@ fn makegen_runtime_smoke_per_target_with_toolchain_awareness() {
             RuntimeOutcome::Skipped { reason } => {
                 eprintln!("SKIP {target} runtime parity: {reason}");
             }
+            RuntimeOutcome::Failed { reason } => {
+                panic!("FAIL {target} runtime parity: {reason}");
+            }
         }
     }
 
@@ -1518,6 +1525,9 @@ fn makegen_runtime_differential_interpreter_vs_generated_native_backends() {
             }
             RuntimeOutcome::Skipped { reason } => {
                 eprintln!("SKIP interpreter vs {target} differential: {reason}");
+            }
+            RuntimeOutcome::Failed { reason } => {
+                panic!("FAIL interpreter vs {target} differential: {reason}");
             }
         }
     }

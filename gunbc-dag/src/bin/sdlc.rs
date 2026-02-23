@@ -3337,8 +3337,7 @@ impl CompiledStageDispatcher {
                 if github_token_missing {
                     if let Ok(token) = resolve_profile_value_expr(expr) {
                         if !token.trim().is_empty() {
-                            // TODO: migrate to CredentialIntent pipeline instead of global env
-                            std::env::set_var("GITHUB_TOKEN", token);
+                            std::env::set_var("GITHUB_TOKEN", token); // RV-3
                         }
                     }
                 }
@@ -3351,8 +3350,7 @@ impl CompiledStageDispatcher {
                 if codex_api_key_missing {
                     if let Ok(token) = resolve_profile_value_expr(expr) {
                         if !token.trim().is_empty() {
-                            // TODO: migrate to CredentialIntent pipeline instead of global env
-                            std::env::set_var("CODEX_API_KEY", token);
+                            std::env::set_var("CODEX_API_KEY", token); // RV-3
                         }
                     }
                 }

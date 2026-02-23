@@ -545,7 +545,6 @@ impl Executable for PrepareFileWriteCompatOp {
 /// Routes inputs to the inner DAG's entrypoints, executes the inner DAG,
 /// and extracts outputs from its boundaries. This is the primitive that
 /// S12-11 (pipeline stages) and S12-12 (worker invocation) build on.
-#[derive(Clone)]
 /// Typed boundary port identity for SubDag execution.
 ///
 /// Avoids stringly-typed `"node_id/port_name"` composition by preserving
@@ -1050,11 +1049,7 @@ fn needs_transport_resource(
 ///
 /// This is a **fallback** that compensates for missing resource edges in earlier
 /// compilation/lowering phases. Nodes requiring filesystem access should ideally
-/// have their resource edges modeled explicitly during lowering.
-///
-/// TODO: Move this responsibility to the lowering phase (similar to
-/// `add_resource_lifecycle_nodes`) and make missing resource edges a compile
-/// error rather than silently patching them here.
+/// have their resource edges modeled explicitly during lowering. See `RV-1`.
 fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
     let mut pending = Vec::new();
     for node in &dag.nodes {
@@ -2105,8 +2100,8 @@ mod tests {
         // Verify port mappings
         assert_eq!(op.input_map.len(), 1, "should have one entrypoint");
         assert_eq!(op.output_map.len(), 1, "should have one boundary");
-        assert_eq!(op.input_map[0].0, "receiver/data");
-        assert_eq!(op.output_map[0].0, "receiver/data");
+        assert_eq!(op.input_map[0].outer_key, "receiver/data");
+        assert_eq!(op.output_map[0].outer_key, "receiver/data");
 
         // Execute with input routed to entrypoint
         let mut inputs = HashMap::new();

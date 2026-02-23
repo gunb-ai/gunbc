@@ -45,6 +45,25 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             );
             println!("{}", render_expand(&output.lowered_dag));
         }
+        "manifest" => {
+            eprintln!("WARNING: `manifest` is deprecated; use `progress` instead");
+            // fall through to progress handler
+            let parsed = parse_progress_command_args("progress", args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
+            let output = compile_target_or_exit_with_compile_options(
+                cwd,
+                Some(&parsed.input),
+                CompileOptions {
+                    emit_collection_nodes: parsed.emit_collection_nodes,
+                    profile: parsed.profile.clone(),
+                    ..CompileOptions::default()
+                },
+            );
+            println!(
+                "{}",
+                render_progress_with_format(&output.derived, parsed.format)
+            );
+        }
         "progress" => {
             let parsed = parse_progress_command_args(args[1].as_str(), args)
                 .unwrap_or_else(|usage| exit_usage(&usage));

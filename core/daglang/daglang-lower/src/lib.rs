@@ -32,9 +32,7 @@ use serde::Serialize;
 
 /// Lowered operation payload for daglang graph nodes.
 ///
-/// TODO: Add `handler_hint: Option<HandlerHint>` to `Callable` so the
-/// runtime emitter can classify nodes from IR metadata instead of
-/// module-name heuristics in `classify_handler`.
+/// See `RV-2` for adding a `handler_hint` field to `Callable`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoweredOp {
     Callable {
