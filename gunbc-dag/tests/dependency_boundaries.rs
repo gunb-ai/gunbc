@@ -70,24 +70,9 @@ fn workspace_deps(metadata: &cargo_metadata::Metadata, pkg_name: &str) -> HashSe
 fn tool_crates_do_not_depend_on_unrelated_tools() {
     let metadata = MetadataCommand::new().exec().unwrap();
 
-    // gunbc-gist should NOT transitively depend on unrelated tool crates
-    let gist_forbidden = [
-        "gunbc-lib-llm-ops",
-        "gunbc-lib-review",
-        "gunbc-clippy",
-        "gunbc-deps",
-    ];
-    let gist_deps = workspace_deps(&metadata, "gunbc-gist");
-    for name in &gist_forbidden {
-        assert!(
-            !gist_deps.contains(*name),
-            "gunbc-gist must not depend on {name} — tool crates should be isolated"
-        );
-    }
-
-    // gunbc-deps should not depend on gist or review
+    // gunbc-deps should not depend on review or llm
     let deps_deps = workspace_deps(&metadata, "gunbc-deps");
-    for name in ["gunbc-gist", "gunbc-lib-review", "gunbc-lib-llm-ops"] {
+    for name in ["gunbc-lib-review", "gunbc-lib-llm-ops"] {
         assert!(
             !deps_deps.contains(name),
             "gunbc-deps must not depend on {name}"
