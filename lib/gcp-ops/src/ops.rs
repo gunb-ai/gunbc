@@ -1,7 +1,7 @@
 //! Pure GCP ops for WIF + Secret Manager.
 
 use gunbc_exec::{
-    optional_bool_strict, optional_str_list_strict, optional_str_strict, require_bool, require_str,
+    optional_bool_strict, optional_str_list_strict, require_bool, require_str,
     ExecError, Executable, OutputMap,
 };
 use gunbc_ir::transport::file::FileRequest;
@@ -528,7 +528,7 @@ impl Executable for GcpOps {
             }
             GcpOps::ParseImpersonate => {
                 let base_access_token =
-                    optional_str_strict(&inputs, "base_access_token")?.unwrap_or("");
+                    optional_secret_or_str(&inputs, "base_access_token")?.unwrap_or_default();
                 let response = match inputs.get("response") {
                     Some(Value::Skipped) => {
                         return OutputMap::new()
@@ -1326,6 +1326,21 @@ fn is_unreserved_url_byte(b: u8) -> bool {
         b,
         b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~'
     )
+}
+
+fn optional_secret_or_str(
+    inputs: &HashMap<String, Value>,
+    key: &str,
+) -> Result<Option<String>, ExecError> {
+    match inputs.get(key) {
+        None | Some(Value::Skipped) => Ok(None),
+        Some(Value::Str(value)) => Ok(Some(value.clone())),
+        Some(Value::Secret(value)) => Ok(Some(value.expose_plaintext_for_transport().to_string())),
+        Some(_) => Err(ExecError::new(format!(
+            "invalid '{}' input: expected String or Secret",
+            key
+        ))),
+    }
 }
 
 fn base64_encode(input: &str) -> String {

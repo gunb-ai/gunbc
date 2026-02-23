@@ -253,7 +253,7 @@ pub fn build_gcp_secret_manager_credential_graph(
             "parse_impersonate",
             vec![
                 port("response", "TransportResponse"),
-                optional("base_access_token", "OptionalString"),
+                optional("base_access_token", "Optional<Secret>"),
             ],
             vec![port("access_token", "Secret"), port("expires_at", "String")],
             DynOp::new(GcpOps::ParseImpersonate),
@@ -644,7 +644,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
             "parse_impersonate",
             vec![
                 port("response", "TransportResponse"),
-                optional("base_access_token", "OptionalString"),
+                optional("base_access_token", "Optional<Secret>"),
             ],
             vec![port("access_token", "Secret"), port("expires_at", "String")],
             DynOp::new(GcpOps::ParseImpersonate),
