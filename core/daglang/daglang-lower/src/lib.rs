@@ -6092,6 +6092,43 @@ fn collect_bound_callable_sources(
     bound
 }
 
+// ============================================================================
+// Output path extraction
+// ============================================================================
+
+/// Extract output file paths from a lowered DAG.
+///
+/// Walks the DAG looking for `CallLiteralSource` nodes whose ID contains
+/// `content_upsert_path_`, which carry the literal path arguments to
+/// `content_upsert` patterns. Returns a sorted, deduplicated list of paths.
+pub fn extract_output_paths(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<String> {
+    let mut paths = std::collections::BTreeSet::new();
+    collect_output_paths_recursive(&dag.nodes, &mut paths);
+    paths.into_iter().collect()
+}
+
+fn collect_output_paths_recursive(
+    nodes: &[gunbc_ir::node::Node<LoweredOp>],
+    paths: &mut std::collections::BTreeSet<String>,
+) {
+    for node in nodes {
+        if node.id.0.contains("content_upsert_path_") {
+            if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String(path),
+                },
+                ..
+            }) = &node.body
+            {
+                paths.insert(path.clone());
+            }
+        }
+        if let gunbc_ir::node::NodeBody::SubDag(sub) = &node.body {
+            collect_output_paths_recursive(&sub.nodes, paths);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

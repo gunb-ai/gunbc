@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn auto_mock_spec_uses_list_values_for_list_entrypoints_with_any_type() {
-        let dag = crate::ci::graph::build_ci_graph().expect("build ci graph");
+        let dag = crate::ci::build_ci_graph().expect("build ci graph");
         let spec = auto_mock_spec(&dag, "ci");
         let items = spec
             .input_mocks

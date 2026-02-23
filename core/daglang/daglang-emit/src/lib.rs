@@ -63,6 +63,7 @@ mod backend_harness;
 
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp, ServiceOperationSpec};
+pub use daglang_lower::extract_output_paths;
 use gunbc_ir::Dag;
 use std::fmt::Write as _;
 

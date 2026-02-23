@@ -369,7 +369,7 @@ fn cmd_cigen(dry_run: bool) {
     let tool = WorkspaceBinary::Ci.invocation();
 
     // Derive permissions from CI workflow integrations (checkout, GCP WIF, etc.)
-    let ci_perms: Vec<(String, String)> = gunbc_dag::ci::graph::ci_workflow_permissions()
+    let ci_perms: Vec<(String, String)> = gunbc_dag::ci::ci_workflow_permissions()
         .into_iter()
         .map(|(scope, level)| {
             (
@@ -380,7 +380,7 @@ fn cmd_cigen(dry_run: bool) {
         .collect();
 
     // Secrets required by live flow tests (derived from testgen metadata).
-    let ci_secrets: Vec<String> = gunbc_dag::ci::graph::ci_live_test_secrets()
+    let ci_secrets: Vec<String> = gunbc_dag::ci::ci_live_test_secrets()
         .into_iter()
         .map(|s| s.to_string())
         .collect();
