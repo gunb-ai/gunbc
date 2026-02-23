@@ -902,6 +902,7 @@ fn run_worker(
     let mut agent_polls = Vec::new();
     let mut agent_spawns = Vec::new();
     let mut dry_run_dispatches = Vec::new();
+    let mut implementation_validations = Vec::new();
     let mut processing_budget = if dry_run {
         None
     } else {
@@ -1129,6 +1130,15 @@ fn run_worker(
                             now,
                         );
                         if next_stage != record.stage {
+                            if record.stage == IssueLifecycleStage::Implementation
+                                && next_stage == IssueLifecycleStage::Closed
+                            {
+                                let validation = validate_implementation_stage_for_close(
+                                    intake_key,
+                                    &agent_ledger,
+                                )?;
+                                implementation_validations.push(validation);
+                            }
                             // Release the claim for the old stage before advancing.
                             if let Some(issue_id) = record.issue_id {
                                 let old_claim_slot = claim_slot_key(issue_id, record.stage);
@@ -1324,6 +1334,10 @@ fn run_worker(
         map.insert(
             "dry_run_dispatches".to_string(),
             serde_json::Value::Array(dry_run_dispatches),
+        );
+        map.insert(
+            "implementation_validations".to_string(),
+            serde_json::Value::Array(implementation_validations),
         );
     }
     if !dry_run {
@@ -3210,4 +3224,51 @@ fn ensure_stage_gate_requirements(
         }?;
     }
     Ok(())
+}
+
+fn validate_implementation_stage_for_close(
+    intake_key: &str,
+    agent_ledger: &AgentLedger,
+) -> Result<serde_json::Value, String> {
+    let agent_record = agent_ledger.entries.get(intake_key).ok_or_else(|| {
+        format!("implementation validation requires agent record for intake `{intake_key}`")
+    })?;
+    let (branch, commit_sha) = match &agent_record.status {
+        AgentStatus::Completed { branch, commit_sha } => (branch.clone(), commit_sha.clone()),
+        AgentStatus::Running { progress } => {
+            return Err(format!(
+                "implementation validation cannot run while agent is running for intake `{intake_key}`{}",
+                progress
+                    .as_ref()
+                    .map(|value| format!(" (progress: {value})"))
+                    .unwrap_or_default()
+            ));
+        }
+        AgentStatus::Failed { reason, .. } => {
+            return Err(format!(
+                "implementation validation cannot run because agent failed for intake `{intake_key}`: {reason}"
+            ));
+        }
+    };
+    let validation_dry_run = agent_record.handle.provider == "stub";
+    let review_result = run_diff_review(&branch, validation_dry_run)?;
+    let ci_result = run_ci_validation(&branch, validation_dry_run)?;
+    let review_passed = review_result.blocking_count == 0;
+    let ci_passed = ci_result.success;
+    if !(review_passed && ci_passed) {
+        return Err(format!(
+            "implementation validation failed for intake `{intake_key}`: review_passed={review_passed}, ci_passed={ci_passed}, ci_summary={}",
+            ci_result.summary
+        ));
+    }
+    Ok(json!({
+        "intake_key": intake_key,
+        "provider": agent_record.handle.provider,
+        "branch": branch,
+        "commit_sha": commit_sha,
+        "validation_mode": if validation_dry_run { "dry-run" } else { "real" },
+        "review_passed": review_passed,
+        "ci_passed": ci_passed,
+        "ci_summary": ci_result.summary,
+    }))
 }

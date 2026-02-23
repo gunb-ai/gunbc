@@ -583,3 +583,63 @@ fn implementation_stage_fails_closed_without_agent_record() {
         serde_json::Value::Number(serde_json::Number::from(1))
     );
 }
+
+#[test]
+fn implementation_to_closed_emits_validation_summary() {
+    let ctx = CliTestContext::new("implementation_validation_summary", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    progress_intake_to_accepted(
+        &ctx,
+        &root,
+        "intent-impl-validation",
+        "intent-impl-validation",
+        707,
+    );
+
+    let accepted_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run accepted stage worker");
+    assert!(
+        accepted_worker.status.success(),
+        "accepted worker should succeed: {}",
+        String::from_utf8_lossy(&accepted_worker.stderr)
+    );
+
+    let implementation_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run implementation stage worker");
+    assert!(
+        implementation_worker.status.success(),
+        "implementation worker should succeed: {}",
+        String::from_utf8_lossy(&implementation_worker.stderr)
+    );
+    let payload: serde_json::Value = serde_json::from_slice(&implementation_worker.stdout)
+        .expect("implementation worker output should be JSON");
+    assert_eq!(
+        payload["implementation_validations"][0]["intake_key"],
+        serde_json::Value::String("intent-impl-validation".to_string())
+    );
+    assert_eq!(
+        payload["implementation_validations"][0]["validation_mode"],
+        serde_json::Value::String("dry-run".to_string())
+    );
+    assert_eq!(
+        payload["implementation_validations"][0]["review_passed"],
+        serde_json::Value::Bool(true)
+    );
+    assert_eq!(
+        payload["implementation_validations"][0]["ci_passed"],
+        serde_json::Value::Bool(true)
+    );
+}
