@@ -13371,8 +13371,6 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
     let _ = std::fs::remove_file(&makefile_path);
 }
 
-/// D1.8 — Compile pragma.dag to exec-runtime layer and verify generated files.
-
 /// D1.8 — Full end-to-end test: compile pragma.dag to exec-runtime binary,
 /// build it, run it, and verify the pragma config files are generated.
 ///

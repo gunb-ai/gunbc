@@ -699,7 +699,7 @@ fn collect_profile_binding_registry(
             match &item.node {
                 Item::InterfaceDef(def) => {
                     let full = format!("{module_name}.{}", def.name);
-                    interface_registry.register(full, &[def.name.clone()]);
+                    interface_registry.register(full, std::slice::from_ref(&def.name));
                 }
                 Item::ServiceDef(def) => {
                     let full = format!("{module_name}.{}", def.name);
