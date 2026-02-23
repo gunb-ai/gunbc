@@ -546,12 +546,33 @@ impl Executable for PrepareFileWriteCompatOp {
 /// and extracts outputs from its boundaries. This is the primitive that
 /// S12-11 (pipeline stages) and S12-12 (worker invocation) build on.
 #[derive(Clone)]
+/// Typed boundary port identity for SubDag execution.
+///
+/// Avoids stringly-typed `"node_id/port_name"` composition by preserving
+/// structural identity. The `outer_key` is only used as a HashMap key at the
+/// execution boundary; the inner node/port pair is the authoritative identity.
+#[derive(Clone, Debug)]
+struct BoundaryPort {
+    outer_key: String,
+    inner_node: String,
+    inner_port: String,
+}
+
+impl BoundaryPort {
+    fn new(node_id: &str, port_name: &str) -> Self {
+        Self {
+            outer_key: format!("{node_id}/{port_name}"),
+            inner_node: node_id.to_string(),
+            inner_port: port_name.to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
 struct SubDagExecutorOp {
     inner_dag: Dag<DynOp>,
-    /// (outer_port_name, inner_node_id, inner_port_name)
-    input_map: Vec<(String, String, String)>,
-    /// (outer_port_name, inner_node_id, inner_port_name)
-    output_map: Vec<(String, String, String)>,
+    input_map: Vec<BoundaryPort>,
+    output_map: Vec<BoundaryPort>,
 }
 
 impl SubDagExecutorOp {
@@ -559,22 +580,16 @@ impl SubDagExecutorOp {
         let entrypoints = detect_entrypoints(&dag);
         let boundaries = detect_boundaries(&dag);
 
-        let input_map: Vec<(String, String, String)> = entrypoints
+        let input_map: Vec<BoundaryPort> = entrypoints
             .entrypoint_ports
             .iter()
-            .map(|(node_id, port_name, _type_id)| {
-                let outer_port = format!("{}/{}", node_id.0, port_name.0);
-                (outer_port, node_id.0.clone(), port_name.0.clone())
-            })
+            .map(|(node_id, port_name, _type_id)| BoundaryPort::new(&node_id.0, &port_name.0))
             .collect();
 
-        let output_map: Vec<(String, String, String)> = boundaries
+        let output_map: Vec<BoundaryPort> = boundaries
             .boundary_ports
             .iter()
-            .map(|(node_id, port_name)| {
-                let outer_port = format!("{}/{}", node_id.0, port_name.0);
-                (outer_port, node_id.0.clone(), port_name.0.clone())
-            })
+            .map(|(node_id, port_name)| BoundaryPort::new(&node_id.0, &port_name.0))
             .collect();
 
         Self {
@@ -606,9 +621,9 @@ impl Executable for SubDagExecutorOp {
         mode: &ExecutionMode,
     ) -> Result<HashMap<String, Value>, ExecError> {
         let mut mocks = BoundaryMocks::new();
-        for (outer_port, inner_node, inner_port) in &self.input_map {
-            if let Some(value) = inputs.get(outer_port) {
-                mocks.set_input(inner_node.as_str(), inner_port.as_str(), value.clone());
+        for bp in &self.input_map {
+            if let Some(value) = inputs.get(&bp.outer_key) {
+                mocks.set_input(&bp.inner_node, &bp.inner_port, value.clone());
             }
         }
 
@@ -626,10 +641,10 @@ impl Executable for SubDagExecutorOp {
             .map_err(|e| ExecError::new(format!("SubDag execution failed: {e}")))?;
 
         let mut outputs = HashMap::new();
-        for (outer_port, inner_node, inner_port) in &self.output_map {
-            if let Some(entry) = log.get(inner_node) {
-                if let Some(value) = entry.outputs.get(inner_port) {
-                    outputs.insert(outer_port.clone(), value.clone());
+        for bp in &self.output_map {
+            if let Some(entry) = log.get(&bp.inner_node) {
+                if let Some(value) = entry.outputs.get(&bp.inner_port) {
+                    outputs.insert(bp.outer_key.clone(), value.clone());
                 }
             }
         }
@@ -1031,6 +1046,15 @@ fn needs_transport_resource(
     }
 }
 
+/// Auto-wire unconnected `FilesystemHandle` input ports to a shared `fs_env` node.
+///
+/// This is a **fallback** that compensates for missing resource edges in earlier
+/// compilation/lowering phases. Nodes requiring filesystem access should ideally
+/// have their resource edges modeled explicitly during lowering.
+///
+/// TODO: Move this responsibility to the lowering phase (similar to
+/// `add_resource_lifecycle_nodes`) and make missing resource edges a compile
+/// error rather than silently patching them here.
 fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
     let mut pending = Vec::new();
     for node in &dag.nodes {
