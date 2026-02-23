@@ -95,6 +95,20 @@ use std::sync::Arc;
 pub trait Executable: fmt::Debug {
     /// Execute the operation with the given inputs.
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError>;
+
+    /// Execute with awareness of the outer execution mode.
+    ///
+    /// Operations that spawn nested DAG executions (e.g. `SubDagExecutorOp`)
+    /// override this to propagate the mode, preserving DryRun/Simulate
+    /// guarantees across sub-DAG boundaries. The default delegates to
+    /// [`execute`](Executable::execute), which is correct for leaf operations.
+    fn execute_in_mode(
+        &self,
+        inputs: HashMap<String, Value>,
+        _mode: &execute::ExecutionMode,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        self.execute(inputs)
+    }
 }
 
 /// Type-erased executable operation.
@@ -122,6 +136,14 @@ impl fmt::Debug for DynOp {
 impl Executable for DynOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         self.0.execute(inputs)
+    }
+
+    fn execute_in_mode(
+        &self,
+        inputs: HashMap<String, Value>,
+        mode: &execute::ExecutionMode,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        self.0.execute_in_mode(inputs, mode)
     }
 }
 

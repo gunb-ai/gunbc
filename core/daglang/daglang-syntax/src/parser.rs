@@ -1768,7 +1768,7 @@ impl Parser {
                         let k = self.expect_ident()?;
                         self.expect(&TokenKind::Colon)?;
                         let v = self.parse_expr(0)?;
-                        args.push(Expr::Record(None, vec![(k, v)]));
+                        args.push(Expr::Record(None, vec![RecordField::Named(k, v)]));
                     } else {
                         args.push(self.parse_expr(0)?);
                     }
@@ -1823,7 +1823,7 @@ impl Parser {
                 let k = self.expect_ident()?;
                 self.expect(&TokenKind::Colon)?;
                 let v = self.parse_expr(0)?;
-                fields.push((k, v));
+                fields.push(RecordField::Named(k, v));
                 self.eat(&TokenKind::Comma);
                 continue;
             }
@@ -1903,7 +1903,7 @@ impl Parser {
                 inner
                     .into_iter()
                     .filter_map(|s| match s {
-                        Stmt::Assign(n, e) | Stmt::Let(n, e) => Some((n, e)),
+                        Stmt::Assign(n, e) | Stmt::Let(n, e) => Some(RecordField::Named(n, e)),
                         _ => None,
                     })
                     .collect(),
@@ -2080,16 +2080,18 @@ impl Parser {
         Ok(Expr::Record(Some(name), fields))
     }
 
-    fn parse_record_literal_fields(&mut self) -> Result<Vec<(String, Expr)>, ParseError> {
+    fn parse_record_literal_fields(&mut self) -> Result<Vec<RecordField>, ParseError> {
         let mut fields = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.eat(&TokenKind::Dot) {
-                // tolerate spread-ish syntax (`...`) in examples
                 self.eat(&TokenKind::Dot);
                 self.eat(&TokenKind::Dot);
-                if Self::token_kind_as_ident(&self.peek().kind).is_some() {
-                    let _ = self.expect_ident()?;
-                }
+                let name = if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                    Some(self.expect_ident()?)
+                } else {
+                    None
+                };
+                fields.push(RecordField::Spread(name));
                 self.eat(&TokenKind::Comma);
                 continue;
             }
@@ -2099,14 +2101,13 @@ impl Parser {
                 let k = self.expect_ident()?;
                 self.expect(&TokenKind::Colon)?;
                 let v = self.parse_expr(0)?;
-                fields.push((k, v));
+                fields.push(RecordField::Named(k, v));
                 self.eat(&TokenKind::Comma);
                 continue;
             }
-            // shorthand field syntax: `{ field_name }`
             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                 let k = self.expect_ident()?;
-                fields.push((k.clone(), Expr::Ident(k)));
+                fields.push(RecordField::Named(k.clone(), Expr::Ident(k)));
                 self.eat(&TokenKind::Comma);
                 continue;
             }
@@ -2504,7 +2505,7 @@ impl Parser {
                     let mut index = 0;
                     while !self.check(&TokenKind::RParen) && !self.at_eof() {
                         let inner = self.parse_pattern()?;
-                        args.push((index.to_string(), inner));
+                        args.push(PatternField::Named(index.to_string(), inner));
                         index += 1;
                         self.eat(&TokenKind::Comma);
                     }
@@ -2514,20 +2515,21 @@ impl Parser {
                     let mut args = Vec::new();
                     while !self.check(&TokenKind::RBrace) && !self.at_eof() {
                         if self.eat(&TokenKind::Dot) {
-                            // tolerate spread-ish variant pattern syntax (`...`)
-                            // used in corpus examples like `GcpConfig { ... }`
                             self.eat(&TokenKind::Dot);
                             self.eat(&TokenKind::Dot);
-                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
-                                let _ = self.expect_ident()?;
-                            }
+                            let spread_name = if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                Some(self.expect_ident()?)
+                            } else {
+                                None
+                            };
+                            args.push(PatternField::Spread(spread_name));
                             self.eat(&TokenKind::Comma);
                             continue;
                         }
                         let field = self.expect_ident()?;
                         self.expect(&TokenKind::Colon)?;
                         let inner = self.parse_pattern()?;
-                        args.push((field, inner));
+                        args.push(PatternField::Named(field, inner));
                         self.eat(&TokenKind::Comma);
                     }
                     self.expect(&TokenKind::RBrace)?;
@@ -2613,7 +2615,10 @@ impl Parser {
         };
 
         let mut passthrough = Vec::with_capacity(fields.len());
-        for (field_name, field_expr) in fields {
+        for field in fields {
+            let RecordField::Named(field_name, field_expr) = field else {
+                return Ok((iter_expr, Vec::new()));
+            };
             match field_expr {
                 Expr::Ident(ident) if ident == field_name => {}
                 _ => return Ok((iter_expr, Vec::new())),

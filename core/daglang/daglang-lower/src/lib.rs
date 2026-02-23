@@ -3996,7 +3996,10 @@ fn annotation_body_template(annotations: &[Annotation]) -> Option<Vec<BodyEntry>
     match record {
         Expr::Record(_, fields) => {
             let mut entries = Vec::new();
-            for (key, value) in fields {
+            for field in fields {
+                let daglang_syntax::ast::RecordField::Named(key, value) = field else {
+                    continue;
+                };
                 match value {
                     Expr::Ident(field_name) => {
                         entries.push(BodyEntry::InputRef(key.clone(), field_name.clone()));
@@ -4025,8 +4028,8 @@ fn annotation_headers(
         .filter(|a| a.name == "headers")
     {
         if let Some(Expr::Record(_, fields)) = ann.args.first() {
-            for (key, value) in fields {
-                if let Expr::Literal(Literal::String(v)) = value {
+            for field in fields {
+                if let daglang_syntax::ast::RecordField::Named(key, Expr::Literal(Literal::String(v))) = field {
                     headers.push((key.clone(), v.clone()));
                 }
             }

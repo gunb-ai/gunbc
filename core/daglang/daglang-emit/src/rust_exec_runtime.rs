@@ -142,9 +142,6 @@ enum HandlerKind {
     FsEnv,
     ParamSource,
     LiteralSource,
-    MakegenLoadRegistry,
-    MakegenRenderMakefile,
-    MakegenEntrypoint,
     PrepareReadContent,
     ExecuteReadContent,
     PrepareWriteContent,
@@ -163,9 +160,6 @@ impl HandlerKind {
             Self::FsEnv => "FsEnv",
             Self::ParamSource => "ParamSource",
             Self::LiteralSource => "LiteralSource",
-            Self::MakegenLoadRegistry => "MakegenLoadRegistry",
-            Self::MakegenRenderMakefile => "MakegenRenderMakefile",
-            Self::MakegenEntrypoint => "MakegenEntrypoint",
             Self::PrepareReadContent => "PrepareReadContent",
             Self::ExecuteReadContent => "ExecuteReadContent",
             Self::PrepareWriteContent => "PrepareWriteContent",
@@ -318,9 +312,6 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         ("std.resources", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("pipelines.ci", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("tools.infra", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("tools.makegen", "load_registry") => Some(HandlerKind::MakegenLoadRegistry),
-        ("tools.makegen", "render_makefile") => Some(HandlerKind::MakegenRenderMakefile),
-        ("tools.makegen", "makegen") => Some(HandlerKind::MakegenEntrypoint),
         ("tools.makegen", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("tools.pragma", _) => Some(HandlerKind::UnimplementedPassthrough),
         (module, _) if module.starts_with("services.") => {
@@ -391,32 +382,6 @@ fn handler_body(kind: HandlerKind) -> &'static str {
         }
         HandlerKind::LiteralSource => {
             r##"    OutputMap::new().value(output_port, value.clone()).ok()
-"##
-        }
-        HandlerKind::MakegenLoadRegistry => {
-            r##"    OutputMap::new().value("registry", Value::Skipped).ok()
-"##
-        }
-        HandlerKind::MakegenRenderMakefile => {
-            r##"    let content = include_str!("embedded_makefile.txt").to_string();
-    OutputMap::new().str("return", content).ok()
-"##
-        }
-        HandlerKind::MakegenEntrypoint => {
-            r##"    let written = inputs
-        .get("__deps")
-        .and_then(Value::as_list)
-        .map(|deps| {
-            deps.iter().any(|value| {
-                matches!(
-                    value,
-                    Value::Response(TransportResponse::File(response))
-                        if response.operation == FileOp::Write && response.success
-                )
-            })
-        })
-        .unwrap_or(false);
-    OutputMap::new().bool("written", written).ok()
 "##
         }
         HandlerKind::PrepareReadContent => {
@@ -1106,35 +1071,7 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&load_registry),
-            Some(HandlerKind::MakegenLoadRegistry)
-        );
-
-        let render_makefile = LoweredOp::Callable {
-            module: "tools.makegen".into(),
-            kind: CallableKind::Fn,
-            name: "render_makefile".into(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-        };
-        assert_eq!(
-            classify_handler(&render_makefile),
-            Some(HandlerKind::MakegenRenderMakefile)
-        );
-
-        let makegen_entrypoint = LoweredOp::Callable {
-            module: "tools.makegen".into(),
-            kind: CallableKind::Func,
-            name: "makegen".into(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-        };
-        assert_eq!(
-            classify_handler(&makegen_entrypoint),
-            Some(HandlerKind::MakegenEntrypoint)
+            Some(HandlerKind::UnimplementedPassthrough)
         );
     }
 }

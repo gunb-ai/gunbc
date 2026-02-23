@@ -106,7 +106,14 @@ pub fn walk_expr(expr: &Expr, visitor: &mut impl FnMut(&Expr)) {
                 }
             }
         }
-        Expr::Record(_, fields) | Expr::Return(fields) => {
+        Expr::Record(_, fields) => {
+            for field in fields {
+                if let crate::ast::RecordField::Named(_, value) = field {
+                    walk_expr(value, visitor);
+                }
+            }
+        }
+        Expr::Return(fields) => {
             for (_, value) in fields {
                 walk_expr(value, visitor);
             }

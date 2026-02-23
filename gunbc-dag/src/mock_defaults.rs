@@ -185,8 +185,16 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
         if let Some(value) = gcp_field_value(type_id, port_name) {
             return value;
         }
-        if let Some(value) = heuristic_value_for_slot(type_id, port_name) {
-            return value;
+        let cardinality = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0 == node_id)
+            .and_then(|n| n.inputs.iter().find(|p| p.name.0 == port_name))
+            .map(|p| &p.cardinality);
+        if let Some(card) = cardinality {
+            if let Some(value) = heuristic_value_for_slot(type_id, card) {
+                return value;
+            }
         }
         return default_value_for_type(type_id);
     }
@@ -205,13 +213,8 @@ fn default_value_for_slot<T: Executable + Clone + Send>(
     default_shell_response()
 }
 
-fn heuristic_value_for_slot(type_id: &str, port_name: &str) -> Option<Value> {
-    if type_id == "Any"
-        && matches!(
-            port_name,
-            "items" | "files" | "contents_list" | "result" | "results"
-        )
-    {
+fn heuristic_value_for_slot(type_id: &str, cardinality: &gunbc_ir::Cardinality) -> Option<Value> {
+    if type_id == "Any" && cardinality.allows_many() {
         return Some(Value::List(vec![Value::Str("mock".to_string())]));
     }
     None
@@ -346,8 +349,15 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
     // These are DAG entry points that need values injected at runtime.
     let entrypoints = detect_entrypoints(&lowered.dag);
     for (node_id, port_name, type_id) in &entrypoints.entrypoint_ports {
+        let cardinality = lowered
+            .dag
+            .nodes
+            .iter()
+            .find(|n| n.id == *node_id)
+            .and_then(|n| n.inputs.iter().find(|p| p.name == *port_name))
+            .map(|p| &p.cardinality);
         let value = gcp_field_value(type_id.0.as_str(), port_name.0.as_str())
-            .or_else(|| heuristic_value_for_slot(type_id.0.as_str(), port_name.0.as_str()))
+            .or_else(|| cardinality.and_then(|c| heuristic_value_for_slot(type_id.0.as_str(), c)))
             .unwrap_or_else(|| default_value_for_type(type_id.0.as_str()));
         spec = spec.input_mock(node_id.0.as_str(), port_name.0.as_str(), value);
     }

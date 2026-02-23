@@ -537,24 +537,24 @@ enum TransportFields<'a> {
     /// Positional arguments from `Expr::Call`.
     Positional(&'a [(Option<String>, Expr)]),
     /// Named fields from `Expr::Record`.
-    Named(&'a [(String, Expr)]),
+    Named(&'a [daglang_syntax::ast::RecordField]),
 }
 
 impl<'a> TransportFields<'a> {
-    /// Get the first positional arg, or look up a named field.
     fn get(&self, position: usize, names: &[&str]) -> Option<&'a Expr> {
         match self {
             Self::Positional(args) => args.get(position).map(|(_, e)| e),
-            Self::Named(fields) => fields
-                .iter()
-                .find(|(k, _)| names.iter().any(|n| k == n))
-                .map(|(_, v)| v),
+            Self::Named(fields) => fields.iter().find_map(|f| match f {
+                daglang_syntax::ast::RecordField::Named(k, v)
+                    if names.iter().any(|n| k == n) =>
+                {
+                    Some(v)
+                }
+                _ => None,
+            }),
         }
     }
 
-    /// Iterate named fields (for building the JSON body of a rest_response).
-    /// For positional args, the body is at position 1; for named fields, it's
-    /// everything that isn't in `exclude`.
     fn rest_body_json(&self, exclude: &[&str]) -> String {
         match self {
             Self::Positional(args) => args
@@ -564,8 +564,14 @@ impl<'a> TransportFields<'a> {
             Self::Named(fields) => {
                 let parts: Vec<String> = fields
                     .iter()
-                    .filter(|(k, _)| !exclude.iter().any(|ex| k == ex))
-                    .map(|(k, v)| format!("\"{k}\": {}", emit_json_value(v)))
+                    .filter_map(|f| match f {
+                        daglang_syntax::ast::RecordField::Named(k, v)
+                            if !exclude.iter().any(|ex| k == ex) =>
+                        {
+                            Some(format!("\"{k}\": {}", emit_json_value(v)))
+                        }
+                        _ => None,
+                    })
                     .collect();
                 format!("{{{}}}", parts.join(", "))
             }
@@ -618,7 +624,7 @@ fn emit_transport_response(kind: &str, fields: TransportFields<'_>) -> String {
 ///
 /// Transport records delegate to [`emit_transport_response`]; everything else
 /// becomes `Value::Json(serde_json::json!(...))`.
-fn emit_record_value(name: Option<&str>, fields: &[(String, Expr)]) -> String {
+fn emit_record_value(name: Option<&str>, fields: &[daglang_syntax::ast::RecordField]) -> String {
     match name {
         Some(
             kind @ ("rest_response" | "RestResponse" | "shell_response" | "ShellResponse"
@@ -627,7 +633,12 @@ fn emit_record_value(name: Option<&str>, fields: &[(String, Expr)]) -> String {
         _ => {
             let json_parts: Vec<String> = fields
                 .iter()
-                .map(|(k, v)| format!("\"{k}\": {}", emit_json_value(v)))
+                .filter_map(|f| match f {
+                    daglang_syntax::ast::RecordField::Named(k, v) => {
+                        Some(format!("\"{k}\": {}", emit_json_value(v)))
+                    }
+                    _ => None,
+                })
                 .collect();
             let json = format!("{{{}}}", json_parts.join(", "));
             format!("Value::Json(serde_json::json!({json}))")
@@ -679,7 +690,12 @@ fn emit_json_value(expr: &Expr) -> String {
         Expr::Record(_, fields) => {
             let parts: Vec<String> = fields
                 .iter()
-                .map(|(k, v)| format!("\"{k}\": {}", emit_json_value(v)))
+                .filter_map(|f| match f {
+                    daglang_syntax::ast::RecordField::Named(k, v) => {
+                        Some(format!("\"{k}\": {}", emit_json_value(v)))
+                    }
+                    _ => None,
+                })
                 .collect();
             format!("{{{}}}", parts.join(", "))
         }

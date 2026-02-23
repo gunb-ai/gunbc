@@ -160,7 +160,7 @@ fn typed_mock_for_response(response_type: &str) -> String {
 
 fn typed_mock_fallback(response_type: &str) -> String {
     match value_backing_for_type_id(response_type) {
-        ValueBacking::String => "mock-response".to_string(),
+        ValueBacking::String => r#""mock-response""#.to_string(),
         ValueBacking::Bool => "true".to_string(),
         ValueBacking::Int | ValueBacking::Float => "1".to_string(),
         ValueBacking::Json => r#"{"ok":true}"#.to_string(),
@@ -656,7 +656,7 @@ mod tests {
 
     #[test]
     fn typed_mock_for_response_fallback_uses_string_shape_for_string() {
-        assert_eq!(typed_mock_for_response("String"), "mock-response");
+        assert_eq!(typed_mock_for_response("String"), r#""mock-response""#);
     }
 
     // ===== E3.4-E3.6: TestSpec-based generation tests =====

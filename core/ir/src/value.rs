@@ -506,7 +506,7 @@ impl Value {
                 for item in items {
                     match item {
                         Value::Str(s) => result.push(s.clone()),
-                        Value::Skipped => result.push("mock".to_string()),
+                        Value::Skipped => {}
                         Value::Unit => {}
                         _ => return None,
                     }

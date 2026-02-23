@@ -597,7 +597,14 @@ impl std::fmt::Debug for SubDagExecutorOp {
 
 impl Executable for SubDagExecutorOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        // 1. Build BoundaryMocks for input injection
+        self.execute_in_mode(inputs, &ExecutionMode::Real)
+    }
+
+    fn execute_in_mode(
+        &self,
+        inputs: HashMap<String, Value>,
+        mode: &ExecutionMode,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         let mut mocks = BoundaryMocks::new();
         for (outer_port, inner_node, inner_port) in &self.input_map {
             if let Some(value) = inputs.get(outer_port) {
@@ -605,11 +612,19 @@ impl Executable for SubDagExecutorOp {
             }
         }
 
-        // 2. Execute the inner DAG
-        let log = execute_with_mode_and_inputs(&self.inner_dag, ExecutionMode::Real, Some(&mocks))
+        let inner_mode = match mode {
+            ExecutionMode::Real => ExecutionMode::Real,
+            ExecutionMode::DryRun(_) => ExecutionMode::DryRun(mocks.clone()),
+            ExecutionMode::Simulate(_) => {
+                let mut sim: gunbc_exec::execute::SimConfig = Default::default();
+                sim.boundary_mocks = mocks.clone();
+                ExecutionMode::Simulate(sim)
+            }
+        };
+
+        let log = execute_with_mode_and_inputs(&self.inner_dag, inner_mode, Some(&mocks))
             .map_err(|e| ExecError::new(format!("SubDag execution failed: {e}")))?;
 
-        // 3. Extract outputs from boundary nodes
         let mut outputs = HashMap::new();
         for (outer_port, inner_node, inner_port) in &self.output_map {
             if let Some(entry) = log.get(inner_node) {
@@ -873,44 +888,15 @@ fn resolve_tools_pragma(name: &str) -> Option<DynOp> {
     Some(DynOp::new(op))
 }
 
+const PASSTHROUGH_MODULE_PREFIXES: &[&str] = &[
+    "tools.", "funcs.", "workflows.", "pipelines.", "shared.", "std.",
+];
+const PASSTHROUGH_MODULE_EXACT: &[&str] = &["sample.main"];
+
 fn resolve_passthrough_entrypoint(module: &str, _name: &str, outputs: &[Port]) -> Option<DynOp> {
-    // Explicit module allowlist only. Unknown modules fail closed.
-    // These DSL modules are composed from lowered primitives/services; callable
-    // wrappers are resolved as passthrough adapters.
-    let is_passthrough_module = matches!(
-        module,
-        "tools.bootstrap"
-            | "tools.build"
-            | "tools.ci"
-            | "tools.clippy"
-            | "tools.codegen"
-            | "tools.dag_viz"
-            | "tools.deps"
-            | "tools.docgen"
-            | "funcs.sdlc_stages"
-            | "funcs.sdlc_worker"
-            | "funcs.test_control_flow"
-            | "tools.gist"
-            | "tools.infra"
-            | "tools.makegen"
-            | "tools.pragma"
-            | "tools.review"
-            | "tools.testgen"
-            | "pipelines.ci"
-            | "workflows.bootstrap"
-            | "workflows.build_all"
-            | "workflows.ci"
-            | "workflows.dag_viz"
-            | "workflows.deps"
-            | "workflows.gist"
-            | "workflows.makegen"
-            | "workflows.pragma"
-            | "workflows.sdlc"
-            | "workflows.test_all"
-            | "shared.dag_util"
-            | "std.patterns"
-            | "sample.main"
-    );
+    let is_passthrough_module =
+        PASSTHROUGH_MODULE_PREFIXES.iter().any(|prefix| module.starts_with(prefix))
+            || PASSTHROUGH_MODULE_EXACT.contains(&module);
     if !is_passthrough_module {
         return None;
     }
@@ -1801,7 +1787,7 @@ mod tests {
     fn resolve_unknown_module_fails_closed() {
         let node = callable_node(
             "unknown_op",
-            "tools.unknown",
+            "unregistered.unknown",
             "do_something",
             ObligationCategory::None,
         );

@@ -1142,62 +1142,6 @@ fn validate_dsl_module_compile_resolve(
     ))
 }
 
-fn stale_replaces_inventory_targets() -> BTreeSet<&'static str> {
-    [
-        "gunbc-dag/src/dag_viz/graph.rs",
-        "gunbc-dag/src/testgen_dag/graph.rs",
-        "gunbc-dag/src/testgen_dag/graph_mock.rs",
-        "gunbc-dag/src/testgen_dag/mod.rs",
-        "gunbc-dag/src/testgen_dag/ops.rs",
-        "gunbc-dag/src/workspace/subdags/clippy.rs",
-        "gunbc-dag/src/workspace/subdags/dag_viz.rs",
-        "gunbc-dag/src/workspace/subdags/deps.rs",
-        "gunbc-dag/src/workspace/subdags/gist.rs",
-        "gunbc-dag/src/workspace/subdags/mod.rs",
-        "gunbc-dag/src/workspace/subdags/testgen.rs",
-        "lib/review/src/graph.rs",
-        "lib/review/src/graph_mock.rs",
-        "lib/tools/clippy/src/graph.rs",
-        "lib/tools/clippy/src/graph_mock.rs",
-        "lib/tools/clippy/src/ops.rs",
-        "lib/tools/deps/src/graph.rs",
-        "lib/tools/deps/src/graph_mock.rs",
-        "lib/tools/deps/src/ops.rs",
-        "lib/tools/gist/src/graph.rs",
-        "lib/tools/gist/src/graph_mock.rs",
-        "lib/aws-ops/src/graph.rs",
-        "lib/aws-ops/src/graph_mock.rs",
-        "lib/aws-ops/src/ops.rs",
-        "lib/azure-ops/src/graph.rs",
-        "lib/azure-ops/src/graph_mock.rs",
-        "lib/azure-ops/src/ops.rs",
-        "lib/cloud-ops/src/github_credential_graph.rs",
-        "lib/cloud-ops/src/graph.rs",
-        "lib/cloud-ops/src/infra_graph.rs",
-        "lib/cloud-ops/src/ops.rs",
-        "lib/cloud-ops/src/secret_provision_graph.rs",
-        "lib/gcp-ops/src/discovery_graph.rs",
-        "lib/gcp-ops/src/graph.rs",
-        "lib/gcp-ops/src/graph_mock.rs",
-        "lib/gcp-ops/src/ops.rs",
-        "lib/llm-ops/src/graph.rs",
-        "lib/llm-ops/src/graph_mock.rs",
-        "lib/tools/cargo/src/ops.rs",
-        "gunbc-dag/src/bootstrap/ops.rs",
-        "gunbc-dag/src/build/ops.rs",
-        "gunbc-dag/src/ci/ops.rs",
-        "gunbc-dag/src/codegen/ops.rs",
-        "gunbc-dag/src/docgen/ops.rs",
-        "gunbc-dag/src/makegen/ops.rs",
-        "gunbc-dag/src/pragma/ops.rs",
-        "gunbc-dag/src/workspace/subdags/bootstrap.rs",
-        "gunbc-dag/src/workspace/subdags/languages.rs",
-        "gunbc-dag/src/workspace/subdags/makegen.rs",
-    ]
-    .into_iter()
-    .collect()
-}
-
 fn extract_replaces_paths(line_fragment: &str) -> Vec<String> {
     line_fragment
         .split(|ch: char| ch.is_whitespace() || matches!(ch, ',' | '+' | '(' | ')' | ';'))
@@ -1277,7 +1221,6 @@ fn collect_dag_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 
 #[allow(clippy::disallowed_methods)] // Build-time DSL inventory guardrail for codegen.
 fn validate_stale_replaces_claims(workspace_root: &Path) -> Result<(), String> {
-    let stale_targets = stale_replaces_inventory_targets();
     let dsl_root = workspace_root.join("dsl");
     let mut violations = Vec::new();
 
@@ -1285,9 +1228,6 @@ fn validate_stale_replaces_claims(workspace_root: &Path) -> Result<(), String> {
         let content = fs::read_to_string(&dag_file)
             .map_err(|e| format!("failed to read {}: {e}", dag_file.display()))?;
         for claim in parse_replaces_claims(&content) {
-            if !stale_targets.contains(claim.as_str()) {
-                continue;
-            }
             if workspace_root.join(&claim).exists() {
                 let rel = dag_file
                     .strip_prefix(workspace_root)

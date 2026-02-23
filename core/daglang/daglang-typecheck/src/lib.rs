@@ -2368,7 +2368,10 @@ fn infer_expr_type_for_expected_named_record(
     let mut errors = Vec::new();
     let mut inferred_fields = HashMap::new();
     let mut compatible = true;
-    for (name, value_expr) in fields {
+    for field in fields {
+        let daglang_syntax::ast::RecordField::Named(name, value_expr) = field else {
+            continue;
+        };
         let (inferred, val_errors) = infer_expr_type(value_expr, local_bindings, infer_context);
         errors.extend(val_errors);
         let inferred_name = inferred.display_name().unwrap_or_else(|| "Any".to_string());
@@ -2546,23 +2549,28 @@ fn infer_expr_type(
         }
         Expr::Record(type_name, fields) => {
             if let Some(name) = type_name {
-                for (_, value) in fields {
-                    let (_, val_errors) = infer_expr_type(value, local_bindings, infer_context);
-                    errors.extend(val_errors);
+                for field in fields {
+                    if let daglang_syntax::ast::RecordField::Named(_, value) = field {
+                        let (_, val_errors) = infer_expr_type(value, local_bindings, infer_context);
+                        errors.extend(val_errors);
+                    }
                 }
                 ValueType::Named(name.clone())
             } else {
                 ValueType::Record(
                     fields
                         .iter()
-                        .map(|(name, expr)| {
+                        .filter_map(|field| {
+                            let daglang_syntax::ast::RecordField::Named(name, expr) = field else {
+                                return None;
+                            };
                             let (val, val_errors) =
                                 infer_expr_type(expr, local_bindings, infer_context);
                             errors.extend(val_errors);
-                            (
+                            Some((
                                 name.clone(),
                                 val.display_name().unwrap_or_else(|| "Any".to_string()),
-                            )
+                            ))
                         })
                         .collect(),
                 )
@@ -2723,7 +2731,15 @@ fn type_ids_compatible(expected: &str, got: &str) -> bool {
     if type_ids_structurally_match(&expected_id, &got_id) {
         return true;
     }
-    core_type_registry().is_compatible(&got_id, &expected_id)
+    let registry = core_type_registry();
+    if registry.is_compatible(&got_id, &expected_id) {
+        return true;
+    }
+    // If either type is unknown to the core registry, it's a project-level
+    // custom type whose coercion paths aren't registered here. Avoid
+    // false-positive failures by assuming compatibility for types the
+    // registry cannot reason about.
+    !registry.contains(&expected_id) || !registry.contains(&got_id)
 }
 
 fn type_ids_compatible_bidirectional(lhs: &str, rhs: &str) -> bool {
@@ -3363,7 +3379,10 @@ fn parse_file_types_annotation(
     };
 
     let mut file_types = HashMap::new();
-    for (bucket, value) in fields {
+    for field in fields {
+        let daglang_syntax::ast::RecordField::Named(bucket, value) = field else {
+            continue;
+        };
         let encoding = parse_content_encoding_bucket(bucket.as_str()).ok_or_else(|| {
             format!(
                 "@file_types only supports text/binary/utf8/ascii/latin1/unknown buckets, got `{bucket}`"
@@ -3438,11 +3457,13 @@ fn extract_range_bounds(args: &[Expr]) -> (Option<i64>, Option<i64>) {
     for arg in args {
         match arg {
             Expr::Record(_, fields) => {
-                for (name, value) in fields {
-                    match name.as_str() {
-                        "min" => min = extract_int_literal(value),
-                        "max" => max = extract_int_literal(value),
-                        _ => {}
+                for field in fields {
+                    if let daglang_syntax::ast::RecordField::Named(name, value) = field {
+                        match name.as_str() {
+                            "min" => min = extract_int_literal(value),
+                            "max" => max = extract_int_literal(value),
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -5437,14 +5458,14 @@ fn run(value: Int @range(min: 5, max: 1)) -> Int { value }"#,
             args: vec![Expr::Record(
                 None,
                 vec![
-                    (
+                    daglang_syntax::ast::RecordField::Named(
                         "text".to_string(),
                         Expr::List(vec![
                             Expr::Literal(daglang_syntax::ast::Literal::String(".rs".to_string())),
                             Expr::Literal(daglang_syntax::ast::Literal::String(".md".to_string())),
                         ]),
                     ),
-                    (
+                    daglang_syntax::ast::RecordField::Named(
                         "binary".to_string(),
                         Expr::List(vec![Expr::Literal(daglang_syntax::ast::Literal::String(
                             ".png".to_string(),

@@ -869,9 +869,10 @@ pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
         return ValueBacking::Map;
     }
 
-    let registry = TypeRegistry::with_core_types();
+    static CORE_REGISTRY: std::sync::OnceLock<TypeRegistry> = std::sync::OnceLock::new();
+    let registry = CORE_REGISTRY.get_or_init(TypeRegistry::with_core_types);
     let port_type =
-        PortType::try_parse(type_id).or_else(|| PortType::from_registry(type_id, &registry).ok());
+        PortType::try_parse(type_id).or_else(|| PortType::from_registry(type_id, registry).ok());
     match port_type {
         Some(PortType::String) => ValueBacking::String,
         Some(PortType::Bool) => ValueBacking::Bool,

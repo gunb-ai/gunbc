@@ -197,19 +197,57 @@ pub struct DisplayResult {
 /// Run a fast dry-run preflight against the given DAG and inputs.
 ///
 /// This catches wiring/input contract failures before real execution starts.
-/// Transport executors are intercepted in dry-run mode.
+/// Transport executors are intercepted in dry-run mode. Boundary mocks for
+/// all structurally-intercepted nodes (transport executors, environment nodes,
+/// tool consumers) are auto-populated so callers don't need to wire them.
 pub fn run_small_preflight<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<(), ExecError> {
+    let boundary_mocks = auto_populate_intercept_mocks(dag);
     execute_with_mode_and_inputs_and_detail(
         dag,
-        ExecutionMode::DryRun(BoundaryMocks::new()),
+        ExecutionMode::DryRun(boundary_mocks),
         input_mocks,
         gunbc_ir::LogDetailLevel::Basic,
     )
     .map(|_| ())
     .map_err(|e| ExecError::new(format!("small-test preflight failed: {e}")))
+}
+
+/// Build boundary mocks for all nodes that would be intercepted in DryRun mode.
+///
+/// Uses the same structural criteria as the executor: transport execution nodes,
+/// tool/resource environment nodes, and tool consumer nodes all get `Value::Unit`
+/// placeholders for every output port.
+fn auto_populate_intercept_mocks<T>(dag: &Dag<T>) -> BoundaryMocks {
+    let mut mocks = BoundaryMocks::new();
+    for node in &dag.nodes {
+        let dominated_by_transport = node
+            .inputs
+            .iter()
+            .any(|p| p.type_id.0 == "TransportRequest");
+        let emits_tool_handle = node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+        let emits_resource = node.outputs.iter().any(|p| {
+            matches!(
+                p.type_id.0.as_str(),
+                "FilesystemHandle"
+                    | "NetworkHandle"
+                    | "Timestamp"
+                    | "Credential"
+                    | "Platform"
+                    | "CloudSecretConfig"
+            )
+        });
+        let consumes_tool_handle = node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+
+        if dominated_by_transport || emits_tool_handle || emits_resource || consumes_tool_handle {
+            for port in &node.outputs {
+                mocks.set_value(node.id.0.as_str(), port.name.0.as_str(), Value::Skipped);
+            }
+        }
+    }
+    mocks
 }
 
 /// Run a lowering-only preflight against the given DAG.

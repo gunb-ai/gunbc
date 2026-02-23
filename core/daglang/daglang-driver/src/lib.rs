@@ -1147,16 +1147,12 @@ fn run() -> Bool {
             .as_str();
 
         // ---- Handler kinds ----
-        // The content upsert pattern should produce all these handler kinds:
+        // Makegen-specific nodes now route through UnimplementedPassthrough;
+        // content-upsert pattern should still produce file I/O handlers:
         assert!(
-            main_rs.contains("LoadRegistry"),
-            "missing LoadRegistry handler"
+            main_rs.contains("UnimplementedPassthrough"),
+            "makegen callables should route through UnimplementedPassthrough"
         );
-        assert!(
-            main_rs.contains("RenderMakefile"),
-            "missing RenderMakefile handler"
-        );
-        assert!(main_rs.contains("Entrypoint"), "missing Entrypoint handler");
         assert!(
             main_rs.contains("PrepareReadContent"),
             "missing PrepareReadContent handler"

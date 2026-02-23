@@ -438,7 +438,7 @@ pub mod ast {
         /// String interpolation: `"hello {name}"`
         StringInterp(Vec<StringPart>),
         /// Record construction: `Foo { a: 1, b: 2 }`
-        Record(Option<String>, Vec<(String, Expr)>),
+        Record(Option<String>, Vec<RecordField>),
         /// Match expression
         Match(Box<Expr>, Vec<MatchArm>),
         /// If/else
@@ -516,9 +516,21 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub enum Pattern {
         Ident(String),
-        Variant(String, Vec<(String, Pattern)>),
+        Variant(String, Vec<PatternField>),
         Wildcard,
         Literal(Literal),
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum RecordField {
+        Named(String, Expr),
+        Spread(Option<String>),
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum PatternField {
+        Named(String, Pattern),
+        Spread(Option<String>),
     }
 
     // ── Annotations ─────────────────────────────────────────────────

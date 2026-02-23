@@ -2682,19 +2682,24 @@ fn poll_agent_provider_status(
     agent_record: &gunbc_dag::AgentLedgerRecord,
     issue_id: Option<u64>,
 ) -> Result<AgentStatus, String> {
-    match agent_record.handle.provider.as_str() {
+    let provider = agent_record.handle.provider.as_str();
+    let adapter: Box<dyn AgentAdapter> = match provider {
         "stub" => {
             let branch = issue_id
                 .map(|id| format!("sdlc/issue-{id}"))
                 .unwrap_or_else(|| "sdlc/issue-unknown".to_string());
-            StubAgentAdapter::new(branch, "0000000")
-                .poll_status(&agent_record.handle)
-                .map_err(|error| format!("agent poll failed: {error}"))
+            Box::new(StubAgentAdapter::new(branch, "0000000"))
         }
-        other => Err(format!(
-            "agent provider `{other}` is not configured for worker sweep polling"
-        )),
-    }
+        other => {
+            return Err(format!(
+                "agent provider `{other}` is not implemented; \
+                 add an AgentAdapter impl and register it here"
+            ));
+        }
+    };
+    adapter
+        .poll_status(&agent_record.handle)
+        .map_err(|error| format!("agent poll failed ({provider}): {error}"))
 }
 
 fn agent_status_label(status: &AgentStatus) -> &'static str {
@@ -3322,32 +3327,37 @@ impl CompiledStageDispatcher {
     }
 
     fn wire_profile_credentials(&self) -> Result<(), String> {
-        if let Some(expr) = self.profile_defaults.issue_credential_expr.as_ref() {
-            let github_token_missing = std::env::var("GITHUB_TOKEN")
-                .ok()
-                .map(|value| value.trim().is_empty())
-                .unwrap_or(true);
-            if github_token_missing {
-                if let Ok(token) = resolve_profile_value_expr(expr) {
-                    if !token.trim().is_empty() {
-                        std::env::set_var("GITHUB_TOKEN", token);
+        static CREDS_INIT: std::sync::Once = std::sync::Once::new();
+        CREDS_INIT.call_once(|| {
+            if let Some(expr) = self.profile_defaults.issue_credential_expr.as_ref() {
+                let github_token_missing = std::env::var("GITHUB_TOKEN")
+                    .ok()
+                    .map(|value| value.trim().is_empty())
+                    .unwrap_or(true);
+                if github_token_missing {
+                    if let Ok(token) = resolve_profile_value_expr(expr) {
+                        if !token.trim().is_empty() {
+                            // TODO: migrate to CredentialIntent pipeline instead of global env
+                            std::env::set_var("GITHUB_TOKEN", token);
+                        }
                     }
                 }
             }
-        }
-        if let Some(expr) = self.profile_defaults.agent_credential_expr.as_ref() {
-            let codex_api_key_missing = std::env::var("CODEX_API_KEY")
-                .ok()
-                .map(|value| value.trim().is_empty())
-                .unwrap_or(true);
-            if codex_api_key_missing {
-                if let Ok(token) = resolve_profile_value_expr(expr) {
-                    if !token.trim().is_empty() {
-                        std::env::set_var("CODEX_API_KEY", token);
+            if let Some(expr) = self.profile_defaults.agent_credential_expr.as_ref() {
+                let codex_api_key_missing = std::env::var("CODEX_API_KEY")
+                    .ok()
+                    .map(|value| value.trim().is_empty())
+                    .unwrap_or(true);
+                if codex_api_key_missing {
+                    if let Ok(token) = resolve_profile_value_expr(expr) {
+                        if !token.trim().is_empty() {
+                            // TODO: migrate to CredentialIntent pipeline instead of global env
+                            std::env::set_var("CODEX_API_KEY", token);
+                        }
                     }
                 }
             }
-        }
+        });
         Ok(())
     }
 }
