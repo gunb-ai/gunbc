@@ -1441,6 +1441,36 @@ fn worker_rejects_malformed_param_flag() {
 }
 
 #[test]
+fn worker_rejects_runtime_param_type_mismatch_for_typed_entrypoint() {
+    let ctx = CliTestContext::new("worker_rejects_param_type_mismatch", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("issue_id=not-an-int")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run with mismatched typed param");
+    assert!(
+        !worker.status.success(),
+        "worker should fail closed for typed --param mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("invalid --param issue_id=not-an-int; expected Int-compatible value"),
+        "stderr should explain typed --param mismatch: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn worker_real_mode_runtime_param_overrides_dispatch_run_key_input() {
     let ctx = CliTestContext::new("worker_runtime_param_run_key_override", sdlc_bin());
     let root = ctx.path().to_path_buf();
@@ -1518,6 +1548,65 @@ fn worker_real_mode_runtime_param_overrides_dispatch_run_key_input() {
     assert!(
         design_review_comment.contains("override-run-key"),
         "compiled dispatch should consume overridden run_key in stage message: {design_review_comment}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn issue_command_supports_runtime_param_flags() {
+    let ctx = CliTestContext::new("issue_command_runtime_params", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-issue-runtime-params",
+        "intent-20260221-issue-runtime-params",
+        Some(5154),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before issue command");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before issue command: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let issue = ctx
+        .command()
+        .arg("issue")
+        .arg("--issue-id")
+        .arg("5154")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("run_key=issue-runtime-override")
+        .current_dir(&root)
+        .output()
+        .expect("run issue command with runtime param");
+    assert!(
+        issue.status.success(),
+        "issue command should accept runtime params: {}",
+        String::from_utf8_lossy(&issue.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
+    assert_eq!(
+        payload["command"],
+        serde_json::Value::String("issue".to_string())
+    );
+    assert_eq!(
+        payload["runtime_params"]["run_key"],
+        serde_json::Value::String("issue-runtime-override".to_string())
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
