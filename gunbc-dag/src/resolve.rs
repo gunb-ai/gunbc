@@ -737,7 +737,7 @@ fn resolve_domain(
     }
     // 2. Service/workspace modules use generic transport dispatch.
     if module.starts_with("services.") || module.starts_with("workspace.") {
-        return resolve_service_transport(node_id, module, name, service_metadata);
+        return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
     // 3. Default: passthrough. The compiler validated this callable exists.
     //    If it compiled, it's resolvable. No registry needed.
@@ -1305,6 +1305,7 @@ fn resolve_service_transport(
     node_id: &str,
     module: &str,
     name: &str,
+    outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
     // Execute nodes are always the same transport executor.
@@ -1342,6 +1343,14 @@ fn resolve_service_transport(
                 _ => {}
             }
         }
+        // Metadata present but no spec (or unmatched spec variant). The
+        // compiler validated this node exists; it may be from a provider
+        // not selected by the active profile. Passthrough is safe — if the
+        // node is reachable, the executor will feed it inputs and collect
+        // whatever it emits.
+        return Ok(DynOp::new(PassthroughOp {
+            output_port_names: declared_output_names(outputs),
+        }));
     }
 
     Err(unknown_callable(node_id, module, name))

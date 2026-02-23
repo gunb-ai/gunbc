@@ -78,6 +78,72 @@ fn compiled_sdlc_pipeline_emits_ordered_stage_progression_metadata() {
 }
 
 #[test]
+fn compiled_sdlc_pipeline_resolves_full_dag() {
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .expect("resolve workspace layout");
+    let dsl_root = layout.workspace_root.join("dsl");
+    let context = DriverContext {
+        roots: vec![dsl_root.clone()],
+        target_file: Some(dsl_root.join("pipelines/sdlc.dag")),
+    };
+    let output = compile_from_context_with_options(
+        &context,
+        CompileOptions {
+            profile: Some("unit_test".to_string()),
+            ..CompileOptions::default()
+        },
+    )
+    .expect("compile sdlc pipeline with unit_test profile");
+
+    let node_count = output.lowered_dag.nodes.len();
+    assert!(
+        node_count > 20,
+        "compiled sdlc pipeline should have >20 nodes, got {node_count}"
+    );
+
+    // Diagnostic: dump all node IDs and their body types for inspection
+    let mut node_summary: Vec<String> = Vec::new();
+    for node in &output.lowered_dag.nodes {
+        let body_type = match &node.body {
+            NodeBody::Opaque(op) => match op {
+                LoweredOp::Callable { module, name, service_metadata, .. } => {
+                    let has_meta = service_metadata.is_some();
+                    format!("Callable({module}::{name}, meta={has_meta})")
+                }
+                LoweredOp::Primitive { kind, .. } => format!("Primitive({kind:?})"),
+                LoweredOp::Pipeline { stage_names, .. } => format!("Pipeline({} stages)", stage_names.len()),
+                LoweredOp::Collection { kind, .. } => format!("Collection({kind:?})"),
+                LoweredOp::LoopUnpack { .. } => "LoopUnpack".to_string(),
+                LoweredOp::LoopPack { .. } => "LoopPack".to_string(),
+                LoweredOp::BranchMerge { .. } => "BranchMerge".to_string(),
+            },
+            NodeBody::SubDag(inner) => format!("SubDag({} nodes)", inner.nodes.len()),
+        };
+        node_summary.push(format!("  {} -> {}", node.id.0, body_type));
+    }
+    node_summary.sort();
+    eprintln!("=== Lowered DAG nodes ({}) ===", output.lowered_dag.nodes.len());
+    for line in &node_summary {
+        eprintln!("{line}");
+    }
+
+    let resolved = resolve_lowered_dag(&output.lowered_dag);
+    match &resolved {
+        Ok(dag) => {
+            assert!(
+                dag.nodes.len() > 20,
+                "resolved dag should preserve node count, got {}",
+                dag.nodes.len()
+            );
+        }
+        Err(e) => {
+            panic!("resolve_lowered_dag failed: {e}");
+        }
+    }
+}
+
+#[test]
 fn compiled_reconciler_pipeline_emits_ordered_stage_progression_metadata() {
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
