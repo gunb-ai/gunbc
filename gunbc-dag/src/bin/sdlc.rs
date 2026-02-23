@@ -11,12 +11,14 @@ use daglang_driver::{compile_from_context_with_options, CompileOptions, DriverCo
 use gunbc_dag::{
     canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
     promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
-    reconcile_entries, register_retry_failure, release_claim, retry_ready, should_replay_skip,
-    try_acquire_claim, upsert_agent_record, upsert_provisional_artifact_with_payload,
-    validate_stage_transition, AgentLedger, ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome,
-    ClaimAcquireResult, ClaimLedger, ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
+    reconcile_entries, register_retry_failure, release_claim, resolve_lowered_dag, retry_ready,
+    should_replay_skip, try_acquire_claim, upsert_agent_record,
+    upsert_provisional_artifact_with_payload, validate_stage_transition, AgentLedger,
+    ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger,
+    ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
 };
 use gunbc_design_ops::{build_design_prompt, DesignRequest};
+use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, DynOp, ExecutionMode};
 use gunbc_ir::transport::agent::{
     target_branch_for_intent, AgentConstraints, DesignArtifact, HandoffSpec,
 };
@@ -30,7 +32,7 @@ use gunbc_ir::transport::github::{
     compare_and_set_stage_label as compare_issue_stage_labels, ensure_sdlc_issue_capabilities,
     SdlcIssueCapabilities,
 };
-use gunbc_ir::WorkspaceLayout;
+use gunbc_ir::{detect_entrypoints, Dag, Value, WorkspaceLayout};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -763,6 +765,11 @@ fn run_worker(
     if !dry_run {
         compile_sdlc_pipeline_for_runtime_profile(preflight.runtime_profile.as_str())?;
     }
+    let compiled_stage_dispatcher = if dry_run {
+        None
+    } else {
+        Some(compile_worker_stage_dispatch_dag()?)
+    };
 
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
@@ -1061,7 +1068,11 @@ fn run_worker(
                 }
                 ready_to_run.push(intake_key.clone());
                 if !dry_run {
+                    let stage_dispatcher = compiled_stage_dispatcher
+                        .as_ref()
+                        .ok_or_else(|| "compiled stage dispatcher unavailable".to_string())?;
                     match dispatch_pipeline_stage(
+                        stage_dispatcher,
                         intake_key,
                         record,
                         &worker_id_str,
@@ -2718,33 +2729,6 @@ fn issue_transport_compare_and_set_stage_label(
     Ok(true)
 }
 
-fn execute_stage_idea_to_design(
-    _intake_key: &str,
-    record: &IntakeRecord,
-    issue_transport: &mut IssueTransportLedger,
-    now_epoch_ms: u128,
-) -> Result<(), String> {
-    if let Some(issue_id) = record.issue_id {
-        if record.stage == IssueLifecycleStage::Idea {
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "design-marker",
-                "Generated design prompt",
-                now_epoch_ms,
-            )?;
-            advance_remote_stage(
-                issue_transport,
-                issue_id,
-                IssueLifecycleStage::Idea,
-                IssueLifecycleStage::Design,
-                now_epoch_ms,
-            )?;
-        }
-    }
-    Ok(())
-}
-
 fn advance_remote_stage(
     issue_transport: &mut IssueTransportLedger,
     issue_id: u64,
@@ -2775,23 +2759,150 @@ enum StageDispatchOutcome {
     AwaitingApproval,
 }
 
-/// Dispatch a compiled SDLC pipeline stage for execution (D9).
-///
-/// Routes the current intake record to the appropriate compiled pipeline
-/// stage based on the lifecycle stage. Each stage corresponds to a section
-/// of the `pipelines.sdlc` DAG.
-///
-/// Stage routing:
-///   - Idea         → design generation (LLM call, artifact post)
-///   - Design       → design review (LLM evaluation)
-///   - DesignReview → awaiting approval (manual transition gate)
-///   - Accepted     → implementation (agent spawn, branch, PR)
-///   - Implementation → closed (acceptance tests, merge, close)
-///
-/// The compiled DAG provides the node graph; this function supplies
-/// the runtime inputs (issue_id, run_key, worker_id) and dispatches
-/// via the standard execution engine.
+struct StageDispatchDecision {
+    next_stage: IssueLifecycleStage,
+    awaiting_approval: bool,
+    marker: Option<String>,
+    message: Option<String>,
+}
+
+struct CompiledStageDispatcher {
+    dag: Dag<DynOp>,
+}
+
+impl CompiledStageDispatcher {
+    fn execute(
+        &self,
+        intake_key: &str,
+        record: &IntakeRecord,
+        worker_id: &str,
+        issue_id: u64,
+    ) -> Result<StageDispatchDecision, String> {
+        let callable_name = stage_dispatch_callable_name(record.stage);
+        let target_node_id = format!("funcs.sdlc_dispatch_runtime::{callable_name}");
+        let entrypoints = detect_entrypoints(&self.dag);
+        let mut input_mocks = BoundaryMocks::new();
+        let mut unsupported_ports = Vec::new();
+        for (node_id, port_name, _) in entrypoints.entrypoint_ports {
+            match port_name.0.as_str() {
+                "run_key" => input_mocks.set_input(
+                    node_id.0,
+                    port_name.0,
+                    Value::Str(record.run_key.clone()),
+                ),
+                "worker_id" => {
+                    input_mocks.set_input(node_id.0, port_name.0, Value::Str(worker_id.to_string()))
+                }
+                "issue_id" => {
+                    input_mocks.set_input(node_id.0, port_name.0, Value::Int(issue_id as i64))
+                }
+                "__deps" => input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new())),
+                other => unsupported_ports.push(format!("{}.{other}", node_id.0)),
+            }
+        }
+        if !unsupported_ports.is_empty() {
+            unsupported_ports.sort();
+            unsupported_ports.dedup();
+            return Err(format!(
+                "compiled stage dispatcher for `{intake_key}` has unsupported entrypoint ports: {}",
+                unsupported_ports.join(", ")
+            ));
+        }
+
+        let execution =
+            execute_with_mode_and_inputs(&self.dag, ExecutionMode::Real, Some(&input_mocks))
+                .map_err(|error| {
+                    format!(
+                        "compiled stage dispatcher execution failed for `{intake_key}`: {error}"
+                    )
+                })?;
+        let entry = execution
+            .entries
+            .iter()
+            .find(|entry| entry.node_id == target_node_id)
+            .ok_or_else(|| {
+                format!(
+                    "compiled stage dispatcher execution for `{intake_key}` did not execute target node `{target_node_id}`"
+                )
+            })?;
+        let next_stage_label = entry
+            .outputs
+            .get("next_stage")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "compiled stage dispatcher output `next_stage` is missing or non-string for `{intake_key}` (outputs: {:?})",
+                    entry.outputs
+                )
+            })?;
+        let awaiting_approval = entry
+            .outputs
+            .get("awaiting_approval")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| {
+                format!(
+                    "compiled stage dispatcher output `awaiting_approval` is missing or non-bool for `{intake_key}`"
+                )
+            })?;
+        let marker = entry
+            .outputs
+            .get("marker")
+            .and_then(value_as_optional_string);
+        let message = entry
+            .outputs
+            .get("message")
+            .and_then(value_as_optional_string);
+        Ok(StageDispatchDecision {
+            next_stage: parse_stage(next_stage_label)?,
+            awaiting_approval,
+            marker,
+            message,
+        })
+    }
+}
+
+fn stage_dispatch_callable_name(stage: IssueLifecycleStage) -> &'static str {
+    match stage {
+        IssueLifecycleStage::Idea => "dispatch_idea",
+        IssueLifecycleStage::Design => "dispatch_design",
+        IssueLifecycleStage::DesignReview => "dispatch_design_review",
+        IssueLifecycleStage::Accepted => "dispatch_accepted",
+        IssueLifecycleStage::Implementation => "dispatch_implementation",
+        IssueLifecycleStage::Closed => "dispatch_closed",
+    }
+}
+
+fn value_as_optional_string(value: &Value) -> Option<String> {
+    match value {
+        Value::Str(s) if s.trim().is_empty() => None,
+        Value::Str(s) => Some(s.clone()),
+        Value::Unit | Value::Skipped => None,
+        _ => None,
+    }
+}
+
+fn compile_worker_stage_dispatch_dag() -> Result<CompiledStageDispatcher, String> {
+    let layout = WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
+        .map_err(|error| {
+            format!("failed to resolve workspace layout for compiled stage dispatcher: {error}")
+        })?;
+    let dsl_root = layout.workspace_root.join("dsl");
+    let context = DriverContext {
+        roots: vec![dsl_root.clone()],
+        target_file: Some(dsl_root.join("funcs/sdlc_dispatch_runtime.dag")),
+    };
+    let output = compile_from_context_with_options(&context, CompileOptions::default()).map_err(|error| {
+        format!("failed to compile stage dispatcher DAG from funcs/sdlc_dispatch_runtime.dag: {error}")
+    })?;
+    let dag = resolve_lowered_dag(&output.lowered_dag)
+        .map_err(|error| format!("failed to resolve compiled stage dispatcher DAG: {error}"))?;
+    Ok(CompiledStageDispatcher { dag })
+}
+
+/// Dispatch a compiled SDLC stage policy graph for execution.
 fn dispatch_pipeline_stage(
+    dispatcher: &CompiledStageDispatcher,
     intake_key: &str,
     record: &IntakeRecord,
     worker_id: &str,
@@ -2802,94 +2913,24 @@ fn dispatch_pipeline_stage(
         .issue_id
         .ok_or_else(|| format!("no issue_id for intake key `{intake_key}`"))?;
 
-    match record.stage {
-        IssueLifecycleStage::Idea => {
-            // Stage 1-3: Idea → Design (generate design via LLM, post artifact)
-            execute_stage_idea_to_design(intake_key, record, issue_transport, now_epoch_ms)?;
-            Ok(StageDispatchOutcome::Advanced(IssueLifecycleStage::Design))
-        }
-        IssueLifecycleStage::Design => {
-            // Stage 4-5: Design → DesignReview (LLM evaluation of design)
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "sdlc:design-review",
-                &format!("Design review initiated for run_key `{}`", record.run_key),
-                now_epoch_ms,
-            )?;
-            advance_remote_stage(
-                issue_transport,
-                issue_id,
-                IssueLifecycleStage::Design,
-                IssueLifecycleStage::DesignReview,
-                now_epoch_ms,
-            )?;
-            Ok(StageDispatchOutcome::Advanced(
-                IssueLifecycleStage::DesignReview,
-            ))
-        }
-        IssueLifecycleStage::DesignReview => {
-            // Stage 5-6: DesignReview → Accepted (approval gate)
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "sdlc:approval-gate",
-                &format!(
-                    "Awaiting explicit approval for run_key `{}`; \
-                     transition to `accepted` after review sign-off.",
-                    record.run_key
-                ),
-                now_epoch_ms,
-            )?;
-            Ok(StageDispatchOutcome::AwaitingApproval)
-        }
-        IssueLifecycleStage::Accepted => {
-            // Stage 7: Accepted → Implementation (agent spawn, branch creation)
-            let branch = format!("sdlc/issue-{issue_id}");
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "sdlc:implementation",
-                &format!("Implementation started on branch `{branch}` (worker: `{worker_id}`)"),
-                now_epoch_ms,
-            )?;
-            advance_remote_stage(
-                issue_transport,
-                issue_id,
-                IssueLifecycleStage::Accepted,
-                IssueLifecycleStage::Implementation,
-                now_epoch_ms,
-            )?;
-            Ok(StageDispatchOutcome::Advanced(
-                IssueLifecycleStage::Implementation,
-            ))
-        }
-        IssueLifecycleStage::Implementation => {
-            // Stage 8-10: Implementation → Closed (code review, test, merge, close)
-            // In the full compiled DAG, this runs PR diff review, cargo test,
-            // cargo clippy, then merges PR and closes the issue.
-            issue_transport_upsert_comment(
-                issue_transport,
-                issue_id,
-                "sdlc:acceptance",
-                &format!(
-                    "Acceptance testing and close for run_key `{}` (worker: `{worker_id}`)",
-                    record.run_key
-                ),
-                now_epoch_ms,
-            )?;
-            advance_remote_stage(
-                issue_transport,
-                issue_id,
-                IssueLifecycleStage::Implementation,
-                IssueLifecycleStage::Closed,
-                now_epoch_ms,
-            )?;
-            Ok(StageDispatchOutcome::Advanced(IssueLifecycleStage::Closed))
-        }
-        IssueLifecycleStage::Closed => {
-            // Terminal stage — nothing to dispatch.
-            Ok(StageDispatchOutcome::Advanced(IssueLifecycleStage::Closed))
-        }
+    let decision = dispatcher.execute(intake_key, record, worker_id, issue_id)?;
+    if let (Some(marker), Some(message)) = (decision.marker.as_deref(), decision.message.as_deref())
+    {
+        issue_transport_upsert_comment(issue_transport, issue_id, marker, message, now_epoch_ms)?;
+    }
+    if !decision.awaiting_approval && decision.next_stage != record.stage {
+        advance_remote_stage(
+            issue_transport,
+            issue_id,
+            record.stage,
+            decision.next_stage,
+            now_epoch_ms,
+        )?;
+    }
+
+    if decision.awaiting_approval {
+        Ok(StageDispatchOutcome::AwaitingApproval)
+    } else {
+        Ok(StageDispatchOutcome::Advanced(decision.next_stage))
     }
 }

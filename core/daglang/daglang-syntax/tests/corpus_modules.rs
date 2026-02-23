@@ -70,7 +70,7 @@ fn corpus_module_declarations_match_file_paths() {
     );
     assert_eq!(
         seen_modules.len(),
-        85,
-        "expected 85 unique module declarations in corpus"
+        89,
+        "expected 89 unique module declarations in corpus"
     );
 }

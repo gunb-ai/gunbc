@@ -581,6 +581,7 @@ fn resolve_domain(
     //    None for unknown (which falls through to passthrough).
     let custom = match module {
         "std.resources" => Some(resolve_std_resources(name)),
+        "funcs.sdlc_dispatch_runtime" => resolve_sdlc_dispatch_runtime(name),
         _ => None,
     };
     if let Some(op) = custom {
@@ -614,6 +615,110 @@ fn resolve_std_resources(name: &str) -> DynOp {
     }
     // Other std.resources callables pass through as identity.
     DynOp::new(IdentityCallableOp)
+}
+
+fn resolve_sdlc_dispatch_runtime(name: &str) -> Option<DynOp> {
+    let directive = match name {
+        "dispatch_idea" => Some(SdlcStageDirective {
+            next_stage: "design",
+            awaiting_approval: false,
+            marker: Some("design-marker"),
+            message_template: Some("Generated design prompt"),
+        }),
+        "dispatch_design" => Some(SdlcStageDirective {
+            next_stage: "design-review",
+            awaiting_approval: false,
+            marker: Some("sdlc:design-review"),
+            message_template: Some("Design review initiated for run_key `{run_key}`"),
+        }),
+        "dispatch_design_review" => Some(SdlcStageDirective {
+            next_stage: "design-review",
+            awaiting_approval: true,
+            marker: Some("sdlc:approval-gate"),
+            message_template: Some(
+                "Awaiting explicit approval for run_key `{run_key}`; transition to `accepted` after review sign-off.",
+            ),
+        }),
+        "dispatch_accepted" => Some(SdlcStageDirective {
+            next_stage: "implementation",
+            awaiting_approval: false,
+            marker: Some("sdlc:implementation"),
+            message_template: Some(
+                "Implementation started on branch `sdlc/issue-{issue_id}` (worker: `{worker_id}`)",
+            ),
+        }),
+        "dispatch_implementation" => Some(SdlcStageDirective {
+            next_stage: "closed",
+            awaiting_approval: false,
+            marker: Some("sdlc:acceptance"),
+            message_template: Some(
+                "Acceptance testing and close for run_key `{run_key}` (worker: `{worker_id}`)",
+            ),
+        }),
+        "dispatch_closed" => Some(SdlcStageDirective {
+            next_stage: "closed",
+            awaiting_approval: false,
+            marker: None,
+            message_template: None,
+        }),
+        _ => None,
+    }?;
+    Some(DynOp::new(SdlcStageDirectiveOp { directive }))
+}
+
+#[derive(Debug, Clone)]
+struct SdlcStageDirective {
+    next_stage: &'static str,
+    awaiting_approval: bool,
+    marker: Option<&'static str>,
+    message_template: Option<&'static str>,
+}
+
+#[derive(Debug, Clone)]
+struct SdlcStageDirectiveOp {
+    directive: SdlcStageDirective,
+}
+
+impl Executable for SdlcStageDirectiveOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let run_key = input_as_string(&inputs, "run_key");
+        let worker_id = input_as_string(&inputs, "worker_id");
+        let issue_id = input_as_string(&inputs, "issue_id");
+        let marker = self.directive.marker.unwrap_or_default();
+        let message = self
+            .directive
+            .message_template
+            .map(|template| {
+                template
+                    .replace("{run_key}", run_key.as_str())
+                    .replace("{worker_id}", worker_id.as_str())
+                    .replace("{issue_id}", issue_id.as_str())
+            })
+            .unwrap_or_default();
+
+        OutputMap::new()
+            .str("next_stage", self.directive.next_stage)
+            .bool("awaiting_approval", self.directive.awaiting_approval)
+            .str("marker", marker)
+            .str("message", message)
+            .json(
+                "value",
+                serde_json::json!({
+                    "next_stage": self.directive.next_stage,
+                    "awaiting_approval": self.directive.awaiting_approval,
+                }),
+            )
+            .ok()
+    }
+}
+
+fn input_as_string(inputs: &HashMap<String, Value>, key: &str) -> String {
+    match inputs.get(key) {
+        Some(Value::Str(value)) => value.clone(),
+        Some(Value::Int(value)) => value.to_string(),
+        Some(Value::Bool(value)) => value.to_string(),
+        _ => String::new(),
+    }
 }
 
 fn resolve_service_transport(
@@ -938,6 +1043,49 @@ mod tests {
             .execute(HashMap::new())
             .expect("pipeline dispatch should execute");
         assert_eq!(outputs.get("stages"), Some(&Value::Int(8)));
+    }
+
+    #[test]
+    fn resolve_sdlc_dispatch_runtime_callable_returns_stage_directives() {
+        let node = Node::opaque(
+            "dispatch_idea",
+            vec![
+                Port::new("run_key", "String"),
+                Port::new("worker_id", "String"),
+                Port::new("issue_id", "Int"),
+            ],
+            vec![
+                Port::new("next_stage", "String"),
+                Port::new("awaiting_approval", "Bool"),
+                Port::new("marker", "String"),
+                Port::new("message", "String"),
+            ],
+            LoweredOp::Callable {
+                module: "funcs.sdlc_dispatch_runtime".to_string(),
+                kind: CallableKind::Func,
+                name: "dispatch_idea".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        );
+        let op = resolve_node(&node).expect("dispatch_idea should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("run_key".to_string(), Value::Str("rk-1".to_string()));
+        inputs.insert("worker_id".to_string(), Value::Str("worker-7".to_string()));
+        inputs.insert("issue_id".to_string(), Value::Int(42));
+        let outputs = op.execute(inputs).expect("dispatch op should execute");
+        assert_eq!(outputs.get("next_stage"), Some(&Value::Str("design".to_string())));
+        assert_eq!(outputs.get("awaiting_approval"), Some(&Value::Bool(false)));
+        assert_eq!(
+            outputs.get("marker"),
+            Some(&Value::Str("design-marker".to_string()))
+        );
+        assert_eq!(
+            outputs.get("message"),
+            Some(&Value::Str("Generated design prompt".to_string()))
+        );
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
