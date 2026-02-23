@@ -1345,8 +1345,59 @@ fn worker_dry_run_reports_runtime_params_and_fails_closed_for_unknown_param_keys
         .output()
         .expect("run worker dry-run with runtime params");
     assert!(
+        !worker.status.success(),
+        "worker dry-run should fail closed for unsupported runtime params"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("compiled stage dispatcher received unsupported --param key `unknown_param`"),
+        "stderr should explain unsupported runtime param key: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_dry_run_reports_runtime_params_for_supported_param_keys() {
+    let ctx = CliTestContext::new("worker_dry_run_runtime_params_supported", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-runtime-params-supported",
+        "intent-20260221-runtime-params-supported",
+        Some(5153),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("run_key=override-run-key")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run with supported runtime params");
+    assert!(
         worker.status.success(),
-        "worker dry-run should succeed even when dispatch preview reports param error: {}",
+        "worker dry-run should succeed with supported runtime params: {}",
         String::from_utf8_lossy(&worker.stderr)
     );
     let payload: serde_json::Value =
@@ -1354,17 +1405,6 @@ fn worker_dry_run_reports_runtime_params_and_fails_closed_for_unknown_param_keys
     assert_eq!(
         payload["runtime_params"]["run_key"],
         serde_json::Value::String("override-run-key".to_string())
-    );
-    assert_eq!(
-        payload["runtime_params"]["unknown_param"],
-        serde_json::Value::String("unexpected".to_string())
-    );
-    assert!(
-        payload["dry_run_dispatches"][0]["error"]
-            .as_str()
-            .expect("dry-run dispatch error should be string")
-            .contains("unsupported --param key(s): unknown_param"),
-        "dry-run dispatch should fail closed for unsupported runtime params"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");

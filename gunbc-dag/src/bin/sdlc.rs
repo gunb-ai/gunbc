@@ -826,6 +826,7 @@ fn run_worker(
     } else {
         compile_worker_stage_dispatch_dag(preflight.runtime_profile.as_str())?
     };
+    let parsed_runtime_params = compiled_stage_dispatcher.validate_runtime_params(runtime_params)?;
 
     let ledger_path = intake_ledger_path();
     let mut ledger = load_intake_ledger(&ledger_path)?;
@@ -1172,7 +1173,7 @@ fn run_worker(
                         issue_transport: &mut issue_transport,
                         now_epoch_ms: now,
                         apply_side_effects: !dry_run,
-                        runtime_params,
+                        runtime_params: &parsed_runtime_params,
                     },
                 ) {
                     Ok(StageDispatchOutcome::Advanced(next_stage)) => {
@@ -3037,6 +3038,47 @@ struct CompiledStageDispatcher {
 }
 
 impl CompiledStageDispatcher {
+    fn collect_entrypoint_param_types(&self) -> Result<BTreeMap<String, String>, String> {
+        let mut types_by_param = BTreeMap::new();
+        let entrypoints = detect_entrypoints(&self.dag);
+        for (_, port_name, type_id) in entrypoints.entrypoint_ports {
+            if port_name.0 == "__deps" {
+                continue;
+            }
+            match types_by_param.get(&port_name.0) {
+                Some(existing) if existing != &type_id.0 => {
+                    return Err(format!(
+                        "compiled stage dispatcher entrypoint `{}` has conflicting type declarations (`{existing}` vs `{}`)",
+                        port_name.0, type_id.0
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    types_by_param.insert(port_name.0, type_id.0);
+                }
+            }
+        }
+        Ok(types_by_param)
+    }
+
+    fn validate_runtime_params(
+        &self,
+        runtime_params: &BTreeMap<String, String>,
+    ) -> Result<BTreeMap<String, Value>, String> {
+        let declared_types = self.collect_entrypoint_param_types()?;
+        let mut parsed = BTreeMap::new();
+        for (key, raw_value) in runtime_params {
+            let Some(type_id) = declared_types.get(key) else {
+                return Err(format!(
+                    "compiled stage dispatcher received unsupported --param key `{key}`"
+                ));
+            };
+            let value = parse_entrypoint_param_value(key, type_id, raw_value)?;
+            parsed.insert(key.clone(), value);
+        }
+        Ok(parsed)
+    }
+
     fn expected_next_stage(
         &self,
         current_stage: IssueLifecycleStage,
@@ -3064,24 +3106,20 @@ impl CompiledStageDispatcher {
         record: &IntakeRecord,
         worker_id: &str,
         issue_id: u64,
-        runtime_params: &BTreeMap<String, String>,
+        runtime_params: &BTreeMap<String, Value>,
     ) -> Result<StageDispatchDecision, String> {
         let callable_name = stage_dispatch_callable_name(record.stage);
         let target_node_id = format!("funcs.sdlc_dispatch_runtime::{callable_name}");
         let entrypoints = detect_entrypoints(&self.dag);
         let mut input_mocks = BoundaryMocks::new();
         let mut unsupported_ports = Vec::new();
-        let mut consumed_runtime_params = BTreeSet::new();
-        for (node_id, port_name, type_id) in entrypoints.entrypoint_ports {
+        for (node_id, port_name, _) in entrypoints.entrypoint_ports {
             if port_name.0 == "__deps" {
                 input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
                 continue;
             }
-            if let Some(raw) = runtime_params.get(&port_name.0) {
-                let value =
-                    parse_entrypoint_param_value(port_name.0.as_str(), type_id.0.as_str(), raw)?;
-                input_mocks.set_input(node_id.0, port_name.0.clone(), value);
-                consumed_runtime_params.insert(port_name.0);
+            if let Some(value) = runtime_params.get(&port_name.0) {
+                input_mocks.set_input(node_id.0, port_name.0.clone(), value.clone());
                 continue;
             }
             match port_name.0.as_str() {
@@ -3098,19 +3136,6 @@ impl CompiledStageDispatcher {
                 }
                 other => unsupported_ports.push(format!("{}.{other}", node_id.0)),
             }
-        }
-        let mut unsupported_runtime_params = runtime_params
-            .keys()
-            .filter(|key| !consumed_runtime_params.contains(*key))
-            .cloned()
-            .collect::<Vec<_>>();
-        unsupported_runtime_params.sort();
-        unsupported_runtime_params.dedup();
-        if !unsupported_runtime_params.is_empty() {
-            return Err(format!(
-                "compiled stage dispatcher for `{intake_key}` received unsupported --param key(s): {}",
-                unsupported_runtime_params.join(", ")
-            ));
         }
         if !unsupported_ports.is_empty() {
             unsupported_ports.sort();
@@ -3261,7 +3286,7 @@ struct StageDispatchRuntime<'a> {
     issue_transport: &'a mut IssueTransportLedger,
     now_epoch_ms: u128,
     apply_side_effects: bool,
-    runtime_params: &'a BTreeMap<String, String>,
+    runtime_params: &'a BTreeMap<String, Value>,
 }
 
 /// Dispatch a compiled SDLC stage policy graph for execution.
