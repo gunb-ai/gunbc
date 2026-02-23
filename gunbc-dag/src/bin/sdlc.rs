@@ -12,7 +12,7 @@ use gunbc_dag::{
     canonical_marker, claim_slot_key, heartbeat_claim, mark_run_completed, mark_run_failed,
     promote_to_canonical_artifact, promote_to_canonical_artifact_with_payload, provisional_marker,
     reconcile_entries, register_retry_failure, release_claim, resolve_lowered_dag, retry_ready,
-    should_replay_skip, try_acquire_claim, upsert_agent_record,
+    should_replay_skip, try_acquire_claim, update_agent_status, upsert_agent_record,
     upsert_provisional_artifact_with_payload, validate_stage_transition, AgentLedger,
     ArtifactLedger, ArtifactPayload, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger,
     ReconcileAction, ReconcileEntry, RetryState, RunStateLedger,
@@ -781,6 +781,8 @@ fn run_worker(
     let mut run_state = load_run_state_ledger(&run_state_path)?;
     let issue_transport_ledger_path = issue_transport_ledger_path();
     let mut issue_transport = load_issue_transport_ledger(&issue_transport_ledger_path)?;
+    let agent_ledger_path = agent_ledger_path();
+    let mut agent_ledger = load_agent_ledger(&agent_ledger_path)?;
     let mode = if dry_run { "dry-run" } else { "real" };
     let now = epoch_millis();
     let worker_id_str = worker_id.map(|s| s.to_string()).unwrap_or_else(|| {
@@ -895,11 +897,38 @@ fn run_worker(
     let mut llm_cost_units = BTreeMap::new();
     let mut claim_acquire_attempts: u64 = 0;
     let mut awaiting_approval = Vec::new();
+    let mut agent_polls = Vec::new();
     let mut processing_budget = if dry_run {
         None
     } else {
         preflight.worker_count.map(|count| count as usize)
     };
+
+    if !dry_run {
+        let poll_adapter = StubAgentAdapter::new("sdlc/polled", "stub-polled");
+        let poll_candidates = intake_keys
+            .iter()
+            .filter_map(|intake_key| {
+                let record = agent_ledger.entries.get(intake_key)?;
+                match record.status {
+                    AgentStatus::Running { .. } => {
+                        Some((intake_key.clone(), record.handle.clone()))
+                    }
+                    _ => None,
+                }
+            })
+            .collect::<Vec<_>>();
+        for (intake_key, handle) in poll_candidates {
+            let status = poll_adapter
+                .poll_status(&handle)
+                .map_err(|error| format!("agent poll failed for intake `{intake_key}`: {error}"))?;
+            update_agent_status(&mut agent_ledger, &intake_key, status.clone(), now)?;
+            agent_polls.push(json!({
+                "intake_key": intake_key,
+                "status": status,
+            }));
+        }
+    }
 
     for intake_key in &intake_keys {
         let Some(record) = ledger.entries.get_mut(intake_key) else {
@@ -1181,6 +1210,7 @@ fn run_worker(
         save_claim_ledger(&claim_ledger_path, &claim_ledger)?;
         save_run_state_ledger(&run_state_path, &run_state)?;
         save_issue_transport_ledger(&issue_transport_ledger_path, &issue_transport)?;
+        save_agent_ledger(&agent_ledger_path, &agent_ledger)?;
     }
 
     let pending_count = intake_keys
@@ -1188,7 +1218,7 @@ fn run_worker(
         .saturating_sub(skipped_terminalized.len())
         .saturating_sub(terminalized.len());
     let llm_estimated_total_units: u64 = llm_cost_units.values().copied().sum();
-    let output = json!({
+    let mut output = json!({
         "command": command_label,
         "report_generated_at_epoch_ms": now,
         "issue_filter": issue_filter,
@@ -1214,6 +1244,7 @@ fn run_worker(
         "claim_ledger_path": claim_ledger_path.display().to_string(),
         "run_state_path": run_state_path.display().to_string(),
         "issue_transport_ledger_path": issue_transport_ledger_path.display().to_string(),
+        "agent_ledger_path": agent_ledger_path.display().to_string(),
         "execution_report_path": execution_report_path().display().to_string(),
         "reconcile_actions": reconcile_plan.actions,
         "preflight": preflight,
@@ -1245,6 +1276,12 @@ fn run_worker(
             }
         }
     });
+    if let serde_json::Value::Object(map) = &mut output {
+        map.insert(
+            "agent_polls".to_string(),
+            serde_json::Value::Array(agent_polls),
+        );
+    }
     if !dry_run {
         save_execution_report(&output)?;
     }
