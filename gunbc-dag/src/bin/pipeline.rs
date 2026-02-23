@@ -248,12 +248,12 @@ fn main() {
         profile
             .criteria_for(gunbc_lib_review::dimension::ReviewDimension::Requirements)
             .cloned()
-            .unwrap_or_else(gunbc_lib_review::graph_mock::default_criteria)
+            .unwrap_or_else(gunbc_lib_review::default_criteria)
     } else {
         profile
             .criteria_for(gunbc_lib_review::dimension::ReviewDimension::Quality)
             .cloned()
-            .unwrap_or_else(gunbc_lib_review::graph_mock::default_criteria)
+            .unwrap_or_else(gunbc_lib_review::default_criteria)
     };
 
     // In dry-run mode, use the default config (OpenAI) to match mock specs.
@@ -327,8 +327,7 @@ fn main() {
 
     // Set up execution mode
     let mode = if dry_run {
-        let mocks = gunbc_lib_review::graph_mock::diff_review_mock_spec().to_boundary_mocks();
-        ExecutionMode::DryRun(mocks)
+        ExecutionMode::DryRun(BoundaryMocks::new())
     } else {
         ExecutionMode::Real
     };

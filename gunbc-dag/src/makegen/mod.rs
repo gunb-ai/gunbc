@@ -10,8 +10,6 @@ pub mod ops;
 pub mod registry;
 pub mod render;
 
-pub mod graph_mock;
-
 pub use ci_render::{
     render_github_actions_from_workflow_specs, render_gitlab_ci_from_workflow_specs,
     workflow_specs_to_dag,
@@ -37,7 +35,6 @@ pub use render::{render_makefile, render_makefile_with_config};
     description = "Generate Makefile from tool registry",
     builder = "build_makegen_graph",
     import = "use gunbc_makegen::build_makegen_graph;",
-    mock_spec = "gunbc_dag::makegen::graph_mock::makegen_mock_spec()",
     package = "dag",
     binary = "makegen",
     entrypoints = r#"[{"port_name":"path","type_id":"String","short":"o","default":"Makefile","help":"Output Makefile path","make_var":"OUTPUT"}]"#,

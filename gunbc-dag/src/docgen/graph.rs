@@ -32,13 +32,13 @@ pub const DOCGEN_READ_TARGETS: &[DocgenReadTarget] = &[
         name: "clippy_graph_mock",
         path: CLIPPY_GRAPH_MOCK_PATH,
         input_port: "clippy_graph_mock",
-        allow_missing: false,
+        allow_missing: true,
     },
     DocgenReadTarget {
         name: "clippy_generated_tests",
         path: CLIPPY_GENERATED_TESTS_PATH,
         input_port: "clippy_generated_tests",
-        allow_missing: false,
+        allow_missing: true,
     },
     DocgenReadTarget {
         name: "clippy_config",
@@ -80,19 +80,19 @@ pub const DOCGEN_READ_TARGETS: &[DocgenReadTarget] = &[
         name: "gist_graph_mock",
         path: GIST_GRAPH_MOCK_PATH,
         input_port: "gist_graph_mock",
-        allow_missing: false,
+        allow_missing: true,
     },
     DocgenReadTarget {
         name: "gist_generated_tests_snapshot",
         path: GIST_GENERATED_TESTS_SNAPSHOT_PATH,
         input_port: "gist_generated_tests_snapshot",
-        allow_missing: false,
+        allow_missing: true,
     },
     DocgenReadTarget {
         name: "gist_generated_integration_tests",
         path: GIST_GENERATED_INTEGRATION_TESTS_PATH,
         input_port: "gist_generated_integration_tests",
-        allow_missing: false,
+        allow_missing: true,
     },
     DocgenReadTarget {
         name: "gist_codegen_cli",

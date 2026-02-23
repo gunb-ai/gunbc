@@ -208,10 +208,4 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
-        // Compose runtime mocks for the lowered GCP subdag:
-        // cloud_credential -> gcp_wif_secret -> <inner-node>
-        .include_prefixed_runtime_mocks(
-            "cloud_credential/gcp_wif_secret",
-            &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
-        )
 }

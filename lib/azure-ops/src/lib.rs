@@ -4,7 +4,6 @@
 //! Placeholder implementation to keep provider-neutral modeling honest.
 
 mod graph;
-pub mod graph_mock;
 mod ops;
 
 pub use graph::{

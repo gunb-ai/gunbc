@@ -46,7 +46,6 @@
 #![deny(dead_code)]
 pub mod config;
 pub mod graph;
-pub mod graph_mock;
 pub mod lint;
 pub mod ops;
 pub mod policy;
@@ -72,7 +71,6 @@ pub use policy::{CratePolicy, CrateRole};
     description = "Run clippy via upsert (check → install → run)",
     builder = "build_clippy_graph_lint_all",
     import = "use gunbc_clippy::build_clippy_graph_lint_all;",
-    mock_spec = "gunbc_clippy::graph_mock::clippy_mock_spec()",
     dsl_module = "clippy",
     returns_result
 )]

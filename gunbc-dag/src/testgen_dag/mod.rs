@@ -6,7 +6,18 @@
 pub mod graph;
 pub mod ops;
 
-pub mod graph_mock;
-
 pub use graph::{build_testgen_graph, build_testgen_graph_for_test, TestgenGraphOp};
 pub use ops::TestgenOp;
+
+// ============================================================================
+// Tool Target Registration
+// ============================================================================
+
+#[gunbc_tool_registry_macros::tool_target(
+    name = "testgen",
+    crate_name = "gunbc-testgen",
+    description = "Generate tests from DAG mock specifications",
+    builder = "build_testgen_graph_for_test",
+    returns_result
+)]
+pub fn testgen_tool() {}

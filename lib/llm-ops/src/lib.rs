@@ -23,8 +23,6 @@
 #![deny(dead_code)]
 pub mod graph;
 
-pub mod graph_mock;
-
 use gunbc_exec::{
     optional_int_strict, optional_json_strict, optional_str_strict, propagate_skipped,
     require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,

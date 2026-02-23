@@ -11,7 +11,6 @@
 pub mod discovery_graph;
 pub mod discovery_ops;
 mod graph;
-pub mod graph_mock;
 mod ops;
 pub mod services;
 pub mod system_models;

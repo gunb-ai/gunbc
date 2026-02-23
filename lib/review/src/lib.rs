@@ -22,7 +22,6 @@
 
 pub mod dimension;
 pub mod graph;
-pub mod graph_mock;
 pub mod profile;
 
 use gunbc_exec::{
@@ -207,6 +206,52 @@ fn default_branch() -> String {
     "main".to_string()
 }
 
+/// Default code review criteria.
+///
+/// Covers common code quality checks suitable for general-purpose review.
+pub fn default_criteria() -> Criteria {
+    Criteria {
+        name: "code-review".to_string(),
+        description: "General code review for correctness, security, and quality".to_string(),
+        checks: vec![
+            Check {
+                id: "correctness".to_string(),
+                question: "Are there any bugs, logic errors, or incorrect behavior?".to_string(),
+                examples: vec![
+                    "Off-by-one errors".to_string(),
+                    "Null/None dereference".to_string(),
+                    "Missing error handling".to_string(),
+                ],
+            },
+            Check {
+                id: "security".to_string(),
+                question: "Are there any security vulnerabilities?".to_string(),
+                examples: vec![
+                    "SQL injection".to_string(),
+                    "Command injection".to_string(),
+                    "Hardcoded credentials".to_string(),
+                ],
+            },
+            Check {
+                id: "performance".to_string(),
+                question: "Are there any performance issues or inefficiencies?".to_string(),
+                examples: vec![
+                    "Unnecessary allocations in hot paths".to_string(),
+                    "O(n^2) where O(n) is possible".to_string(),
+                ],
+            },
+            Check {
+                id: "clarity".to_string(),
+                question: "Is the code clear and maintainable?".to_string(),
+                examples: vec![
+                    "Confusing variable names".to_string(),
+                    "Missing context for complex logic".to_string(),
+                ],
+            },
+        ],
+    }
+}
+
 impl ReviewPipelineConfig {
     /// Default pipeline config for gunbc's own repo.
     ///
@@ -217,7 +262,7 @@ impl ReviewPipelineConfig {
         Self {
             provider: "openai".to_string(),
             model: "gpt-4o".to_string(),
-            criteria: crate::graph_mock::default_criteria(),
+            criteria: crate::default_criteria(),
             default_branch: "main".to_string(),
         }
     }
@@ -745,7 +790,7 @@ fn parse_location(loc: Option<&serde_json::Value>) -> Result<Location, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph_mock::default_criteria;
+    use crate::default_criteria;
 
     fn test_criteria() -> Criteria {
         Criteria {
@@ -1280,7 +1325,6 @@ Please fix these issues."#;
     description = "Review code changes using LLM analysis",
     builder = "build_diff_review_graph",
     import = "use gunbc_lib_review::graph::build_diff_review_graph;",
-    mock_spec = "gunbc_lib_review::graph_mock::diff_review_mock_spec()",
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","help":"Repository path to diff","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff (default: main)"}]"#,
     dsl_module = "review",
     returns_result

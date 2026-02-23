@@ -126,7 +126,7 @@ fn main() {
     };
 
     // Build criteria with depth adjustment
-    let mut criteria = gunbc_lib_review::graph_mock::default_criteria();
+    let mut criteria = gunbc_lib_review::default_criteria();
     let suffix = depth_suffix(&depth_upper);
     if !suffix.is_empty() {
         criteria.description = format!("{}{}", criteria.description, suffix);
@@ -207,8 +207,7 @@ fn main() {
 
     // Set up execution mode
     let mode = if dry_run {
-        let mocks = gunbc_lib_review::graph_mock::diff_review_mock_spec().to_boundary_mocks();
-        ExecutionMode::DryRun(mocks)
+        ExecutionMode::DryRun(BoundaryMocks::new())
     } else {
         ExecutionMode::Real
     };

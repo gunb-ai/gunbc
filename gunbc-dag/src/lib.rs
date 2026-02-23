@@ -41,7 +41,6 @@ pub mod resources;
 pub mod sdlc;
 pub mod testgen_dag;
 pub mod tool_runner;
-pub mod tool_testgen;
 pub mod viewer;
 pub mod workflow;
 pub mod workspace;

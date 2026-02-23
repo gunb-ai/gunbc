@@ -6,7 +6,6 @@
 //! optional role chaining → Secrets Manager pattern.
 
 mod graph;
-pub mod graph_mock;
 mod ops;
 pub mod system_models;
 

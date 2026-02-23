@@ -125,8 +125,7 @@ fn main() {
 
     // Set up execution mode
     let mode = if dry_run {
-        // Keep dry-run mocks in sync with the latest lowered CI graph shape.
-        let mut mocks = gunbc_dag::ci::graph_mock::ci_mock_spec().to_boundary_mocks();
+        let mut mocks = BoundaryMocks::new();
         wire_fs_env_write_mock(&dag, &mut mocks);
         ExecutionMode::DryRun(mocks)
     } else {

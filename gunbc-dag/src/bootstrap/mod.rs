@@ -5,8 +5,6 @@
 pub mod graph;
 pub mod ops;
 
-pub mod graph_mock;
-
 pub use graph::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp};
 pub use ops::BootstrapOp;
 
@@ -20,7 +18,6 @@ pub use ops::BootstrapOp;
     description = "Generate Makefile and .gitignore",
     builder = "build_bootstrap_graph",
     import = "use gunbc_bootstrap::build_bootstrap_graph;",
-    mock_spec = "gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec()",
     package = "dag",
     binary = "bootstrap",
     dsl_module = "bootstrap",
