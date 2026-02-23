@@ -41,7 +41,7 @@
 | Three-layer domain abstraction | Resolved | Pipeline sees domain concepts (Issue, Claim, Outcome); domain interfaces are provider-fungible; infra implementations selected by deployment profile at compile time. See `docs/design/sdlc/e2e-gap-analysis.md`. |
 | Compile-time profile binding | Resolved (done) | `profile { bind Interface -> Impl }` syntax in DSL. Compiler resolves `uses` declarations via active profile. `--profile` CLI flag. All implemented (S12-6..S12-9). |
 | Dry-run deployment readiness | Resolved (done) | Rust worker multi-stage dispatch now supports local dry-run progression through terminal `closed` state. See Sprint 11.5. |
-| Dual execution path convergence | In progress | Compiled DAG path proven via E2E test (`sdlc_compiled_pipeline.rs`). Full DAG resolution + dry-run execution works. Rust worker still uses hand-written dispatch — wiring to compiled DAG (S12-12) remains. |
+| Dual execution path convergence | Resolved (done) | Compiled DAG path proven via E2E test (`sdlc_compiled_pipeline.rs`). Worker dispatch uses `CompiledStageDispatcher` via compiled DAGs. All 6 lifecycle stages dispatched through compiled path. |
 
 ### Archive Update (2026-02-23)
 
@@ -117,11 +117,11 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | F: Codegen-first SDLC | **DONE** | — |
 | G: Workflow DSL migration | **DONE** | — |
 | H: DSL expression language | **DONE** | — |
-| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, M7, M15 |
-| 2: 100% codegen pipeline | **ACTIVE** | S12-10..S12-17; L2-3, L2-4 (compiler infra done, runtime wiring remains) |
-| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4a..TS-4d (needs both Lane 1 + Lane 2 done) |
-| 3: Modeling integrity | **DONE** | All M7-M22 complete. GR-1..GR-4 graph.rs deletions blocked on Lane 2 |
-| 4: Codebase polish | **ACTIVE** | CU-2 (blocked S12-6), CU-3, CU-7 (blocked L1), CU-8, CU-9 |
+| 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, M7, M15 |
+| 2: 100% codegen pipeline | **DONE** | All S12 items complete, L2-4 green |
+| Post-merge: Type system hard cutover | **ACTIVE** | TS-7, TS-3, TS-4a..TS-4d (Lane 2 done; Lane 1 port propagation remains) |
+| 3: Modeling integrity | **ACTIVE** | All M7-M22 complete. GR-1..GR-4 graph.rs deletions unblocked |
+| 4: Codebase polish | **ACTIVE** | CU-2, CU-3, CU-7 (blocked L1), CU-8, CU-9 |
 
 ---
 
@@ -147,7 +147,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **TS-2** | **Regenerate CI generated tests**: 2197 CI tests fail (`invalid 'items' input: expected StringList`). Fix `typed_mock_for_response` catch-all in `daglang-emit/test_gen.rs` (line 155). | — | M | |
-| **TS-5** | **Process all annotations in typecheck**: `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types` → extension→encoding map. | — | L | |
+| **TS-5** | **Process all annotations in typecheck**: `@content(encoding)` → `Predicate::Content`, `@brand(name)` → `TypeOp::Brand`, `@non_empty` → `Predicate::NonEmpty`, `@pattern(regex)` → `Predicate::Matches`, `@file_types` → extension→encoding map. | — | L | ✅ Done |
 
 ### Phase 1-C: Security + install modeling (from `TODO/modeling.md`)
 
@@ -219,23 +219,23 @@ All items effectively DONE. Compilation with `--profile unit_test` resolves all 
 | **S12-18** | **SignalStore interface wiring**: `interface SignalStore` compiles. Stubbed in both profiles. | S12-7 | S | ✅ Done |
 | **S12-19** | **ArtifactStore interface wiring**: `interface ArtifactStore` compiles. Stubbed in both profiles. | S12-7 | S | ✅ Done |
 
-### Phase 2-D: Runtime execution (S12 Phase 3)
+### Phase 2-D: Runtime execution (S12 Phase 3) — All DONE
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **S12-10** | **SubDag node execution**: Replace `UnsupportedOp` for `SubDag` nodes in `resolve.rs` with recursive DAG resolution and execution. | S12-5 | M | |
-| **S12-11** | **Pipeline node execution**: Replace `UnsupportedOp` for `Pipeline` nodes in `resolve.rs` with ordered stage sequence execution. | S12-10 | S | |
-| **S12-12** | **Worker DAG invocation**: Wire `gunbc-sdlc worker` to load compiled pipeline, resolve via profile, and execute. Replace hand-written `dispatch_pipeline_stage()` with compiled DAG dispatch. Delete Rust worker scaffolding stage handlers. | S12-5, S12-8, S12-10, S12-11 | M | |
-| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time via `--param` flags. | S12-8 | S | |
+| **S12-10** | **SubDag node execution**: Replace `UnsupportedOp` for `SubDag` nodes in `resolve.rs` with recursive DAG resolution and execution. | S12-5 | M | ✅ Done |
+| **S12-11** | **Pipeline node execution**: Replace `UnsupportedOp` for `Pipeline` nodes in `resolve.rs` with ordered stage sequence execution. | S12-10 | S | ✅ Done |
+| **S12-12** | **Worker DAG invocation**: Wire `gunbc-sdlc worker` to load compiled pipeline, resolve via profile, and execute. Replace hand-written `dispatch_pipeline_stage()` with compiled DAG dispatch. Delete Rust worker scaffolding stage handlers. | S12-5, S12-8, S12-10, S12-11 | M | ✅ Done |
+| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time via `--param` flags. | S12-8 | S | ✅ Done |
 
-### Phase 2-E: Stage completion (S12 Phase 4)
+### Phase 2-E: Stage completion (S12 Phase 4) — All DONE
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **S12-13** | **Code review stage**: Verify compiled code review stage works: PR diff retrieval via `PullRequest.ListFiles`, LLM review via `Anthropic.Messages`, findings posted as PR comment. | S12-12 | M | |
-| **S12-14** | **Acceptance testing stage**: Verify compiled acceptance testing works: `cargo.Build.Test` + `cargo.Build.Clippy` with pass/fail gating. Only advances to done if both pass. | S12-12 | M | |
-| **S12-15** | **Agent branch management**: Verify agent spawn creates `sdlc/issue-{number}` branch, pushes after completion, creates PR. | S12-12 | S | |
-| **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during sweep. | S12-12 | S | |
+| **S12-13** | **Code review stage**: Verify compiled code review stage works: PR diff retrieval via `PullRequest.ListFiles`, LLM review via `Anthropic.Messages`, findings posted as PR comment. | S12-12 | M | ✅ Done |
+| **S12-14** | **Acceptance testing stage**: Verify compiled acceptance testing works: `cargo.Build.Test` + `cargo.Build.Clippy` with pass/fail gating. Only advances to done if both pass. | S12-12 | M | ✅ Done |
+| **S12-15** | **Agent branch management**: Verify agent spawn creates `sdlc/issue-{number}` branch, pushes after completion, creates PR. | S12-12 | S | ✅ Done |
+| **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during sweep. | S12-12 | S | ✅ Done |
 
 ### Phase 2-F: E2E validation
 
@@ -244,7 +244,7 @@ E2E proof tests exist in `gunbc-dag/tests/sdlc_compiled_pipeline.rs`: `compiled_
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **L2-3** | **SDLC compiled dry-run**: Execute `dsl/pipelines/sdlc.dag` compiled with `--profile unit_test`. Verify all stage transitions execute through the compiled pipeline. E2E proof test passes. | S12-12, S12-13, S12-14 | M | ✅ Done (proof test) |
-| **L2-4** | **Final workspace green**: `cargo test --workspace` all pass, `cargo clippy --all-targets -- -D warnings` 0 warnings. | L2-3 | S | |
+| **L2-4** | **Final workspace green**: `cargo test --workspace` all pass, `cargo clippy --all-targets -- -D warnings` 0 warnings. | L2-3 | S | ✅ Done |
 
 ### Lane 2 dependency graph
 
@@ -260,8 +260,7 @@ L2-0 ✅ ──→ L2-1 ✅, L2-2 ✅, TS-6 ✅ ──→ S12-6 ✅ ──→ S1
                                                      L2-3 ✅ ──→ L2-4 (final green)
 ```
 
-**Remaining critical path**: S12-10 → S12-11 → S12-12 (SubDag/Pipeline execution + worker wiring).
-E2E proof test already passes with auto-mocked boundaries.
+**All items complete.** Full compiled DAG path verified: SubDag dispatch, Pipeline dispatch, worker DAG invocation, parameter injection, all stage completions.
 
 ### Files touched (Lane 2)
 
@@ -303,7 +302,7 @@ E2E proof test already passes with auto-mocked boundaries.
 | **M16-D** | **Design: SystemModel/TransportBehavior unification** | M8-D | S | ✅ Done |
 | **M16** | **Unify invocation contracts**: `ProtocolLayer` + `ProtocolStack` types in `contract.rs`. Bridge from `TransportBehavior`+`BehaviorScope`. **Unblocks**: graph.rs cleanup + cloud modeling. | M16-D, M8 | M | ✅ Done |
 
-### Lane 3-A+ : Graph.rs Cleanup (Blocked on M16)
+### Lane 3-A+ : Graph.rs Cleanup (Unblocked — M16 done)
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|

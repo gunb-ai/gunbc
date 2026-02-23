@@ -127,7 +127,6 @@ fn flatten_path(expr: &Expr) -> Option<Vec<String>> {
     }
 }
 
-#[allow(dead_code)]
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
         Self {
