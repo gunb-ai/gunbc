@@ -373,7 +373,7 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
         }
     }
     lines.push("@echo \"\"".into());
-    lines.push("@echo \"Add -dry suffix for dry-run (e.g., make gist-dry)\"".into());
+    lines.push("@echo \"Add -dry suffix for dry-run (e.g., make deps-dry)\"".into());
 
     // Secrets section: show workflow metadata with live-secret requirements.
     let workflow_secrets = workflow_secret_rows(registry, config);
@@ -634,8 +634,8 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("gist:"));
-        assert!(makefile.contains("gist-dry:"));
+        assert!(makefile.contains("deps:"));
+        assert!(makefile.contains("deps-dry:"));
         assert!(makefile.contains("pragma:"));
         assert!(makefile.contains("pragma-dry:"));
     }
@@ -645,21 +645,10 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("[REPO="));
+        assert!(makefile.contains("[MANIFEST="));
         assert!(
-            !makefile.contains("$(if $(REPO)"),
+            !makefile.contains("$(if $(MANIFEST)"),
             "tool entrypoint args should not be threaded through workflow wrapper commands"
-        );
-    }
-
-    #[test]
-    fn test_render_makefile_help_mentions_repeatable_entrypoint_variables() {
-        let registry = ToolRegistry::default_registry();
-        let makefile = render_makefile(&registry);
-
-        assert!(
-            makefile.contains("[EXT=... ...]"),
-            "repeatable vars should be documented in help"
         );
     }
 
@@ -859,20 +848,14 @@ mod tests {
         );
         // Tool targets dispatch through workflow binary via cargo run.
         assert!(
-            makefile.contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- gist"),
+            makefile.contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- deps"),
             "tool targets should dispatch through gunbc-workflow"
         );
         assert!(
             makefile.contains(
-                "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- gist --dry-run strict"
+                "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- deps --dry-run strict"
             ),
             "dry-run targets should pass strict dry-run mode to gunbc-workflow"
-        );
-        assert!(
-            makefile.contains(
-                "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- gist-recent"
-            ),
-            "gist-recent target should dispatch via gunbc-workflow"
         );
     }
 
@@ -1067,14 +1050,14 @@ mod tests {
             "pragma should dispatch via gunbc-workflow"
         );
 
-        // Gist should also dispatch via workflow (no legacy cargo-run path).
+        // Deps should also dispatch via workflow (no legacy cargo-run path).
         assert!(
-            makefile.contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- gist"),
-            "gist should dispatch via gunbc-workflow"
+            makefile.contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- deps"),
+            "deps should dispatch via gunbc-workflow"
         );
         assert!(
-            !makefile.contains("gist: ensure-codegen"),
-            "gist should not have ensure-codegen prerequisite"
+            !makefile.contains("deps: ensure-codegen"),
+            "deps should not have ensure-codegen prerequisite"
         );
     }
 
@@ -1097,7 +1080,7 @@ mod tests {
         let makefile = render_makefile(&registry);
 
         assert!(
-            !makefile.contains("cargo run -p gunbc-gist --bin gunbc-gist"),
+            !makefile.contains("cargo run -p gunbc-deps --bin gunbc-deps"),
             "tool targets must dispatch through gunbc-workflow"
         );
     }

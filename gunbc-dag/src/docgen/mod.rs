@@ -9,8 +9,6 @@ pub use ops::DocgenOp;
 use ops::{
     AB_DOC_PATH, CLIPPY_CONFIG_PATH, CLIPPY_GENERATED_TESTS_PATH, CLIPPY_GRAPH_MOCK_PATH,
     CLIPPY_GRAPH_PATH, CLIPPY_LIB_PATH, CLIPPY_LINT_PATH, CLIPPY_OPS_PATH, CLIPPY_POLICY_PATH,
-    GIST_CODEGEN_CLI_PATH, GIST_GENERATED_INTEGRATION_TESTS_PATH,
-    GIST_GENERATED_TESTS_SNAPSHOT_PATH, GIST_GRAPH_MOCK_PATH,
 };
 use crate::dsl_builder::build_docgen_graph_dsl;
 use gunbc_exec::DynOp;
@@ -81,30 +79,6 @@ pub const DOCGEN_READ_TARGETS: &[DocgenReadTarget] = &[
         path: CLIPPY_POLICY_PATH,
         input_port: "clippy_policy",
         allow_missing: false,
-    },
-    DocgenReadTarget {
-        name: "gist_graph_mock",
-        path: GIST_GRAPH_MOCK_PATH,
-        input_port: "gist_graph_mock",
-        allow_missing: true,
-    },
-    DocgenReadTarget {
-        name: "gist_generated_tests_snapshot",
-        path: GIST_GENERATED_TESTS_SNAPSHOT_PATH,
-        input_port: "gist_generated_tests_snapshot",
-        allow_missing: true,
-    },
-    DocgenReadTarget {
-        name: "gist_generated_integration_tests",
-        path: GIST_GENERATED_INTEGRATION_TESTS_PATH,
-        input_port: "gist_generated_integration_tests",
-        allow_missing: true,
-    },
-    DocgenReadTarget {
-        name: "gist_codegen_cli",
-        path: GIST_CODEGEN_CLI_PATH,
-        input_port: "gist_codegen_cli",
-        allow_missing: true,
     },
 ];
 

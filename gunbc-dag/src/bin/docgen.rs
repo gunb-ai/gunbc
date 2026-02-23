@@ -147,8 +147,6 @@ fn dry_run_ab_doc_template() -> &'static str {
 <!-- END GENERATED:clippy_generated_test_excerpt -->
 <!-- BEGIN GENERATED:appendix_a_clippy -->
 <!-- END GENERATED:appendix_a_clippy -->
-<!-- BEGIN GENERATED:appendix_a_gist -->
-<!-- END GENERATED:appendix_a_gist -->
 <!-- BEGIN GENERATED:appendix_b -->
 <!-- END GENERATED:appendix_b -->
 <!-- BEGIN GENERATED:appendix_c -->

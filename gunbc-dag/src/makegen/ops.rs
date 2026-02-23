@@ -151,13 +151,17 @@ impl Mockable for MakegenOp {
                     .int("tool_count", 3)
                     .str_list(
                         "tool_names",
-                        vec!["gist".to_string(), "deps".to_string(), "buck2".to_string()],
+                        vec![
+                            "bootstrap".to_string(),
+                            "deps".to_string(),
+                            "buck2".to_string(),
+                        ],
                     )
                     .json(
                         "registry",
                         serde_json::json!({
                             "tools": [
-                                {"binary_name": cargo::name("gist"), "short_name": "gist"},
+                                {"binary_name": cargo::name("bootstrap"), "short_name": "bootstrap"},
                                 {"binary_name": cargo::name("deps"), "short_name": "deps"},
                                 {"binary_name": cargo::name("buck2"), "short_name": "buck2"},
                             ],
@@ -168,7 +172,7 @@ impl Mockable for MakegenOp {
                     .build()
             }
             MakegenOp::RenderMakefile => {
-                let gist = CargoInvocation::standalone("gist").command();
+                let bootstrap = CargoInvocation::standalone("bootstrap").command();
                 let deps = CargoInvocation::standalone("deps").command();
                 let buck2 = CargoInvocation::standalone("buck2").command();
                 OutputMap::new()
@@ -176,10 +180,10 @@ impl Mockable for MakegenOp {
                         "return",
                         format!(
                             "# Generated Makefile\n\
-                            .PHONY: gist deps buck2\n\
+                            .PHONY: bootstrap deps buck2\n\
                             \n\
-                            gist:\n\
-                            \t{gist}\n\
+                            bootstrap:\n\
+                            \t{bootstrap}\n\
                             \n\
                             deps:\n\
                             \t{deps}\n\
@@ -222,8 +226,8 @@ mod tests {
 
         match result.get("tool_names").and_then(|v| v.as_str_list()) {
             Some(names) => {
-                assert!(names.contains(&"gist".to_string()));
                 assert!(names.contains(&"deps".to_string()));
+                assert!(names.contains(&"makegen".to_string()));
             }
             _ => panic!("expected tool names"),
         }
@@ -235,8 +239,8 @@ mod tests {
 
         match result.get("return") {
             Some(Value::Str(content)) => {
-                assert!(content.contains("gist:"));
                 assert!(content.contains("deps:"));
+                assert!(content.contains("makegen:"));
             }
             _ => panic!("expected makefile content"),
         }

@@ -19,15 +19,9 @@ pub const CLIPPY_LIB_PATH: &str = "lib/tools/clippy/src/lib.rs";
 pub const CLIPPY_LINT_PATH: &str = "lib/tools/clippy/src/lint.rs";
 pub const CLIPPY_OPS_PATH: &str = "lib/tools/clippy/src/ops.rs";
 pub const CLIPPY_POLICY_PATH: &str = "lib/tools/clippy/src/policy.rs";
-pub const GIST_GRAPH_MOCK_PATH: &str = "lib/tools/gist/src/graph_mock.rs";
-pub const GIST_GENERATED_TESTS_SNAPSHOT_PATH: &str =
-    "lib/tools/gist/src/generated_tests_snapshot.rs";
-pub const GIST_GENERATED_INTEGRATION_TESTS_PATH: &str = "lib/tools/gist/tests/generated_tests.rs";
-pub const GIST_CODEGEN_CLI_PATH: &str = "target/codegen/bin/gist/main.rs";
 const MARKER_CLIPPY_MOCK_SPEC: &str = "clippy_mock_spec";
 const MARKER_CLIPPY_GENERATED_TEST_EXCERPT: &str = "clippy_generated_test_excerpt";
 const MARKER_APPENDIX_A_CLIPPY: &str = "appendix_a_clippy";
-const MARKER_APPENDIX_A_GIST: &str = "appendix_a_gist";
 const MARKER_APPENDIX_B: &str = "appendix_b";
 const MARKER_APPENDIX_C: &str = "appendix_c";
 const MARKER_APPENDIX_D: &str = "appendix_d";
@@ -64,10 +58,6 @@ struct DocgenSources {
     clippy_lint: String,
     clippy_ops: String,
     clippy_policy: String,
-    gist_graph_mock: String,
-    gist_generated_tests_snapshot: String,
-    gist_generated_integration_tests: String,
-    gist_codegen_cli: String,
 }
 
 impl DocgenSources {
@@ -81,12 +71,6 @@ impl DocgenSources {
         let clippy_lint = require_str(&inputs, "clippy_lint")?.to_string();
         let clippy_ops = require_str(&inputs, "clippy_ops")?.to_string();
         let clippy_policy = require_str(&inputs, "clippy_policy")?.to_string();
-        let gist_graph_mock = require_str(&inputs, "gist_graph_mock")?.to_string();
-        let gist_generated_tests_snapshot =
-            require_str(&inputs, "gist_generated_tests_snapshot")?.to_string();
-        let gist_generated_integration_tests =
-            require_str(&inputs, "gist_generated_integration_tests")?.to_string();
-        let gist_codegen_cli = require_str(&inputs, "gist_codegen_cli")?.to_string();
 
         Ok(Self {
             template,
@@ -98,10 +82,6 @@ impl DocgenSources {
             clippy_lint,
             clippy_ops,
             clippy_policy,
-            gist_graph_mock,
-            gist_generated_tests_snapshot,
-            gist_generated_integration_tests,
-            gist_codegen_cli,
         })
     }
 }
@@ -184,11 +164,6 @@ fn render_ab_workflows_doc(sources: &DocgenSources) -> Result<String, ExecError>
         MARKER_APPENDIX_A_CLIPPY,
         &render_appendix_a_clippy(&sources.clippy_generated_tests)?,
     )?;
-    output = replace_section(
-        &output,
-        MARKER_APPENDIX_A_GIST,
-        &render_appendix_a_gist(&sources.gist_generated_tests_snapshot)?,
-    )?;
     output = replace_section(&output, MARKER_APPENDIX_B, &render_appendix_b(sources)?)?;
     output = replace_section(&output, MARKER_APPENDIX_C, &render_appendix_c())?;
     output = replace_section(&output, MARKER_APPENDIX_D, &render_appendix_d(sources))?;
@@ -208,26 +183,6 @@ fn render_appendix_d(sources: &DocgenSources) -> String {
             CLIPPY_GENERATED_TESTS_PATH,
             sources.clippy_generated_tests.as_str(),
         ),
-        (
-            "Gist MockSpec",
-            GIST_GRAPH_MOCK_PATH,
-            sources.gist_graph_mock.as_str(),
-        ),
-        (
-            "Gist Generated Tests (Snapshot)",
-            GIST_GENERATED_TESTS_SNAPSHOT_PATH,
-            sources.gist_generated_tests_snapshot.as_str(),
-        ),
-        (
-            "Gist Generated Integration Tests",
-            GIST_GENERATED_INTEGRATION_TESTS_PATH,
-            sources.gist_generated_integration_tests.as_str(),
-        ),
-        (
-            "Gist Generated CLI (Snapshot)",
-            GIST_CODEGEN_CLI_PATH,
-            sources.gist_codegen_cli.as_str(),
-        ),
     ];
 
     let mut out = Vec::new();
@@ -241,18 +196,6 @@ fn render_appendix_d(sources: &DocgenSources) -> String {
     out.push(String::new());
     out.push("- [Clippy MockSpec](#appendix-d-clippy-mockspec)".to_string());
     out.push("- [Clippy Generated Tests](#appendix-d-clippy-generated-tests)".to_string());
-    out.push("- [Gist MockSpec](#appendix-d-gist-mockspec)".to_string());
-    out.push(
-        "- [Gist Generated Tests (Snapshot)](#appendix-d-gist-generated-tests-snapshot)"
-            .to_string(),
-    );
-    out.push(
-        "- [Gist Generated Integration Tests](#appendix-d-gist-generated-integration-tests)"
-            .to_string(),
-    );
-    out.push(
-        "- [Gist Generated CLI (Snapshot)](#appendix-d-gist-generated-cli-snapshot)".to_string(),
-    );
     out.push(String::new());
     out.push("</details>".to_string());
     out.push(String::new());
@@ -263,10 +206,6 @@ fn render_appendix_d(sources: &DocgenSources) -> String {
         let anchor = match *title {
             "Clippy MockSpec" => "appendix-d-clippy-mockspec",
             "Clippy Generated Tests" => "appendix-d-clippy-generated-tests",
-            "Gist MockSpec" => "appendix-d-gist-mockspec",
-            "Gist Generated Tests (Snapshot)" => "appendix-d-gist-generated-tests-snapshot",
-            "Gist Generated Integration Tests" => "appendix-d-gist-generated-integration-tests",
-            "Gist Generated CLI (Snapshot)" => "appendix-d-gist-generated-cli-snapshot",
             _ => "appendix-d-unknown",
         };
         out.push(format!("<a id=\"{anchor}\"></a>"));
@@ -306,18 +245,6 @@ fn render_appendix_a_clippy(src: &str) -> Result<String, ExecError> {
     render_clippy_generated_test_excerpt(src)
 }
 
-fn render_appendix_a_gist(src: &str) -> Result<String, ExecError> {
-    let mut snippet = extract_fn(src, "test_transport_interception").ok_or_else(|| {
-        ExecError::new("docgen: missing test_transport_interception in gist generated tests")
-    })?;
-    snippet = strip_guard_test(&snippet);
-    snippet = normalize_colons(&snippet);
-    Ok(wrap_rust_with_prefix(
-        "// Generated by gunbc-testgen (trimmed: guard_test omitted)",
-        &snippet,
-    ))
-}
-
 fn render_appendix_b(sources: &DocgenSources) -> Result<String, ExecError> {
     let clippy_generated = collect_tests_from_content(&sources.clippy_generated_tests, false);
     let mut clippy_manual = Vec::new();
@@ -334,9 +261,6 @@ fn render_appendix_b(sources: &DocgenSources) -> Result<String, ExecError> {
         clippy_manual.extend(collect_tests_from_content(src, true));
     }
     clippy_manual.sort_by(|a, b| a.name.cmp(&b.name));
-    let gist_generated = collect_tests_from_content(&sources.gist_generated_tests_snapshot, false);
-    let gist_integration =
-        collect_tests_from_content(&sources.gist_generated_integration_tests, false);
 
     let mut out = Vec::new();
 
@@ -348,16 +272,6 @@ fn render_appendix_b(sources: &DocgenSources) -> Result<String, ExecError> {
     out.push(details_block(
         &format!("B.2 Clippy Manual Unit Tests ({})", clippy_manual.len()),
         &clippy_manual,
-    ));
-    out.push(String::new());
-    out.push(details_block(
-        "B.3 Gist Snapshot Generated Tests (Long List)",
-        &gist_generated,
-    ));
-    out.push(String::new());
-    out.push(details_block(
-        "B.4 Gist Generated Integration Tests",
-        &gist_integration,
     ));
 
     Ok(out.join("\n"))
@@ -390,47 +304,6 @@ fn render_appendix_c() -> String {
     );
     out.push(String::new());
 
-    out.push("### C.2 Gist".to_string());
-    out.push(String::new());
-    out.push("Generated graph (snapshot, simplified):".to_string());
-    out.push(String::new());
-    out.push("```text".to_string());
-    out.push(
-        "prepare_list_files -> execute_list_files -> parse_list_files -> read_files_loop"
-            .to_string(),
-    );
-    out.push(
-        "read_files_loop -> collect_file_contents -> render_markdown -> prepare_gist_request"
-            .to_string(),
-    );
-    out.push("prepare_gist_request -> execute_gist -> parse_gist_response -> url".to_string());
-    out.push("```".to_string());
-    out.push(String::new());
-    out.push("Generated code (CLI runner, excerpt):".to_string());
-    out.push(String::new());
-    out.push("```rust".to_string());
-    out.push("// target/codegen/bin/gist/main.rs".to_string());
-    out.push("fn main() {".to_string());
-    out.push("    // parse CLI args, build graph, run in real or dry-run".to_string());
-    out.push("}".to_string());
-    out.push("```".to_string());
-    out.push(String::new());
-    out.push("Generated tests (excerpt):".to_string());
-    out.push(String::new());
-    out.push("```rust".to_string());
-    out.push("// lib/tools/gist/src/generated_tests_snapshot.rs".to_string());
-    out.push("#[test]".to_string());
-    out.push("fn test_dryrun_completion() { /* ... */ }".to_string());
-    out.push("```".to_string());
-    out.push(String::new());
-    out.push("Generated integration tests (excerpt):".to_string());
-    out.push(String::new());
-    out.push("```rust".to_string());
-    out.push("// lib/tools/gist/tests/generated_tests.rs".to_string());
-    out.push("#[test]".to_string());
-    out.push("fn test_boundaries_mockable() { /* ... */ }".to_string());
-    out.push("```".to_string());
-    out.push(String::new());
     out.push("Appendix (generated artifacts): see **Appendix D**.".to_string());
 
     out.join("\n")

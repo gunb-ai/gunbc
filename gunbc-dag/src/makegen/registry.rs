@@ -1833,11 +1833,11 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         assert!(registry.tools.len() >= 2);
 
-        let gist = registry.tools.iter().find(|t| t.short_name == "gist");
-        assert!(gist.is_some());
-
         let deps = registry.tools.iter().find(|t| t.short_name == "deps");
         assert!(deps.is_some());
+
+        let makegen = registry.tools.iter().find(|t| t.short_name == "makegen");
+        assert!(makegen.is_some());
     }
 
     #[test]
@@ -1864,17 +1864,20 @@ mod tests {
     #[test]
     fn test_tool_has_entrypoints() {
         let registry = ToolRegistry::default_registry();
-        let gist = registry
+        let deps = registry
             .tools
             .iter()
-            .find(|t| t.short_name == "gist")
+            .find(|t| t.short_name == "deps")
             .unwrap();
 
-        assert!(!gist.entrypoints.is_empty());
+        assert!(!deps.entrypoints.is_empty());
 
-        let repo_param = gist.entrypoints.iter().find(|p| p.port_name == "repo_path");
-        assert!(repo_param.is_some());
-        assert_eq!(repo_param.unwrap().make_var, "REPO");
+        let manifest_param = deps
+            .entrypoints
+            .iter()
+            .find(|p| p.port_name == "manifest_path");
+        assert!(manifest_param.is_some());
+        assert_eq!(manifest_param.unwrap().make_var, "MANIFEST");
     }
 
     #[test]
@@ -2341,19 +2344,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_gist_has_no_make_prerequisites() {
-        let registry = ToolRegistry::default_registry();
-        let config = BuildConfig::cargo();
-        let gist = registry
-            .tools
-            .iter()
-            .find(|t| t.short_name == "gist")
-            .expect("gist should be in registry");
-        let deps = tool_dependency_targets(gist, &config);
-        assert!(
-            deps.is_empty(),
-            "gist should be dispatched by workflow without make prerequisites"
-        );
-    }
 }

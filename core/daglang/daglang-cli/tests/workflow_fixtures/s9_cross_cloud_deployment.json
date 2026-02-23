@@ -1,7 +1,7 @@
 {
   "module": "examples.deployment",
   "path": "examples/deployment.dag",
-  "items": 11,
+  "items": 10,
   "dependencies": [
     "infra.core",
     "infra.spec",
@@ -11,7 +11,6 @@
     "infra.aws.config",
     "infra.azure.resources",
     "infra.azure.config",
-    "tools.gist",
     "std.types"
   ],
   "expand_contract": {
@@ -24,7 +23,7 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 33,
-      "pure_node_determinism_targets": 44,
+      "pure_node_determinism_targets": 43,
       "resource_acquire_targets": 0,
       "resource_provide_targets": 0,
       "resource_release_targets": 0,
@@ -37,7 +36,7 @@
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 0,
       "service_transport_readonly_targets": 0,
-      "total_obligations": 44,
+      "total_obligations": 43,
       "transport_execution_targets": 0
     }
   }

@@ -199,10 +199,10 @@ mod tests {
     fn codegen_miss_reason_display() {
         assert_eq!(
             CodegenMissReason::DslSourceChanged {
-                changed_file: "dsl/tools/gist.dag".to_string()
+                changed_file: "dsl/tools/deps.dag".to_string()
             }
             .to_string(),
-            "dsl-source-changed:dsl/tools/gist.dag"
+            "dsl-source-changed:dsl/tools/deps.dag"
         );
         assert_eq!(CodegenMissReason::NeverRun.to_string(), "never-run");
     }

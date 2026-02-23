@@ -723,7 +723,6 @@ fn workspace_tool_transport_triplet_audit_preserves_prepare_execute_parse_struct
         ("tools/codegen.dag", 1usize),
         ("tools/deps.dag", 1usize),
         ("tools/docgen.dag", 1usize),
-        ("tools/gist.dag", 1usize),
         ("tools/makegen.dag", 1usize),
         ("tools/pragma.dag", 1usize),
         ("tools/testgen.dag", 0usize),

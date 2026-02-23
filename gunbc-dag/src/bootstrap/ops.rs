@@ -195,7 +195,7 @@ mod tests {
                 assert!(content.contains("build:"));
                 assert!(content.contains("test:"));
                 // Should have tool targets
-                assert!(content.contains("gist:"));
+                assert!(content.contains("deps:"));
                 // Should have fix variants
                 assert!(content.contains("test-fix:"));
                 assert!(content.contains("clippy-fix:"));

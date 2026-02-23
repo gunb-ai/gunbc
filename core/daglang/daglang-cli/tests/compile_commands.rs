@@ -31,8 +31,8 @@ fn ci_pipeline_file() -> PathBuf {
     workspace_root().join("dsl/pipelines/ci.dag")
 }
 
-fn gist_file() -> PathBuf {
-    workspace_root().join("dsl/tools/gist.dag")
+fn deps_file() -> PathBuf {
+    workspace_root().join("dsl/tools/deps.dag")
 }
 
 fn dsl_root_dir() -> PathBuf {
@@ -7044,7 +7044,7 @@ fn progress_command_ci_text_renders_collapsible_stage_group_sections() {
 fn progress_command_collection_nodes_renders_scatter_counters() {
     let output = Command::new(daglang_bin())
         .arg("progress")
-        .arg(gist_file())
+        .arg(deps_file())
         .arg("--emit-collection-nodes")
         .current_dir(workspace_root())
         .output()
@@ -7061,7 +7061,7 @@ fn progress_command_collection_nodes_renders_scatter_counters() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("scatter_points:"));
     assert!(stdout.contains("[0/"));
-    assert!(stdout.contains("tools.gist.render_snapshot"));
+    assert!(stdout.contains("tools.deps.render_deps_toml"));
 }
 
 #[test]

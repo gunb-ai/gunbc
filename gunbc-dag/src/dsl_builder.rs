@@ -179,12 +179,6 @@ mod tests {
     }
 
     #[test]
-    fn builds_gist_dsl_graph() {
-        let dag = build_dsl_graph("tools/gist.dag").expect("gist DSL graph should resolve");
-        assert!(!dag.nodes.is_empty());
-    }
-
-    #[test]
     fn builds_review_dsl_graph() {
         let dag = build_dsl_graph("tools/review.dag").expect("review DSL graph should resolve");
         assert!(!dag.nodes.is_empty());

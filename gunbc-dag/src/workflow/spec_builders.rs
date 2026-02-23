@@ -53,46 +53,6 @@ pub fn test_all_workflow_spec_with_registry(
     workflow_spec_with_registry("test-all", registry)
 }
 
-pub fn gist_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("gist")
-}
-
-pub fn gist_workflow_spec_with_registry(
-    registry: &ProcessUnitRegistry,
-) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("gist", registry)
-}
-
-pub fn gist_snapshot_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("gist-snapshot")
-}
-
-pub fn gist_snapshot_workflow_spec_with_registry(
-    registry: &ProcessUnitRegistry,
-) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("gist-snapshot", registry)
-}
-
-pub fn gist_diff_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("gist-diff")
-}
-
-pub fn gist_diff_workflow_spec_with_registry(
-    registry: &ProcessUnitRegistry,
-) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("gist-diff", registry)
-}
-
-pub fn gist_recent_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("gist-recent")
-}
-
-pub fn gist_recent_workflow_spec_with_registry(
-    registry: &ProcessUnitRegistry,
-) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("gist-recent", registry)
-}
-
 pub fn bootstrap_workflow_spec() -> Result<WorkflowSpec, String> {
     workflow_spec("bootstrap")
 }
@@ -178,11 +138,11 @@ mod tests {
 
     #[test]
     fn workflow_specs_are_deterministic() {
-        let a = workflow_spec("gist-snapshot").expect("a");
-        let b = workflow_spec("gist-snapshot").expect("b");
+        let a = workflow_spec("bootstrap").expect("a");
+        let b = workflow_spec("bootstrap").expect("b");
         assert_eq!(
-            a.dag.to_ascii("gist-snapshot"),
-            b.dag.to_ascii("gist-snapshot")
+            a.dag.to_ascii("bootstrap"),
+            b.dag.to_ascii("bootstrap")
         );
     }
 }

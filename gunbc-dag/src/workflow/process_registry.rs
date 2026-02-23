@@ -251,7 +251,6 @@ mod tests {
     #[test]
     fn default_registry_contains_tool_workflow_units() {
         let registry = default_process_unit_registry();
-        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.branch_resolution")));
         assert!(registry.contains(&ProcessUnitRef::new(
             "bootstrap",
             "bootstrap.workspace_scan"

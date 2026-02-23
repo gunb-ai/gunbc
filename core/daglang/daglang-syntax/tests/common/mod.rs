@@ -95,7 +95,6 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "tools/deps.dag",
         "tools/design.dag",
         "tools/docgen.dag",
-        "tools/gist.dag",
         "tools/infra.dag",
         "tools/makegen.dag",
         "tools/pragma.dag",

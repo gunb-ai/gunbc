@@ -28,7 +28,6 @@ import infra.aws.config as aws_config
 import infra.azure.resources { BlobContainer, ContainerApp, KeyVaultSecret, AzureManagedIdentity, ServiceBusQueue }
 import infra.azure.config as azure_config
 
-import tools.gist { gist_snapshot }
 import std.types { NonEmptyStr, CommitSha, Url }
 
 
@@ -67,8 +66,8 @@ func read_artifact(key: NonEmptyStr) -> { content: Bytes, found: Bool }
 // You can also use concrete resources directly when you need
 // provider-specific features (e.g., GCS storage classes, S3 versioning).
 
-func store_gist_artifact_gcp(content: String, key: NonEmptyStr) -> { ok: Bool }
-  uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project_id: "gunbai-auto")
+func store_artifact_gcp(content: String, key: NonEmptyStr) -> { ok: Bool }
+  uses bucket: GcsBucket(name: "gunbc-artifacts", project_id: "gunbai-auto")
 {
   result = bucket.write(key: key, content: content |> to_bytes())
   return { ok: result.ok }
@@ -76,24 +75,7 @@ func store_gist_artifact_gcp(content: String, key: NonEmptyStr) -> { ok: Bool }
 
 
 // =========================================================================
-// 3. MULTI-RESOURCE COMPOSITION (within one provider)
-// =========================================================================
-
-func gist_with_storage(base_ref: CommitSha?) -> { url: Url, stored: Bool }
-  uses bucket: GcsBucket(name: "gunbc-gist-artifacts", project_id: "gunbai-auto")
-  uses secret: ManagedSecret(project_id: "gunbai-secrets", secret_id: "github-token", prefix: "dev-")
-{
-  result = gist_snapshot(base_ref: base_ref)
-  stored = bucket.write(
-    key: "snapshots/{result.url |> hash()}.md",
-    content: result.url |> to_bytes()
-  )
-  return { url: result.url, stored: stored.ok }
-}
-
-
-// =========================================================================
-// 4. CROSS-PROVIDER COMPOSITION
+// 3. CROSS-PROVIDER COMPOSITION
 // =========================================================================
 //
 // A func that uses resources from DIFFERENT providers.
@@ -187,7 +169,7 @@ fn compute_for_env(env: InfraEnvironment) -> Compute {
 // Deploy a complete application stack to any cloud provider.
 // The func composes compute + storage + secrets + identity.
 
-func deploy_gist_api(env: InfraEnvironment) -> { url: Url, ready: Bool }
+func deploy_api(env: InfraEnvironment) -> { url: Url, ready: Bool }
   uses compute: Compute
   uses store: ObjectStorage
   uses secrets: SecretStore
@@ -242,7 +224,7 @@ func infra_bootstrap_gcp() -> { ready: Bool }
     secret_id: "github-token",
     prefix: "dev-"
   )
-  uses gist_bucket: GcsBucket(name: "gunbc-gist-artifacts", project_id: "gunbai-auto")
+  uses artifacts_bucket: GcsBucket(name: "gunbc-artifacts", project_id: "gunbai-auto")
   uses notifications: PubSubTopic(name: "gunbc-events", project_id: "gunbai-auto")
 {
   // All resources acquired. Compiler orders:

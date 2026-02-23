@@ -1704,9 +1704,6 @@ pub fn sample_tool() {}
             "bootstrap",
             "clippy",
             "deps",
-            "gist",
-            "gist-diff",
-            "gist-recent",
             "makegen",
             "review",
         ] {
@@ -1734,7 +1731,6 @@ pub fn sample_tool() {}
             "codegen",
             "deps",
             "docgen",
-            "gist",
             "makegen",
             "pragma",
             "review",

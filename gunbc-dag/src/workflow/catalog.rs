@@ -50,42 +50,6 @@ const WORKFLOW_VARIANTS: &[WorkflowVariantDef] = &[
     },
     // Tool workflow variants
     WorkflowVariantDef {
-        canonical_name: "gist",
-        aliases: &[],
-        file: "gist.dag",
-        pipeline: "gist",
-        mode: Some("gist"),
-        namespace: "gist",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "gist-snapshot",
-        aliases: &["gist_snapshot"],
-        file: "gist.dag",
-        pipeline: "gist",
-        mode: Some("gist-snapshot"),
-        namespace: "gist",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "gist-diff",
-        aliases: &["gist_diff"],
-        file: "gist.dag",
-        pipeline: "gist",
-        mode: Some("gist-diff"),
-        namespace: "gist",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "gist-recent",
-        aliases: &["gist_recent"],
-        file: "gist.dag",
-        pipeline: "gist",
-        mode: Some("gist-recent"),
-        namespace: "gist",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
         canonical_name: "bootstrap",
         aliases: &[],
         file: "bootstrap.dag",
@@ -840,11 +804,11 @@ mod tests {
     fn stage_mode_parser_extracts_mode_literals() {
         let attrs = r#"
             after codegen_ensure,
-            when mode == "gist" || mode == "gist-recent"
+            when mode == "bootstrap" || mode == "bootstrap-recent"
         "#;
         let modes = parse_stage_modes(attrs);
-        assert!(modes.contains("gist"));
-        assert!(modes.contains("gist-recent"));
+        assert!(modes.contains("bootstrap"));
+        assert!(modes.contains("bootstrap-recent"));
     }
 
     #[test]
@@ -852,7 +816,6 @@ mod tests {
         let registry = build_process_unit_registry().expect("derive registry");
         assert!(registry.contains(&ProcessUnitRef::new("ci", "ci.codegen")));
         assert!(registry.contains(&ProcessUnitRef::new("test_all", "test_all.codegen")));
-        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.gist_create")));
         assert!(registry.contains(&compilation_ref()));
         assert!(registry.contains(&codegen_ref()));
     }

@@ -32,11 +32,6 @@ const WORKFLOW_FIXTURES: &[WorkflowFixture] = &[
         fixture_file: "s3_tool_install_upsert.json",
     },
     WorkflowFixture {
-        scenario: "S4",
-        module: "tools.gist",
-        fixture_file: "s4_gist_snapshot.json",
-    },
-    WorkflowFixture {
         scenario: "S5",
         module: "pipelines.ci",
         fixture_file: "s5_ci_pipeline.json",

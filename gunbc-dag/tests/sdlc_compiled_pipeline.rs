@@ -1,13 +1,15 @@
 #![allow(clippy::disallowed_methods)]
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 use daglang_driver::{compile_from_context_with_options, CompileOptions, DriverContext};
 use daglang_lower::LoweredOp;
 use gunbc_dag::resolve_lowered_dag;
 use gunbc_exec::{execute_with_mode, BoundaryMocks, DynOp, Executable, ExecutionMode};
 use gunbc_ir::node::NodeBody;
-use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
+use gunbc_ir::transport::{
+    FileOp, FileResponse, ShellRequest, ShellResponse, TransportRequest, TransportResponse,
+};
 use gunbc_ir::{Dag, Node, Value, WorkspaceLayout};
 
 fn compile_sdlc_pipeline() -> daglang_driver::CompileOutput {
@@ -93,6 +95,7 @@ fn build_executable_dag(resolved: &Dag<DynOp>) -> Dag<DynOp> {
 /// Auto-mock all boundary nodes that the executor would intercept in DryRun.
 ///
 /// This covers:
+/// - Transport prepare nodes (emit TransportRequest) → dummy ShellRequest
 /// - Transport execute nodes (consume TransportRequest) → ShellResponse::ok("") or FileResponse
 /// - Resource env nodes (emit FilesystemHandle, Timestamp, Credential, etc.)
 /// - Tool env nodes (emit ToolHandle)
@@ -100,6 +103,23 @@ fn auto_mock_all_boundaries<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) {
     use gunbc_primitives::filename;
 
     for node in &dag.nodes {
+        // Transport prepare nodes (produce TransportRequest outputs).
+        // These nodes try to interpolate credentials at runtime; in dry-run
+        // their outputs feed only into already-mocked execute nodes.
+        if is_transport_prepare(node) {
+            for port in &node.outputs {
+                if !mocks.has_mock(&node.id, &port.name) {
+                    let value = if port.type_id.0 == "TransportRequest" {
+                        Value::Request(TransportRequest::Shell(ShellRequest::new("mock")))
+                    } else if port.type_id.0 == "Bool" {
+                        Value::Bool(false)
+                    } else {
+                        Value::Str(String::new())
+                    };
+                    mocks.set_value(&node.id.0, &port.name.0, value);
+                }
+            }
+        }
         // Transport execute nodes
         if is_transport_execute(node) {
             for port in &node.outputs {
@@ -120,6 +140,22 @@ fn auto_mock_all_boundaries<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) {
                         }))
                     } else {
                         Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
+                    };
+                    mocks.set_value(&node.id.0, &port.name.0, value);
+                }
+            }
+        }
+        // Transport parse nodes (consume TransportResponse). Mock their
+        // outputs directly so they're intercepted — avoids response type
+        // mismatches between Shell/REST/File execute mocks and parse ops.
+        if is_transport_parse(node) {
+            for port in &node.outputs {
+                if !mocks.has_mock(&node.id, &port.name) {
+                    let value = match port.type_id.0.as_str() {
+                        "Bool" => Value::Bool(true),
+                        "Int" => Value::Int(200),
+                        "List" => Value::List(Vec::new()),
+                        _ => Value::Str(String::new()),
                     };
                     mocks.set_value(&node.id.0, &port.name.0, value);
                 }
@@ -178,10 +214,22 @@ fn auto_mock_all_boundaries<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) {
     }
 }
 
+fn is_transport_prepare<T>(node: &Node<T>) -> bool {
+    node.outputs
+        .iter()
+        .any(|port| port.type_id.0 == "TransportRequest")
+}
+
 fn is_transport_execute<T>(node: &Node<T>) -> bool {
     node.inputs
         .iter()
         .any(|port| port.type_id.0 == "TransportRequest")
+}
+
+fn is_transport_parse<T>(node: &Node<T>) -> bool {
+    node.inputs
+        .iter()
+        .any(|port| port.type_id.0 == "TransportResponse")
 }
 
 #[test]

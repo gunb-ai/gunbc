@@ -42,9 +42,6 @@ fn derive_tool_defs_matches_inventory() {
         "bootstrap",
         "clippy",
         "deps",
-        "gist",
-        "gist-diff",
-        "gist-recent",
         "makegen",
         "review",
     ];
@@ -137,8 +134,7 @@ fn codegen_cli_discovery_avoids_tool_registry_inventory() {
     );
     assert!(
         !content.contains("clippy_tool")
-            && !content.contains("deps_tool")
-            && !content.contains("gist_snapshot_tool"),
+            && !content.contains("deps_tool"),
         "codegen_cli must not use force-link tool symbol touch points for discovery"
     );
 }
@@ -334,7 +330,7 @@ fn all_tool_outputs_gitignored() {
 /// `has_invocation = false` (e.g., codegen, testgen) — these use the
 /// composed fallback in `invocation()`. Tools with `has_invocation`
 /// that are NOT in `WorkspaceBinary` are also fine (codegen-generated
-/// binaries like gist, gist-diff, gist-recent, deps).
+/// binaries like deps).
 #[test]
 fn workspace_binary_registry_invocations_are_consistent() {
     use gunbc_dag::WorkspaceBinary;
@@ -465,7 +461,7 @@ fn workspace_binary_enum_matches_invocable_registry_entries() {
     force_linker_include();
 
     // Codegen-generated CLIs: tools whose ToolDef has an invocation derived
-    // from the registry (gist, gist-diff, gist-recent, deps, etc.).
+    // from the registry (deps, etc.).
     let codegen_generated: BTreeSet<String> = derive_tool_defs()
         .into_iter()
         .filter(|tool| tool.invocation.is_some())

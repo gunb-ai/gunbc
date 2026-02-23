@@ -8,7 +8,6 @@
 //! (b) All `ScopeContract` implementations produce non-empty, valid scopes.
 //! (c) The canonical chain shape holds for each credentialed tool graph.
 
-use gunbc_ir::transport::gist::GistScopeContract;
 use gunbc_ir::transport::llm::LlmScopeContract;
 use gunbc_ir::transport::review::ReviewScopeContract;
 use gunbc_ir::transport::scope::ScopeContract;
@@ -108,20 +107,6 @@ fn no_legacy_credential_env_in_review_graphs() {
 // ---------------------------------------------------------------------------
 // (b) All ScopeContract implementations produce valid, non-empty scopes
 // ---------------------------------------------------------------------------
-
-#[test]
-fn gist_scope_contract_is_valid() {
-    let intent = GistScopeContract.credential_intent();
-    assert!(
-        intent.validate().is_ok(),
-        "GistScopeContract should produce a valid credential intent: {:?}",
-        intent.validate()
-    );
-    assert!(
-        !intent.required_scopes.is_empty(),
-        "GistScopeContract must declare at least one required scope"
-    );
-}
 
 #[test]
 fn llm_scope_contract_openai_is_valid() {
