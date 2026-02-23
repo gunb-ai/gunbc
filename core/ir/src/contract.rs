@@ -882,6 +882,386 @@ impl fmt::Display for ResourceRequirement {
     }
 }
 
+// ============================================================================
+// M16: Protocol stack layering — unified SystemModel/TransportBehavior contracts
+// ============================================================================
+
+/// The position of a protocol layer within a transport stack.
+///
+/// Layers are ordered from lowest-level (physical/socket) to highest-level
+/// (application/service-specific). This ordering is used by [`ProtocolStack`]
+/// to validate that layers are composed in the correct dependency order.
+///
+/// The numeric ordering matches the conceptual layering:
+/// - `Socket` (0) is the lowest — raw TCP/UDP connectivity
+/// - `Transport` (1) — connection-oriented protocol (e.g., TLS over TCP)
+/// - `Session` (2) — request/response framing (e.g., HTTP)
+/// - `Presentation` (3) — content encoding policy (e.g., REST/JSON)
+/// - `Application` (4) — provider-specific semantics (e.g., GitHub API)
+/// - `Operation` (5) — individual operation within a provider
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ProtocolLayerKind {
+    Socket = 0,
+    Transport = 1,
+    Session = 2,
+    Presentation = 3,
+    Application = 4,
+    Operation = 5,
+}
+
+impl fmt::Display for ProtocolLayerKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProtocolLayerKind::Socket => write!(f, "socket"),
+            ProtocolLayerKind::Transport => write!(f, "transport"),
+            ProtocolLayerKind::Session => write!(f, "session"),
+            ProtocolLayerKind::Presentation => write!(f, "presentation"),
+            ProtocolLayerKind::Application => write!(f, "application"),
+            ProtocolLayerKind::Operation => write!(f, "operation"),
+        }
+    }
+}
+
+/// A single layer in a protocol stack.
+///
+/// Each layer represents one level of protocol semantics (e.g., TCP, HTTP, REST).
+/// Layers carry their own behavioral properties and can declare status code
+/// semantics that override or extend lower layers.
+///
+/// # Example
+///
+/// ```ignore
+/// let tcp = ProtocolLayer::new("tcp", ProtocolLayerKind::Socket);
+/// let http = ProtocolLayer::new("http", ProtocolLayerKind::Session)
+///     .with_properties(vec!["ReadOnly".into(), "Retryable".into()]);
+/// let rest = ProtocolLayer::new("rest", ProtocolLayerKind::Presentation)
+///     .with_properties(vec!["JsonContentType".into()])
+///     .with_status_semantics(vec![StatusSemantic::new(304, "success")]);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolLayer {
+    /// Identifier for this layer (e.g., "tcp", "http", "rest", "github").
+    pub id: String,
+    /// Where this layer sits in the stack ordering.
+    pub kind: ProtocolLayerKind,
+    /// Behavioral properties declared at this layer.
+    pub properties: Vec<String>,
+    /// Status code semantics declared at this layer. Higher layers can
+    /// override lower-layer semantics for specific status codes.
+    pub status_semantics: Vec<StatusSemantic>,
+    /// Human-readable description.
+    pub description: String,
+}
+
+/// A status code semantic override within a protocol layer.
+///
+/// For example, REST layer might declare that HTTP 304 (Not Modified) is
+/// a success rather than a redirect, overriding the default HTTP semantics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatusSemantic {
+    /// The status code this semantic applies to.
+    pub code: u16,
+    /// The outcome classification (e.g., "success", "client_error", "server_error", "retryable").
+    pub outcome: String,
+}
+
+impl StatusSemantic {
+    pub fn new(code: u16, outcome: impl Into<String>) -> Self {
+        Self {
+            code,
+            outcome: outcome.into(),
+        }
+    }
+}
+
+impl ProtocolLayer {
+    /// Create a new protocol layer with the given id and kind.
+    pub fn new(id: impl Into<String>, kind: ProtocolLayerKind) -> Self {
+        Self {
+            id: id.into(),
+            kind,
+            properties: Vec::new(),
+            status_semantics: Vec::new(),
+            description: String::new(),
+        }
+    }
+
+    /// Set behavioral properties for this layer.
+    pub fn with_properties(mut self, properties: Vec<String>) -> Self {
+        self.properties = properties;
+        self
+    }
+
+    /// Set status semantics for this layer.
+    pub fn with_status_semantics(mut self, semantics: Vec<StatusSemantic>) -> Self {
+        self.status_semantics = semantics;
+        self
+    }
+
+    /// Set description for this layer.
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = description.into();
+        self
+    }
+}
+
+/// A composed stack of protocol layers, ordered from lowest to highest.
+///
+/// The stack validates that layers are in monotonically non-decreasing order
+/// by [`ProtocolLayerKind`]. This ensures that higher-level protocols are
+/// always composed on top of lower-level ones (e.g., REST on HTTP on TCP).
+///
+/// # Validation
+///
+/// [`ProtocolStack::validate`] checks:
+/// - The stack is non-empty
+/// - Layer kinds are in non-decreasing order
+/// - No duplicate layer IDs
+///
+/// # Bridge from TransportBehavior
+///
+/// [`ProtocolStack::from_transport_behavior`] provides a read-only bridge
+/// that derives a protocol stack from an existing `TransportBehavior` +
+/// `TransportKind`. This is demonstrative — it shows how the existing flat
+/// transport model maps onto the layered stack model without modifying any
+/// existing types.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolStack {
+    /// Ordered layers, from lowest-level to highest-level.
+    pub layers: Vec<ProtocolLayer>,
+}
+
+/// Error from protocol stack validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProtocolStackError {
+    /// The stack has no layers.
+    Empty,
+    /// A layer at `index` has a lower kind than the preceding layer.
+    OrderViolation {
+        index: usize,
+        layer_id: String,
+        layer_kind: ProtocolLayerKind,
+        prev_kind: ProtocolLayerKind,
+    },
+    /// Two layers share the same ID.
+    DuplicateId {
+        id: String,
+    },
+}
+
+impl fmt::Display for ProtocolStackError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProtocolStackError::Empty => write!(f, "protocol stack must have at least one layer"),
+            ProtocolStackError::OrderViolation {
+                index,
+                layer_id,
+                layer_kind,
+                prev_kind,
+            } => write!(
+                f,
+                "layer {} ('{}', kind={}) is below preceding layer (kind={})",
+                index, layer_id, layer_kind, prev_kind
+            ),
+            ProtocolStackError::DuplicateId { id } => {
+                write!(f, "duplicate layer id '{}' in protocol stack", id)
+            }
+        }
+    }
+}
+
+impl ProtocolStack {
+    /// Create a new protocol stack from an ordered list of layers.
+    pub fn new(layers: Vec<ProtocolLayer>) -> Self {
+        Self { layers }
+    }
+
+    /// Validate that the stack is well-formed:
+    /// - Non-empty
+    /// - Layer kinds are in non-decreasing order
+    /// - No duplicate layer IDs
+    pub fn validate(&self) -> Result<(), ProtocolStackError> {
+        if self.layers.is_empty() {
+            return Err(ProtocolStackError::Empty);
+        }
+
+        let mut seen_ids = std::collections::BTreeSet::new();
+        for (i, layer) in self.layers.iter().enumerate() {
+            if !seen_ids.insert(&layer.id) {
+                return Err(ProtocolStackError::DuplicateId {
+                    id: layer.id.clone(),
+                });
+            }
+            if i > 0 {
+                let prev_kind = self.layers[i - 1].kind;
+                if layer.kind < prev_kind {
+                    return Err(ProtocolStackError::OrderViolation {
+                        index: i,
+                        layer_id: layer.id.clone(),
+                        layer_kind: layer.kind,
+                        prev_kind,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Collect all properties across the stack, from bottom to top.
+    ///
+    /// Returns the union of all layer properties. This is the flattened
+    /// property set that applies to any operation using this stack.
+    pub fn all_properties(&self) -> Vec<String> {
+        let mut props = Vec::new();
+        for layer in &self.layers {
+            for prop in &layer.properties {
+                if !props.contains(prop) {
+                    props.push(prop.clone());
+                }
+            }
+        }
+        props
+    }
+
+    /// Resolve the effective status semantics by composing all layers.
+    ///
+    /// Higher layers override lower layers for the same status code.
+    /// The result maps status codes to their effective outcome classification.
+    pub fn effective_status_semantics(&self) -> std::collections::BTreeMap<u16, String> {
+        let mut semantics = std::collections::BTreeMap::new();
+        for layer in &self.layers {
+            for sem in &layer.status_semantics {
+                semantics.insert(sem.code, sem.outcome.clone());
+            }
+        }
+        semantics
+    }
+
+    /// Return the number of layers in the stack.
+    pub fn depth(&self) -> usize {
+        self.layers.len()
+    }
+
+    /// Get the bottom (lowest-level) layer, if any.
+    pub fn bottom(&self) -> Option<&ProtocolLayer> {
+        self.layers.first()
+    }
+
+    /// Get the top (highest-level) layer, if any.
+    pub fn top(&self) -> Option<&ProtocolLayer> {
+        self.layers.last()
+    }
+
+    /// Derive a protocol stack from an existing `TransportBehavior`.
+    ///
+    /// This is a **read-only bridge** — it does not modify the input
+    /// `TransportBehavior`. It maps the flat transport model onto the
+    /// layered stack model:
+    ///
+    /// - `TransportKind::Tcp` → single Socket layer
+    /// - `TransportKind::Http` → Socket (tcp) + Session (http)
+    /// - `TransportKind::Rest` → Socket (tcp) + Session (http) + Presentation (rest)
+    /// - `TransportKind::File` → single Socket layer (filesystem)
+    /// - `TransportKind::Shell` → single Socket layer (process)
+    ///
+    /// The bridge populates properties from the behavior's field routes
+    /// and required/optional fields, giving a structural view of what
+    /// the flat `TransportBehavior` implicitly encodes.
+    pub fn from_transport_behavior(
+        behavior: &crate::transport::behavior::TransportBehavior,
+    ) -> Self {
+        use crate::transport::behavior::TransportKind;
+
+        let mut layers = Vec::new();
+
+        match behavior.transport {
+            TransportKind::Tcp => {
+                layers.push(
+                    ProtocolLayer::new("tcp", ProtocolLayerKind::Socket)
+                        .with_description("Raw TCP socket connectivity")
+                        .with_properties(vec!["WritesWorld".into()]),
+                );
+            }
+            TransportKind::Http => {
+                layers.push(
+                    ProtocolLayer::new("tcp", ProtocolLayerKind::Socket)
+                        .with_description("TCP connectivity (implicit)")
+                        .with_properties(vec!["WritesWorld".into()]),
+                );
+                layers.push(
+                    ProtocolLayer::new("http", ProtocolLayerKind::Session)
+                        .with_description("HTTP request/response framing")
+                        .with_properties(vec!["Retryable".into()])
+                        .with_status_semantics(vec![
+                            StatusSemantic::new(200, "success"),
+                            StatusSemantic::new(201, "success"),
+                            StatusSemantic::new(204, "success"),
+                            StatusSemantic::new(400, "client_error"),
+                            StatusSemantic::new(401, "client_error"),
+                            StatusSemantic::new(403, "client_error"),
+                            StatusSemantic::new(404, "client_error"),
+                            StatusSemantic::new(429, "retryable"),
+                            StatusSemantic::new(500, "server_error"),
+                            StatusSemantic::new(502, "retryable"),
+                            StatusSemantic::new(503, "retryable"),
+                        ]),
+                );
+            }
+            TransportKind::Rest => {
+                layers.push(
+                    ProtocolLayer::new("tcp", ProtocolLayerKind::Socket)
+                        .with_description("TCP connectivity (implicit)")
+                        .with_properties(vec!["WritesWorld".into()]),
+                );
+                layers.push(
+                    ProtocolLayer::new("http", ProtocolLayerKind::Session)
+                        .with_description("HTTP request/response framing")
+                        .with_properties(vec!["Retryable".into()])
+                        .with_status_semantics(vec![
+                            StatusSemantic::new(200, "success"),
+                            StatusSemantic::new(201, "success"),
+                            StatusSemantic::new(204, "success"),
+                            StatusSemantic::new(400, "client_error"),
+                            StatusSemantic::new(401, "client_error"),
+                            StatusSemantic::new(403, "client_error"),
+                            StatusSemantic::new(404, "client_error"),
+                            StatusSemantic::new(429, "retryable"),
+                            StatusSemantic::new(500, "server_error"),
+                            StatusSemantic::new(502, "retryable"),
+                            StatusSemantic::new(503, "retryable"),
+                        ]),
+                );
+                layers.push(
+                    ProtocolLayer::new("rest", ProtocolLayerKind::Presentation)
+                        .with_description("REST/JSON content encoding policy")
+                        .with_properties(vec!["JsonContentType".into()])
+                        .with_status_semantics(vec![
+                            // REST-specific override: 304 Not Modified is success
+                            StatusSemantic::new(304, "success"),
+                        ]),
+                );
+            }
+            TransportKind::File => {
+                layers.push(
+                    ProtocolLayer::new("file", ProtocolLayerKind::Socket)
+                        .with_description("Filesystem I/O")
+                        .with_properties(vec!["WritesWorld".into()]),
+                );
+            }
+            TransportKind::Shell => {
+                layers.push(
+                    ProtocolLayer::new("shell", ProtocolLayerKind::Socket)
+                        .with_description("Shell process execution")
+                        .with_properties(vec!["WritesWorld".into()]),
+                );
+            }
+        }
+
+        Self { layers }
+    }
+}
+
 /// Full contract summary for a type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeContract {
@@ -1190,6 +1570,133 @@ impl crate::algebra::MeetSemilattice for TypeContract {
 }
 
 impl crate::algebra::Lattice for TypeContract {}
+
+// ============================================================================
+// M21: Structural primitives for codegen — CodegenTypeShape + CodegenPlatformRepr
+// ============================================================================
+
+/// Scalar kinds for codegen type shapes.
+///
+/// These represent the leaf scalar types that appear in code generation
+/// output across all target platforms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScalarKind {
+    /// String / text value.
+    String,
+    /// Integer value (platform-width or fixed).
+    Integer,
+    /// Floating-point value.
+    Float,
+    /// Boolean value.
+    Boolean,
+    /// Raw byte sequence.
+    Bytes,
+}
+
+/// Structural shape of a type for code generation.
+///
+/// `CodegenTypeShape` describes the algebraic shape that a codegen backend
+/// must render. Unlike [`crate::type_shape::TypeShape`] (which extracts
+/// structure from type DAGs), `CodegenTypeShape` is a simplified,
+/// backend-facing view: "what shape does the emitted code take?"
+///
+/// # Naming
+///
+/// Prefixed `Codegen` to distinguish from [`crate::type_shape::TypeShape`],
+/// which is the structural extraction from `Dag<TypeOp>`. This type is the
+/// codegen-oriented *output* shape; `TypeShape` is the DAG-analysis *input*
+/// shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CodegenTypeShape {
+    /// A leaf scalar type (String, Integer, Float, Boolean, Bytes).
+    Scalar(ScalarKind),
+    /// A record / struct with named fields, each having its own shape.
+    Record { fields: Vec<(String, CodegenTypeShape)> },
+    /// An enum / tagged union with named variants (no payloads at this level).
+    Enum { variants: Vec<String> },
+    /// A list / array of elements with a uniform element shape.
+    List(Box<CodegenTypeShape>),
+    /// An optional / nullable value.
+    Optional(Box<CodegenTypeShape>),
+    /// A map from keys to values, each with their own shape.
+    Map { key: Box<CodegenTypeShape>, value: Box<CodegenTypeShape> },
+}
+
+impl CodegenTypeShape {
+    /// Returns true if this shape is composite (Record, Enum, List, or Map).
+    ///
+    /// Scalar and Optional are not considered composite: Scalar is a leaf,
+    /// and Optional is a cardinality modifier rather than a structural
+    /// composite.
+    pub fn is_composite(&self) -> bool {
+        matches!(
+            self,
+            CodegenTypeShape::Record { .. }
+                | CodegenTypeShape::Enum { .. }
+                | CodegenTypeShape::List(_)
+                | CodegenTypeShape::Map { .. }
+        )
+    }
+
+    /// Recursively collects all scalar leaf kinds in this shape.
+    ///
+    /// Walks the shape tree depth-first and returns references to every
+    /// `ScalarKind` encountered. The order is deterministic (depth-first,
+    /// left-to-right for Record fields and Map key/value).
+    pub fn leaf_scalars(&self) -> Vec<&ScalarKind> {
+        match self {
+            CodegenTypeShape::Scalar(kind) => vec![kind],
+            CodegenTypeShape::Record { fields } => {
+                fields.iter().flat_map(|(_, shape)| shape.leaf_scalars()).collect()
+            }
+            CodegenTypeShape::Enum { .. } => vec![],
+            CodegenTypeShape::List(inner) => inner.leaf_scalars(),
+            CodegenTypeShape::Optional(inner) => inner.leaf_scalars(),
+            CodegenTypeShape::Map { key, value } => {
+                let mut scalars = key.leaf_scalars();
+                scalars.extend(value.leaf_scalars());
+                scalars
+            }
+        }
+    }
+}
+
+/// Target platform for code generation.
+///
+/// Identifies which language/runtime the codegen output targets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Platform {
+    /// Rust target.
+    Rust,
+    /// Go target.
+    Go,
+    /// Python target.
+    Python,
+    /// TypeScript target.
+    TypeScript,
+}
+
+/// Platform-specific representation of a type shape.
+///
+/// Binds a [`CodegenTypeShape`] to a specific [`Platform`] and gives it
+/// the concrete type name that the backend will emit. This is the
+/// *output-side* representation — what the generated code looks like.
+///
+/// # Naming
+///
+/// Prefixed `Codegen` to distinguish from [`crate::type_op::PlatformRepr`],
+/// which describes machine-level properties (bit width, signedness, float).
+/// `CodegenPlatformRepr` describes the language-level name and shape;
+/// `PlatformRepr` describes the hardware-level contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodegenPlatformRepr {
+    /// The target platform.
+    pub platform: Platform,
+    /// The type name in the target platform (e.g., "Vec<String>", "[]string").
+    pub type_name: String,
+    /// The structural shape of the type.
+    pub shape: CodegenTypeShape,
+}
 
 #[cfg(test)]
 mod tests {
@@ -1810,5 +2317,523 @@ mod tests {
             .to_string(),
             "tool:make"
         );
+    }
+
+    // ============ M16: ProtocolLayer / ProtocolStack tests ============
+
+    #[test]
+    fn test_protocol_layer_kind_ordering() {
+        assert!(ProtocolLayerKind::Socket < ProtocolLayerKind::Transport);
+        assert!(ProtocolLayerKind::Transport < ProtocolLayerKind::Session);
+        assert!(ProtocolLayerKind::Session < ProtocolLayerKind::Presentation);
+        assert!(ProtocolLayerKind::Presentation < ProtocolLayerKind::Application);
+        assert!(ProtocolLayerKind::Application < ProtocolLayerKind::Operation);
+    }
+
+    #[test]
+    fn test_protocol_layer_kind_display() {
+        assert_eq!(ProtocolLayerKind::Socket.to_string(), "socket");
+        assert_eq!(ProtocolLayerKind::Session.to_string(), "session");
+        assert_eq!(ProtocolLayerKind::Presentation.to_string(), "presentation");
+    }
+
+    #[test]
+    fn test_protocol_layer_builder() {
+        let layer = ProtocolLayer::new("http", ProtocolLayerKind::Session)
+            .with_properties(vec!["Retryable".into()])
+            .with_status_semantics(vec![
+                StatusSemantic::new(200, "success"),
+                StatusSemantic::new(503, "retryable"),
+            ])
+            .with_description("HTTP request/response framing");
+
+        assert_eq!(layer.id, "http");
+        assert_eq!(layer.kind, ProtocolLayerKind::Session);
+        assert_eq!(layer.properties, vec!["Retryable"]);
+        assert_eq!(layer.status_semantics.len(), 2);
+        assert_eq!(layer.description, "HTTP request/response framing");
+    }
+
+    #[test]
+    fn test_protocol_stack_validates_correct_order() {
+        let stack = ProtocolStack::new(vec![
+            ProtocolLayer::new("tcp", ProtocolLayerKind::Socket),
+            ProtocolLayer::new("http", ProtocolLayerKind::Session),
+            ProtocolLayer::new("rest", ProtocolLayerKind::Presentation),
+        ]);
+        assert!(stack.validate().is_ok());
+    }
+
+    #[test]
+    fn test_protocol_stack_allows_same_kind_layers() {
+        // Two layers at the same kind level is valid (non-decreasing)
+        let stack = ProtocolStack::new(vec![
+            ProtocolLayer::new("tcp", ProtocolLayerKind::Socket),
+            ProtocolLayer::new("udp", ProtocolLayerKind::Socket),
+            ProtocolLayer::new("http", ProtocolLayerKind::Session),
+        ]);
+        assert!(stack.validate().is_ok());
+    }
+
+    #[test]
+    fn test_protocol_stack_rejects_empty() {
+        let stack = ProtocolStack::new(vec![]);
+        let err = stack.validate().unwrap_err();
+        assert!(matches!(err, ProtocolStackError::Empty));
+        assert!(err.to_string().contains("at least one layer"));
+    }
+
+    #[test]
+    fn test_protocol_stack_rejects_wrong_order() {
+        let stack = ProtocolStack::new(vec![
+            ProtocolLayer::new("rest", ProtocolLayerKind::Presentation),
+            ProtocolLayer::new("tcp", ProtocolLayerKind::Socket),
+        ]);
+        let err = stack.validate().unwrap_err();
+        match &err {
+            ProtocolStackError::OrderViolation {
+                index,
+                layer_id,
+                layer_kind,
+                prev_kind,
+            } => {
+                assert_eq!(*index, 1);
+                assert_eq!(layer_id, "tcp");
+                assert_eq!(*layer_kind, ProtocolLayerKind::Socket);
+                assert_eq!(*prev_kind, ProtocolLayerKind::Presentation);
+            }
+            other => panic!("expected OrderViolation, got {:?}", other),
+        }
+        assert!(err.to_string().contains("below preceding layer"));
+    }
+
+    #[test]
+    fn test_protocol_stack_rejects_duplicate_ids() {
+        let stack = ProtocolStack::new(vec![
+            ProtocolLayer::new("tcp", ProtocolLayerKind::Socket),
+            ProtocolLayer::new("tcp", ProtocolLayerKind::Session),
+        ]);
+        let err = stack.validate().unwrap_err();
+        assert!(matches!(err, ProtocolStackError::DuplicateId { ref id } if id == "tcp"));
+        assert!(err.to_string().contains("duplicate layer id"));
+    }
+
+    #[test]
+    fn test_protocol_stack_all_properties() {
+        let stack = ProtocolStack::new(vec![
+            ProtocolLayer::new("tcp", ProtocolLayerKind::Socket)
+                .with_properties(vec!["WritesWorld".into()]),
+            ProtocolLayer::new("http", ProtocolLayerKind::Session)
+                .with_properties(vec!["Retryable".into(), "WritesWorld".into()]),
+            ProtocolLayer::new("rest", ProtocolLayerKind::Presentation)
+                .with_properties(vec!["JsonContentType".into()]),
+        ]);
+
+        let props = stack.all_properties();
+        assert_eq!(props.len(), 3);
+        assert!(props.contains(&"WritesWorld".to_string()));
+        assert!(props.contains(&"Retryable".to_string()));
+        assert!(props.contains(&"JsonContentType".to_string()));
+    }
+
+    #[test]
+    fn test_protocol_stack_effective_status_semantics_override() {
+        let stack = ProtocolStack::new(vec![
+            ProtocolLayer::new("http", ProtocolLayerKind::Session)
+                .with_status_semantics(vec![
+                    StatusSemantic::new(200, "success"),
+                    StatusSemantic::new(304, "redirect"),
+                    StatusSemantic::new(503, "server_error"),
+                ]),
+            ProtocolLayer::new("rest", ProtocolLayerKind::Presentation)
+                .with_status_semantics(vec![
+                    // REST overrides: 304 is success, not redirect
+                    StatusSemantic::new(304, "success"),
+                ]),
+        ]);
+
+        let semantics = stack.effective_status_semantics();
+        assert_eq!(semantics.get(&200), Some(&"success".to_string()));
+        // REST layer overrides HTTP's classification of 304
+        assert_eq!(semantics.get(&304), Some(&"success".to_string()));
+        // 503 is unchanged from HTTP layer
+        assert_eq!(semantics.get(&503), Some(&"server_error".to_string()));
+    }
+
+    #[test]
+    fn test_protocol_stack_depth_and_accessors() {
+        let stack = ProtocolStack::new(vec![
+            ProtocolLayer::new("tcp", ProtocolLayerKind::Socket),
+            ProtocolLayer::new("http", ProtocolLayerKind::Session),
+            ProtocolLayer::new("rest", ProtocolLayerKind::Presentation),
+        ]);
+
+        assert_eq!(stack.depth(), 3);
+        assert_eq!(stack.bottom().unwrap().id, "tcp");
+        assert_eq!(stack.top().unwrap().id, "rest");
+    }
+
+    #[test]
+    fn test_protocol_stack_single_layer() {
+        let stack = ProtocolStack::new(vec![
+            ProtocolLayer::new("shell", ProtocolLayerKind::Socket),
+        ]);
+        assert!(stack.validate().is_ok());
+        assert_eq!(stack.depth(), 1);
+        assert_eq!(stack.bottom(), stack.top());
+    }
+
+    // --- TransportBehavior bridge tests ---
+
+    #[test]
+    fn test_bridge_tcp_behavior() {
+        use crate::transport::behavior::{TransportBehavior, TransportKind};
+
+        let behavior = TransportBehavior::new(
+            "transport.tcp",
+            TransportKind::Tcp,
+            "TcpRequest",
+            "TcpResponse",
+        );
+
+        let stack = ProtocolStack::from_transport_behavior(&behavior);
+        assert!(stack.validate().is_ok());
+        assert_eq!(stack.depth(), 1);
+        assert_eq!(stack.layers[0].id, "tcp");
+        assert_eq!(stack.layers[0].kind, ProtocolLayerKind::Socket);
+        assert!(stack.all_properties().contains(&"WritesWorld".to_string()));
+    }
+
+    #[test]
+    fn test_bridge_http_behavior() {
+        use crate::transport::behavior::{TransportBehavior, TransportKind};
+
+        let behavior = TransportBehavior::new(
+            "transport.http",
+            TransportKind::Http,
+            "HttpRequest",
+            "HttpResponse",
+        );
+
+        let stack = ProtocolStack::from_transport_behavior(&behavior);
+        assert!(stack.validate().is_ok());
+        assert_eq!(stack.depth(), 2);
+        assert_eq!(stack.layers[0].id, "tcp");
+        assert_eq!(stack.layers[0].kind, ProtocolLayerKind::Socket);
+        assert_eq!(stack.layers[1].id, "http");
+        assert_eq!(stack.layers[1].kind, ProtocolLayerKind::Session);
+
+        // HTTP layer should have status semantics
+        let semantics = stack.effective_status_semantics();
+        assert_eq!(semantics.get(&200), Some(&"success".to_string()));
+        assert_eq!(semantics.get(&503), Some(&"retryable".to_string()));
+    }
+
+    #[test]
+    fn test_bridge_rest_behavior() {
+        use crate::transport::behavior::{TransportBehavior, TransportKind};
+
+        let behavior = TransportBehavior::new(
+            "transport.rest",
+            TransportKind::Rest,
+            "RestRequest",
+            "RestResponse",
+        );
+
+        let stack = ProtocolStack::from_transport_behavior(&behavior);
+        assert!(stack.validate().is_ok());
+        assert_eq!(stack.depth(), 3);
+        assert_eq!(stack.layers[0].id, "tcp");
+        assert_eq!(stack.layers[1].id, "http");
+        assert_eq!(stack.layers[2].id, "rest");
+        assert_eq!(stack.layers[2].kind, ProtocolLayerKind::Presentation);
+
+        // REST layer should add JsonContentType
+        assert!(stack.all_properties().contains(&"JsonContentType".to_string()));
+
+        // REST overrides 304 to success
+        let semantics = stack.effective_status_semantics();
+        assert_eq!(semantics.get(&304), Some(&"success".to_string()));
+    }
+
+    #[test]
+    fn test_bridge_file_behavior() {
+        use crate::transport::behavior::{TransportBehavior, TransportKind};
+
+        let behavior = TransportBehavior::new(
+            "transport.file",
+            TransportKind::File,
+            "FileRequest",
+            "FileResponse",
+        );
+
+        let stack = ProtocolStack::from_transport_behavior(&behavior);
+        assert!(stack.validate().is_ok());
+        assert_eq!(stack.depth(), 1);
+        assert_eq!(stack.layers[0].id, "file");
+        assert_eq!(stack.layers[0].kind, ProtocolLayerKind::Socket);
+    }
+
+    #[test]
+    fn test_bridge_shell_behavior() {
+        use crate::transport::behavior::{TransportBehavior, TransportKind};
+
+        let behavior = TransportBehavior::new(
+            "transport.shell",
+            TransportKind::Shell,
+            "ShellRequest",
+            "ShellResponse",
+        );
+
+        let stack = ProtocolStack::from_transport_behavior(&behavior);
+        assert!(stack.validate().is_ok());
+        assert_eq!(stack.depth(), 1);
+        assert_eq!(stack.layers[0].id, "shell");
+    }
+
+    #[test]
+    fn test_bridge_all_default_behaviors_produce_valid_stacks() {
+        use crate::transport::behavior::default_transport_behaviors;
+
+        for behavior in default_transport_behaviors() {
+            let stack = ProtocolStack::from_transport_behavior(&behavior);
+            stack.validate().unwrap_or_else(|err| {
+                panic!(
+                    "default behavior '{}' produced invalid stack: {}",
+                    behavior.id, err
+                )
+            });
+            assert!(
+                stack.depth() >= 1,
+                "stack for '{}' should have at least one layer",
+                behavior.id
+            );
+        }
+    }
+
+    // ============ M21: CodegenTypeShape + CodegenPlatformRepr tests ============
+
+    #[test]
+    fn test_codegen_scalar_is_not_composite() {
+        let shape = CodegenTypeShape::Scalar(ScalarKind::String);
+        assert!(!shape.is_composite());
+    }
+
+    #[test]
+    fn test_codegen_record_is_composite() {
+        let shape = CodegenTypeShape::Record {
+            fields: vec![
+                ("name".to_string(), CodegenTypeShape::Scalar(ScalarKind::String)),
+                ("age".to_string(), CodegenTypeShape::Scalar(ScalarKind::Integer)),
+            ],
+        };
+        assert!(shape.is_composite());
+    }
+
+    #[test]
+    fn test_codegen_enum_is_composite() {
+        let shape = CodegenTypeShape::Enum {
+            variants: vec!["Get".to_string(), "Post".to_string(), "Put".to_string()],
+        };
+        assert!(shape.is_composite());
+    }
+
+    #[test]
+    fn test_codegen_list_is_composite() {
+        let shape = CodegenTypeShape::List(Box::new(CodegenTypeShape::Scalar(ScalarKind::Integer)));
+        assert!(shape.is_composite());
+    }
+
+    #[test]
+    fn test_codegen_optional_is_not_composite() {
+        let shape =
+            CodegenTypeShape::Optional(Box::new(CodegenTypeShape::Scalar(ScalarKind::String)));
+        assert!(!shape.is_composite());
+    }
+
+    #[test]
+    fn test_codegen_map_is_composite() {
+        let shape = CodegenTypeShape::Map {
+            key: Box::new(CodegenTypeShape::Scalar(ScalarKind::String)),
+            value: Box::new(CodegenTypeShape::Scalar(ScalarKind::Integer)),
+        };
+        assert!(shape.is_composite());
+    }
+
+    #[test]
+    fn test_codegen_leaf_scalars_scalar() {
+        let shape = CodegenTypeShape::Scalar(ScalarKind::Boolean);
+        let scalars = shape.leaf_scalars();
+        assert_eq!(scalars, vec![&ScalarKind::Boolean]);
+    }
+
+    #[test]
+    fn test_codegen_leaf_scalars_record() {
+        let shape = CodegenTypeShape::Record {
+            fields: vec![
+                ("name".to_string(), CodegenTypeShape::Scalar(ScalarKind::String)),
+                ("count".to_string(), CodegenTypeShape::Scalar(ScalarKind::Integer)),
+                ("active".to_string(), CodegenTypeShape::Scalar(ScalarKind::Boolean)),
+            ],
+        };
+        let scalars = shape.leaf_scalars();
+        assert_eq!(
+            scalars,
+            vec![&ScalarKind::String, &ScalarKind::Integer, &ScalarKind::Boolean]
+        );
+    }
+
+    #[test]
+    fn test_codegen_leaf_scalars_enum_has_none() {
+        let shape = CodegenTypeShape::Enum {
+            variants: vec!["A".to_string(), "B".to_string()],
+        };
+        let scalars = shape.leaf_scalars();
+        assert!(scalars.is_empty());
+    }
+
+    #[test]
+    fn test_codegen_leaf_scalars_nested() {
+        // List<Record{name: String, data: Bytes}>
+        let shape = CodegenTypeShape::List(Box::new(CodegenTypeShape::Record {
+            fields: vec![
+                ("name".to_string(), CodegenTypeShape::Scalar(ScalarKind::String)),
+                ("data".to_string(), CodegenTypeShape::Scalar(ScalarKind::Bytes)),
+            ],
+        }));
+        let scalars = shape.leaf_scalars();
+        assert_eq!(scalars, vec![&ScalarKind::String, &ScalarKind::Bytes]);
+    }
+
+    #[test]
+    fn test_codegen_leaf_scalars_optional() {
+        let shape =
+            CodegenTypeShape::Optional(Box::new(CodegenTypeShape::Scalar(ScalarKind::Float)));
+        let scalars = shape.leaf_scalars();
+        assert_eq!(scalars, vec![&ScalarKind::Float]);
+    }
+
+    #[test]
+    fn test_codegen_leaf_scalars_map() {
+        let shape = CodegenTypeShape::Map {
+            key: Box::new(CodegenTypeShape::Scalar(ScalarKind::String)),
+            value: Box::new(CodegenTypeShape::Scalar(ScalarKind::Integer)),
+        };
+        let scalars = shape.leaf_scalars();
+        assert_eq!(scalars, vec![&ScalarKind::String, &ScalarKind::Integer]);
+    }
+
+    #[test]
+    fn test_codegen_leaf_scalars_deeply_nested() {
+        // Optional<Map<String, List<Boolean>>>
+        let shape = CodegenTypeShape::Optional(Box::new(CodegenTypeShape::Map {
+            key: Box::new(CodegenTypeShape::Scalar(ScalarKind::String)),
+            value: Box::new(CodegenTypeShape::List(Box::new(CodegenTypeShape::Scalar(
+                ScalarKind::Boolean,
+            )))),
+        }));
+        let scalars = shape.leaf_scalars();
+        assert_eq!(scalars, vec![&ScalarKind::String, &ScalarKind::Boolean]);
+    }
+
+    #[test]
+    fn test_codegen_platform_repr_construction() {
+        let repr = CodegenPlatformRepr {
+            platform: Platform::Rust,
+            type_name: "Vec<String>".to_string(),
+            shape: CodegenTypeShape::List(Box::new(CodegenTypeShape::Scalar(ScalarKind::String))),
+        };
+        assert_eq!(repr.platform, Platform::Rust);
+        assert_eq!(repr.type_name, "Vec<String>");
+        assert!(repr.shape.is_composite());
+    }
+
+    #[test]
+    fn test_codegen_platform_repr_go() {
+        let repr = CodegenPlatformRepr {
+            platform: Platform::Go,
+            type_name: "map[string]int64".to_string(),
+            shape: CodegenTypeShape::Map {
+                key: Box::new(CodegenTypeShape::Scalar(ScalarKind::String)),
+                value: Box::new(CodegenTypeShape::Scalar(ScalarKind::Integer)),
+            },
+        };
+        assert_eq!(repr.platform, Platform::Go);
+        assert_eq!(repr.type_name, "map[string]int64");
+    }
+
+    #[test]
+    fn test_codegen_platform_repr_python() {
+        let repr = CodegenPlatformRepr {
+            platform: Platform::Python,
+            type_name: "Optional[str]".to_string(),
+            shape: CodegenTypeShape::Optional(Box::new(CodegenTypeShape::Scalar(
+                ScalarKind::String,
+            ))),
+        };
+        assert_eq!(repr.platform, Platform::Python);
+        assert!(!repr.shape.is_composite());
+    }
+
+    #[test]
+    fn test_codegen_platform_repr_typescript() {
+        let repr = CodegenPlatformRepr {
+            platform: Platform::TypeScript,
+            type_name: "Record<string, number>".to_string(),
+            shape: CodegenTypeShape::Map {
+                key: Box::new(CodegenTypeShape::Scalar(ScalarKind::String)),
+                value: Box::new(CodegenTypeShape::Scalar(ScalarKind::Integer)),
+            },
+        };
+        assert_eq!(repr.platform, Platform::TypeScript);
+    }
+
+    #[test]
+    fn test_codegen_type_shape_equality() {
+        let a = CodegenTypeShape::Scalar(ScalarKind::String);
+        let b = CodegenTypeShape::Scalar(ScalarKind::String);
+        let c = CodegenTypeShape::Scalar(ScalarKind::Integer);
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn test_codegen_type_shape_clone() {
+        let original = CodegenTypeShape::Record {
+            fields: vec![
+                ("x".to_string(), CodegenTypeShape::Scalar(ScalarKind::Float)),
+                ("y".to_string(), CodegenTypeShape::Scalar(ScalarKind::Float)),
+            ],
+        };
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_platform_equality() {
+        assert_eq!(Platform::Rust, Platform::Rust);
+        assert_ne!(Platform::Rust, Platform::Go);
+        assert_ne!(Platform::Python, Platform::TypeScript);
+    }
+
+    #[test]
+    fn test_scalar_kind_all_variants() {
+        // Verify all five ScalarKind variants are distinct.
+        let kinds = vec![
+            ScalarKind::String,
+            ScalarKind::Integer,
+            ScalarKind::Float,
+            ScalarKind::Boolean,
+            ScalarKind::Bytes,
+        ];
+        for (i, a) in kinds.iter().enumerate() {
+            for (j, b) in kinds.iter().enumerate() {
+                if i == j {
+                    assert_eq!(a, b);
+                } else {
+                    assert_ne!(a, b, "ScalarKind variants at {} and {} should differ", i, j);
+                }
+            }
+        }
     }
 }

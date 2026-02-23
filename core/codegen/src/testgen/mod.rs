@@ -25,7 +25,6 @@ pub mod cardinality;
 pub mod codegen;
 pub mod obligation;
 pub mod probe_observer;
-pub mod render;
 pub mod render_python;
 pub mod render_rust;
 pub mod render_ts;

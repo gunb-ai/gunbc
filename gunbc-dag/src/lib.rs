@@ -21,7 +21,6 @@ pub mod binaries;
 pub mod bootstrap;
 pub mod build;
 pub mod ci;
-pub mod cloud_env;
 pub mod codegen;
 pub mod deps_tool;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
@@ -52,7 +51,7 @@ pub use binaries::WorkspaceBinary;
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp, BootstrapOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
 pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp, CIOp};
-pub use cloud_env::{
+pub use gunbc_lib_cloud_ops::env_requirements::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
     gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
     CLOUD_ENV_COMMON_OPTIONAL,

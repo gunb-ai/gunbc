@@ -118,7 +118,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, M7, M15 |
 | 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19 |
 | Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4a..TS-4d (needs both Lane 1 + Lane 2 done) |
-| 3: Modeling integrity | **QUEUED** | M8..M14, M16..M19 |
+| 3: Modeling integrity | **ACTIVE** | M14 🔄, M16 🔄 → GR-1..GR-4, M21 🔄 |
 | 4: Codebase polish | **ACTIVE** | CU-1..CU-10 |
 
 ---
@@ -279,67 +279,82 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 
 ---
 
-## Lane 3: Modeling Integrity (Queued — Start After 1/2 Merge)
+## Lane 3: Modeling Integrity (ACTIVE)
 
 **Source**: `TODO/modeling.md` — 13 intake tasks for semantic-integrity hardening.
 **Design-first policy**: Every M* task requires a paired M*-D design review before implementation.
-**Queued, not blocked**: Can start whenever a worker is free; independent of Lanes I/J except where noted.
+**Status**: 13/16 modeling tasks complete. M14, M16, M21 in progress. Graph.rs cleanup blocked on M16.
 
 ### Lane 3-A: Graph semantics (M8 → M9 → M16)
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **M8-D** | **Design: Separate metadata from validation**: New `TypeOp::Meta` or typed metadata carrier. Metadata remains traversable but cannot fail or alter execution. Only true validators in `Validate`. | — | S | |
-| **M8** | **Semantically inert metadata op**: Migrate SystemModel from `Validate(Custom("meta:..."))` to `Meta(...)`. Erasure-invariance test: removing `Meta` must not change runtime behavior. Reject metadata-over-Validate in strict mode. | M8-D | M | |
-| **M9-D** | **Design: Typed dependency markers**: `DependencyNodeId` typed constructor replacing `dep:system::<target>` string conventions. | M8-D | S | |
-| **M9** | **Typed dependency markers**: Replace string-encoded dependency IDs with typed edge metadata. Remove runtime logic that infers kind from string prefixes. Round-trip tests for system/secret dependency mapping. | M9-D, M8 | S | |
-| **M16-D** | **Design: SystemModel/TransportBehavior unification**: Shared invocation contract model consumed by both SystemModel and transport behavior specs. | M8-D | S | |
-| **M16** | **Unify invocation contracts**: Migrate `Invocation::Rest` to shared transport spec types. Parity tests proving SystemModel and TransportBehavior are structurally equivalent. Remove duplicate spec surfaces. **Unblocks**: deletion of 4 remaining `graph.rs` files (~4,170 lines) + AWS/Azure cloud modeling completion. See `TODO/modeling.md` § "Cloud Modeling Gap Inventory". | M16-D, M8 | M | |
+| **M8-D** | **Design: Separate metadata from validation** | — | S | ✅ Done |
+| **M8** | **Semantically inert metadata op**: `TypeOp::Meta(MetadataPayload)`. Erasure-invariance test. Strict-mode guard. | M8-D | M | ✅ Done |
+| **M9-D** | **Design: Typed dependency markers** | M8-D | S | ✅ Done |
+| **M9** | **Typed dependency markers**: `DependencyKind` enum, `DependencyEdge` struct, round-trip tests. | M9-D, M8 | S | ✅ Done |
+| **M16-D** | **Design: SystemModel/TransportBehavior unification** | M8-D | S | ✅ Done |
+| **M16** | **Unify invocation contracts**: `ProtocolLayer` + `ProtocolStack` types in `contract.rs`. Bridge from `TransportBehavior`+`BehaviorScope`. **Unblocks**: graph.rs cleanup + cloud modeling. | M16-D, M8 | M | 🔄 In progress |
+
+### Lane 3-A+ : Graph.rs Cleanup (Blocked on M16)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **GR-1** | **Delete `review/graph.rs`** (1,727 lines) | M16 | S | |
+| **GR-2** | **Delete `llm-ops/graph.rs`** (267 lines) — only called by review's graph builder | GR-1, M16 | S | |
+| **GR-3** | **Delete `cloud-ops/graph.rs`** (502 lines) — central dispatcher | M16 | S | |
+| **GR-4** | **Delete `gcp-ops/graph.rs`** (1,674 lines) — called by cloud-ops dispatcher | GR-3, M16 | S | |
 
 ### Lane 3-B: Workflow execution safety (M10 → M11 → M12)
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **M10-D** | **Design: Mandatory resource declarations + auto-wiring**: Build-time rule: effectful ops must declare resource ports/claims. Auto-wiring helper for filesystem/manifest claims. Scheduler denies undeclared I/O. | — | S | |
-| **M10** | **Mandatory resource declarations**: Build-time validator for effectful units. Auto-wiring for common resources. Conflict tests for read/read allowed, write/write denied. Failure tests for undeclared effectful I/O. | M10-D | L | |
-| **M11-D** | **Design: Strict dry-run mode**: `DryRunMode::{Lenient,Strict}` with poison/UNSET defaults. Strict mode: unset resource/env consumption is hard failure. | M10-D | S | |
-| **M11** | **Strict dry-run in CI/testgen**: Poison value model for missing acquisitions. Executor fail-fast on poison consumption with data-flow trace. Wire strict mode into CI/testgen. Lenient preserved for dev ergonomics. | M11-D, M10 | M | |
-| **M12-D** | **Design: Coercion proof nodes**: Assertion node set or shape-receipt channel for coercion verification. | M11-D | S | |
-| **M12** | **Coercion proof nodes**: Generated coercion tests assert shape/cardinality invariants (scalar→list, non-nested, etc.). Failures are explicit and localized. | M12-D, M11 | S | |
+| **M10-D** | **Design: Mandatory resource declarations + auto-wiring** | — | S | ✅ Done |
+| **M10** | **Mandatory resource declarations**: `EffectKind` enum, `validate_effectful_declarations()`, auto-wiring helpers. | M10-D | L | ✅ Done |
+| **M11-D** | **Design: Strict dry-run mode** | M10-D | S | ✅ Done |
+| **M11** | **Strict dry-run in CI/testgen**: `DryRunStrictness::{Lenient,Strict}`, poison value model, fail-fast executor. | M11-D, M10 | M | ✅ Done |
+| **M12-D** | **Design: Coercion proof nodes** | M11-D | S | ✅ Done |
+| **M12** | **Coercion proof nodes**: `ShapeContract` assertion framework, shape/cardinality invariants. | M12-D, M11 | S | ✅ Done |
 
 ### Lane 3-C: Process contract drift (M13 → M14)
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **M13-D** | **Design: Registry→CLI→Make contract tests**: Hermetic round-trip harness from registry entrypoint metadata to emitted argv semantics. | — | S | |
-| **M13** | **Contract tests**: Fast integration tests catching dropped repeatable flags and cardinality drift across registry, makegen, CLI. Failing contract blocks CI. | M13-D | M | |
-| **M14-D** | **Design: Single inventory authority**: Inventory-backed canonical registration for binaries + provides/consumes metadata. | M13-D | S | |
-| **M14** | **Single inventory authority**: Downstream consumers (Make/CI/resource maps) derive from one source. Adding a tool requires one registration point. Drift tests validate parity. | M14-D, M13 | M | |
+| **M13-D** | **Design: Registry→CLI→Make contract tests** | — | S | ✅ Done |
+| **M13** | **Contract tests**: Round-trip registry→CLI→Make parity tests. | M13-D | M | ✅ Done |
+| **M14-D** | **Design: Single inventory authority** | M13-D | S | ✅ Done |
+| **M14** | **Single inventory authority**: `inventory_is_single_authority` test, drift validation. | M14-D, M13 | M | 🔄 In progress |
 
 ### Lane 3-D: Global minimality proof (M17 → M18 → M19)
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **M17-D** | **Design: Global flattening + context-free work identity**: `WorkIdentity` model independent of orchestration node names. Flattening pass resolves equivalent work before scheduling. | — | M | |
-| **M17** | **Global flattening**: Planner resolves/merges equivalent `WorkIdentity` vertices before scheduling. Cross-workflow tests proving shared cache hits. | M17-D | L | |
-| **M18-D** | **Design: Single semantic authority / projection-only surfaces**: Canonical semantic source with generated projections. Drift validators. | M17-D | S | |
-| **M18** | **Projection-only surfaces**: Make/CLI/report are generated views. Drift checks fail CI. Remove manually maintained duplicate dependency graphs. | M18-D, M17 | M | |
-| **M19-D** | **Design: Formal non-redundancy proof harness**: Invariant suite over resolved global DAG + ledger/key behavior. | M18-D | S | |
-| **M19** | **Non-redundancy proof harness**: At-most-once execution checks. Minimal-dirty-closure checks. Single-writer ordering checks. Actionable diagnostics on proof failure. | M19-D, M17, M18 | M | |
+| **M17-D** | **Design: Global flattening + context-free work identity** | — | M | ✅ Done |
+| **M17** | **Global flattening**: `WorkIdentity`, `GlobalPlan`, `PlanStep`, flattening + merge. | M17-D | L | ✅ Done |
+| **M18-D** | **Design: Single semantic authority / projection-only surfaces** | M17-D | S | ✅ Done |
+| **M18** | **Projection-only surfaces**: `ProjectionSurface`, drift detection, canonical derivation. | M18-D, M17 | M | ✅ Done |
+| **M19-D** | **Design: Formal non-redundancy proof harness** | M18-D | S | ✅ Done |
+| **M19** | **Non-redundancy proof harness**: `NonRedundancyProof`, at-most-once, minimal-dirty-closure, single-writer checks. | M19-D, M17, M18 | M | ✅ Done |
+
+### Lane 3-E: Repo self-model + codegen + annotations (M20, M21, M22)
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **M20** | **Repository self-understanding model**: `CrateTier`, `CrateSpec`, generator edges, commit policies, toolchain requirements in `workspace_model.rs`. | — | L | ✅ Done |
+| **M21** | **Structural primitives for codegen**: `TypeShape`, `ScalarKind`, `PlatformRepr`, `Platform` types in `contract.rs`. | M8 | L | 🔄 In progress |
+| **M22** | **Annotation-to-DAG modeling**: `ContractObligation` (Phase 1), `ErrorMapping` (Phase 2), `RetryPolicy` (Phase 3), `ResourceRequirement` (Phase 4), `@testgen_skip` emit wiring (Phase 5). | M8, M10, M12, M16 | L | ✅ Done |
 
 ### Lane 3 dependency graph
 
 ```
-Lane 3-A:  M8 → M9 → M16 → [graph.rs cleanup: review, llm, cloud-ops, gcp-ops]
-                               → [cloud gap: AWS services, Azure services, GitHub ops wiring]
-Lane 3-B:  M10 → M11 → M12
-Lane 3-C:  M13 → M14
-Lane 3-D:  M17 → M18 → M19
+Lane 3-A:  M8 ✅ → M9 ✅ → M16 🔄 → [graph.rs cleanup: GR-1..GR-4]
+                                      → [cloud gap: AWS services, Azure services, GitHub ops wiring]
+Lane 3-B:  M10 ✅ → M11 ✅ → M12 ✅
+Lane 3-C:  M13 ✅ → M14 🔄
+Lane 3-D:  M17 ✅ → M18 ✅ → M19 ✅
+Lane 3-E:  M20 ✅, M21 🔄, M22 ✅
 
-3-A and 3-B are independent.
-3-C is independent.
-3-D is independent but highest complexity.
-M16 is the critical path for cloud modeling completion (see TODO/modeling.md § Cloud Modeling Gap Inventory).
+3-A graph.rs cleanup is the critical path (blocked on M16 completion).
 ```
 
 ---
@@ -411,7 +426,7 @@ Lane 1 + Lane 2 merged
 
 | ID | Task | Location | Deps | Size | Status |
 |----|------|----------|------|------|--------|
-| **CU-1** | **Audit near-empty stub files**: 7 files with <5 lines: `core/ir/src/{go_ir.rs, register_ir.rs, c_ir.rs}`, `core/codegen/src/testgen/render.rs`, `core/daglang/daglang-cli/src/lib.rs`, `gunbc-dag/src/policy/mod.rs`, `gunbc-dag/tests/common/mod.rs`. Decide: remove if unused, add content if placeholder, or add comment explaining purpose. | Various | — | S | |
+| **CU-1** | **Audit near-empty stub files**: 2 remaining: `gunbc-dag/src/policy/mod.rs`, `gunbc-dag/tests/common/mod.rs` (valid module tree structure — keep). ~~5 deleted~~: `c_ir.rs`, `go_ir.rs`, `register_ir.rs` (Batch 1d), `testgen/render.rs` (dead re-export), `cloud_env.rs` (inlined). `daglang-cli/src/lib.rs` is minimal but functional. | Various | — | S | ✅ Done |
 | **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | |
 | **CU-3** | **Factor common mock helpers**: 3 largest mock files (llm-ops 1043 lines, gist 643, review 620) share patterns. Extract to shared `gunbc-test::mock_helpers` module. | `lib/*/src/graph_mock.rs` | — | M | |
 | **CU-4** | **Document side-effect imports**: ~16 `use ... as _;` imports across binary and test files. Add explanatory comments. | `gunbc-dag/src/bin/*.rs` | — | S | |

@@ -131,9 +131,15 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     writeln!(out, "use gunbc_ir::transport::{{RestResponse, ShellResponse, FileResponse, FileOp, TransportResponse}};").unwrap();
     writeln!(out).unwrap();
 
-    // Emit Rust mock helper annotations as documentation comments.
-    let rust_helpers: Vec<&str> = test_file
+    // Filter out tests marked with @testgen_skip(true).
+    let active_tests: Vec<&TestDef> = test_file
         .tests
+        .iter()
+        .filter(|t| !find_annotation_bool(&t.annotations, "testgen_skip").unwrap_or(false))
+        .collect();
+
+    // Emit Rust mock helper annotations as documentation comments.
+    let rust_helpers: Vec<&str> = active_tests
         .iter()
         .filter_map(|t| find_annotation_string(&t.annotations, "rust_mock_helpers"))
         .collect::<Vec<_>>()
@@ -156,7 +162,7 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     }
 
     // Emit test functions
-    for test in &test_file.tests {
+    for test in &active_tests {
         emit_test_fn(&mut out, test, &test_file.fixtures, config);
     }
 
@@ -901,5 +907,51 @@ test with_helpers {
 
         let output = emit_test_mock_file(&test_file, &config);
         assert!(output.contains("// Rust mock helpers: gunbc_lib_review::graph_mock"));
+    }
+
+    #[test]
+    fn testgen_skip_excludes_test_from_emission() {
+        let source = r#"
+test normal_test {
+    @tier(Unit)
+    mock execute.data -> { ok: true }
+}
+
+test skipped_test {
+    @tier(Unit)
+    @testgen_skip(true)
+    mock execute.data -> { ok: true }
+}
+
+test another_normal {
+    @tier(Unit)
+    mock execute.data -> { ok: false }
+}
+"#;
+        let ast = parser::parse(source).expect("should parse");
+        let test_file = TestFile::from_source(&ast);
+        assert_eq!(test_file.tests.len(), 3, "all 3 tests parsed");
+
+        let config = TestEmitConfig {
+            dag_builder: "crate::build_graph()".to_string(),
+            auto_mock_fn: "crate::auto_mock_spec".to_string(),
+            output_dir: "test".to_string(),
+            tool_name: None,
+            signature_fn: None,
+        };
+
+        let output = emit_test_mock_file(&test_file, &config);
+        assert!(
+            output.contains("normal_test_mock_spec"),
+            "normal test should be emitted"
+        );
+        assert!(
+            !output.contains("skipped_test_mock_spec"),
+            "@testgen_skip(true) test should be excluded"
+        );
+        assert!(
+            output.contains("another_normal_mock_spec"),
+            "second normal test should be emitted"
+        );
     }
 }

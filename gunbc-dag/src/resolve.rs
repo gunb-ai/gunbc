@@ -2287,7 +2287,9 @@ mod tests {
                 ],
                 body_template: None,
                 headers: vec![],
+                error_mappings: vec![],
             })),
+            retry_policy: None,
         }
     }
 

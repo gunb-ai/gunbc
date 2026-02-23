@@ -21,7 +21,7 @@ pub enum CompilationPhase {
     /// Binaries: gunbc-codegen, gunbc-ci.
     Bootstrap,
     /// Tool phase: depends on codegen outputs.
-    /// Binaries: all tool binaries (gist, dag-viz, bootstrap, makegen, etc.)
+    /// Binaries: all tool binaries (gist, bootstrap, makegen, etc.)
     Tool,
 }
 

@@ -555,6 +555,197 @@ fn tool_names_are_unique() {
     }
 }
 
+/// **Single Inventory Authority**: proves `iter_tool_targets()` is the single
+/// source of truth for tool definitions. No tool definition path may bypass
+/// the inventory:
+///
+/// 1. `derive_tool_defs()` (codegen) must draw exclusively from inventory.
+/// 2. `ToolRegistry::default_registry()` (makegen) must draw generated-CLI
+///    tools exclusively from `derive_tool_defs()` (which draws from inventory).
+/// 3. Every makegen-registered tool with `needs_generated_cli` must trace
+///    back to an inventory `ToolRegistration`.
+/// 4. No hardcoded tool list outside the registry may introduce tools that
+///    the inventory does not know about.
+///
+/// This is the capstone M14 test: if it passes, adding a new tool requires
+/// only one `#[tool_target]` registration and everything else derives from it.
+#[test]
+fn inventory_is_single_authority() {
+    force_linker_include();
+
+    // === Source 1: Inventory (the authority) ===
+    let inventory_names: BTreeSet<&str> = iter_tool_targets().map(|r| r.tool_name).collect();
+
+    // === Source 2: Codegen's derive_tool_defs() ===
+    let codegen_names: BTreeSet<String> = derive_tool_defs()
+        .into_iter()
+        .map(|t| t.meta.tool_name.to_string())
+        .collect();
+
+    // derive_tool_defs must be a bijection with inventory.
+    let codegen_as_str: BTreeSet<&str> = codegen_names.iter().map(|s| s.as_str()).collect();
+    assert_eq!(
+        inventory_names, codegen_as_str,
+        "derive_tool_defs() must be a 1:1 mapping of iter_tool_targets() — \
+         inventory-only: {:?}, codegen-only: {:?}",
+        inventory_names.difference(&codegen_as_str).collect::<Vec<_>>(),
+        codegen_as_str.difference(&inventory_names).collect::<Vec<_>>(),
+    );
+
+    // === Source 3: Makegen default_registry() ===
+    let registry = ToolRegistry::default_registry();
+    let makegen_generated: BTreeSet<String> = registry
+        .tools
+        .iter()
+        .filter(|t| t.needs_generated_cli)
+        .map(|t| t.short_name.clone())
+        .collect();
+
+    // Every makegen generated-CLI tool must exist in inventory.
+    let makegen_outside_inventory: BTreeSet<&String> = makegen_generated
+        .iter()
+        .filter(|name| !inventory_names.contains(name.as_str()))
+        .collect();
+    assert!(
+        makegen_outside_inventory.is_empty(),
+        "makegen has generated-CLI tools not in inventory (hand-wired bypass): {:?}",
+        makegen_outside_inventory,
+    );
+
+    // === Source 4: No tool definition source outside inventory ===
+    // All makegen tools (generated or manual) should trace back to either
+    // the inventory or the documented MANUAL_TOOL_DEFS set.
+    // The manual tools are not generated CLIs, so they won't have
+    // needs_generated_cli=true. Verify manual tools are accounted for.
+    let all_makegen_names: BTreeSet<String> = registry
+        .tools
+        .iter()
+        .map(|t| t.short_name.clone())
+        .collect();
+    let manual_makegen: BTreeSet<&String> = all_makegen_names
+        .iter()
+        .filter(|name| !inventory_names.contains(name.as_str()))
+        .collect();
+
+    // Manual tools must be an auditable, small set. If this grows,
+    // it means tools are bypassing the single authority.
+    // Currently: "build-all" is the only non-registry manual target.
+    let known_manual: BTreeSet<&str> = ["build-all"].into_iter().collect();
+    let manual_str: BTreeSet<&str> = manual_makegen.iter().map(|s| s.as_str()).collect();
+    assert_eq!(
+        manual_str, known_manual,
+        "unexpected manual makegen tools outside inventory — \
+         any new tool should use #[tool_target] registration, not manual wiring. \
+         extra: {:?}, missing: {:?}",
+        manual_str.difference(&known_manual).collect::<Vec<_>>(),
+        known_manual.difference(&manual_str).collect::<Vec<_>>(),
+    );
+
+    // Non-vacuity: the inventory is non-empty.
+    assert!(
+        inventory_names.len() >= 8,
+        "inventory has suspiciously few tools ({}) — \
+         linker may have stripped symbols",
+        inventory_names.len(),
+    );
+}
+
+/// Verify that `provides`/`consumes` form a valid directed acyclic graph.
+///
+/// The provides/consumes metadata on `ToolRegistration` defines a producer→consumer
+/// dependency graph between tools. This test:
+/// 1. Builds the dependency graph from provides/consumes edges
+/// 2. Verifies the graph is acyclic (no circular dependencies)
+/// 3. Verifies a valid topological ordering exists
+///
+/// A cycle would mean tool A depends on tool B's output while tool B depends
+/// on tool A's output — an unresolvable build ordering.
+#[test]
+fn provides_consumes_form_acyclic_graph() {
+    force_linker_include();
+
+    // Build artifact→producer and consumer→artifacts maps.
+    let mut artifact_to_producer: BTreeMap<&str, &str> = BTreeMap::new();
+    for tool in iter_tool_targets() {
+        for artifact in tool.provides {
+            artifact_to_producer.insert(artifact, tool.tool_name);
+        }
+    }
+
+    // Build adjacency list: tool_name → set of tool_names it depends on.
+    let mut depends_on: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for tool in iter_tool_targets() {
+        let entry = depends_on.entry(tool.tool_name).or_default();
+        for consumed in tool.consumes {
+            if let Some(&producer) = artifact_to_producer.get(consumed) {
+                if producer != tool.tool_name {
+                    entry.insert(producer);
+                }
+            }
+        }
+    }
+
+    // Topological sort via Kahn's algorithm to detect cycles.
+    let all_tools: BTreeSet<&str> = iter_tool_targets().map(|t| t.tool_name).collect();
+
+    // Compute in-degree: for each tool, count how many tools it depends on.
+    let mut in_degree: BTreeMap<&str, usize> = BTreeMap::new();
+    for &tool in &all_tools {
+        in_degree.insert(tool, 0);
+    }
+    for (&consumer, deps) in &depends_on {
+        *in_degree.entry(consumer).or_insert(0) = deps.len();
+    }
+
+    let mut queue: Vec<&str> = in_degree
+        .iter()
+        .filter(|(_, &deg)| deg == 0)
+        .map(|(&tool, _)| tool)
+        .collect();
+    queue.sort(); // deterministic ordering
+    let mut sorted = Vec::new();
+
+    while let Some(tool) = queue.pop() {
+        sorted.push(tool);
+        // Find all tools that depend on this one and reduce their in-degree.
+        for (&consumer, deps) in &depends_on {
+            if deps.contains(tool) {
+                if let Some(deg) = in_degree.get_mut(consumer) {
+                    *deg = deg.saturating_sub(1);
+                    if *deg == 0 {
+                        // Only add to queue if not already sorted.
+                        if !sorted.contains(&consumer) && !queue.contains(&consumer) {
+                            queue.push(consumer);
+                            queue.sort();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let unsorted: BTreeSet<&str> = all_tools
+        .iter()
+        .filter(|t| !sorted.contains(t))
+        .copied()
+        .collect();
+
+    assert!(
+        unsorted.is_empty(),
+        "provides/consumes dependency graph has a cycle involving: {:?}. \
+         No valid build ordering exists for these tools.",
+        unsorted,
+    );
+
+    // Non-vacuity: at least one edge exists in the graph.
+    let total_edges: usize = depends_on.values().map(|deps| deps.len()).sum();
+    assert!(
+        total_edges > 0,
+        "provides/consumes graph has zero edges — \
+         test is vacuous (no tool declares consumes with a matching provides)"
+    );
+}
+
 // ============================================================================
 // M13: Registry→CLI→Make Contract Tests
 // ============================================================================

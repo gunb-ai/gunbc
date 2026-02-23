@@ -7,7 +7,7 @@ data registered_tools: List<String> = [
   "build",
   "clippy",
   "codegen",
-  "dag-viz",
+
   "deps",
   "design",
   "docgen",
