@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_methods)]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use daglang_driver::{compile_from_context_with_options, CompileOptions, DriverContext};
 use daglang_lower::LoweredOp;
@@ -38,23 +38,52 @@ fn compile_sdlc_pipeline() -> daglang_driver::CompileOutput {
 /// inputs. In a real pipeline, stages execute sequentially so only one set of
 /// edges is active. For dry-run, we keep the first edge per (target, port)
 /// pair, which is safe since transport nodes are intercepted anyway.
+/// Non-stub SDLC providers and non-unit_test profiles. Nodes from these
+/// modules exist in the compiled DAG but are not wired into the active
+/// profile — exclude them to avoid missing-credential errors in dry-run.
+const EXCLUDED_PREFIXES: &[&str] = &[
+    "services_sdlc_providers_file_",
+    "services_sdlc_providers_github_",
+    "services_sdlc_providers_gcs_",
+    "services_sdlc_providers_codex_",
+    "services_sdlc_providers_inline_",
+    "profiles_local",
+    "profiles_cloud_run",
+];
+
+fn is_excluded_node(node_id: &str) -> bool {
+    node_id == "pipelines.sdlc::sdlc"
+        || EXCLUDED_PREFIXES
+            .iter()
+            .any(|prefix| node_id.contains(prefix))
+}
+
 fn build_executable_dag(resolved: &Dag<DynOp>) -> Dag<DynOp> {
     let mut dag = Dag::new();
+    let included: HashSet<&str> = resolved
+        .nodes
+        .iter()
+        .filter(|n| !is_excluded_node(&n.id.0))
+        .map(|n| n.id.0.as_str())
+        .collect();
+
     for node in &resolved.nodes {
-        if node.id.0 != "pipelines.sdlc::sdlc" {
+        if included.contains(node.id.0.as_str()) {
             dag.add_node(node.clone());
         }
     }
 
-    let mut seen: HashSet<(String, String)> = HashSet::new();
+    // Deduplicate scalar inputs (shared service transport nodes may have
+    // multiple upstream edges from different DSL function callsites).
+    let mut seen_inputs: HashSet<(String, String)> = HashSet::new();
     for edge in &resolved.edges {
-        if edge.from_node.0 == "pipelines.sdlc::sdlc"
-            || edge.to_node.0 == "pipelines.sdlc::sdlc"
+        if !included.contains(edge.from_node.0.as_str())
+            || !included.contains(edge.to_node.0.as_str())
         {
             continue;
         }
         let key = (edge.to_node.0.clone(), edge.to_port.0.clone());
-        if seen.insert(key) {
+        if seen_inputs.insert(key) {
             dag.edges.push(edge.clone());
         }
     }
