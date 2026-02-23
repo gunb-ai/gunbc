@@ -71,6 +71,7 @@ struct CliArgs {
     drain_activate: bool,
     drain_deactivate: bool,
     worker_id: Option<String>,
+    runtime_params: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -264,6 +265,7 @@ fn main() {
             args.worker_id.as_deref(),
             None,
             "worker",
+            &args.runtime_params,
         ),
         SdlcCommand::Issue => run_worker(
             args.dry_run,
@@ -272,6 +274,7 @@ fn main() {
             args.worker_id.as_deref(),
             args.issue_id,
             "issue",
+            &args.runtime_params,
         ),
         SdlcCommand::AwaitApproval => run_await_approval(args.intake_key.as_deref(), args.dry_run),
         SdlcCommand::Transition => {
@@ -302,6 +305,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             drain_activate: false,
             drain_deactivate: false,
             worker_id: None,
+            runtime_params: BTreeMap::new(),
         });
     }
 
@@ -329,6 +333,7 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     let mut drain_activate = false;
     let mut drain_deactivate = false;
     let mut worker_id: Option<String> = None;
+    let mut runtime_params = BTreeMap::new();
     while idx < argv.len() {
         let token = &argv[idx];
         if token == "--dry-run" {
@@ -515,6 +520,31 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
             idx += 1;
             continue;
         }
+        if token == "--param" {
+            let value = argv
+                .get(idx + 1)
+                .ok_or_else(|| "--param requires <key>=<value>".to_string())?;
+            if value.starts_with("--") {
+                return Err("--param requires a non-flag <key>=<value>".to_string());
+            }
+            let (key, param_value) = parse_runtime_param(value)?;
+            if runtime_params.insert(key.clone(), param_value).is_some() {
+                return Err(format!("duplicate --param key `{key}`"));
+            }
+            idx += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--param=") {
+            if value.is_empty() {
+                return Err("--param requires a non-empty <key>=<value>".to_string());
+            }
+            let (key, param_value) = parse_runtime_param(value)?;
+            if runtime_params.insert(key.clone(), param_value).is_some() {
+                return Err(format!("duplicate --param key `{key}`"));
+            }
+            idx += 1;
+            continue;
+        }
         return Err(format!("unknown flag `{token}`"));
     }
 
@@ -529,6 +559,10 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
     }
     if command != SdlcCommand::Worker && command != SdlcCommand::Issue && emit_pending_exit_code {
         return Err("--emit-pending-exit-code is only valid for worker or issue".to_string());
+    }
+    if command != SdlcCommand::Worker && command != SdlcCommand::Issue && !runtime_params.is_empty()
+    {
+        return Err("--param is only valid for worker or issue".to_string());
     }
     if command == SdlcCommand::AwaitApproval && intake_key.is_none() {
         return Err("await-approval requires --intake-key <value>".to_string());
@@ -591,7 +625,25 @@ fn parse_cli_args(argv: &[String]) -> Result<CliArgs, String> {
         drain_activate,
         drain_deactivate,
         worker_id,
+        runtime_params,
     })
+}
+
+fn parse_runtime_param(value: &str) -> Result<(String, String), String> {
+    let (key, param_value) = value
+        .split_once('=')
+        .ok_or_else(|| format!("invalid --param `{value}`; expected <key>=<value>"))?;
+    if key.trim().is_empty() {
+        return Err(format!(
+            "invalid --param `{value}`; key must be non-empty"
+        ));
+    }
+    if param_value.is_empty() {
+        return Err(format!(
+            "invalid --param `{value}`; value must be non-empty"
+        ));
+    }
+    Ok((key.trim().to_string(), param_value.to_string()))
 }
 
 fn parse_stage(value: &str) -> Result<IssueLifecycleStage, String> {
@@ -748,6 +800,7 @@ fn run_worker(
     worker_id: Option<&str>,
     issue_filter: Option<u64>,
     command_label: &str,
+    runtime_params: &BTreeMap<String, String>,
 ) -> Result<(), String> {
     let preflight = if dry_run {
         WorkerPreflightSummary {
@@ -798,7 +851,7 @@ fn run_worker(
     if drain_active {
         let released = release_worker_owned_claims_for_drain(&mut claim_ledger);
         save_claim_ledger(&claim_ledger_path, &claim_ledger)?;
-        let output = json!({
+        let mut output = json!({
             "command": command_label,
             "mode": mode,
             "report_generated_at_epoch_ms": now,
@@ -856,6 +909,13 @@ fn run_worker(
                 }
             }
         });
+        if let serde_json::Value::Object(map) = &mut output {
+            map.insert(
+                "runtime_params".to_string(),
+                serde_json::to_value(runtime_params)
+                    .map_err(|error| format!("failed to serialize runtime params: {error}"))?,
+            );
+        }
         if !dry_run {
             save_execution_report(&output)?;
         }
@@ -1112,6 +1172,7 @@ fn run_worker(
                         issue_transport: &mut issue_transport,
                         now_epoch_ms: now,
                         apply_side_effects: !dry_run,
+                        runtime_params,
                     },
                 ) {
                     Ok(StageDispatchOutcome::Advanced(next_stage)) => {
@@ -1326,6 +1387,11 @@ fn run_worker(
         }
     });
     if let serde_json::Value::Object(map) = &mut output {
+        map.insert(
+            "runtime_params".to_string(),
+            serde_json::to_value(runtime_params)
+                .map_err(|error| format!("failed to serialize runtime params: {error}"))?,
+        );
         map.insert(
             "agent_polls".to_string(),
             serde_json::Value::Array(agent_polls),
@@ -2866,10 +2932,10 @@ fn print_help() {
     println!("USAGE:");
     println!("    gunbc-sdlc intake [--intent <path>] [--dry-run]");
     println!(
-        "    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]"
+        "    gunbc-sdlc worker [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>] [--param <key=value>...]"
     );
     println!(
-        "    gunbc-sdlc issue --issue-id <value> [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>]"
+        "    gunbc-sdlc issue --issue-id <value> [--dry-run] [--emit-pending-exit-code] [--infra-intent <path>] [--param <key=value>...]"
     );
     println!("    gunbc-sdlc await-approval --intake-key <value> [--dry-run]");
     println!("    gunbc-sdlc transition --intake-key <value> --stage <idea|design|design-review|accepted|implementation|closed> [--dry-run]");
@@ -2998,13 +3064,26 @@ impl CompiledStageDispatcher {
         record: &IntakeRecord,
         worker_id: &str,
         issue_id: u64,
+        runtime_params: &BTreeMap<String, String>,
     ) -> Result<StageDispatchDecision, String> {
         let callable_name = stage_dispatch_callable_name(record.stage);
         let target_node_id = format!("funcs.sdlc_dispatch_runtime::{callable_name}");
         let entrypoints = detect_entrypoints(&self.dag);
         let mut input_mocks = BoundaryMocks::new();
         let mut unsupported_ports = Vec::new();
-        for (node_id, port_name, _) in entrypoints.entrypoint_ports {
+        let mut consumed_runtime_params = BTreeSet::new();
+        for (node_id, port_name, type_id) in entrypoints.entrypoint_ports {
+            if port_name.0 == "__deps" {
+                input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
+                continue;
+            }
+            if let Some(raw) = runtime_params.get(&port_name.0) {
+                let value =
+                    parse_entrypoint_param_value(port_name.0.as_str(), type_id.0.as_str(), raw)?;
+                input_mocks.set_input(node_id.0, port_name.0.clone(), value);
+                consumed_runtime_params.insert(port_name.0);
+                continue;
+            }
             match port_name.0.as_str() {
                 "run_key" => input_mocks.set_input(
                     node_id.0,
@@ -3017,9 +3096,21 @@ impl CompiledStageDispatcher {
                 "issue_id" => {
                     input_mocks.set_input(node_id.0, port_name.0, Value::Int(issue_id as i64))
                 }
-                "__deps" => input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new())),
                 other => unsupported_ports.push(format!("{}.{other}", node_id.0)),
             }
+        }
+        let mut unsupported_runtime_params = runtime_params
+            .keys()
+            .filter(|key| !consumed_runtime_params.contains(*key))
+            .cloned()
+            .collect::<Vec<_>>();
+        unsupported_runtime_params.sort();
+        unsupported_runtime_params.dedup();
+        if !unsupported_runtime_params.is_empty() {
+            return Err(format!(
+                "compiled stage dispatcher for `{intake_key}` received unsupported --param key(s): {}",
+                unsupported_runtime_params.join(", ")
+            ));
         }
         if !unsupported_ports.is_empty() {
             unsupported_ports.sort();
@@ -3097,6 +3188,22 @@ impl CompiledStageDispatcher {
     }
 }
 
+fn parse_entrypoint_param_value(key: &str, type_id: &str, raw: &str) -> Result<Value, String> {
+    match type_id {
+        "Int" => raw.parse::<i64>().map(Value::Int).map_err(|_| {
+            format!("invalid --param {key}={raw}; expected Int-compatible value")
+        }),
+        "Bool" => match raw {
+            "true" => Ok(Value::Bool(true)),
+            "false" => Ok(Value::Bool(false)),
+            _ => Err(format!(
+                "invalid --param {key}={raw}; expected Bool-compatible value `true` or `false`"
+            )),
+        },
+        _ => Ok(Value::Str(raw.to_string())),
+    }
+}
+
 fn stage_dispatch_callable_name(stage: IssueLifecycleStage) -> &'static str {
     match stage {
         IssueLifecycleStage::Idea => "dispatch_idea",
@@ -3154,6 +3261,7 @@ struct StageDispatchRuntime<'a> {
     issue_transport: &'a mut IssueTransportLedger,
     now_epoch_ms: u128,
     apply_side_effects: bool,
+    runtime_params: &'a BTreeMap<String, String>,
 }
 
 /// Dispatch a compiled SDLC stage policy graph for execution.
@@ -3169,7 +3277,7 @@ fn dispatch_pipeline_stage(
         .issue_id
         .ok_or_else(|| format!("no issue_id for intake key `{intake_key}`"))?;
 
-    let decision = dispatcher.execute(intake_key, record, worker_id, issue_id)?;
+    let decision = dispatcher.execute(intake_key, record, worker_id, issue_id, runtime.runtime_params)?;
     ensure_stage_gate_requirements(record, intake_key, agent_ledger, &decision)?;
     if runtime.apply_side_effects {
         if let (Some(marker), Some(message)) =

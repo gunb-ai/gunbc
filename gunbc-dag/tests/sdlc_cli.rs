@@ -1305,6 +1305,102 @@ fn worker_dry_run_executes_compiled_dispatch_preview_without_persisting_stage() 
 }
 
 #[test]
+fn worker_dry_run_reports_runtime_params_and_fails_closed_for_unknown_param_keys() {
+    let ctx = CliTestContext::new("worker_dry_run_runtime_params", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-runtime-params",
+        "intent-20260221-runtime-params",
+        Some(5151),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("unknown_param=unexpected")
+        .arg("--param")
+        .arg("run_key=override-run-key")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run with runtime params");
+    assert!(
+        worker.status.success(),
+        "worker dry-run should succeed even when dispatch preview reports param error: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(
+        payload["runtime_params"]["run_key"],
+        serde_json::Value::String("override-run-key".to_string())
+    );
+    assert_eq!(
+        payload["runtime_params"]["unknown_param"],
+        serde_json::Value::String("unexpected".to_string())
+    );
+    assert!(
+        payload["dry_run_dispatches"][0]["error"]
+            .as_str()
+            .expect("dry-run dispatch error should be string")
+            .contains("unsupported --param key(s): unknown_param"),
+        "dry-run dispatch should fail closed for unsupported runtime params"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_rejects_malformed_param_flag() {
+    let ctx = CliTestContext::new("worker_rejects_malformed_param", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("invalid-param-format")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run with malformed param");
+    assert!(
+        !worker.status.success(),
+        "worker should fail closed for malformed --param input"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("invalid --param `invalid-param-format`; expected <key>=<value>"),
+        "stderr should explain malformed --param input: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn worker_real_mode_persists_retry_state_on_claim_conflict() {
     let ctx = CliTestContext::new("worker_conflict_retry", sdlc_bin());
     let root = ctx.path().to_path_buf();
