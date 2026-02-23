@@ -2819,7 +2819,7 @@ mod tests {
     #[test]
     fn test_scalar_kind_all_variants() {
         // Verify all five ScalarKind variants are distinct.
-        let kinds = vec![
+        let kinds = [
             ScalarKind::String,
             ScalarKind::Integer,
             ScalarKind::Float,
