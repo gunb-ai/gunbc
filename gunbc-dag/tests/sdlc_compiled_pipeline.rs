@@ -1,16 +1,16 @@
 #![allow(clippy::disallowed_methods)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use daglang_driver::{compile_from_context_with_options, CompileOptions, DriverContext};
 use daglang_lower::LoweredOp;
 use gunbc_dag::resolve_lowered_dag;
-use gunbc_exec::Executable;
+use gunbc_exec::{execute_with_mode, BoundaryMocks, DynOp, Executable, ExecutionMode};
 use gunbc_ir::node::NodeBody;
-use gunbc_ir::{Dag, Value, WorkspaceLayout};
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
+use gunbc_ir::{Dag, Node, Value, WorkspaceLayout};
 
-#[test]
-fn compiled_sdlc_pipeline_emits_ordered_stage_progression_metadata() {
+fn compile_sdlc_pipeline() -> daglang_driver::CompileOutput {
     let layout = WorkspaceLayout::from_env_manifest_dir()
         .or_else(|_| WorkspaceLayout::from_cargo_metadata())
         .expect("resolve workspace layout");
@@ -19,14 +19,145 @@ fn compiled_sdlc_pipeline_emits_ordered_stage_progression_metadata() {
         roots: vec![dsl_root.clone()],
         target_file: Some(dsl_root.join("pipelines/sdlc.dag")),
     };
-    let output = compile_from_context_with_options(
+    compile_from_context_with_options(
         &context,
         CompileOptions {
             profile: Some("unit_test".to_string()),
             ..CompileOptions::default()
         },
     )
-    .expect("compile sdlc pipeline with unit_test profile");
+    .expect("compile sdlc pipeline with unit_test profile")
+}
+
+/// Build an executable DAG from the resolved SDLC DAG, stripping the Pipeline
+/// metadata node and deduplicating scalar input edges.
+///
+/// The compiled DAG includes all service transport nodes as singletons. When
+/// multiple DSL functions call the same service operation, the compiler wires
+/// all callers to the same transport node, creating multiple edges to scalar
+/// inputs. In a real pipeline, stages execute sequentially so only one set of
+/// edges is active. For dry-run, we keep the first edge per (target, port)
+/// pair, which is safe since transport nodes are intercepted anyway.
+fn build_executable_dag(resolved: &Dag<DynOp>) -> Dag<DynOp> {
+    let mut dag = Dag::new();
+    for node in &resolved.nodes {
+        if node.id.0 != "pipelines.sdlc::sdlc" {
+            dag.add_node(node.clone());
+        }
+    }
+
+    let mut seen: HashSet<(String, String)> = HashSet::new();
+    for edge in &resolved.edges {
+        if edge.from_node.0 == "pipelines.sdlc::sdlc"
+            || edge.to_node.0 == "pipelines.sdlc::sdlc"
+        {
+            continue;
+        }
+        let key = (edge.to_node.0.clone(), edge.to_port.0.clone());
+        if seen.insert(key) {
+            dag.edges.push(edge.clone());
+        }
+    }
+    dag
+}
+
+/// Auto-mock all boundary nodes that the executor would intercept in DryRun.
+///
+/// This covers:
+/// - Transport execute nodes (consume TransportRequest) → ShellResponse::ok("") or FileResponse
+/// - Resource env nodes (emit FilesystemHandle, Timestamp, Credential, etc.)
+/// - Tool env nodes (emit ToolHandle)
+fn auto_mock_all_boundaries<T>(dag: &Dag<T>, mocks: &mut BoundaryMocks) {
+    use gunbc_primitives::filename;
+
+    for node in &dag.nodes {
+        // Transport execute nodes
+        if is_transport_execute(node) {
+            for port in &node.outputs {
+                if !mocks.has_mock(&node.id, &port.name) {
+                    let is_file = node
+                        .inputs
+                        .iter()
+                        .any(|p| p.type_id.0 == "FilesystemHandle");
+                    let value = if is_file {
+                        Value::Response(TransportResponse::File(FileResponse {
+                            path: String::new(),
+                            operation: FileOp::Read,
+                            success: true,
+                            content: Some(String::new()),
+                            bytes: None,
+                            exists: None,
+                            error: None,
+                        }))
+                    } else {
+                        Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
+                    };
+                    mocks.set_value(&node.id.0, &port.name.0, value);
+                }
+            }
+        }
+        // Resource env nodes (FilesystemHandle, Timestamp, Credential, etc.)
+        for port in &node.outputs {
+            let needs_mock = matches!(
+                port.type_id.0.as_str(),
+                "FilesystemHandle"
+                    | "NetworkHandle"
+                    | "Timestamp"
+                    | "Credential"
+                    | "Platform"
+                    | "CloudSecretConfig"
+            );
+            if needs_mock && !mocks.has_mock(&node.id, &port.name) {
+                let value = match port.type_id.0.as_str() {
+                    "FilesystemHandle" => {
+                        filename::FilesystemHandle::cross_platform(filename::Scope::Write).into()
+                    }
+                    "Timestamp" => Value::Str("2026-01-01T00:00:00Z".to_string()),
+                    _ => Value::Str(format!("mock-{}", port.type_id.0)),
+                };
+                mocks.set_value(&node.id.0, &port.name.0, value);
+            }
+        }
+        // Tool env nodes (emit ToolHandle)
+        if node
+            .outputs
+            .iter()
+            .any(|p| p.type_id.0 == "ToolHandle")
+        {
+            for port in &node.outputs {
+                if port.type_id.0 == "ToolHandle" && !mocks.has_mock(&node.id, &port.name) {
+                    mocks.set_value(
+                        &node.id.0,
+                        &port.name.0,
+                        Value::Str("mock-tool-handle".to_string()),
+                    );
+                }
+            }
+        }
+        // Tool consumers (consume ToolHandle) — need full output mocks
+        if node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle") {
+            for port in &node.outputs {
+                if !mocks.has_mock(&node.id, &port.name) {
+                    mocks.set_value(
+                        &node.id.0,
+                        &port.name.0,
+                        Value::Response(TransportResponse::Shell(ShellResponse::ok(""))),
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn is_transport_execute<T>(node: &Node<T>) -> bool {
+    node.inputs
+        .iter()
+        .any(|port| port.type_id.0 == "TransportRequest")
+}
+
+#[test]
+fn compiled_sdlc_pipeline_emits_ordered_stage_progression_metadata() {
+    let output = compile_sdlc_pipeline();
     let lowered_pipeline_node = output
         .lowered_dag
         .get_node(&"pipelines.sdlc::sdlc".into())
@@ -79,22 +210,7 @@ fn compiled_sdlc_pipeline_emits_ordered_stage_progression_metadata() {
 
 #[test]
 fn compiled_sdlc_pipeline_resolves_full_dag() {
-    let layout = WorkspaceLayout::from_env_manifest_dir()
-        .or_else(|_| WorkspaceLayout::from_cargo_metadata())
-        .expect("resolve workspace layout");
-    let dsl_root = layout.workspace_root.join("dsl");
-    let context = DriverContext {
-        roots: vec![dsl_root.clone()],
-        target_file: Some(dsl_root.join("pipelines/sdlc.dag")),
-    };
-    let output = compile_from_context_with_options(
-        &context,
-        CompileOptions {
-            profile: Some("unit_test".to_string()),
-            ..CompileOptions::default()
-        },
-    )
-    .expect("compile sdlc pipeline with unit_test profile");
+    let output = compile_sdlc_pipeline();
 
     let node_count = output.lowered_dag.nodes.len();
     assert!(
@@ -102,45 +218,122 @@ fn compiled_sdlc_pipeline_resolves_full_dag() {
         "compiled sdlc pipeline should have >20 nodes, got {node_count}"
     );
 
-    // Diagnostic: dump all node IDs and their body types for inspection
-    let mut node_summary: Vec<String> = Vec::new();
-    for node in &output.lowered_dag.nodes {
-        let body_type = match &node.body {
-            NodeBody::Opaque(op) => match op {
-                LoweredOp::Callable { module, name, service_metadata, .. } => {
-                    let has_meta = service_metadata.is_some();
-                    format!("Callable({module}::{name}, meta={has_meta})")
-                }
-                LoweredOp::Primitive { kind, .. } => format!("Primitive({kind:?})"),
-                LoweredOp::Pipeline { stage_names, .. } => format!("Pipeline({} stages)", stage_names.len()),
-                LoweredOp::Collection { kind, .. } => format!("Collection({kind:?})"),
-                LoweredOp::LoopUnpack { .. } => "LoopUnpack".to_string(),
-                LoweredOp::LoopPack { .. } => "LoopPack".to_string(),
-                LoweredOp::BranchMerge { .. } => "BranchMerge".to_string(),
-            },
-            NodeBody::SubDag(inner) => format!("SubDag({} nodes)", inner.nodes.len()),
-        };
-        node_summary.push(format!("  {} -> {}", node.id.0, body_type));
-    }
-    node_summary.sort();
-    eprintln!("=== Lowered DAG nodes ({}) ===", output.lowered_dag.nodes.len());
-    for line in &node_summary {
-        eprintln!("{line}");
+    let resolved =
+        resolve_lowered_dag(&output.lowered_dag).expect("resolve_lowered_dag on full SDLC DAG");
+    assert!(
+        resolved.nodes.len() > 20,
+        "resolved dag should preserve node count, got {}",
+        resolved.nodes.len()
+    );
+}
+
+#[test]
+fn compiled_sdlc_pipeline_dry_run_execution() {
+    let output = compile_sdlc_pipeline();
+    let resolved =
+        resolve_lowered_dag(&output.lowered_dag).expect("resolve_lowered_dag on full SDLC DAG");
+    let executable_dag = build_executable_dag(&resolved);
+
+    let mut mocks = BoundaryMocks::new();
+    auto_mock_all_boundaries(&executable_dag, &mut mocks);
+    let mode = ExecutionMode::DryRun(mocks);
+    let log = execute_with_mode(&executable_dag, mode)
+        .expect("dry-run execution of compiled SDLC pipeline should succeed");
+
+    // Verify execution touched a meaningful number of nodes
+    assert!(
+        log.entries.len() > 10,
+        "dry-run should execute >10 nodes, got {}",
+        log.entries.len()
+    );
+}
+
+#[test]
+fn compiled_sdlc_pipeline_e2e_stage_progression() {
+    let output = compile_sdlc_pipeline();
+
+    // 1. Verify compilation produces pipeline with all expected stages
+    let lowered_pipeline_node = output
+        .lowered_dag
+        .get_node(&"pipelines.sdlc::sdlc".into())
+        .expect("lowered sdlc pipeline node present")
+        .clone();
+    let stage_names = match &lowered_pipeline_node.body {
+        NodeBody::Opaque(LoweredOp::Pipeline { stage_names, .. }) => stage_names.clone(),
+        other => panic!("expected lowered pipeline op, got {other:?}"),
+    };
+
+    // 2. Resolve full DAG
+    let resolved =
+        resolve_lowered_dag(&output.lowered_dag).expect("resolve_lowered_dag on full SDLC DAG");
+
+    // 3. Verify pipeline dispatch handles all stages correctly
+    let mut pipeline_only = Dag::new();
+    pipeline_only.add_node(lowered_pipeline_node);
+    let resolved_pipeline =
+        resolve_lowered_dag(&pipeline_only).expect("resolve pipeline-only dag");
+    let pipeline_node = resolved_pipeline
+        .get_node(&"pipelines.sdlc::sdlc".into())
+        .expect("resolved pipeline node");
+    let NodeBody::Opaque(op) = &pipeline_node.body else {
+        panic!("pipeline node should be opaque")
+    };
+
+    let mut stages_processed = Vec::new();
+    for current_stage in &stage_names {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "current_stage".to_string(),
+            Value::Str(current_stage.clone()),
+        );
+        let outputs = op
+            .execute(inputs)
+            .expect("pipeline dispatch should succeed");
+        assert!(
+            outputs.contains_key("next_stage"),
+            "stage `{current_stage}` should produce next_stage output"
+        );
+        stages_processed.push(current_stage.clone());
     }
 
-    let resolved = resolve_lowered_dag(&output.lowered_dag);
-    match &resolved {
-        Ok(dag) => {
-            assert!(
-                dag.nodes.len() > 20,
-                "resolved dag should preserve node count, got {}",
-                dag.nodes.len()
-            );
-        }
-        Err(e) => {
-            panic!("resolve_lowered_dag failed: {e}");
-        }
-    }
+    // 4. All stages were processed
+    assert_eq!(
+        stages_processed, stage_names,
+        "all compiled stages should be processed"
+    );
+    assert!(
+        stage_names.len() >= 8,
+        "SDLC pipeline should have at least 8 stages, got {}",
+        stage_names.len()
+    );
+
+    // 5. Dry-run execution completes without errors
+    let executable_dag = build_executable_dag(&resolved);
+
+    let mut mocks = BoundaryMocks::new();
+    auto_mock_all_boundaries(&executable_dag, &mut mocks);
+    let mode = ExecutionMode::DryRun(mocks);
+    let log = execute_with_mode(&executable_dag, mode)
+        .expect("E2E dry-run of compiled SDLC pipeline should succeed");
+
+    assert!(
+        log.entries.len() > 10,
+        "E2E execution should touch >10 nodes, got {}",
+        log.entries.len()
+    );
+
+    // 6. Verify DSL stage/worker function nodes are present —
+    //    proving logic comes from compiled DSL, not hand-written Rust
+    let node_ids: Vec<&str> = resolved.nodes.iter().map(|n| n.id.0.as_str()).collect();
+    let has_dsl_func_nodes = node_ids.iter().any(|id| {
+        id.contains("sdlc_stages")
+            || id.contains("sdlc_worker")
+            || id.contains("tools.design")
+    });
+    assert!(
+        has_dsl_func_nodes,
+        "resolved DAG should contain SDLC function nodes from DSL"
+    );
 }
 
 #[test]
@@ -191,7 +384,10 @@ fn compiled_reconciler_pipeline_emits_ordered_stage_progression_metadata() {
         panic!("pipeline-only node should resolve to opaque operation")
     };
     let mut inputs = HashMap::new();
-    inputs.insert("current_stage".to_string(), Value::Str("discover".to_string()));
+    inputs.insert(
+        "current_stage".to_string(),
+        Value::Str("discover".to_string()),
+    );
     let outputs = op
         .execute(inputs)
         .expect("pipeline dispatch operation should execute");

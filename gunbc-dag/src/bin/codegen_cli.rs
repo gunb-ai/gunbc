@@ -45,7 +45,6 @@ use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 // Force-link crates that register tool targets needed for DSL coverage validation.
 use gunbc_clippy as _;
-use gunbc_gist as _;
 use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 

@@ -4,7 +4,7 @@
 //! prepare rate-limit probe, and parse the response to verify scopes.
 
 use gunbc_exec::{optional_str_list_strict, require_response, ExecError, Executable, OutputMap};
-use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
+use gunbc_ir::transport::github::GITHUB_SECRET_ID;
 use gunbc_ir::transport::github::api::github_rest_request;
 use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::transport::{TransportRequest, TransportResponse};

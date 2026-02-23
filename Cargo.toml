@@ -29,7 +29,6 @@ members = [
     "lib/primitives",
     "lib/blob",
     "lib/git-ops",
-    "lib/gist-ops",
     "lib/cloud-ops",
     "lib/aws-ops",
     "lib/azure-ops",
@@ -41,7 +40,6 @@ members = [
     "lib/gcp-ops",
     
     # General tool definitions (reusable by any project)
-    "lib/tools/gist",
     "lib/tools/deps",
     "lib/tools/clippy",
     

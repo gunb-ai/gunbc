@@ -11,14 +11,12 @@
 //! use gunbc_exec::Executable;
 //! use gunbc_primitives::PrimitiveOp;
 //! use gunbc_lib_markdown::MarkdownOp;
-//! use gunbc_lib_gist_ops::GistOps;
 //!
 //! compose_ops! {
-//!     /// Combined operation type for gist graphs.
-//!     pub enum GistGraphOp {
+//!     /// Combined operation type for example graphs.
+//!     pub enum ExampleGraphOp {
 //!         Primitive(PrimitiveOp),
 //!         Markdown(MarkdownOp),
-//!         Gist(GistOps),
 //!     }
 //! }
 //!

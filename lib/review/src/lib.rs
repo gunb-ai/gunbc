@@ -182,8 +182,7 @@ pub struct CandidateTask {
 
 /// Build-time configuration for a review pipeline.
 ///
-/// These values are baked into the DAG at construction time (like `GistMode`
-/// or `GistOps::PrepareRequest { public }`). They are NOT CLI flags — the
+/// These values are baked into the DAG at construction time. They are NOT CLI flags — the
 /// pipeline owns these decisions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReviewPipelineConfig {

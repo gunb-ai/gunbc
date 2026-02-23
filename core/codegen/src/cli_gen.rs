@@ -49,7 +49,7 @@ pub struct ToolMeta {
     pub enable_step_mode: bool,
     /// Rust expression that returns a MockSpec for dry-run boundary mocking.
     /// When set, the generated CLI calls this instead of using inline boundary values.
-    /// Example: "gunbc_gist::graph_mock::gist_snapshot_mock_spec()"
+    /// Example: "some_crate::graph_mock::mock_spec()"
     pub mock_spec_call: Option<Cow<'static, str>>,
 }
 
@@ -1213,7 +1213,7 @@ mod tests {
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
-            mock_spec_call: Some("gunbc_gist::graph_mock::gist_snapshot_mock_spec()".into()),
+            mock_spec_call: Some("some_crate::graph_mock::mock_spec()".into()),
         };
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", ParamType::Str)

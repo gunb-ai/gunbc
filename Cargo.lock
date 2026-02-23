@@ -373,13 +373,11 @@ dependencies = [
  "gunbc-deps",
  "gunbc-design-ops",
  "gunbc-exec",
- "gunbc-gist",
  "gunbc-infra",
  "gunbc-ir",
  "gunbc-lib-blob",
  "gunbc-lib-cloud-ops",
  "gunbc-lib-gcp-ops",
- "gunbc-lib-gist-ops",
  "gunbc-lib-git-ops",
  "gunbc-lib-llm-ops",
  "gunbc-lib-markdown",
@@ -445,18 +443,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
-]
-
-[[package]]
-name = "gunbc-gist"
-version = "0.1.0"
-dependencies = [
- "gunbc-lib-gist-ops",
- "gunbc-lib-git-ops",
- "gunbc-lib-markdown",
- "gunbc-testgen-registry",
- "gunbc-tool-registry",
- "gunbc-tool-registry-macros",
 ]
 
 [[package]]
@@ -548,18 +534,6 @@ dependencies = [
  "serde",
  "serde_json",
  "urlencoding",
-]
-
-[[package]]
-name = "gunbc-lib-gist-ops"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-cloud-ops",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-test",
 ]
 
 [[package]]

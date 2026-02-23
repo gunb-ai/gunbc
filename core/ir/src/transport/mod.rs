@@ -49,7 +49,6 @@ pub mod credential;
 pub mod credential_policy;
 pub mod file;
 pub mod gcp;
-pub mod gist;
 pub mod git;
 pub mod github;
 pub mod github_actions;
@@ -106,13 +105,12 @@ pub use gcp::{
     GcpBucket, GcpIamBinding, GcpIamCondition, GcpIamPolicy, GcpInfraSpec, GcpProject, GcpSecret,
     GcpSecretPayload, GcpServiceAccount, GcpWifPool, GcpWifProvider,
 };
-pub use gist::GistRequest;
 pub use git::GitRequest;
 pub use github::cli::GH_TOOL;
 pub use github::{
     api::{github_rest_request, GitHubApi, GITHUB_API},
     cli::{gh_cli_commands, gh_cli_request, GHCommand},
-    GH_CLI_MIN_VERSION, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION,
+    GH_CLI_MIN_VERSION, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION, GITHUB_SECRET_ID,
 };
 pub use github_actions::{
     merge_permissions, Integration, PermissionLevel, PermissionScope, Permissions, RunnerImage,

@@ -29,7 +29,6 @@ pub mod dry_run;
 pub(crate) mod dsl_builder;
 pub use dsl_builder::{
     build_aws_credential_graph_dsl, build_azure_credential_graph_dsl, build_clippy_graph_dsl,
-    build_gist_diff_graph_dsl, build_gist_recent_graph_dsl, build_gist_snapshot_graph_dsl,
     build_review_graph_dsl,
 };
 pub mod fs_env;
@@ -145,8 +144,6 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
 // incomplete set.
 #[cfg(test)]
 extern crate gunbc_clippy;
-#[cfg(test)]
-extern crate gunbc_gist;
 #[cfg(test)]
 extern crate gunbc_lib_review;
 

@@ -54,6 +54,9 @@ pub const GH_CLI_MIN_VERSION: &str = "2.40.0";
 /// This helps track when our usage of GitHub APIs/CLI changes.
 pub const GITHUB_CONTRACT_VERSION: &str = "2026.01.29.1";
 
+/// Secret ID for a GitHub personal access token in the credential store.
+pub const GITHUB_SECRET_ID: &str = "github-token";
+
 #[cfg(test)]
 mod tests {
     use super::*;

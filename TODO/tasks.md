@@ -119,7 +119,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19 |
 | Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4a..TS-4d (needs both Lane 1 + Lane 2 done) |
 | 3: Modeling integrity | **DONE** | All M7-M22 complete. GR-1..GR-4 graph.rs deletions blocked on Lane 2 |
-| 4: Codebase polish | **ACTIVE** | CU-1..CU-10 |
+| 4: Codebase polish | **ACTIVE** | CU-2 (blocked S12-6), CU-3, CU-7 (blocked L1), CU-8, CU-9 |
 
 ---
 

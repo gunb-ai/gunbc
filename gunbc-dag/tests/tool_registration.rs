@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 // and iter_tool_targets() would return an empty iterator.
 use gunbc_clippy::clippy_tool;
 use gunbc_dag::deps_tool::deps_tool;
-use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
 use gunbc_lib_review::review_tool;
 // These are in gunbc-dag itself (same binary), but reference for completeness.
 use gunbc_dag::bootstrap::bootstrap_tool;
@@ -23,9 +22,6 @@ use gunbc_dag::makegen::makegen_tool;
 fn derive_tool_defs_matches_inventory() {
     // Touch the functions to prevent the linker from stripping them.
     let _: fn() = clippy_tool;
-    let _: fn() = gist_snapshot_tool;
-    let _: fn() = gist_diff_tool;
-    let _: fn() = gist_recent_tool;
     let _: fn() = deps_tool;
     let _: fn() = review_tool;
     let _: fn() = makegen_tool;
@@ -161,9 +157,6 @@ fn tool_declared_outputs_match_dsl() {
 
     // Force linker to include inventory symbols.
     let _: fn() = clippy_tool;
-    let _: fn() = gist_snapshot_tool;
-    let _: fn() = gist_diff_tool;
-    let _: fn() = gist_recent_tool;
     let _: fn() = deps_tool;
     let _: fn() = review_tool;
     let _: fn() = makegen_tool;
@@ -233,9 +226,6 @@ fn no_generated_files_committed() {
 
     // Force linker.
     let _: fn() = clippy_tool;
-    let _: fn() = gist_snapshot_tool;
-    let _: fn() = gist_diff_tool;
-    let _: fn() = gist_recent_tool;
     let _: fn() = deps_tool;
     let _: fn() = review_tool;
     let _: fn() = makegen_tool;
@@ -290,9 +280,6 @@ fn all_tool_outputs_gitignored() {
 
     // Force linker.
     let _: fn() = clippy_tool;
-    let _: fn() = gist_snapshot_tool;
-    let _: fn() = gist_diff_tool;
-    let _: fn() = gist_recent_tool;
     let _: fn() = deps_tool;
     let _: fn() = review_tool;
     let _: fn() = makegen_tool;
@@ -755,9 +742,6 @@ fn provides_consumes_form_acyclic_graph() {
 /// Shared by M13 contract tests to avoid repeating the symbol-touch block.
 fn force_linker_include() {
     let _: fn() = clippy_tool;
-    let _: fn() = gist_snapshot_tool;
-    let _: fn() = gist_diff_tool;
-    let _: fn() = gist_recent_tool;
     let _: fn() = deps_tool;
     let _: fn() = review_tool;
     let _: fn() = makegen_tool;

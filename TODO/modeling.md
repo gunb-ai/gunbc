@@ -45,11 +45,13 @@ Promotion rule:
 1. when scheduled, create paired tasks `<ID>-D` (design) and `<ID>` (implementation),
 2. `<ID>` must depend on `<ID>-D`.
 
-## Highest ROI Next 3
+## Implementation Status
 
-1. `M10` mandatory resource declarations + auto-wiring
-2. `M11` strict dry-run in CI/testgen to fail on missing modeling
-3. `M8` semantically inert metadata op (stop using `Validate(Custom(...))` as metadata carrier)
+**All 16 modeling tasks (M7-M22) are COMPLETE** as of 2026-02-23.
+
+Verified: `cargo test --workspace` (127/127 suites pass), `cargo clippy --all-targets -- -D warnings` (0 errors).
+
+Remaining follow-up: 4 graph.rs file deletions (~4,170 lines) blocked on Lane 2 S12 (DSL credential chain compilation). See § Cloud Modeling Gap Inventory below.
 
 ## Intake Tasks
 

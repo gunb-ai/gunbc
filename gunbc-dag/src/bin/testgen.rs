@@ -28,7 +28,6 @@ use gunbc_lib_transport::TransportIo;
 use std::io::IsTerminal;
 // Force-link crates that register testgen targets.
 use gunbc_deps as _;
-use gunbc_gist as _;
 use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 use gunbc_testgen_registry::{iter_dag_specs, DagSpecDef};

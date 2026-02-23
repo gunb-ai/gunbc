@@ -605,7 +605,7 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
 
     #[test]
     fn test_to_secret_config() {
-        use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
+        use gunbc_ir::transport::github::GITHUB_SECRET_ID;
         let spec = parse_config_toml(SAMPLE_TOML).unwrap();
         let config = spec
             .to_secret_config("dev", CloudRuntimeKind::LocalDev, GITHUB_SECRET_ID)

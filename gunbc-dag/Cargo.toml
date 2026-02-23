@@ -22,14 +22,12 @@ daglang-syntax = { path = "../core/daglang/daglang-syntax" }
 gunbc-primitives = { path = "../lib/primitives" }
 gunbc-lib-transport = { path = "../lib/transport" }
 gunbc-lib-blob = { path = "../lib/blob" }
-gunbc-lib-gist-ops = { path = "../lib/gist-ops" }
 gunbc-lib-git-ops = { path = "../lib/git-ops" }
 gunbc-lib-cloud-ops = { path = "../lib/cloud-ops" }
 gunbc-lib-gcp-ops = { path = "../lib/gcp-ops" }
 
 # General tools (reusable)
 gunbc-deps = { path = "../lib/tools/deps" }
-gunbc-gist = { path = "../lib/tools/gist" }
 gunbc-clippy = { path = "../lib/tools/clippy" }
 gunbc-lib-markdown = { path = "../lib/markdown" }
 gunbc-lib-llm-ops = { path = "../lib/llm-ops" }

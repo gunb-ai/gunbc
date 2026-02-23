@@ -24,7 +24,7 @@
 use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
 };
-use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
+use gunbc_ir::transport::github::GITHUB_SECRET_ID;
 
 // ---------------------------------------------------------------------------
 // GCP project types
