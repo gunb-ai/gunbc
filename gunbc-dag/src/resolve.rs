@@ -106,15 +106,16 @@ impl Executable for PassthroughOp {
 struct PipelineDispatchOp {
     _module: String,
     _name: String,
+    stage_count: usize,
     output_port_names: Vec<String>,
 }
 
 impl Executable for PipelineDispatchOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut outputs =
+            execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
+        outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
+        Ok(outputs)
     }
 }
 
@@ -501,14 +502,17 @@ fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveE
 fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline { module, name, .. } => {
-            resolve_domain(node_id, module, name, outputs, None)
-                .or_else(|_| Ok(DynOp::new(PipelineDispatchOp {
-                    _module: module.clone(),
-                    _name: name.clone(),
-                    output_port_names: declared_output_names(outputs),
-                })))
-        }
+        LoweredOp::Pipeline {
+            module,
+            name,
+            stages,
+            ..
+        } => Ok(DynOp::new(PipelineDispatchOp {
+            _module: module.clone(),
+            _name: name.clone(),
+            stage_count: *stages,
+            output_port_names: declared_output_names(outputs),
+        })),
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
             module,
@@ -897,9 +901,43 @@ mod tests {
         let result = resolve_node(&node).expect("render_makefile");
         assert!(format!("{:?}", result).contains("PassthroughOp"));
 
-        let node = callable_node("makegen", "tools.makegen", "makegen", ObligationCategory::None);
+        let node = callable_node(
+            "makegen",
+            "tools.makegen",
+            "makegen",
+            ObligationCategory::None,
+        );
         let result = resolve_node(&node).expect("makegen");
         assert!(format!("{:?}", result).contains("PassthroughOp"));
+    }
+
+    #[test]
+    fn resolve_pipeline_dispatch_reports_stage_count() {
+        let node = Node::opaque(
+            "pipeline_sdlc",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.sdlc".to_string(),
+                name: "sdlc".to_string(),
+                stages: 8,
+                stage_names: vec![
+                    "fetch".to_string(),
+                    "claim_design".to_string(),
+                    "design".to_string(),
+                    "design_review".to_string(),
+                    "record_design_outcome".to_string(),
+                    "accept_design".to_string(),
+                    "implementation".to_string(),
+                    "close".to_string(),
+                ],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline node should resolve");
+        let outputs = op
+            .execute(HashMap::new())
+            .expect("pipeline dispatch should execute");
+        assert_eq!(outputs.get("stages"), Some(&Value::Int(8)));
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
@@ -1333,9 +1371,14 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Str("a".to_string()), Value::Str("b".to_string())]),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
         );
-        let outputs = result.execute(inputs).expect("collection map should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("collection map should execute");
         assert_eq!(
             outputs.get("items"),
             Some(&Value::List(vec![
@@ -1354,7 +1397,9 @@ mod tests {
             "items".to_string(),
             Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
         );
-        let outputs = result.execute(inputs).expect("collection len should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("collection len should execute");
         assert_eq!(outputs.get("items"), Some(&Value::Int(3)));
     }
 
@@ -1365,7 +1410,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Str("a".to_string()), Value::Str("b".to_string())]),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
         );
         inputs.insert("needle".to_string(), Value::Str("b".to_string()));
         let outputs = result
