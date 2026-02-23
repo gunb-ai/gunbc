@@ -1001,6 +1001,19 @@ fn print_boundary_outputs(log: &crate::ExecutionLog, boundaries: &gunbc_ir::Boun
         return;
     }
 
+    // DEBUG: show boundary ports and log entries for diagnostics
+    if std::env::var("GUNBC_DEBUG_BOUNDARY").is_ok() {
+        eprintln!("[DEBUG] boundary_ports ({}):", boundaries.boundary_ports.len());
+        for (nid, pn) in &boundaries.boundary_ports {
+            eprintln!("[DEBUG]   node={:?} port={:?}", nid.0, pn.0);
+        }
+        eprintln!("[DEBUG] log entries ({}):", log.entries.len());
+        for entry in &log.entries {
+            let port_names: Vec<&String> = entry.outputs.keys().collect();
+            eprintln!("[DEBUG]   node={:?} outputs={:?} intercepted={}", entry.node_id, port_names, entry.was_intercepted);
+        }
+    }
+
     println!();
     println!("Outputs:");
 
@@ -1010,6 +1023,10 @@ fn print_boundary_outputs(log: &crate::ExecutionLog, boundaries: &gunbc_ir::Boun
         if let Some(value) = value {
             let label = format!("{}.{}", node_id.0, port_name.0);
             print_value(&label, value);
+        } else if std::env::var("GUNBC_DEBUG_BOUNDARY").is_ok() {
+            let has_entry = entry.is_some();
+            let has_port = entry.map(|e| e.outputs.contains_key(&port_name.0)).unwrap_or(false);
+            eprintln!("[DEBUG] MISS: node={:?} port={:?} has_entry={} has_port={}", node_id.0, port_name.0, has_entry, has_port);
         }
     }
 }
