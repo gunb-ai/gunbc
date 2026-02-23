@@ -118,7 +118,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | 1: Type system + graph builders | **ACTIVE** | TS-1..TS-1d, TS-2, TS-5, M7, M15 |
 | 2: 100% codegen pipeline | **ACTIVE** | L2-0..L2-4, TS-6, S12-1..S12-19 |
 | Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-3, TS-4a..TS-4d (needs both Lane 1 + Lane 2 done) |
-| 3: Modeling integrity | **ACTIVE** | M14 🔄, M16 🔄 → GR-1..GR-4, M21 🔄 |
+| 3: Modeling integrity | **DONE** | All M7-M22 complete. GR-1..GR-4 graph.rs deletions blocked on Lane 2 |
 | 4: Codebase polish | **ACTIVE** | CU-1..CU-10 |
 
 ---
@@ -283,7 +283,7 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 
 **Source**: `TODO/modeling.md` — 13 intake tasks for semantic-integrity hardening.
 **Design-first policy**: Every M* task requires a paired M*-D design review before implementation.
-**Status**: 13/16 modeling tasks complete. M14, M16, M21 in progress. Graph.rs cleanup blocked on M16.
+**Status**: All 16 modeling tasks (M7-M22) COMPLETE. Graph.rs cleanup (GR-1..GR-4) blocked on Lane 2 S12 (profile binding).
 
 ### Lane 3-A: Graph semantics (M8 → M9 → M16)
 
@@ -294,7 +294,7 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 | **M9-D** | **Design: Typed dependency markers** | M8-D | S | ✅ Done |
 | **M9** | **Typed dependency markers**: `DependencyKind` enum, `DependencyEdge` struct, round-trip tests. | M9-D, M8 | S | ✅ Done |
 | **M16-D** | **Design: SystemModel/TransportBehavior unification** | M8-D | S | ✅ Done |
-| **M16** | **Unify invocation contracts**: `ProtocolLayer` + `ProtocolStack` types in `contract.rs`. Bridge from `TransportBehavior`+`BehaviorScope`. **Unblocks**: graph.rs cleanup + cloud modeling. | M16-D, M8 | M | 🔄 In progress |
+| **M16** | **Unify invocation contracts**: `ProtocolLayer` + `ProtocolStack` types in `contract.rs`. Bridge from `TransportBehavior`+`BehaviorScope`. **Unblocks**: graph.rs cleanup + cloud modeling. | M16-D, M8 | M | ✅ Done |
 
 ### Lane 3-A+ : Graph.rs Cleanup (Blocked on M16)
 
@@ -323,7 +323,7 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 | **M13-D** | **Design: Registry→CLI→Make contract tests** | — | S | ✅ Done |
 | **M13** | **Contract tests**: Round-trip registry→CLI→Make parity tests. | M13-D | M | ✅ Done |
 | **M14-D** | **Design: Single inventory authority** | M13-D | S | ✅ Done |
-| **M14** | **Single inventory authority**: `inventory_is_single_authority` test, drift validation. | M14-D, M13 | M | 🔄 In progress |
+| **M14** | **Single inventory authority**: `inventory_is_single_authority` test, drift validation. | M14-D, M13 | M | ✅ Done |
 
 ### Lane 3-D: Global minimality proof (M17 → M18 → M19)
 
@@ -341,18 +341,18 @@ L2-0 ──→ L2-1, L2-2, TS-6 ──→ S12-6 ──→ S12-7 ──→ S12-8 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **M20** | **Repository self-understanding model**: `CrateTier`, `CrateSpec`, generator edges, commit policies, toolchain requirements in `workspace_model.rs`. | — | L | ✅ Done |
-| **M21** | **Structural primitives for codegen**: `TypeShape`, `ScalarKind`, `PlatformRepr`, `Platform` types in `contract.rs`. | M8 | L | 🔄 In progress |
+| **M21** | **Structural primitives for codegen**: `CodegenTypeShape`, `ScalarKind`, `CodegenPlatformRepr`, `Platform` types in `contract.rs`. `TypeShape` extractor in `type_shape.rs`. | M8 | L | ✅ Done |
 | **M22** | **Annotation-to-DAG modeling**: `ContractObligation` (Phase 1), `ErrorMapping` (Phase 2), `RetryPolicy` (Phase 3), `ResourceRequirement` (Phase 4), `@testgen_skip` emit wiring (Phase 5). | M8, M10, M12, M16 | L | ✅ Done |
 
 ### Lane 3 dependency graph
 
 ```
-Lane 3-A:  M8 ✅ → M9 ✅ → M16 🔄 → [graph.rs cleanup: GR-1..GR-4]
+Lane 3-A:  M8 ✅ → M9 ✅ → M16 ✅ → [graph.rs cleanup: GR-1..GR-4]
                                       → [cloud gap: AWS services, Azure services, GitHub ops wiring]
 Lane 3-B:  M10 ✅ → M11 ✅ → M12 ✅
-Lane 3-C:  M13 ✅ → M14 🔄
+Lane 3-C:  M13 ✅ → M14 ✅
 Lane 3-D:  M17 ✅ → M18 ✅ → M19 ✅
-Lane 3-E:  M20 ✅, M21 🔄, M22 ✅
+Lane 3-E:  M20 ✅, M21 ✅, M22 ✅
 
 3-A graph.rs cleanup is the critical path (blocked on M16 completion).
 ```
