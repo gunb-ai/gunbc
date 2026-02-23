@@ -3110,6 +3110,8 @@ impl CompiledStageDispatcher {
     ) -> Result<StageDispatchDecision, String> {
         let callable_name = stage_dispatch_callable_name(record.stage);
         let target_node_id = format!("funcs.sdlc_dispatch_runtime::{callable_name}");
+        let default_owner = detect_repo_owner().unwrap_or_else(|| "unknown".to_string());
+        let default_repo = detect_repo_name().unwrap_or_else(|| "unknown".to_string());
         let entrypoints = detect_entrypoints(&self.dag);
         let mut input_mocks = BoundaryMocks::new();
         let mut unsupported_ports = Vec::new();
@@ -3134,6 +3136,16 @@ impl CompiledStageDispatcher {
                 "issue_id" => {
                     input_mocks.set_input(node_id.0, port_name.0, Value::Int(issue_id as i64))
                 }
+                "owner" => input_mocks.set_input(
+                    node_id.0,
+                    port_name.0,
+                    Value::Str(default_owner.clone()),
+                ),
+                "repo" => input_mocks.set_input(
+                    node_id.0,
+                    port_name.0,
+                    Value::Str(default_repo.clone()),
+                ),
                 other => unsupported_ports.push(format!("{}.{other}", node_id.0)),
             }
         }

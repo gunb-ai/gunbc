@@ -887,7 +887,7 @@ fn resolve_sdlc_dispatch_runtime(name: &str) -> Option<DynOp> {
             awaiting_approval: false,
             marker: Some("sdlc:implementation"),
             message_template: Some(
-                "Implementation started on branch `sdlc/issue-{issue_id}` (worker: `{worker_id}`)",
+                "Implementation started on branch `sdlc/issue-{issue_id}` for `{owner}/{repo}` (worker: `{worker_id}`)",
             ),
         }),
         "dispatch_implementation" => Some(SdlcStageDirective {
@@ -895,7 +895,7 @@ fn resolve_sdlc_dispatch_runtime(name: &str) -> Option<DynOp> {
             awaiting_approval: false,
             marker: Some("sdlc:acceptance"),
             message_template: Some(
-                "Acceptance testing and close for run_key `{run_key}` (worker: `{worker_id}`)",
+                "Acceptance testing and close for run_key `{run_key}` in `{owner}/{repo}` (worker: `{worker_id}`)",
             ),
         }),
         "dispatch_closed" => Some(SdlcStageDirective {
@@ -927,6 +927,8 @@ impl Executable for SdlcStageDirectiveOp {
         let run_key = input_as_string(&inputs, "run_key");
         let worker_id = input_as_string(&inputs, "worker_id");
         let issue_id = input_as_string(&inputs, "issue_id");
+        let owner = input_as_string(&inputs, "owner");
+        let repo = input_as_string(&inputs, "repo");
         let marker = self.directive.marker.unwrap_or_default();
         let message = self
             .directive
@@ -936,6 +938,8 @@ impl Executable for SdlcStageDirectiveOp {
                     .replace("{run_key}", run_key.as_str())
                     .replace("{worker_id}", worker_id.as_str())
                     .replace("{issue_id}", issue_id.as_str())
+                    .replace("{owner}", owner.as_str())
+                    .replace("{repo}", repo.as_str())
             })
             .unwrap_or_default();
 

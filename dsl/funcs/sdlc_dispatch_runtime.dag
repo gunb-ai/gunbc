@@ -10,7 +10,9 @@ module funcs.sdlc_dispatch_runtime
 func dispatch_idea(
   run_key: String,
   worker_id: String,
-  issue_id: Int
+  issue_id: Int,
+  owner: String,
+  repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
   return {
     next_stage: "design",
@@ -24,7 +26,9 @@ func dispatch_idea(
 func dispatch_design(
   run_key: String,
   worker_id: String,
-  issue_id: Int
+  issue_id: Int,
+  owner: String,
+  repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
   return {
     next_stage: "design-review",
@@ -38,7 +42,9 @@ func dispatch_design(
 func dispatch_design_review(
   run_key: String,
   worker_id: String,
-  issue_id: Int
+  issue_id: Int,
+  owner: String,
+  repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
   return {
     next_stage: "design-review",
@@ -52,13 +58,15 @@ func dispatch_design_review(
 func dispatch_accepted(
   run_key: String,
   worker_id: String,
-  issue_id: Int
+  issue_id: Int,
+  owner: String,
+  repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
   return {
     next_stage: "implementation",
     awaiting_approval: false,
     marker: "sdlc:implementation",
-    message: "Implementation started on branch `sdlc/issue-{issue_id}` (worker: `{worker_id}`)",
+    message: "Implementation started on branch `sdlc/issue-{issue_id}` for `{owner}/{repo}` (worker: `{worker_id}`)",
     value: { "next_stage": "implementation", "awaiting_approval": false }
   }
 }
@@ -66,13 +74,15 @@ func dispatch_accepted(
 func dispatch_implementation(
   run_key: String,
   worker_id: String,
-  issue_id: Int
+  issue_id: Int,
+  owner: String,
+  repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
   return {
     next_stage: "closed",
     awaiting_approval: false,
     marker: "sdlc:acceptance",
-    message: "Acceptance testing and close for run_key `{run_key}` (worker: `{worker_id}`)",
+    message: "Acceptance testing and close for run_key `{run_key}` in `{owner}/{repo}` (worker: `{worker_id}`)",
     value: { "next_stage": "closed", "awaiting_approval": false }
   }
 }
@@ -80,7 +90,9 @@ func dispatch_implementation(
 func dispatch_closed(
   run_key: String,
   worker_id: String,
-  issue_id: Int
+  issue_id: Int,
+  owner: String,
+  repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
   return {
     next_stage: "closed",

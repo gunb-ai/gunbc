@@ -1554,6 +1554,104 @@ fn worker_real_mode_runtime_param_overrides_dispatch_run_key_input() {
 }
 
 #[test]
+fn worker_real_mode_runtime_params_override_owner_repo_in_implementation_dispatch() {
+    let ctx = CliTestContext::new("worker_runtime_param_owner_repo_override", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-runtime-param-owner-repo",
+        "intent-20260221-runtime-param-owner-repo",
+        Some(4244),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    // Progress to design-review gate (Idea -> Design -> DesignReview).
+    for _ in 0..3 {
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker progression pass");
+        assert!(
+            worker.status.success(),
+            "worker progression pass should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    // Explicit approval transition to accepted.
+    let approve = ctx
+        .command()
+        .arg("transition")
+        .arg("--intake-key")
+        .arg("intent-20260221-runtime-param-owner-repo")
+        .arg("--stage")
+        .arg("accepted")
+        .current_dir(&root)
+        .output()
+        .expect("approve transition to accepted");
+    assert!(
+        approve.status.success(),
+        "approval transition should succeed: {}",
+        String::from_utf8_lossy(&approve.stderr)
+    );
+
+    // Accepted -> Implementation with owner/repo overrides.
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--param")
+        .arg("owner=override-owner")
+        .arg("--param")
+        .arg("repo=override-repo")
+        .current_dir(&root)
+        .output()
+        .expect("run worker with owner/repo runtime params");
+    assert!(
+        worker.status.success(),
+        "worker should succeed with owner/repo runtime params: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+
+    let issue_transport_path = root.join("target/sdlc/issue-transport-ledger.json");
+    let issue_transport_raw =
+        std::fs::read_to_string(&issue_transport_path).expect("read issue transport ledger");
+    let issue_transport: serde_json::Value =
+        serde_json::from_str(&issue_transport_raw).expect("parse issue transport ledger");
+    let implementation_comment = issue_transport["issues"]["4244"]["comments_by_marker"]
+        ["sdlc:implementation"]
+        .as_str()
+        .expect("implementation marker comment should be string")
+        .to_string();
+    assert!(
+        implementation_comment.contains("override-owner/override-repo"),
+        "compiled dispatch should consume owner/repo runtime overrides: {implementation_comment}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
 fn issue_command_supports_runtime_param_flags() {
     let ctx = CliTestContext::new("issue_command_runtime_params", sdlc_bin());
     let root = ctx.path().to_path_buf();
