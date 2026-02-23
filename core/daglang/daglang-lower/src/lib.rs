@@ -7783,6 +7783,160 @@ func run() -> { ok: Bool } {
     }
 
     #[test]
+    fn core_interface_bindings_resolve_with_active_profile() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/profiles/core_interface_bindings.dag",
+            r#"module sample.bindings
+interface IssueProvider {
+  capability ping {
+    input {}
+    output { ok: Bool }
+  }
+}
+interface ClaimStore {
+  capability ping {
+    input {}
+    output { ok: Bool }
+  }
+}
+interface OutcomeLedger {
+  capability ping {
+    input {}
+    output { ok: Bool }
+  }
+}
+interface AgentProvider {
+  capability ping {
+    input {}
+    output { ok: Bool }
+  }
+}
+interface SignalStore {
+  capability ping {
+    input {}
+    output { ok: Bool }
+  }
+}
+interface ArtifactStore {
+  capability ping {
+    input {}
+    output { ok: Bool }
+  }
+}
+service impl.Issues : IssueProvider {
+  operation ping {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/issues")
+  }
+}
+service impl.Claims : ClaimStore {
+  operation ping {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/claims")
+  }
+}
+service impl.Outcomes : OutcomeLedger {
+  operation ping {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/outcomes")
+  }
+}
+service impl.Agents : AgentProvider {
+  operation ping {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/agents")
+  }
+}
+service impl.Signals : SignalStore {
+  operation ping {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/signals")
+  }
+}
+service impl.Artifacts : ArtifactStore {
+  operation ping {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/artifacts")
+  }
+}
+profile unit_test {
+  bind IssueProvider -> impl.Issues
+  bind ClaimStore -> impl.Claims
+  bind OutcomeLedger -> impl.Outcomes
+  bind AgentProvider -> impl.Agents
+  bind SignalStore -> impl.Signals
+  bind ArtifactStore -> impl.Artifacts
+}
+func run() -> {
+  issue_ok: Bool,
+  claim_ok: Bool,
+  outcome_ok: Bool,
+  agent_ok: Bool,
+  signal_ok: Bool,
+  artifact_ok: Bool
+}
+  uses issues: IssueProvider
+  uses claims: ClaimStore
+  uses outcomes: OutcomeLedger
+  uses agents: AgentProvider
+  uses signals: SignalStore
+  uses artifacts: ArtifactStore
+{
+  issue = issues.ping()
+  claim = claims.ping()
+  outcome = outcomes.ping()
+  agent = agents.ping()
+  signal = signals.ping()
+  artifact = artifacts.ping()
+  return {
+    issue_ok: issue.ok,
+    claim_ok: claim.ok,
+    outcome_ok: outcome.ok,
+    agent_ok: agent.ok,
+    signal_ok: signal.ok,
+    artifact_ok: artifact.ok
+  }
+}"#,
+        )]);
+
+        let missing_profile = lower_typed_project(&typed)
+            .expect_err("lowering should require profile for bound core interfaces");
+        assert!(matches!(
+            missing_profile,
+            LowerError::ProfileRequiredForBoundServiceCall {
+                caller,
+                binding,
+                interface_type,
+            } if caller == "sample.bindings::run"
+                && binding == "issues"
+                && interface_type == "IssueProvider"
+        ));
+
+        let dag = lower_typed_project_with_profile(&typed, Some("unit_test"))
+            .expect("lowering should resolve all core interface bindings via profile");
+        let expected_parse_prefixes = [
+            "parse_transport_sample_bindings_impl_Issues_ping",
+            "parse_transport_sample_bindings_impl_Claims_ping",
+            "parse_transport_sample_bindings_impl_Outcomes_ping",
+            "parse_transport_sample_bindings_impl_Agents_ping",
+            "parse_transport_sample_bindings_impl_Signals_ping",
+            "parse_transport_sample_bindings_impl_Artifacts_ping",
+        ];
+        for prefix in expected_parse_prefixes {
+            assert!(
+                dag.nodes.iter().any(|node| node.id.0.starts_with(prefix)),
+                "missing transport parse node for bound implementation `{prefix}`"
+            );
+        }
+    }
+
+    #[test]
     fn uses_clause_wires_acquire_and_release_lifecycle_edges() {
         let typed = typed_project_from_sources(&[(
             "dsl/resources/uses_wiring.dag",
