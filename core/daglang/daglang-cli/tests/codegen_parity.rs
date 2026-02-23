@@ -228,7 +228,10 @@ fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
 #[derive(Debug)]
 enum RuntimeOutcome {
     Ran { stdout: String, stderr: String },
+    /// Prerequisite missing (toolchain not found, generated source absent).
     Skipped { reason: String },
+    /// Toolchain present but compile/run failed — this is a real regression.
+    Failed { reason: String },
 }
 
 fn run_makegen_generated_rust_layer1(crate_out_dir: &Path) -> RuntimeOutcome {

@@ -35,7 +35,7 @@ use gunbc_exec::{
 };
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
-use gunbc_ir::resource::AccessMode;
+use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
@@ -1037,7 +1037,7 @@ fn needs_transport_resource(
     // Only add if not already present.
     let already_has = resolved.inputs.iter().any(|port| {
         port.type_id.0 == "FilesystemHandle"
-            && (port.name.0 == "res:file" || port.name.0.starts_with("res:file:"))
+            && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX))
     });
     if already_has {
         None
@@ -1060,7 +1060,7 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
     for node in &dag.nodes {
         for port in &node.inputs {
             let is_filesystem_resource_port = port.type_id.0 == "FilesystemHandle"
-                && (port.name.0 == "res:file" || port.name.0.starts_with("res:file:"));
+                && (port.name.0 == RESOURCE_FILE || port.name.0.starts_with(RESOURCE_FILE_PREFIX));
             if !is_filesystem_resource_port {
                 continue;
             }
@@ -2029,7 +2029,7 @@ mod tests {
             edge.from_node.0 == "fs_env"
                 && edge.from_port.0 == FsEnv::WRITE_PORT
                 && edge.to_node.0 == "execute_read_makegen"
-                && edge.to_port.0 == "res:file"
+                && edge.to_port.0 == RESOURCE_FILE
         });
         assert!(
             has_edge,

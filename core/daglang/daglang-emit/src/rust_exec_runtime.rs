@@ -251,6 +251,13 @@ fn collect_handler_kinds(classified: &[ClassifiedNode]) -> BTreeSet<HandlerKind>
     classified.iter().map(|c| c.handler).collect()
 }
 
+/// Classify a lowered operation into a runtime handler kind.
+///
+/// TODO: Replace module-name and string-prefix heuristics with an explicit
+/// `handler_hint: Option<HandlerHint>` field on `LoweredOp::Callable`,
+/// produced during lowering from DSL annotations and obligation metadata.
+/// This would make the runtime classification data-driven instead of
+/// name-driven and eliminate the manually-maintained module lists below.
 fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     match op {
         LoweredOp::Collection { .. } => return Some(HandlerKind::Collection),
