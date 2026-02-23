@@ -619,33 +619,41 @@ impl Executable for SubDagExecutorOp {
         inputs: HashMap<String, Value>,
         mode: &ExecutionMode,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        let mut mocks = BoundaryMocks::new();
+        let mut input_mocks = BoundaryMocks::new();
         for bp in &self.input_map {
             if let Some(value) = inputs.get(&bp.outer_key) {
-                mocks.set_input(&bp.inner_node, &bp.inner_port, value.clone());
+                input_mocks.set_input(&bp.inner_node, &bp.inner_port, value.clone());
             }
         }
 
         let inner_mode = match mode {
             ExecutionMode::Real => ExecutionMode::Real,
-            ExecutionMode::DryRun(_) => ExecutionMode::DryRun(mocks.clone()),
-            ExecutionMode::Simulate(_) => {
-                let mut sim: gunbc_exec::execute::SimConfig = Default::default();
-                sim.boundary_mocks = mocks.clone();
-                ExecutionMode::Simulate(sim)
+            ExecutionMode::DryRun(parent_mocks) => {
+                let mut merged = parent_mocks.clone();
+                merged.merge(&input_mocks);
+                ExecutionMode::DryRun(merged)
+            }
+            ExecutionMode::Simulate(parent_sim) => {
+                let mut merged = parent_sim.boundary_mocks.clone();
+                merged.merge(&input_mocks);
+                ExecutionMode::Simulate(gunbc_exec::execute::SimConfig {
+                    boundary_mocks: merged,
+                    ..Default::default()
+                })
             }
         };
 
-        let log = execute_with_mode_and_inputs(&self.inner_dag, inner_mode, Some(&mocks))
+        let log = execute_with_mode_and_inputs(&self.inner_dag, inner_mode, Some(&input_mocks))
             .map_err(|e| ExecError::new(format!("SubDag execution failed: {e}")))?;
 
         let mut outputs = HashMap::new();
         for bp in &self.output_map {
-            if let Some(entry) = log.get(&bp.inner_node) {
-                if let Some(value) = entry.outputs.get(&bp.inner_port) {
-                    outputs.insert(bp.outer_key.clone(), value.clone());
-                }
-            }
+            let value = log
+                .get(&bp.inner_node)
+                .and_then(|entry| entry.outputs.get(&bp.inner_port))
+                .cloned()
+                .unwrap_or(Value::Skipped);
+            outputs.insert(bp.outer_key.clone(), value);
         }
 
         Ok(outputs)

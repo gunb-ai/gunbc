@@ -18,7 +18,7 @@ import services.git
 import services.github.gist
 import std.patterns { credential_chain }
 import std.resources { Network, AuthContext, Clock }
-import std.types { CloudRuntime, CommitSha, Url }
+import std.types { CloudRuntime, GitRef, Url }
 
 // Get branch context for any mode.
 func branch_context() -> { branch: String } {
@@ -30,10 +30,16 @@ func branch_context() -> { branch: String } {
 }
 
 // Resolve the base ref for "recent" mode.
-func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: CommitSha, branch: String } {
+func resolve_recent_base(
+  since: String = "3.days.ago",
+  fallback_base_ref: GitRef = "main"
+) -> { base_ref: GitRef, branch: String } {
   ctx = branch_context()
   commits = git.Core.RevList(since: since)
-  base_ref = (commits.commits |> last()) as CommitSha
+  base_ref = match commits.commits |> last() {
+    Some(ref) => ref as GitRef
+    None      => fallback_base_ref
+  }
 
   return {
     base_ref: base_ref,
@@ -42,7 +48,7 @@ func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: CommitSha,
 }
 
 // Filename for a gist upload.
-fn gist_filename(branch: String, base_ref: CommitSha?, timestamp: String) -> String {
+fn gist_filename(branch: String, base_ref: GitRef?, timestamp: String) -> String {
   let suffix = match base_ref {
     Some(ref) => "-vs-{ref}"
     None      => ""
@@ -51,7 +57,7 @@ fn gist_filename(branch: String, base_ref: CommitSha?, timestamp: String) -> Str
 }
 
 // Upload markdown content as a GitHub gist.
-func gist_upload(markdown: String, branch: String, base_ref: CommitSha?) -> { url: Url }
+func gist_upload(markdown: String, branch: String, base_ref: GitRef?) -> { url: Url }
   uses net: Network
   uses clock: Clock
   uses auth: AuthContext
@@ -82,7 +88,7 @@ func gist_upload(markdown: String, branch: String, base_ref: CommitSha?) -> { ur
 }
 
 // Share any markdown content as a gist.
-func share_content(markdown: String, branch: String, base_ref: CommitSha?) -> { url: Url } {
+func share_content(markdown: String, branch: String, base_ref: GitRef?) -> { url: Url } {
   result = gist_upload(
     markdown: markdown,
     branch: branch,

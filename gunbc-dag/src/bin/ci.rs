@@ -161,7 +161,6 @@ fn main() {
             success_port: Some("overall_success"),
             with_freshness: true,
             input_mocks: Some(&input_mocks),
-            ..RunToolOptions::default()
         },
     );
 }

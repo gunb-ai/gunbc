@@ -147,6 +147,17 @@ impl BoundaryMocks {
             .insert((node_id.into(), port_name.into()), value);
     }
 
+    /// Merge another set of mocks into this one. Entries from `other` override
+    /// any existing entries with the same key.
+    pub fn merge(&mut self, other: &BoundaryMocks) {
+        for (key, mock) in &other.mocks {
+            self.mocks.insert(key.clone(), mock.clone());
+        }
+        for (key, value) in &other.input_mocks {
+            self.input_mocks.insert(key.clone(), value.clone());
+        }
+    }
+
     /// Get the mock value for a DAG entry input, if defined.
     pub fn get_input(&self, node_id: &str, port_name: &str) -> Option<&Value> {
         let key = (node_id.to_string(), port_name.to_string());

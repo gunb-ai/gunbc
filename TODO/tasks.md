@@ -1,6 +1,6 @@
 # Task Sheet — Dependency-Ordered, Parallelizable
 
-**Last updated**: 2026-02-22 (Lane 6 added)
+**Last updated**: 2026-02-23 (Lane 7 added)
 **Verification**: `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
 **Archive**: Completed items in `TODO/TODONE/2026-Q1/tasks-completed.md`. Backlog in `TODO/backlog.md`.
 
@@ -30,6 +30,7 @@
 | 6B: Topology migration — cloud/GCP/LLM graphs | **ACTIVE** | Parallel with 6A |
 | 6C: Topology migration — review graph stack | **ACTIVE** | Depends on 6B |
 | 6D: Topology migration — ops semantics | **DEFERRED** | Depends on 6B + 6C |
+| 7: Review cleanup | **ACTIVE** | Parallel with 6A/6B/6C (disjoint scope) |
 
 ---
 
@@ -38,6 +39,9 @@
 Lane 6 (Topology Migration) is active. Sub-lanes 6A, 6B, and 6C contain all
 scheduled work. 6A and 6B are independent and may run in parallel. 6C depends
 on 6B. 6D is deferred pending a DSL executable-semantics design decision.
+
+Lane 7 (Review Cleanup) is active and fully parallel with Lane 6 — disjoint
+file sets, no blocking dependencies.
 
 ---
 
@@ -90,7 +94,7 @@ Verification after migration-wave closeout:
 
 ## Lane 6: Topology Migration (Parallel Lanes)
 
-**Goal**: Finish migrating remaining Rust graph authoring to `.dag`. Delete all handwritten `DagBuilder` graph files. The DAG compiler itself stays in Rust; only graph topology moves to DSL.
+**Goal**: Finish migrating remaining Rust graph authoring to `.dag` and migrate Rust `Executable` ops to generic interpreters / DSL primitives. Delete all handwritten `DagBuilder` graph files and per-op Rust structs. The DAG compiler itself stays in Rust; topology and service semantics move to DSL.
 
 **Continues from**: Lane 5 (GraphIR Decommission). Lane 5 migrated tool graphs and deleted legacy stacks. Lane 6 handles the retained cloud/GCP/LLM/review stacks plus remaining workspace subdags.
 
@@ -100,7 +104,9 @@ Verification after migration-wave closeout:
 - No `TODO(HACK)` escape hatches. Each task either fully replaces the Rust graph with `.dag` or it is not done.
 - If the DSL compiler needs new features to express a graph, that is a blocking prerequisite — not something to work around with Rust glue.
 
-**Parallelism**: 6A and 6B are fully independent (disjoint file sets). 6C depends on 6B. 6D is deferred.
+**Parallelism**: 6A, 6B, and 6D are fully independent (disjoint file sets). 6C depends on 6B. All lanes are mutually exclusive by crate ownership — no two lanes touch the same crate.
+
+**Shared infrastructure**: `gunbc-dag/src/dsl_builder.rs` and `gunbc-dag/src/resolve.rs` are append-only shared files. 6B appends cloud/gcp/llm builder functions, then 6C appends review builder functions (serialized by dependency). 6D modifies op resolution match arms (disjoint from 6B/6C changes). Commits to shared files are atomic per lane.
 
 ### Lane 6A: Cleanup + Workspace Subdags
 
@@ -146,11 +152,11 @@ cargo test -q -p gunbc-dag --test resource_registry_coverage
 cargo clippy --all-targets -- -D warnings
 ```
 
-### Lane 6B: Cloud/GCP/LLM Credential Graph Stack
+### Lane 6B: Cloud/GCP/LLM Full Stack (Graph + Ops)
 
-**Goal**: Migrate all cloud credential, GCP, and LLM graph builders from manual Rust `DagBuilder` calls to `.dag` files. Delete the Rust graph files and their mocks.
+**Goal**: Migrate all cloud credential, GCP, and LLM graph builders from manual Rust `DagBuilder` calls to `.dag` files, **and** migrate `Executable` ops in these crates to generic `ServiceOperationSpec` interpreters. Delete the Rust graph files, their mocks, and the per-op Rust structs.
 
-**Mutually exclusive scope**: `lib/gcp-ops/src/graph*.rs`, `lib/gcp-ops/src/discovery_graph.rs`, `lib/cloud-ops/src/{graph,github_credential_graph}.rs`, `lib/llm-ops/src/graph*.rs`
+**Mutually exclusive scope**: `lib/gcp-ops/src/` (all files), `lib/cloud-ops/src/` (graph + ops files), `lib/llm-ops/src/` (all files), `dsl/cloud/`
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
@@ -160,6 +166,9 @@ cargo clippy --all-targets -- -D warnings
 | **6B-4** | Author `.dag` modules for cloud-ops facade: provider-neutral credential + upsert dispatch and GitHub credential graph (460 + 391 LOC). The DSL equivalent uses `dsl/interfaces/*.dag` provider abstractions or explicit per-provider modules. No Rust `CloudProviderKind` match fallback. | 6B-1, 6B-2 | M | Pending |
 | **6B-5** | Author `.dag` module for LLM chat completion graph (268 LOC). Must compose cloud credential subdag from 6B-4 DSL output. | 6B-4 | M | Pending |
 | **6B-6** | Delete all Rust graph/mock files. Remove `pub mod graph` / `pub mod graph_mock` / `pub mod discovery_graph` / `pub mod github_credential_graph` from parent `lib.rs` files. Update all downstream `use` imports to point to DSL-backed builders. | 6B-1..6B-5 | M | Pending |
+| **6B-7** | Migrate `lib/gcp-ops/src/ops.rs` (2,403 LOC) + `lib/gcp-ops/src/discovery_ops.rs` (810 LOC) to generic interpreters. GCP ops are predominantly REST prepare/parse pairs — each maps to `RestPrepareOp`/`RestParseOp` parameterized by `ServiceOperationSpec` extracted from `.dag` service definitions. Author `dsl/cloud/gcp/services.dag` with per-operation specs. Delete per-op Rust structs once the generic interpreter handles them. | 6B-1, 6B-3 | L | Pending |
+| **6B-8** | Migrate `lib/cloud-ops/src/ops.rs` (441 LOC) to generic interpreters. Provider-neutral dispatch ops become DSL-expressed routing or thin profile-bound adapters. Credential-policy ops that are pure config transforms become DSL `fn`. | 6B-4, 6B-7 | M | Pending |
+| **6B-9** | Final cleanup: delete emptied ops files, remove dead `mod` declarations, verify no Rust `Executable` impls remain in `lib/{gcp-ops,cloud-ops}/src/`. | 6B-6..6B-8 | S | Pending |
 
 #### 6B Deletion Manifest
 
@@ -168,19 +177,24 @@ cargo clippy --all-targets -- -D warnings
 | `lib/gcp-ops/src/graph.rs` | 1,760 | Delete |
 | `lib/gcp-ops/src/graph_mock.rs` | 452 | Delete |
 | `lib/gcp-ops/src/discovery_graph.rs` | 463 | Delete |
+| `lib/gcp-ops/src/ops.rs` | 2,403 | Delete (replaced by generic interpreters + `.dag` service specs) |
+| `lib/gcp-ops/src/discovery_ops.rs` | 810 | Delete (replaced by generic interpreters + `.dag` service specs) |
 | `lib/cloud-ops/src/graph.rs` | 460 | Delete |
 | `lib/cloud-ops/src/github_credential_graph.rs` | 391 | Delete |
+| `lib/cloud-ops/src/ops.rs` | 441 | Delete (replaced by generic interpreters + DSL `fn`) |
 | `lib/llm-ops/src/graph.rs` | 268 | Delete |
 | `lib/llm-ops/src/graph_mock.rs` | 1,013 | Delete |
-| **Total** | **4,807** | |
+| **Total** | **8,461** | |
 
 #### 6B Exit Criteria
 
-1. Zero `graph.rs`, `graph_mock.rs`, `discovery_graph.rs`, or `github_credential_graph.rs` files in `lib/{gcp-ops,cloud-ops,llm-ops}/src/`.
+1. Zero `graph.rs`, `graph_mock.rs`, `discovery_graph.rs`, `github_credential_graph.rs`, `ops.rs`, or `discovery_ops.rs` files in `lib/{gcp-ops,cloud-ops,llm-ops}/src/`.
 2. All 3 GCP runtime variants (GitHub/Metadata/Local) for both credential and upsert graphs compile from `.dag` files.
 3. `dsl_builder.rs` has new builder functions for each migrated graph.
 4. No Rust `match` fallback dispatch remains for graph construction — runtime variant selection is either expressed in DSL or handled by per-variant `.dag` files selected at compile time.
 5. All downstream consumers (`lib/review/src/graph.rs`, `gunbc-dag/src/bin/review.rs`) that import these builders still compile (same public API, now backed by DSL).
+6. Zero hand-written `Executable` impls in `lib/{gcp-ops,cloud-ops}/src/` — all service operations use generic `RestPrepareOp`/`RestParseOp` or `ShellPrepareOp`/`ShellParseOp` interpreters parameterized by `ServiceOperationSpec`.
+7. `dsl/cloud/gcp/services.dag` is the authoritative source for all GCP service operation specs.
 
 #### 6B Verification
 
@@ -241,24 +255,202 @@ cargo test -q -p gunbc-dag --test resource_registry_coverage
 cargo clippy --all-targets -- -D warnings
 ```
 
-### Lane 6D: Ops Semantics to DSL (Deferred)
+### Lane 6D: gunbc-dag Tool Ops to DSL
 
-**Goal**: Migrate `Executable` trait implementations (ops) from Rust into DSL service/pattern primitives.
+**Goal**: Migrate `Executable` trait implementations for tool-level ops from hand-written Rust structs to generic interpreters parameterized by `ServiceOperationSpec` (for service ops) and DSL `fn` definitions (for pure renders and config transforms). Cloud/GCP ops are handled by Lane 6B.
 
-**Status**: **DEFERRED** — requires the DSL to gain executable semantics (function bodies, not just topology). Prerequisite is a design decision on whether the DSL gains an expression language or whether ops map to generic interpreters over `ServiceOperationSpec`.
+**Status**: **ACTIVE** — the prerequisite design decision is resolved: Strategy B (generic interpreters over `ServiceOperationSpec`, SC1-SC7) is implemented. The existing `RestPrepareOp`/`RestParseOp`/`ShellPrepareOp`/`ShellParseOp` generic interpreters in `gunbc-dag/src/resolve_service.rs` are the target runtime.
 
-**Scope** (6,874 LOC): `lib/gcp-ops/src/ops.rs` (2,403), `gunbc-dag/src/ci/ops.rs` (2,115), `gunbc-dag/src/docgen/ops.rs` (664), `lib/cloud-ops/src/ops.rs` (441), `gunbc-dag/src/codegen/ops.rs` (365), `gunbc-dag/src/build/ops.rs` (300), `gunbc-dag/src/makegen/ops.rs` (244), `gunbc-dag/src/bootstrap/ops.rs` (226), `gunbc-dag/src/pragma/ops.rs` (116).
+**Mutually exclusive scope**: `gunbc-dag/src/{bootstrap,build,ci,codegen,docgen,makegen,pragma}/ops.rs`, `dsl/services/tools/`
+
+**Scope** (4,030 LOC):
+- `gunbc-dag/src/ci/ops.rs` (2,115)
+- `gunbc-dag/src/docgen/ops.rs` (664)
+- `gunbc-dag/src/codegen/ops.rs` (365)
+- `gunbc-dag/src/build/ops.rs` (300)
+- `gunbc-dag/src/makegen/ops.rs` (244)
+- `gunbc-dag/src/bootstrap/ops.rs` (226)
+- `gunbc-dag/src/pragma/ops.rs` (116)
+
+**Op categories** (each op in the files above falls into exactly one):
+
+| Category | Ops | Migration Strategy | Example |
+|----------|-----|-------------------|---------|
+| **A: Service prepare/parse** | 39 | Replace with generic `ShellPrepareOp`/`ShellParseOp` (or `FilePrepareOp`/`FileParseOp`) parameterized by `ServiceOperationSpec` extracted from `.dag` service definitions. Rust struct deleted entirely. | `BuildOp::PrepareBuild`, `CIOp::PrepareTestCommand` |
+| **B: Pure render** | 7 | Keep underlying Rust render function. Register from DSL via `uses rust_fn`. Delete `Executable` enum wrapper. | `PragmaOp::RenderClippy`, `MakegenOp::RenderMakefile` |
+| **C: Config constant** | 1 | Replace with DSL config node (`dsl/config/*.dag`). Rust struct deleted. | `MakegenOp::LoadRegistry` |
+| **D: Complex domain logic** | 5 | Stays as Rust function behind `uses rust_fn`. Function body stays; `Executable` wrapper simplified. | `CIOp::Report`, `CodegenOp::ParseCodegenExists` |
+
+#### 6D Op Audit (Complete)
+
+52 ops across 7 files. Each op is categorized exactly once.
+
+**`pragma/ops.rs`** — 3 ops, 116 LOC → **delete entire file**
+
+| Op | Cat | Migration |
+|----|-----|-----------|
+| `PragmaOp::RenderClippy` | B | `uses rust_fn "policy::pragma::clippy_renderer"`. Underlying render fn stays in `crate::policy::pragma`. |
+| `PragmaOp::RenderAllowlist` | B | `uses rust_fn "policy::pragma::render_disallowed_methods_allowlist"` |
+| `PragmaOp::RenderLintPolicy` | B | `uses rust_fn "policy::pragma::render_pragma_lint_policy"` |
+
+**`bootstrap/ops.rs`** — 4 ops, 226 LOC → **delete entire file**
+
+| Op | Cat | Migration |
+|----|-----|-----------|
+| `BootstrapOp::PrepareScanWorkspace` | A | `ShellPrepareOp` spec: `find crates -maxdepth 1 -mindepth 1 -type d` |
+| `BootstrapOp::ParseScanResult` | A | `ShellParseOp` spec: outputs `crate_count: int`, `crate_names: str_list`. Custom line-parsing (strips `crates/` prefix, sorts). Needs parse-script or `uses rust_fn` for the prefix-stripping logic. |
+| `BootstrapOp::GenerateMakefile` | B | `uses rust_fn "makegen::render::render_makefile"` via `ToolRegistry::default_registry()` |
+| `BootstrapOp::GenerateGitignore` | B | `uses rust_fn "makegen::gitignore::render_gitignore"` via `default_build_config()` |
+
+**`makegen/ops.rs`** — 3 ops, 244 LOC → **delete or shrink to Entrypoint only**
+
+| Op | Cat | Migration |
+|----|-----|-----------|
+| `MakegenOp::LoadRegistry` | C | DSL config node in `dsl/config/tool_registry.dag`. Serializes `ToolRegistry::default_registry()` + `iter_dag_specs()` as JSON. |
+| `MakegenOp::RenderMakefile` | B | `uses rust_fn "makegen::render::render_makefile"` (same Rust fn as bootstrap's) |
+| `MakegenOp::Entrypoint` | D | Inspects `__deps` list for `TransportResponse::File(Write, success)`. `__deps` is a DAG-level mechanism not expressible as a service spec. Stays as `uses rust_fn`. |
+
+**`build/ops.rs`** — 7 ops, 300 LOC → **delete entire file**
+
+| Op | Cat | Migration |
+|----|-----|-----------|
+| `BuildOp::PrepareBuild` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().build.to_shell_request()` |
+| `BuildOp::ParseBuild` | A | `ShellParseOp` spec: outputs `build_success`, `build_stdout`, `build_stderr` |
+| `BuildOp::PrepareTest` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().test`. Prereq: `build_success`. |
+| `BuildOp::ParseTest` | A | `ShellParseOp` spec: outputs `test_success`, `test_skipped`, `test_stdout`, `test_stderr` |
+| `BuildOp::PrepareClippy` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().lint`. Prereq: `build_success`. |
+| `BuildOp::ParseClippy` | A | `ShellParseOp` spec: outputs `clippy_success`, `clippy_skipped`, `clippy_stdout`, `clippy_stderr` |
+| `BuildOp::Summary` | B | Pure bool aggregation + string report. `uses rust_fn` or DSL `fn` with conditionals. |
+
+**`codegen/ops.rs`** — 5 ops, 365 LOC → **shrink to ParseCodegenExists only**
+
+| Op | Cat | Migration |
+|----|-----|-----------|
+| `CodegenOp::PrepareCodegenExists` | A | `FilePrepareOp` spec: `FileRequest::glob("target/codegen/bin/**/main.rs")` |
+| `CodegenOp::ParseCodegenExists` | D | **Design issue**: calls `TransportIo::new()` + `load_manifest_default()` — hidden I/O inside "pure" op. Must stay as `uses rust_fn` until manifest loading is extracted to a separate transport node. |
+| `CodegenOp::PrepareCodegenCommand` | A | `ShellPrepareOp` spec: `cargo run -p gunbc-dag --bin gunbc-codegen -- codegen`. Prereq: `codegen_needed`. |
+| `CodegenOp::ParseCodegenResult` | A | `ShellParseOp` spec: outputs `prep_success`, `codegen_ran`, `prep_message`. Skip-propagation on both `skip` and `response`. |
+| `CodegenOp::PrepareStampWrite` | A | `FilePrepareOp` spec: `FileRequest::write(codegen_stamp_path(), "codegen ok\n")`. Prereq: `prep_success`. |
+
+**`docgen/ops.rs`** — 3 ops, 664 LOC → **shrink to RenderAbWorkflowsDoc only**
+
+| Op | Cat | Migration |
+|----|-----|-----------|
+| `DocgenOp::PrepareFileRead { path }` | A | `FilePrepareOp` spec: `FileRequest::read(path)`. Parameterized — one spec instance per path in the DAG. |
+| `DocgenOp::ParseFileContent { path, allow_missing }` | A | `FileParseOp` spec: outputs `content: str`. Parameterized by `path` and `allow_missing`. |
+| `DocgenOp::RenderAbWorkflowsDoc` | D | 500+ lines of template rendering (section replacement, code extraction, test collection). Stays as `uses rust_fn`. Takes 13 string inputs, produces `content` + `path`. |
+
+**`ci/ops.rs`** — 27 ops, 2,115 LOC → **shrink to AggregateVerifyResults + Report only**
+
+| Op | Cat | Migration |
+|----|-----|-----------|
+| `CIOp::ParseDepsExists` | A | `FileParseOp` spec: parses `Exists` response → `deps_exists`, `deps_checked`, `deps_installed`, `message` + status. |
+| `CIOp::PrepareTestgenCommand` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().testgen`. Prereq: `prep_success`. |
+| `CIOp::ParseTestgenResult` | A | `ShellParseOp` spec: outputs `testgen_success`, `testgen_stderr`, `testgen_stdout`. |
+| `CIOp::PrepareBootstrapCommand` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().bootstrap`. Prereq: `prep_success`. |
+| `CIOp::ParseBootstrapResult` | A | `ShellParseOp` spec: outputs `bootstrap_success`, `bootstrap_stderr`, `bootstrap_stdout`. |
+| `CIOp::PreparePragmaCommand` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().pragma`. Prereq: `prep_success`. |
+| `CIOp::ParsePragmaResult` | A | `ShellParseOp` spec: outputs `pragma_success`, `pragma_stderr`, `pragma_stdout`. |
+| `CIOp::PrepareBuildCommand` | A | `ShellPrepareOp` spec: `cargo test --no-run` with `-D warnings` RUSTFLAGS. Prereqs: `prep_success`, `testgen_success`. |
+| `CIOp::ParseBuildResult` | A | `ShellParseOp` spec: outputs `build_success`, `build_skipped`, `build_stdout`, `build_stderr`. |
+| `CIOp::PrepareTestCommand` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().test`. Prereq: `build_success`. |
+| `CIOp::ParseTestResult` | A | `ShellParseOp` spec: outputs `test_success`, `test_skipped`, `test_stdout`, `test_stderr`. |
+| `CIOp::PrepareClippyLint` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().lint`. Prereqs: `build_success`, `pragma_success`. |
+| `CIOp::ParseClippyLintResult` | A | `ShellParseOp` spec: outputs `lint_success`, `lint_skipped`, `lint_stdout`, `lint_stderr`. |
+| `CIOp::PrepareGuardrailCheck` | A | `ShellPrepareOp` spec: `bash -lc "cargo test -p gunbc-dag --test resource_purity_checks --quiet"`. Prereqs: `testgen_success`, `pragma_success`. |
+| `CIOp::ParseGuardrailResult` | A | `ShellParseOp` spec: outputs `guardrail_success`, `guardrail_stderr`, `guardrail_stdout`. |
+| `CIOp::PrepareVerifyMakegenCheck` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().makegen_check`. Uses shared `verify_skip_reason()`. |
+| `CIOp::ParseVerifyMakegenResult` | A | `ShellParseOp` spec: outputs `verify_makegen_success`, `verify_makegen_stderr`, `verify_makegen_stdout`. |
+| `CIOp::PrepareVerifyDepsConfigCheck` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().deps_config_check`. |
+| `CIOp::ParseVerifyDepsConfigResult` | A | `ShellParseOp` spec: outputs `verify_deps_config_*`. |
+| `CIOp::PrepareVerifyBootstrapCheck` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().bootstrap_check`. |
+| `CIOp::ParseVerifyBootstrapResult` | A | `ShellParseOp` spec: outputs `verify_bootstrap_*`. |
+| `CIOp::PrepareVerifyTestgenCheck` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().testgen_check`. |
+| `CIOp::ParseVerifyTestgenResult` | A | `ShellParseOp` spec: outputs `verify_testgen_*`. |
+| `CIOp::PrepareVerifyPragmaCheck` | A | `ShellPrepareOp` spec: `BuildConfig::cargo().pragma_check`. |
+| `CIOp::ParseVerifyPragmaResult` | A | `ShellParseOp` spec: outputs `verify_pragma_*`. |
+| `CIOp::AggregateVerifyResults` | D | Iterates 5 verify results, aggregates into `verify_success` + structured `status()` output. `uses rust_fn`. |
+| `CIOp::Report` | D | Aggregates 8 stage results with specialized extractors (`extract_build_errors`, `extract_lint_warnings`, `extract_test_failures`, `extract_verify_failures`) + structured rendering + truncation. `uses rust_fn`. |
+
+#### 6D Audit Summary
+
+| Category | Ops | Approx LOC Deleted | Migration Path |
+|----------|-----|-------------------|----------------|
+| **A: Service prepare/parse** | 39 | ~2,600 | `ServiceOperationSpec` in `dsl/services/tools/*.dag` → generic interpreters. Rust struct deleted entirely. |
+| **B: Pure render** | 7 | ~350 | `uses rust_fn` pointing to existing render functions in policy/render modules. `Executable` enum deleted. |
+| **C: Config constant** | 1 | ~50 | DSL config node in `dsl/config/*.dag`. Rust struct deleted. |
+| **D: Complex domain** | 5 | ~1,030 (stays) | `uses rust_fn` with typed signatures. Function body stays in Rust. `Executable` enum simplified. |
+| **Total** | **52** | **~3,000 deleted** | |
+
+**Design notes for implementer**:
+- All 39 Category A ops follow two patterns: (1) `ShellPrepareOp` — reads `BuildConfig::cargo()` fields + checks prerequisite bools → produces `TransportRequest` + `skip`; (2) `ShellParseOp`/`FileParseOp` — handles skip-propagation + extracts success/stdout/stderr from response. The generic interpreters need `prerequisites` and `skip_defaults` fields in `ServiceOperationSpec`.
+- `BootstrapOp::ParseScanResult` (Cat A) has custom line-parsing logic (strip `crates/` prefix, sort). May need a parse-script field in the spec or a small `uses rust_fn` for the transform.
+- `CodegenOp::ParseCodegenExists` (Cat D) has hidden I/O (`TransportIo::new()` + `load_manifest_default`). Ideally this would be refactored to load the manifest via a transport node, making it a pure parse op (A). But that's an optional improvement; it works as `uses rust_fn` today.
+- `MakegenOp::Entrypoint` (Cat D) inspects `__deps` — a DAG-level mechanism. Not expressible as a service spec.
+- The 5 Category D ops total ~1,030 LOC but their function bodies stay in Rust. The deleted code is only the `Executable` enum boilerplate and `Mockable` impls.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **6D-1** | ~~Audit and categorize every `Executable` impl~~ | -- | -- | **Done** (see audit above) |
+| **6D-2** | Migrate Category B ops (7 ops): register underlying Rust render functions from DSL via `uses rust_fn`. Covers: `PragmaOp::Render{Clippy,Allowlist,LintPolicy}`, `BootstrapOp::Generate{Makefile,Gitignore}`, `MakegenOp::RenderMakefile`, `BuildOp::Summary`. Delete the `Executable` enum variants and `Mockable` impls. Verify the DSL-registered functions produce identical output via existing tests. | -- | M | Pending |
+| **6D-3** | Migrate Category C ops (1 op): `MakegenOp::LoadRegistry`. Author `dsl/config/tool_registry.dag` as the authoritative source for tool names, testgen targets, and registry JSON. Delete the Rust struct. | -- | S | Pending |
+| **6D-4** | Migrate Category A ops in `bootstrap/ops.rs` (2 ops) and `build/ops.rs` (6 ops). Author `dsl/services/tools/bootstrap.dag` with shell specs for `find crates ...` and `dsl/services/tools/build.dag` with specs for `cargo build/test/clippy`. Each spec declares the command, args, env, prerequisites, and output keys. Delete per-op Rust structs. | -- | M | Pending |
+| **6D-5** | Migrate Category A ops in `ci/ops.rs` (25 ops — largest batch). Author `dsl/services/tools/ci.dag` with shell specs for testgen, bootstrap, pragma, build, test, clippy, guardrails, and 5 verify checks. The generic `ShellPrepareOp`/`ShellParseOp` handles skip-propagation + prerequisite gating for all 25. Incrementally delete Rust structs as each spec is wired. | -- | L | Pending |
+| **6D-6** | Migrate Category A ops in `codegen/ops.rs` (4 ops) and `docgen/ops.rs` (2 ops). Author `dsl/services/tools/codegen.dag` with file-glob + shell + file-write specs, and `dsl/services/tools/docgen.dag` with parameterized file-read specs (one per source file path). Delete per-op Rust structs. | -- | M | Pending |
+| **6D-7** | Register Category D ops (5 ops) from DSL via `uses rust_fn`: `CodegenOp::ParseCodegenExists`, `DocgenOp::RenderAbWorkflowsDoc`, `MakegenOp::Entrypoint`, `CIOp::AggregateVerifyResults`, `CIOp::Report`. Ensure typed input/output signatures match. The function bodies stay in Rust (move from ops.rs to dedicated modules if needed). | 6D-2..6D-6 | S | Pending |
+| **6D-8** | Final cleanup: delete emptied ops.rs files (`pragma`, `bootstrap`, `build` — fully Category A/B). Shrink remaining ops.rs files to only Category D registrations (`codegen`, `docgen`, `makegen`, `ci`). Remove dead `mod` declarations, unused imports, and orphaned `Mockable` impls. | 6D-2..6D-7 | S | Pending |
+
+#### 6D Deletion Manifest
+
+| File | LOC | Ops | Action |
+|------|-----|-----|--------|
+| `gunbc-dag/src/pragma/ops.rs` | 116 | 3B | **Delete entirely** — all 3 ops are Category B renders |
+| `gunbc-dag/src/bootstrap/ops.rs` | 226 | 2A, 2B | **Delete entirely** — 2 service ops + 2 renders, no D residuals |
+| `gunbc-dag/src/build/ops.rs` | 300 | 6A, 1B | **Delete entirely** — 6 service ops + 1 aggregator, no D residuals |
+| `gunbc-dag/src/makegen/ops.rs` | 244 | 1B, 1C, 1D | **Shrink** — delete LoadRegistry (C) + RenderMakefile (B), keep Entrypoint (D, ~30 LOC) |
+| `gunbc-dag/src/codegen/ops.rs` | 365 | 4A, 1D | **Shrink** — delete 4 service ops, keep ParseCodegenExists (D, ~90 LOC) |
+| `gunbc-dag/src/docgen/ops.rs` | 664 | 2A, 1D | **Shrink** — delete 2 file-read service ops, keep RenderAbWorkflowsDoc (D, ~540 LOC) |
+| `gunbc-dag/src/ci/ops.rs` | 2,115 | 25A, 2D | **Shrink** — delete 25 service ops + tests + mocks, keep AggregateVerifyResults + Report (D, ~400 LOC) |
+| **Total** | **4,030** | **39A, 7B, 1C, 5D** | **~3,000 LOC deleted**, ~1,030 LOC stays as `uses rust_fn` |
+
+#### 6D Exit Criteria
+
+1. Every `Executable` impl in the 7 ops files is categorized and migrated per its category.
+2. Zero Category A (service prepare/parse) ops remain as hand-written Rust — all use generic interpreters parameterized by `ServiceOperationSpec` from `dsl/services/tools/*.dag`.
+3. Zero Category B (pure render) ops remain as hand-written Rust — all are DSL `fn` definitions.
+4. Zero Category C (config constant) ops remain — all are DSL config nodes.
+5. Category D ops (if any) are registered from DSL via `uses rust_fn` with explicit typed signatures — no `DagBuilder` topology in Rust.
+6. All tool binaries (`gunbc-bootstrap`, `gunbc-build`, `gunbc-ci`, `gunbc-codegen`, `gunbc-docgen`, `gunbc-makegen`, `gunbc-pragma`) produce identical output before and after migration (verified by dry-run comparison).
+
+#### 6D Verification
+
+```
+cargo check -p gunbc-dag
+cargo test -q -p gunbc-dag
+cargo test -q -p gunbc-dag --test resource_registry_coverage
+cargo run -q -p gunbc-dag --bin gunbc-bootstrap -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-build -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-ci -- --dry-run
+cargo run -q -p gunbc-dag --bin gunbc-testgen -- --dry-run
+cargo clippy --all-targets -- -D warnings
+```
 
 ### Lane 6 Summary
 
 | Lane | Scope | LOC Deleted | Size | Parallel With | Depends On |
 |------|-------|-------------|------|---------------|------------|
-| 6A | Tombstones + workspace subdags | ~320 (+ 2 rewrites) | S | 6B | -- |
-| 6B | Credential + LLM graph builders | 4,807 | L | 6A | -- |
-| 6C | Review graph builders + binaries | 2,379 | L | 6A | 6B |
-| 6D | Executable implementations | 6,874 | XL | -- | 6B, 6C |
+| 6A | Tombstones + workspace subdags | ~320 (+ 2 rewrites) | S | 6B, 6D | -- |
+| 6B | Cloud/GCP/LLM graphs + ops (full crate) | 8,461 | XL | 6A, 6D | -- |
+| 6C | Review graph builders + binaries | 2,379 | L | 6D | 6B |
+| 6D | gunbc-dag tool ops → DSL/generic interpreters | 4,030 | XL | 6A, 6B | -- |
 
-**Lanes 6A–6C total**: 7,186 LOC of Rust graph topology deleted, replaced by `.dag` files.
+**Lanes 6A–6D total**: 15,190 LOC of Rust deleted or replaced by `.dag` files and generic interpreters.
+
+**Mutual exclusivity by crate ownership**:
+- 6A owns `lib/tools/{clippy,deps,gist}/` and `gunbc-dag/src/workspace/subdags/`
+- 6B owns `lib/gcp-ops/`, `lib/cloud-ops/`, `lib/llm-ops/`, `dsl/cloud/`
+- 6C owns `lib/review/` and `gunbc-dag/src/bin/{review,pipeline}.rs`
+- 6D owns `gunbc-dag/src/{bootstrap,build,ci,codegen,docgen,makegen,pragma}/ops.rs` and `dsl/services/tools/`
 
 ---
 
@@ -360,6 +552,7 @@ Design docs exist in `docs/design/horizon/`. Speculative features — promote to
 |----|-----------|---------|------|
 | **H1** | `h1-display-reactive-dsl.md` | Channel-driven event loop with `on`/`tick` triggers for display orchestration | XL |
 | **H10** | `h10-compute-stack-services.md` | Cloud Run/GCS/LB provision/apply orchestration | L |
+| **H12** | `h12-process-readiness-test-gate.md` | Process-level readiness gate: require fast tests to pass before side-effecting execution | M |
 
 ---
 
@@ -370,6 +563,46 @@ See `TODO/backlog.md` for details. Parked for future consideration:
 - Display Reactive DSL (XL) -- requires new DSL infra
 - Compute Stack Provision/Apply (L) -- service layer works, orchestration is XL
 - Glob-aware Resource Admission (M) -- policy-sensitive concurrency, needs explicit design
+
+---
+
+## Lane 7: Review Cleanup
+
+**Goal**: Eliminate fallbacks, stringly-typed hacks, and manually-maintained escape hatches identified during code review of the GraphIR-to-DSL migration diff.
+
+**Source**: Review feedback (2026-02-22/23). Each task ID is referenced in code (e.g., `// RV-3`, `See \`RV-1\``).
+
+**Parallelism**: Fully parallel with Lanes 6A–6C (disjoint file sets, no blocking deps). `RV-6` depends on `RV-1`.
+
+| ID | Task | Deps | Size | Status |
+|----|------|------|------|--------|
+| **RV-1** | **Move `wire_missing_filesystem_resources` to lowering phase.** Currently a resolve-time fallback that auto-wires unconnected `FilesystemHandle` ports. Move to lowering (like `add_resource_lifecycle_nodes`) and make missing resource edges a compile error. | -- | M | Pending |
+| **RV-2** | **Add `handler_hint` field to `LoweredOp::Callable`.** Replace module-name and string-prefix heuristics in `classify_handler` with an explicit `handler_hint: Option<HandlerHint>` produced during lowering from DSL annotations/obligation metadata. ~114 construction sites. | -- | L | Pending |
+| **RV-3** | **Migrate credential wiring to `CredentialIntent` pipeline.** `wire_profile_credentials` uses `std::env::set_var` for `GITHUB_TOKEN`/`CODEX_API_KEY` behind a `Once` guard. Replace with the memory-safe `Credential` capability pipeline. | -- | M | Pending |
+| **RV-4** | **Expose structured execution traces from generated runtimes.** Replace stdout-scraping node ID parsing with JSON trace events. Expose entrypoint and param-source IDs from compiler output so parity tests don't reverse-engineer naming. | -- | M | Pending |
+| **RV-5** | **Migrate testgen to DAG-orchestrated execution.** Current `gunbc-testgen` uses imperative loop + `catch_unwind` + direct file I/O, bypassing the DAG engine. Rewrite to execute via `dsl/tools/testgen.dag`. | -- | L | Pending |
+| **RV-6** | **Unify resource port naming convention.** Output ports use `file:write`/`file:read`, input ports use `res:file`. Converge on a single convention and eliminate the bridging pattern. | RV-1 | L | Pending |
+
+#### Lane 7 Scope
+
+| File | Task |
+|------|------|
+| `gunbc-dag/src/resolve.rs` | RV-1, RV-6 |
+| `core/daglang/daglang-lower/src/lib.rs` | RV-1, RV-2, RV-6 |
+| `core/daglang/daglang-emit/src/rust_exec_runtime.rs` | RV-2, RV-4 |
+| `gunbc-dag/src/bin/sdlc.rs` | RV-3 |
+| `core/daglang/daglang-cli/tests/codegen_parity.rs` | RV-4 |
+| `gunbc-dag/src/bin/testgen.rs` | RV-5 |
+| `core/ir/src/resource/mod.rs` | RV-6 |
+| `lib/gist-ops/src/lib.rs`, `lib/review/src/graph.rs` | RV-6 |
+
+#### Lane 7 Verification
+
+```
+cargo check --workspace
+cargo test --workspace --lib
+cargo clippy --all-targets -- -D warnings
+```
 
 ---
 

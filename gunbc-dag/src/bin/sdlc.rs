@@ -3169,16 +3169,17 @@ impl CompiledStageDispatcher {
         let resolved = resolve_lowered_dag_flat(&stage_dag)
             .map_err(|error| format!("failed to resolve compiled SDLC stage DAG: {error}"))?;
         let profile_defaults = load_profile_runtime_defaults(profile)?;
-        Ok(Self {
+        let dispatcher = Self {
             profile: profile.to_string(),
             param_overrides,
             profile_defaults,
             resolved,
-        })
+        };
+        dispatcher.wire_profile_credentials()?;
+        Ok(dispatcher)
     }
 
     fn dispatch_stage(&self, record: &IntakeRecord) -> Result<CompiledStageOutcome, String> {
-        self.wire_profile_credentials()?;
         let issue_id = record
             .issue_id
             .ok_or_else(|| "stage dispatch requires issue_id in intake record".to_string())?;
@@ -3326,6 +3327,14 @@ impl CompiledStageDispatcher {
         Ok(fallback.to_string())
     }
 
+    /// Resolve profile credentials and set environment variables.
+    ///
+    /// SAFETY: This must be called from `load()` on the main thread before
+    /// any worker threads are spawned.  `std::env::set_var` is not
+    /// thread-safe and causes UB if another thread reads the environment
+    /// concurrently. The `Once` guard ensures at-most-once execution, and
+    /// the call-site in `load()` guarantees single-threaded context.
+    /// See RV-3 for the planned migration to `CredentialIntent`.
     fn wire_profile_credentials(&self) -> Result<(), String> {
         static CREDS_INIT: std::sync::Once = std::sync::Once::new();
         CREDS_INIT.call_once(|| {
@@ -3337,7 +3346,7 @@ impl CompiledStageDispatcher {
                 if github_token_missing {
                     if let Ok(token) = resolve_profile_value_expr(expr) {
                         if !token.trim().is_empty() {
-                            std::env::set_var("GITHUB_TOKEN", token); // RV-3
+                            std::env::set_var("GITHUB_TOKEN", token);
                         }
                     }
                 }
@@ -3350,7 +3359,7 @@ impl CompiledStageDispatcher {
                 if codex_api_key_missing {
                     if let Ok(token) = resolve_profile_value_expr(expr) {
                         if !token.trim().is_empty() {
-                            std::env::set_var("CODEX_API_KEY", token); // RV-3
+                            std::env::set_var("CODEX_API_KEY", token);
                         }
                     }
                 }

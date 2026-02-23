@@ -3,7 +3,7 @@ module tools.gist
 import services.git
 import std.patterns { read_text_files }
 import std.resources { Filesystem }
-import std.types { CommitSha, GitRef, TextFilePath, Url }
+import std.types { GitRef, TextFilePath, Url }
 import shared.gist_modes { branch_context, resolve_recent_base, share_content }
 
 fn render_snapshot(files: List<{ path: TextFilePath, content: String }>) -> String {
@@ -26,7 +26,7 @@ fn render_recent(diffs: List<String>) -> String {
   "{header}{sections}"
 }
 
-func gist_snapshot(base_ref: CommitSha?) -> { url: Url }
+func gist_snapshot(base_ref: GitRef?) -> { url: Url }
   uses fs: Filesystem(mode: Read)
 {
   ctx = branch_context()
@@ -45,11 +45,11 @@ func gist_diff(base_ref: GitRef) -> { url: Url } {
   return { url: result.url }
 }
 
-func gist_recent(since: String = "3.days.ago") -> { url: Url } {
-  recent = resolve_recent_base(since: since)
+func gist_recent(since: String = "3.days.ago", base_ref: GitRef = "main") -> { url: Url } {
+  recent = resolve_recent_base(since: since, fallback_base_ref: base_ref)
   commits = git.Core.RevList(since: since)
   diffs = for commit in commits.commits {
-    git.Core.Diff(base: "{commit}~1", head: commit)
+    git.Core.Diff(base: recent.base_ref, head: commit)
   }
   markdown = render_recent(diffs: diffs |> map(d => d.diff))
   result = share_content(

@@ -2735,11 +2735,12 @@ fn type_ids_compatible(expected: &str, got: &str) -> bool {
     if registry.is_compatible(&got_id, &expected_id) {
         return true;
     }
-    // If either type is unknown to the core registry, it's a project-level
-    // custom type whose coercion paths aren't registered here. Avoid
-    // false-positive failures by assuming compatibility for types the
-    // registry cannot reason about.
-    !registry.contains(&expected_id) || !registry.contains(&got_id)
+    // If *both* types are unknown to the core registry, they are project-level
+    // custom types whose coercion paths aren't registered here. Assume
+    // compatible only when neither side is a known primitive — this prevents
+    // e.g. Float from passing as CloudConfig while still allowing two
+    // project-defined types to coexist.
+    !registry.contains(&expected_id) && !registry.contains(&got_id)
 }
 
 fn type_ids_compatible_bidirectional(lhs: &str, rhs: &str) -> bool {

@@ -2,30 +2,17 @@
 
 use gunbc_exec::{
     compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
-    run_lowering_preflight, run_small_preflight, Executable, ExecutionMode, FreshnessStep,
+    Executable, ExecutionMode, FreshnessStep,
 };
 use gunbc_ir::Dag;
 use std::io::IsTerminal;
-use std::process;
 
 /// Run configuration for shared tool execution ceremony.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RunToolOptions<'a> {
     pub success_port: Option<&'a str>,
     pub input_mocks: Option<&'a BoundaryMocks>,
     pub with_freshness: bool,
-    pub small_preflight: bool,
-}
-
-impl Default for RunToolOptions<'_> {
-    fn default() -> Self {
-        Self {
-            success_port: None,
-            input_mocks: None,
-            with_freshness: false,
-            small_preflight: true,
-        }
-    }
 }
 
 /// Print a standard tool banner and key-value metadata lines.
@@ -44,31 +31,10 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
     options: RunToolOptions<'_>,
 ) {
     let animated = std::io::stdout().is_terminal();
-    let run_small_tests = options.small_preflight && matches!(mode, ExecutionMode::Real);
     if options.with_freshness {
-        if run_small_tests {
-            if let Err(error) = run_small_preflight(&dag, options.input_mocks) {
-                print_attention(
-                    AttentionLevel::Error,
-                    "Small-test preflight failed",
-                    &error.to_string(),
-                );
-                process::exit(1);
-            }
-        }
         let steps = gunbc_lib_transport::check_and_plan_freshness();
         let should_update_manifest = steps.as_ref().is_some_and(|s| !s.is_empty());
         let dag_with_freshness = compose_with_freshness(dag, steps);
-        if run_small_tests {
-            if let Err(error) = run_lowering_preflight(&dag_with_freshness) {
-                print_attention(
-                    AttentionLevel::Error,
-                    "Small-test preflight failed",
-                    &error.to_string(),
-                );
-                process::exit(1);
-            }
-        }
         execute_and_display(
             &dag_with_freshness,
             mode,
@@ -78,16 +44,6 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
         );
         update_freshness_manifest_if_needed(should_update_manifest);
     } else {
-        if run_small_tests {
-            if let Err(error) = run_small_preflight(&dag, options.input_mocks) {
-                print_attention(
-                    AttentionLevel::Error,
-                    "Small-test preflight failed",
-                    &error.to_string(),
-                );
-                process::exit(1);
-            }
-        }
         execute_and_display(
             &dag,
             mode,

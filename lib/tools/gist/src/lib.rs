@@ -90,7 +90,7 @@ pub fn gist_diff_tool() {}
     import = "use gunbc_dag::build_gist_graph_dsl; use gunbc_gist::GistMode;",
     package = "dag",
     binary = "gist-recent",
-    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Fallback base branch used when the graph requests a base ref","make_var":"BASE"},{"port_name":"since","type_id":"String","short":"s","default":"3.days.ago","help":"Recent window expression for rev-list","make_var":"SINCE"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     dsl_module = "gist",
     has_invocation,
     returns_result
@@ -107,4 +107,3 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
         .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
         .collect()
 }
-
