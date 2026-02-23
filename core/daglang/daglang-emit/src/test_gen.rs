@@ -76,7 +76,10 @@ pub fn emit_transport_mock_tests(backend: &str, dag: &Dag<LoweredOp>) -> Option<
                     .first()
                     .map(|p| p.type_id.0.as_str())
                     .unwrap_or("TransportResponse");
-                Some((node.id.0.clone(), typed_mock_for_response(response_type).to_string()))
+                Some((
+                    node.id.0.clone(),
+                    typed_mock_for_response(response_type).to_string(),
+                ))
             }
             _ => None,
         })

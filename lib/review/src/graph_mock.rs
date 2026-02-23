@@ -26,7 +26,7 @@ use gunbc_ir::transport::cloud::{
 };
 use gunbc_ir::transport::llm::mock;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{SecretString, Value};
+use gunbc_ir::Value;
 use gunbc_primitives::filename;
 use gunbc_test::{
     extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
@@ -34,18 +34,7 @@ use gunbc_test::{
 use std::collections::BTreeMap;
 
 fn mock_credential() -> Value {
-    let mut map = BTreeMap::new();
-    map.insert(
-        "token".to_string(),
-        Value::Secret(SecretString::new("<MOCK_API_KEY>")),
-    );
-    map.insert("source_type".to_string(), Value::Str("static".to_string()));
-    map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-    map.insert(
-        "cap".to_string(),
-        Value::Secret(SecretString::new("capability")),
-    );
-    Value::Map(map)
+    Value::Str("<MOCK_API_KEY>".into())
 }
 
 fn mock_cloud_config() -> Value {

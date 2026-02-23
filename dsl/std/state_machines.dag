@@ -181,7 +181,7 @@ fn transition_labels(
   current_labels: List<String>,
   to_stage: IssueLifecycleStage
 ) -> List<String> {
-  let non_sdlc = current_labels |> filter(l => !starts_with(l, "sdlc:"))
+  let non_sdlc = current_labels |> filter(l => !(l |> starts_with(prefix: "sdlc:")))
   non_sdlc |> append(stage_to_label(stage: to_stage))
 }
 

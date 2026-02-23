@@ -9,9 +9,10 @@ use daglang_emit::{
     EmissionSummary,
 };
 use daglang_lower::{
-    lower_typed_project, lower_typed_project_for_modules,
-    lower_typed_project_for_modules_with_collection_nodes,
-    lower_typed_project_with_collection_nodes, LoweredOp,
+    lower_typed_project_for_modules_with_profile,
+    lower_typed_project_for_modules_with_profile_and_collection_nodes,
+    lower_typed_project_with_profile, lower_typed_project_with_profile_and_collection_nodes,
+    LoweredOp,
 };
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::Item;
@@ -76,6 +77,7 @@ pub struct CheckOutput {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
+    pub profile: Option<String>,
     pub target: CodegenTarget,
     pub layer: CodegenLayer,
     /// Optional output directory for emitted files.
@@ -149,9 +151,10 @@ pub fn compile_from_context_with_options(
 /// typechecking, lowering, and emission.
 pub fn compile_from_module_graph_with_options(
     context: &DriverContext,
-    module_graph: ModuleGraph,
+    mut module_graph: ModuleGraph,
     options: CompileOptions,
 ) -> Result<CompileOutput, CompileError> {
+    include_profile_modules(&mut module_graph, &context.roots, options.profile.is_some())?;
     let callable_scope = callable_scope_for_context(context, &module_graph)?;
     validate_module_path_consistency(
         &module_graph,
@@ -167,14 +170,18 @@ pub fn compile_from_module_graph_with_options(
     .map_err(format_typecheck_errors)?;
     let lowered = if let Some(scope) = callable_scope.as_ref() {
         if options.emit_collection_nodes {
-            lower_typed_project_for_modules_with_collection_nodes(&typed, scope)
+            lower_typed_project_for_modules_with_profile_and_collection_nodes(
+                &typed,
+                scope,
+                options.profile.as_deref(),
+            )
         } else {
-            lower_typed_project_for_modules(&typed, scope)
+            lower_typed_project_for_modules_with_profile(&typed, scope, options.profile.as_deref())
         }
     } else if options.emit_collection_nodes {
-        lower_typed_project_with_collection_nodes(&typed)
+        lower_typed_project_with_profile_and_collection_nodes(&typed, options.profile.as_deref())
     } else {
-        lower_typed_project(&typed)
+        lower_typed_project_with_profile(&typed, options.profile.as_deref())
     }
     .map_err(|error| format!("lower error: {error}"))?;
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
@@ -354,6 +361,150 @@ fn discover_target_module_graph_for_context(
     }
 
     Ok(ModuleGraph { modules })
+}
+
+fn include_profile_modules(
+    module_graph: &mut ModuleGraph,
+    roots: &[PathBuf],
+    include_bound_services: bool,
+) -> Result<(), CompileError> {
+    let mut seed_files = Vec::<PathBuf>::new();
+    for root in roots {
+        let discovery_root = root.join("profiles");
+        if !discovery_root.is_dir() {
+            continue;
+        }
+        let mut discovered =
+            daglang_resolve::discover_dag_files(&discovery_root).map_err(format_resolve_error)?;
+        seed_files.append(&mut discovered);
+    }
+    seed_files.sort();
+    seed_files.dedup();
+    if seed_files.is_empty() {
+        return Ok(());
+    }
+
+    if include_bound_services {
+        let canonical_roots = daglang_resolve::canonicalize_roots(roots);
+        let mut implementation_modules = Vec::<PathBuf>::new();
+        for profile_file in &seed_files {
+            let (module, _imports) =
+                parse_target_module_file(profile_file, roots, &canonical_roots)?;
+            for item in &module.ast.items {
+                let Item::ProfileDef(def) = &item.node else {
+                    continue;
+                };
+                for bind in &def.binds {
+                    if let Some(path) = resolve_profile_bind_implementation_module_path(
+                        roots,
+                        &bind.implementation_type,
+                    ) {
+                        implementation_modules.push(path);
+                    }
+                }
+            }
+        }
+        seed_files.append(&mut implementation_modules);
+        seed_files.sort();
+        seed_files.dedup();
+    }
+
+    let canonical_roots = daglang_resolve::canonicalize_roots(roots);
+    let mut module_index_by_path = module_graph
+        .modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.path.clone(), index))
+        .collect::<HashMap<_, _>>();
+    let mut module_index_by_decl = module_graph
+        .modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.clone(), index))
+        .collect::<HashMap<_, _>>();
+    let mut pending = VecDeque::from(seed_files);
+    let mut queued_paths = HashSet::<PathBuf>::new();
+    while let Some(file) = pending.pop_front() {
+        if !queued_paths.insert(file.clone()) {
+            continue;
+        }
+        let (module, imports) = parse_target_module_file(&file, roots, &canonical_roots)?;
+        if let Some(existing_index) = module_index_by_path.get(&module.path).copied() {
+            let existing = &module_graph.modules[existing_index];
+            if existing.module_path != module.module_path {
+                return Err(format_resolve_error(ResolveError::DuplicateModule(
+                    module.module_path,
+                )));
+            }
+        } else if let Some(existing_index) = module_index_by_decl.get(&module.module_path).copied()
+        {
+            let existing = &module_graph.modules[existing_index];
+            if existing.path != module.path {
+                return Err(format_resolve_error(ResolveError::DuplicateModule(
+                    module.module_path,
+                )));
+            }
+        } else {
+            let mut module = module;
+            module.dependencies.clear();
+            let next_index = module_graph.modules.len();
+            module_index_by_path.insert(module.path.clone(), next_index);
+            module_index_by_decl.insert(module.module_path.clone(), next_index);
+            module_graph.modules.push(module);
+        }
+        for import in imports {
+            if module_index_by_decl.contains_key(&import) {
+                continue;
+            }
+            if let Some(import_file) = resolve_import_file_path(roots, &import) {
+                pending.push_back(import_file);
+            }
+        }
+    }
+
+    let module_index_by_decl = module_graph
+        .modules
+        .iter()
+        .enumerate()
+        .map(|(index, module)| (module.module_path.clone(), index))
+        .collect::<HashMap<_, _>>();
+    for module in &mut module_graph.modules {
+        let mut dependencies = module
+            .ast
+            .imports
+            .iter()
+            .filter_map(|import| {
+                module_index_by_decl
+                    .get(&import.node.path.segments)
+                    .copied()
+            })
+            .collect::<Vec<_>>();
+        dependencies.sort_unstable();
+        dependencies.dedup();
+        module.dependencies = dependencies;
+    }
+
+    Ok(())
+}
+
+fn resolve_profile_bind_implementation_module_path(
+    roots: &[PathBuf],
+    implementation_type: &str,
+) -> Option<PathBuf> {
+    let segments = implementation_type
+        .split('.')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| segment.to_string())
+        .collect::<Vec<_>>();
+    if segments.len() < 2 {
+        return None;
+    }
+    for end in (1..segments.len()).rev() {
+        if let Some(path) = resolve_import_file_path(roots, &segments[..end]) {
+            return Some(path);
+        }
+    }
+    None
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -887,6 +1038,151 @@ mod tests {
             "function single-file compile should keep callable scope local"
         );
         assert!(node_ids.contains("sample.main::run"));
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_file_bound_interface_requires_profile_flag() {
+        let root = unique_temp_dir("compile_profile_required");
+        std::fs::create_dir_all(root.join("pipelines")).expect("failed to create pipelines dir");
+        std::fs::create_dir_all(root.join("interfaces")).expect("failed to create interfaces dir");
+        std::fs::create_dir_all(root.join("services")).expect("failed to create services dir");
+        std::fs::create_dir_all(root.join("profiles")).expect("failed to create profiles dir");
+        std::fs::write(
+            root.join("interfaces/issue_provider.dag"),
+            r#"module interfaces.issue_provider
+interface IssueProvider {
+  capability get {
+    input {}
+    output { ok: Bool }
+  }
+}"#,
+        )
+        .expect("failed to write interface source");
+        std::fs::write(
+            root.join("services/stub_provider.dag"),
+            r#"module services.stub_provider
+import interfaces.issue_provider { IssueProvider }
+service stub.Provider : IssueProvider {
+  operation get {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/ok")
+  }
+}"#,
+        )
+        .expect("failed to write service source");
+        std::fs::write(
+            root.join("profiles/sdlc.dag"),
+            r#"module profiles.sdlc
+profile unit_test {
+  bind IssueProvider -> services.stub_provider.stub.Provider
+}"#,
+        )
+        .expect("failed to write profile source");
+        let file = root.join("pipelines/main.dag");
+        std::fs::write(
+            &file,
+            r#"module pipelines.main
+import interfaces.issue_provider { IssueProvider }
+func run() -> { ok: Bool } uses issues: IssueProvider {
+  result = issues.get()
+  return { ok: result.ok }
+}"#,
+        )
+        .expect("failed to write pipeline source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let error = compile_from_context(&context).expect_err("compile should require profile");
+        assert!(
+            error.as_str().contains("compile with --profile <name>"),
+            "expected profile-required error, got: {error}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn compile_single_file_with_profile_loads_profiles_from_root() {
+        let root = unique_temp_dir("compile_profile_loading");
+        std::fs::create_dir_all(root.join("pipelines")).expect("failed to create pipelines dir");
+        std::fs::create_dir_all(root.join("interfaces")).expect("failed to create interfaces dir");
+        std::fs::create_dir_all(root.join("services")).expect("failed to create services dir");
+        std::fs::create_dir_all(root.join("profiles")).expect("failed to create profiles dir");
+        std::fs::write(
+            root.join("interfaces/issue_provider.dag"),
+            r#"module interfaces.issue_provider
+interface IssueProvider {
+  capability get {
+    input {}
+    output { ok: Bool }
+  }
+}"#,
+        )
+        .expect("failed to write interface source");
+        std::fs::write(
+            root.join("services/stub_provider.dag"),
+            r#"module services.stub_provider
+import interfaces.issue_provider { IssueProvider }
+service stub.Provider : IssueProvider {
+  operation get {
+    input {}
+    output { ok: Bool }
+    @rest(GET, "/ok")
+  }
+}"#,
+        )
+        .expect("failed to write service source");
+        std::fs::write(
+            root.join("profiles/sdlc.dag"),
+            r#"module profiles.sdlc
+profile unit_test {
+  bind IssueProvider -> services.stub_provider.stub.Provider
+}"#,
+        )
+        .expect("failed to write profile source");
+        let file = root.join("pipelines/main.dag");
+        std::fs::write(
+            &file,
+            r#"module pipelines.main
+import interfaces.issue_provider { IssueProvider }
+func run() -> { ok: Bool } uses issues: IssueProvider {
+  result = issues.get()
+  return { ok: result.ok }
+}"#,
+        )
+        .expect("failed to write pipeline source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                profile: Some("unit_test".to_string()),
+                ..CompileOptions::default()
+            },
+        )
+        .expect("compile should succeed when profile modules are loaded");
+        assert!(
+            output
+                .lowered_dag
+                .nodes
+                .iter()
+                .any(|node| node.id.0 == "pipelines.main::run"),
+            "compiled DAG should include target callable"
+        );
+        assert!(
+            output.lowered_dag.edges.iter().any(|edge| {
+                edge.to_node.0 == "pipelines.main::run" && edge.to_port.0 == "__deps"
+            }),
+            "bound service transport edge should feed target callable dependencies"
+        );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }

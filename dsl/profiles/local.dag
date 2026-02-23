@@ -20,6 +20,10 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
+import std.types {
+  NonEmptyStr, StageOutcome, Signal, SignalType,
+  ArtifactPayload, ArtifactMarker, ArtifactType
+}
 // Profile bindings (compile-time interface -> implementation mapping):
 //   IssueProvider    -> github.Issues       { owner: "gunb-ai", repo: "gunbc", credential: env("GITHUB_TOKEN") }
 //   ClaimStore       -> FileClaimStore      { dir: "target/sdlc/claims" }
@@ -38,14 +42,14 @@ service FileClaimStore : ClaimStore {
   }
 
   operation acquire {
-    input { issue_id: String, stage: String, owner: String, lease_ttl_ms: Int }
+    input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, lease_ttl_ms: Int }
     output { acquired: Bool, conflict: Bool, lease_generation: Int }
     @rest(POST, "/v1/sdlc/claims/acquire")
     @mock_response(status: 200, body: { "acquired": true, "conflict": false, "lease_generation": 1 })
   }
 
   operation heartbeat {
-    input { issue_id: String, stage: String, owner: String, generation: Int }
+    input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { accepted: Bool }
     @rest(POST, "/v1/sdlc/claims/heartbeat")
     @idempotent
@@ -53,7 +57,7 @@ service FileClaimStore : ClaimStore {
   }
 
   operation release {
-    input { issue_id: String, stage: String, owner: String, generation: Int }
+    input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { released: Bool }
     @rest(POST, "/v1/sdlc/claims/release")
     @idempotent
@@ -67,24 +71,24 @@ service FileOutcomeLedger : OutcomeLedger {
   }
 
   operation upsert {
-    input { run_key: String, stage: String, outcome: Json }
-    output { updated: Bool, previous: Json? }
+    input { run_key: NonEmptyStr, stage: NonEmptyStr, outcome: StageOutcome }
+    output { updated: Bool, previous: StageOutcome? }
     @rest(PUT, "/v1/sdlc/outcomes/{run_key}/{stage}")
     @idempotent
     @mock_response(status: 200, body: { "updated": true, "previous": null })
   }
 
   operation get {
-    input { run_key: String, stage: String }
-    output { found: Bool, outcome: Json? }
+    input { run_key: NonEmptyStr, stage: NonEmptyStr }
+    output { found: Bool, outcome: StageOutcome? }
     @rest(GET, "/v1/sdlc/outcomes/{run_key}/{stage}")
     @idempotent @readonly
     @mock_response(status: 200, body: { "found": false, "outcome": null })
   }
 
   operation list_by_issue {
-    input { issue_id: String }
-    output { outcomes: List<Json> }
+    input { issue_id: NonEmptyStr }
+    output { outcomes: List<StageOutcome> }
     @rest(GET, "/v1/sdlc/outcomes/by-issue/{issue_id}")
     @readonly
     @mock_response(status: 200, body: { "outcomes": [] })
@@ -106,13 +110,13 @@ service FileSignalStore : SignalStore {
 
   operation consume {
     input { signal_types: List<SignalType>, limit: Int? }
-    output { signals: List<Json> }
+    output { signals: List<Signal> }
     @rest(POST, "/v1/sdlc/signals/consume")
     @mock_response(status: 200, body: { "signals": [] })
   }
 
   operation ack {
-    input { idempotency_key: String }
+    input { idempotency_key: NonEmptyStr }
     output { acked: Bool }
     @rest(POST, "/v1/sdlc/signals/ack")
     @idempotent
@@ -125,7 +129,7 @@ service InlineArtifactStore : ArtifactStore {
   // For local development only; cloud_run uses GcsArtifactStore.
 
   operation store {
-    input { artifact_id: String, payload: ArtifactPayload, content_hash: String }
+    input { artifact_id: NonEmptyStr, payload: ArtifactPayload, content_hash: NonEmptyStr }
     output { stored: Bool, conflict: Bool }
     @rest(POST, "/v1/sdlc/artifacts/store")
     @idempotent
@@ -133,15 +137,15 @@ service InlineArtifactStore : ArtifactStore {
   }
 
   operation retrieve {
-    input { artifact_id: String }
-    output { found: Bool, payload: ArtifactPayload?, content_hash: String? }
+    input { artifact_id: NonEmptyStr }
+    output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
     @rest(GET, "/v1/sdlc/artifacts/{artifact_id}")
     @readonly
     @mock_response(status: 200, body: { "found": false, "payload": null, "content_hash": null })
   }
 
   operation store_marker {
-    input { marker: Json }
+    input { marker: ArtifactMarker }
     output { stored: Bool }
     @rest(POST, "/v1/sdlc/artifacts/markers")
     @idempotent
@@ -149,8 +153,8 @@ service InlineArtifactStore : ArtifactStore {
   }
 
   operation get_canonical_marker {
-    input { run_key: String, artifact_type: String }
-    output { found: Bool, marker: Json? }
+    input { run_key: NonEmptyStr, artifact_type: ArtifactType }
+    output { found: Bool, marker: ArtifactMarker? }
     @rest(GET, "/v1/sdlc/artifacts/markers/{run_key}/{artifact_type}")
     @readonly
     @mock_response(status: 200, body: { "found": false, "marker": null })

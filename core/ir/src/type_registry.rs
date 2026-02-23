@@ -326,14 +326,8 @@ impl TypeRegistry {
         );
 
         // Domain types for transport/infrastructure.
-        self.register(
-            "TransportRequest",
-            type_lib::identity("TransportRequest"),
-        );
-        self.register(
-            "TransportResponse",
-            type_lib::identity("TransportResponse"),
-        );
+        self.register("TransportRequest", type_lib::identity("TransportRequest"));
+        self.register("TransportResponse", type_lib::identity("TransportResponse"));
         self.register(
             "Credential",
             type_lib::identity("Credential"),
@@ -344,7 +338,11 @@ impl TypeRegistry {
             "CliResult",
             type_lib::product(
                 "CliResult",
-                vec![("stdout", "String"), ("stderr", "String"), ("exit_code", "Int")],
+                vec![
+                    ("stdout", "String"),
+                    ("stderr", "String"),
+                    ("exit_code", "Int"),
+                ],
             ),
         );
         self.register("ToolHandle", type_lib::identity("ToolHandle"));
@@ -558,9 +556,7 @@ impl TypeRegistry {
         let to_contract = TypeContract::from_type_dag(&to_dag);
 
         if from_contract
-            .can_safely_coerce_to_with(&to_contract, |from, to| {
-                self.base_type_upcasts_to(from, to)
-            })
+            .can_safely_coerce_to_with(&to_contract, |from, to| self.base_type_upcasts_to(from, to))
             .is_ok()
         {
             return true;
@@ -1145,13 +1141,13 @@ mod tests {
         );
 
         // BinaryFilePath → FilePath is safe
-        assert!(
-            registry.is_compatible(&TypeId::from("BinaryFilePath"), &TypeId::from("FilePath"))
-        );
+        assert!(registry.is_compatible(&TypeId::from("BinaryFilePath"), &TypeId::from("FilePath")));
 
         // BinaryFilePath → TextFilePath is NOT safe (different brands)
-        assert!(!registry
-            .is_compatible(&TypeId::from("BinaryFilePath"), &TypeId::from("TextFilePath")));
+        assert!(!registry.is_compatible(
+            &TypeId::from("BinaryFilePath"),
+            &TypeId::from("TextFilePath")
+        ));
     }
 
     #[test]

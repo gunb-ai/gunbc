@@ -365,12 +365,9 @@ fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestration
         None => return Err("planned_targets key missing from output entry".to_string()),
     };
     let target_count = match entry.outputs.get("target_count") {
-        Some(v) => v.as_int().ok_or_else(|| {
-            format!(
-                "target_count exists but is not an int (got {:?})",
-                v.kind()
-            )
-        })?,
+        Some(v) => v
+            .as_int()
+            .ok_or_else(|| format!("target_count exists but is not an int (got {:?})", v.kind()))?,
         None => planned_targets.len() as i64,
     };
     let applied_count = match entry.outputs.get("applied_count") {
@@ -385,9 +382,7 @@ fn extract_orchestration_output(log: &ExecutionLog) -> Result<InfraOrchestration
     let report = match entry.outputs.get("report") {
         Some(v) => v
             .as_str()
-            .ok_or_else(|| {
-                format!("report exists but is not a string (got {:?})", v.kind())
-            })?
+            .ok_or_else(|| format!("report exists but is not a string (got {:?})", v.kind()))?
             .to_string(),
         None => "infra orchestration completed".to_string(),
     };
@@ -423,6 +418,10 @@ fn build_entrypoint_input_mocks<T>(
         if let Some(raw) = raw {
             let parsed = parse_input_value(&type_id.0, &raw)?;
             input_mocks.set_input(node_id.0, port_name.0, parsed);
+        } else if let Some(auto_value) =
+            internal_control_entrypoint_default(&node_id.0, &port_name.0, &type_id.0)
+        {
+            input_mocks.set_input(node_id.0, port_name.0, auto_value);
         } else {
             missing_ports.push(port_name.0);
         }
@@ -438,6 +437,35 @@ fn build_entrypoint_input_mocks<T>(
         "missing entrypoint input(s): {} (pass --input NAME=VALUE)",
         missing_ports.join(", ")
     ))
+}
+
+fn internal_control_entrypoint_default(
+    node_id: &str,
+    port_name: &str,
+    type_id: &str,
+) -> Option<Value> {
+    if !(node_id.contains("::cf_match_") || node_id.contains("::cf_if_")) {
+        return None;
+    }
+    match port_name {
+        "condition" => Some(Value::Bool(true)),
+        "input" => Some(default_control_flow_input(type_id)),
+        _ => None,
+    }
+}
+
+fn default_control_flow_input(type_id: &str) -> Value {
+    match value_backing_for_type_id(type_id) {
+        ValueBacking::String => Value::Str("mock".to_string()),
+        ValueBacking::Bool => Value::Bool(true),
+        ValueBacking::Int | ValueBacking::Float => Value::Int(1),
+        ValueBacking::Json => Value::Json(json!({"mock": true})),
+        ValueBacking::Map => Value::Map(std::collections::BTreeMap::new()),
+        ValueBacking::List => Value::List(vec![Value::Str("mock".to_string())]),
+        ValueBacking::Set => Value::Set(vec![Value::Str("mock".to_string())]),
+        ValueBacking::Unit => Value::Unit,
+        ValueBacking::Bytes => Value::Bytes(vec![0]),
+    }
 }
 
 fn parse_input_value(type_id: &str, raw: &str) -> Result<Value, String> {
@@ -945,6 +973,38 @@ mod tests {
 
         let err = parse_input_value("Bytes", "abc").expect_err("bytes should be unsupported");
         assert!(err.contains("unsupported Bytes"));
+    }
+
+    #[test]
+    fn internal_control_entrypoint_defaults_are_provided_for_cf_match_nodes() {
+        assert_eq!(
+            internal_control_entrypoint_default("tools.infra::infra::cf_match_0", "condition", "Bool"),
+            Some(Value::Bool(true))
+        );
+        assert_eq!(
+            internal_control_entrypoint_default("tools.infra::infra::cf_match_0", "input", "Any"),
+            Some(Value::Json(serde_json::json!({"mock": true})))
+        );
+        assert_eq!(
+            internal_control_entrypoint_default("tools.infra::infra", "input", "Any"),
+            None
+        );
+    }
+
+    #[test]
+    fn default_control_flow_input_uses_type_backing() {
+        assert_eq!(
+            default_control_flow_input("String"),
+            Value::Str("mock".to_string())
+        );
+        assert_eq!(
+            default_control_flow_input("List<String>"),
+            Value::List(vec![Value::Str("mock".to_string())])
+        );
+        assert_eq!(
+            default_control_flow_input("Map<String,Int>"),
+            Value::Map(std::collections::BTreeMap::new())
+        );
     }
 
     #[test]

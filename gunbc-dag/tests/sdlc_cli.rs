@@ -8,7 +8,6 @@ fn sdlc_bin() -> &'static str {
     env!("CARGO_BIN_EXE_gunbc-sdlc")
 }
 
-
 fn write_intent_file(path: &Path, intent_id: &str, intake_key: &str, issue_id: Option<u64>) {
     write_intent_file_with_git(path, intent_id, intake_key, issue_id, true);
 }
@@ -29,7 +28,9 @@ fn write_intent_file_with_git(
     issue_id: Option<u64>,
     initialize_git: bool,
 ) {
-    let root = path.parent().expect("intent fixture path should have parent");
+    let root = path
+        .parent()
+        .expect("intent fixture path should have parent");
     if initialize_git {
         ensure_git_repo_with_commit(root);
     }
@@ -202,7 +203,8 @@ fn intake_dry_run_computes_run_key_without_writing_ledger() {
         None,
     );
 
-    let output = ctx.command()
+    let output = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -221,12 +223,10 @@ fn intake_dry_run_computes_run_key_without_writing_ledger() {
     assert_eq!(payload["command"], "intake");
     assert_eq!(payload["mode"], "dry-run");
     assert_eq!(payload["intent_id"], "intent-20260221-dry-run");
-    assert!(
-        payload["run_key"]
-            .as_str()
-            .expect("run_key should be a string")
-            .contains("intent-20260221-dry-run")
-    );
+    assert!(payload["run_key"]
+        .as_str()
+        .expect("run_key should be a string")
+        .contains("intent-20260221-dry-run"));
     assert!(
         !root.join("target/sdlc/intake-ledger.json").exists(),
         "dry-run intake must not write ledger state"
@@ -252,7 +252,8 @@ fn intake_real_mode_fails_closed_without_git_trace_context() {
         None,
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -286,7 +287,8 @@ fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
     );
     write_infra_intent_template(&root, false);
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -299,8 +301,11 @@ fn worker_real_mode_fails_closed_when_infra_preflight_invalid() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker with invalid infra preflight");
@@ -335,7 +340,8 @@ fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
     let invalid_schema = infra_content.replace("schema_version: \"1\"", "schema_version: \"2\"");
     std::fs::write(&infra_path, invalid_schema).expect("write invalid infra schema");
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -348,8 +354,11 @@ fn worker_real_mode_fails_closed_when_infra_schema_version_unsupported() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker with unsupported infra schema");
@@ -384,7 +393,8 @@ fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token
     let invalid_refs = infra_content.replace("\"github-token\",\n", "");
     std::fs::write(&infra_path, invalid_refs).expect("write invalid required refs");
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -397,8 +407,11 @@ fn worker_real_mode_fails_closed_when_infra_required_refs_missing_provider_token
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker with missing github-token reference");
@@ -421,7 +434,8 @@ fn drain_command_toggles_worker_drain_flag() {
     let root = ctx.path().to_path_buf();
     std::fs::create_dir_all(&root).expect("create temp root");
 
-    let activate = ctx.command()
+    let activate = ctx
+        .command()
         .arg("drain")
         .arg("--activate")
         .current_dir(&root)
@@ -441,7 +455,8 @@ fn drain_command_toggles_worker_drain_flag() {
         "drain flag file should exist after activation"
     );
 
-    let deactivate = ctx.command()
+    let deactivate = ctx
+        .command()
         .arg("drain")
         .arg("--deactivate")
         .current_dir(&root)
@@ -476,7 +491,8 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
         Some(8080),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -489,7 +505,8 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let activate = ctx.command()
+    let activate = ctx
+        .command()
         .arg("drain")
         .arg("--activate")
         .current_dir(&root)
@@ -501,8 +518,11 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
         String::from_utf8_lossy(&activate.stderr)
     );
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker under drain");
@@ -515,7 +535,10 @@ fn worker_real_mode_honors_drain_flag_and_skips_processing() {
         serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
     assert_eq!(payload["command"], "worker");
     assert_eq!(payload["drain"]["active"], true);
-    assert_eq!(payload["acquired_claims"].as_array().map(|v| v.len()), Some(0));
+    assert_eq!(
+        payload["acquired_claims"].as_array().map(|v| v.len()),
+        Some(0)
+    );
     assert_eq!(payload["pending_count"], 0);
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
@@ -572,7 +595,8 @@ notes: "local co-located profile fixture"
     std::fs::write(&local_profile_intent_path, local_profile_intent)
         .expect("write local profile infra intent fixture");
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -585,8 +609,11 @@ notes: "local co-located profile fixture"
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .arg("--infra-intent")
         .arg(&local_profile_intent_path)
         .current_dir(&root)
@@ -626,7 +653,8 @@ fn worker_respects_launch_worker_capacity_from_infra_intent() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = ctx.command()
+        let intake = ctx
+            .command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -678,8 +706,11 @@ notes: "capacity constrained local profile fixture"
     std::fs::write(&constrained_intent_path, constrained_intent)
         .expect("write constrained infra intent fixture");
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .arg("--infra-intent")
         .arg(&constrained_intent_path)
         .current_dir(&root)
@@ -695,8 +726,7 @@ notes: "capacity constrained local profile fixture"
     assert_eq!(payload["preflight"]["worker_count"], 1);
     assert_eq!(payload["summary"]["capacity_deferred_count"], 1);
     assert_eq!(
-        payload["skipped_capacity"][0],
-        "intent-20260221-capacity-b",
+        payload["skipped_capacity"][0], "intent-20260221-capacity-b",
         "capacity constrained worker should defer extra intake keys in deterministic order"
     );
 
@@ -724,7 +754,8 @@ fn issue_command_filters_worker_scope_by_issue_id() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = ctx.command()
+        let intake = ctx
+            .command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -738,7 +769,8 @@ fn issue_command_filters_worker_scope_by_issue_id() {
         );
     }
 
-    let issue = ctx.command()
+    let issue = ctx
+        .command()
         .arg("issue")
         .arg("--issue-id")
         .arg("5001")
@@ -758,8 +790,7 @@ fn issue_command_filters_worker_scope_by_issue_id() {
     assert_eq!(payload["issue_binding_found"], true);
     assert_eq!(payload["pending_count"], 1);
     assert_eq!(
-        payload["intake_keys"][0],
-        "intent-20260221-issue-filter-a",
+        payload["intake_keys"][0], "intent-20260221-issue-filter-a",
         "issue command should only include entries for requested issue id"
     );
 
@@ -779,7 +810,8 @@ fn issue_command_reports_unbound_issue_when_issue_id_not_found() {
         Some(7007),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -792,7 +824,8 @@ fn issue_command_reports_unbound_issue_when_issue_id_not_found() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let issue = ctx.command()
+    let issue = ctx
+        .command()
         .arg("issue")
         .arg("--issue-id")
         .arg("7999")
@@ -840,7 +873,8 @@ fn issue_command_real_mode_persists_execution_report() {
         Some(7331),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -853,7 +887,8 @@ fn issue_command_real_mode_persists_execution_report() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let issue = ctx.command()
+    let issue = ctx
+        .command()
         .arg("issue")
         .arg("--issue-id")
         .arg("7331")
@@ -869,7 +904,10 @@ fn issue_command_real_mode_persists_execution_report() {
         serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
     assert_eq!(payload["command"], "issue");
     assert_eq!(payload["issue_binding_found"], true);
-    assert_eq!(payload["execution_report_path"], "target/sdlc/execution-report.json");
+    assert_eq!(
+        payload["execution_report_path"],
+        "target/sdlc/execution-report.json"
+    );
 
     let report_raw = std::fs::read_to_string(root.join("target/sdlc/execution-report.json"))
         .expect("read issue execution report");
@@ -894,7 +932,8 @@ fn legacy_issue_flag_alias_fails_closed() {
         Some(6420),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -907,7 +946,8 @@ fn legacy_issue_flag_alias_fails_closed() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let issue = ctx.command()
+    let issue = ctx
+        .command()
         .arg("--issue")
         .arg("6420")
         .arg("--dry-run")
@@ -941,7 +981,8 @@ fn legacy_issue_equals_alias_fails_closed() {
         Some(6421),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -954,7 +995,8 @@ fn legacy_issue_equals_alias_fails_closed() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let issue = ctx.command()
+    let issue = ctx
+        .command()
         .arg("--issue=6421")
         .arg("--dry-run")
         .current_dir(&root)
@@ -987,7 +1029,8 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         None,
     );
 
-    let first = ctx.command()
+    let first = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1015,7 +1058,8 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
         "trace linkage key should include run-key metadata"
     );
 
-    let second = ctx.command()
+    let second = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1057,13 +1101,18 @@ fn intake_real_mode_is_idempotent_for_same_intake_key() {
     );
 
     let artifact_ledger_path = root.join("target/sdlc/artifact-ledger.json");
-    let artifact_raw = std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger");
+    let artifact_raw =
+        std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger");
     let artifact: serde_json::Value =
         serde_json::from_str(&artifact_raw).expect("artifact ledger should be valid JSON");
     let records = artifact["records"]
         .as_object()
         .expect("artifact records should be an object");
-    assert_eq!(records.len(), 1, "idempotent re-intake should not duplicate artifact markers");
+    assert_eq!(
+        records.len(),
+        1,
+        "idempotent re-intake should not duplicate artifact markers"
+    );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
@@ -1078,7 +1127,8 @@ fn intake_conflict_fails_closed_for_reused_intake_key() {
     write_intent_file(&intent_a, "intent-20260221-a", "intent-20260221-a", None);
     write_intent_file(&intent_b, "intent-20260221-b", "intent-20260221-a", None);
 
-    let first = ctx.command()
+    let first = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_a)
@@ -1091,7 +1141,8 @@ fn intake_conflict_fails_closed_for_reused_intake_key() {
         String::from_utf8_lossy(&first.stderr)
     );
 
-    let conflict = ctx.command()
+    let conflict = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_b)
@@ -1124,7 +1175,8 @@ fn worker_dry_run_reports_pending_intake_keys() {
         None,
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1137,8 +1189,11 @@ fn worker_dry_run_reports_pending_intake_keys() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .arg("--dry-run")
         .current_dir(&root)
         .output()
@@ -1167,9 +1222,525 @@ fn worker_dry_run_reports_pending_intake_keys() {
         "worker output should include per-intake stage duration metrics"
     );
     assert_eq!(
-        payload["metrics"]["llm_cost_units"]["intent-20260221-worker"],
-        0,
+        payload["metrics"]["llm_cost_units"]["intent-20260221-worker"], 0,
         "worker output should include per-intake llm_cost_units metrics"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_dry_run_executes_compiled_dispatch_preview_without_persisting_stage() {
+    let ctx = CliTestContext::new("worker_dry_run_dispatch_preview", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-dry-run-preview",
+        "intent-20260221-dry-run-preview",
+        Some(5150),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run");
+    assert!(
+        worker.status.success(),
+        "worker dry-run should succeed: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(payload["mode"], "dry-run");
+    assert_eq!(
+        payload["dry_run_dispatches"][0]["intake_key"],
+        serde_json::Value::String("intent-20260221-dry-run-preview".to_string())
+    );
+    assert_eq!(
+        payload["dry_run_dispatches"][0]["from_stage"],
+        serde_json::Value::String("idea".to_string())
+    );
+    assert_eq!(
+        payload["dry_run_dispatches"][0]["next_stage"],
+        serde_json::Value::String("design".to_string())
+    );
+    assert_eq!(
+        payload["dry_run_dispatches"][0]["awaiting_approval"],
+        serde_json::Value::Bool(false)
+    );
+
+    let intake_ledger_path = root.join("target/sdlc/intake-ledger.json");
+    let intake_ledger: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&intake_ledger_path).expect("read intake ledger"),
+    )
+    .expect("parse intake ledger");
+    assert_eq!(
+        intake_ledger["entries"]["intent-20260221-dry-run-preview"]["stage"],
+        serde_json::Value::String("Idea".to_string()),
+        "dry-run dispatch preview must not persist stage mutations"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_dry_run_reports_runtime_params_and_fails_closed_for_unknown_param_keys() {
+    let ctx = CliTestContext::new("worker_dry_run_runtime_params", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-runtime-params",
+        "intent-20260221-runtime-params",
+        Some(5151),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("unknown_param=unexpected")
+        .arg("--param")
+        .arg("run_key=override-run-key")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run with runtime params");
+    assert!(
+        !worker.status.success(),
+        "worker dry-run should fail closed for unsupported runtime params"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("compiled stage dispatcher received unsupported --param key `unknown_param`"),
+        "stderr should explain unsupported runtime param key: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_dry_run_reports_runtime_params_for_supported_param_keys() {
+    let ctx = CliTestContext::new("worker_dry_run_runtime_params_supported", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-runtime-params-supported",
+        "intent-20260221-runtime-params-supported",
+        Some(5153),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("run_key=override-run-key")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run with supported runtime params");
+    assert!(
+        worker.status.success(),
+        "worker dry-run should succeed with supported runtime params: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+    assert_eq!(
+        payload["runtime_params"]["run_key"],
+        serde_json::Value::String("override-run-key".to_string())
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_rejects_malformed_param_flag() {
+    let ctx = CliTestContext::new("worker_rejects_malformed_param", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("invalid-param-format")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run with malformed param");
+    assert!(
+        !worker.status.success(),
+        "worker should fail closed for malformed --param input"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("invalid --param `invalid-param-format`; expected <key>=<value>"),
+        "stderr should explain malformed --param input: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_rejects_runtime_param_type_mismatch_for_typed_entrypoint() {
+    let ctx = CliTestContext::new("worker_rejects_param_type_mismatch", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("issue_id=not-an-int")
+        .current_dir(&root)
+        .output()
+        .expect("run worker dry-run with mismatched typed param");
+    assert!(
+        !worker.status.success(),
+        "worker should fail closed for typed --param mismatch"
+    );
+    let stderr = String::from_utf8_lossy(&worker.stderr);
+    assert!(
+        stderr.contains("invalid --param issue_id=not-an-int; expected Int-compatible value"),
+        "stderr should explain typed --param mismatch: {stderr}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_real_mode_runtime_param_overrides_dispatch_run_key_input() {
+    let ctx = CliTestContext::new("worker_runtime_param_run_key_override", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-runtime-param-run-key",
+        "intent-20260221-runtime-param-run-key",
+        Some(4243),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    // First pass advances Idea -> Design.
+    let first_pass = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .current_dir(&root)
+        .output()
+        .expect("run first worker pass");
+    assert!(
+        first_pass.status.success(),
+        "first worker pass should succeed: {}",
+        String::from_utf8_lossy(&first_pass.stderr)
+    );
+
+    // Second pass executes Design stage with explicit run_key override.
+    let second_pass = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--param")
+        .arg("run_key=override-run-key")
+        .current_dir(&root)
+        .output()
+        .expect("run second worker pass with runtime param");
+    assert!(
+        second_pass.status.success(),
+        "second worker pass should succeed: {}",
+        String::from_utf8_lossy(&second_pass.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&second_pass.stdout).expect("worker output should be JSON");
+    assert_eq!(
+        payload["runtime_params"]["run_key"],
+        serde_json::Value::String("override-run-key".to_string())
+    );
+
+    let issue_transport_path = root.join("target/sdlc/issue-transport-ledger.json");
+    let issue_transport_raw =
+        std::fs::read_to_string(&issue_transport_path).expect("read issue transport ledger");
+    let issue_transport: serde_json::Value =
+        serde_json::from_str(&issue_transport_raw).expect("parse issue transport ledger");
+    let design_review_comment = issue_transport["issues"]["4243"]["comments_by_marker"]
+        ["sdlc:design-review"]
+        .as_str()
+        .expect("design-review marker comment should be string")
+        .to_string();
+    assert!(
+        design_review_comment.contains("override-run-key"),
+        "compiled dispatch should consume overridden run_key in stage message: {design_review_comment}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn worker_real_mode_runtime_params_override_owner_repo_in_implementation_dispatch() {
+    let ctx = CliTestContext::new("worker_runtime_param_owner_repo_override", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-runtime-param-owner-repo",
+        "intent-20260221-runtime-param-owner-repo",
+        Some(4244),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before worker");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before worker run: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    // Progress to design-review gate (Idea -> Design -> DesignReview).
+    for _ in 0..3 {
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
+            .current_dir(&root)
+            .output()
+            .expect("run worker progression pass");
+        assert!(
+            worker.status.success(),
+            "worker progression pass should succeed: {}",
+            String::from_utf8_lossy(&worker.stderr)
+        );
+    }
+
+    // Explicit approval transition to accepted.
+    let approve = ctx
+        .command()
+        .arg("transition")
+        .arg("--intake-key")
+        .arg("intent-20260221-runtime-param-owner-repo")
+        .arg("--stage")
+        .arg("accepted")
+        .current_dir(&root)
+        .output()
+        .expect("approve transition to accepted");
+    assert!(
+        approve.status.success(),
+        "approval transition should succeed: {}",
+        String::from_utf8_lossy(&approve.stderr)
+    );
+
+    // Accepted -> Implementation with owner/repo overrides.
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--param")
+        .arg("owner=override-owner")
+        .arg("--param")
+        .arg("repo=override-repo")
+        .current_dir(&root)
+        .output()
+        .expect("run worker with owner/repo runtime params");
+    assert!(
+        worker.status.success(),
+        "worker should succeed with owner/repo runtime params: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
+
+    let issue_transport_path = root.join("target/sdlc/issue-transport-ledger.json");
+    let issue_transport_raw =
+        std::fs::read_to_string(&issue_transport_path).expect("read issue transport ledger");
+    let issue_transport: serde_json::Value =
+        serde_json::from_str(&issue_transport_raw).expect("parse issue transport ledger");
+    let implementation_comment = issue_transport["issues"]["4244"]["comments_by_marker"]
+        ["sdlc:implementation"]
+        .as_str()
+        .expect("implementation marker comment should be string")
+        .to_string();
+    assert!(
+        implementation_comment.contains("override-owner/override-repo"),
+        "compiled dispatch should consume owner/repo runtime overrides: {implementation_comment}"
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn issue_command_supports_runtime_param_flags() {
+    let ctx = CliTestContext::new("issue_command_runtime_params", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-issue-runtime-params",
+        "intent-20260221-issue-runtime-params",
+        Some(5154),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .current_dir(&root)
+        .output()
+        .expect("run intake before issue command");
+    assert!(
+        intake.status.success(),
+        "intake should succeed before issue command: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
+
+    let issue = ctx
+        .command()
+        .arg("issue")
+        .arg("--issue-id")
+        .arg("5154")
+        .arg("--worker-id")
+        .arg("test-worker-id")
+        .arg("--dry-run")
+        .arg("--param")
+        .arg("run_key=issue-runtime-override")
+        .current_dir(&root)
+        .output()
+        .expect("run issue command with runtime param");
+    assert!(
+        issue.status.success(),
+        "issue command should accept runtime params: {}",
+        String::from_utf8_lossy(&issue.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&issue.stdout).expect("issue output should be JSON");
+    assert_eq!(
+        payload["command"],
+        serde_json::Value::String("issue".to_string())
+    );
+    assert_eq!(
+        payload["runtime_params"]["run_key"],
+        serde_json::Value::String("issue-runtime-override".to_string())
+    );
+
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn intake_rejects_param_flag_fail_closed() {
+    let ctx = CliTestContext::new("intake_rejects_param_flag", sdlc_bin());
+    let root = ctx.path().to_path_buf();
+    std::fs::create_dir_all(&root).expect("create temp root");
+    let intent_path = root.join("intent.yaml");
+    write_intent_file(
+        &intent_path,
+        "intent-20260221-intake-param-reject",
+        "intent-20260221-intake-param-reject",
+        Some(5152),
+    );
+
+    let intake = ctx
+        .command()
+        .arg("intake")
+        .arg("--intent")
+        .arg(&intent_path)
+        .arg("--param")
+        .arg("run_key=unexpected")
+        .current_dir(&root)
+        .output()
+        .expect("run intake with invalid --param");
+    assert!(
+        !intake.status.success(),
+        "intake should fail closed for unsupported --param flag"
+    );
+    let stderr = String::from_utf8_lossy(&intake.stderr);
+    assert!(
+        stderr.contains("--param is only valid for worker or issue"),
+        "stderr should explain unsupported --param scope: {stderr}"
     );
 
     std::fs::remove_dir_all(root).expect("cleanup temp root");
@@ -1196,7 +1767,8 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = ctx.command()
+        let intake = ctx
+            .command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -1210,8 +1782,11 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
         );
     }
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker");
@@ -1229,8 +1804,7 @@ fn worker_real_mode_persists_retry_state_on_claim_conflict() {
 
     let ledger_path = root.join("target/sdlc/intake-ledger.json");
     let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
-    let ledger: serde_json::Value =
-        serde_json::from_str(&ledger_raw).expect("parse intake ledger");
+    let ledger: serde_json::Value = serde_json::from_str(&ledger_raw).expect("parse intake ledger");
     assert_eq!(
         ledger["entries"]["intent-20260221-worker-b"]["retry"]["attempts"],
         1
@@ -1260,7 +1834,8 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
     );
 
     for intent in [&intent_a, &intent_b] {
-        let intake = ctx.command()
+        let intake = ctx
+            .command()
             .arg("intake")
             .arg("--intent")
             .arg(intent)
@@ -1274,8 +1849,11 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
         );
     }
 
-    let first_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let first_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1291,8 +1869,11 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
         "intent-20260221-backoff-b"
     );
 
-    let second_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let second_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run second worker");
@@ -1304,13 +1885,11 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
     let second_payload: serde_json::Value =
         serde_json::from_slice(&second_worker.stdout).expect("second worker output should be JSON");
     assert_eq!(
-        second_payload["skipped_retry_backoff"][0],
-        "intent-20260221-backoff-b",
+        second_payload["skipped_retry_backoff"][0], "intent-20260221-backoff-b",
         "second worker should defer conflicted intake while retry backoff is active"
     );
     assert_eq!(
-        second_payload["summary"]["retry_backoff_deferred_count"],
-        1,
+        second_payload["summary"]["retry_backoff_deferred_count"], 1,
         "summary should report deferred backoff count"
     );
     assert_eq!(
@@ -1324,11 +1903,9 @@ fn worker_respects_retry_backoff_and_defers_claim_attempts() {
 
     let ledger_path = root.join("target/sdlc/intake-ledger.json");
     let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
-    let ledger: serde_json::Value =
-        serde_json::from_str(&ledger_raw).expect("parse intake ledger");
+    let ledger: serde_json::Value = serde_json::from_str(&ledger_raw).expect("parse intake ledger");
     assert_eq!(
-        ledger["entries"]["intent-20260221-backoff-b"]["retry"]["attempts"],
-        1,
+        ledger["entries"]["intent-20260221-backoff-b"]["retry"]["attempts"], 1,
         "retry attempts should remain stable while backoff defers claim attempts"
     );
 
@@ -1348,7 +1925,8 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
         Some(6767),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1361,8 +1939,11 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker");
@@ -1375,8 +1956,7 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
         serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
     let report_path = root.join("target/sdlc/execution-report.json");
     assert_eq!(
-        payload["execution_report_path"],
-        "target/sdlc/execution-report.json",
+        payload["execution_report_path"], "target/sdlc/execution-report.json",
         "worker output should expose persisted execution report path"
     );
     let report_raw = std::fs::read_to_string(&report_path).expect("read execution report");
@@ -1384,9 +1964,7 @@ fn worker_real_mode_persists_execution_report_with_metrics() {
         serde_json::from_str(&report_raw).expect("parse execution report");
     assert_eq!(report["command"], "worker");
     assert!(
-        report["report_generated_at_epoch_ms"]
-            .as_u64()
-            .is_some(),
+        report["report_generated_at_epoch_ms"].as_u64().is_some(),
         "execution report should include report generation timestamp"
     );
     assert_eq!(report["summary"]["intake_total"], 1);
@@ -1423,7 +2001,8 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
         Some(777),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1456,8 +2035,11 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
         )
         .expect("write claim ledger with foreign claim");
 
-        let worker = ctx.command()
-            .arg("worker").arg("--worker-id").arg("test-worker-id")
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
             .current_dir(&root)
             .output()
             .expect("run worker");
@@ -1466,7 +2048,8 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
             "worker should succeed: {}",
             String::from_utf8_lossy(&worker.stderr)
         );
-        final_payload = serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
+        final_payload =
+            serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
         let ledger_path = root.join("target/sdlc/intake-ledger.json");
         let mut ledger: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(&ledger_path).expect("read intake ledger"),
@@ -1485,8 +2068,7 @@ fn worker_terminalizes_after_retry_budget_exhaustion() {
 
     let ledger_path = root.join("target/sdlc/intake-ledger.json");
     let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
-    let ledger: serde_json::Value =
-        serde_json::from_str(&ledger_raw).expect("parse intake ledger");
+    let ledger: serde_json::Value = serde_json::from_str(&ledger_raw).expect("parse intake ledger");
     assert_eq!(
         ledger["entries"]["intent-20260221-term-b"]["terminalized"],
         true
@@ -1519,7 +2101,8 @@ fn await_approval_releases_claim_on_next_worker_pass() {
         Some(9001),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1532,8 +2115,11 @@ fn await_approval_releases_claim_on_next_worker_pass() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let first_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1543,7 +2129,8 @@ fn await_approval_releases_claim_on_next_worker_pass() {
         String::from_utf8_lossy(&first_worker.stderr)
     );
 
-    let await_approval = ctx.command()
+    let await_approval = ctx
+        .command()
         .arg("await-approval")
         .arg("--intake-key")
         .arg("intent-20260221-await-approval")
@@ -1556,8 +2143,11 @@ fn await_approval_releases_claim_on_next_worker_pass() {
         String::from_utf8_lossy(&await_approval.stderr)
     );
 
-    let second_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let second_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run second worker");
@@ -1608,7 +2198,8 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
         Some(4040),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1621,8 +2212,11 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let first_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1632,7 +2226,8 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
         String::from_utf8_lossy(&first_worker.stderr)
     );
 
-    let await_approval = ctx.command()
+    let await_approval = ctx
+        .command()
         .arg("await-approval")
         .arg("--intake-key")
         .arg("intent-20260221-pending-exit")
@@ -1645,8 +2240,11 @@ fn worker_can_emit_pending_approval_exit_code_for_workflow_yield() {
         String::from_utf8_lossy(&await_approval.stderr)
     );
 
-    let pending_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let pending_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .arg("--emit-pending-exit-code")
         .current_dir(&root)
         .output()
@@ -1679,7 +2277,8 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
         Some(5050),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1692,8 +2291,11 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let first_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let first_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run first worker");
@@ -1703,7 +2305,8 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
         String::from_utf8_lossy(&first_worker.stderr)
     );
 
-    let await_approval = ctx.command()
+    let await_approval = ctx
+        .command()
         .arg("await-approval")
         .arg("--intake-key")
         .arg("intent-20260221-issue-pending-exit")
@@ -1716,7 +2319,8 @@ fn issue_command_can_emit_pending_approval_exit_code_for_filtered_issue() {
         String::from_utf8_lossy(&await_approval.stderr)
     );
 
-    let pending_issue = ctx.command()
+    let pending_issue = ctx
+        .command()
         .arg("issue")
         .arg("--issue-id")
         .arg("5050")
@@ -1754,7 +2358,8 @@ fn transition_enforces_stage_ordering_fail_closed() {
         Some(51),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1767,7 +2372,8 @@ fn transition_enforces_stage_ordering_fail_closed() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let to_design = ctx.command()
+    let to_design = ctx
+        .command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-transition")
@@ -1785,7 +2391,8 @@ fn transition_enforces_stage_ordering_fail_closed() {
         serde_json::from_slice(&to_design.stdout).expect("transition output should be JSON");
     assert_eq!(to_design_payload["stage_labels_after_cas"][0], "design");
 
-    let invalid = ctx.command()
+    let invalid = ctx
+        .command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-transition")
@@ -1820,7 +2427,8 @@ fn worker_replay_skips_completed_run_key() {
         Some(1337),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1835,8 +2443,11 @@ fn worker_replay_skips_completed_run_key() {
 
     // Run 3 workers to reach the DesignReview approval gate.
     for _ in 0..3 {
-        let worker = ctx.command()
-            .arg("worker").arg("--worker-id").arg("test-worker-id")
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
             .current_dir(&root)
             .output()
             .expect("run worker");
@@ -1848,7 +2459,8 @@ fn worker_replay_skips_completed_run_key() {
     }
 
     // Explicitly approve by transitioning DesignReview -> Accepted.
-    let approve = ctx.command()
+    let approve = ctx
+        .command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-replay")
@@ -1866,8 +2478,11 @@ fn worker_replay_skips_completed_run_key() {
     // Run 3 workers to progress Accepted -> Implementation -> Closed, then
     // execute terminal Closed no-op.
     for _ in 0..3 {
-        let worker = ctx.command()
-            .arg("worker").arg("--worker-id").arg("test-worker-id")
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
             .current_dir(&root)
             .output()
             .expect("run worker");
@@ -1879,8 +2494,11 @@ fn worker_replay_skips_completed_run_key() {
     }
 
     // 7th worker: the terminal stage run_key is already completed → replay skip
-    let replay_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let replay_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run replay worker");
@@ -1891,7 +2509,10 @@ fn worker_replay_skips_completed_run_key() {
     );
     let replay_payload: serde_json::Value =
         serde_json::from_slice(&replay_worker.stdout).expect("replay worker output should be JSON");
-    assert_eq!(replay_payload["replay_skipped"][0], "intent-20260221-replay");
+    assert_eq!(
+        replay_payload["replay_skipped"][0],
+        "intent-20260221-replay"
+    );
     assert_eq!(
         replay_payload["ready_to_run"]
             .as_array()
@@ -1925,7 +2546,8 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         Some(9090),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -1940,8 +2562,11 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
 
     // Run 3 workers to reach the DesignReview approval gate.
     for _ in 0..3 {
-        let worker = ctx.command()
-            .arg("worker").arg("--worker-id").arg("test-worker-id")
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
             .current_dir(&root)
             .output()
             .expect("run worker");
@@ -1953,7 +2578,8 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
     }
 
     // Explicitly approve by transitioning DesignReview -> Accepted.
-    let approve = ctx.command()
+    let approve = ctx
+        .command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-heartbeat")
@@ -1972,8 +2598,11 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
     // execute terminal Closed no-op. After pass 6 overall, the terminal claim
     // slot (issue:9090:stage:closed) is held.
     for _ in 0..3 {
-        let worker = ctx.command()
-            .arg("worker").arg("--worker-id").arg("test-worker-id")
+        let worker = ctx
+            .command()
+            .arg("worker")
+            .arg("--worker-id")
+            .arg("test-worker-id")
             .current_dir(&root)
             .output()
             .expect("run worker");
@@ -2005,8 +2634,11 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         .expect("lease expiry should be numeric");
 
     // 7th worker: replay-skips at terminal stage but heartbeats the claim
-    let heartbeat_worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let heartbeat_worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run heartbeat worker");
@@ -2015,9 +2647,12 @@ fn worker_heartbeats_existing_claim_lease_on_subsequent_pass() {
         "heartbeat worker should succeed: {}",
         String::from_utf8_lossy(&heartbeat_worker.stderr)
     );
-    let heartbeat_payload: serde_json::Value =
-        serde_json::from_slice(&heartbeat_worker.stdout).expect("heartbeat worker output should be JSON");
-    assert_eq!(heartbeat_payload["replay_skipped"][0], "intent-20260221-heartbeat");
+    let heartbeat_payload: serde_json::Value = serde_json::from_slice(&heartbeat_worker.stdout)
+        .expect("heartbeat worker output should be JSON");
+    assert_eq!(
+        heartbeat_payload["replay_skipped"][0],
+        "intent-20260221-heartbeat"
+    );
 
     let second_claim_ledger: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(&claim_ledger_path).expect("read claim ledger after heartbeat"),
@@ -2049,7 +2684,8 @@ fn worker_replay_skips_when_canonical_artifact_already_exists() {
         Some(6601),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -2067,11 +2703,12 @@ fn worker_replay_skips_when_canonical_artifact_already_exists() {
         std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger after intake");
     let mut artifact: serde_json::Value =
         serde_json::from_str(&artifact_raw).expect("parse artifact ledger");
-    let provisional = artifact["records"]["sdlc:artifact:provisional:intent-20260221-canonical-replay"]
-        .clone();
+    let provisional =
+        artifact["records"]["sdlc:artifact:provisional:intent-20260221-canonical-replay"].clone();
     let mut canonical = provisional;
-    canonical["marker"] =
-        serde_json::Value::String("sdlc:artifact:canonical:intent-20260221-canonical-replay".to_string());
+    canonical["marker"] = serde_json::Value::String(
+        "sdlc:artifact:canonical:intent-20260221-canonical-replay".to_string(),
+    );
     canonical["canonical"] = serde_json::Value::Bool(true);
     artifact["records"]["sdlc:artifact:canonical:intent-20260221-canonical-replay"] = canonical;
     std::fs::write(
@@ -2080,8 +2717,11 @@ fn worker_replay_skips_when_canonical_artifact_already_exists() {
     )
     .expect("write artifact ledger with canonical marker");
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .arg("--dry-run")
         .current_dir(&root)
         .output()
@@ -2126,7 +2766,8 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
         Some(7711),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -2139,7 +2780,8 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
         String::from_utf8_lossy(&intake.stderr)
     );
 
-    let transition = ctx.command()
+    let transition = ctx
+        .command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-llm-cost")
@@ -2154,8 +2796,11 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
         String::from_utf8_lossy(&transition.stderr)
     );
 
-    let worker = ctx.command()
-        .arg("worker").arg("--worker-id").arg("test-worker-id")
+    let worker = ctx
+        .command()
+        .arg("worker")
+        .arg("--worker-id")
+        .arg("test-worker-id")
         .arg("--dry-run")
         .current_dir(&root)
         .output()
@@ -2168,13 +2813,11 @@ fn worker_metrics_include_stage_specific_llm_cost_units() {
     let payload: serde_json::Value =
         serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
     assert_eq!(
-        payload["metrics"]["llm_cost_units"]["intent-20260221-llm-cost"],
-        8,
+        payload["metrics"]["llm_cost_units"]["intent-20260221-llm-cost"], 8,
         "design stage should contribute expected llm cost unit estimate"
     );
     assert_eq!(
-        payload["metrics"]["cost_units"]["llm_estimated_total_units"],
-        8,
+        payload["metrics"]["cost_units"]["llm_estimated_total_units"], 8,
         "cost unit summary should include total estimated llm units"
     );
 
@@ -2194,7 +2837,8 @@ fn transition_to_accepted_promotes_canonical_artifact() {
         Some(31337),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -2208,7 +2852,8 @@ fn transition_to_accepted_promotes_canonical_artifact() {
     );
 
     for stage in ["design", "design-review"] {
-        let transition = ctx.command()
+        let transition = ctx
+            .command()
             .arg("transition")
             .arg("--intake-key")
             .arg("intent-20260221-canonical")
@@ -2224,7 +2869,8 @@ fn transition_to_accepted_promotes_canonical_artifact() {
         );
     }
 
-    let accepted = ctx.command()
+    let accepted = ctx
+        .command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-20260221-canonical")
@@ -2243,7 +2889,8 @@ fn transition_to_accepted_promotes_canonical_artifact() {
     assert_eq!(accepted_payload["canonical_artifact_status"], "inserted");
 
     let artifact_ledger_path = root.join("target/sdlc/artifact-ledger.json");
-    let artifact_raw = std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger");
+    let artifact_raw =
+        std::fs::read_to_string(&artifact_ledger_path).expect("read artifact ledger");
     let artifact: serde_json::Value =
         serde_json::from_str(&artifact_raw).expect("parse artifact ledger");
     assert!(
@@ -2253,8 +2900,8 @@ fn transition_to_accepted_promotes_canonical_artifact() {
             .contains_key("sdlc:artifact:canonical:intent-20260221-canonical"),
         "accepted transition should create canonical artifact marker"
     );
-    let canonical_payload = &artifact["records"]["sdlc:artifact:canonical:intent-20260221-canonical"]
-        ["payload"];
+    let canonical_payload =
+        &artifact["records"]["sdlc:artifact:canonical:intent-20260221-canonical"]["payload"];
     assert!(
         canonical_payload["Inline"]["body"]
             .as_str()
@@ -2279,23 +2926,33 @@ fn worker_executes_idea_to_design_stage() {
         Some(42),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
         .current_dir(&root)
         .output()
         .expect("run intake");
-    assert!(intake.status.success(), "intake should succeed: {}", String::from_utf8_lossy(&intake.stderr));
+    assert!(
+        intake.status.success(),
+        "intake should succeed: {}",
+        String::from_utf8_lossy(&intake.stderr)
+    );
 
-    let worker = ctx.command()
+    let worker = ctx
+        .command()
         .arg("worker")
         .arg("--worker-id")
         .arg("test-worker-id")
         .current_dir(&root)
         .output()
         .expect("run worker");
-    assert!(worker.status.success(), "worker should succeed: {}", String::from_utf8_lossy(&worker.stderr));
+    assert!(
+        worker.status.success(),
+        "worker should succeed: {}",
+        String::from_utf8_lossy(&worker.stderr)
+    );
 
     let payload: serde_json::Value =
         serde_json::from_slice(&worker.stdout).expect("worker output should be JSON");
@@ -2315,13 +2972,11 @@ fn worker_executes_idea_to_design_stage() {
         serde_json::from_str(&issue_transport_raw).expect("parse issue transport ledger");
     let issue_record = &issue_transport["issues"]["42"];
     assert_eq!(
-        issue_record["labels"][0],
-        "design",
+        issue_record["labels"][0], "design",
         "idea->design pass should update issue transport stage label"
     );
     assert_eq!(
-        issue_record["comments_by_marker"]["design-marker"],
-        "Generated design prompt",
+        issue_record["comments_by_marker"]["design-marker"], "Generated design prompt",
         "idea->design pass should upsert design comment marker"
     );
 
@@ -2341,7 +2996,8 @@ fn worker_multi_pass_progresses_stage_to_closed() {
         Some(42),
     );
 
-    let intake = ctx.command()
+    let intake = ctx
+        .command()
         .arg("intake")
         .arg("--intent")
         .arg(&intent_path)
@@ -2356,7 +3012,8 @@ fn worker_multi_pass_progresses_stage_to_closed() {
 
     // Run 3 workers to reach the DesignReview approval gate.
     for _ in 0..3 {
-        let worker = ctx.command()
+        let worker = ctx
+            .command()
             .arg("worker")
             .arg("--worker-id")
             .arg("test-worker-id")
@@ -2371,7 +3028,8 @@ fn worker_multi_pass_progresses_stage_to_closed() {
     }
 
     // Approval is explicit: transition DesignReview -> Accepted.
-    let approve = ctx.command()
+    let approve = ctx
+        .command()
         .arg("transition")
         .arg("--intake-key")
         .arg("intent-multi-pass")
@@ -2388,7 +3046,8 @@ fn worker_multi_pass_progresses_stage_to_closed() {
 
     // Run 2 workers to progress Accepted -> Implementation -> Closed.
     for _ in 0..2 {
-        let worker = ctx.command()
+        let worker = ctx
+            .command()
             .arg("worker")
             .arg("--worker-id")
             .arg("test-worker-id")
@@ -2404,11 +3063,9 @@ fn worker_multi_pass_progresses_stage_to_closed() {
 
     let ledger_path = root.join("target/sdlc/intake-ledger.json");
     let ledger_raw = std::fs::read_to_string(&ledger_path).expect("read intake ledger");
-    let ledger: serde_json::Value =
-        serde_json::from_str(&ledger_raw).expect("parse intake ledger");
+    let ledger: serde_json::Value = serde_json::from_str(&ledger_raw).expect("parse intake ledger");
     assert_eq!(
-        ledger["entries"]["intent-multi-pass"]["stage"],
-        "Closed",
+        ledger["entries"]["intent-multi-pass"]["stage"], "Closed",
         "worker multi-pass progression should reach terminal closed stage"
     );
 

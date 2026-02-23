@@ -14,7 +14,7 @@ use gunbc_ir::transport::cloud::{
 };
 use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{SecretString, Timestamp, Value};
+use gunbc_ir::{Timestamp, Value};
 use gunbc_primitives::filename;
 use gunbc_test::{
     extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
@@ -32,18 +32,7 @@ fn mock_clock() -> Value {
 }
 
 fn mock_credential() -> Value {
-    let mut map = BTreeMap::new();
-    map.insert(
-        "token".to_string(),
-        Value::Secret(SecretString::new("<MOCK_GITHUB_TOKEN>")),
-    );
-    map.insert("source_type".to_string(), Value::Str("static".to_string()));
-    map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-    map.insert(
-        "cap".to_string(),
-        Value::Secret(SecretString::new("capability")),
-    );
-    Value::Map(map)
+    Value::Str("<MOCK_GITHUB_TOKEN>".into())
 }
 
 fn mock_cloud_config() -> Value {

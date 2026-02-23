@@ -1762,5 +1762,4 @@ pub fn sample_tool() {}
         assert!(err.contains("unmapped DSL tool modules"));
         assert!(err.contains("unknown_new_tool"));
     }
-
 }

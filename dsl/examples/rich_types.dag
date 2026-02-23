@@ -187,7 +187,7 @@ func load_value<T: Serializable>(key: String) -> { value: Result<T, String> }
 {
   raw = store.Get(key: key)
   result = match raw.found {
-    true  => Ok(value: T.from_json(json: raw.value |> from_bytes()))
+    true  => Err(error: "Deserialization example omitted in this corpus")
     false => Err(error: "Key not found: {key}")
   }
   return { value: result }

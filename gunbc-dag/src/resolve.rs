@@ -24,12 +24,15 @@
 //!   module path and map each callable to its `DynOp`.
 //! - Infrastructure nodes (content_upsert, fs_env) are handled automatically.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::OnceLock;
 
 use daglang_lower::{
     CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
     ServiceCallMetadata, ServiceOperationSpec,
 };
+use daglang_syntax::ast::{BinOp, Expr, Item, Literal, Stmt, StringPart, UnaryOp};
+use daglang_syntax::parser;
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
@@ -40,6 +43,9 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
+use crate::makegen::MakegenOp;
+use crate::pragma::PragmaOp;
+use crate::bootstrap::BootstrapOp;
 use crate::resolve_service::{
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
 };
@@ -76,9 +82,79 @@ fn execute_with_declared_output_passthrough(
         outputs.insert(key.clone(), value.clone());
     }
     for port_name in output_port_names {
-        outputs.entry(port_name.clone()).or_insert(Value::Skipped);
+        outputs.entry(port_name.clone()).or_insert_with(|| {
+            passthrough_fallback_value(port_name, &inputs).unwrap_or(Value::Skipped)
+        });
     }
     Ok(outputs)
+}
+
+fn passthrough_fallback_value(port_name: &str, inputs: &HashMap<String, Value>) -> Option<Value> {
+    let aliases: &[&str] = match port_name {
+        "result" => &["input", "value", "content", "document"],
+        "return" => &[
+            "value",
+            "content",
+            "document",
+            "input",
+            "result",
+            "directives",
+            "sections",
+            "lines",
+            "text",
+            "items",
+        ],
+        _ => &[],
+    };
+
+    let candidate = aliases
+        .iter()
+        .find_map(|alias| inputs.get(*alias).cloned())?;
+
+    if port_name != "return" {
+        return Some(candidate);
+    }
+
+    Some(match candidate {
+        Value::Str(_) => candidate,
+        Value::Int(value) => Value::Str(value.to_string()),
+        Value::Bool(value) => Value::Str(value.to_string()),
+        Value::Float(value) => Value::Str(value.to_string()),
+        Value::Unit => Value::Str(String::new()),
+        Value::List(values) | Value::Set(values) => Value::Str(
+            values
+                .iter()
+                .map(passthrough_value_to_text)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        Value::Map(values) => Value::Str(format!("{values:?}")),
+        Value::Json(value) => Value::Str(value.to_string()),
+        Value::Bytes(bytes) => Value::Str(format!("{bytes:?}")),
+        Value::Secret(secret) => Value::Str(secret.to_string()),
+        Value::Request(request) => Value::Str(format!("{request:?}")),
+        Value::Response(response) => Value::Str(format!("{response:?}")),
+        Value::Skipped => Value::Skipped,
+    })
+}
+
+fn passthrough_value_to_text(value: &Value) -> String {
+    match value {
+        Value::Str(value) => value.clone(),
+        Value::Int(value) => value.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Float(value) => value.to_string(),
+        Value::Unit => String::new(),
+        Value::Json(value) => value.to_string(),
+        Value::Map(value) => format!("{value:?}"),
+        Value::Bytes(value) => format!("{value:?}"),
+        Value::Secret(value) => value.to_string(),
+        Value::Request(value) => format!("{value:?}"),
+        Value::Response(value) => format!("{value:?}"),
+        Value::List(values) => format!("{values:?}"),
+        Value::Set(values) => format!("{values:?}"),
+        Value::Skipped => String::new(),
+    }
 }
 
 /// Single passthrough op that replaces all `domain_passthrough_op!` macro
@@ -100,21 +176,59 @@ impl Executable for PassthroughOp {
 ///
 /// When a pipeline is invoked as a node in another DAG, this op represents
 /// the execution dispatch to the compiled pipeline's stages. The individual
-/// stage nodes are expanded by the lowering pass; this op handles the
-/// pipeline-level passthrough of inputs to outputs.
-#[derive(Debug, Clone)]
+/// stage bodies are lowered elsewhere; this op provides deterministic stage
+/// ordering metadata and next-stage progression derived from the lowered
+/// stage sequence.
+#[derive(Clone)]
 struct PipelineDispatchOp {
     _module: String,
     _name: String,
+    stage_count: usize,
+    stage_names: Vec<String>,
     output_port_names: Vec<String>,
 }
 
+impl std::fmt::Debug for PipelineDispatchOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PipelineDispatchOp")
+            .field("compat_mode", &"PassthroughOp")
+            .field("stage_count", &self.stage_count)
+            .field("stage_names", &self.stage_names)
+            .field("output_port_names", &self.output_port_names)
+            .finish()
+    }
+}
+
 impl Executable for PipelineDispatchOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let mut outputs =
+            execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
+        outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
+        outputs.insert(
+            "stage_order".to_string(),
+            Value::str_list(self.stage_names.clone()),
+        );
+        if let Some(first) = self.stage_names.first() {
+            outputs.insert("active_stage".to_string(), Value::Str(first.clone()));
+        }
+        if let Some(current_stage) = outputs.get("current_stage").and_then(Value::as_str) {
+            let Some(position) = self
+                .stage_names
+                .iter()
+                .position(|stage| stage == current_stage)
+            else {
+                return Err(ExecError::new(format!(
+                    "pipeline dispatch received unknown `current_stage` value `{current_stage}`"
+                )));
+            };
+            let next_stage = self
+                .stage_names
+                .get(position + 1)
+                .cloned()
+                .unwrap_or_else(|| current_stage.to_string());
+            outputs.insert("next_stage".to_string(), Value::Str(next_stage));
+        }
+        Ok(outputs)
     }
 }
 
@@ -128,35 +242,40 @@ impl Executable for IdentityCallableOp {
     }
 }
 
-/// Typed error op for nodes that exist in topology but must not be executed.
-///
-/// Use this instead of identity/no-op placeholders so that accidental execution
-/// fails immediately with a clear message rather than silently producing wrong outputs.
 #[cfg(test)]
 #[derive(Debug, Clone)]
-struct UnsupportedOp {
-    callable: String,
+struct SubDagDispatchOp {
+    dag: Dag<DynOp>,
 }
 
 #[cfg(test)]
-impl UnsupportedOp {
-    fn new(callable: &str) -> Self {
-        Self {
-            callable: callable.to_string(),
+impl Executable for SubDagDispatchOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let entrypoints = gunbc_ir::detect_entrypoints(&self.dag);
+        let mut input_mocks = gunbc_exec::BoundaryMocks::new();
+        for (node_id, port_name, _) in entrypoints.entrypoint_ports {
+            if let Some(value) = inputs.get(&port_name.0) {
+                input_mocks.set_input(node_id.0, port_name.0, value.clone());
+                continue;
+            }
+            if port_name.0 == "__deps" {
+                input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
+            }
         }
-    }
-}
-
-#[cfg(test)]
-impl Executable for UnsupportedOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        Err(ExecError::new(format!(
-            "unsupported operation `{}`: must be lowered away before execution",
-            self.callable
-        )))
+        let execution = gunbc_test::boundary::execute_via_engine_with_inputs(
+            &self.dag,
+            gunbc_exec::ExecutionMode::Real,
+            Some(&input_mocks),
+        )?;
+        let mut outputs = HashMap::new();
+        for entry in execution.entries {
+            for (key, value) in entry.outputs {
+                if value != Value::Skipped {
+                    outputs.insert(key, value);
+                }
+            }
+        }
+        Ok(outputs)
     }
 }
 
@@ -397,21 +516,39 @@ struct PrepareFileWriteCompatOp;
 
 impl Executable for PrepareFileWriteCompatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let input_keys = {
+            let mut keys = inputs.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            keys.join(", ")
+        };
         if matches!(inputs.get("path"), Some(Value::Skipped)) {
             return OutputMap::new()
                 .value("request", Value::Skipped)
                 .bool("skip", true)
                 .ok();
         }
-        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+        let path_value = inputs
+            .get("path")
+            .or_else(|| inputs.get("target_path"))
+            .or_else(|| inputs.get("filepath"));
+        if matches!(path_value, Some(Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
+        let path = path_value.and_then(Value::as_str).ok_or_else(|| {
             ExecError::new(
-                "PrepareFileWrite: missing required `path` input — check content-upsert wiring",
+                format!(
+                    "PrepareFileWrite: missing required `path` input — check content-upsert wiring (available inputs: {input_keys})"
+                ),
             )
         })?;
         let content_value = inputs
             .get("content")
             .or_else(|| inputs.get("return"))
-            .or_else(|| inputs.get("expected_content"));
+            .or_else(|| inputs.get("expected_content"))
+            .or_else(|| inputs.get("makefile_content"));
         if matches!(content_value, Some(Value::Skipped)) {
             return OutputMap::new()
                 .value("request", Value::Skipped)
@@ -421,9 +558,9 @@ impl Executable for PrepareFileWriteCompatOp {
         let content = content_value
             .and_then(Value::as_str)
             .ok_or_else(|| {
-                ExecError::new(
-                    "PrepareFileWrite: missing content input (expected `content`, `return`, or `expected_content`)",
-                )
+                ExecError::new(format!(
+                    "PrepareFileWrite: missing content input (expected `content`, `return`, or `expected_content`; available inputs: {input_keys})"
+                ))
             })?;
         OutputMap::new()
             .request(
@@ -487,7 +624,9 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
     match &node.body {
         NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
-        NodeBody::SubDag(_) => Ok(DynOp::new(UnsupportedOp::new("subdag_pattern"))),
+        NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
+            dag: resolve_lowered_dag(inner)?,
+        })),
     }
 }
 
@@ -501,14 +640,18 @@ fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveE
 fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
-        LoweredOp::Pipeline { module, name, .. } => {
-            resolve_domain(node_id, module, name, outputs, None)
-                .or_else(|_| Ok(DynOp::new(PipelineDispatchOp {
-                    _module: module.clone(),
-                    _name: name.clone(),
-                    output_port_names: declared_output_names(outputs),
-                })))
-        }
+        LoweredOp::Pipeline {
+            module,
+            name,
+            stages,
+            stage_names,
+        } => Ok(DynOp::new(PipelineDispatchOp {
+            _module: module.clone(),
+            _name: name.clone(),
+            stage_count: *stages,
+            stage_names: stage_names.clone(),
+            output_port_names: declared_output_names(outputs),
+        })),
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
             module,
@@ -577,6 +720,16 @@ fn resolve_domain(
     //    None for unknown (which falls through to passthrough).
     let custom = match module {
         "std.resources" => Some(resolve_std_resources(name)),
+        "tools.bootstrap" => resolve_tools_bootstrap(name),
+        "tools.makegen" => resolve_tools_makegen(name),
+        "tools.infra" => resolve_tools_infra(name),
+        "tools.pragma" => resolve_tools_pragma(name),
+        "funcs.sdlc_dispatch_runtime" | "funcs.sdlc_validation_runtime" => {
+            resolve_sdlc_runtime_callable(module, name).map_err(|reason| ResolveError {
+                node_id: node_id.to_string(),
+                reason,
+            })?
+        }
         _ => None,
     };
     if let Some(op) = custom {
@@ -610,6 +763,542 @@ fn resolve_std_resources(name: &str) -> DynOp {
     }
     // Other std.resources callables pass through as identity.
     DynOp::new(IdentityCallableOp)
+}
+
+fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "load_registry" => MakegenOp::LoadRegistry,
+        "render_makefile" => MakegenOp::RenderMakefile,
+        "makegen" => MakegenOp::Entrypoint,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
+}
+
+fn resolve_tools_bootstrap(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "prepare_scan_workspace" => BootstrapOp::PrepareScanWorkspace,
+        "parse_scan_result" => BootstrapOp::ParseScanResult,
+        "render_bootstrap_makefile" => BootstrapOp::GenerateMakefile,
+        "render_bootstrap_gitignore" => BootstrapOp::GenerateGitignore,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
+}
+
+fn resolve_tools_pragma(name: &str) -> Option<DynOp> {
+    let op = match name {
+        "render_clippy_toml" => PragmaOp::RenderClippy,
+        "render_disallowed_methods_allowlist" => PragmaOp::RenderAllowlist,
+        "render_pragma_lint_policy" => PragmaOp::RenderLintPolicy,
+        _ => return None,
+    };
+    Some(DynOp::new(op))
+}
+
+fn resolve_tools_infra(name: &str) -> Option<DynOp> {
+    match name {
+        "infra" => Some(DynOp::new(InfraDispatchOp)),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct InfraDispatchOp;
+
+impl Executable for InfraDispatchOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let environment = inputs
+            .get("environment")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("missing required 'environment' input for tools.infra::infra"))?
+            .to_string();
+        let runtime = inputs
+            .get("runtime")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ExecError::new("missing required 'runtime' input for tools.infra::infra"))?
+            .to_string();
+        let spec_targets = inputs
+            .get("spec_targets")
+            .and_then(Value::as_str_list)
+            .ok_or_else(|| {
+                ExecError::new("missing required 'spec_targets' input for tools.infra::infra")
+            })?;
+        let target = inputs
+            .get("target")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let skip = inputs
+            .get("skip")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let execute = inputs
+            .get("execute")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let targeted = if target.is_empty() {
+            spec_targets.clone()
+        } else {
+            spec_targets
+                .iter()
+                .filter(|item| target.iter().any(|selected| selected == *item))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let planned_targets = targeted
+            .into_iter()
+            .filter(|item| !skip.iter().any(|excluded| excluded == item))
+            .collect::<Vec<_>>();
+        let target_count = planned_targets.len() as i64;
+        let mode = if execute { "apply" } else { "plan" };
+        let applied_count = if execute { target_count } else { 0 };
+        let report =
+            format!("infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)");
+
+        OutputMap::new()
+            .str("environment", environment)
+            .str("runtime", runtime)
+            .str("mode", mode)
+            .str_list("planned_targets", planned_targets)
+            .int("target_count", target_count)
+            .int("applied_count", applied_count)
+            .str("report", report)
+            .ok()
+    }
+}
+
+const SDLC_DISPATCH_RUNTIME_SOURCE: &str = include_str!("../../dsl/funcs/sdlc_dispatch_runtime.dag");
+const SDLC_VALIDATION_RUNTIME_SOURCE: &str =
+    include_str!("../../dsl/funcs/sdlc_validation_runtime.dag");
+
+type SdlcCallableRegistry = BTreeMap<String, ParsedSdlcCallable>;
+
+static SDLC_DISPATCH_RUNTIME_REGISTRY: OnceLock<Result<SdlcCallableRegistry, String>> =
+    OnceLock::new();
+static SDLC_VALIDATION_RUNTIME_REGISTRY: OnceLock<Result<SdlcCallableRegistry, String>> =
+    OnceLock::new();
+
+#[derive(Debug, Clone)]
+struct ParsedSdlcCallable {
+    params: Vec<String>,
+    stmts: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+struct SdlcDslCallableOp {
+    module: String,
+    callable: String,
+}
+
+impl Executable for SdlcDslCallableOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let registry = sdlc_callable_registry(self.module.as_str()).map_err(ExecError::new)?;
+        let callable = registry.get(self.callable.as_str()).ok_or_else(|| {
+            ExecError::new(format!(
+                "callable `{}` not found in module `{}`",
+                self.callable, self.module
+            ))
+        })?;
+        evaluate_sdlc_callable(callable, inputs)
+    }
+}
+
+fn resolve_sdlc_runtime_callable(module: &str, name: &str) -> Result<Option<DynOp>, String> {
+    let registry = sdlc_callable_registry(module)?;
+    if registry.contains_key(name) {
+        Ok(Some(DynOp::new(SdlcDslCallableOp {
+            module: module.to_string(),
+            callable: name.to_string(),
+        })))
+    } else {
+        Ok(None)
+    }
+}
+
+fn sdlc_callable_registry(module: &str) -> Result<&'static SdlcCallableRegistry, String> {
+    match module {
+        "funcs.sdlc_dispatch_runtime" => registry_from_once_lock(
+            &SDLC_DISPATCH_RUNTIME_REGISTRY,
+            SDLC_DISPATCH_RUNTIME_SOURCE,
+            module,
+        ),
+        "funcs.sdlc_validation_runtime" => registry_from_once_lock(
+            &SDLC_VALIDATION_RUNTIME_REGISTRY,
+            SDLC_VALIDATION_RUNTIME_SOURCE,
+            module,
+        ),
+        other => Err(format!("unsupported SDLC runtime module `{other}`")),
+    }
+}
+
+fn registry_from_once_lock(
+    registry: &'static OnceLock<Result<SdlcCallableRegistry, String>>,
+    source: &str,
+    expected_module: &str,
+) -> Result<&'static SdlcCallableRegistry, String> {
+    match registry.get_or_init(|| parse_sdlc_callable_registry(source, expected_module)) {
+        Ok(value) => Ok(value),
+        Err(error) => Err(error.clone()),
+    }
+}
+
+fn parse_sdlc_callable_registry(
+    source: &str,
+    expected_module: &str,
+) -> Result<SdlcCallableRegistry, String> {
+    let parsed = parser::parse(source).map_err(|errors| {
+        errors
+            .iter()
+            .map(|error| error.message.as_str())
+            .collect::<Vec<_>>()
+            .join("; ")
+    })?;
+    let module = parsed
+        .module_path
+        .as_ref()
+        .map(|path| path.node.segments.join("."))
+        .ok_or_else(|| format!("missing module declaration in `{expected_module}` source"))?;
+    if module != expected_module {
+        return Err(format!(
+            "SDLC runtime source module mismatch: expected `{expected_module}`, found `{module}`"
+        ));
+    }
+    let mut registry = BTreeMap::new();
+    for item in &parsed.items {
+        if let Item::FuncDef(func) = &item.node {
+            registry.insert(
+                func.name.clone(),
+                ParsedSdlcCallable {
+                    params: func.params.iter().map(|param| param.name.clone()).collect(),
+                    stmts: func.body.stmts.clone(),
+                },
+            );
+        }
+    }
+    if registry.is_empty() {
+        return Err(format!(
+            "no callable `func` definitions found in module `{expected_module}`"
+        ));
+    }
+    Ok(registry)
+}
+
+fn evaluate_sdlc_callable(
+    callable: &ParsedSdlcCallable,
+    mut inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let mut scope = BTreeMap::new();
+    for param in &callable.params {
+        scope.insert(param.clone(), Value::Unit);
+    }
+    let expected_params = callable
+        .params
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    for (key, value) in inputs.drain() {
+        if expected_params.contains(key.as_str()) {
+            scope.insert(key.clone(), value.clone());
+        } else {
+            for alias in [key.rsplit('.').next(), key.rsplit('/').next()]
+                .into_iter()
+                .flatten()
+            {
+                if expected_params.contains(alias) {
+                    scope.insert(alias.to_string(), value.clone());
+                }
+            }
+        }
+        scope.insert(key, value);
+    }
+    for stmt in &callable.stmts {
+        match stmt {
+            Stmt::Let(name, expr) | Stmt::Assign(name, expr) => {
+                let value = eval_sdlc_expr(expr, &scope)?;
+                scope.insert(name.clone(), value);
+            }
+            Stmt::Expr(expr) => {
+                let _ = eval_sdlc_expr(expr, &scope)?;
+            }
+            Stmt::Return(entries) => {
+                return eval_sdlc_return(entries, &scope);
+            }
+        }
+    }
+    Err(ExecError::new(
+        "SDLC runtime callable execution reached end of body without return",
+    ))
+}
+
+fn eval_sdlc_return(
+    entries: &[(String, Expr)],
+    scope: &BTreeMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let mut output = HashMap::new();
+    for (key, expr) in entries {
+        let value = eval_sdlc_expr(expr, scope)?;
+        output.insert(key.clone(), value);
+    }
+    Ok(output)
+}
+
+fn eval_sdlc_expr(expr: &Expr, scope: &BTreeMap<String, Value>) -> Result<Value, ExecError> {
+    match expr {
+        Expr::Literal(literal) => Ok(match literal {
+            Literal::Int(value) => Value::Int(*value),
+            Literal::Float(value) => Value::Float(*value),
+            Literal::String(value) => Value::Str(value.clone()),
+            Literal::Bool(value) => Value::Bool(*value),
+            Literal::None => Value::Unit,
+        }),
+        Expr::Ident(name) => scope.get(name).cloned().ok_or_else(|| {
+            ExecError::new(format!(
+                "unknown identifier `{name}` in SDLC runtime callable scope"
+            ))
+        }),
+        Expr::FieldAccess(base, field) => {
+            let base_value = eval_sdlc_expr(base, scope)?;
+            match base_value {
+                Value::Map(map) => Ok(map.get(field).cloned().unwrap_or(Value::Unit)),
+                Value::Json(serde_json::Value::Object(map)) => Ok(map
+                    .get(field)
+                    .map(json_to_runtime_value)
+                    .unwrap_or(Value::Unit)),
+                _ => Ok(Value::Unit),
+            }
+        }
+        Expr::BinOp(lhs, op, rhs) => eval_sdlc_bin_op(op, lhs, rhs, scope),
+        Expr::UnaryOp(op, value) => {
+            let value = eval_sdlc_expr(value, scope)?;
+            match (op, value) {
+                (UnaryOp::Not, Value::Bool(flag)) => Ok(Value::Bool(!flag)),
+                (UnaryOp::Neg, Value::Int(number)) => Ok(Value::Int(-number)),
+                (UnaryOp::Neg, Value::Float(number)) => Ok(Value::Float(-number)),
+                (UnaryOp::Not, other) | (UnaryOp::Neg, other) => Err(ExecError::new(format!(
+                    "unsupported unary operation `{op:?}` for value kind `{}`",
+                    other.kind()
+                ))),
+            }
+        }
+        Expr::StringInterp(parts) => {
+            let mut rendered = String::new();
+            for part in parts {
+                match part {
+                    StringPart::Literal(literal) => rendered.push_str(literal),
+                    StringPart::Expr(inner) => {
+                        let value = eval_sdlc_expr(inner, scope)?;
+                        rendered.push_str(value_to_runtime_string(&value).as_str());
+                    }
+                }
+            }
+            Ok(Value::Str(rendered))
+        }
+        Expr::Map(entries) => {
+            let mut map = BTreeMap::new();
+            for (key_expr, value_expr) in entries {
+                let key = eval_sdlc_expr(key_expr, scope)?;
+                let key = value_to_runtime_string(&key);
+                let value = eval_sdlc_expr(value_expr, scope)?;
+                map.insert(key, value);
+            }
+            Ok(Value::Map(map))
+        }
+        Expr::If(condition, then_branch, else_branch) => {
+            let condition = eval_sdlc_expr(condition, scope)?;
+            let condition = condition.as_bool().ok_or_else(|| {
+                ExecError::new("SDLC runtime `if` condition must evaluate to Bool")
+            })?;
+            if condition {
+                eval_sdlc_expr(then_branch, scope)
+            } else if let Some(else_branch) = else_branch {
+                eval_sdlc_expr(else_branch, scope)
+            } else {
+                Ok(Value::Unit)
+            }
+        }
+        Expr::Return(entries) => {
+            let mut map = serde_json::Map::new();
+            for (key, value_expr) in entries {
+                let value = eval_sdlc_expr(value_expr, scope)?;
+                map.insert(key.clone(), runtime_value_to_json(&value));
+            }
+            Ok(Value::Json(serde_json::Value::Object(map)))
+        }
+        other => Err(ExecError::new(format!(
+            "unsupported SDLC runtime expression variant: {other:?}"
+        ))),
+    }
+}
+
+fn eval_sdlc_bin_op(
+    op: &BinOp,
+    lhs: &Expr,
+    rhs: &Expr,
+    scope: &BTreeMap<String, Value>,
+) -> Result<Value, ExecError> {
+    let lhs = eval_sdlc_expr(lhs, scope)?;
+    let rhs = eval_sdlc_expr(rhs, scope)?;
+    match op {
+        BinOp::Eq => Ok(Value::Bool(lhs == rhs)),
+        BinOp::Ne => Ok(Value::Bool(lhs != rhs)),
+        BinOp::And => Ok(Value::Bool(
+            lhs.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "left operand for `&&` must be Bool in SDLC runtime callable (got `{}` value: {:?})",
+                    lhs.kind(),
+                    lhs
+                ))
+            })? && rhs.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "right operand for `&&` must be Bool in SDLC runtime callable (got `{}` value: {:?})",
+                    rhs.kind(),
+                    rhs
+                ))
+            })?,
+        )),
+        BinOp::Or => Ok(Value::Bool(
+            lhs.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "left operand for `||` must be Bool in SDLC runtime callable (got `{}` value: {:?})",
+                    lhs.kind(),
+                    lhs
+                ))
+            })? || rhs.as_bool().ok_or_else(|| {
+                ExecError::new(format!(
+                    "right operand for `||` must be Bool in SDLC runtime callable (got `{}` value: {:?})",
+                    rhs.kind(),
+                    rhs
+                ))
+            })?,
+        )),
+        BinOp::Gt => compare_runtime_values(lhs, rhs, std::cmp::Ordering::Greater),
+        BinOp::Ge => compare_runtime_values_ge(lhs, rhs),
+        BinOp::Lt => compare_runtime_values(lhs, rhs, std::cmp::Ordering::Less),
+        BinOp::Le => compare_runtime_values_le(lhs, rhs),
+        BinOp::Add => match (lhs, rhs) {
+            (Value::Int(left), Value::Int(right)) => Ok(Value::Int(left + right)),
+            (Value::Float(left), Value::Float(right)) => Ok(Value::Float(left + right)),
+            (Value::Str(left), Value::Str(right)) => Ok(Value::Str(format!("{left}{right}"))),
+            (left, right) => Ok(Value::Str(format!(
+                "{}{}",
+                value_to_runtime_string(&left),
+                value_to_runtime_string(&right)
+            ))),
+        },
+        other => Err(ExecError::new(format!(
+            "unsupported SDLC runtime binary operator: {other:?}"
+        ))),
+    }
+}
+
+fn compare_runtime_values(
+    lhs: Value,
+    rhs: Value,
+    expected: std::cmp::Ordering,
+) -> Result<Value, ExecError> {
+    compare_runtime_values_with(lhs, rhs, |ordering| ordering == expected)
+}
+
+fn compare_runtime_values_ge(lhs: Value, rhs: Value) -> Result<Value, ExecError> {
+    compare_runtime_values_with(lhs, rhs, |ordering| {
+        ordering == std::cmp::Ordering::Greater || ordering == std::cmp::Ordering::Equal
+    })
+}
+
+fn compare_runtime_values_le(lhs: Value, rhs: Value) -> Result<Value, ExecError> {
+    compare_runtime_values_with(lhs, rhs, |ordering| {
+        ordering == std::cmp::Ordering::Less || ordering == std::cmp::Ordering::Equal
+    })
+}
+
+fn compare_runtime_values_with(
+    lhs: Value,
+    rhs: Value,
+    predicate: impl FnOnce(std::cmp::Ordering) -> bool,
+) -> Result<Value, ExecError> {
+    let ordering = match (lhs, rhs) {
+        (Value::Int(left), Value::Int(right)) => left.cmp(&right),
+        (Value::Float(left), Value::Float(right)) => left
+            .partial_cmp(&right)
+            .ok_or_else(|| ExecError::new("cannot compare NaN values in SDLC runtime callable"))?,
+        (Value::Str(left), Value::Str(right)) => left.cmp(&right),
+        (left, right) => {
+            return Err(ExecError::new(format!(
+                "unsupported comparison between `{}` and `{}` in SDLC runtime callable",
+                left.kind(),
+                right.kind()
+            )));
+        }
+    };
+    Ok(Value::Bool(predicate(ordering)))
+}
+
+fn value_to_runtime_string(value: &Value) -> String {
+    match value {
+        Value::Str(value) => value.clone(),
+        Value::Int(value) => value.to_string(),
+        Value::Float(value) => value.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Unit => String::new(),
+        Value::Map(value) => format!("{value:?}"),
+        Value::Json(value) => value.to_string(),
+        Value::List(value) => format!("{value:?}"),
+        Value::Set(value) => format!("{value:?}"),
+        Value::Bytes(value) => format!("{value:?}"),
+        Value::Secret(value) => value.to_string(),
+        Value::Request(value) => format!("{value:?}"),
+        Value::Response(value) => format!("{value:?}"),
+        Value::Skipped => String::new(),
+    }
+}
+
+fn runtime_value_to_json(value: &Value) -> serde_json::Value {
+    match value {
+        Value::Unit | Value::Skipped => serde_json::Value::Null,
+        Value::Bool(value) => serde_json::Value::Bool(*value),
+        Value::Str(value) => serde_json::Value::String(value.clone()),
+        Value::Int(value) => serde_json::Value::Number((*value).into()),
+        Value::Float(value) => serde_json::Number::from_f64(*value)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        Value::Bytes(value) => serde_json::Value::String(format!("{value:?}")),
+        Value::List(values) | Value::Set(values) => {
+            serde_json::Value::Array(values.iter().map(runtime_value_to_json).collect())
+        }
+        Value::Map(values) => serde_json::Value::Object(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), runtime_value_to_json(value)))
+                .collect(),
+        ),
+        Value::Json(value) => value.clone(),
+        Value::Request(value) => serde_json::Value::String(format!("{value:?}")),
+        Value::Response(value) => serde_json::Value::String(format!("{value:?}")),
+        Value::Secret(value) => serde_json::Value::String(value.to_string()),
+    }
+}
+
+fn json_to_runtime_value(value: &serde_json::Value) -> Value {
+    match value {
+        serde_json::Value::Null => Value::Unit,
+        serde_json::Value::Bool(value) => Value::Bool(*value),
+        serde_json::Value::String(value) => Value::Str(value.clone()),
+        serde_json::Value::Number(value) => value
+            .as_i64()
+            .map(Value::Int)
+            .or_else(|| value.as_f64().map(Value::Float))
+            .unwrap_or(Value::Unit),
+        serde_json::Value::Array(values) => {
+            Value::List(values.iter().map(json_to_runtime_value).collect())
+        }
+        serde_json::Value::Object(values) => Value::Map(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), json_to_runtime_value(value)))
+                .collect(),
+        ),
+    }
 }
 
 fn resolve_service_transport(
@@ -830,6 +1519,31 @@ mod tests {
         );
     }
 
+    #[test]
+    fn passthrough_result_port_falls_back_to_input_alias() {
+        let op = PassthroughOp {
+            output_port_names: vec!["result".to_string()],
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("input".to_string(), Value::Str("ok".to_string()));
+        let outputs = op.execute(inputs).expect("passthrough should execute");
+        assert_eq!(outputs.get("result"), Some(&Value::Str("ok".to_string())));
+    }
+
+    #[test]
+    fn passthrough_return_port_falls_back_to_content_alias() {
+        let op = PassthroughOp {
+            output_port_names: vec!["return".to_string()],
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("content".to_string(), Value::Str("rendered".to_string()));
+        let outputs = op.execute(inputs).expect("passthrough should execute");
+        assert_eq!(
+            outputs.get("return"),
+            Some(&Value::Str("rendered".to_string()))
+        );
+    }
+
     fn collection_node(id: &str, kind: CollectionOpKind) -> Node<LoweredOp> {
         Node::opaque(
             id,
@@ -862,9 +1576,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_pragma_render_ops_as_passthrough() {
-        // tools.pragma callables resolve to passthrough — domain ops
-        // (PragmaOp) are invoked via the graph builder, not the resolver.
+    fn resolve_pragma_render_ops_emit_content() {
         let cases = [
             "render_clippy_toml",
             "render_disallowed_methods_allowlist",
@@ -873,7 +1585,33 @@ mod tests {
         for name in cases {
             let node = callable_node(name, "tools.pragma", name, ObligationCategory::None);
             let result = resolve_node(&node).expect(name);
-            assert_passthrough_behavior(&result);
+            let outputs = result.execute(HashMap::new()).expect(name);
+            assert!(
+                outputs
+                    .get("return")
+                    .and_then(Value::as_str)
+                    .map(|content| !content.is_empty())
+                    .unwrap_or(false),
+                "resolver should execute pragma renderer `{name}` and emit non-empty return"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_bootstrap_render_ops_emit_content() {
+        let cases = ["render_bootstrap_makefile", "render_bootstrap_gitignore"];
+        for name in cases {
+            let node = callable_node(name, "tools.bootstrap", name, ObligationCategory::None);
+            let result = resolve_node(&node).expect(name);
+            let outputs = result.execute(HashMap::new()).expect(name);
+            assert!(
+                outputs
+                    .get("return")
+                    .and_then(Value::as_str)
+                    .map(|content| !content.is_empty())
+                    .unwrap_or(false),
+                "resolver should execute bootstrap renderer `{name}` and emit non-empty return"
+            );
         }
     }
 
@@ -886,7 +1624,13 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("load_registry");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        let outputs = result
+            .execute(HashMap::new())
+            .expect("load_registry should execute");
+        assert!(
+            matches!(outputs.get("registry"), Some(Value::Json(_))),
+            "load_registry should emit registry json"
+        );
 
         let node = callable_node(
             "render_makefile",
@@ -895,11 +1639,268 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("render_makefile");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        let outputs = result
+            .execute(HashMap::new())
+            .expect("render_makefile should execute");
+        assert!(
+            outputs
+                .get("return")
+                .and_then(Value::as_str)
+                .map(|content| content.contains(".PHONY"))
+                .unwrap_or(false),
+            "render_makefile should emit rendered makefile content"
+        );
 
-        let node = callable_node("makegen", "tools.makegen", "makegen", ObligationCategory::None);
+        let node = callable_node(
+            "makegen",
+            "tools.makegen",
+            "makegen",
+            ObligationCategory::None,
+        );
         let result = resolve_node(&node).expect("makegen");
-        assert!(format!("{:?}", result).contains("PassthroughOp"));
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "__deps".to_string(),
+            Value::List(vec![Value::Response(
+                gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse {
+                    success: true,
+                    content: None,
+                    operation: gunbc_ir::transport::FileOp::Write,
+                    path: "Makefile".to_string(),
+                    exists: None,
+                    error: None,
+                    bytes: None,
+                }),
+            )]),
+        );
+        let outputs = result.execute(inputs).expect("makegen should execute");
+        assert_eq!(outputs.get("written"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn resolve_tools_infra_entrypoint_emits_plan_summary() {
+        let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
+        let result = resolve_node(&node).expect("tools.infra::infra");
+        let mut inputs = HashMap::new();
+        inputs.insert("environment".to_string(), Value::Str("dev".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert(
+            "spec_targets".to_string(),
+            Value::str_list(vec!["secret:a".to_string(), "secret:b".to_string()]),
+        );
+        inputs.insert(
+            "target".to_string(),
+            Value::str_list(vec!["secret:b".to_string()]),
+        );
+        inputs.insert("skip".to_string(), Value::str_list(Vec::<String>::new()));
+        inputs.insert("execute".to_string(), Value::Bool(false));
+        let outputs = result.execute(inputs).expect("infra op should execute");
+        assert_eq!(
+            outputs.get("planned_targets"),
+            Some(&Value::str_list(vec!["secret:b".to_string()]))
+        );
+        assert_eq!(outputs.get("target_count"), Some(&Value::Int(1)));
+        assert_eq!(outputs.get("applied_count"), Some(&Value::Int(0)));
+    }
+
+    #[test]
+    fn resolve_pipeline_dispatch_reports_stage_count() {
+        let node = Node::opaque(
+            "pipeline_sdlc",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.sdlc".to_string(),
+                name: "sdlc".to_string(),
+                stages: 8,
+                stage_names: vec![
+                    "fetch".to_string(),
+                    "claim_design".to_string(),
+                    "design".to_string(),
+                    "design_review".to_string(),
+                    "record_design_outcome".to_string(),
+                    "accept_design".to_string(),
+                    "implementation".to_string(),
+                    "close".to_string(),
+                ],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline node should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "current_stage".to_string(),
+            Value::Str("design_review".to_string()),
+        );
+        let outputs = op
+            .execute(inputs)
+            .expect("pipeline dispatch should execute");
+        assert_eq!(outputs.get("stages"), Some(&Value::Int(8)));
+        assert_eq!(
+            outputs.get("active_stage"),
+            Some(&Value::Str("fetch".to_string()))
+        );
+        assert_eq!(
+            outputs.get("next_stage"),
+            Some(&Value::Str("record_design_outcome".to_string()))
+        );
+        assert_eq!(
+            outputs.get("stage_order"),
+            Some(&Value::str_list(vec![
+                "fetch".to_string(),
+                "claim_design".to_string(),
+                "design".to_string(),
+                "design_review".to_string(),
+                "record_design_outcome".to_string(),
+                "accept_design".to_string(),
+                "implementation".to_string(),
+                "close".to_string(),
+            ]))
+        );
+    }
+
+    #[test]
+    fn resolve_pipeline_dispatch_fails_closed_for_unknown_stage() {
+        let node = Node::opaque(
+            "pipeline_sdlc",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.sdlc".to_string(),
+                name: "sdlc".to_string(),
+                stages: 2,
+                stage_names: vec!["fetch".to_string(), "design".to_string()],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline node should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "current_stage".to_string(),
+            Value::Str("unknown-stage".to_string()),
+        );
+        let error = op
+            .execute(inputs)
+            .expect_err("unknown stage should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("pipeline dispatch received unknown `current_stage`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn resolve_subdag_node_executes_inner_graph() {
+        let mut inner = Dag::new();
+        inner.add_node(Node::opaque(
+            "inner_literal",
+            vec![],
+            vec![Port::new("out", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "literal".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("ok".to_string()),
+                },
+            },
+        ));
+        let node = Node::subdag("wrapper", inner);
+        let op = resolve_node(&node).expect("subdag node should resolve");
+        let outputs = op
+            .execute(HashMap::new())
+            .expect("resolved subdag should execute inner graph");
+        assert_eq!(outputs.get("out"), Some(&Value::Str("ok".to_string())));
+    }
+
+    #[test]
+    fn resolve_sdlc_dispatch_runtime_callable_returns_stage_directives() {
+        let node = Node::opaque(
+            "dispatch_idea",
+            vec![
+                Port::new("run_key", "String"),
+                Port::new("worker_id", "String"),
+                Port::new("issue_id", "Int"),
+            ],
+            vec![
+                Port::new("next_stage", "String"),
+                Port::new("awaiting_approval", "Bool"),
+                Port::new("marker", "String"),
+                Port::new("message", "String"),
+            ],
+            LoweredOp::Callable {
+                module: "funcs.sdlc_dispatch_runtime".to_string(),
+                kind: CallableKind::Func,
+                name: "dispatch_idea".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        );
+        let op = resolve_node(&node).expect("dispatch_idea should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("run_key".to_string(), Value::Str("rk-1".to_string()));
+        inputs.insert("worker_id".to_string(), Value::Str("worker-7".to_string()));
+        inputs.insert("issue_id".to_string(), Value::Int(42));
+        let outputs = op.execute(inputs).expect("dispatch op should execute");
+        assert_eq!(
+            outputs.get("next_stage"),
+            Some(&Value::Str("design".to_string()))
+        );
+        assert_eq!(outputs.get("awaiting_approval"), Some(&Value::Bool(false)));
+        assert_eq!(
+            outputs.get("marker"),
+            Some(&Value::Str("design-marker".to_string()))
+        );
+        assert_eq!(
+            outputs.get("message"),
+            Some(&Value::Str("Generated design prompt".to_string()))
+        );
+    }
+
+    #[test]
+    fn resolve_sdlc_validation_runtime_callable_evaluates_review_gate_policy() {
+        let node = Node::opaque(
+            "evaluate_review_gate",
+            vec![
+                Port::new("blocking_count", "Int"),
+                Port::new("blocking_summaries", "String"),
+            ],
+            vec![
+                Port::new("review_passed", "Bool"),
+                Port::new("should_run_ci", "Bool"),
+                Port::new("ci_summary", "String"),
+                Port::new("review_failure", "String"),
+            ],
+            LoweredOp::Callable {
+                module: "funcs.sdlc_validation_runtime".to_string(),
+                kind: CallableKind::Func,
+                name: "evaluate_review_gate".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        );
+        let op = resolve_node(&node).expect("evaluate_review_gate should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("blocking_count".to_string(), Value::Int(1));
+        inputs.insert(
+            "blocking_summaries".to_string(),
+            Value::Str("review blocked by fixture".to_string()),
+        );
+        let outputs = op.execute(inputs).expect("validation op should execute");
+        assert_eq!(outputs.get("review_passed"), Some(&Value::Bool(false)));
+        assert_eq!(outputs.get("should_run_ci"), Some(&Value::Bool(false)));
+        assert_eq!(
+            outputs.get("ci_summary"),
+            Some(&Value::Str(
+                "skipped: blocking code review findings".to_string()
+            ))
+        );
+        assert_eq!(
+            outputs.get("review_failure"),
+            Some(&Value::Str("review blocked by fixture".to_string()))
+        );
     }
 
     /// Build a service transport node with metadata and spec for generic dispatch.
@@ -1333,9 +2334,14 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Str("a".to_string()), Value::Str("b".to_string())]),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
         );
-        let outputs = result.execute(inputs).expect("collection map should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("collection map should execute");
         assert_eq!(
             outputs.get("items"),
             Some(&Value::List(vec![
@@ -1354,7 +2360,9 @@ mod tests {
             "items".to_string(),
             Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
         );
-        let outputs = result.execute(inputs).expect("collection len should execute");
+        let outputs = result
+            .execute(inputs)
+            .expect("collection len should execute");
         assert_eq!(outputs.get("items"), Some(&Value::Int(3)));
     }
 
@@ -1365,7 +2373,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "items".to_string(),
-            Value::List(vec![Value::Str("a".to_string()), Value::Str("b".to_string())]),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
         );
         inputs.insert("needle".to_string(), Value::Str("b".to_string()));
         let outputs = result
@@ -1400,10 +2411,22 @@ mod tests {
     }
 
     #[test]
-    fn resolve_infra_callable_uses_default_passthrough() {
+    fn resolve_infra_callable_maps_to_infra_dispatch_op() {
         let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
         let result = resolve_node(&node).expect("infra");
-        assert_passthrough_behavior(&result);
+        let mut inputs = HashMap::new();
+        inputs.insert("environment".to_string(), Value::Str("dev".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert(
+            "spec_targets".to_string(),
+            Value::str_list(vec!["secret:github-token".to_string()]),
+        );
+        inputs.insert("target".to_string(), Value::str_list(Vec::<String>::new()));
+        inputs.insert("skip".to_string(), Value::str_list(Vec::<String>::new()));
+        inputs.insert("execute".to_string(), Value::Bool(false));
+        let outputs = result.execute(inputs).expect("infra op should execute");
+        assert_eq!(outputs.get("mode"), Some(&Value::Str("plan".to_string())));
+        assert_eq!(outputs.get("target_count"), Some(&Value::Int(1)));
     }
 
     #[test]

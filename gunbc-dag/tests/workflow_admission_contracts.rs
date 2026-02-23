@@ -58,8 +58,7 @@ fn ci_and_test_all_specs_pass_default_admission_validation() {
         .expect("test-all workflow admission should pass");
 
     let sdlc = sdlc_workflow_spec().expect("sdlc workflow spec");
-    validate_workflow_admission(&sdlc, &registry)
-        .expect("sdlc workflow admission should pass");
+    validate_workflow_admission(&sdlc, &registry).expect("sdlc workflow admission should pass");
 }
 
 #[test]
@@ -164,7 +163,12 @@ fn missing_required_claims_fail_closed() {
 #[test]
 fn coarse_file_claim_conflicts_with_qualified_file_claim() {
     let mut dag = Dag::new();
-    dag.add_node(invoke_node("wf.a", "wf", "a", &[("file", AccessMode::Write)]));
+    dag.add_node(invoke_node(
+        "wf.a",
+        "wf",
+        "a",
+        &[("file", AccessMode::Write)],
+    ));
     dag.add_node(invoke_node(
         "wf.b",
         "wf",

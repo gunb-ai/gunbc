@@ -1,8 +1,6 @@
 //! Cloud configuration ops.
 
-use gunbc_exec::{
-    optional_str_list_strict, require_str, ExecError, Executable, OutputMap,
-};
+use gunbc_exec::{optional_str_list_strict, require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
@@ -82,14 +80,14 @@ impl Executable for CloudOps {
             }
             CloudOps::MapToGcpInputs { runtime } => {
                 let provider = require_str(&inputs, "provider")?;
-                if CloudProviderKind::parse(provider) != Some(CloudProviderKind::Gcp) {
+                if !provider_is_supported_for_gcp_map(provider, &inputs) {
                     return Err(ExecError::new(format!(
                         "cloud config provider '{provider}' is not gcp"
                     )));
                 }
 
                 let runtime_str = require_str(&inputs, "runtime")?;
-                if CloudRuntimeKind::parse(runtime_str) != Some(*runtime) {
+                if !runtime_is_supported_for_gcp_map(runtime_str, *runtime, &inputs) {
                     return Err(ExecError::new(format!(
                         "cloud config runtime '{runtime_str}' does not match expected '{}'",
                         runtime.as_str()
@@ -183,14 +181,14 @@ impl Executable for CloudOps {
             }
             CloudOps::MapToGcpSecretInputs { runtime } => {
                 let provider = require_str(&inputs, "provider")?;
-                if CloudProviderKind::parse(provider) != Some(CloudProviderKind::Gcp) {
+                if !provider_is_supported_for_gcp_map(provider, &inputs) {
                     return Err(ExecError::new(format!(
                         "cloud config provider '{provider}' is not gcp"
                     )));
                 }
 
                 let runtime_str = require_str(&inputs, "runtime")?;
-                if CloudRuntimeKind::parse(runtime_str) != Some(*runtime) {
+                if !runtime_is_supported_for_gcp_map(runtime_str, *runtime, &inputs) {
                     return Err(ExecError::new(format!(
                         "cloud config runtime '{runtime_str}' does not match expected '{}'",
                         runtime.as_str()
@@ -299,6 +297,38 @@ fn validate_scope_id(scope: &str) -> Result<(), ExecError> {
     Ok(())
 }
 
+fn provider_is_supported_for_gcp_map(provider: &str, inputs: &HashMap<String, Value>) -> bool {
+    if CloudProviderKind::parse(provider) == Some(CloudProviderKind::Gcp) {
+        return true;
+    }
+    if provider.trim().eq_ignore_ascii_case("mock") {
+        let execute_requested = inputs
+            .get("execute")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        return !execute_requested;
+    }
+    false
+}
+
+fn runtime_is_supported_for_gcp_map(
+    runtime: &str,
+    expected: CloudRuntimeKind,
+    inputs: &HashMap<String, Value>,
+) -> bool {
+    if CloudRuntimeKind::parse(runtime) == Some(expected) {
+        return true;
+    }
+    if runtime.trim().eq_ignore_ascii_case("mock") {
+        let execute_requested = inputs
+            .get("execute")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        return !execute_requested;
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,6 +412,56 @@ mod tests {
 
         let out = run_map_to_gcp(inputs);
         assert_eq!(out.get("allow_impersonation"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn map_to_gcp_inputs_accepts_mock_provider_in_dry_run_mode() {
+        let mut inputs = base_gcp_inputs();
+        inputs.insert("provider".to_string(), Value::Str("mock".to_string()));
+        inputs.insert("execute".to_string(), Value::Bool(false));
+        let out = run_map_to_gcp(inputs);
+        assert_eq!(out.get("project").and_then(Value::as_str), Some("gunbai-secrets"));
+    }
+
+    #[test]
+    fn map_to_gcp_inputs_rejects_mock_provider_when_execute_requested() {
+        let mut inputs = base_gcp_inputs();
+        inputs.insert("provider".to_string(), Value::Str("mock".to_string()));
+        inputs.insert("execute".to_string(), Value::Bool(true));
+        let error = CloudOps::MapToGcpInputs {
+            runtime: CloudRuntimeKind::LocalDev,
+        }
+        .execute(inputs)
+        .expect_err("mock provider should fail when execute=true");
+        assert!(
+            error.to_string().contains("is not gcp"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn map_to_gcp_inputs_accepts_mock_runtime_in_dry_run_mode() {
+        let mut inputs = base_gcp_inputs();
+        inputs.insert("runtime".to_string(), Value::Str("mock".to_string()));
+        inputs.insert("execute".to_string(), Value::Bool(false));
+        let out = run_map_to_gcp(inputs);
+        assert_eq!(out.get("audience").and_then(Value::as_str), Some("local-dev"));
+    }
+
+    #[test]
+    fn map_to_gcp_inputs_rejects_mock_runtime_when_execute_requested() {
+        let mut inputs = base_gcp_inputs();
+        inputs.insert("runtime".to_string(), Value::Str("mock".to_string()));
+        inputs.insert("execute".to_string(), Value::Bool(true));
+        let error = CloudOps::MapToGcpInputs {
+            runtime: CloudRuntimeKind::LocalDev,
+        }
+        .execute(inputs)
+        .expect_err("mock runtime should fail when execute=true");
+        assert!(
+            error.to_string().contains("does not match expected"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

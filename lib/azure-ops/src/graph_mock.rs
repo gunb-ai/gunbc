@@ -3,7 +3,7 @@
 use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
 };
-use gunbc_ir::{AuthScheme, Credential, Secret, Value};
+use gunbc_ir::Value;
 use gunbc_test::MockSpec;
 
 fn mock_config() -> CloudSecretConfig {
@@ -24,8 +24,7 @@ fn mock_config() -> CloudSecretConfig {
 }
 
 fn mock_credential() -> Value {
-    let cred = Credential::new(Secret::static_value("mock-token"), AuthScheme::Bearer);
-    cred.into()
+    Value::Str("mock-token".into())
 }
 
 /// Mock spec for Azure Key Vault stub graph.

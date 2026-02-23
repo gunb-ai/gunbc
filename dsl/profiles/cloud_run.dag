@@ -20,6 +20,10 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
+import std.types {
+  NonEmptyStr, StageOutcome, Signal, SignalType,
+  ArtifactPayload, ArtifactMarker, ArtifactType
+}
 // Profile bindings (compile-time interface -> implementation mapping):
 //   IssueProvider    -> github.Issues       { owner: "gunb-ai", repo: "gunbc", credential: secret("github-token") }
 //   ClaimStore       -> GcsClaimStore       { bucket: "gunbai-auto-sdlc-claims" }
@@ -37,12 +41,12 @@ service GcsClaimStore : ClaimStore {
   @auth(BearerToken)
 
   config {
-    bucket: String
-    project_id: String
+    bucket: NonEmptyStr
+    project_id: NonEmptyStr
   }
 
   operation acquire {
-    input { issue_id: String, stage: String, owner: String, lease_ttl_ms: Int }
+    input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, lease_ttl_ms: Int }
     output { acquired: Bool, conflict: Bool, lease_generation: Int }
     @rest(POST, "/b/{config.bucket}/o?name=claims/{issue_id}/{stage}.json")
     // Uses x-goog-if-generation-match:0 for create-if-not-exists semantics.
@@ -51,7 +55,7 @@ service GcsClaimStore : ClaimStore {
   }
 
   operation heartbeat {
-    input { issue_id: String, stage: String, owner: String, generation: Int }
+    input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { accepted: Bool }
     @rest(PUT, "/b/{config.bucket}/o/claims/{issue_id}/{stage}.json")
     @idempotent
@@ -59,7 +63,7 @@ service GcsClaimStore : ClaimStore {
   }
 
   operation release {
-    input { issue_id: String, stage: String, owner: String, generation: Int }
+    input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { released: Bool }
     @rest(DELETE, "/b/{config.bucket}/o/claims/{issue_id}/{stage}.json")
     @idempotent
@@ -72,29 +76,29 @@ service GcsOutcomeLedger : OutcomeLedger {
   @auth(BearerToken)
 
   config {
-    bucket: String
-    project_id: String
+    bucket: NonEmptyStr
+    project_id: NonEmptyStr
   }
 
   operation upsert {
-    input { run_key: String, stage: String, outcome: Json }
-    output { updated: Bool, previous: Json? }
+    input { run_key: NonEmptyStr, stage: NonEmptyStr, outcome: StageOutcome }
+    output { updated: Bool, previous: StageOutcome? }
     @rest(PUT, "/b/{config.bucket}/o?name=outcomes/{run_key}/{stage}.json")
     @idempotent
     @mock_response(status: 200, body: { "updated": true, "previous": null })
   }
 
   operation get {
-    input { run_key: String, stage: String }
-    output { found: Bool, outcome: Json? }
+    input { run_key: NonEmptyStr, stage: NonEmptyStr }
+    output { found: Bool, outcome: StageOutcome? }
     @rest(GET, "/b/{config.bucket}/o/outcomes/{run_key}/{stage}.json?alt=media")
     @idempotent @readonly
     @mock_response(status: 200, body: { "found": false, "outcome": null })
   }
 
   operation list_by_issue {
-    input { issue_id: String }
-    output { outcomes: List<Json> }
+    input { issue_id: NonEmptyStr }
+    output { outcomes: List<StageOutcome> }
     @rest(GET, "/b/{config.bucket}/o?prefix=outcomes/{issue_id}/")
     @readonly
     @mock_response(status: 200, body: { "outcomes": [] })
@@ -106,9 +110,9 @@ service PubSubSignalStore : SignalStore {
   @auth(BearerToken)
 
   config {
-    topic: String
-    subscription: String
-    project_id: String
+    topic: NonEmptyStr
+    subscription: NonEmptyStr
+    project_id: NonEmptyStr
   }
 
   operation emit {
@@ -121,13 +125,13 @@ service PubSubSignalStore : SignalStore {
 
   operation consume {
     input { signal_types: List<SignalType>, limit: Int? }
-    output { signals: List<Json> }
+    output { signals: List<Signal> }
     @rest(POST, "/projects/{config.project}/subscriptions/{config.subscription}:pull")
     @mock_response(status: 200, body: { "signals": [] })
   }
 
   operation ack {
-    input { idempotency_key: String }
+    input { idempotency_key: NonEmptyStr }
     output { acked: Bool }
     @rest(POST, "/projects/{config.project}/subscriptions/{config.subscription}:acknowledge")
     @idempotent
@@ -140,12 +144,12 @@ service GcsArtifactStore : ArtifactStore {
   @auth(BearerToken)
 
   config {
-    bucket: String
-    project_id: String
+    bucket: NonEmptyStr
+    project_id: NonEmptyStr
   }
 
   operation store {
-    input { artifact_id: String, payload: ArtifactPayload, content_hash: String }
+    input { artifact_id: NonEmptyStr, payload: ArtifactPayload, content_hash: NonEmptyStr }
     output { stored: Bool, conflict: Bool }
     @rest(POST, "/upload/storage/v1/b/{config.bucket}/o?name=artifacts/{artifact_id}")
     @idempotent
@@ -153,15 +157,15 @@ service GcsArtifactStore : ArtifactStore {
   }
 
   operation retrieve {
-    input { artifact_id: String }
-    output { found: Bool, payload: ArtifactPayload?, content_hash: String? }
+    input { artifact_id: NonEmptyStr }
+    output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
     @rest(GET, "/b/{config.bucket}/o/artifacts/{artifact_id}?alt=media")
     @readonly
     @mock_response(status: 200, body: { "found": false, "payload": null, "content_hash": null })
   }
 
   operation store_marker {
-    input { marker: Json }
+    input { marker: ArtifactMarker }
     output { stored: Bool }
     @rest(POST, "/upload/storage/v1/b/{config.bucket}/o?name=markers/{marker.run_key}/{marker.artifact_type}")
     @idempotent
@@ -169,8 +173,8 @@ service GcsArtifactStore : ArtifactStore {
   }
 
   operation get_canonical_marker {
-    input { run_key: String, artifact_type: String }
-    output { found: Bool, marker: Json? }
+    input { run_key: NonEmptyStr, artifact_type: ArtifactType }
+    output { found: Bool, marker: ArtifactMarker? }
     @rest(GET, "/b/{config.bucket}/o/markers/{run_key}/{artifact_type}?alt=media")
     @readonly
     @mock_response(status: 200, body: { "found": false, "marker": null })

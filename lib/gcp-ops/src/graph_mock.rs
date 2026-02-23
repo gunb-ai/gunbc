@@ -2,13 +2,12 @@
 
 use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::transport::TransportResponse;
-use gunbc_ir::{AuthScheme, Credential, Secret, SecretString, Value};
+use gunbc_ir::{SecretString, Value};
 use gunbc_primitives::{NetEnv, NetworkHandle};
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 
 fn mock_credential() -> Value {
-    let cred = Credential::new(Secret::static_value("mock-secret"), AuthScheme::Bearer);
-    cred.into()
+    Value::Str("mock-secret".into())
 }
 
 fn mock_net_handle() -> Value {

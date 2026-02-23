@@ -56,8 +56,7 @@ fn unique_temp_root(name: &str) -> PathBuf {
 /// directory-mode `PipelineContext` (no target file) plus the root path for cleanup.
 fn temp_dag_context(name: &str, content: &str) -> (PipelineContext, PathBuf) {
     let root = unique_temp_root(name);
-    std::fs::write(root.join("sample/main.dag"), content)
-        .expect("failed to write dag fixture");
+    std::fs::write(root.join("sample/main.dag"), content).expect("failed to write dag fixture");
     let context = PipelineContext {
         roots: vec![root.clone()],
         target_file: None,
@@ -410,10 +409,14 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
 
     // Unknown callables now resolve to PassthroughOp (the compiler validated
     // the callable exists; if it compiled, it's resolvable without a registry entry).
-    let resolved = resolve_lowered_dag(&dag).expect("unknown callables should resolve to passthrough");
+    let resolved =
+        resolve_lowered_dag(&dag).expect("unknown callables should resolve to passthrough");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
-    assert!(debug.contains("PassthroughOp"), "unexpected op debug: {debug}");
+    assert!(
+        debug.contains("PassthroughOp"),
+        "unexpected op debug: {debug}"
+    );
 }
 
 #[test]
@@ -439,7 +442,10 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
     let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
-    assert!(debug.contains("PassthroughOp"), "unexpected op debug: {debug}");
+    assert!(
+        debug.contains("PassthroughOp"),
+        "unexpected op debug: {debug}"
+    );
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("pipeline fixture should not contain subdag nodes")
     };
@@ -452,7 +458,9 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
 
 #[test]
 fn compile_resolve_execute_end_to_end_function_body_expressions() {
-    let (context, root) = temp_dag_context("function_body_e2e_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "function_body_e2e_dir",
+        r#"module sample.main
 fn summarize(flags: List<Bool>, include_disabled: Bool) -> String {
   scoped = if include_disabled {
     flags
@@ -483,7 +491,8 @@ func run() -> { report: String } {
     report: report
   }
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(
@@ -1064,12 +1073,15 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn compile_directory_unresolved_service_call_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unresolved_service_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unresolved_service_dir",
+        r#"module sample.main
 func run(path: String) -> { body: String } {
   let response = MissingStorage.read(path: path)
   return { body: response.body }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1117,7 +1129,9 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
 
 #[test]
 fn compile_directory_uses_bound_resource_capability_call_succeeds() {
-    let (context, root) = temp_dag_context("resource_bound_service_call_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "resource_bound_service_call_dir",
+        r#"module sample.main
 resource Filesystem {
   capability read {
     input { path: String }
@@ -1128,7 +1142,8 @@ func run(path: String) -> { body: String } uses fs: Filesystem {
   let response = fs.read(path: path)
   return { body: response.body }
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1169,11 +1184,14 @@ func run() -> { ok: Bool } uses fs: MissingResource {
 
 #[test]
 fn compile_directory_unresolved_uses_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unresolved_uses_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unresolved_uses_dir",
+        r#"module sample.main
 func run() -> { ok: Bool } uses fs: MissingResource {
   return { ok: true }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1215,12 +1233,15 @@ func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
 
 #[test]
 fn compile_directory_uses_resource_with_runtime_config_suffix_succeeds() {
-    let (context, root) = temp_dag_context("uses_config_suffix_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "uses_config_suffix_dir",
+        r#"module sample.main
 resource Filesystem {}
 func run() -> { ok: Bool } uses fs: Filesystem(mode: ReadWrite) {
   return { ok: true }
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1261,11 +1282,14 @@ func run() -> { ok: Bool } provides out: MissingResource {
 
 #[test]
 fn compile_directory_unresolved_provides_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unresolved_provides_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unresolved_provides_dir",
+        r#"module sample.main
 func run() -> { ok: Bool } provides out: MissingResource {
   return { ok: true }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1311,7 +1335,9 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
 
 #[test]
 fn compile_directory_provides_resource_with_runtime_config_suffix_succeeds() {
-    let (context, root) = temp_dag_context("provides_config_suffix_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "provides_config_suffix_dir",
+        r#"module sample.main
 resource ArtifactStore {
   release {
     let done = true
@@ -1320,7 +1346,8 @@ resource ArtifactStore {
 func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
   return { ok: true }
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1360,10 +1387,13 @@ fn run() -> Unit {}
 
 #[test]
 fn compile_directory_unresolved_import_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unresolved_import_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unresolved_import_dir",
+        r#"module sample.main
 import missing.dep
 fn run() -> Unit {}
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1404,11 +1434,14 @@ fn run() -> Unit {
 
 #[test]
 fn compile_directory_unresolved_call_target_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unresolved_call_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unresolved_call_dir",
+        r#"module sample.main
 fn run() -> Unit {
   missing()
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1420,7 +1453,9 @@ fn run() -> Unit {
 
 #[test]
 fn compile_directory_collection_intrinsics_typecheck_in_strict_mode() {
-    let (context, root) = temp_dag_context("collection_intrinsics_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "collection_intrinsics_dir",
+        r#"module sample.main
 type Stage {
   success: Bool,
   skipped: Bool,
@@ -1432,7 +1467,8 @@ fn summarize(stages: List<Stage>) -> Int {
   let done = labels |> ends_with("ok")
   passed
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1444,12 +1480,15 @@ fn summarize(stages: List<Stage>) -> Int {
 
 #[test]
 fn compile_directory_collection_option_emits_collection_nodes() {
-    let (context, root) = temp_dag_context("collection_option_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "collection_option_dir",
+        r#"module sample.main
 fn run(values: List<String>) -> String {
   rendered = values |> map(v => v) |> join(",")
   return rendered
 }
-"#);
+"#,
+    );
     let output = compile_from_context_with_options(
         &context,
         CompileOptions {
@@ -1482,11 +1521,14 @@ fn run(values: List<String>) -> String {
 
 #[test]
 fn compile_directory_function_typed_parameter_calls_typecheck_in_strict_mode() {
-    let (context, root) = temp_dag_context("fn_typed_param_calls_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "fn_typed_param_calls_dir",
+        r#"module sample.main
 fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
   callback(value)
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1498,7 +1540,9 @@ fn apply(value: Int, callback: fn(Int) -> Int) -> Int {
 
 #[test]
 fn compile_directory_sum_variant_constructor_calls_typecheck_in_strict_mode() {
-    let (context, root) = temp_dag_context("sum_variant_constructor_calls_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "sum_variant_constructor_calls_dir",
+        r#"module sample.main
 type CloudConfig
   = GcpConfig { project: String, region: String }
   | AwsConfig { region: String }
@@ -1506,7 +1550,8 @@ type CloudConfig
 fn make_gcp() -> CloudConfig {
   GcpConfig(project: "gunbc", region: "us-central1")
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1518,12 +1563,15 @@ fn make_gcp() -> CloudConfig {
 
 #[test]
 fn compile_directory_zero_arity_variant_identifier_returns_typecheck_in_strict_mode() {
-    let (context, root) = temp_dag_context("zero_arity_variant_identifier_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "zero_arity_variant_identifier_dir",
+        r#"module sample.main
 type Environment = Dev | Ci
 fn env() -> Environment {
   Dev
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1535,7 +1583,9 @@ fn env() -> Environment {
 
 #[test]
 fn compile_directory_lossy_match_fn_body_does_not_fail_missing_tail_mismatch() {
-    let (context, root) = temp_dag_context("lossy_match_body_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "lossy_match_body_dir",
+        r#"module sample.main
 type CloudConfig
   = GcpConfig { project: String }
   | AwsConfig { account: String }
@@ -1547,7 +1597,8 @@ fn provider_of(config: CloudConfig) -> CloudProvider {
     AwsConfig { ... } => Aws
   }
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -1645,7 +1696,9 @@ func run(path: String) -> { body: String } {
 
 #[test]
 fn compile_directory_duplicate_service_reports_ambiguous_service_call() {
-    let (context, root) = temp_dag_context("duplicate_service_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_service_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -1662,7 +1715,8 @@ func run(path: String) -> { body: String } {
   let response = FsStorage.read(path: path)
   return { body: response.body }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1703,11 +1757,14 @@ fn run() -> String { helper() }
 
 #[test]
 fn compile_directory_duplicate_callable_reports_ambiguous_call_target() {
-    let (context, root) = temp_dag_context("duplicate_callable_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_callable_dir",
+        r#"module sample.main
 fn helper() -> String { "a" }
 fn helper() -> String { "b" }
 fn run() -> String { helper() }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1748,11 +1805,14 @@ func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
 
 #[test]
 fn compile_directory_duplicate_resource_uses_reports_ambiguous_used_type() {
-    let (context, root) = temp_dag_context("duplicate_resource_uses_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_resource_uses_dir",
+        r#"module sample.main
 resource SharedResource {}
 resource SharedResource {}
 func run() -> { ok: Bool } uses fs: SharedResource { return { ok: true } }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1793,11 +1853,14 @@ func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
 
 #[test]
 fn compile_directory_duplicate_resource_provides_reports_ambiguous_provided_type() {
-    let (context, root) = temp_dag_context("duplicate_resource_provides_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_resource_provides_dir",
+        r#"module sample.main
 resource SharedResource {}
 resource SharedResource {}
 func run() -> { ok: Bool } provides out: SharedResource { return { ok: true } }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1868,11 +1931,14 @@ resource Disk implements MissingStorage {
 
 #[test]
 fn compile_directory_unresolved_service_interface_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unresolved_service_interface_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unresolved_service_interface_dir",
+        r#"module sample.main
 service FsStorage implements MissingStorage {
   operation read(path: String) -> { body: String }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1883,14 +1949,17 @@ service FsStorage implements MissingStorage {
 
 #[test]
 fn compile_directory_unresolved_resource_interface_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unresolved_resource_interface_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unresolved_resource_interface_dir",
+        r#"module sample.main
 resource Disk implements MissingStorage {
   capability read {
     input { path: String }
     output { body: String }
   }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1942,7 +2011,9 @@ service FsStorage implements Storage {
 
 #[test]
 fn compile_directory_duplicate_interface_reports_ambiguous_implements() {
-    let (context, root) = temp_dag_context("duplicate_interface_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_interface_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -1958,7 +2029,8 @@ interface Storage {
 service FsStorage implements Storage {
   operation read(path: String) -> { body: String }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -1999,11 +2071,14 @@ fn run() -> Unit {
 
 #[test]
 fn compile_directory_unit_return_without_tail_expression_succeeds() {
-    let (context, root) = temp_dag_context("unit_without_tail_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unit_without_tail_dir",
+        r#"module sample.main
 fn run() -> Unit {
   let x = 42
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2043,11 +2118,14 @@ fn run() -> String {
 
 #[test]
 fn compile_directory_missing_tail_non_unit_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("non_unit_without_tail_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "non_unit_without_tail_dir",
+        r#"module sample.main
 fn run() -> String {
   let x = 42
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2472,9 +2550,12 @@ fn run(values: Box<String, Int>) -> String { values }
 
 #[test]
 fn compile_directory_undefined_type_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("undefined_type_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "undefined_type_dir",
+        r#"module sample.main
 fn run(input: MissingType) -> String { "ok" }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2485,9 +2566,12 @@ fn run(input: MissingType) -> String { "ok" }
 
 #[test]
 fn compile_directory_type_mismatch_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("type_mismatch_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "type_mismatch_dir",
+        r#"module sample.main
 fn run() -> String { return 42 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2498,9 +2582,12 @@ fn run() -> String { return 42 }
 
 #[test]
 fn compile_directory_implicit_return_type_mismatch_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("implicit_return_mismatch_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "implicit_return_mismatch_dir",
+        r#"module sample.main
 fn run() -> String { 42 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2511,12 +2598,15 @@ fn run() -> String { 42 }
 
 #[test]
 fn compile_directory_no_such_field_record_literal_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("no_such_field_record_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "no_such_field_record_dir",
+        r#"module sample.main
 func run() -> { body: String } {
   let payload = { body: "ok" }
   return { body: payload.missing }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2527,10 +2617,13 @@ func run() -> { body: String } {
 
 #[test]
 fn compile_directory_no_such_field_named_record_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("no_such_field_named_record_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "no_such_field_named_record_dir",
+        r#"module sample.main
 type Payload { body: String }
 fn run(input: Payload) -> String { input.missing }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2541,9 +2634,12 @@ fn run(input: Payload) -> String { input.missing }
 
 #[test]
 fn compile_directory_unsatisfiable_refinement_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unsatisfiable_refinement_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unsatisfiable_refinement_dir",
+        r#"module sample.main
 fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2554,9 +2650,12 @@ fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
 
 #[test]
 fn compile_directory_generic_arity_mismatch_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("generic_arity_mismatch_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "generic_arity_mismatch_dir",
+        r#"module sample.main
 fn run(values: Map<String>) -> Int { 1 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2567,10 +2666,13 @@ fn run(values: Map<String>) -> Int { 1 }
 
 #[test]
 fn compile_directory_user_defined_generic_arity_mismatch_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("user_defined_generic_arity_mismatch_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "user_defined_generic_arity_mismatch_dir",
+        r#"module sample.main
 type Box<T> = T
 fn run(values: Box<String, Int>) -> String { values }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2581,10 +2683,13 @@ fn run(values: Box<String, Int>) -> String { values }
 
 #[test]
 fn compile_directory_call_arity_mismatch_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("call_arity_mismatch_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "call_arity_mismatch_dir",
+        r#"module sample.main
 fn fmt(value: String) -> String { value }
 fn run() -> String { fmt() }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2596,10 +2701,13 @@ fn run() -> String { fmt() }
 
 #[test]
 fn compile_directory_call_with_defaulted_params_succeeds() {
-    let (context, root) = temp_dag_context("call_defaults_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "call_defaults_dir",
+        r#"module sample.main
 fn greet(name: String, punctuation: String = "!") -> String { name }
 fn run() -> String { greet(name: "hi") }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2611,7 +2719,9 @@ fn run() -> String { greet(name: "hi") }
 
 #[test]
 fn compile_directory_pattern_call_with_extra_named_wiring_args_succeeds() {
-    let (context, root) = temp_dag_context("pattern_wiring_args_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "pattern_wiring_args_dir",
+        r#"module sample.main
 pattern ensure(should_act: Bool = true) -> { acted: Bool } {
   return { acted: should_act }
 }
@@ -2619,7 +2729,8 @@ fn run() -> Bool {
   let result = ensure(check: true, action: false)
   result.acted
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2631,14 +2742,17 @@ fn run() -> Bool {
 
 #[test]
 fn compile_directory_generic_fn_type_params_typecheck_in_strict_mode() {
-    let (context, root) = temp_dag_context("generic_fn_type_params_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "generic_fn_type_params_dir",
+        r#"module sample.main
 fn identity<T>(value: T) -> T {
   value
 }
 fn relay<T>(value: T) -> T {
   identity(value: value)
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2650,7 +2764,9 @@ fn relay<T>(value: T) -> T {
 
 #[test]
 fn compile_directory_generic_pattern_type_params_typecheck_in_strict_mode() {
-    let (context, root) = temp_dag_context("generic_pattern_type_params_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "generic_pattern_type_params_dir",
+        r#"module sample.main
 pattern passthrough<T: Serializable>(value: T) -> { value: T } {
   return { value: value }
 }
@@ -2658,7 +2774,8 @@ fn relay<T>(value: T) -> T {
   let result = passthrough(value: value)
   result.value
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2670,7 +2787,9 @@ fn relay<T>(value: T) -> T {
 
 #[test]
 fn compile_directory_named_record_literal_return_succeeds_in_strict_mode() {
-    let (context, root) = temp_dag_context("named_record_literal_return_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "named_record_literal_return_dir",
+        r#"module sample.main
 type StageResult {
   success: Bool,
   skipped: Bool
@@ -2678,7 +2797,8 @@ type StageResult {
 fn result() -> StageResult {
   { success: true, skipped: false }
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2690,7 +2810,9 @@ fn result() -> StageResult {
 
 #[test]
 fn compile_directory_resource_config_named_return_succeeds_in_strict_mode() {
-    let (context, root) = temp_dag_context("resource_config_named_return_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "resource_config_named_return_dir",
+        r#"module sample.main
 resource GcsBucket {
   config {
     name: String,
@@ -2700,7 +2822,8 @@ resource GcsBucket {
 fn gcp_dev_storage() -> GcsBucket.Config {
   { name: "gunbc-dev-artifacts", project: "gunbai-auto" }
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2712,10 +2835,13 @@ fn gcp_dev_storage() -> GcsBucket.Config {
 
 #[test]
 fn compile_directory_unknown_named_call_argument_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unknown_named_call_arg_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unknown_named_call_arg_dir",
+        r#"module sample.main
 fn fmt(value: String) -> String { value }
 fn run() -> String { fmt(text: "ok") }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2727,10 +2853,13 @@ fn run() -> String { fmt(text: "ok") }
 
 #[test]
 fn compile_directory_duplicate_named_call_argument_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("duplicate_named_call_arg_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_named_call_arg_dir",
+        r#"module sample.main
 fn fmt(value: String) -> String { value }
 fn run() -> String { fmt(value: "a", value: "b") }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2742,7 +2871,9 @@ fn run() -> String { fmt(value: "a", value: "b") }
 
 #[test]
 fn compile_directory_service_call_arity_mismatch_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("service_call_arity_mismatch_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "service_call_arity_mismatch_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -2756,7 +2887,8 @@ func run() -> { body: String } {
   let response = FsStorage.read()
   return { body: response.body }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2768,7 +2900,9 @@ func run() -> { body: String } {
 
 #[test]
 fn compile_directory_service_call_with_defaulted_inputs_succeeds() {
-    let (context, root) = temp_dag_context("service_call_defaults_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "service_call_defaults_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input {
@@ -2785,7 +2919,8 @@ func run() -> { ok: Bool } {
   let response = FsStorage.read(path: "/tmp")
   return { ok: response.ok }
 }
-"#);
+"#,
+    );
 
     let output = compile_from_context(&context).expect("compile should succeed");
     assert!(!output.lowered_dag.nodes.is_empty());
@@ -2797,7 +2932,9 @@ func run() -> { ok: Bool } {
 
 #[test]
 fn compile_directory_unknown_named_service_argument_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("unknown_named_service_arg_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "unknown_named_service_arg_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -2811,7 +2948,8 @@ func run() -> { body: String } {
   let response = FsStorage.read(name: "README.md")
   return { body: response.body }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -2823,7 +2961,9 @@ func run() -> { body: String } {
 
 #[test]
 fn compile_directory_duplicate_named_service_argument_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("duplicate_named_service_arg_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_named_service_arg_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -2837,7 +2977,8 @@ func run() -> { body: String } {
   let response = FsStorage.read(path: "a", path: "b")
   return { body: response.body }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3136,9 +3277,12 @@ resource Disk implements Storage {
 
 #[test]
 fn compile_directory_duplicate_parameter_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("duplicate_parameter_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_parameter_dir",
+        r#"module sample.main
 fn run(a: String, a: Int) -> String { a }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3149,9 +3293,12 @@ fn run(a: String, a: Int) -> String { a }
 
 #[test]
 fn compile_directory_duplicate_output_field_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("duplicate_output_field_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_output_field_dir",
+        r#"module sample.main
 func run() -> { ok: Bool, ok: String } { return { ok: true } }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3162,10 +3309,13 @@ func run() -> { ok: Bool, ok: String } { return { ok: true } }
 
 #[test]
 fn compile_directory_duplicate_uses_binding_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("duplicate_uses_binding_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_uses_binding_dir",
+        r#"module sample.main
 interface Storage { capability read { input { path: String } output { body: String } } }
 func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true } }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3176,10 +3326,13 @@ func run() -> { ok: Bool } uses fs: Storage uses fs: Storage { return { ok: true
 
 #[test]
 fn compile_directory_duplicate_provides_binding_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("duplicate_provides_binding_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "duplicate_provides_binding_dir",
+        r#"module sample.main
 interface Storage { capability read { input { path: String } output { body: String } } }
 func run() -> { ok: Bool } provides out: Storage provides out: Storage { return { ok: true } }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3190,10 +3343,13 @@ func run() -> { ok: Bool } provides out: Storage provides out: Storage { return 
 
 #[test]
 fn compile_directory_use_provide_binding_conflict_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("use_provide_binding_conflict_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "use_provide_binding_conflict_dir",
+        r#"module sample.main
 interface Storage { capability read { input { path: String } output { body: String } } }
 func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: true } }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3204,7 +3360,9 @@ func run() -> { ok: Bool } uses io: Storage provides io: Storage { return { ok: 
 
 #[test]
 fn compile_directory_missing_resource_capability_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("missing_resource_capability_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "missing_resource_capability_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -3221,7 +3379,8 @@ resource Disk implements Storage {
     output { body: String }
   }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3232,7 +3391,9 @@ resource Disk implements Storage {
 
 #[test]
 fn compile_directory_missing_service_operation_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("missing_service_operation_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "missing_service_operation_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -3246,7 +3407,8 @@ interface Storage {
 service FsStorage implements Storage {
   operation read(path: String) -> { body: String }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3259,7 +3421,9 @@ service FsStorage implements Storage {
 
 #[test]
 fn compile_directory_service_interface_signature_mismatch_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("service_signature_mismatch_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "service_signature_mismatch_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -3269,7 +3433,8 @@ interface Storage {
 service FsStorage implements Storage {
   operation read(path: Int) -> { body: String }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);
@@ -3281,7 +3446,9 @@ service FsStorage implements Storage {
 
 #[test]
 fn compile_directory_resource_interface_signature_mismatch_fails_in_typecheck_stage() {
-    let (context, root) = temp_dag_context("resource_signature_mismatch_dir", r#"module sample.main
+    let (context, root) = temp_dag_context(
+        "resource_signature_mismatch_dir",
+        r#"module sample.main
 interface Storage {
   capability read {
     input { path: String }
@@ -3294,7 +3461,8 @@ resource Disk implements Storage {
     output { body: String }
   }
 }
-"#);
+"#,
+    );
 
     let error = compile_from_context(&context).expect_err("compile should fail");
     assert_typecheck_stage_error(&error);

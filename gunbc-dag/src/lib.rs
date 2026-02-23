@@ -80,12 +80,11 @@ pub use sdlc::{
     mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
     promote_to_canonical_artifact_with_payload, provisional_marker, reconcile_entries,
     register_retry_failure, release_claim, retry_ready, should_replay_skip, try_acquire_claim,
-    upsert_provisional_artifact, upsert_provisional_artifact_with_payload,
-    update_agent_pr, update_agent_status, upsert_agent_record, validate_stage_transition,
-    AgentLedger, AgentLedgerRecord, AgentUpsertOutcome, ArtifactLedger, ArtifactPayload,
-    ArtifactRecord, ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ClaimRecord,
-    ReconcileAction, ReconcileEntry, ReconcilePlan, RetryState, RunExecutionStatus, RunStateLedger,
-    RunStateRecord,
+    update_agent_pr, update_agent_status, upsert_agent_record, upsert_provisional_artifact,
+    upsert_provisional_artifact_with_payload, validate_stage_transition, AgentLedger,
+    AgentLedgerRecord, AgentUpsertOutcome, ArtifactLedger, ArtifactPayload, ArtifactRecord,
+    ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction,
+    ReconcileEntry, ReconcilePlan, RetryState, RunExecutionStatus, RunStateLedger, RunStateRecord,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
@@ -133,7 +132,7 @@ pub use workspace::{
     build_bootstrap_subdag, build_build_subdag, build_ci_subdag, build_clippy_lint_all_subdag,
     build_clippy_subdag, build_codegen_subdag, build_dag_viz_subdag, build_deps_generate_subdag,
     build_deps_install_subdag, build_docgen_subdag, build_gist_rust_subdag, build_gist_subdag,
-    build_languages_subdag, build_makegen_subdag, build_pragma_subdag, build_infra_subdag,
+    build_infra_subdag, build_languages_subdag, build_makegen_subdag, build_pragma_subdag,
     build_testgen_subdag, build_workspace_dag, WorkspaceOp,
 };
 

@@ -16,6 +16,7 @@
 //! - `resource` -- resource declarations with acquire/release/capability
 //! - `interface` -- abstract capability contracts with @contract annotations
 //! - `pipeline` -- multi-stage pipeline declarations
+//! - `profile` -- deployment profile interface bindings
 //!
 //! # Golden targets
 //!
@@ -81,6 +82,7 @@ pub mod ast {
         ResourceDef(ResourceDef),
         InterfaceDef(InterfaceDef),
         PipelineDef(PipelineDef),
+        ProfileDef(ProfileDef),
         TestDef(TestDef),
         FixtureDef(FixtureDef),
         ProjectDef(ProjectDef),
@@ -271,6 +273,21 @@ pub mod ast {
         pub name: String,
         pub body: FuncBody,
         pub after: Vec<String>,
+    }
+
+    // ── Profiles ────────────────────────────────────────────────────
+
+    #[derive(Debug)]
+    pub struct ProfileDef {
+        pub name: String,
+        pub binds: Vec<ProfileBind>,
+    }
+
+    #[derive(Debug)]
+    pub struct ProfileBind {
+        pub interface_type: String,
+        pub implementation_type: String,
+        pub config_entries: Vec<(String, Expr)>,
     }
 
     // ── SDLC & Infra Blocks ─────────────────────────────────────────

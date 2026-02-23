@@ -223,7 +223,9 @@ fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    BTreeSet::new()
+    // Lane 2 convergence: these runtime pipelines are executed by dedicated
+    // SDLC/reconciler workers and intentionally not part of the workspace tool DAG.
+    ["sdlc", "reconciler"].into_iter().collect()
 }
 
 fn add_discovered_tool_subdags(
@@ -377,10 +379,8 @@ mod tests {
         .into_iter()
         .map(|name| name.to_string())
         .collect();
-        let pipeline_names: BTreeSet<String> = ["ci"]
-            .into_iter()
-            .map(|name| name.to_string())
-            .collect();
+        let pipeline_names: BTreeSet<String> =
+            ["ci"].into_iter().map(|name| name.to_string()).collect();
 
         let dag = build_workspace_dag_from_discovery(&tool_names, &pipeline_names)
             .expect("pure workspace dag composition should succeed");
@@ -443,6 +443,8 @@ mod tests {
         let discovered =
             discover_dsl_pipeline_names().expect("dsl pipeline discovery should succeed");
         assert!(discovered.contains("ci"));
+        assert!(discovered.contains("sdlc"));
+        assert!(discovered.contains("reconciler"));
     }
 
     #[test]
@@ -513,10 +515,8 @@ mod tests {
 
     #[test]
     fn test_registered_pipeline_subdag_mapping() {
-        let pipeline_names: BTreeSet<String> = ["ci"]
-            .into_iter()
-            .map(|name| name.to_string())
-            .collect();
+        let pipeline_names: BTreeSet<String> =
+            ["ci"].into_iter().map(|name| name.to_string()).collect();
         let mut dag = Dag::new();
         add_discovered_pipeline_subdags(&mut dag, &pipeline_names)
             .expect("registered pipeline mapping should build");

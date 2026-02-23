@@ -82,7 +82,9 @@ mod tests {
         let mut ledger = RunStateLedger::default();
         mark_run_completed(&mut ledger, "intent-a", "run-a", "design", 1000);
         assert!(should_replay_skip(&ledger, "intent-a", "run-a", "design"));
-        assert!(!should_replay_skip(&ledger, "intent-a", "run-a", "accepted"));
+        assert!(!should_replay_skip(
+            &ledger, "intent-a", "run-a", "accepted"
+        ));
         assert!(!should_replay_skip(&ledger, "intent-a", "run-b", "design"));
     }
 

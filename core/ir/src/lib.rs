@@ -119,9 +119,7 @@ pub use coerce::{
     AppliedCoercion, CardinalityCoercion, CardinalityDrift, CoercionError, CoercionKind,
     CoercionReport,
 };
-pub use contract::{
-    cross_product_witnesses, BoundaryWitness, TypeContract, TypeLayer,
-};
+pub use contract::{cross_product_witnesses, BoundaryWitness, TypeContract, TypeLayer};
 pub use dag::{
     build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
     Edge, EdgeKind, Port,

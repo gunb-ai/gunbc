@@ -1,0 +1,104 @@
+// funcs/sdlc_dispatch_runtime.dag -- compiled SDLC stage dispatch policy.
+//
+// Each function returns deterministic transition directives for a single
+// lifecycle stage. Rust selects which compiled callable to execute based on
+// the current stage, while side-effects (claim/retry/report updates) remain
+// in the worker runtime.
+
+module funcs.sdlc_dispatch_runtime
+
+func dispatch_idea(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  return {
+    next_stage: "design",
+    awaiting_approval: false,
+    marker: "design-marker",
+    message: "Generated design prompt",
+    value: { "next_stage": "design", "awaiting_approval": false }
+  }
+}
+
+func dispatch_design(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  return {
+    next_stage: "design-review",
+    awaiting_approval: false,
+    marker: "sdlc:design-review",
+    message: "Design review initiated for run_key `{run_key}`",
+    value: { "next_stage": "design-review", "awaiting_approval": false }
+  }
+}
+
+func dispatch_design_review(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  return {
+    next_stage: "design-review",
+    awaiting_approval: true,
+    marker: "sdlc:approval-gate",
+    message: "Awaiting explicit approval for run_key `{run_key}`; transition to `accepted` after review sign-off.",
+    value: { "next_stage": "design-review", "awaiting_approval": true }
+  }
+}
+
+func dispatch_accepted(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  return {
+    next_stage: "implementation",
+    awaiting_approval: false,
+    marker: "sdlc:implementation",
+    message: "Implementation started on branch `sdlc/issue-{issue_id}` for `{owner}/{repo}` (worker: `{worker_id}`)",
+    value: { "next_stage": "implementation", "awaiting_approval": false }
+  }
+}
+
+func dispatch_implementation(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  return {
+    next_stage: "closed",
+    awaiting_approval: false,
+    marker: "sdlc:acceptance",
+    message: "Acceptance testing and close for run_key `{run_key}` in `{owner}/{repo}` (worker: `{worker_id}`)",
+    value: { "next_stage": "closed", "awaiting_approval": false }
+  }
+}
+
+func dispatch_closed(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  return {
+    next_stage: "closed",
+    awaiting_approval: false,
+    marker: "",
+    message: "",
+    value: { "next_stage": "closed", "awaiting_approval": false }
+  }
+}

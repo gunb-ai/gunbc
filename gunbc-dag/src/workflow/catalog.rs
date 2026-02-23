@@ -213,9 +213,9 @@ pub(super) fn all_known_workflow_names() -> Vec<&'static str> {
 }
 
 pub(super) fn resolve_workflow_variant(name: &str) -> Option<&'static WorkflowVariantDef> {
-    WORKFLOW_VARIANTS.iter().find(|variant| {
-        variant.canonical_name == name || variant.aliases.contains(&name)
-    })
+    WORKFLOW_VARIANTS
+        .iter()
+        .find(|variant| variant.canonical_name == name || variant.aliases.contains(&name))
 }
 
 pub(super) fn build_workflow_spec(
@@ -715,9 +715,9 @@ fn parse_stage_claims(body: &str) -> Vec<UnitClaim> {
     }
 
     claims.sort_by(|left, right| {
-        left.claim_id
-            .cmp(&right.claim_id)
-            .then_with(|| access_mode_rank(left.access_mode).cmp(&access_mode_rank(right.access_mode)))
+        left.claim_id.cmp(&right.claim_id).then_with(|| {
+            access_mode_rank(left.access_mode).cmp(&access_mode_rank(right.access_mode))
+        })
     });
     claims.dedup();
     claims
@@ -840,7 +840,10 @@ fn codegen_ref() -> ProcessUnitRef {
 }
 
 fn default_compilation_claims() -> Vec<UnitClaim> {
-    vec![UnitClaim::write("file:target"), UnitClaim::read("tool:cargo")]
+    vec![
+        UnitClaim::write("file:target"),
+        UnitClaim::read("tool:cargo"),
+    ]
 }
 
 fn default_codegen_claims() -> Vec<UnitClaim> {
@@ -861,10 +864,12 @@ mod tests {
         assert_eq!(claims.len(), 2);
         assert!(claims
             .iter()
-            .any(|claim| claim.claim_id.0 == "file:workspace" && claim.access_mode == AccessMode::Write));
+            .any(|claim| claim.claim_id.0 == "file:workspace"
+                && claim.access_mode == AccessMode::Write));
         assert!(claims
             .iter()
-            .any(|claim| claim.claim_id.0 == "network:github" && claim.access_mode == AccessMode::Read));
+            .any(|claim| claim.claim_id.0 == "network:github"
+                && claim.access_mode == AccessMode::Read));
     }
 
     #[test]

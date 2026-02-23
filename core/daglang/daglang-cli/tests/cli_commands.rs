@@ -50,31 +50,6 @@ fn unique_temp_dir(name: &str) -> PathBuf {
     ))
 }
 
-fn unique_workspace_target_dir(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    workspace_root().join("target").join(format!(
-        "daglang_cli_{name}_{}_{}",
-        std::process::id(),
-        nanos
-    ))
-}
-
-fn generated_cli_bindings(main_rs: &str) -> Vec<(String, String)> {
-    main_rs
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            let rest = trimmed.strip_prefix("input_mocks.set_input(\"")?;
-            let (node_id, after_node) = rest.split_once("\", \"")?;
-            let (port_name, _) = after_node.split_once("\", Value::Str(val.clone()));")?;
-            Some((node_id.to_string(), port_name.to_string()))
-        })
-        .collect()
-}
-
 fn assert_no_compile_stage_banners(stderr: &str) {
     assert!(
         !stderr.contains("typecheck errors"),
@@ -168,10 +143,9 @@ fn dsl_parse_error_files(dsl_root: &Path) -> BTreeSet<PathBuf> {
     let roots = vec![dsl_root.to_path_buf()];
     match ModuleGraph::discover(&roots) {
         Ok(_) => BTreeSet::new(),
-        Err(ResolveError::ParseErrors(errors)) => errors
-            .into_iter()
-            .map(|(path, _)| path)
-            .collect(),
+        Err(ResolveError::ParseErrors(errors)) => {
+            errors.into_iter().map(|(path, _)| path).collect()
+        }
         Err(other) => panic!("failed to inspect dsl parse errors: {other}"),
     }
 }
@@ -1046,7 +1020,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 56 file(s)"),
+        stdout.contains("OK: checked 90 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1075,7 +1049,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(56));
+    assert_eq!(stdout, expected_check_success_stdout(90));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -11504,7 +11478,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 56 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 90 file(s)"),
         "default check should parse full DSL corpus"
     );
 }
@@ -13257,10 +13231,6 @@ fn compile_non_rust_layer_one_reports_error() {
 }
 
 #[test]
-
-#[test]
-
-#[test]
 fn viz_without_self_defaults_to_compiled_ascii_graph() {
     let output = Command::new(daglang_bin())
         .arg("viz")
@@ -13402,7 +13372,6 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
 }
 
 /// D1.8 — Compile pragma.dag to exec-runtime layer and verify generated files.
-#[test]
 
 /// D1.8 — Full end-to-end test: compile pragma.dag to exec-runtime binary,
 /// build it, run it, and verify the pragma config files are generated.

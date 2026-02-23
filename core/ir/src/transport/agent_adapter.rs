@@ -101,8 +101,10 @@ mod tests {
         assert_eq!(handle.intake_key, "key-1");
 
         let status = adapter.poll_status(&handle).expect("poll");
-        assert!(matches!(status, AgentStatus::Completed { branch, commit_sha }
-            if branch == "feature/test" && commit_sha == "abc123"));
+        assert!(
+            matches!(status, AgentStatus::Completed { branch, commit_sha }
+            if branch == "feature/test" && commit_sha == "abc123")
+        );
     }
 
     #[test]

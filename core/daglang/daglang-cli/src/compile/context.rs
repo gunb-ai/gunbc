@@ -16,7 +16,10 @@ use super::{resolve_lowered_dag, CheckOutput, CompileError, CompileOptions, Comp
 /// targets. Directories named with a `.dag` suffix are rejected with an
 /// explicit error — callers should pass the directory path without the
 /// `.dag` suffix or reference a `.dag` file inside it.
-pub fn build_context(cwd: &std::path::Path, input: Option<&String>) -> Result<PipelineContext, String> {
+pub fn build_context(
+    cwd: &std::path::Path,
+    input: Option<&String>,
+) -> Result<PipelineContext, String> {
     build_context_with_default_roots(cwd, input, None)
 }
 

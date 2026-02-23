@@ -142,7 +142,7 @@ service github.Issues : IssueProvider {
   operation discover {
     input {
       labels: List<String>
-      state: String? = "open"
+      state: IssueState? = Open
     }
     output {
       issues: List<TrackedIssue>

@@ -407,15 +407,48 @@ pub fn render_progress_with_format(derived: &DerivedArtifacts, format: OutputFor
             for (index, wave) in manifest.waves.iter().enumerate() {
                 writeln!(out, "    [{index}] {}", wave.join(", ")).ok();
             }
-            writeln!(out, "  entrypoint_nodes: {}", if manifest.entrypoint_nodes.is_empty() { "(none)".to_string() } else { manifest.entrypoint_nodes.join(", ") }).ok();
-            writeln!(out, "  boundary_nodes: {}", if manifest.boundary_nodes.is_empty() { "(none)".to_string() } else { manifest.boundary_nodes.join(", ") }).ok();
+            writeln!(
+                out,
+                "  entrypoint_nodes: {}",
+                if manifest.entrypoint_nodes.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    manifest.entrypoint_nodes.join(", ")
+                }
+            )
+            .ok();
+            writeln!(
+                out,
+                "  boundary_nodes: {}",
+                if manifest.boundary_nodes.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    manifest.boundary_nodes.join(", ")
+                }
+            )
+            .ok();
             out.push_str("  parallel_groups:\n");
             for group in &manifest.parallel_groups {
-                writeln!(out, "    - depth={} nodes={}", group.depth, group.nodes.join(", ")).ok();
+                writeln!(
+                    out,
+                    "    - depth={} nodes={}",
+                    group.depth,
+                    group.nodes.join(", ")
+                )
+                .ok();
             }
             out.push_str("  scatter_points:\n");
             render_scatter_points_text(&mut out, &manifest.scatter_points);
-            writeln!(out, "  interactive_nodes: {}", if manifest.interactive_nodes.is_empty() { "(none)".to_string() } else { manifest.interactive_nodes.join(", ") }).ok();
+            writeln!(
+                out,
+                "  interactive_nodes: {}",
+                if manifest.interactive_nodes.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    manifest.interactive_nodes.join(", ")
+                }
+            )
+            .ok();
             out.push_str("  capture_modes:\n");
             for (node_id, mode) in &manifest.capture_modes {
                 writeln!(out, "    - {node_id}: {mode:?}").ok();
@@ -427,30 +460,32 @@ pub fn render_progress_with_format(derived: &DerivedArtifacts, format: OutputFor
                 out.push_str("    (none)\n");
             } else {
                 for (node_id, usages) in &manifest.resources {
-                    let usage_text = usages.iter().map(|u| format!("{}:{}", u.resource, u.usage)).collect::<Vec<_>>().join(", ");
+                    let usage_text = usages
+                        .iter()
+                        .map(|u| format!("{}:{}", u.resource, u.usage))
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     writeln!(out, "    - {node_id}: {usage_text}").ok();
                 }
             }
             out.push_str(&render_obligations_text(&derived.obligations));
             out
         }
-        OutputFormat::Json => {
-            json!({
-                "total_nodes": manifest.total_nodes,
-                "total_edges": manifest.total_edges,
-                "waves": manifest.waves,
-                "entrypoint_nodes": manifest.entrypoint_nodes,
-                "boundary_nodes": manifest.boundary_nodes,
-                "parallel_groups": manifest.parallel_groups,
-                "scatter_points": manifest.scatter_points,
-                "interactive_nodes": manifest.interactive_nodes,
-                "capture_modes": manifest.capture_modes,
-                "stage_groups": manifest.stage_groups,
-                "resources": manifest.resources,
-                "test_obligations": derived.obligations,
-            })
-            .to_string()
-        }
+        OutputFormat::Json => json!({
+            "total_nodes": manifest.total_nodes,
+            "total_edges": manifest.total_edges,
+            "waves": manifest.waves,
+            "entrypoint_nodes": manifest.entrypoint_nodes,
+            "boundary_nodes": manifest.boundary_nodes,
+            "parallel_groups": manifest.parallel_groups,
+            "scatter_points": manifest.scatter_points,
+            "interactive_nodes": manifest.interactive_nodes,
+            "capture_modes": manifest.capture_modes,
+            "stage_groups": manifest.stage_groups,
+            "resources": manifest.resources,
+            "test_obligations": derived.obligations,
+        })
+        .to_string(),
     }
 }
 
@@ -474,18 +509,23 @@ pub fn render_topology_with_format(derived: &DerivedArtifacts, format: OutputFor
                 out.push_str("    (none)\n");
             } else {
                 for boundary in &manifest.subdag_boundaries {
-                    writeln!(out, "    - {} label={} inner=[{}]", boundary.node_id, boundary.label, boundary.inner_nodes.join(", ")).ok();
+                    writeln!(
+                        out,
+                        "    - {} label={} inner=[{}]",
+                        boundary.node_id,
+                        boundary.label,
+                        boundary.inner_nodes.join(", ")
+                    )
+                    .ok();
                 }
             }
             out
         }
-        OutputFormat::Json => {
-            json!({
-                "topology": manifest.topology,
-                "labels": manifest.labels,
-                "subdag_boundaries": manifest.subdag_boundaries,
-            })
-            .to_string()
-        }
+        OutputFormat::Json => json!({
+            "topology": manifest.topology,
+            "labels": manifest.labels,
+            "subdag_boundaries": manifest.subdag_boundaries,
+        })
+        .to_string(),
     }
 }
