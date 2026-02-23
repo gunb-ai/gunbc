@@ -138,7 +138,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | **TS-1** | **GCP credential port types**: 62 ports in `lib/gcp-ops/src/graph.rs`. Credential ports → `Secret`. Identity ports → `GcpServiceAccountEmail`. Project ports → `GcpProjectId`. Audience ports → `NonEmptyString`. 2 duplicate graph functions share these ports. | — | L | |
 | **TS-1b** | **Cloud-ops port types**: 43 ports across 3 files in `lib/cloud-ops/src/` (`graph.rs` 28, `infra_plan_apply.rs` 5, `infra_bootstrap.rs` 10). `github_credential_graph.rs` deleted — 6 ports removed. | TS-1 | M | |
 | **TS-1c** | **Review + LLM port types**: `lib/review/src/graph.rs` (102 ports), `lib/llm-ops/src/graph.rs` (13 ports). `provider`, `model`, `content` → `NonEmptyString`. `secret_name` → `SecretName`. | — | L | |
-| **TS-1d** | **Remaining graph port types**: `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). `aws-ops/graph.rs` (3), `azure-ops/graph.rs` (3). `gist/graph.rs` (6), `clippy/graph.rs` deleted — 15 ports removed; DSL handles typing now. Gist Rust crates (`lib/gist-ops/`, `lib/tools/gist/`) fully deleted; gist remains DSL-only via `dsl/workflows/gist.dag`. | — | S | |
+| **TS-1d** | **Remaining graph port types**: `lib/tools/deps/src/graph.rs` (1), `gunbc-dag/src/testgen_dag/graph.rs` (1). `aws-ops/graph.rs` (3), `azure-ops/graph.rs` (3). `gist/graph.rs` (6), `clippy/graph.rs` deleted — 15 ports removed; DSL handles typing now. Gist Rust crates (`lib/gist-ops/`, `lib/tools/gist/`) fully deleted; gist remains DSL-only via `dsl/workflows/gist.dag`. | — | S | ✅ Done |
 
 **Parallelism**: TS-1, TS-1c, TS-1d are independent. TS-1b depends on TS-1.
 
@@ -433,7 +433,7 @@ Lane 1 + Lane 2 merged
 | ID | Task | Location | Deps | Size | Status |
 |----|------|----------|------|------|--------|
 | **CU-1** | **Audit near-empty stub files**: 2 remaining: `gunbc-dag/src/policy/mod.rs`, `gunbc-dag/tests/common/mod.rs` (valid module tree structure — keep). ~~5 deleted~~: `c_ir.rs`, `go_ir.rs`, `register_ir.rs` (Batch 1d), `testgen/render.rs` (dead re-export), `cloud_env.rs` (inlined). `daglang-cli/src/lib.rs` is minimal but functional. | Various | — | S | ✅ Done |
-| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | |
+| **CU-2** | **Narrow `#[allow(dead_code)]` on Parser impl**: Block-level attr at `daglang-syntax/src/parser.rs:130` masks dead code. Replace with per-method attributes. Identify and remove actual dead methods. | `core/daglang/daglang-syntax/src/parser.rs` | After Lane 2 S12-6 | S | ✅ Done (no dead methods; removed unnecessary allow) |
 | **CU-3** | **Factor common mock helpers**: 2 largest mock files (llm-ops 1043 lines, review 620) share patterns. Extract to shared `gunbc-test::mock_helpers` module. Gist mock file deleted with crate. | `lib/*/src/graph_mock.rs` | — | M | |
 | **CU-4** | **Document side-effect imports**: ~16 `use ... as _;` imports across binary and test files. Add explanatory comments. | `gunbc-dag/src/bin/*.rs` | — | S | ✅ Done |
 | **CU-5** | **Archive `design-eliminate-registration-lists.md`**: Phase 1 complete; Phases 2-3 covered by Lanes G/H (done). Move to `TODO/TODONE/`. | `TODO/` | — | S | ✅ Done |
