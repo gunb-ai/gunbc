@@ -305,7 +305,7 @@ cargo clippy --all-targets -- -D warnings
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **6E-1** | Migrate `lib/git-ops/src/lib.rs` (1,014 LOC) — git prepare/parse ops to service operations in `dsl/services/git.dag`. Each prepare/parse pair maps to `ShellPrepareOp`/`ShellParseOp` parameterized by `ServiceOperationSpec`. | -- | M | Pending |
-| **6E-2** | Migrate `lib/gist-ops/src/lib.rs` (1,317 LOC) — gist prepare/parse ops to service operations in `dsl/services/github/gist.dag`. REST prepare/parse pairs mapping to `RestPrepareOp`/`RestParseOp`. | -- | M | Pending |
+| **6E-2** | Migrate `lib/gist-ops/src/lib.rs` (1,317 LOC) — gist prepare/parse ops to service operations in `dsl/services/github/gist.dag`. REST prepare/parse pairs mapping to `RestPrepareOp`/`RestParseOp`. **Blocked by RV-7**: the current compiler emits opaque `Callable` nodes for cross-module `func` calls, so `shared.gist_modes::share_content` → `github.Gist.Create` never generates transport triplets. Without RV-7, gist/dag_viz boundary ports produce `Value::Skipped` (no URL output). Verification after RV-7 lands: `make gist-recent` must print a gist URL; `make dag-viz` must print a gist URL. | RV-7 | M | Pending |
 | **6E-3** | Migrate `lib/blob/src/lib.rs` (942 LOC) — content acquisition ops to service operations in `dsl/services/blob.dag`. | -- | M | Pending |
 | **6E-4** | Migrate `lib/markdown/src/lib.rs` (484 LOC) — markdown rendering ops to DSL `fn` or `uses rust_fn`. Pure transforms with no transport interaction. | -- | S | Pending |
 | **6E-5** | Migrate `lib/design-ops/src/lib.rs` (141 LOC) — design review ops to DSL `fn`. Smallest crate, pure transforms. | -- | S | Pending |
@@ -867,7 +867,7 @@ See `TODO/backlog.md` for details. Parked for future consideration:
 
 **Source**: Review feedback (2026-02-22/23). Each task ID is referenced in code (e.g., `// RV-3`, `See \`RV-1\``).
 
-**Parallelism**: Fully parallel with Lanes 6A–6C (disjoint file sets, no blocking deps). `RV-6` depends on `RV-1`.
+**Parallelism**: Fully parallel with Lanes 6A–6C (disjoint file sets, no blocking deps). `RV-6` depends on `RV-1`. `RV-7` blocks `6E-2` (gist-ops migration) — the compiler must inline cross-module function bodies before gist/dag_viz graphs can produce output URLs.
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
@@ -877,19 +877,21 @@ See `TODO/backlog.md` for details. Parked for future consideration:
 | **RV-4** | **Expose structured execution traces from generated runtimes.** Replace stdout-scraping node ID parsing with JSON trace events. Expose entrypoint and param-source IDs from compiler output so parity tests don't reverse-engineer naming. | -- | M | Pending |
 | **RV-5** | **Migrate testgen to DAG-orchestrated execution.** Current `gunbc-testgen` uses imperative loop + `catch_unwind` + direct file I/O, bypassing the DAG engine. Rewrite to execute via `dsl/tools/testgen.dag`. | -- | L | Pending |
 | **RV-6** | **Unify resource port naming convention.** Output ports use `file:write`/`file:read`, input ports use `res:file`. Converge on a single convention and eliminate the bridging pattern. | RV-1 | L | Pending |
+| **RV-7** | **Cross-module function body inlining in lowering.** When the lowering pass encounters an imported `func` call (e.g., `shared.gist_modes::share_content` from `tools/gist.dag`), it emits an opaque `LoweredOp::Callable` that becomes `PassthroughOp` at resolve time — losing all transitive service calls (`github.Gist.Create`, GCP credential chain, `git.Core.CurrentBranch`). The lowering must either inline imported function bodies or emit `SubDag` nodes with proper transport chains so that service calls within shared modules generate transport triplets in the calling module's graph. **Affected tools**: `gist.dag`, `dag_viz.dag` (both import `shared.gist_modes`). **Symptom**: `make gist-recent` executes but produces no URL output — boundary ports resolve to `Value::Skipped`. **Note**: the BFS import graph traversal in `daglang-driver` already discovers transitive module dependencies (e.g., `services.github.gist` is discovered through `shared.gist_modes`); the gap is in the lowering pass which doesn't expand function bodies from imported modules to find their service calls. | -- | L | Pending |
 
 #### Lane 7 Scope
 
 | File | Task |
 |------|------|
 | `gunbc-dag/src/resolve.rs` | RV-1, RV-6 |
-| `core/daglang/daglang-lower/src/lib.rs` | RV-1, RV-2, RV-6 |
+| `core/daglang/daglang-lower/src/lib.rs` | RV-1, RV-2, RV-6, RV-7 |
 | `core/daglang/daglang-emit/src/rust_exec_runtime.rs` | RV-2, RV-4 |
 | `gunbc-dag/src/bin/sdlc.rs` | RV-3 |
 | `core/daglang/daglang-cli/tests/codegen_parity.rs` | RV-4 |
 | `gunbc-dag/src/bin/testgen.rs` | RV-5 |
 | `core/ir/src/resource/mod.rs` | RV-6 |
 | `lib/gist-ops/src/lib.rs`, `lib/review/src/graph.rs` | RV-6 |
+| `dsl/shared/gist_modes.dag`, `dsl/tools/gist.dag`, `dsl/tools/dag_viz.dag` | RV-7 (verification) |
 
 #### Lane 7 Verification
 
@@ -897,6 +899,11 @@ See `TODO/backlog.md` for details. Parked for future consideration:
 cargo check --workspace
 cargo test --workspace --lib
 cargo clippy --all-targets -- -D warnings
+# RV-7 specific: gist/dag_viz graphs must include transport triplets for cross-module service calls
+cargo test -p gunbc-dag --lib -- dsl_builder::tests::builds_gist_dsl_graph
+cargo test -p gunbc-dag --lib -- dsl_builder::tests::builds_dag_viz_dsl_graph
+# End-to-end: boundary ports must resolve to actual URLs, not Value::Skipped
+make gist-recent  # must print a gist URL in Outputs section
 ```
 
 ---
