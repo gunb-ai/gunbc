@@ -205,45 +205,6 @@ mod tests {
     }
 
     #[test]
-    fn gist_graph_boundary_diagnosis() {
-        use gunbc_ir::{detect_boundaries, NodeBody};
-        let dag = build_gist_graph_dsl().expect("gist DSL graph should resolve");
-
-        eprintln!("=== ORIGINAL (pre-lower) graph ===");
-        eprintln!("Nodes ({}):", dag.nodes.len());
-        for node in &dag.nodes {
-            let kind = match &node.body {
-                NodeBody::Opaque(_) => "Opaque",
-                NodeBody::SubDag(_) => "SubDag",
-            };
-            let outs: Vec<String> = node.outputs.iter().map(|p| p.name.0.clone()).collect();
-            eprintln!("  {} [{}] outputs={:?}", node.id.0, kind, outs);
-        }
-        eprintln!("Edges ({}):", dag.edges.len());
-        for edge in &dag.edges {
-            eprintln!("  {}.{} -> {}.{}", edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0);
-        }
-
-        let lowered = gunbc_exec::lower(&dag).expect("lowering should succeed");
-        eprintln!("\n=== LOWERED (flat) graph ===");
-        eprintln!("Nodes ({}):", lowered.dag.nodes.len());
-        for node in &lowered.dag.nodes {
-            let outs: Vec<String> = node.outputs.iter().map(|p| p.name.0.clone()).collect();
-            eprintln!("  {} outputs={:?}", node.id.0, outs);
-        }
-        eprintln!("Edges ({}):", lowered.dag.edges.len());
-        for edge in &lowered.dag.edges {
-            eprintln!("  {}.{} -> {}.{}", edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0);
-        }
-
-        let boundaries = detect_boundaries(&lowered.dag);
-        eprintln!("\n=== BOUNDARIES ===");
-        for (nid, pn) in &boundaries.boundary_ports {
-            eprintln!("  boundary: {}.{}", nid.0, pn.0);
-        }
-    }
-
-    #[test]
     fn builds_testgen_dsl_graph() {
         let dag = build_testgen_graph_dsl().expect("testgen DSL graph should resolve");
         assert!(!dag.nodes.is_empty());

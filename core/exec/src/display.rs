@@ -996,38 +996,36 @@ fn render_value_for_port(port: &str, value: &Value) -> Option<String> {
 }
 
 /// Print outputs for DAG boundary ports (terminal outputs).
+///
+/// Only prints when there are actual displayable values (not Skipped/Unit).
+/// This avoids showing an empty "Outputs:" header when the DAG compiler
+/// hasn't fully materialized the output chain (e.g., cross-module service calls).
 fn print_boundary_outputs(log: &crate::ExecutionLog, boundaries: &gunbc_ir::BoundaryInfo) {
     if boundaries.boundary_ports.is_empty() {
         return;
     }
 
-    // DEBUG: show boundary ports and log entries for diagnostics
-    if std::env::var("GUNBC_DEBUG_BOUNDARY").is_ok() {
-        eprintln!("[DEBUG] boundary_ports ({}):", boundaries.boundary_ports.len());
-        for (nid, pn) in &boundaries.boundary_ports {
-            eprintln!("[DEBUG]   node={:?} port={:?}", nid.0, pn.0);
-        }
-        eprintln!("[DEBUG] log entries ({}):", log.entries.len());
-        for entry in &log.entries {
-            let port_names: Vec<&String> = entry.outputs.keys().collect();
-            eprintln!("[DEBUG]   node={:?} outputs={:?} intercepted={}", entry.node_id, port_names, entry.was_intercepted);
-        }
-    }
-
-    println!();
-    println!("Outputs:");
-
+    // Collect displayable values first to avoid printing an empty header.
+    let mut displayable: Vec<(String, &Value)> = Vec::new();
     for (node_id, port_name) in &boundaries.boundary_ports {
         let entry = log.get(&node_id.0);
         let value = entry.and_then(|e| e.outputs.get(&port_name.0));
         if let Some(value) = value {
-            let label = format!("{}.{}", node_id.0, port_name.0);
-            print_value(&label, value);
-        } else if std::env::var("GUNBC_DEBUG_BOUNDARY").is_ok() {
-            let has_entry = entry.is_some();
-            let has_port = entry.map(|e| e.outputs.contains_key(&port_name.0)).unwrap_or(false);
-            eprintln!("[DEBUG] MISS: node={:?} port={:?} has_entry={} has_port={}", node_id.0, port_name.0, has_entry, has_port);
+            if render_value_for_port(&port_name.0, value).is_some() {
+                let label = format!("{}.{}", node_id.0, port_name.0);
+                displayable.push((label, value));
+            }
         }
+    }
+
+    if displayable.is_empty() {
+        return;
+    }
+
+    println!();
+    println!("Outputs:");
+    for (label, value) in &displayable {
+        print_value(label, value);
     }
 }
 
