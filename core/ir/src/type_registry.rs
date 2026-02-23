@@ -350,6 +350,23 @@ impl TypeRegistry {
         self.register("ToolHandle", type_lib::identity("ToolHandle"));
         self.register("Platform", type_lib::identity("Platform"));
         self.register("Timestamp", type_lib::identity("Timestamp"));
+        self.register("Record", type_lib::identity("Record"));
+
+        // Transport response subtypes (json-backed).
+        self.register("FileResponse", type_lib::identity("FileResponse"));
+        self.register("ShellResponse", type_lib::identity("ShellResponse"));
+        self.register("RestResponse", type_lib::identity("RestResponse"));
+        self.register("HttpResponse", type_lib::identity("HttpResponse"));
+
+        // GCP/OIDC identity types (string-backed refinements).
+        self.register("OidcAudience", type_lib::non_empty_string());
+        self.register("WifAudience", type_lib::non_empty_string());
+        self.register("GcpProjectId", type_lib::non_empty_string());
+        self.register("GcpSecretId", type_lib::non_empty_string());
+        self.register("GcpSecretVersion", type_lib::non_empty_string());
+        self.register("GcpServiceAccountEmail", type_lib::non_empty_string());
+        self.register("GcpSubjectToken", type_lib::non_empty_string());
+        self.register("OidcSubjectToken", type_lib::non_empty_string());
 
         // Container aliases (cardinality encoded in the type DAG).
         self.register("OptionalString", type_lib::optional(type_lib::string()));
@@ -1153,6 +1170,19 @@ mod tests {
         assert!(registry.contains(&TypeId::from("ToolHandle")));
         assert!(registry.contains(&TypeId::from("Platform")));
         assert!(registry.contains(&TypeId::from("Timestamp")));
+        assert!(registry.contains(&TypeId::from("Record")));
+        assert!(registry.contains(&TypeId::from("FileResponse")));
+        assert!(registry.contains(&TypeId::from("ShellResponse")));
+        assert!(registry.contains(&TypeId::from("RestResponse")));
+        assert!(registry.contains(&TypeId::from("HttpResponse")));
+        assert!(registry.contains(&TypeId::from("OidcAudience")));
+        assert!(registry.contains(&TypeId::from("WifAudience")));
+        assert!(registry.contains(&TypeId::from("GcpProjectId")));
+        assert!(registry.contains(&TypeId::from("GcpSecretId")));
+        assert!(registry.contains(&TypeId::from("GcpSecretVersion")));
+        assert!(registry.contains(&TypeId::from("GcpServiceAccountEmail")));
+        assert!(registry.contains(&TypeId::from("GcpSubjectToken")));
+        assert!(registry.contains(&TypeId::from("OidcSubjectToken")));
     }
 
     #[test]
@@ -1213,5 +1243,75 @@ mod tests {
         assert!(registry
             .validate_type_expr(&TypeId::from("Map<Int,String>"))
             .is_err());
+    }
+
+    /// Drift detection test: every domain type in `try_parse_port_type()` must
+    /// also be registered in `TypeRegistry::register_core_types()`.
+    ///
+    /// This prevents the Credential-class of bugs where port_type.rs maps a
+    /// type to one structural backing but the TypeRegistry doesn't know about
+    /// it, causing silent fallthrough to PortType::Any.
+    ///
+    /// CU-10: stopgap until port_type.rs is deleted (TS-4c).
+    #[test]
+    fn test_port_type_registry_consistency() {
+        use crate::port_type::PortType;
+
+        let registry = TypeRegistry::with_core_types();
+
+        // All domain types that try_parse_port_type() maps to non-Any PortTypes.
+        // These are the types that have hard-coded structural backing in
+        // port_type.rs and MUST also exist in the TypeRegistry.
+        let domain_types = [
+            // String-backed
+            "FilePath", "Path", "TextFilePath",
+            "Url", "Email", "NonEmptyString",
+            "Platform", "ContentEncoding",
+            "OidcAudience", "WifAudience",
+            "GcpProjectId", "GcpSecretId", "GcpSecretVersion",
+            "GcpServiceAccountEmail", "GcpSubjectToken", "OidcSubjectToken",
+            // Bytes-backed
+            "BinaryFilePath",
+            // Int-backed
+            "Timestamp",
+            // Json-backed
+            "TransportRequest", "TransportResponse",
+            "FileResponse", "ShellResponse", "RestResponse", "HttpResponse",
+            "ToolHandle", "FilesystemHandle", "NetworkHandle",
+            "Credential",
+            "CliResult", "Record",
+        ];
+
+        let mut missing = Vec::new();
+        let mut port_type_any = Vec::new();
+
+        for type_name in &domain_types {
+            let type_id = TypeId::from(*type_name);
+
+            // Must be in the registry
+            if !registry.contains(&type_id) {
+                missing.push(*type_name);
+            }
+
+            // Must NOT fall through to PortType::Any
+            let pt = PortType::from(*type_name);
+            if pt == PortType::Any {
+                port_type_any.push(*type_name);
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "Domain types in try_parse_port_type() but missing from TypeRegistry: {:?}\n\
+             Add them to register_core_types() to prevent drift.",
+            missing
+        );
+
+        assert!(
+            port_type_any.is_empty(),
+            "Domain types expected to have structural backing but fell through to PortType::Any: {:?}\n\
+             Add them to try_parse_port_type() with the correct structural mapping.",
+            port_type_any
+        );
     }
 }
