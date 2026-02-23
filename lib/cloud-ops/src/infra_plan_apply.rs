@@ -82,7 +82,7 @@ impl Executable for InfraPlanApplyOps {
                 let _reconciled_count = inputs
                     .get("reconciled_count")
                     .and_then(|v| v.as_int())
-                    .unwrap_or(0);
+                    .ok_or_else(|| ExecError::new("missing or invalid 'reconciled_count' input"))?;
                 OutputMap::new()
                     .str("environment", environment)
                     .int("applied_count", target_count)

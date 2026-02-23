@@ -907,15 +907,21 @@ fn print_boundary_outputs(log: &crate::ExecutionLog, boundaries: &gunbc_ir::Boun
     }
 }
 
-/// Returns true when `success_port` is present and emits `false` in any log entry.
+/// Returns true when any log entry emits a `success_port` value that is not
+/// explicitly `Bool(true)`.  `Skipped`, `Bool(false)`, or any other variant
+/// all count as failure — the success port must affirmatively be `true`.
 fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) -> bool {
     let Some(port) = success_port else {
         return false;
     };
 
-    log.entries
-        .iter()
-        .any(|entry| matches!(entry.outputs.get(port), Some(Value::Bool(false))))
+    log.entries.iter().any(|entry| {
+        match entry.outputs.get(port) {
+            Some(Value::Bool(true)) => false,  // explicitly passed
+            Some(_) => true,                   // Bool(false), Skipped, or unexpected type
+            None => false,                     // port not on this node
+        }
+    })
 }
 
 /// Render error detail boxes for all failed nodes in the DAG.
@@ -1287,5 +1293,51 @@ mod tests {
             !output.contains(secret),
             "secret plaintext must not be emitted in CI output"
         );
+    }
+
+    // -------------------------------------------------------------------
+    // success_port_failed tests
+    // -------------------------------------------------------------------
+
+    fn log_with_output(port: &str, value: Value) -> crate::ExecutionLog {
+        crate::ExecutionLog {
+            entries: vec![crate::LogEntry {
+                node_id: "node".to_string(),
+                inputs: None,
+                outputs: HashMap::from([(port.to_string(), value)]),
+                was_intercepted: false,
+                coercions_applied: vec![],
+            }],
+        }
+    }
+
+    #[test]
+    fn success_port_failed_returns_false_for_true() {
+        let log = log_with_output("overall_success", Value::Bool(true));
+        assert!(!success_port_failed(&log, Some("overall_success")));
+    }
+
+    #[test]
+    fn success_port_failed_returns_true_for_false() {
+        let log = log_with_output("overall_success", Value::Bool(false));
+        assert!(success_port_failed(&log, Some("overall_success")));
+    }
+
+    #[test]
+    fn success_port_failed_returns_true_for_skipped() {
+        let log = log_with_output("overall_success", Value::Skipped);
+        assert!(success_port_failed(&log, Some("overall_success")));
+    }
+
+    #[test]
+    fn success_port_failed_returns_false_when_port_absent() {
+        let log = log_with_output("other_port", Value::Bool(false));
+        assert!(!success_port_failed(&log, Some("overall_success")));
+    }
+
+    #[test]
+    fn success_port_failed_returns_false_when_no_success_port() {
+        let log = log_with_output("overall_success", Value::Bool(false));
+        assert!(!success_port_failed(&log, None));
     }
 }
