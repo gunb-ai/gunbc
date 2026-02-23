@@ -130,35 +130,40 @@ impl Executable for IdentityCallableOp {
     }
 }
 
-/// Typed error op for nodes that exist in topology but must not be executed.
-///
-/// Use this instead of identity/no-op placeholders so that accidental execution
-/// fails immediately with a clear message rather than silently producing wrong outputs.
 #[cfg(test)]
 #[derive(Debug, Clone)]
-struct UnsupportedOp {
-    callable: String,
+struct SubDagDispatchOp {
+    dag: Dag<DynOp>,
 }
 
 #[cfg(test)]
-impl UnsupportedOp {
-    fn new(callable: &str) -> Self {
-        Self {
-            callable: callable.to_string(),
+impl Executable for SubDagDispatchOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let entrypoints = gunbc_ir::detect_entrypoints(&self.dag);
+        let mut input_mocks = gunbc_exec::BoundaryMocks::new();
+        for (node_id, port_name, _) in entrypoints.entrypoint_ports {
+            if let Some(value) = inputs.get(&port_name.0) {
+                input_mocks.set_input(node_id.0, port_name.0, value.clone());
+                continue;
+            }
+            if port_name.0 == "__deps" {
+                input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
+            }
         }
-    }
-}
-
-#[cfg(test)]
-impl Executable for UnsupportedOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        Err(ExecError::new(format!(
-            "unsupported operation `{}`: must be lowered away before execution",
-            self.callable
-        )))
+        let execution = gunbc_exec::execute_with_mode_and_inputs(
+            &self.dag,
+            gunbc_exec::ExecutionMode::Real,
+            Some(&input_mocks),
+        )?;
+        let mut outputs = HashMap::new();
+        for entry in execution.entries {
+            for (key, value) in entry.outputs {
+                if value != Value::Skipped {
+                    outputs.insert(key, value);
+                }
+            }
+        }
+        Ok(outputs)
     }
 }
 
@@ -507,7 +512,9 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
     match &node.body {
         NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
-        NodeBody::SubDag(_) => Ok(DynOp::new(UnsupportedOp::new("subdag_pattern"))),
+        NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
+            dag: resolve_lowered_dag(inner)?,
+        })),
     }
 }
 
@@ -1105,6 +1112,29 @@ mod tests {
             .execute(HashMap::new())
             .expect("pipeline dispatch should execute");
         assert_eq!(outputs.get("stages"), Some(&Value::Int(8)));
+    }
+
+    #[test]
+    fn resolve_subdag_node_executes_inner_graph() {
+        let mut inner = Dag::new();
+        inner.add_node(Node::opaque(
+            "inner_literal",
+            vec![],
+            vec![Port::new("out", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "literal".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("ok".to_string()),
+                },
+            },
+        ));
+        let node = Node::subdag("wrapper", inner);
+        let op = resolve_node(&node).expect("subdag node should resolve");
+        let outputs = op
+            .execute(HashMap::new())
+            .expect("resolved subdag should execute inner graph");
+        assert_eq!(outputs.get("out"), Some(&Value::Str("ok".to_string())));
     }
 
     #[test]
