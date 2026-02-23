@@ -230,13 +230,6 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             is_producer: false,
         },
         CrateSpec {
-            name: "lib/gist-ops",
-            tier: CrateTier::Application,
-            description: "Gist operation library",
-            depends_on: &["core/ir"],
-            is_producer: false,
-        },
-        CrateSpec {
             name: "lib/cloud-ops",
             tier: CrateTier::Application,
             description: "Cloud operations abstraction",
@@ -297,13 +290,6 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             tier: CrateTier::Application,
             description: "GCP provider operations",
             depends_on: &["core/ir", "lib/cloud-ops"],
-            is_producer: false,
-        },
-        CrateSpec {
-            name: "lib/tools/gist",
-            tier: CrateTier::Application,
-            description: "Gist tool definition",
-            depends_on: &["core/ir"],
             is_producer: false,
         },
         CrateSpec {
