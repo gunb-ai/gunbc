@@ -35,12 +35,13 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
 
 #[gunbc_tool_registry_macros::tool_target(
     name = "bootstrap",
-    crate_name = "gunbc-bootstrap",
+    crate_name = "gunbc-dag",
     description = "Generate Makefile and .gitignore",
     builder = "build_bootstrap_graph",
-    import = "use gunbc_bootstrap::build_bootstrap_graph;",
+    import = "use gunbc_dag::build_bootstrap_graph;",
     package = "dag",
     binary = "bootstrap",
+    mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "bootstrap")"#,
     dsl_module = "bootstrap",
     outputs = "Makefile,.gitignore",
     provides = "Makefile,.gitignore",

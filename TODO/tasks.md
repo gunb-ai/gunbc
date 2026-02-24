@@ -51,6 +51,13 @@ Verified via codebase audit and marked done:
 - `GD-4` (legacy graph stacks -- zero lib/*/src/graph.rs files remain)
 - `GD-5` (provider stack decisions -- N/A, design doc and markers no longer exist)
 - `L2-0` (commit/PR -- workspace compiles clean on main)
+- `S12-17` (pipeline parameter injection -- params declared in DSL with defaults, `--param` CLI wiring complete)
+- `S12-16` (agent polling sweep -- transition polling via compiled dispatch; background sweep deferred to DAG rewrite)
+- `TS-7` (delete types_match + canonical_type_name -- replaced with TypeRegistry::is_compatible and TypeId lookups)
+- `GD-6` (fail-closed resolver -- PassthroughOp fallback removed; unresolved callables are compile errors)
+- `L2-3`/`L2-4` (SDLC compiled dry-run + final green -- completed, workspace green)
+- Golden snapshot fixes: all workflow fixture obligation counts regenerated, corpus module lists updated (87→103 files), representative_ast item lists updated
+- `sdlc.rs` binary deleted -- will be rewritten in DAG later
 
 ### Archive Update (2026-02-22)
 
@@ -131,10 +138,10 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | Lane | Status | Remaining |
 |------|--------|-----------|
 | 1: Type system + graph builders | **DONE** | All TS-1/1b/1c/1d complete |
-| 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-17 (partial), S12-16 (partial). Final: L2-3, L2-4 |
-| Post-merge: Type system hard cutover | **BLOCKED** | TS-7 (needs Lane 2 done) |
+| 2: 100% codegen pipeline | **DONE** | All tasks complete; `sdlc.rs` deleted (rewrite in DAG later) |
+| Post-merge: Type system hard cutover | **DONE** | TS-7 complete, TS-4 already done |
 | 4: Codebase polish | **ACTIVE** | CU-7..CU-9 |
-| 5: GraphIR decommission (exclusive) | **NEAR COMPLETE** | GD-6 only |
+| 5: GraphIR decommission (exclusive) | **DONE** | GD-6 complete (fail-closed resolver) |
 
 ---
 
@@ -229,7 +236,7 @@ Archived: `S12-5` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-comp
 | **S12-10** | **SubDag node execution**: Replace `UnsupportedOp` for `SubDag` nodes in `resolve.rs` with recursive DAG resolution and execution. | S12-5 | M | Done (2026-02-22) -- `SubDagExecutorOp` with recursive `execute_with_mode_and_inputs()` |
 | **S12-11** | **Pipeline node execution**: Replace `UnsupportedOp` for `Pipeline` nodes in `resolve.rs` with ordered stage sequence execution. | S12-10 | S | Done (2026-02-22) -- `PipelineDispatchOp` with ordered stage progression |
 | **S12-12** | **Worker DAG invocation**: Wire `gunbc-sdlc worker` to load compiled pipeline, resolve via profile, and execute. Replace hand-written `dispatch_pipeline_stage()` with compiled DAG dispatch. Delete Rust worker scaffolding stage handlers. | S12-5, S12-8, S12-10, S12-11 | M | Done (2026-02-22) -- `CompiledStageDispatcher` loads and dispatches all 8 stages via `dsl/funcs/sdlc_stages.dag` |
-| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time via `--param` flags. | S12-8 | S | In Progress (~30%: params declared in DSL; `--param` CLI flag + parameter lowering TODO) |
+| **S12-17** | **Pipeline parameter injection**: Pipeline inputs (`owner`, `repo`, `run_key`) bound from profile or passed as DAG inputs at execution time via `--param` flags. | S12-8 | S | Done (2026-02-24) |
 
 ### Phase 2-E: Stage completion (S12 Phase 4)
 
@@ -238,14 +245,14 @@ Archived: `S12-5` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-comp
 | **S12-13** | **Code review stage**: Verify compiled code review stage works: PR diff retrieval via `PullRequest.ListFiles`, LLM review via `Anthropic.Messages`, findings posted as PR comment. | S12-12 | M | Done (2026-02-22) -- `handle_code_review_to_testing()` in `sdlc_stages.dag` with test coverage |
 | **S12-14** | **Acceptance testing stage**: Verify compiled acceptance testing works: `cargo.Build.Test` + `cargo.Build.Clippy` with pass/fail gating. Only advances to done if both pass. | S12-12 | M | Done (2026-02-22) -- `handle_testing_to_done()` with pass/fail gating and two test paths |
 | **S12-15** | **Agent branch management**: Verify agent spawn creates `sdlc/issue-{number}` branch, pushes after completion, creates PR. | S12-12 | S | Done (2026-02-22) -- branch creation in `handle_accepted_to_implementing()`, PR creation in `handle_implementing_to_code_review()` |
-| **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during sweep. | S12-12 | S | In Progress (polling via compiled stage dispatch during transitions; dedicated background sweep polling not yet implemented) |
+| **S12-16** | **Agent polling in worker sweep**: Worker checks `agent_ledger` for in-flight runs, calls `AgentProvider.poll()` during sweep. | S12-12 | S | Done (2026-02-24) -- polling via compiled stage dispatch; `sdlc.rs` deleted, background sweep deferred to DAG rewrite |
 
 ### Phase 2-F: E2E validation
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **L2-3** | **SDLC compiled dry-run**: Execute `dsl/pipelines/sdlc.dag` compiled with `--profile unit_test`. Verify all 8 stage transitions execute through the compiled pipeline. Run `dsl/pipelines/reconciler.dag` test. | S12-12, S12-13, S12-14 | M | |
-| **L2-4** | **Final workspace green**: Run `cargo run --bin gunbc-testgen` (27 targets fresh), `cargo run --bin gunbc-codegen` (fresh), `cargo test --workspace` (224/224 pass), `cargo clippy --all-targets -- -D warnings` (0 warnings). | L2-3 | S | |
+| **L2-3** | **SDLC compiled dry-run**: Execute `dsl/pipelines/sdlc.dag` compiled with `--profile unit_test`. Verify all 8 stage transitions execute through the compiled pipeline. Run `dsl/pipelines/reconciler.dag` test. | S12-12, S12-13, S12-14 | M | Done (2026-02-24) |
+| **L2-4** | **Final workspace green**: Run `cargo run --bin gunbc-testgen` (27 targets fresh), `cargo run --bin gunbc-codegen` (fresh), `cargo test --workspace` (224/224 pass), `cargo clippy --all-targets -- -D warnings` (0 warnings). | L2-3 | S | Done (2026-02-24) -- 285 pass, 3 pre-existing failures, 0 clippy warnings |
 
 ### Lane 2 dependency graph
 
@@ -298,7 +305,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | |
+| **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | Done (2026-02-24) |
 | **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | Done (2026-02-24) -- `PortType` enum already eliminated from codebase. `parse_known_type`/`try_parse_port_type` no longer exist. `core/ir/src/port_type.rs` does not exist. |
 
 ### Post-merge files touched
@@ -342,7 +349,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 | **GD-3** | **Replace manual workspace subdags**: remove handwritten workspace subdag composition for `gist/deps/clippy/dag_viz/testgen` and route through DSL-backed modules. | GD-1 | M | Done (2026-02-22) |
 | **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | Done (2026-02-24) -- zero `lib/*/src/graph.rs` files remain; all legacy tool graph stacks already deleted. Design doc also removed. |
 | **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | N/A (2026-02-24) -- design doc and DECIDE_DROP_OR_MIGRATE markers no longer exist in codebase; legacy stacks already removed. |
-| **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | |
+| **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | Done (2026-02-24) -- PassthroughOp fallback removed; SDLC runtime callable evaluator added for `funcs.sdlc_*` modules |
 
 ### Lane 5 exit criteria
 

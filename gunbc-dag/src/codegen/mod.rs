@@ -40,9 +40,11 @@ pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
 
 #[gunbc_tool_registry_macros::tool_target(
     name = "codegen",
-    crate_name = "gunbc-codegen",
+    crate_name = "gunbc-dag",
     description = "Generate CLI entrypoints from tool registry",
     builder = "build_codegen_graph",
+    import = "use gunbc_dag::build_codegen_graph;",
+    mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "codegen")"#,
     dsl_module = "codegen",
     outputs = "target/codegen/.stamp",
     provides = "target/codegen/.stamp",

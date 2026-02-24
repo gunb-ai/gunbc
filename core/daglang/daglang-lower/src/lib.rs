@@ -2812,12 +2812,22 @@ fn make_loop_body_dag(
         ));
     } else {
         // Service calls in body — create transport triplets inside body SubDag.
-        // The body_op still exists but depends on transport parse output.
-        let mut body_op_deps_inputs = inputs.clone();
-        body_op_deps_inputs.push(Port::scalar("__deps", "Any"));
+        // The body_op receives the last transport parse output as its first input
+        // so that PassthroughOp forwards the transport result (not the element var)
+        // to `body_op.result`.
+        //
+        // The element var is only an entrypoint on prepare nodes (the loop executor
+        // injects it via set_input to all entrypoints with matching port name).
+        let last_parse_output = &body_transports
+            .last()
+            .expect("body_transports is non-empty")
+            .parse_output;
+        let body_op_inputs = vec![
+            Port::scalar(last_parse_output.as_str(), "Any"),
+        ];
         dag.add_node(Node::opaque(
             "body_op",
-            body_op_deps_inputs,
+            body_op_inputs,
             vec![Port::scalar("result", "Any")],
             LoweredOp::Callable {
                 module: module_name.to_string(),
@@ -2892,16 +2902,18 @@ fn make_loop_body_dag(
                     resource_target: None,
                 },
             ));
+            // Wire the transport triplet chain: prepare → execute → parse.
             // Prepare inputs matching element_var or passthrough are left as
             // entrypoints — the loop executor injects them via set_input.
-            // Only wire the transport triplet chain and parse → body_op dep.
             dag.add_edge(Edge::new(prepare_id.as_str(), "request", execute_id.as_str(), "request"));
             dag.add_edge(Edge::new(execute_id.as_str(), "response", parse_id.as_str(), "response"));
+            // Wire parse output to body_op as a DATA edge (not __deps) so
+            // PassthroughOp forwards the transport result to body_op.result.
             dag.add_edge(Edge::new(
                 parse_id.as_str(),
                 transport.parse_output.as_str(),
                 "body_op",
-                "__deps",
+                transport.parse_output.as_str(),
             ));
         }
     }

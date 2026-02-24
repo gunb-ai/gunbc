@@ -45,7 +45,6 @@ pub mod resolve;
 pub mod resolve_service;
 pub mod resources;
 pub mod testgen_dag;
-pub mod tool_dispatch;
 pub mod tool_runner;
 pub mod workflow;
 // Re-exports for convenience
@@ -77,9 +76,8 @@ pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
-pub use tool_dispatch::{dispatch_tool, ToolError};
 pub use tool_runner::{
-    freshness_steps_planned, print_tool_header, run_tool, run_tool_result,
+    freshness_steps_planned, print_tool_header, run_tool,
     update_freshness_manifest_if_needed, RunToolOptions,
 };
 pub use workflow::{

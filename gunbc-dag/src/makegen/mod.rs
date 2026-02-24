@@ -52,12 +52,13 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
 
 #[gunbc_tool_registry_macros::tool_target(
     name = "makegen",
-    crate_name = "gunbc-makegen",
+    crate_name = "gunbc-dag",
     description = "Generate Makefile from tool registry",
     builder = "build_makegen_graph",
-    import = "use gunbc_makegen::build_makegen_graph;",
+    import = "use gunbc_dag::build_makegen_graph;",
     package = "dag",
     binary = "makegen",
+    mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "makegen")"#,
     entrypoints = r#"[{"port_name":"path","type_id":"String","short":"o","default":"Makefile","help":"Output Makefile path","make_var":"OUTPUT"}]"#,
     dsl_module = "makegen",
     outputs = "Makefile",

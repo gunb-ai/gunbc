@@ -35,11 +35,12 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
 
 #[gunbc_tool_registry_macros::tool_target(
     name = "pragma",
-    crate_name = "gunbc-pragma",
+    crate_name = "gunbc-dag",
     description = "Generate clippy pragmas and lint policy",
     builder = "build_pragma_graph",
-    import = "use gunbc_pragma::build_pragma_graph;",
+    import = "use gunbc_dag::build_pragma_graph;",
     package = "dag",
+    mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "pragma")"#,
     dsl_module = "pragma",
     outputs = "clippy.toml,tools/disallowed-methods-allowlist.txt,tools/pragma-lint-policy.txt",
     provides = "clippy.toml,tools/disallowed-methods-allowlist.txt,tools/pragma-lint-policy.txt",

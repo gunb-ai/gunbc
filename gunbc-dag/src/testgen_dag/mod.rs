@@ -21,9 +21,11 @@ pub use ops::TestgenOp;
 
 #[gunbc_tool_registry_macros::tool_target(
     name = "testgen",
-    crate_name = "gunbc-testgen",
+    crate_name = "gunbc-dag",
     description = "Generate tests from DAG mock specifications",
     builder = "build_testgen_graph_for_test",
+    import = "use gunbc_dag::testgen_dag::build_testgen_graph_for_test;",
+    mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "testgen")"#,
     outputs = "**/generated_tests*.rs",
     provides = "**/generated_tests*.rs",
     consumes = "target/codegen/.stamp",
