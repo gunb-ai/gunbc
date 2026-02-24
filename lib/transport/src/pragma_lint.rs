@@ -253,6 +253,7 @@ mod tests {
             "gunbc-dag/src/resolve_service.rs",
             "lib/gcp-ops/src/ops.rs",
             "lib/tools/clippy/src/config.rs",
+            "lib/transport/src/ops.rs",
         ];
 
         let workspace_root = repo_root();

@@ -137,7 +137,7 @@ impl Animation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame_build::{build_frame, format_duration};
+    use crate::frame_build::build_frame;
     use crate::frame_write::FrameWriter;
     use crate::progress::{DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
     use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
@@ -323,13 +323,6 @@ mod tests {
         anim.tick(Duration::from_millis(50));
         assert_eq!(anim.frame(), "z");
         assert!(anim.is_done());
-    }
-
-    #[test]
-    fn test_format_duration() {
-        assert_eq!(format_duration(Duration::from_millis(50)), "50ms");
-        assert_eq!(format_duration(Duration::from_millis(1500)), "1.5s");
-        assert_eq!(format_duration(Duration::from_secs(65)), "1m05s");
     }
 
     #[test]

@@ -237,15 +237,6 @@ impl TermBox {
         self.write_bottom(w)
     }
 
-    /// Render a complete box with owned content lines.
-    pub fn render_owned<W: Write>(&self, w: &mut W, lines: &[String]) -> std::io::Result<()> {
-        self.write_top(w)?;
-        for line in lines {
-            self.write_content(w, line)?;
-        }
-        self.write_bottom(w)
-    }
-
     /// Calculate effective width considering title and minimums.
     fn effective_width(&self, title_part: &str) -> usize {
         let mut width = display_width(title_part) + 10;

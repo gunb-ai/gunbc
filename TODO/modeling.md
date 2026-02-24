@@ -51,14 +51,14 @@ Promotion rule:
 
 Verified: `cargo test --workspace` (127/127 suites pass), `cargo clippy --all-targets -- -D warnings` (0 errors).
 
-Remaining follow-up: 4 graph.rs file deletions (~4,170 lines).
+Remaining follow-up: 4 graph.rs file deletions (~4,170 lines). DSL authoring complete; deletion blocked by legacy callers.
 
-Design decisions resolved (2026-02-23):
-- **D-1**: Compositional `ReviewConcern` types + generic `dimension_review` pattern. Phasing via structural data-flow deps. No new DSL syntax.
-- **D-2**: Abstract resource interfaces (`SecretStore`, `Identity`, `ObjectStorage`) + `CredentialFlow` sum type + profile binding. Ported from `the-gunbai`. Provider dispatch eliminated — compile-time profile binding replaces `match provider`.
-- **D-3**: Re-scoped. D-3d eliminated (profile binding). D-3a/b/c re-scoped as interface implementations.
+Design decisions resolved and implemented (2026-02-23):
+- **D-1**: Compositional `ReviewConcern` types + generic `dimension_review` pattern implemented in `dsl/funcs/review_pipeline.dag`, `dsl/services/review/dimension.dag`, `dsl/std/types.dag`. Real mode uses `build_dimension_review_graph_dsl()`.
+- **D-2**: `CredentialProvider` interface (`dsl/interfaces/credential_provider.dag`) + `CredentialFlow` sum type + GCP/stub providers + profile binding. Provider dispatch eliminated.
+- **D-3**: D-3a (OIDC), D-3b (local auth), D-3c (IAM preflight) all implemented in `dsl/std/patterns.dag`. D-3d eliminated (profile binding).
 
-Remaining work is authoring (D-3a..D-3c sub-tasks in `TODO/tasks.md`). See § Cloud Modeling Gap Inventory below.
+DSL authoring for all GR-* tasks is complete. Remaining work is Rust file deletion (blocked by legacy callers). See § Remaining Rust Graph Builders below.
 
 ## Intake Tasks
 
@@ -106,26 +106,26 @@ standard; AWS/Azure need the same treatment.
 5. **`GitHubCredentialOps` orphaned**: After `github_credential_graph.rs` deletion, ops in `cloud-ops/src/github_ops.rs` exist but aren't reachable from DSL resolver.
 6. **AWS/Azure tested only in dry-run**: Tests use `@auto_mock(true)`, never exercise real credential paths.
 
-### Remaining Rust Graph Builders (Authoring Backlog)
+### Remaining Rust Graph Builders (Deletion Backlog)
 
-These `graph.rs` files (~4,170 lines total) require DSL authoring work to replace.
-M16 is done. Design decisions D-1/D-2 resolved (2026-02-23). See `TODO/tasks.md`
-GR-1..GR-4 and D-3a..D-3c sub-tasks.
+DSL authoring for all 4 files is **complete** (D-1/D-2/D-3 implemented 2026-02-23).
+Remaining work is **file deletion**, blocked by legacy callers that still import these builders.
 
-| File | Lines | Remaining Work |
-|------|-------|----------------|
-| `lib/review/src/graph.rs` | 1,727 | Author `ReviewConcern` types + generic `dimension_review` pattern + 3 service ops (GR-1, D-1) |
-| `lib/gcp-ops/src/graph.rs` | 1,674 | Concrete GCP `CredentialProvider` implementation: OIDC + local auth + IAM (D-3a..D-3c, GR-4, D-2) |
-| `lib/cloud-ops/src/graph.rs` | 502 | Define `CredentialProvider` interface + `CredentialFlow` type + profile bindings (GR-3, D-2) |
-| `lib/llm-ops/src/graph.rs` | 267 | Subsumed by GR-1 (GR-2) |
+| File | Lines | DSL Replacement | Deletion Blockers |
+|------|-------|-----------------|-------------------|
+| `lib/review/src/graph.rs` | 1,727 | `dsl/funcs/review_pipeline.dag` + `dsl/services/review/dimension.dag` (GR-1) | `bin/review.rs` dry-run fallback, `credential_chain.rs` tests |
+| `lib/gcp-ops/src/graph.rs` | 1,674 | `dsl/services/sdlc/providers/gcp_credential_provider.dag` (GR-4) | `cloud-ops/graph.rs` callers, `daglang-lower` parity tests |
+| `lib/cloud-ops/src/graph.rs` | 502 | `dsl/interfaces/credential_provider.dag` + profile bindings (GR-3) | `secret_provision_graph`, `infra_plan_apply`, review/llm graph callers |
+| `lib/llm-ops/src/graph.rs` | 267 | Subsumed by GR-1 review pipeline (GR-2) | `credential_chain.rs` tests, `live_credentials.rs` test |
 
-### Resolution Path
+### Resolution Path (Implemented)
 
-Design approach ported from `the-gunbai`:
-- **Review pipeline (D-1)**: Compositional `ReviewConcern` types parameterize a generic review pattern. Phasing is structural (data-flow deps, not tags). No new DSL syntax.
-- **Credential pipeline (D-2)**: Abstract resource interfaces (`SecretStore`, `Identity`) + `CredentialFlow` sum type (Stored, PlatformInjected, WorkloadIdentity, InteractiveAuth, Chained) + profile binding. Provider dispatch eliminated.
-- **Authoring work (D-3)**: D-3a/b/c are interface implementations (~2S + 1M). D-3d eliminated by profile binding.
-- Define review service ops as DSL services (~S)
+All DSL authoring complete (2026-02-23). Approach ported from `the-gunbai`:
+- **Review pipeline (D-1)**: ✅ Compositional `ReviewConcern` types + `dimension_review` pattern in `dsl/funcs/review_pipeline.dag`. Service ops in `dsl/services/review/dimension.dag`.
+- **Credential pipeline (D-2)**: ✅ `CredentialProvider` interface + `CredentialFlow` sum type + GCP/stub providers + profile binding. Provider dispatch eliminated.
+- **Authoring work (D-3)**: ✅ D-3a (OIDC), D-3b (local auth), D-3c (IAM preflight) implemented in `dsl/std/patterns.dag`. D-3d eliminated by profile binding.
+
+Remaining: migrate legacy callers (dry-run, credential chain tests, secret_provision, infra_plan_apply, parity tests) to enable Rust file deletion.
 
 ## Execution Checklists (Review Gate)
 

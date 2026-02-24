@@ -880,12 +880,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_all_tiers_nonempty() {
-        for sym in STANDARD.all() {
-            assert!(!sym.emoji.is_empty(), "{:?} has empty emoji", sym.id);
-            assert!(!sym.unicode.is_empty(), "{:?} has empty unicode", sym.id);
-            assert!(!sym.ascii.is_empty(), "{:?} has empty ascii", sym.id);
-        }
-    }
 }

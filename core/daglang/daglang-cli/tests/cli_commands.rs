@@ -13440,3 +13440,272 @@ fn pragma_e2e_generated_binary_produces_correct_config_files() {
     let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test_pragma"));
     let _ = std::fs::remove_dir_all(&output_dir);
 }
+
+// ---------------------------------------------------------------------------
+// gen-types: DSL → Rust type generation contract tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gen_types_produces_all_rendering_types() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.symbols", "--module", "std.render"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "gen-types should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let expected_enums = [
+        "SemanticColor", "Tier", "SymbolId", "RenderMode",
+        "CursorAction", "ViewportUnit",
+    ];
+    for name in expected_enums {
+        assert!(
+            stdout.contains(&format!("pub enum {name}")),
+            "generated output should contain enum {name}:\n{stdout}"
+        );
+    }
+
+    let expected_structs = [
+        "SpanStyle", "Span", "Line", "Frame", "Viewport",
+        "SymbolEntry", "AnsiMapping",
+    ];
+    for name in expected_structs {
+        assert!(
+            stdout.contains(&format!("pub struct {name}")),
+            "generated output should contain struct {name}:\n{stdout}"
+        );
+    }
+}
+
+#[test]
+fn gen_types_symbol_id_has_40_variants() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.symbols"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+
+    let in_enum = stdout
+        .split("pub enum SymbolId")
+        .nth(1)
+        .and_then(|rest| rest.split('}').next())
+        .unwrap_or("");
+    let variant_count = in_enum.lines().filter(|l| {
+        let trimmed = l.trim();
+        !trimmed.is_empty() && trimmed != "{" && !trimmed.starts_with("//")
+    }).count();
+
+    assert_eq!(
+        variant_count, 40,
+        "SymbolId should have exactly 40 variants (matching Rust), found {variant_count}"
+    );
+}
+
+#[test]
+fn gen_types_semantic_color_matches_rust() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.symbols"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+
+    let expected_variants = [
+        "Default", "Success", "Warning", "Error", "Info", "Dim", "Active", "Accent",
+    ];
+    for v in expected_variants {
+        assert!(
+            stdout.contains(v),
+            "SemanticColor should contain variant {v}"
+        );
+    }
+}
+
+#[test]
+fn gen_types_box_draw_types() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.box_draw"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "gen-types should succeed for box_draw: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(stdout.contains("pub enum BoxStyle"));
+    assert!(stdout.contains("pub struct BoxChars"));
+    assert!(stdout.contains("pub struct BoxConfig"));
+    assert!(stdout.contains("Closed"));
+    assert!(stdout.contains("OpenRight"));
+}
+
+#[test]
+fn gen_types_without_module_filter_emits_all() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "gen-types without filter should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        stdout.contains("pub enum SemanticColor"),
+        "unfiltered output should include SemanticColor"
+    );
+    assert!(
+        stdout.contains("pub enum SymbolId"),
+        "unfiltered output should include SymbolId"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// gen-types: data table + function signature contract tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gen_types_emits_standard_symbols_static() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.symbols"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+
+    assert!(
+        stdout.contains("pub static STANDARD_SYMBOLS: &[SymbolEntry]"),
+        "should generate STANDARD_SYMBOLS static:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("SymbolId::NodePending"),
+        "enum variants should be fully qualified:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("SemanticColor::Dim"),
+        "color variants should be fully qualified:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains(".to_string()"),
+        "static data should use &str, not .to_string():\n{stdout}"
+    );
+}
+
+#[test]
+fn gen_types_symbol_entry_uses_static_str() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.symbols"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+
+    assert!(
+        stdout.contains("&'static str"),
+        "SymbolEntry fields should use &'static str for static compatibility:\n{stdout}"
+    );
+}
+
+#[test]
+fn gen_types_emits_ansi_mappings_static() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.symbols"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+
+    assert!(
+        stdout.contains("pub static ANSI_MAPPINGS: &[AnsiMapping]"),
+        "should generate ANSI_MAPPINGS static:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("SemanticColor::Default"),
+        "ansi mapping should use qualified variant:\n{stdout}"
+    );
+}
+
+#[test]
+fn gen_types_emits_impl_blocks() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.symbols"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success());
+
+    assert!(
+        stdout.contains("impl SymbolId"),
+        "should generate impl SymbolId:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("pub fn emoji(&self) -> &'static str"),
+        "should generate emoji method on SymbolId:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("pub fn unicode(&self) -> &'static str"),
+        "should generate unicode method on SymbolId:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("pub fn ascii(&self) -> &'static str"),
+        "should generate ascii method on SymbolId:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("pub fn color(&self) -> SemanticColor"),
+        "should generate color method on SymbolId:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("impl SemanticColor"),
+        "should generate impl SemanticColor:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("pub fn code(&self) -> &'static str"),
+        "should generate code method on SemanticColor:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("\\x1b[0m"),
+        "ANSI codes should be properly escaped:\n{stdout}"
+    );
+}
+
+#[test]
+fn gen_types_box_draw_emits_data() {
+    let output = Command::new(daglang_bin())
+        .current_dir(workspace_root())
+        .args(["gen-types", "--module", "std.box_draw"])
+        .output()
+        .expect("failed to run gen-types");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "gen-types should succeed for box_draw: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert!(
+        stdout.contains("pub static UNICODE_BOX_CHARS: BoxChars"),
+        "should generate unicode box chars data:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("pub static ASCII_BOX_CHARS: BoxChars"),
+        "should generate ascii box chars data:\n{stdout}"
+    );
+}

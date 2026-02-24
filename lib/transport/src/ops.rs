@@ -21,7 +21,7 @@ use gunbc_exec::{
     TransportResponseExt,
 };
 use gunbc_ir::transport::{TcpRequest, TransportRequest, TransportResponse};
-use gunbc_ir::{Credential, Value};
+use gunbc_ir::{AuthScheme, Credential, Secret, Value};
 use std::collections::HashMap;
 
 /// Transport operations for use in DAG nodes.
@@ -55,13 +55,33 @@ impl Executable for TransportOps {
 
                 let mut request = require_request(&inputs, "request")?;
 
-                // Apply credentials if provided.
+                // Apply credentials if provided via `res:credential`.
+                // Accepts either a full Credential map or a raw Secret/String
+                // (from profile bindings), defaulting to Bearer scheme.
                 if let TransportRequest::Rest(ref mut r) = request {
                     if let Some(cred_value) = inputs.get("res:credential") {
-                        let cred = Credential::try_from(cred_value).map_err(|e| {
-                            ExecError::new(format!("invalid 'res:credential': {}", e))
-                        })?;
-                        cred.apply(r);
+                        match Credential::try_from(cred_value) {
+                            Ok(cred) => cred.apply(r),
+                            Err(_) => {
+                                let token = match cred_value {
+                                    Value::Secret(s) => {
+                                        s.expose_plaintext_for_transport().to_string()
+                                    }
+                                    Value::Str(s) => s.clone(),
+                                    other => {
+                                        return Err(ExecError::new(format!(
+                                            "invalid 'res:credential': expected Credential, Secret, or String, got {:?}",
+                                            other
+                                        )));
+                                    }
+                                };
+                                let cred = Credential::new(
+                                    Secret::static_value(token),
+                                    AuthScheme::Bearer,
+                                );
+                                cred.apply(r);
+                            }
+                        }
                     } else if let Some(cred) = r.auth.take() {
                         cred.apply(r);
                     }

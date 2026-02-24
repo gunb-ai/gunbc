@@ -243,6 +243,29 @@ pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput,
     Ok(CheckOutput { parsed_files })
 }
 
+/// Generate Rust type definitions from DSL TypeDefs in the given modules.
+///
+/// Typechecks the module graph, then extracts all `TypeDef` items and
+/// converts them to Rust struct/enum definitions via `type_codegen`.
+pub fn generate_types_from_context(
+    context: &DriverContext,
+    module_filter: &[&str],
+) -> Result<String, CompileError> {
+    let module_graph = discover_module_graph_for_context(context)?;
+    // Type generation only needs structural defs, not service bindings.
+    let typed = typecheck_module_graph_with_options(
+        module_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .map_err(format_typecheck_errors)?;
+    Ok(daglang_emit::type_codegen::generate_types_for_modules(
+        &typed,
+        module_filter,
+    ))
+}
+
 fn format_typecheck_errors<E: std::fmt::Display>(errors: Vec<E>) -> CompileError {
     let mut message = String::from("typecheck errors:\n");
     for error in errors {

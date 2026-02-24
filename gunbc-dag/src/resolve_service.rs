@@ -672,6 +672,7 @@ mod tests {
             }],
             body_template: None,
             headers: vec![],
+            auth_scheme: None,
             error_mappings: vec![],
         }
     }
@@ -723,6 +724,7 @@ mod tests {
             ],
             body_template: None,
             headers: vec![],
+            auth_scheme: None,
             error_mappings: vec![],
         }
     }
@@ -828,6 +830,7 @@ mod tests {
                 "Authorization".to_string(),
                 "Bearer {config.credential}".to_string(),
             )],
+            auth_scheme: Some("BearerToken".to_string()),
             error_mappings: vec![],
         };
         let op = GenericRestPrepareOp { spec };
@@ -868,6 +871,7 @@ mod tests {
             output_fields: vec![],
             body_template: None,
             headers: vec![],
+            auth_scheme: None,
             error_mappings: vec![],
         };
         let op = GenericRestPrepareOp { spec };
@@ -923,6 +927,7 @@ mod tests {
             ],
             body_template: None,
             headers: vec![],
+            auth_scheme: None,
             error_mappings: vec![],
         };
         let op = GenericRestParseOp { spec };
@@ -1142,6 +1147,7 @@ mod tests {
                 BodyEntry::InputRef("subject_token".to_string(), "subject_token".to_string()),
             ]),
             headers: vec![],
+            auth_scheme: None,
             error_mappings: vec![],
         };
 

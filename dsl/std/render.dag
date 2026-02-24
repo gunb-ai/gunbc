@@ -9,16 +9,22 @@ module std.render
 
 import std.width { truncate_text }
 import std.unicode { string_display_width }
+import std.symbols { SemanticColor, SymbolId, Tier }
 
 // --- Rendering domain types ---
-
-type SemanticColor = Default | Success | Warning | Error | Info | Dim | Active | Accent
 
 type SpanStyle {
   color: SemanticColor?
   bold: Bool
   italic: Bool
+  symbol: SymbolId?
 }
+
+// --- Render mode ---
+//
+// Selects between display strategies for the progress frame.
+
+type RenderMode = Standard | Dynamic | Compact
 
 type Span {
   text: String

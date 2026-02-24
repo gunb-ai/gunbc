@@ -77,6 +77,8 @@ fn main() {
         eprintln!("                      Full compilation pipeline");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
         eprintln!("                      Compile + resolve + execute makegen DAG");
+        eprintln!("  gen-types [<dir>] [--module <module.path>]...");
+        eprintln!("                      Generate Rust types from DSL TypeDef definitions");
         std::process::exit(1);
     }
 
@@ -813,6 +815,72 @@ pub(crate) fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
         output_path,
         mode,
     })
+}
+
+pub(crate) struct GenTypesArgs {
+    pub input: Option<String>,
+    pub modules: Vec<String>,
+    pub output: Option<String>,
+}
+
+pub(crate) fn parse_gen_types_args(
+    args: &[String],
+) -> Result<GenTypesArgs, String> {
+    let usage = "gen-types [<dir>] [--module <module.path>]... [--output <path>]";
+    if args.is_empty() || args.get(1).map(String::as_str) != Some("gen-types") {
+        return Err(usage.to_string());
+    }
+    let mut input: Option<String> = None;
+    let mut modules: Vec<String> = Vec::new();
+    let mut output: Option<String> = None;
+    let mut i = 2usize;
+    while i < args.len() {
+        let token = &args[i];
+        if token == "--module" {
+            let value = args
+                .get(i + 1)
+                .ok_or_else(|| usage.to_string())?;
+            if value.starts_with("--") || value.is_empty() {
+                return Err(usage.to_string());
+            }
+            modules.push(value.clone());
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--module=") {
+            if value.is_empty() {
+                return Err(usage.to_string());
+            }
+            modules.push(value.to_string());
+            i += 1;
+            continue;
+        }
+        if token == "--output" {
+            let value = args
+                .get(i + 1)
+                .ok_or_else(|| usage.to_string())?;
+            output = Some(value.clone());
+            i += 2;
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("--output=") {
+            if value.is_empty() {
+                return Err(usage.to_string());
+            }
+            output = Some(value.to_string());
+            i += 1;
+            continue;
+        }
+        if token.starts_with("--") {
+            return Err(usage.to_string());
+        }
+        if input.is_some() {
+            return Err(usage.to_string());
+        }
+        input = Some(token.clone());
+        i += 1;
+    }
+    Ok(GenTypesArgs { input, modules, output })
 }
 
 pub(crate) fn exit_usage(command: &str) -> ! {

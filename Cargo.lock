@@ -198,6 +198,7 @@ dependencies = [
  "daglang-derive",
  "daglang-lower",
  "daglang-syntax",
+ "daglang-typecheck",
  "gunbc-ir",
  "serde_json",
 ]

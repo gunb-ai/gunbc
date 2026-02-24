@@ -58,6 +58,9 @@ pub mod service_emit;
 // Wave 7: DSL-native test mock emission (inline test blocks -> graph_mock.rs).
 pub mod test_mock_emit;
 
+// Wave 8: TypeDef → Rust type codegen (struct/enum generation from DSL types).
+pub mod type_codegen;
+
 #[cfg(test)]
 mod backend_harness;
 
@@ -928,6 +931,7 @@ mod tests {
             ],
             body_template: None,
             headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
+            auth_scheme: None,
             error_mappings: vec![],
         });
 

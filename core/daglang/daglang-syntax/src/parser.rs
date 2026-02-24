@@ -840,7 +840,7 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         self.expect(&TokenKind::Arrow)?;
         let outputs = self.parse_output_fields()?;
-        let (uses, _provides) = self.parse_uses_provides()?;
+        let (uses, provides) = self.parse_uses_provides()?;
         self.expect(&TokenKind::LBrace)?;
         let body = self.parse_func_body_lossy()?;
         Ok(PatternDef {
@@ -849,6 +849,7 @@ impl Parser {
             params,
             outputs,
             uses,
+            provides,
             body,
         })
     }

@@ -315,6 +315,45 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 normalized_output_path.display()
             );
         }
+        "gen-types" => {
+            let gen_args = parse_gen_types_args(args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
+            let pipeline_ctx = match build_context(cwd, gen_args.input.as_ref()) {
+                Ok(ctx) => ctx,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            };
+            let driver_ctx = daglang_driver::DriverContext {
+                roots: pipeline_ctx.roots,
+                target_file: pipeline_ctx.target_file,
+            };
+            let filter_refs: Vec<&str> = gen_args.modules.iter().map(|s| s.as_str()).collect();
+            match daglang_driver::generate_types_from_context(&driver_ctx, &filter_refs) {
+                Ok(output) => {
+                    if output.is_empty() {
+                        eprintln!("No type definitions found in the specified modules.");
+                        std::process::exit(1);
+                    }
+                    if let Some(path) = &gen_args.output {
+                        match std::fs::write(path, &output) {
+                            Ok(()) => eprintln!("wrote {}", path),
+                            Err(e) => {
+                                eprintln!("failed to write {path}: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    } else {
+                        print!("{output}");
+                    }
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            }
+        }
         cmd => {
             eprintln!("Unknown command: {cmd}");
             exit_usage("<command> [args...]");

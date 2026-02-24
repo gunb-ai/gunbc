@@ -179,7 +179,7 @@ pub mod ast {
         pub body: FuncBody,
     }
 
-    /// Reusable DAG template: `pattern name(params) -> { outputs } uses ... { body }`
+    /// Reusable DAG template: `pattern name(params) -> { outputs } uses ... provides ... { body }`
     #[derive(Debug)]
     pub struct PatternDef {
         pub name: String,
@@ -187,6 +187,7 @@ pub mod ast {
         pub params: Vec<Param>,
         pub outputs: Vec<Field>,
         pub uses: Vec<UsesClause>,
+        pub provides: Vec<ProvidesClause>,
         pub body: FuncBody,
     }
 

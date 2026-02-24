@@ -54,7 +54,7 @@ fn gist_filename(branch: String, base_ref: CommitSha?, timestamp: String) -> Str
 func gist_upload(markdown: String, branch: String, base_ref: CommitSha?) -> { url: Url }
   uses net: Network
   uses clock: Clock
-  uses auth: AuthContext
+  provides auth: AuthContext
 {
   timestamp = clock.now()
   filename = gist_filename(

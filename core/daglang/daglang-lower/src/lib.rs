@@ -270,6 +270,11 @@ pub struct RestOperationSpec {
     pub body_template: Option<Vec<BodyEntry>>,
     /// Extra HTTP headers from `@headers({...})`.
     pub headers: Vec<(String, String)>,
+    /// Auth scheme from `@auth(...)`. Desugars to a `res:credential` input
+    /// on the execute node; `Credential::apply()` uses this scheme to set
+    /// the correct HTTP header at transport execution time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_scheme: Option<String>,
     /// M22 Phase 2: Error classification from `@error_map` annotations.
     /// Maps HTTP status codes to semantic error categories.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -518,7 +523,9 @@ type ResourceLifecycleRegistry = EndpointRegistry<ResourceLifecycleEndpoint>;
 struct ServiceTransportEndpoint {
     parse: LoweredEndpoint,
     prepare_node_id: String,
+    execute_node_id: String,
     prepare_inputs: Vec<String>,
+    has_auth: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1474,6 +1481,14 @@ fn lower_typed_project_with_callable_scope(
         &profile_bound_interfaces,
         &known_interface_types,
     )?;
+    let auth_provider_names = collect_auth_provider_names(project);
+    wire_auth_credential_edges(
+        &mut builder,
+        project,
+        &endpoints_by_full,
+        &service_registry,
+        &auth_provider_names,
+    );
     let resource_registry = add_resource_lifecycle_nodes(&mut builder, project, callable_modules);
     let known_uses_types = collect_known_uses_types(project);
     let mut wired_release_targets = HashSet::new();
@@ -3918,6 +3933,8 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers);
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = annotation_body_template(&operation.annotations);
+    let auth_scheme =
+        annotation_auth_scheme(&operation.annotations, &service.annotations);
 
     Some(RestOperationSpec {
         endpoint,
@@ -3927,6 +3944,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         output_fields,
         body_template,
         headers,
+        auth_scheme,
         error_mappings: vec![], // M22 Phase 2: populated when @error_map extraction is wired
     })
 }
@@ -4131,31 +4149,31 @@ fn annotation_headers(
             }
         }
     }
-    if let Some(auth_header) = annotation_auth_header(op_annotations, service_annotations) {
-        if !headers
-            .iter()
-            .any(|(key, _)| key.eq_ignore_ascii_case(auth_header.0.as_str()))
-        {
-            headers.push(auth_header);
-        }
-    }
     headers
 }
 
-fn annotation_auth_header(
+/// Extract the auth scheme string from `@auth(...)` annotations.
+///
+/// Returns the scheme identifier used by `Credential::apply()` at execute time:
+/// - `@auth(BearerToken)` → `"BearerToken"`
+/// - `@auth(Header("x-api-key"))` → `"Header:x-api-key"`
+/// - `@auth(Basic)` → `"Basic"`
+///
+/// The scheme is stored on `RestOperationSpec.auth_scheme` and drives
+/// `res:credential` wiring on the execute node. No `config.credential`
+/// header template is generated.
+fn annotation_auth_scheme(
     op_annotations: &[Annotation],
     service_annotations: &[Annotation],
-) -> Option<(String, String)> {
+) -> Option<String> {
     let auth = op_annotations
         .iter()
         .chain(service_annotations.iter())
         .find(|annotation| annotation.name == "auth")?;
     let scheme = auth.args.first()?;
     match scheme {
-        Expr::Ident(value) if value == "BearerToken" => Some((
-            "Authorization".to_string(),
-            "Bearer {config.credential}".to_string(),
-        )),
+        Expr::Ident(value) if value == "BearerToken" => Some("BearerToken".to_string()),
+        Expr::Ident(value) if value == "Basic" => Some("Basic".to_string()),
         Expr::Call(name, args) if name == "Header" => {
             let header = match args.first() {
                 Some((None, Expr::Literal(Literal::String(value)))) if !value.is_empty() => {
@@ -4163,7 +4181,7 @@ fn annotation_auth_header(
                 }
                 _ => return None,
             };
-            Some((header, "{config.credential}".to_string()))
+            Some(format!("Header:{header}"))
         }
         _ => None,
     }
@@ -4494,9 +4512,21 @@ fn add_service_transport_triplets(
                         resource_target: None,
                     },
                 ));
+                let has_auth = matches!(
+                    &service_metadata.spec,
+                    Some(ServiceOperationSpec::Rest(spec)) if spec.auth_scheme.is_some()
+                );
+                let mut execute_inputs = vec![Port::scalar("request", "TransportRequest")];
+                if has_auth {
+                    execute_inputs.push(Port::with_cardinality(
+                        "res:credential",
+                        "Credential",
+                        Cardinality::ZERO_OR_ONE,
+                    ));
+                }
                 builder.add_node(Node::opaque(
                     execute_id.clone(),
-                    vec![Port::scalar("request", "TransportRequest")],
+                    execute_inputs,
                     vec![Port::scalar("response", "TransportResponse")],
                     LoweredOp::Callable {
                         module: module_name.clone(),
@@ -4569,7 +4599,9 @@ fn add_service_transport_triplets(
                         primary_output: parse_output,
                     },
                     prepare_node_id: prepare_id,
+                    execute_node_id: execute_id,
                     prepare_inputs,
+                    has_auth,
                 };
                 registry.register(
                     format!("{}.{}", service.name, operation.name),
@@ -4907,6 +4939,36 @@ fn wire_profile_binding_config_inputs(
         return;
     };
     for (key, value) in binding_config {
+        // Credential config is wired to `res:credential` on the execute node
+        // (not `config.credential` on prepare). The transport executor applies
+        // the credential at execute time via `Credential::apply()`.
+        if key == "credential" && source_endpoint.has_auth {
+            let literal = match value {
+                ProfileConfigValue::Literal(value) => {
+                    ServiceCallArgLiteral::String(value.clone())
+                }
+                ProfileConfigValue::SecretRef(name) => {
+                    ServiceCallArgLiteral::String(format!("secret:{name}"))
+                }
+            };
+            let suffix = format!("{call_index}_profile_credential");
+            let literal_source = ensure_literal_source_node(
+                builder,
+                module_name,
+                item_name,
+                "res:credential",
+                "Secret",
+                &literal,
+                suffix.as_str(),
+            );
+            builder.add_edge(
+                literal_source.as_str(),
+                "res:credential",
+                source_endpoint.execute_node_id.as_str(),
+                "res:credential",
+            );
+            continue;
+        }
         let candidates = [key.to_string(), format!("config.{key}")];
         let Some(prepare_input) = candidates.iter().find(|candidate| {
             source_endpoint
@@ -4945,6 +5007,114 @@ fn wire_profile_binding_config_inputs(
             prepare_input.as_str(),
         );
     }
+}
+
+/// Collect the set of callable names (module-qualified) that declare
+/// `provides auth: AuthContext`. Used by `wire_auth_credential_edges`
+/// to identify credential provider calls in function bodies.
+fn collect_auth_provider_names(project: &TypedProject) -> HashSet<String> {
+    let mut providers = HashSet::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Some((item_name, provides)) = item_callable_provides(&item.node) else {
+                continue;
+            };
+            let is_auth_provider = provides.iter().any(|p| {
+                let ty = resource_type_name(&p.resource_type);
+                ty == "AuthContext" || ty.ends_with(".AuthContext")
+            });
+            if is_auth_provider {
+                providers.insert(item_name.to_string());
+                providers.insert(format!("{module_name}.{item_name}"));
+            }
+        }
+    }
+    providers
+}
+
+/// Wire credential provider outputs to `res:credential` on execute nodes
+/// of `@auth`-annotated service calls within the same function body.
+///
+/// When a function body calls both a `provides auth: AuthContext` pattern
+/// (e.g., `credential_chain`) and an `@auth`-annotated service (e.g.,
+/// `github.Gist.Create`), this function wires the credential output from
+/// the provider to the execute node's `res:credential` port.
+fn wire_auth_credential_edges(
+    builder: &mut DagBuilder,
+    project: &TypedProject,
+    endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+    service_registry: &ServiceEndpointRegistry,
+    auth_provider_names: &HashSet<String>,
+) {
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let stmts = match &item.node {
+                Item::FuncDef(def) => def.body.stmts.as_slice(),
+                Item::PatternDef(def) => def.body.stmts.as_slice(),
+                _ => continue,
+            };
+
+            let bound_callable_sources =
+                collect_bound_callable_sources(module_name.as_str(), stmts, endpoints_by_full);
+
+            // Find credential provider bindings: calls to auth-providing patterns.
+            let credential_sources = collect_credential_provider_bindings(
+                stmts,
+                auth_provider_names,
+                &bound_callable_sources,
+            );
+
+            if credential_sources.is_empty() {
+                continue;
+            }
+
+            // Find service calls with auth requirements.
+            let mut service_calls = Vec::<ServiceCallSite>::new();
+            collect_service_calls_from_stmts(stmts, &mut service_calls);
+
+            for call in &service_calls {
+                let Some(endpoint) = resolve_service_endpoint(&call.path, service_registry) else {
+                    continue;
+                };
+                if !endpoint.has_auth {
+                    continue;
+                }
+                // Wire the first available credential source to the execute node.
+                if let Some(cred_source) = credential_sources.first() {
+                    builder.add_edge(
+                        cred_source.node_id.as_str(),
+                        cred_source.primary_output.as_str(),
+                        endpoint.execute_node_id.as_str(),
+                        "res:credential",
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Find variable bindings in the statement list that call auth-providing
+/// patterns, and return their lowered endpoints.
+fn collect_credential_provider_bindings(
+    stmts: &[Stmt],
+    auth_provider_names: &HashSet<String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+) -> Vec<LoweredEndpoint> {
+    let mut sources = Vec::new();
+    for stmt in stmts {
+        if let Stmt::Let(binding, Expr::Call(name, _)) | Stmt::Assign(binding, Expr::Call(name, _)) =
+            stmt
+        {
+            if auth_provider_names.contains(name) {
+                if let Some(endpoint) = bound_callable_sources.get(binding) {
+                    sources.push(endpoint.clone());
+                }
+            }
+        }
+    }
+    sources
 }
 
 fn resolve_profile_interface_key(
@@ -5578,6 +5748,7 @@ fn item_callable_uses(item: &Item) -> Option<(&str, &[daglang_syntax::ast::UsesC
 fn item_callable_provides(item: &Item) -> Option<(&str, &[daglang_syntax::ast::ProvidesClause])> {
     match item {
         Item::FuncDef(def) => Some((def.name.as_str(), def.provides.as_slice())),
+        Item::PatternDef(def) => Some((def.name.as_str(), def.provides.as_slice())),
         _ => None,
     }
 }
@@ -5899,6 +6070,7 @@ mod tests {
         build_docgen_graph, build_makegen_graph, build_pragma_graph,
     };
     use gunbc_dag::deps_tool::build_deps_graph;
+    use gunbc_ir::node::NodeBody;
     use gunbc_ir::{Edge, Port};
     use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -7301,6 +7473,7 @@ func run(id: String) -> { ok: Bool } uses issues: IssueProvider {
         let dag = lower_typed_project_with_profile(&typed, Some("unit_test"))
             .expect("lowering should succeed with secret profile config binding");
         let prepare_node_id = "prepare_transport_sample_profile_impl_Provider_get";
+        let execute_node_id = "execute_transport_sample_profile_impl_Provider_get";
         assert!(dag
             .edges
             .iter()
@@ -7309,9 +7482,128 @@ func run(id: String) -> { ok: Bool } uses issues: IssueProvider {
             .edges
             .iter()
             .any(|edge| edge.to_node.0 == prepare_node_id && edge.to_port.0 == "config.repo"));
-        assert!(dag.edges.iter().any(|edge| {
-            edge.to_node.0 == prepare_node_id && edge.to_port.0 == "config.credential"
-        }));
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+            }),
+            "credential should be wired to res:credential on execute node, not config.credential on prepare node"
+        );
+    }
+
+    #[test]
+    fn auth_annotated_service_adds_res_credential_to_execute_node() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/auth_test.dag",
+            r#"module sample.auth
+service sample.Api {
+  @endpoint("https://api.example.com")
+  @auth(BearerToken)
+  operation Get {
+    input { id: String }
+    output { ok: Bool }
+    @rest(GET, "/v1/items/{id}")
+  }
+}
+func caller(id: String) -> { ok: Bool }
+  provides auth: AuthContext
+{
+  result = sample.Api.Get(id: id)
+  return { ok: result.ok }
+}"#,
+        )]);
+
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        let execute_node_id = "execute_transport_sample_auth_sample_Api_Get";
+
+        // Execute node should have res:credential input port
+        let execute_node = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0 == execute_node_id)
+            .expect("execute node should exist");
+        assert!(
+            execute_node
+                .inputs
+                .iter()
+                .any(|port| port.name.0 == "res:credential"),
+            "execute node should have res:credential input port"
+        );
+
+        // No config.credential on prepare node
+        let prepare_node_id = "prepare_transport_sample_auth_sample_Api_Get";
+        let prepare_node = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0 == prepare_node_id)
+            .expect("prepare node should exist");
+        assert!(
+            !prepare_node
+                .inputs
+                .iter()
+                .any(|port| port.name.0 == "config.credential"),
+            "prepare node should NOT have config.credential input (deprecated)"
+        );
+
+        // Auth scheme should be stored on the spec metadata
+        if let NodeBody::Opaque(LoweredOp::Callable {
+            service_metadata: Some(ref metadata),
+            ..
+        }) = execute_node.body
+        {
+            if let Some(ServiceOperationSpec::Rest(spec)) = &metadata.spec {
+                assert_eq!(
+                    spec.auth_scheme.as_deref(),
+                    Some("BearerToken"),
+                    "auth_scheme should be stored on RestOperationSpec"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn credential_chain_output_wires_to_execute_node_res_credential() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/cred_threading.dag",
+            r#"module sample.cred
+
+resource AuthContext {
+  kind: Capability
+  mode: Read
+}
+
+service sample.Api {
+  @endpoint("https://api.example.com")
+  @auth(BearerToken)
+  operation Get {
+    input { id: String }
+    output { ok: Bool }
+    @rest(GET, "/v1/items/{id}")
+  }
+}
+pattern cred_provider() -> { token: String }
+  provides auth: AuthContext
+{
+  return { token: "test-credential" }
+}
+func caller(id: String) -> { ok: Bool }
+  provides auth: AuthContext
+{
+  cred = cred_provider()
+  result = sample.Api.Get(id: id)
+  return { ok: result.ok }
+}"#,
+        )]);
+
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        let execute_node_id = "execute_transport_sample_cred_sample_Api_Get";
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+            }),
+            "credential provider output should be wired to execute node res:credential"
+        );
     }
 
     #[test]
