@@ -462,7 +462,7 @@ pub fn effective_width(config: BoxConfig, title_part: String) -> i64 {
 }
 }
 
-pub fn box_top_line(config: BoxConfig) -> Line {
+pub fn box_top_line(_config: BoxConfig) -> Line {
     todo!("generated from DSL");
 }
 
@@ -481,7 +481,7 @@ pub fn box_content_line(config: BoxConfig, content: String) -> Line {
     Line { spans: vec!(border_span, content_span), indent: 0, max_width: None }
 }
 
-pub fn box_bottom_line(config: BoxConfig) -> Line {
+pub fn box_bottom_line(_config: BoxConfig) -> Line {
     todo!("generated from DSL");
 }
 
@@ -703,4 +703,3 @@ impl SemanticColor {
         }
     }
 }
-

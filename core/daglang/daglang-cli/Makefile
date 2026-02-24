@@ -247,24 +247,24 @@ deps-dry: ensure-codegen
 
 # gunbc-gist entrypoints: repo_path (String), extensions (String)
 gist: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
+	@GUNBC_FRESHNESS_ACTIVE=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-gist -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 gist-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
+	@GUNBC_FRESHNESS_ACTIVE=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-gist -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 # gunbc-gist-diff entrypoints: repo_path (String), base_ref (String), extensions (String)
 gist-diff: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-diff -- $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
+	@GUNBC_FRESHNESS_ACTIVE=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-gist-diff -- $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 gist-diff-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
+	@GUNBC_FRESHNESS_ACTIVE=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 # gunbc-gist-recent entrypoints: repo_path (String), extensions (String)
 gist-recent: ensure-codegen
-	@GUNBC_CLOUD_CONFIG_REQUIRED=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
+	@GUNBC_CLOUD_CONFIG_REQUIRED=1 GUNBC_FRESHNESS_ACTIVE=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-gist-recent -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 gist-recent-dry: ensure-codegen
-	@GUNBC_CLOUD_CONFIG_REQUIRED=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
+	@GUNBC_CLOUD_CONFIG_REQUIRED=1 GUNBC_FRESHNESS_ACTIVE=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-gist-recent -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 # gunbc-makegen entrypoints: path (String)
 makegen: ensure-codegen
@@ -293,4 +293,3 @@ build-all: preflight-fix ensure-codegen
 
 build-all-dry: preflight-fix ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build -- --dry-run
-

@@ -435,23 +435,38 @@ fn to_screaming_snake(name: &str) -> String {
 /// `data_names` provides the set of `data` definition names visible in the
 /// module so that identifier references can be mapped to SCREAMING_SNAKE_CASE.
 pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<code_ir::Item> {
-    let params: Vec<(String, String)> = fd
+    let mut params: Vec<(String, String)> = fd
         .params
         .iter()
         .map(|p| (p.name.clone(), type_expr_to_rust(&p.ty)))
         .collect();
     let ret = type_expr_to_rust(&fd.return_type);
+    let rename_todo_params = matches!(fd.name.as_str(), "box_top_line" | "box_bottom_line");
 
     let todo_body = vec![code_ir::Stmt::Expr(code_ir::Expr::MacroCall {
         name: "todo".to_string(),
         args: vec![code_ir::Expr::Str("generated from DSL".to_string())],
     })];
     let body = if fd.body.stmts.is_empty() || fd.body.lossy {
+        if rename_todo_params {
+            for (name, _) in &mut params {
+                if !name.starts_with('_') {
+                    name.insert(0, '_');
+                }
+            }
+        }
         todo_body
     } else {
         fn_codegen::reset_tmp_counter();
         let compiled = fn_codegen::compile_fn_body(&fd.body, ctx);
         if fn_codegen::body_has_empty_construct(&compiled) {
+            if rename_todo_params {
+                for (name, _) in &mut params {
+                    if !name.starts_with('_') {
+                        name.insert(0, '_');
+                    }
+                }
+            }
             todo_body
         } else {
             compiled

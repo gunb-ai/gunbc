@@ -59,11 +59,11 @@ fn main() {
     let targets = build_targets();
     if targets.is_empty() {
         print_attention(
-            AttentionLevel::Error,
+            AttentionLevel::Warning,
             "No testgen targets",
-            "No testgen targets registered.",
+            "No testgen targets registered; skipping test generation.",
         );
-        process::exit(1);
+        return;
     }
 
     // Build the graph
