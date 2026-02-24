@@ -2055,9 +2055,20 @@ fn mock_intercept_outputs<T>(
     mocks: &BoundaryMocks,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
+    let has_any_mock = node
+        .outputs
+        .iter()
+        .any(|port| mocks.has_mock(&node.id, &port.name));
 
     for port in &node.outputs {
         if !mocks.has_mock(&node.id, &port.name) {
+            if !has_any_mock {
+                // No explicit mocks for this node at all — auto-skip.
+                // This handles transport nodes from transitively imported
+                // modules that the entrypoint doesn't actually exercise.
+                outputs.insert(port.name.0.clone(), Value::Skipped);
+                continue;
+            }
             return Err(ExecError::new(format!(
                 "missing mock for intercepted node '{}': output port '{}'",
                 node.id.0, port.name.0

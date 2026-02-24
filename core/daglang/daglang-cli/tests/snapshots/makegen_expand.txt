@@ -12,6 +12,336 @@ Nodes:
       * __deps: Any (0..*)
     outputs:
       * written: Bool (1)
+  - std.patterns::file_content_matches [callable::Pattern std.patterns.file_content_matches]
+    inputs:
+      * path: String (1)
+      * expected: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * matches: Bool (1)
+  - std.patterns::classify_files [callable::Pattern std.patterns.classify_files]
+    inputs:
+      * paths: List<FilePath> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * text: List<TextFilePath> (1)
+      * binary: List<BinaryFilePath> (1)
+  - std.patterns::read_text_files [callable::Pattern std.patterns.read_text_files]
+    inputs:
+      * paths: List<FilePath> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * files: List<Record> (1)
+      * skipped: List<BinaryFilePath> (1)
+  - std.patterns::read_binary_files [callable::Pattern std.patterns.read_binary_files]
+    inputs:
+      * paths: List<FilePath> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * files: List<Record> (1)
+      * skipped: List<TextFilePath> (1)
+  - std.patterns::acquire_subject_token [callable::Pattern std.patterns.acquire_subject_token]
+    inputs:
+      * runtime: CloudRuntime (1)
+      * audience: NonEmptyStr (1)
+      * __deps: Any (0..*)
+    outputs:
+      * token: String (1)
+  - std.patterns::optional_impersonation [callable::Pattern std.patterns.optional_impersonation]
+    inputs:
+      * access_token: String (1)
+      * service_account: ServiceAccountEmail? (1)
+      * lifetime_seconds: Int @range (1)
+      * __deps: Any (0..*)
+    outputs:
+      * token: String (1)
+  - std.patterns::ensure [callable::Pattern std.patterns.ensure]
+    inputs:
+      * should_act: fn(Check.Output)->Bool (1)
+      * __deps: Any (0..*)
+    outputs:
+      * acted: Bool (1)
+  - std.patterns::upsert [callable::Pattern std.patterns.upsert]
+    inputs:
+      * should_create: fn(Check.Output)->Bool (1)
+      * __deps: Any (0..*)
+    outputs:
+      * value: R (1)
+  - std.patterns::content_upsert [callable::Pattern std.patterns.content_upsert]
+    inputs:
+      * content: String (1)
+      * path: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * written: Bool (1)
+  - std.patterns::credential_chain [callable::Pattern std.patterns.credential_chain]
+    inputs:
+      * runtime: CloudRuntime (1)
+      * audience: NonEmptyStr (1)
+      * service_account: ServiceAccountEmail? (1)
+      * secret_name: NonEmptyStr (1)
+      * project_id: ProjectId (1)
+      * scheme: AuthScheme (1)
+      * header_name: String? (1)
+      * source_id: NonEmptyStr (1)
+      * required_scopes: List<String> (1)
+      * lifetime_seconds: Int @range (1)
+      * __deps: Any (0..*)
+    outputs:
+      * token: AccessToken (1)
+  - std.patterns::transaction [callable::Pattern std.patterns.transaction]
+    inputs:
+      * succeeded: fn(Body.Output)->Bool (1)
+      * __deps: Any (0..*)
+    outputs:
+      * value: R (1)
+  - std.patterns::retry [callable::Pattern std.patterns.retry]
+    inputs:
+      * max_attempts: Int (1)
+      * backoff_ms: Int (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: Unit (1)
+  - std.patterns::github_oidc [callable::Func std.patterns.github_oidc]
+    inputs:
+      * audience: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * token: String (1)
+  - std.patterns::metadata_oidc [callable::Func std.patterns.metadata_oidc]
+    inputs:
+      * audience: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * token: String (1)
+  - std.patterns::local_auth [callable::Func std.patterns.local_auth]
+    inputs:
+      * __deps: Any (0..*)
+    outputs:
+      * token: String (1)
+  - std.patterns::check_iam_binding [callable::Fn std.patterns.check_iam_binding]
+    inputs:
+      * bindings: Json (1)
+      * service_account: String (1)
+      * role: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * has_role: Bool (1)
+  - std.patterns::add_iam_binding [callable::Fn std.patterns.add_iam_binding]
+    inputs:
+      * bindings: Json (1)
+      * service_account: String (1)
+      * role: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * updated_bindings: Json (1)
+  - std.patterns::iam_preflight_check [callable::Func std.patterns.iam_preflight_check]
+    inputs:
+      * project_id: ProjectId (1)
+      * service_account: ServiceAccountEmail (1)
+      * required_role: NonEmptyStr (1)
+      * __deps: Any (0..*)
+    outputs:
+      * ok: Bool (1)
+  - shared.dag_util::aggregate_results [callable::Fn shared.dag_util.aggregate_results]
+    inputs:
+      * stages: List<StageResult> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: Summary (1)
+  - shared.dag_util::all_succeeded [callable::Fn shared.dag_util.all_succeeded]
+    inputs:
+      * stages: List<StageResult> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: Bool (1)
+  - shared.dag_util::format_report [callable::Fn shared.dag_util.format_report]
+    inputs:
+      * summary: Summary (1)
+      * stages: List<StageResult> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - shared.dag_util::stage_result [callable::Fn shared.dag_util.stage_result]
+    inputs:
+      * name: String (1)
+      * success: Bool (1)
+      * stderr: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: StageResult (1)
+  - shared.dag_util::skipped_stage [callable::Fn shared.dag_util.skipped_stage]
+    inputs:
+      * name: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: StageResult (1)
+  - shared.dag_util::stage_from_output [callable::Fn shared.dag_util.stage_from_output]
+    inputs:
+      * name: String (1)
+      * success: Bool (1)
+      * stdout: String (1)
+      * stderr: String (1)
+      * skipped: Bool (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: StageResult (1)
+  - shared.dag_util::generated_header [callable::Fn shared.dag_util.generated_header]
+    inputs:
+      * tool: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - shared.dag_util::text_line [callable::Fn shared.dag_util.text_line]
+    inputs:
+      * text: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: DocumentLine (1)
+  - shared.dag_util::comment_line [callable::Fn shared.dag_util.comment_line]
+    inputs:
+      * text: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: DocumentLine (1)
+  - shared.dag_util::blank_line [callable::Fn shared.dag_util.blank_line]
+    inputs:
+      * __deps: Any (0..*)
+    outputs:
+      * return: DocumentLine (1)
+  - shared.dag_util::section [callable::Fn shared.dag_util.section]
+    inputs:
+      * lines: List<DocumentLine> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: DocumentSection (1)
+  - shared.dag_util::titled_section [callable::Fn shared.dag_util.titled_section]
+    inputs:
+      * title: String (1)
+      * lines: List<DocumentLine> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: DocumentSection (1)
+  - shared.dag_util::doc [callable::Fn shared.dag_util.doc]
+    inputs:
+      * sections: List<DocumentSection> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: Document (1)
+  - shared.dag_util::doc_with_header [callable::Fn shared.dag_util.doc_with_header]
+    inputs:
+      * header: String (1)
+      * comment_prefix: String (1)
+      * sections: List<DocumentSection> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: Document (1)
+  - shared.dag_util::render_document_line [callable::Fn shared.dag_util.render_document_line]
+    inputs:
+      * line: DocumentLine (1)
+      * comment_prefix: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - shared.dag_util::render_document_section [callable::Fn shared.dag_util.render_document_section]
+    inputs:
+      * section: DocumentSection (1)
+      * comment_prefix: String (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - shared.dag_util::render_document [callable::Fn shared.dag_util.render_document]
+    inputs:
+      * document: Document (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - load_registry [callable::Pattern tools.makegen.load_registry]
+    outputs:
+      * registry: ToolRegistry (1)
+  - prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern services.gcp.secret_manager.service_transport::prepare::gcp.SecretManager::AccessVersion]
+    inputs:
+      * project_id: ProjectId (1)
+      * secret: NonEmptyStr (1)
+      * version: NonEmptyStr (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern services.gcp.secret_manager.service_transport::execute::gcp.SecretManager::AccessVersion]
+    inputs:
+      * request: TransportRequest (1)
+      * res:credential: Credential (0..1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion [callable::Pattern services.gcp.secret_manager.service_transport::parse::gcp.SecretManager::AccessVersion]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * payload: Bytes (1)
+      * name: String (1)
+  - prepare_transport_services_gcp_sts_gcp_STS_Exchange [callable::Pattern services.gcp.sts.service_transport::prepare::gcp.STS::Exchange]
+    inputs:
+      * subject_token: Secret (1)
+      * audience: NonEmptyStr (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_services_gcp_sts_gcp_STS_Exchange [callable::Pattern services.gcp.sts.service_transport::execute::gcp.STS::Exchange]
+    inputs:
+      * request: TransportRequest (1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_services_gcp_sts_gcp_STS_Exchange [callable::Pattern services.gcp.sts.service_transport::parse::gcp.STS::Exchange]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * access_token: Secret @json (1)
+      * expires_in: Int @json (1)
+  - prepare_transport_services_gcp_sts_github_OIDC_GetToken [callable::Pattern services.gcp.sts.service_transport::prepare::github.OIDC::GetToken]
+    inputs:
+      * audience: NonEmptyStr (1)
+      * request_url: String (1)
+      * request_token: Secret (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_services_gcp_sts_github_OIDC_GetToken [callable::Pattern services.gcp.sts.service_transport::execute::github.OIDC::GetToken]
+    inputs:
+      * request: TransportRequest (1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_services_gcp_sts_github_OIDC_GetToken [callable::Pattern services.gcp.sts.service_transport::parse::github.OIDC::GetToken]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * subject_token: Secret @json (1)
+  - prepare_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern services.gcp.sts.service_transport::prepare::gcp.Metadata::GetIdentityToken]
+    inputs:
+      * audience: NonEmptyStr (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern services.gcp.sts.service_transport::execute::gcp.Metadata::GetIdentityToken]
+    inputs:
+      * request: TransportRequest (1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken [callable::Pattern services.gcp.sts.service_transport::parse::gcp.Metadata::GetIdentityToken]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * subject_token: Secret (1)
+  - prepare_transport_services_shell_shell_Env_Get [callable::Pattern services.shell.service_transport::prepare::shell.Env::Get]
+    inputs:
+      * name: NonEmptyStr (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_services_shell_shell_Env_Get [callable::Pattern services.shell.service_transport::execute::shell.Env::Get]
+    inputs:
+      * request: TransportRequest (1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_services_shell_shell_Env_Get [callable::Pattern services.shell.service_transport::parse::shell.Env::Get]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * value: String? (1)
   - prepare_read_makegen [primitive::IoPrepareFileRead tools.makegen.content_upsert::prepare_read_makegen]
     inputs:
       * path: String (1)
@@ -50,13 +380,230 @@ Nodes:
       * path: String (1)
     outputs:
       * path: String (1)
-  - load_registry [callable::Pattern tools.makegen.load_registry]
+  - std.patterns::classify_files::cf_for_0 [subdag]
+    inputs:
+      * items: Any (0..*)
     outputs:
-      * registry: ToolRegistry (1)
-  - fs_env [primitive::FsEnv tools.makegen.fs_env]
+      * result: Any (0..*)
+  - std.patterns::acquire_subject_token::cf_match_0 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
     outputs:
-      * FilesystemHandle: FilesystemHandle (1)
+      * branch_taken: String (1)
+      * result: Any (1)
+  - std.patterns::optional_impersonation::cf_match_0 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - shared.dag_util::format_report::cf_if_0 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - shared.dag_util::format_report::cf_if_1 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - shared.dag_util::render_document_line::cf_if_0 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - shared.dag_util::render_document_line::cf_if_1 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - shared.dag_util::render_document_section::cf_if_0 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - shared.dag_util::render_document_section::cf_if_1 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - shared.dag_util::render_document::cf_if_0 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - shared.dag_util::render_document::cf_if_1 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - literal_source_tools_makegen_render_makefile_text_fn_0 [primitive::CallLiteralSource { literal: String("{t.name}:\n\t{t.command}") } tools.makegen.call_literal_source::strhex:7b742e6e616d657d3a0a097b742e636f6d6d616e647d]
+    outputs:
+      * text: Any (1)
+  - literal_source_tools_makegen_render_makefile_comment_prefix_fn_1 [primitive::CallLiteralSource { literal: String("#") } tools.makegen.call_literal_source::strhex:23]
+    outputs:
+      * comment_prefix: Any (1)
+  - literal_source_tools_makegen_render_makefile_tool_fn_0 [primitive::CallLiteralSource { literal: String("makegen") } tools.makegen.call_literal_source::strhex:6d616b6567656e]
+    outputs:
+      * tool: Any (1)
+  - param_source_std_patterns_acquire_subject_token_audience [primitive::CallParamSource { callable: "acquire_subject_token", param: "audience" } std.patterns.call_param_source::acquire_subject_token::audience]
+    inputs:
+      * audience: NonEmptyStr (1)
+    outputs:
+      * audience: NonEmptyStr (1)
+  - param_source_std_patterns_content_upsert_path [primitive::CallParamSource { callable: "content_upsert", param: "path" } std.patterns.call_param_source::content_upsert::path]
+    inputs:
+      * path: String (1)
+    outputs:
+      * path: String (1)
+  - param_source_std_patterns_content_upsert_content [primitive::CallParamSource { callable: "content_upsert", param: "content" } std.patterns.call_param_source::content_upsert::content]
+    inputs:
+      * content: String (1)
+    outputs:
+      * content: String (1)
+  - param_source_std_patterns_credential_chain_audience [primitive::CallParamSource { callable: "credential_chain", param: "audience" } std.patterns.call_param_source::credential_chain::audience]
+    inputs:
+      * audience: NonEmptyStr (1)
+    outputs:
+      * audience: NonEmptyStr (1)
+  - param_source_std_patterns_credential_chain_project_id [primitive::CallParamSource { callable: "credential_chain", param: "project_id" } std.patterns.call_param_source::credential_chain::project_id]
+    inputs:
+      * project_id: ProjectId (1)
+    outputs:
+      * project_id: ProjectId (1)
+  - param_source_std_patterns_credential_chain_secret_name [primitive::CallParamSource { callable: "credential_chain", param: "secret_name" } std.patterns.call_param_source::credential_chain::secret_name]
+    inputs:
+      * secret_name: NonEmptyStr (1)
+    outputs:
+      * secret_name: NonEmptyStr (1)
+  - param_source_std_patterns_credential_chain_runtime [primitive::CallParamSource { callable: "credential_chain", param: "runtime" } std.patterns.call_param_source::credential_chain::runtime]
+    inputs:
+      * runtime: CloudRuntime (1)
+    outputs:
+      * runtime: CloudRuntime (1)
+  - param_source_std_patterns_credential_chain_service_account [primitive::CallParamSource { callable: "credential_chain", param: "service_account" } std.patterns.call_param_source::credential_chain::service_account]
+    inputs:
+      * service_account: ServiceAccountEmail? (1)
+    outputs:
+      * service_account: ServiceAccountEmail? (1)
+  - param_source_std_patterns_credential_chain_lifetime_seconds [primitive::CallParamSource { callable: "credential_chain", param: "lifetime_seconds" } std.patterns.call_param_source::credential_chain::lifetime_seconds]
+    inputs:
+      * lifetime_seconds: Int @range (1)
+    outputs:
+      * lifetime_seconds: Int @range (1)
+  - literal_source_std_patterns_github_oidc_name_0_0 [primitive::CallLiteralSource { literal: String("ACTIONS_ID_TOKEN_REQUEST_URL") } std.patterns.call_literal_source::strhex:414354494f4e535f49445f544f4b454e5f524551554553545f55524c]
+    outputs:
+      * name: Any (1)
+  - prepare_transport_services_shell_shell_Env_Get_c1 [callable::Pattern services.shell.service_transport::prepare::shell.Env::Get]
+    inputs:
+      * name: NonEmptyStr (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_services_shell_shell_Env_Get_c1 [callable::Pattern services.shell.service_transport::execute::shell.Env::Get]
+    inputs:
+      * request: TransportRequest (1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_services_shell_shell_Env_Get_c1 [callable::Pattern services.shell.service_transport::parse::shell.Env::Get]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * value: String? (1)
+  - literal_source_std_patterns_github_oidc_name_1_0 [primitive::CallLiteralSource { literal: String("ACTIONS_ID_TOKEN_REQUEST_TOKEN") } std.patterns.call_literal_source::strhex:414354494f4e535f49445f544f4b454e5f524551554553545f544f4b454e]
+    outputs:
+      * name: Any (1)
+  - param_source_std_patterns_github_oidc_audience [primitive::CallParamSource { callable: "github_oidc", param: "audience" } std.patterns.call_param_source::github_oidc::audience]
+    inputs:
+      * audience: String (1)
+    outputs:
+      * audience: String (1)
+  - param_source_std_patterns_metadata_oidc_audience [primitive::CallParamSource { callable: "metadata_oidc", param: "audience" } std.patterns.call_param_source::metadata_oidc::audience]
+    inputs:
+      * audience: String (1)
+    outputs:
+      * audience: String (1)
+  - literal_source_shared_dag_util_format_report_title_fn_0 [primitive::CallLiteralSource { literal: String("Report") } shared.dag_util.call_literal_source::strhex:5265706f7274]
+    outputs:
+      * title: Any (1)
+  - param_source_shared_dag_util_render_document_section_comment_prefix [primitive::CallParamSource { callable: "render_document_section", param: "comment_prefix" } shared.dag_util.call_param_source::render_document_section::comment_prefix]
+    inputs:
+      * comment_prefix: String (1)
+    outputs:
+      * comment_prefix: String (1)
+  - acquire_resource_std_resources_Filesystem [callable::Pattern std.resources.resource_lifecycle::acquire::Filesystem]
+    outputs:
+      * resource_handle: ResourceHandle (1)
+  - release_resource_std_resources_Filesystem [callable::Pattern std.resources.resource_lifecycle::release::Filesystem]
+    inputs:
+      * resource_handle: ResourceHandle (1)
+    outputs:
+      * released: Bool (1)
+  - acquire_resource_std_resources_Network [callable::Pattern std.resources.resource_lifecycle::acquire::Network]
+    outputs:
+      * resource_handle: ResourceHandle (1)
+  - release_resource_std_resources_Network [callable::Pattern std.resources.resource_lifecycle::release::Network]
+    inputs:
+      * resource_handle: ResourceHandle (1)
+    outputs:
+      * released: Bool (1)
+  - acquire_resource_std_resources_Clock [callable::Pattern std.resources.resource_lifecycle::acquire::Clock]
+    outputs:
+      * resource_handle: ResourceHandle (1)
+  - release_resource_std_resources_Clock [callable::Pattern std.resources.resource_lifecycle::release::Clock]
+    inputs:
+      * resource_handle: ResourceHandle (1)
+    outputs:
+      * released: Bool (1)
+  - acquire_resource_std_resources_AuthContext [callable::Pattern std.resources.resource_lifecycle::acquire::AuthContext]
+    outputs:
+      * resource_handle: ResourceHandle (1)
+  - release_resource_std_resources_AuthContext [callable::Pattern std.resources.resource_lifecycle::release::AuthContext]
+    inputs:
+      * resource_handle: ResourceHandle (1)
+    outputs:
+      * released: Bool (1)
+  - provide_resource_std_patterns_credential_chain_auth [callable::Pattern std.patterns.resource_provide::credential_chain::auth]
+    inputs:
+      * trigger: Any (1)
+    outputs:
+      * auth: AuthContext (1)
 Edges:
+  - load_registry.registry -> tools.makegen::render_makefile.registry
+  - load_registry.registry -> tools.makegen::makegen.registry
+  - prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.request -> execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.request
+  - execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.response -> parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.response
+  - prepare_transport_services_gcp_sts_gcp_STS_Exchange.request -> execute_transport_services_gcp_sts_gcp_STS_Exchange.request
+  - execute_transport_services_gcp_sts_gcp_STS_Exchange.response -> parse_transport_services_gcp_sts_gcp_STS_Exchange.response
+  - prepare_transport_services_gcp_sts_github_OIDC_GetToken.request -> execute_transport_services_gcp_sts_github_OIDC_GetToken.request
+  - execute_transport_services_gcp_sts_github_OIDC_GetToken.response -> parse_transport_services_gcp_sts_github_OIDC_GetToken.response
+  - prepare_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.request -> execute_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.request
+  - execute_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.response -> parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.response
+  - prepare_transport_services_shell_shell_Env_Get.request -> execute_transport_services_shell_shell_Env_Get.request
+  - execute_transport_services_shell_shell_Env_Get.response -> parse_transport_services_shell_shell_Env_Get.response
+  - shared.dag_util::doc_with_header.return -> tools.makegen::render_makefile.__deps
+  - shared.dag_util::generated_header.return -> tools.makegen::render_makefile.__deps
+  - shared.dag_util::render_document.return -> tools.makegen::render_makefile.__deps
+  - shared.dag_util::section.return -> tools.makegen::render_makefile.__deps
+  - shared.dag_util::text_line.return -> tools.makegen::render_makefile.__deps
+  - std.patterns::content_upsert.written -> tools.makegen::makegen.__deps
   - tools.makegen::render_makefile.return -> tools.makegen::makegen.__deps
   - prepare_read_makegen.request -> execute_read_makegen.request
   - prepare_read_makegen.skip -> execute_read_makegen.skip
@@ -68,8 +615,90 @@ Edges:
   - tools.makegen::render_makefile.return -> prepare_write_makegen.content
   - param_source_tools_makegen_makegen_path.path -> prepare_read_makegen.path
   - param_source_tools_makegen_makegen_path.path -> prepare_write_makegen.path
-  - load_registry.registry -> tools.makegen::render_makefile.registry
-  - load_registry.registry -> tools.makegen::makegen.registry
-  - fs_env.FilesystemHandle -> prepare_read_makegen.res:file:Makefile
-  - fs_env.FilesystemHandle -> execute_makegen_transport.res:file
+  - std.patterns::classify_files::cf_for_0.result -> std.patterns::classify_files.__deps
+  - std.patterns::github_oidc.token -> std.patterns::acquire_subject_token.__deps
+  - std.patterns::local_auth.token -> std.patterns::acquire_subject_token.__deps
+  - std.patterns::metadata_oidc.token -> std.patterns::acquire_subject_token.__deps
+  - std.patterns::acquire_subject_token::cf_match_0.result -> std.patterns::acquire_subject_token.__deps
+  - std.patterns::optional_impersonation::cf_match_0.result -> std.patterns::optional_impersonation.__deps
+  - std.patterns::ensure.acted -> std.patterns::content_upsert.__deps
+  - std.patterns::file_content_matches.matches -> std.patterns::content_upsert.__deps
+  - std.patterns::acquire_subject_token.token -> std.patterns::credential_chain.__deps
+  - std.patterns::optional_impersonation.token -> std.patterns::credential_chain.__deps
+  - shared.dag_util::blank_line.return -> shared.dag_util::format_report.__deps
+  - shared.dag_util::doc.return -> shared.dag_util::format_report.__deps
+  - shared.dag_util::render_document.return -> shared.dag_util::format_report.__deps
+  - shared.dag_util::text_line.return -> shared.dag_util::format_report.__deps
+  - shared.dag_util::titled_section.return -> shared.dag_util::format_report.__deps
+  - shared.dag_util::format_report::cf_if_0.result -> shared.dag_util::format_report.__deps
+  - shared.dag_util::format_report::cf_if_1.result -> shared.dag_util::format_report.__deps
+  - shared.dag_util::render_document_line::cf_if_0.result -> shared.dag_util::render_document_line.__deps
+  - shared.dag_util::render_document_line::cf_if_1.result -> shared.dag_util::render_document_line.__deps
+  - shared.dag_util::render_document_line.return -> shared.dag_util::render_document_section.__deps
+  - shared.dag_util::render_document_section::cf_if_0.result -> shared.dag_util::render_document_section.__deps
+  - shared.dag_util::render_document_section::cf_if_1.result -> shared.dag_util::render_document_section.__deps
+  - shared.dag_util::render_document_section.return -> shared.dag_util::render_document.__deps
+  - shared.dag_util::render_document::cf_if_0.result -> shared.dag_util::render_document.__deps
+  - shared.dag_util::render_document::cf_if_1.result -> shared.dag_util::render_document.__deps
+  - literal_source_tools_makegen_render_makefile_text_fn_0.text -> shared.dag_util::text_line.text
+  - literal_source_tools_makegen_render_makefile_comment_prefix_fn_1.comment_prefix -> shared.dag_util::doc_with_header.comment_prefix
+  - literal_source_tools_makegen_render_makefile_tool_fn_0.tool -> shared.dag_util::generated_header.tool
+  - shared.dag_util::doc_with_header.return -> shared.dag_util::render_document.document
+  - tools.makegen::render_makefile.return -> std.patterns::content_upsert.content
+  - param_source_tools_makegen_makegen_path.path -> std.patterns::content_upsert.path
+  - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::github_oidc.audience
+  - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::metadata_oidc.audience
+  - param_source_std_patterns_content_upsert_path.path -> std.patterns::file_content_matches.path
+  - param_source_std_patterns_content_upsert_content.content -> std.patterns::file_content_matches.expected
+  - parse_transport_services_gcp_sts_gcp_STS_Exchange.access_token -> std.patterns::credential_chain.__deps
+  - std.patterns::acquire_subject_token.token -> prepare_transport_services_gcp_sts_gcp_STS_Exchange.subject_token
+  - param_source_std_patterns_credential_chain_audience.audience -> prepare_transport_services_gcp_sts_gcp_STS_Exchange.audience
+  - parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.payload -> std.patterns::credential_chain.__deps
+  - param_source_std_patterns_credential_chain_project_id.project_id -> prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.project_id
+  - param_source_std_patterns_credential_chain_secret_name.secret_name -> prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.secret
+  - param_source_std_patterns_credential_chain_runtime.runtime -> std.patterns::acquire_subject_token.runtime
+  - param_source_std_patterns_credential_chain_audience.audience -> std.patterns::acquire_subject_token.audience
+  - parse_transport_services_gcp_sts_gcp_STS_Exchange.access_token -> std.patterns::optional_impersonation.access_token
+  - param_source_std_patterns_credential_chain_service_account.service_account -> std.patterns::optional_impersonation.service_account
+  - param_source_std_patterns_credential_chain_lifetime_seconds.lifetime_seconds -> std.patterns::optional_impersonation.lifetime_seconds
+  - parse_transport_services_shell_shell_Env_Get.value -> std.patterns::github_oidc.__deps
+  - literal_source_std_patterns_github_oidc_name_0_0.name -> prepare_transport_services_shell_shell_Env_Get.name
+  - prepare_transport_services_shell_shell_Env_Get_c1.request -> execute_transport_services_shell_shell_Env_Get_c1.request
+  - execute_transport_services_shell_shell_Env_Get_c1.response -> parse_transport_services_shell_shell_Env_Get_c1.response
+  - parse_transport_services_shell_shell_Env_Get_c1.value -> std.patterns::github_oidc.__deps
+  - literal_source_std_patterns_github_oidc_name_1_0.name -> prepare_transport_services_shell_shell_Env_Get_c1.name
+  - parse_transport_services_gcp_sts_github_OIDC_GetToken.subject_token -> std.patterns::github_oidc.__deps
+  - param_source_std_patterns_github_oidc_audience.audience -> prepare_transport_services_gcp_sts_github_OIDC_GetToken.audience
+  - parse_transport_services_shell_shell_Env_Get.value -> prepare_transport_services_gcp_sts_github_OIDC_GetToken.request_url
+  - parse_transport_services_shell_shell_Env_Get.value -> prepare_transport_services_gcp_sts_github_OIDC_GetToken.request_token
+  - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__deps
+  - param_source_std_patterns_metadata_oidc_audience.audience -> prepare_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.audience
+  - literal_source_shared_dag_util_format_report_title_fn_0.title -> shared.dag_util::titled_section.title
+  - param_source_shared_dag_util_render_document_section_comment_prefix.comment_prefix -> shared.dag_util::render_document_line.comment_prefix
+  - acquire_resource_std_resources_Filesystem.resource_handle -> release_resource_std_resources_Filesystem.resource_handle
+  - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
+  - acquire_resource_std_resources_Clock.resource_handle -> release_resource_std_resources_Clock.resource_handle
+  - acquire_resource_std_resources_AuthContext.resource_handle -> release_resource_std_resources_AuthContext.resource_handle
+  - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::file_content_matches.__deps
+  - std.patterns::file_content_matches.matches -> release_resource_std_resources_Filesystem.resource_handle
+  - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::classify_files.__deps
+  - std.patterns::classify_files.text -> release_resource_std_resources_Filesystem.resource_handle
+  - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::read_text_files.__deps
+  - std.patterns::read_text_files.files -> release_resource_std_resources_Filesystem.resource_handle
+  - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::read_binary_files.__deps
+  - std.patterns::read_binary_files.files -> release_resource_std_resources_Filesystem.resource_handle
+  - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::content_upsert.__deps
+  - std.patterns::content_upsert.written -> release_resource_std_resources_Filesystem.resource_handle
+  - acquire_resource_std_resources_Network.resource_handle -> std.patterns::credential_chain.__deps
+  - std.patterns::credential_chain.token -> release_resource_std_resources_Network.resource_handle
+  - acquire_resource_std_resources_Network.resource_handle -> std.patterns::github_oidc.__deps
+  - std.patterns::github_oidc.token -> release_resource_std_resources_Network.resource_handle
+  - acquire_resource_std_resources_Network.resource_handle -> std.patterns::metadata_oidc.__deps
+  - std.patterns::metadata_oidc.token -> release_resource_std_resources_Network.resource_handle
+  - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::local_auth.__deps
+  - std.patterns::local_auth.token -> release_resource_std_resources_Filesystem.resource_handle
+  - acquire_resource_std_resources_Network.resource_handle -> std.patterns::iam_preflight_check.__deps
+  - std.patterns::iam_preflight_check.ok -> release_resource_std_resources_Network.resource_handle
+  - std.patterns::credential_chain.token -> provide_resource_std_patterns_credential_chain_auth.trigger
+  - provide_resource_std_patterns_credential_chain_auth.auth -> release_resource_std_resources_AuthContext.resource_handle
 
