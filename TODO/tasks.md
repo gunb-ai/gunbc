@@ -40,6 +40,9 @@
 | SDLC mega modeling gate | Resolved (done) | `MD0-D` approved; all downstream lanes delivered. |
 | Three-layer domain abstraction | Resolved | Pipeline sees domain concepts (Issue, Claim, Outcome); domain interfaces are provider-fungible; infra implementations selected by deployment profile at compile time. See `docs/design/sdlc/e2e-gap-analysis.md`. |
 | Compile-time profile binding | Resolved (done) | `profile { bind Interface -> Impl }` syntax in DSL. Compiler resolves `uses` declarations via active profile. `--profile` CLI flag. All implemented (S12-6..S12-9). |
+| D-1: Config-driven DAG construction | Resolved | Compositional `ReviewConcern` types + generic `dimension_review` pattern + structural DAG phasing via data-flow dependencies. No new DSL syntax needed. Resource acquisition (M10) drives sequencing. |
+| D-2: Provider/runtime dispatch | Resolved | Abstract resource interfaces (`SecretStore`, `Identity`, `ObjectStorage`) + `CredentialFlow` sum type + profile binding. Ported from `the-gunbai`. Provider dispatch eliminated — profile binding resolves at compile time. |
+| D-3: Authoring work breakdown | Re-scoped | D-3d eliminated (profile binding replaces dispatch). D-3a/b/c re-scoped as interface implementations. See updated sub-task table under Lane 3-A+. |
 | Dry-run deployment readiness | Resolved (done) | Rust worker multi-stage dispatch now supports local dry-run progression through terminal `closed` state. See Sprint 11.5. |
 | Dual execution path convergence | Resolved (done) | Compiled DAG path proven via E2E test (`sdlc_compiled_pipeline.rs`). Worker dispatch uses `CompiledStageDispatcher` via compiled DAGs. All 6 lifecycle stages dispatched through compiled path. |
 
@@ -120,7 +123,7 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | 1: Type system + graph builders | **DEFERRED** | Phase 1-A deferred (TS-1, TS-1b, TS-1c co-blocked with graph.rs deletion — cancel if GR-* succeeds). Phase 1-B done (TS-2 ✅, TS-5 ✅). |
 | 2: 100% codegen pipeline | **DONE** | All S12 items complete, L2-4 green |
 | Post-merge: Type system hard cutover | **DONE** | TS-7 ✅, TS-3 ✅, TS-4a..TS-4d ✅. port_type.rs DELETED (367 lines). TypeRegistry is sole authority. |
-| 3: Modeling integrity | **DEFERRED** | All M7-M22 complete. GR-1..GR-4 reclassified: DSL syntax is sufficient (validated by PoC), blocker is authoring work (D-3a..D-3d for GR-3/4, service op defs for GR-1/2). |
+| 3: Modeling integrity | **DEFERRED** | All M7-M22 complete. D-1/D-2 resolved: compositional concern types + interface/profile binding (ported from the-gunbai). GR-1/2 unblocked by D-1 (ReviewConcern model). GR-3/4: D-3d eliminated (profile binding), D-3a/b/c re-scoped as interface implementations. |
 | 4: Codebase polish | **ACTIVE** | CU-3, CU-7 (blocked L1). CU-8 ✅, CU-9 ✅ (won't-fix), CU-10 ✅ |
 
 ---
@@ -289,7 +292,7 @@ L2-0 ✅ ──→ L2-1 ✅, L2-2 ✅, TS-6 ✅ ──→ S12-6 ✅ ──→ S1
 
 **Source**: `TODO/modeling.md` — 13 intake tasks for semantic-integrity hardening.
 **Design-first policy**: Every M* task requires a paired M*-D design review before implementation.
-**Status**: All 16 modeling tasks (M7-M22) COMPLETE. Graph.rs cleanup (GR-1..GR-4) reclassified: DSL syntax is sufficient (PoC validated), blocker is authoring work. See D-3a..D-3d sub-tasks.
+**Status**: All 16 modeling tasks (M7-M22) COMPLETE. D-1/D-2 design decisions resolved: compositional types + interface/profile binding. GR-1..GR-4 unblocked — remaining work is authoring (D-3a..D-3c sub-tasks; D-3d eliminated by profile binding).
 
 ### Lane 3-A: Graph semantics (M8 → M9 → M16)
 
@@ -302,25 +305,29 @@ L2-0 ✅ ──→ L2-1 ✅, L2-2 ✅, TS-6 ✅ ──→ S12-6 ✅ ──→ S1
 | **M16-D** | **Design: SystemModel/TransportBehavior unification** | M8-D | S | ✅ Done |
 | **M16** | **Unify invocation contracts**: `ProtocolLayer` + `ProtocolStack` types in `contract.rs`. Bridge from `TransportBehavior`+`BehaviorScope`. **Unblocks**: graph.rs cleanup + cloud modeling. | M16-D, M8 | M | ✅ Done |
 
-### Lane 3-A+ : Graph.rs Cleanup (Unblocked — M16 done)
+### Lane 3-A+ : Graph.rs Cleanup (Unblocked — M16 done, D-1/D-2 resolved)
 
-**Blocker reclassified (2026-02-23)**: D-1/D-2 PoC validation confirmed the DSL *can* express these patterns with existing syntax (`func` + `if` + `match`). The blocker is authoring work, not missing DSL features. See `dsl/proofs/d1_dimension_review.dag` and `dsl/proofs/d2_provider_dispatch.dag`.
+**Design decisions resolved (2026-02-23)**:
+
+- **D-1** (GR-1/GR-2): Compositional `ReviewConcern` types + generic `dimension_review` pattern. Phasing is structural (data-flow dependencies, not tags). No new DSL syntax. PoC: `dsl/proofs/d1_dimension_review.dag`.
+- **D-2** (GR-3/GR-4): Abstract resource interfaces (`SecretStore`, `Identity`) + `CredentialFlow` sum type + profile binding. Ported from `the-gunbai`. Provider dispatch eliminated — compile-time profile binding replaces `match provider`. PoC: `dsl/proofs/d2_provider_dispatch.dag`.
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **GR-1** | **Delete `review/graph.rs`** (1,727 lines): Author `dimension_review` func + `diff_dimension_review` caller using `func` + `if` pattern. Define `PrepareDimensionPrompt`, `ParseDimensionResponse`, `LLM.Complete` as DSL service ops. | M16 | M | DEFERRED — authoring: dimension review func + 3 service op definitions |
+| **GR-1** | **Delete `review/graph.rs`** (1,727 lines): Author `ReviewConcern` types (coherence, quality, requirements, aspirational) + generic `dimension_review` pattern. Phasing via data-flow deps (aspirational consumes prior findings). Define `PrepareDimensionPrompt`, `ParseDimensionResponse`, `LLM.Complete` as DSL service ops. | M16 | M | DEFERRED — authoring: concern types + review pattern + 3 service op definitions |
 | **GR-2** | **Delete `llm-ops/graph.rs`** (267 lines) — only called by review's graph builder | GR-1, M16 | S | DEFERRED — co-blocked with GR-1 |
-| **GR-3** | **Delete `cloud-ops/graph.rs`** (502 lines): Replace Rust dispatch with DSL `match provider` expression. Author OIDC implementations (D-3a), local auth upsert (D-3b), IAM preflight (D-3c). | M16, D-3a..D-3d | M | DEFERRED — authoring: credential chain funcs (3 S + 1 M sub-tasks) |
-| **GR-4** | **Delete `gcp-ops/graph.rs`** (1,674 lines) — called by cloud-ops dispatcher | GR-3, M16 | S | DEFERRED — co-blocked with GR-3 |
+| **GR-3** | **Delete `cloud-ops/graph.rs`** (502 lines): Define `CredentialProvider` interface + `CredentialFlow` sum type. Bind concrete providers via profile. Author OIDC implementations (D-3a), local auth upsert (D-3b), IAM preflight (D-3c). | M16, D-3a..D-3c | M | DEFERRED — authoring: interface + flow type + concrete implementations |
+| **GR-4** | **Delete `gcp-ops/graph.rs`** (1,674 lines) — concrete GCP implementation of `CredentialProvider` interface | GR-3, M16 | S | DEFERRED — co-blocked with GR-3 |
 
-#### GR-3/GR-4 Sub-Tasks (D-3a..D-3d)
+#### GR-3/GR-4 Sub-Tasks (D-3a..D-3c)
+
+D-3d eliminated — profile binding replaces provider dispatch (no match code needed).
 
 | ID | Task | Rust Lines | New DSL Ops | Size | Status |
 |----|------|-----------|-------------|------|--------|
-| **D-3a** | **OIDC implementations**: Replace `github_oidc()`, `metadata_oidc()` stubs in `dsl/std/patterns.dag` with real funcs. GCP service ops already exist (`gcp.STS.Exchange`, `github.OIDC.GetToken`, `gcp.Metadata.GetIdentityToken`). | ~181 | 0 | S | |
-| **D-3b** | **Local auth upsert**: Author `local_auth()` func — ADC check → OAuth2 refresh → conditional re-auth via gcloud → merge. Needs 1 new DSL service op (`oauth2.googleapis.com` refresh). | ~725 | 1 | M | |
-| **D-3c** | **IAM preflight**: Author IAM ensure pattern — `getIamPolicy` → check → conditional `setIamPolicy`. GCP service ops already exist (`gcp.ResourceManager.{Get,Set}IamPolicy`). | ~308 | 0 | S | |
-| **D-3d** | **Cloud-ops dispatch**: Replace Rust `match provider/runtime` with DSL `match` expression. PoC validated in `dsl/proofs/d2_provider_dispatch.dag`. | ~291 | 0 | S | |
+| **D-3a** | **OIDC implementations (WorkloadIdentity flow)**: Replace `github_oidc()`, `metadata_oidc()` stubs in `dsl/std/patterns.dag` with real funcs implementing `WorkloadIdentity` credential flow. GCP service ops already exist (`gcp.STS.Exchange`, `github.OIDC.GetToken`, `gcp.Metadata.GetIdentityToken`). | ~181 | 0 | S | |
+| **D-3b** | **Local auth upsert (InteractiveAuth flow)**: Author `local_auth()` func implementing `InteractiveAuth` credential flow — ADC check → OAuth2 refresh → conditional re-auth via gcloud → merge. Needs 1 new DSL service op (`oauth2.googleapis.com` refresh). | ~725 | 1 | M | |
+| **D-3c** | **IAM preflight (Identity interface)**: Author IAM ensure pattern as part of GCP `Identity` interface implementation — `getIamPolicy` → check → conditional `setIamPolicy`. GCP service ops already exist (`gcp.ResourceManager.{Get,Set}IamPolicy`). | ~308 | 0 | S | |
 
 ### Lane 3-B: Workflow execution safety (M10 → M11 → M12)
 
@@ -371,7 +378,8 @@ Lane 3-C:  M13 ✅ → M14 ✅
 Lane 3-D:  M17 ✅ → M18 ✅ → M19 ✅
 Lane 3-E:  M20 ✅, M21 ✅, M22 ✅
 
-3-A graph.rs cleanup is the critical path (authoring work: D-3a..D-3d for GR-3/4, service op defs for GR-1/2).
+D-1/D-2 resolved. GR-1/2 critical path: ReviewConcern types + review pattern + service ops.
+GR-3/4 critical path: CredentialProvider interface + D-3a (S), D-3b (M), D-3c (S). D-3d eliminated.
 ```
 
 ---

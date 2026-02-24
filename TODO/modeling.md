@@ -51,7 +51,14 @@ Promotion rule:
 
 Verified: `cargo test --workspace` (127/127 suites pass), `cargo clippy --all-targets -- -D warnings` (0 errors).
 
-Remaining follow-up: 4 graph.rs file deletions (~4,170 lines). Blocker reclassified (2026-02-23): DSL syntax validated via PoC (`dsl/proofs/d1_dimension_review.dag`, `dsl/proofs/d2_provider_dispatch.dag`). Remaining work is authoring (D-3a..D-3d sub-tasks in `TODO/tasks.md`). See § Cloud Modeling Gap Inventory below.
+Remaining follow-up: 4 graph.rs file deletions (~4,170 lines).
+
+Design decisions resolved (2026-02-23):
+- **D-1**: Compositional `ReviewConcern` types + generic `dimension_review` pattern. Phasing via structural data-flow deps. No new DSL syntax.
+- **D-2**: Abstract resource interfaces (`SecretStore`, `Identity`, `ObjectStorage`) + `CredentialFlow` sum type + profile binding. Ported from `the-gunbai`. Provider dispatch eliminated — compile-time profile binding replaces `match provider`.
+- **D-3**: Re-scoped. D-3d eliminated (profile binding). D-3a/b/c re-scoped as interface implementations.
+
+Remaining work is authoring (D-3a..D-3c sub-tasks in `TODO/tasks.md`). See § Cloud Modeling Gap Inventory below.
 
 ## Intake Tasks
 
@@ -102,23 +109,23 @@ standard; AWS/Azure need the same treatment.
 ### Remaining Rust Graph Builders (Authoring Backlog)
 
 These `graph.rs` files (~4,170 lines total) require DSL authoring work to replace.
-M16 is done. DSL syntax validated via PoC (2026-02-23). See `TODO/tasks.md` GR-1..GR-4
-and D-3a..D-3d sub-tasks.
+M16 is done. Design decisions D-1/D-2 resolved (2026-02-23). See `TODO/tasks.md`
+GR-1..GR-4 and D-3a..D-3c sub-tasks.
 
 | File | Lines | Remaining Work |
 |------|-------|----------------|
-| `lib/review/src/graph.rs` | 1,727 | Author `dimension_review` func + define 3 service ops (GR-1) |
-| `lib/gcp-ops/src/graph.rs` | 1,674 | Author OIDC + local auth + IAM funcs (D-3a..D-3c, GR-4) |
-| `lib/cloud-ops/src/graph.rs` | 502 | Replace Rust dispatch with DSL `match` (D-3d, GR-3) |
+| `lib/review/src/graph.rs` | 1,727 | Author `ReviewConcern` types + generic `dimension_review` pattern + 3 service ops (GR-1, D-1) |
+| `lib/gcp-ops/src/graph.rs` | 1,674 | Concrete GCP `CredentialProvider` implementation: OIDC + local auth + IAM (D-3a..D-3c, GR-4, D-2) |
+| `lib/cloud-ops/src/graph.rs` | 502 | Define `CredentialProvider` interface + `CredentialFlow` type + profile bindings (GR-3, D-2) |
 | `lib/llm-ops/src/graph.rs` | 267 | Subsumed by GR-1 (GR-2) |
 
 ### Resolution Path
 
-No new DSL syntax needed (validated by `dsl/proofs/d1_dimension_review.dag` and
-`dsl/proofs/d2_provider_dispatch.dag`). Remaining work:
-- Author credential chain funcs (D-3a..D-3d, ~M total)
+Design approach ported from `the-gunbai`:
+- **Review pipeline (D-1)**: Compositional `ReviewConcern` types parameterize a generic review pattern. Phasing is structural (data-flow deps, not tags). No new DSL syntax.
+- **Credential pipeline (D-2)**: Abstract resource interfaces (`SecretStore`, `Identity`) + `CredentialFlow` sum type (Stored, PlatformInjected, WorkloadIdentity, InteractiveAuth, Chained) + profile binding. Provider dispatch eliminated.
+- **Authoring work (D-3)**: D-3a/b/c are interface implementations (~2S + 1M). D-3d eliminated by profile binding.
 - Define review service ops as DSL services (~S)
-- Wire dispatch via `match` expression (existing syntax)
 
 ## Execution Checklists (Review Gate)
 

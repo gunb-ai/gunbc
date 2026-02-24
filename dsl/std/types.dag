@@ -141,6 +141,47 @@ type ServiceAccountEmail = String @pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.
 type CloudRuntime = GitHubActions | Metadata | LocalDev  // |⟦CloudRuntime⟧| = 3
 type Platform     = Linux | Macos | Windows              // aligned with canonical Os tokens
 
+// --- Review model (Level 3+4: D-1 compositional concern types) --------
+// Four abstract review dimensions. Each is a concern that parameterizes
+// the generic dimension_review pattern. Phasing (parallel vs sequential)
+// is structural -- aspirational depends on prior findings via data flow.
+
+type ReviewDimension = Coherence | Quality | Requirements | Aspirational
+
+type FermiDepth = Xs | S | M | L | Xl
+
+type ReviewConcern {
+  dimension: ReviewDimension
+  system_prompt_preamble: String
+}
+
+type DimensionReviewOutput {
+  dimension: String
+  output: Json
+  errors: Json
+}
+
+type MergedReviewOutput {
+  output: Json
+  summary: String
+}
+
+// --- Credential model (Level 4: D-2 credential flow sum type) ---------
+// How to acquire a credential. Ported from the-gunbai.
+// The flow type drives the acquisition strategy; the provider is
+// resolved at compile time via profile binding.
+
+type CredentialFlow
+  = Stored { secret_name: NonEmptyStr }
+  | PlatformInjected { env_var: NonEmptyStr }
+  | WorkloadIdentity {
+      audience: NonEmptyStr
+      service_account: ServiceAccountEmail?
+      scopes: List<String>
+    }
+  | InteractiveAuth { scopes: List<String> }
+  | Chained { steps: List<CredentialFlow> }
+
 // Canonical platform/target vocabulary (aligned with core/ir::platform)
 type Arch = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
 type Vendor = UnknownVendor | Pc | Apple | W64

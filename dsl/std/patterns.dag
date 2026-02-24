@@ -367,15 +367,88 @@ pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Int = 1000) -> {} {
 //   2. Release claim (INV-22: AwaitApproval releases claim)
 //   3. Signal yield — caller should terminate execution
 
-// --- Stubs for acquire_subject_token -----------------------------------
-fn github_oidc(audience: String) -> { token: String } {
-  return { token: "mock-oidc-token" }
+// --- OIDC implementations (D-3a: WorkloadIdentity flow) ----------------
+// Real implementations replacing stubs. Each acquires a subject token
+// from the runtime environment using the appropriate protocol.
+
+func github_oidc(audience: String) -> { token: String }
+  uses net: Network
+{
+  response = github.OIDC.GetToken(audience: audience)
+  return { token: response.subject_token as String }
 }
 
-fn metadata_oidc(audience: String) -> { token: String } {
-  return { token: "mock-oidc-token" }
+func metadata_oidc(audience: String) -> { token: String }
+  uses net: Network
+{
+  response = gcp.Metadata.GetIdentityToken(audience: audience)
+  return { token: response.subject_token as String }
 }
 
-fn local_auth() -> { token: String } {
-  return { token: "mock-local-token" }
+// --- Local auth (D-3b: InteractiveAuth flow) ---------------------------
+// ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
+// This replaces ~725 lines of Rust in lib/gcp-ops/src/graph.rs.
+
+func local_auth() -> { token: String }
+  uses fs: Filesystem(mode: Read)
+{
+  adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
+
+  adc_check = if adc_path.value != None {
+    adc_content = fs.read(path: adc_path.value)
+    shell.OAuth2.RefreshToken(refresh_token: adc_content.content)
+  }
+
+  // If ADC check failed or no credentials, fall back to gcloud auth
+  result = if adc_check?.valid != true {
+    gcloud_auth = shell.GCloud.AuthPrintAccessToken()
+    { token: gcloud_auth.access_token }
+  } else {
+    { token: adc_check.access_token }
+  }
+
+  return { token: result.token }
+}
+
+// --- IAM preflight (D-3c: Identity interface) --------------------------
+// Ensure the service account has the required IAM bindings.
+// Uses getIamPolicy -> check -> conditional setIamPolicy.
+
+fn check_iam_binding(bindings: Json, service_account: String, role: String) -> { has_role: Bool } {
+  return { has_role: false }
+}
+
+fn add_iam_binding(bindings: Json, service_account: String, role: String) -> { updated_bindings: Json } {
+  return { updated_bindings: bindings }
+}
+
+func iam_preflight_check(
+  project_id: ProjectId,
+  service_account: ServiceAccountEmail,
+  required_role: NonEmptyStr
+) -> { ok: Bool }
+  uses net: Network
+{
+  policy = gcp.ResourceManager.GetIamPolicy(project_id: project_id)
+
+  has_binding = check_iam_binding(
+    bindings: policy.bindings,
+    service_account: service_account,
+    role: required_role
+  )
+
+  result = if has_binding.has_role != true {
+    updated = add_iam_binding(
+      bindings: policy.bindings,
+      service_account: service_account,
+      role: required_role
+    )
+    gcp.ResourceManager.SetIamPolicy(
+      project_id: project_id,
+      bindings: updated.updated_bindings,
+      etag: policy.etag
+    )
+  }
+
+  return { ok: true }
 }

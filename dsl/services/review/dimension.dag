@@ -1,0 +1,102 @@
+// services/review/dimension.dag -- Review dimension operations.
+//
+// Pure operations for the four-dimension review pipeline (D-1).
+// Each operation is a domain-specific computation (prompt generation,
+// response parsing, output merging) that runs locally -- no network I/O.
+//
+// These replace the Rust implementations in:
+//   lib/review/src/dimension.rs (DimensionOps)
+//   lib/review/src/lib.rs (ReviewOps)
+
+module services.review.dimension
+
+service review.Dimension {
+  @local
+
+  operation PrepareDimensionPrompt {
+    input {
+      artifact: String
+      criteria: Json
+      dimension: String
+      depth: String
+      prior_findings: String?
+    }
+    output {
+      question: String
+      system_prompt: String
+    }
+    @mock_response(
+      body: {
+        "question": "Review this code for quality issues.",
+        "system_prompt": "You are a code reviewer."
+      }
+    )
+  }
+
+  operation ParseDimensionResponse {
+    input {
+      answer: String
+      criteria: Json
+      dimension: String
+    }
+    output {
+      output: Json
+      errors: Json
+    }
+    @mock_response(
+      body: {
+        "output": {"findings": [], "summary": "No issues found."},
+        "errors": {}
+      }
+    )
+  }
+
+  operation FormatDiffArtifact {
+    input {
+      diff_files: Json
+    }
+    output {
+      artifact: String
+    }
+    @mock_response(
+      body: {
+        "artifact": "--- a/file.rs\n+++ b/file.rs\n@@ -1 +1 @@\n-old\n+new"
+      }
+    )
+  }
+
+  operation FormatPriorFindings {
+    input {
+      coherence_output: Json?
+      quality_output: Json?
+      requirements_output: Json?
+    }
+    output {
+      prior_findings: String
+    }
+    @mock_response(
+      body: {
+        "prior_findings": "Prior findings from coherence, quality, and requirements dimensions."
+      }
+    )
+  }
+
+  operation MergeDimensionOutputs {
+    input {
+      coherence_output: Json?
+      quality_output: Json?
+      requirements_output: Json?
+      aspirational_output: Json?
+    }
+    output {
+      output: Json
+      summary: String
+    }
+    @mock_response(
+      body: {
+        "output": {"dimensions": {}},
+        "summary": "Review complete."
+      }
+    )
+  }
+}

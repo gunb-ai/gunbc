@@ -120,6 +120,10 @@ pub fn build_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/review.dag")
 }
 
+pub fn build_dimension_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph("funcs/review_pipeline.dag")
+}
+
 pub fn build_gist_snapshot_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
     build_dsl_graph("tools/gist.dag")
 }
@@ -193,6 +197,13 @@ mod tests {
     #[test]
     fn builds_review_dsl_graph() {
         let dag = build_dsl_graph("tools/review.dag").expect("review DSL graph should resolve");
+        assert!(!dag.nodes.is_empty());
+    }
+
+    #[test]
+    fn builds_dimension_review_dsl_graph() {
+        let dag = build_dimension_review_graph_dsl()
+            .expect("dimension review DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 

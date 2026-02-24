@@ -22,6 +22,7 @@ import interfaces.outcome_ledger { OutcomeLedger }
 import interfaces.agent_provider { AgentProvider }
 import interfaces.signal_store { SignalStore }
 import interfaces.artifact_store { ArtifactStore }
+import interfaces.credential_provider { CredentialProvider }
 
 // =========================================================================
 // Profile binding declarations
@@ -66,6 +67,7 @@ profile unit_test {
   bind AgentProvider -> services.sdlc.providers.stub_providers.stub.AgentProvider
   bind SignalStore -> services.sdlc.providers.stub_providers.stub.SignalStore
   bind ArtifactStore -> services.sdlc.providers.stub_providers.stub.ArtifactStore
+  bind CredentialProvider -> services.sdlc.providers.stub_credential_provider.StubCredentialProvider
 }
 
 profile local {
@@ -81,6 +83,10 @@ profile local {
   }
   bind SignalStore -> profiles.local.FileSignalStore
   bind ArtifactStore -> profiles.local.InlineArtifactStore
+  bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
+    runtime: LocalDev,
+    project_id: "gunbai-auto"
+  }
 }
 
 profile cloud_run {
@@ -96,4 +102,8 @@ profile cloud_run {
   }
   bind SignalStore -> profiles.cloud_run.PubSubSignalStore
   bind ArtifactStore -> profiles.cloud_run.GcsArtifactStore
+  bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
+    runtime: GitHubActions,
+    project_id: "gunbai-auto"
+  }
 }
