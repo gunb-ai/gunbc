@@ -31,7 +31,6 @@ members = [
     "lib/git-ops",
     "lib/cloud-ops",
     "lib/aws-ops",
-    "lib/azure-ops",
     "lib/llm-ops",
     "lib/review",
     "lib/design-ops",

@@ -4,7 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gunbc-exec = { path = "../../core/exec" }
 gunbc-ir = { path = "../../core/ir" }
-gunbc-testgen-registry = { path = "../../core/testgen-registry" }
-serde = { workspace = true }

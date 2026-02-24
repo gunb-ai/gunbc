@@ -1,22 +1,6 @@
-#![recursion_limit = "1024"]
-//! AWS OIDC + Secrets Manager ops (stub).
+//! AWS system model definitions.
 //!
-//! This is a placeholder to keep provider-neutral modeling honest.
-//! The implementation will follow the same subject-token → STS →
-//! optional role chaining → Secrets Manager pattern.
+//! Provides inventory-registered system models for AWS services
+//! (STS, Secrets Manager, IAM, S3) used by contract validation.
 
-mod ops;
 pub mod system_models;
-
-pub use ops::AwsOps;
-
-// ============================================================================
-// DagSpec Registry Helpers
-// ============================================================================
-
-/// Return DagSpec registrations originating from this crate.
-pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
-    gunbc_testgen_registry::iter_dag_specs()
-        .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
-        .collect()
-}
