@@ -53,7 +53,7 @@ fn compile_sdlc_worker_requires_profile_and_resolves_all_core_bindings() {
 
     let local_missing_env = Command::new(daglang_bin())
         .current_dir(workspace_root())
-        .args(["compile", "--profile", "local", worker_path])
+        .args(["compile", "--profile", "profiles.sdlc.local", worker_path])
         .env_remove("GITHUB_TOKEN")
         .env_remove("CODEX_API_KEY")
         .output()
@@ -70,7 +70,7 @@ fn compile_sdlc_worker_requires_profile_and_resolves_all_core_bindings() {
 
     let local_with_env = Command::new(daglang_bin())
         .current_dir(workspace_root())
-        .args(["compile", "--profile", "local", worker_path])
+        .args(["compile", "--profile", "profiles.sdlc.local", worker_path])
         .env("GITHUB_TOKEN", "fixture-github-token")
         .env("CODEX_API_KEY", "fixture-codex-key")
         .output()

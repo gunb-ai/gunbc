@@ -948,6 +948,7 @@ fn resolve_profile_config_value(
 ) -> Result<ProfileConfigValue, LowerError> {
     match expr {
         Expr::Literal(Literal::String(value)) => Ok(ProfileConfigValue::Literal(value.clone())),
+        Expr::Ident(name) => Ok(ProfileConfigValue::Literal(name.clone())),
         Expr::Call(name, args) if name == "env" => {
             let env_var = parse_single_string_call_arg(args).ok_or_else(|| {
                 LowerError::InvalidProfileBinding {
