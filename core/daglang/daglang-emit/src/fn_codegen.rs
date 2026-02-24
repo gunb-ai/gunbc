@@ -22,16 +22,20 @@ use crate::type_codegen::to_snake_case;
 ///
 /// Carries the set of data table names defined in the module so that
 /// identifier references can be mapped to their SCREAMING_SNAKE_CASE
-/// static names in the generated output.
+/// static names in the generated output, and struct field optionality
+/// information for automatic `Some()` wrapping.
 pub struct CompileContext {
     /// Names of `data` definitions visible in this module.
     pub data_names: HashSet<String>,
+    /// Map from struct name → set of field names that are `Option<T>`.
+    pub optional_fields: std::collections::HashMap<String, HashSet<String>>,
 }
 
 impl CompileContext {
     pub fn new() -> Self {
         Self {
             data_names: HashSet::new(),
+            optional_fields: std::collections::HashMap::new(),
         }
     }
 }
@@ -130,11 +134,17 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             code_ir::Expr::Field(Box::new(compile_expr(receiver, ctx)), field.clone())
         }
         ast::Expr::Call(name, args) => compile_call(name, args, ctx),
-        ast::Expr::BinOp(left, op, right) => code_ir::Expr::BinOp {
-            left: Box::new(compile_expr(left, ctx)),
-            op: compile_binop(op),
-            right: Box::new(compile_expr(right, ctx)),
-        },
+        ast::Expr::BinOp(left, op, right) => {
+            if matches!(op, ast::BinOp::Add) && contains_string_literal(expr) {
+                compile_string_concat(expr, ctx)
+            } else {
+                code_ir::Expr::BinOp {
+                    left: Box::new(compile_expr(left, ctx)),
+                    op: compile_binop(op),
+                    right: Box::new(compile_expr(right, ctx)),
+                }
+            }
+        }
         ast::Expr::UnaryOp(op, expr) => code_ir::Expr::UnaryOp {
             op: compile_unaryop(op),
             expr: Box::new(compile_expr(expr, ctx)),
@@ -156,7 +166,11 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             body: Box::new(compile_expr(body, ctx)),
         },
         ast::Expr::List(elements) => {
-            code_ir::Expr::Array(elements.iter().map(|e| compile_expr(e, ctx)).collect())
+            // DSL List<T> maps to Rust Vec<T>, so use vec![] not [].
+            code_ir::Expr::MacroCall {
+                name: "vec".to_string(),
+                args: elements.iter().map(|e| compile_expr(e, ctx)).collect(),
+            }
         }
         ast::Expr::Pipe(left, right) => compile_pipe(left, right, ctx),
         ast::Expr::StringInterp(parts) => compile_string_interp(parts, ctx),
@@ -203,8 +217,18 @@ fn compile_literal(lit: &ast::Literal) -> code_ir::Expr {
 // ---------------------------------------------------------------------------
 
 fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
+    if name == "null" {
+        return code_ir::Expr::Var("None".to_string());
+    }
     if ctx.data_names.contains(name) {
-        code_ir::Expr::Var(to_screaming_snake(name))
+        // Data tables are Rust statics; `.clone()` prevents move-out-of-static errors.
+        // For `&[T]` statics this is a no-op (cloning a reference); for scalar statics
+        // it produces an owned copy.
+        code_ir::Expr::MethodCall {
+            receiver: Box::new(code_ir::Expr::Var(to_screaming_snake(name))),
+            method: "clone".to_string(),
+            args: vec![],
+        }
     } else {
         code_ir::Expr::Var(name.to_string())
     }
@@ -311,7 +335,9 @@ fn compile_match_arm(arm: &ast::MatchArm, ctx: &CompileContext) -> code_ir::Matc
 
 fn compile_pattern(pat: &ast::Pattern) -> String {
     match pat {
-        ast::Pattern::Ident(name) => name.clone(),
+        ast::Pattern::Ident(name) => {
+            if name == "null" { "None".to_string() } else { name.clone() }
+        }
         ast::Pattern::Variant(name, fields) => {
             if fields.is_empty() {
                 name.clone()
