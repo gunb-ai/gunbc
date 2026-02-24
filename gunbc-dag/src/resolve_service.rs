@@ -8,11 +8,13 @@
 use std::collections::{BTreeSet, HashMap};
 
 use daglang_lower::{
-    ArgvSegment, BodyEntry, FieldSpec, OutputFieldSpec, RestOperationSpec, ShellOperationSpec,
-    ShellOutputParsing,
+    ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, OutputFieldSpec, RestOperationSpec,
+    ShellOperationSpec, ShellOutputParsing,
 };
 use gunbc_exec::{ExecError, Executable, OutputMap};
-use gunbc_ir::transport::{RestRequest, ShellRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{
+    FileRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
+};
 use gunbc_ir::{SecretString, Value};
 
 // ============================================================================
@@ -783,6 +785,105 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
         }
     }
     Ok(out)
+}
+
+// ============================================================================
+// FILE
+// ============================================================================
+
+/// Generic file prepare: builds a `FileRequest` from a `FileOperationSpec`.
+#[derive(Debug, Clone)]
+pub struct GenericFilePrepareOp {
+    pub spec: FileOperationSpec,
+}
+
+impl Executable for GenericFilePrepareOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
+        let path = inputs
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                ExecError::new("GenericFilePrepare: missing required `path` input")
+            })?;
+        let request = match self.spec.operation.as_str() {
+            "READ" => FileRequest::read(path),
+            "READ_BYTES" => FileRequest::read_bytes(path),
+            "WRITE" => {
+                let content = inputs
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                FileRequest::write(path, content)
+            }
+            other => {
+                return Err(ExecError::new(format!(
+                    "GenericFilePrepare: unknown file operation `{other}`"
+                )))
+            }
+        };
+        OutputMap::new()
+            .request("request", TransportRequest::File(request))
+            .bool("skip", false)
+            .ok()
+    }
+}
+
+/// Generic file parse: extracts content from a `FileResponse`.
+#[derive(Debug, Clone)]
+pub struct GenericFileParseOp {
+    pub spec: FileOperationSpec,
+}
+
+impl Executable for GenericFileParseOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match inputs.get("response") {
+            Some(Value::Response(TransportResponse::File(file_resp))) => {
+                if !file_resp.success {
+                    let err = file_resp
+                        .error
+                        .as_deref()
+                        .unwrap_or("unknown file error");
+                    return Err(ExecError::new(format!(
+                        "File operation failed on `{}`: {err}",
+                        file_resp.path
+                    )));
+                }
+                let mut out = OutputMap::new();
+                for field in &self.spec.output_fields {
+                    match field.name.as_str() {
+                        "content" => {
+                            let content = file_resp.content.as_deref().unwrap_or_default();
+                            out = out.str("content", content);
+                        }
+                        "written" => {
+                            out = out.bool("written", file_resp.success);
+                        }
+                        other => {
+                            let content = file_resp.content.as_deref().unwrap_or_default();
+                            out = out.str(other, content);
+                        }
+                    }
+                }
+                out.ok()
+            }
+            Some(Value::Skipped) | None => {
+                let mut out = OutputMap::new();
+                for field in &self.spec.output_fields {
+                    out = out.value(&field.name, Value::Skipped);
+                }
+                out.ok()
+            }
+            other => Err(ExecError::new(format!(
+                "GenericFileParse: expected File response, got {other:?}"
+            ))),
+        }
+    }
 }
 
 #[cfg(test)]

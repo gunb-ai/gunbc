@@ -19,7 +19,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
-    Annotation, DataDef, Expr, Item, Literal, OperationDef, ServiceDef, Stmt, TypeExpr,
+    Annotation, CapabilityDef, DataDef, Expr, Item, Literal, OperationDef, ServiceDef, Stmt,
+    TypeExpr,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name as canonical_type_name, resource_type_name,
@@ -253,6 +254,20 @@ pub struct ServiceCallMetadata {
 pub enum ServiceOperationSpec {
     Rest(RestOperationSpec),
     Shell(ShellOperationSpec),
+    File(FileOperationSpec),
+}
+
+/// File protocol specification: operation type + path template.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct FileOperationSpec {
+    /// File operation kind from `@file(OP, ...)` — e.g. "READ", "WRITE", "READ_BYTES".
+    pub operation: String,
+    /// Path template from `@file(..., "{path}")`.
+    pub path_template: String,
+    /// Input fields from `input { ... }`.
+    pub input_fields: Vec<FieldSpec>,
+    /// Output fields from `output { ... }`.
+    pub output_fields: Vec<OutputFieldSpec>,
 }
 
 /// REST protocol specification: endpoint + method + path + body + response.
@@ -534,6 +549,8 @@ struct ServiceTransportEndpoint {
     execute_node_id: String,
     prepare_inputs: Vec<String>,
     has_auth: bool,
+    /// Service call metadata for this endpoint (carried for loop-body transport).
+    metadata: Option<ServiceCallMetadata>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1176,6 +1193,7 @@ impl DagBuilder {
             execute_node_id: new_execute_id,
             prepare_inputs: original.prepare_inputs.clone(),
             has_auth: original.has_auth,
+            metadata: original.metadata.clone(),
         }
     }
 
@@ -1564,14 +1582,6 @@ fn lower_typed_project_with_callable_scope(
         }
     }
 
-    add_dependency_edges(
-        &mut builder,
-        project,
-        &endpoints_by_full,
-        &endpoints_by_name,
-        emit_collection_nodes,
-        entry_module,
-    );
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
     let service_registry = if callable_modules.is_some() && active_profile.is_none() {
         let required_service_calls = collect_required_service_call_keys(project, callable_modules);
@@ -1579,6 +1589,15 @@ fn lower_typed_project_with_callable_scope(
     } else {
         add_service_transport_triplets(&mut builder, project, None)
     };
+    add_dependency_edges(
+        &mut builder,
+        project,
+        &endpoints_by_full,
+        &endpoints_by_name,
+        &service_registry,
+        emit_collection_nodes,
+        entry_module,
+    );
     let profile_registry = collect_profile_binding_registry(project, active_profile.is_some())?;
     let active_profile_bindings =
         resolve_active_profile_bindings(&profile_registry, active_profile)?;
@@ -3254,6 +3273,7 @@ fn add_dependency_edges(
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    service_registry: &ServiceEndpointRegistry,
     emit_collection_nodes: bool,
     entry_module: Option<&str>,
 ) {
@@ -3320,7 +3340,15 @@ fn add_dependency_edges(
             if emit_collection_nodes {
                 add_collection_pipeline_nodes(builder, &module_name, stmts, target);
             }
-            add_control_flow_pattern_nodes(builder, &module_name, stmts, target);
+            let uses_binding_types = item_uses_binding_types(&item.node);
+            add_control_flow_pattern_nodes(
+                builder,
+                &module_name,
+                stmts,
+                target,
+                service_registry,
+                &uses_binding_types,
+            );
         }
     }
 }
@@ -3350,6 +3378,9 @@ fn add_collection_pipeline_nodes(
 struct ForLoopSite {
     element_var: String,
     passthrough: Vec<String>,
+    /// Service call paths found inside the for-loop body expression.
+    /// Each entry is the dot-separated path (e.g., `["fs", "read"]`).
+    body_service_call_paths: Vec<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -3365,14 +3396,41 @@ struct MatchBranchSite {
 fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
     let mut sites = Vec::new();
     walk_stmts(stmts, &mut |expr| {
-        if let Expr::For(var, _, passthrough, _) = expr {
+        if let Expr::For(var, _, passthrough, body) = expr {
+            let mut body_calls = Vec::new();
+            collect_service_call_paths_from_expr(body, &mut body_calls);
             sites.push(ForLoopSite {
                 element_var: var.clone(),
                 passthrough: passthrough.clone(),
+                body_service_call_paths: body_calls,
             });
         }
     });
     sites
+}
+
+/// Collect service call paths from a single expression (non-recursive into for-loops).
+fn collect_service_call_paths_from_expr(expr: &Expr, paths: &mut Vec<Vec<String>>) {
+    if let Expr::ServiceCall(path, _) = expr {
+        paths.push(path.clone());
+    }
+    // Recurse into sub-expressions (but stop at nested for-loops).
+    match expr {
+        Expr::Call(_, args) | Expr::ServiceCall(_, args) => {
+            for (_, arg) in args {
+                collect_service_call_paths_from_expr(arg, paths);
+            }
+        }
+        Expr::FieldAccess(base, _) => collect_service_call_paths_from_expr(base, paths),
+        Expr::BinOp(lhs, _, rhs) | Expr::Pipe(lhs, rhs) => {
+            collect_service_call_paths_from_expr(lhs, paths);
+            collect_service_call_paths_from_expr(rhs, paths);
+        }
+        Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
+            collect_service_call_paths_from_expr(inner, paths);
+        }
+        _ => {}
+    }
 }
 
 fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchSite> {
@@ -3399,32 +3457,173 @@ fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchSite> {
     sites
 }
 
+/// Metadata for a resolved loop-body service call (transport triplet info).
+struct LoopBodyTransport {
+    metadata: ServiceCallMetadata,
+    prepare_inputs: Vec<String>,
+    parse_output: String,
+}
+
+/// Try to resolve a loop-body service call path to transport metadata.
+fn resolve_loop_body_service_call(
+    call_path: &[String],
+    uses_binding_types: &HashMap<String, String>,
+    service_registry: &ServiceEndpointRegistry,
+) -> Option<LoopBodyTransport> {
+    // First try direct registry lookup.
+    if let Some(endpoint) = resolve_service_endpoint(call_path, service_registry) {
+        return endpoint_to_loop_body_transport(&endpoint);
+    }
+    // Try uses-binding resolution: first segment is binding name.
+    let binding = call_path.first()?;
+    let resource_type = uses_binding_types.get(binding)?;
+    if call_path.len() >= 2 {
+        let capability = call_path.last()?;
+        let cap_key = format!("{resource_type}.{capability}");
+        let cap_path: Vec<String> = cap_key.split('.').map(String::from).collect();
+        if let Some(endpoint) = resolve_service_endpoint(&cap_path, service_registry) {
+            return endpoint_to_loop_body_transport(&endpoint);
+        }
+    }
+    None
+}
+
+fn endpoint_to_loop_body_transport(
+    endpoint: &ServiceTransportEndpoint,
+) -> Option<LoopBodyTransport> {
+    let metadata = endpoint.metadata.as_ref()?.clone();
+    Some(LoopBodyTransport {
+        metadata,
+        prepare_inputs: endpoint.prepare_inputs.clone(),
+        parse_output: endpoint.parse.primary_output.clone(),
+    })
+}
+
 fn make_loop_body_dag(
     module_name: &str,
     callable_node_id: &str,
     index: usize,
     element_var: &str,
     passthrough: &[String],
+    body_transports: &[LoopBodyTransport],
 ) -> Dag<LoweredOp> {
     let mut inputs = vec![Port::scalar(element_var, "Any")];
     for pt in passthrough {
         inputs.push(Port::scalar(pt.as_str(), "Any"));
     }
     let mut dag: Dag<LoweredOp> = Dag::new();
-    dag.add_node(Node::opaque(
-        "body_op",
-        inputs,
-        vec![Port::scalar("result", "Any")],
-        LoweredOp::Callable {
-            module: module_name.to_string(),
-            kind: CallableKind::Fn,
-            name: format!("{callable_node_id}::for_{index}_body"),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-        },
-    ));
+
+    if body_transports.is_empty() {
+        // No service calls in body — plain body_op callable.
+        dag.add_node(Node::opaque(
+            "body_op",
+            inputs,
+            vec![Port::scalar("result", "Any")],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Fn,
+                name: format!("{callable_node_id}::for_{index}_body"),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+    } else {
+        // Service calls in body — create transport triplets inside body SubDag.
+        // The body_op still exists but depends on transport parse output.
+        let mut body_op_deps_inputs = inputs.clone();
+        body_op_deps_inputs.push(Port::scalar("__deps", "Any"));
+        dag.add_node(Node::opaque(
+            "body_op",
+            body_op_deps_inputs,
+            vec![Port::scalar("result", "Any")],
+            LoweredOp::Callable {
+                module: module_name.to_string(),
+                kind: CallableKind::Fn,
+                name: format!("{callable_node_id}::for_{index}_body"),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        for (ti, transport) in body_transports.iter().enumerate() {
+            let suffix = format!("body_t{ti}");
+            let prepare_id = format!("prepare_{suffix}");
+            let execute_id = format!("execute_{suffix}");
+            let parse_id = format!("parse_{suffix}");
+            let prepare_ports: Vec<Port> = transport
+                .prepare_inputs
+                .iter()
+                .map(|name| Port::scalar(name.as_str(), "Any"))
+                .collect();
+            dag.add_node(Node::opaque(
+                prepare_id.clone(),
+                prepare_ports,
+                vec![Port::scalar("request", "TransportRequest")],
+                LoweredOp::Callable {
+                    module: module_name.to_string(),
+                    kind: CallableKind::Pattern,
+                    name: format!(
+                        "service_transport::prepare::{}::{}",
+                        transport.metadata.service, transport.metadata.operation
+                    ),
+                    obligation: ObligationCategory::ServiceTransportPrepare,
+                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    is_interactive: false,
+                    resource_target: None,
+                },
+            ));
+            let execute_node = Node::opaque(
+                execute_id.clone(),
+                vec![Port::scalar("request", "TransportRequest")],
+                vec![Port::scalar("response", "TransportResponse")],
+                LoweredOp::Callable {
+                    module: module_name.to_string(),
+                    kind: CallableKind::Pattern,
+                    name: format!(
+                        "service_transport::execute::{}::{}",
+                        transport.metadata.service, transport.metadata.operation
+                    ),
+                    obligation: ObligationCategory::ServiceTransportExecute,
+                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    is_interactive: false,
+                    resource_target: None,
+                },
+            )
+            .with_input_guard("request", Guard::NotEq(Value::Skipped));
+            dag.add_node(execute_node);
+            dag.add_node(Node::opaque(
+                parse_id.clone(),
+                vec![Port::scalar("response", "TransportResponse")],
+                vec![Port::scalar(transport.parse_output.as_str(), "Any")],
+                LoweredOp::Callable {
+                    module: module_name.to_string(),
+                    kind: CallableKind::Pattern,
+                    name: format!(
+                        "service_transport::parse::{}::{}",
+                        transport.metadata.service, transport.metadata.operation
+                    ),
+                    obligation: ObligationCategory::ServiceTransportParse,
+                    service_metadata: Some(Box::new(transport.metadata.clone())),
+                    is_interactive: false,
+                    resource_target: None,
+                },
+            ));
+            // Prepare inputs matching element_var or passthrough are left as
+            // entrypoints — the loop executor injects them via set_input.
+            // Only wire the transport triplet chain and parse → body_op dep.
+            dag.add_edge(Edge::new(prepare_id.as_str(), "request", execute_id.as_str(), "request"));
+            dag.add_edge(Edge::new(execute_id.as_str(), "response", parse_id.as_str(), "response"));
+            dag.add_edge(Edge::new(
+                parse_id.as_str(),
+                transport.parse_output.as_str(),
+                "body_op",
+                "__deps",
+            ));
+        }
+    }
     dag
 }
 
@@ -3460,16 +3659,28 @@ fn add_control_flow_pattern_nodes(
     module_name: &str,
     stmts: &[Stmt],
     target: &LoweredEndpoint,
+    service_registry: &ServiceEndpointRegistry,
+    uses_binding_types: &HashMap<String, String>,
 ) {
     let for_sites = detect_for_loops_in_stmts(stmts);
     for (index, site) in for_sites.iter().enumerate() {
         let node_id = format!("{}::cf_for_{index}", target.node_id);
+        // Resolve body service calls to LoopBodyTransport entries.
+        let mut body_transports = Vec::new();
+        for call_path in &site.body_service_call_paths {
+            if let Some(transport) =
+                resolve_loop_body_service_call(call_path, uses_binding_types, service_registry)
+            {
+                body_transports.push(transport);
+            }
+        }
         let body_dag = make_loop_body_dag(
             module_name,
             &target.node_id,
             index,
             &site.element_var,
             &site.passthrough,
+            &body_transports,
         );
         let loop_node = LoopBuilder::new(node_id.clone())
             .with_input("items", "Any", Cardinality::ZERO_OR_MORE)
@@ -4144,6 +4355,9 @@ fn derive_operation_spec(
         ServiceTransportClass::ShellLocal => {
             derive_shell_spec(service, operation, data_registry).map(ServiceOperationSpec::Shell)
         }
+        ServiceTransportClass::FileBoundary => {
+            derive_file_spec(operation).map(ServiceOperationSpec::File)
+        }
         _ => None,
     }
 }
@@ -4196,6 +4410,76 @@ fn derive_shell_spec(
         output_parsing,
         env,
     })
+}
+
+fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
+    let (file_op, path_template) = annotation_file_details(&operation.annotations)?;
+    let input_fields = operation
+        .inputs
+        .iter()
+        .map(|field| {
+            let type_id = type_expr_to_string(&field.ty);
+            let is_path_param = path_template.contains(&format!("{{{}}}", field.name));
+            FieldSpec {
+                name: field.name.clone(),
+                type_id: type_id.clone(),
+                default: field.default.as_ref().map(expr_to_default_string),
+                is_secret: type_id == "Secret",
+                is_path_param,
+            }
+        })
+        .collect();
+    let output_fields = derive_output_fields(&operation.outputs);
+    Some(FileOperationSpec {
+        operation: file_op,
+        path_template,
+        input_fields,
+        output_fields,
+    })
+}
+
+/// Also derive a file spec from a `CapabilityDef` (same shape as `OperationDef`).
+fn derive_file_spec_from_capability(
+    capability: &CapabilityDef,
+) -> Option<FileOperationSpec> {
+    let (file_op, path_template) = annotation_file_details(&capability.annotations)?;
+    let input_fields = capability
+        .inputs
+        .iter()
+        .map(|field| {
+            let type_id = type_expr_to_string(&field.ty);
+            let is_path_param = path_template.contains(&format!("{{{}}}", field.name));
+            FieldSpec {
+                name: field.name.clone(),
+                type_id: type_id.clone(),
+                default: field.default.as_ref().map(expr_to_default_string),
+                is_secret: type_id == "Secret",
+                is_path_param,
+            }
+        })
+        .collect();
+    let output_fields = derive_output_fields(&capability.outputs);
+    Some(FileOperationSpec {
+        operation: file_op,
+        path_template,
+        input_fields,
+        output_fields,
+    })
+}
+
+/// Extract `@file(OP, "template")` → `(operation, path_template)`.
+fn annotation_file_details(annotations: &[Annotation]) -> Option<(String, String)> {
+    let ann = annotations.iter().find(|a| a.name == "file")?;
+    if ann.args.len() < 2 {
+        return None;
+    }
+    let operation = match &ann.args[0] {
+        Expr::Ident(op) => op.clone(),
+        Expr::Literal(Literal::String(op)) => op.clone(),
+        _ => return None,
+    };
+    let path_template = expr_to_template_string(&ann.args[1])?;
+    Some((operation, path_template))
 }
 
 /// Extract a string argument from a named annotation: `@name("value")`.
@@ -4727,7 +5011,34 @@ fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadat
             .iter()
             .map(|field| (field.name.clone(), field.type_id.clone()))
             .collect::<Vec<_>>(),
+        Some(ServiceOperationSpec::File(spec)) => spec
+            .input_fields
+            .iter()
+            .map(|field| (field.name.clone(), field.type_id.clone()))
+            .collect::<Vec<_>>(),
         None => operation
+            .inputs
+            .iter()
+            .map(|field| {
+                let ty = type_expr_to_string(&field.ty);
+                (field.name.clone(), ty)
+            })
+            .collect::<Vec<_>>(),
+    };
+    declared_inputs
+        .into_iter()
+        .map(|(name, ty)| Port::with_cardinality(name.as_str(), ty.as_str(), Cardinality::ONE))
+        .collect()
+}
+
+fn capability_prepare_ports(capability: &CapabilityDef, metadata: &ServiceCallMetadata) -> Vec<Port> {
+    let declared_inputs = match metadata.spec.as_ref() {
+        Some(ServiceOperationSpec::File(spec)) => spec
+            .input_fields
+            .iter()
+            .map(|field| (field.name.clone(), field.type_id.clone()))
+            .collect::<Vec<_>>(),
+        _ => capability
             .inputs
             .iter()
             .map(|field| {
@@ -4865,7 +5176,7 @@ fn add_service_transport_triplets(
                             service.name, operation.name
                         ),
                         obligation: ObligationCategory::ServiceTransportParse,
-                        service_metadata: Some(Box::new(service_metadata)),
+                        service_metadata: Some(Box::new(service_metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
                     },
@@ -4898,6 +5209,7 @@ fn add_service_transport_triplets(
                     execute_node_id: execute_id,
                     prepare_inputs,
                     has_auth,
+                    metadata: Some(service_metadata),
                 };
                 registry.register(
                     format!("{}.{}", service.name, operation.name),
@@ -4914,6 +5226,162 @@ fn add_service_transport_triplets(
                 );
                 registry.register(
                     format!("{}.{}.{}", module_name, service.name, operation.name),
+                    endpoint,
+                );
+            }
+        }
+    }
+    // Also register resource capabilities with transport annotations (@file, @shell).
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::ResourceDef(resource) = &item.node else {
+                continue;
+            };
+            for capability in &resource.capabilities {
+                let transport = annotation_transport_class(&capability.annotations);
+                let Some(transport) = transport else {
+                    continue;
+                };
+                if transport == ServiceTransportClass::Unknown {
+                    continue;
+                }
+                let cap_key = format!("{}.{}", resource.name, capability.name);
+                if let Some(required_calls) = required_calls {
+                    if !required_calls.contains(&cap_key) {
+                        continue;
+                    }
+                }
+                let spec = match transport {
+                    ServiceTransportClass::FileBoundary => {
+                        derive_file_spec_from_capability(capability)
+                            .map(ServiceOperationSpec::File)
+                    }
+                    _ => None,
+                };
+                let metadata = ServiceCallMetadata {
+                    service: resource.name.clone(),
+                    operation: capability.name.clone(),
+                    transport,
+                    idempotent: false,
+                    readonly: matches!(transport, ServiceTransportClass::FileBoundary),
+                    permissions: vec![],
+                    spec,
+                    retry_policy: None,
+                };
+                let suffix = sanitize_identifier(&format!(
+                    "{module_name}_{}_{}",
+                    resource.name, capability.name
+                ));
+                let prepare_id = format!("prepare_transport_{suffix}");
+                let execute_id = format!("execute_transport_{suffix}");
+                let parse_id = format!("parse_transport_{suffix}");
+                let prepare_ports = capability_prepare_ports(capability, &metadata);
+                let prepare_inputs = prepare_ports
+                    .iter()
+                    .map(|port| port.name.0.clone())
+                    .collect::<Vec<_>>();
+                builder.add_node(Node::opaque(
+                    prepare_id.clone(),
+                    prepare_ports,
+                    vec![Port::scalar("request", "TransportRequest")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::prepare::{}::{}",
+                            resource.name, capability.name
+                        ),
+                        obligation: ObligationCategory::ServiceTransportPrepare,
+                        service_metadata: Some(Box::new(metadata.clone())),
+                        is_interactive: false,
+                        resource_target: None,
+                    },
+                ));
+                let execute_inputs = vec![Port::scalar("request", "TransportRequest")];
+                let execute_node = Node::opaque(
+                    execute_id.clone(),
+                    execute_inputs,
+                    vec![Port::scalar("response", "TransportResponse")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::execute::{}::{}",
+                            resource.name, capability.name
+                        ),
+                        obligation: ObligationCategory::ServiceTransportExecute,
+                        service_metadata: Some(Box::new(metadata.clone())),
+                        is_interactive: false,
+                        resource_target: None,
+                    },
+                )
+                .with_input_guard("request", Guard::NotEq(Value::Skipped));
+                builder.add_node(execute_node);
+                let parse_outputs = if capability.outputs.is_empty() {
+                    vec![Port::scalar("result", "Unit")]
+                } else {
+                    capability
+                        .outputs
+                        .iter()
+                        .map(|field| {
+                            let ty = type_expr_to_string(&field.ty);
+                            Port::with_cardinality(
+                                field.name.as_str(),
+                                ty.as_str(),
+                                Cardinality::ONE,
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                builder.add_node(Node::opaque(
+                    parse_id.clone(),
+                    vec![Port::scalar("response", "TransportResponse")],
+                    parse_outputs,
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::parse::{}::{}",
+                            resource.name, capability.name
+                        ),
+                        obligation: ObligationCategory::ServiceTransportParse,
+                        service_metadata: Some(Box::new(metadata.clone())),
+                        is_interactive: false,
+                        resource_target: None,
+                    },
+                ));
+                builder.add_edge(
+                    prepare_id.as_str(),
+                    "request",
+                    execute_id.as_str(),
+                    "request",
+                );
+                builder.add_edge(
+                    execute_id.as_str(),
+                    "response",
+                    parse_id.as_str(),
+                    "response",
+                );
+                let parse_output = capability
+                    .outputs
+                    .first()
+                    .map(|field| field.name.clone())
+                    .unwrap_or_else(|| "result".to_string());
+                let endpoint = ServiceTransportEndpoint {
+                    parse: LoweredEndpoint {
+                        node_id: parse_id,
+                        primary_output: parse_output,
+                    },
+                    prepare_node_id: prepare_id,
+                    execute_node_id: execute_id,
+                    prepare_inputs,
+                    has_auth: false,
+                    metadata: Some(metadata),
+                };
+                registry.register(cap_key.clone(), endpoint.clone());
+                registry.register(
+                    format!("{module_name}.{}", cap_key),
                     endpoint,
                 );
             }
@@ -4999,6 +5467,15 @@ fn add_service_call_edges(
             )?;
             let mut service_calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut service_calls);
+            // Filter out service calls that are inside for-loop bodies (handled by
+            // loop-body transport wiring in add_control_flow_pattern_nodes).
+            let loop_body_call_paths = detect_for_loops_in_stmts(stmts)
+                .into_iter()
+                .flat_map(|site| site.body_service_call_paths)
+                .collect::<Vec<_>>();
+            if !loop_body_call_paths.is_empty() {
+                service_calls.retain(|call| !loop_body_call_paths.contains(&call.path));
+            }
             let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
             for (call_index, call) in service_calls.into_iter().enumerate() {
                 let Some(source) = resolve_service_call_source(
@@ -5250,8 +5727,22 @@ fn resolve_service_call_source(
             // resource wiring paths.
             return Ok(None);
         }
-        // Non-interface `uses` bindings are also handled by dedicated lifecycle
-        // lowering paths.
+        // Non-interface `uses` bindings: try resource capability lookup.
+        // e.g., `fs.read(path: p)` with `uses fs: Filesystem` →
+        // look up `Filesystem.read` in the service registry.
+        if call_path.len() >= 2 {
+            let capability = call_path.last().cloned().unwrap_or_default();
+            let cap_key = format!("{interface_type}.{capability}");
+            if let Some(endpoint) = resolve_service_endpoint(
+                &cap_key.split('.').map(String::from).collect::<Vec<_>>(),
+                service_registry,
+            ) {
+                return Ok(Some(ServiceCallResolvedSource {
+                    endpoint,
+                    binding_config: None,
+                }));
+            }
+        }
         return Ok(None);
     }
     let Some(active_profile_bindings) = active_profile_bindings else {
@@ -6131,6 +6622,22 @@ fn hex_encode(bytes: &[u8]) -> String {
         let _ = write!(encoded, "{byte:02x}");
     }
     encoded
+}
+
+fn item_uses_binding_types(item: &Item) -> HashMap<String, String> {
+    match item {
+        Item::FuncDef(def) => def
+            .uses
+            .iter()
+            .map(|u| (u.binding.clone(), resource_type_name(&u.resource_type)))
+            .collect(),
+        Item::PatternDef(def) => def
+            .uses
+            .iter()
+            .map(|u| (u.binding.clone(), resource_type_name(&u.resource_type)))
+            .collect(),
+        _ => HashMap::new(),
+    }
 }
 
 fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {

@@ -47,7 +47,8 @@ use crate::makegen::MakegenOp;
 use crate::pragma::PragmaOp;
 use crate::bootstrap::BootstrapOp;
 use crate::resolve_service::{
-    GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
+    GenericFileParseOp, GenericFilePrepareOp, GenericRestParseOp, GenericRestPrepareOp,
+    GenericShellParseOp, GenericShellPrepareOp,
 };
 
 // ============================================================================
@@ -1345,6 +1346,16 @@ fn resolve_service_transport(
                 (ServiceOperationSpec::Shell(shell_spec), _, true) => {
                     return Ok(DynOp::new(GenericShellParseOp {
                         spec: shell_spec.clone(),
+                    }));
+                }
+                (ServiceOperationSpec::File(file_spec), true, _) => {
+                    return Ok(DynOp::new(GenericFilePrepareOp {
+                        spec: file_spec.clone(),
+                    }));
+                }
+                (ServiceOperationSpec::File(file_spec), _, true) => {
+                    return Ok(DynOp::new(GenericFileParseOp {
+                        spec: file_spec.clone(),
                     }));
                 }
                 _ => {}

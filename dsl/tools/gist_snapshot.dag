@@ -1,18 +1,13 @@
-// tools/gist_snapshot.dag -- Create a GitHub gist from workspace file listing.
+// tools/gist_snapshot.dag -- Create a GitHub gist from workspace snapshot.
 //
-// Inlines all service calls directly to avoid transport node deduplication
-// conflicts (see below). Fn call arguments are wired as data edges by the
-// lowerer's wire_fn_call_arguments pass.
-//
-// This module is separate from gist.dag to avoid transport node deduplication
-// conflicts -- the lowerer creates one transport node per service operation
-// per module, and multiple callables wiring to the same node causes rejected
-// duplicate scalar-port edges at runtime.
+// Reads all tracked files through the DAG filesystem transport, then renders
+// a tree-character directory tree + fenced code blocks per file.
 //
 // Content rendering: `build_snapshot_content` is a local fn whose body is a
 // placeholder -- the actual rendering is handled by the compiled fn bridge
 // (gunbc-dag/src/compiled_fns.rs :: BuildSnapshotContentOp), which produces
-// a full markdown document with heading, branch info, and directory tree.
+// a full markdown document with heading, branch info, directory tree, and
+// fenced code blocks for every tracked file.
 
 module tools.gist_snapshot
 
@@ -22,9 +17,9 @@ import services.github.gist
 import std.resources { Filesystem, Network }
 import std.types { Url }
 
-// Compiled fn: produces markdown from branch name + file listing.
+// Compiled fn: produces markdown from branch name + paths + file contents.
 // Implementation: gunbc-dag/src/compiled_fns.rs (BuildSnapshotContentOp)
-fn build_snapshot_content(branch: String, files: List<String>) -> String {
+fn build_snapshot_content(branch: String, files: List<String>, file_contents: List<String>) -> String {
   "{branch}"
 }
 
@@ -34,7 +29,16 @@ func gist_snapshot(public: Bool = false) -> { url: Url }
 {
   branch_info = git.Core.CurrentBranch()
   listing = git.Core.LsFiles()
-  content = build_snapshot_content(branch: branch_info.branch, files: listing.files)
+
+  file_contents = for path in listing.files {
+    fs.read(path: path)
+  }
+
+  content = build_snapshot_content(
+    branch: branch_info.branch,
+    files: listing.files,
+    file_contents: file_contents
+  )
   secret = shell.GCloud.SecretManagerAccessVersion(
     project_id: "gunbai-secrets",
     secret_name: "github-token"
