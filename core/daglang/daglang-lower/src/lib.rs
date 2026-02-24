@@ -2953,17 +2953,8 @@ fn add_control_flow_pattern_nodes(
                 resolve_loop_body_service_call(call_path, uses_binding_types, service_registry)
             {
                 body_transports.push(transport);
-            } else {
-                eprintln!(
-                    "[DEBUG] resolve_loop_body_service_call FAILED for call_path={call_path:?} \
-                     uses_binding_types={uses_binding_types:?}"
-                );
             }
         }
-        eprintln!(
-            "[DEBUG] for_loop {node_id}: body_calls={:?} body_transports={}",
-            site.body_service_call_paths, body_transports.len()
-        );
         let body_dag = make_loop_body_dag(
             module_name,
             &target.node_id,
@@ -9287,4 +9278,6 @@ func prompt() -> { ok: Bool } {
         ));
         dag
     }
+
+
 }

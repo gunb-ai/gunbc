@@ -1161,15 +1161,12 @@ fn run_review(dry_run: bool) -> Result<(), ToolError> {
     let mut input_mocks = BoundaryMocks::new();
     let entrypoints = detect_entrypoints(&dag);
     for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
-        match port_name.0.as_str() {
-            "repo_path" => {
-                input_mocks.set_input(
-                    node_id.0.clone(),
-                    port_name.0.clone(),
-                    Value::Str(repo_path.clone()),
-                );
-            }
-            _ => {}
+        if port_name.0.as_str() == "repo_path" {
+            input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str(repo_path.clone()),
+            );
         }
     }
 

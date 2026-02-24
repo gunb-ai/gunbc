@@ -176,6 +176,7 @@ mod tests {
     fn workspace_binary_table_matches_cargo_manifest_bins() {
         let non_workspace_dispatch_bins: BTreeSet<&str> = BTreeSet::from([
             // Dedicated executors that are not `WorkspaceBinary` tool modules.
+            "deps",
             "review",
             "pipeline",
             "workflow",

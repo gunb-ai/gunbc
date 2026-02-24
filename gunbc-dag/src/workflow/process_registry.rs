@@ -260,7 +260,6 @@ mod tests {
         assert!(registry.contains(&ProcessUnitRef::new("pragma", "pragma.render_clippy")));
         assert!(registry.contains(&ProcessUnitRef::new("deps", "deps.load_manifest")));
         assert!(registry.contains(&ProcessUnitRef::new("build_all", "build_all.build")));
-        assert!(registry.contains(&ProcessUnitRef::new("sdlc", "sdlc.intake")));
     }
 
     // gist_create_unit_has_network_write_claim and

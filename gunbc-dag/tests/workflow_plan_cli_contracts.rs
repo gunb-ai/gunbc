@@ -88,23 +88,3 @@ fn plan_output_is_deterministic_for_test_all_fixture_state() {
     );
 }
 
-#[test]
-fn plan_output_is_deterministic_for_sdlc_fixture_state() {
-    let root = temp_root();
-    std::fs::create_dir_all(&root).expect("temp workspace root");
-
-    let first = run_workflow_plan_json("sdlc", &root);
-    let second = run_workflow_plan_json("sdlc", &root);
-    assert_eq!(first, second, "sdlc plan output should be deterministic");
-    assert_eq!(first["workflow"], Value::String("sdlc".to_string()));
-    assert!(first["execute_set"].is_array());
-    assert!(first["critical_path"].is_array());
-    assert!(
-        first["execute_set"]
-            .as_array()
-            .expect("execute_set should be an array")
-            .iter()
-            .any(|entry| entry["node_id"] == Value::String("sdlc.intake".to_string())),
-        "sdlc plan execute_set should include sdlc.intake on cold fixtures"
-    );
-}

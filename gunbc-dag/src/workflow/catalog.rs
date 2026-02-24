@@ -130,15 +130,6 @@ const WORKFLOW_VARIANTS: &[WorkflowVariantDef] = &[
         namespace: "build_all",
         is_tool: true,
     },
-    WorkflowVariantDef {
-        canonical_name: "sdlc",
-        aliases: &[],
-        file: "sdlc.dag",
-        pipeline: "sdlc",
-        mode: None,
-        namespace: "sdlc",
-        is_tool: true,
-    },
 ];
 
 #[derive(Debug, Clone)]

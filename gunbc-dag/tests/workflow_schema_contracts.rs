@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use gunbc_dag::{
     ci_workflow_spec, default_process_unit_registry, has_required_unit_contract,
-    sdlc_workflow_spec, test_all_workflow_spec, ProcessUnitRegistry, WorkflowOp,
+    test_all_workflow_spec, ProcessUnitRegistry, WorkflowOp,
 };
 
 fn assert_workflow_schema_contracts(
@@ -97,18 +97,6 @@ fn test_all_workflow_spec_satisfies_schema_contracts() {
     let spec = test_all_workflow_spec().expect("test-all workflow spec should build");
     let registry = default_process_unit_registry();
     assert_workflow_schema_contracts(&spec, "test_all.", &["test_all"], &registry);
-}
-
-#[test]
-fn sdlc_workflow_spec_satisfies_schema_contracts() {
-    let spec = sdlc_workflow_spec().expect("sdlc workflow spec should build");
-    let registry = default_process_unit_registry();
-    assert_workflow_schema_contracts(
-        &spec,
-        "sdlc.",
-        &["sdlc", "compilation", "codegen"],
-        &registry,
-    );
 }
 
 #[test]
