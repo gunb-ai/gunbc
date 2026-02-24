@@ -203,31 +203,28 @@ pub fn compose_with_freshness<T: Clone>(
     // Build the freshness sub-DAG: sequential chain of steps
     let freshness_subdag = build_freshness_subdag(steps);
 
-    // Find root nodes in the wrapped DAG (nodes that no edge targets)
+    // Find opaque root nodes (nodes that no edge targets and are not SubDags).
+    // SubDag nodes derive ports from inner structure; injecting _freshness
+    // would violate the entrypoint contract and cause validation failures.
     let targets: HashSet<_> = wrapped.edges.iter().map(|e| e.to_node.clone()).collect();
-    let roots: Vec<_> = wrapped
+    let opaque_roots: Vec<_> = wrapped
         .nodes
         .iter()
-        .filter(|n| !targets.contains(&n.id))
+        .filter(|n| !targets.contains(&n.id) && n.is_opaque())
         .map(|n| n.id.clone())
         .collect();
 
-    // Add _freshness input port to each root node
     for node in &mut wrapped.nodes {
-        if roots.contains(&node.id) {
+        if opaque_roots.contains(&node.id) {
             node.inputs.push(Port::new("_freshness", "Bool"));
         }
     }
 
-    // Add the freshness sub-DAG as a SubDag node
-    // SubDag children get prefixed IDs (e.g., "freshness/codegen-dag")
-    // which the display system groups automatically under "freshness"
     wrapped
         .nodes
         .push(Node::subdag("freshness", freshness_subdag));
 
-    // Wire freshness.done → each root._freshness
-    for root_id in &roots {
+    for root_id in &opaque_roots {
         wrapped.edges.push(Edge::new(
             "freshness",
             "done",

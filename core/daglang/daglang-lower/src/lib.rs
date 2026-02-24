@@ -1115,6 +1115,61 @@ impl DagBuilder {
         self.seen_nodes.contains(id)
     }
 
+    fn clone_transport_triplet(
+        &mut self,
+        original: &ServiceTransportEndpoint,
+        suffix: &str,
+    ) -> ServiceTransportEndpoint {
+        let new_prepare_id = format!("{}_{suffix}", original.prepare_node_id);
+        let new_execute_id = format!("{}_{suffix}", original.execute_node_id);
+        let new_parse_id = format!("{}_{suffix}", original.parse.node_id);
+
+        let (prepare_clone, execute_clone, parse_clone) = {
+            let nodes = &self.dag.nodes;
+            (
+                nodes
+                    .iter()
+                    .find(|n| n.id.0 == original.prepare_node_id)
+                    .cloned(),
+                nodes
+                    .iter()
+                    .find(|n| n.id.0 == original.execute_node_id)
+                    .cloned(),
+                nodes
+                    .iter()
+                    .find(|n| n.id.0 == original.parse.node_id)
+                    .cloned(),
+            )
+        };
+
+        if let Some(mut n) = prepare_clone {
+            n.id = new_prepare_id.clone().into();
+            self.add_node(n);
+        }
+        if let Some(mut n) = execute_clone {
+            n.id = new_execute_id.clone().into();
+            self.add_node(n);
+        }
+        if let Some(mut n) = parse_clone {
+            n.id = new_parse_id.clone().into();
+            self.add_node(n);
+        }
+
+        self.add_edge(&new_prepare_id, "request", &new_execute_id, "request");
+        self.add_edge(&new_execute_id, "response", &new_parse_id, "response");
+
+        ServiceTransportEndpoint {
+            parse: LoweredEndpoint {
+                node_id: new_parse_id,
+                primary_output: original.parse.primary_output.clone(),
+            },
+            prepare_node_id: new_prepare_id,
+            execute_node_id: new_execute_id,
+            prepare_inputs: original.prepare_inputs.clone(),
+            has_auth: original.has_auth,
+        }
+    }
+
     fn into_dag(self) -> Dag<LoweredOp> {
         self.dag
     }
@@ -4812,6 +4867,7 @@ fn add_service_call_edges(
                 collect_bound_callable_sources(module_name.as_str(), stmts, endpoints_by_full);
             let mut service_calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut service_calls);
+            let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
             for (call_index, call) in service_calls.into_iter().enumerate() {
                 let caller = format!("{module_name}::{item_name}");
                 let Some(source) = resolve_service_call_source(
@@ -4826,17 +4882,28 @@ fn add_service_call_edges(
                 else {
                     continue;
                 };
-                let source_endpoint = &source.endpoint;
+                let use_count = endpoint_use_count
+                    .entry(source.endpoint.prepare_node_id.clone())
+                    .or_insert(0);
+                *use_count += 1;
+                let effective_endpoint = if *use_count > 1 {
+                    builder.clone_transport_triplet(
+                        &source.endpoint,
+                        &format!("c{}", *use_count - 1),
+                    )
+                } else {
+                    source.endpoint.clone()
+                };
                 builder.add_edge(
-                    source_endpoint.parse.node_id.as_str(),
-                    source_endpoint.parse.primary_output.as_str(),
+                    effective_endpoint.parse.node_id.as_str(),
+                    effective_endpoint.parse.primary_output.as_str(),
                     target.node_id.as_str(),
                     "__deps",
                 );
                 let mut supplied_prepare_inputs = HashSet::<String>::new();
                 for (index, arg) in call.args.iter().enumerate() {
                     let Some(prepare_input) = arg.name.as_deref().or_else(|| {
-                        source_endpoint
+                        effective_endpoint
                             .prepare_inputs
                             .get(index)
                             .map(String::as_str)
@@ -4858,7 +4925,7 @@ fn add_service_call_edges(
                         builder.add_edge(
                             param_source.as_str(),
                             arg_ident,
-                            source_endpoint.prepare_node_id.as_str(),
+                            effective_endpoint.prepare_node_id.as_str(),
                             prepare_input,
                         );
                         continue;
@@ -4868,7 +4935,7 @@ fn add_service_call_edges(
                             builder.add_edge(
                                 bound_source.node_id.as_str(),
                                 field_name.as_str(),
-                                source_endpoint.prepare_node_id.as_str(),
+                                effective_endpoint.prepare_node_id.as_str(),
                                 prepare_input,
                             );
                             continue;
@@ -4889,7 +4956,7 @@ fn add_service_call_edges(
                     builder.add_edge(
                         literal_source.as_str(),
                         prepare_input,
-                        source_endpoint.prepare_node_id.as_str(),
+                        effective_endpoint.prepare_node_id.as_str(),
                         prepare_input,
                     );
                 }
@@ -4897,7 +4964,7 @@ fn add_service_call_edges(
                     builder,
                     source.binding_config.as_ref(),
                     &supplied_prepare_inputs,
-                    source_endpoint,
+                    &effective_endpoint,
                     module_name.as_str(),
                     item_name,
                     call_index,
