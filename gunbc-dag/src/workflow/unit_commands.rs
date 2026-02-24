@@ -210,15 +210,7 @@ fn bootstrap_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     );
     let bootstrap_cmd = UnitCommand::cargo(
         "bootstrap ensure",
-        vec![
-            "run",
-            "-p",
-            "gunbc-dag",
-            "--bin",
-            "gunbc-bootstrap",
-            "--",
-            "--mode=ensure",
-        ],
+        vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-bootstrap"],
     );
     commands.insert(
         NodeId::from("bootstrap.upsert_makefile"),
@@ -242,15 +234,7 @@ fn makegen_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("makegen.upsert_makefile"),
         UnitCommand::cargo(
             "makegen ensure",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-makegen",
-                "--",
-                "--mode=ensure",
-            ],
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-makegen"],
         ),
     );
     commands
@@ -268,15 +252,7 @@ fn pragma_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     );
     let pragma_cmd = UnitCommand::cargo(
         "pragma ensure",
-        vec![
-            "run",
-            "-p",
-            "gunbc-dag",
-            "--bin",
-            "gunbc-pragma",
-            "--",
-            "--mode=ensure",
-        ],
+        vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"],
     );
     commands.insert(NodeId::from("pragma.upsert_clippy"), pragma_cmd.clone());
     commands.insert(NodeId::from("pragma.upsert_allowlist"), pragma_cmd.clone());
@@ -315,10 +291,7 @@ fn build_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     );
     commands.insert(
         NodeId::from("build_all.build"),
-        UnitCommand::cargo(
-            "build-all",
-            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-build", "--"],
-        ),
+        UnitCommand::cargo("build-all", vec!["build", "--workspace"]),
     );
     commands
 }
@@ -430,11 +403,6 @@ mod tests {
             ci_codegen.args.contains(&"gunbc-codegen-dag".to_string()),
             "ci.codegen should use codegen DAG wrapper binary for ensure mode"
         );
-        assert!(
-            ci_codegen.args.contains(&"--mode=ensure".to_string()),
-            "ci.codegen should run wrapper in ensure mode"
-        );
-
         let test_all_commands = test_all_unit_commands();
         let test_all_codegen = test_all_commands
             .get(&NodeId::from("test_all.codegen"))
@@ -443,11 +411,7 @@ mod tests {
             test_all_codegen
                 .args
                 .contains(&"gunbc-codegen-dag".to_string()),
-            "test_all.codegen should use codegen DAG wrapper binary for ensure mode"
-        );
-        assert!(
-            test_all_codegen.args.contains(&"--mode=ensure".to_string()),
-            "test_all.codegen should run wrapper in ensure mode"
+            "test_all.codegen should use codegen DAG wrapper binary"
         );
     }
 

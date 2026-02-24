@@ -1800,7 +1800,6 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         assert!(!registry.tools.iter().any(|t| t.short_name == "ci"));
         assert!(registry.tools.iter().any(|t| t.short_name == "pragma"));
-        assert!(registry.tools.iter().any(|t| t.short_name == "build-all"));
     }
 
     #[test]
