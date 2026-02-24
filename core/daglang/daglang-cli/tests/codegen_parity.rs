@@ -421,49 +421,6 @@ fn run_module_interpreter_execution_nodes(
     Ok(normalize_execution_nodes(nodes))
 }
 
-fn run_module_interpreter_execution_nodes_typed(
-    relative_module: &str,
-    inputs: &[(&str, Value)],
-) -> Result<Vec<String>, String> {
-    let context = DriverContext {
-        roots: vec![workspace_root().join("dsl")],
-        target_file: Some(workspace_root().join(relative_module)),
-    };
-    let output = daglang_driver::compile_from_context(&context)
-        .map_err(|error| format!("compile failed for {relative_module}: {error}"))?;
-    let resolved = resolve_lowered_dag(&output.lowered_dag)
-        .map_err(|error| format!("resolve failed for {relative_module}: {error}"))?;
-
-    let mut input_mocks = BoundaryMocks::new();
-    let entrypoints = gunbc_ir::detect_entrypoints(&resolved);
-    for (port_name, value) in inputs {
-        for (node_id, ep_port, _) in &entrypoints.entrypoint_ports {
-            if ep_port.0 == *port_name {
-                input_mocks.set_input(&node_id.0, *port_name, value.clone());
-            }
-        }
-    }
-
-    let mut dry_run_boundary_mocks = BoundaryMocks::new();
-    for node in &resolved.nodes {
-        for output_port in &node.outputs {
-            dry_run_boundary_mocks.set_value(&node.id.0, &output_port.name.0, Value::Skipped);
-        }
-    }
-    let execution = execute_with_mode_and_inputs(
-        &resolved,
-        ExecutionMode::DryRun(dry_run_boundary_mocks),
-        Some(&input_mocks),
-    )
-    .map_err(|error| format!("execute failed for {relative_module}: {error}"))?;
-    let nodes = execution
-        .entries
-        .iter()
-        .map(|entry| entry.node_id.clone())
-        .collect::<Vec<_>>();
-    Ok(normalize_execution_nodes(nodes))
-}
-
 fn parse_trace_json_nodes(stderr: &str) -> Vec<String> {
     for line in stderr.lines() {
         let trimmed = line.trim();

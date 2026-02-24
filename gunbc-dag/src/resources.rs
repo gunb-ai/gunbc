@@ -20,17 +20,22 @@ pub const GITIGNORE_OUTPUT_PATH: &str = ".gitignore";
 pub const DEPS_CONFIG_OUTPUT_PATH: &str = "deps.toml";
 
 /// Shared repo source globs that affect generated repo artifacts.
-pub const REPO_SOURCE_INPUT_GLOBS: &[&str] =
-    &["gunbc-dag/src/**/*.rs", "core/**/*.rs", "lib/**/*.rs"];
+pub const REPO_SOURCE_INPUT_GLOBS: &[&str] = &[
+    "gunbc-dag/src/**/*.rs",
+    "core/**/*.rs",
+    "lib/**/*.rs",
+    "dsl/**/*.dag",
+];
 
 /// Shared config files that affect generated repo artifacts.
-pub const REPO_CONFIG_INPUT_FILES: &[&str] = &["Cargo.toml", "gunbc-dag/Cargo.toml"];
+pub const REPO_CONFIG_INPUT_FILES: &[&str] = &["Cargo.lock", "Cargo.toml", "gunbc-dag/Cargo.toml"];
 
 /// Input globs that affect testgen outputs.
 pub const TESTGEN_INPUT_GLOBS: &[&str] = &[
     "gunbc-dag/src/**/*.rs",
     "core/ir/src/**/*.rs",
     "lib/**/*.rs",
+    "dsl/**/*.dag",
 ];
 
 static DERIVED_REPO_SOURCE_GLOBS: OnceLock<Vec<String>> = OnceLock::new();
@@ -171,6 +176,9 @@ fn derive_repo_source_input_globs() -> Vec<String> {
         globs.push("lib/**/*.rs".to_string());
     }
 
+    // DSL files are not discovered by WorkspaceLayout (Rust crates only).
+    globs.push("dsl/**/*.dag".to_string());
+
     if globs.is_empty() {
         return REPO_SOURCE_INPUT_GLOBS
             .iter()
@@ -194,7 +202,7 @@ fn derive_repo_config_input_files() -> Vec<String> {
             .collect();
     };
 
-    let mut files = vec!["Cargo.toml".to_string()];
+    let mut files = vec!["Cargo.lock".to_string(), "Cargo.toml".to_string()];
     if let Some(gunbc_dag_dir) = layout.crate_dir("gunbc-dag") {
         let rel = layout
             .relative_path(&layout.workspace_root, gunbc_dag_dir)
@@ -242,6 +250,9 @@ fn derive_testgen_input_globs() -> Vec<String> {
         globs.push("lib/**/*.rs".to_string());
     }
 
+    // DSL files are not discovered by WorkspaceLayout (Rust crates only).
+    globs.push("dsl/**/*.dag".to_string());
+
     if globs.is_empty() {
         return TESTGEN_INPUT_GLOBS.iter().map(|s| s.to_string()).collect();
     }
@@ -272,11 +283,13 @@ mod tests {
         assert!(globs.iter().any(|g| g == "gunbc-dag/src/**/*.rs"));
         assert!(globs.iter().any(|g| g == "core/**/*.rs"));
         assert!(globs.iter().any(|g| g == "lib/**/*.rs"));
+        assert!(globs.iter().any(|g| g == "dsl/**/*.dag"));
     }
 
     #[test]
     fn derived_repo_config_files_match_expected_patterns() {
         let files = repo_config_input_files();
+        assert!(files.iter().any(|p| p == "Cargo.lock"));
         assert!(files.iter().any(|p| p == "Cargo.toml"));
         assert!(files.iter().any(|p| p == "gunbc-dag/Cargo.toml"));
     }
@@ -287,6 +300,7 @@ mod tests {
         assert!(globs.iter().any(|g| g == "gunbc-dag/src/**/*.rs"));
         assert!(globs.iter().any(|g| g == "core/ir/src/**/*.rs"));
         assert!(globs.iter().any(|g| g == "lib/**/*.rs"));
+        assert!(globs.iter().any(|g| g == "dsl/**/*.dag"));
     }
 
     #[test]
