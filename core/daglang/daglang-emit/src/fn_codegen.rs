@@ -29,6 +29,8 @@ pub struct CompileContext {
     pub data_names: HashSet<String>,
     /// Map from struct name → set of field names that are `Option<T>`.
     pub optional_fields: std::collections::HashMap<String, HashSet<String>>,
+    /// Map from bare variant name → parent enum name (e.g. "ZeroWidth" → "DisplayWidth").
+    pub variant_to_enum: std::collections::HashMap<String, String>,
 }
 
 impl CompileContext {
@@ -36,6 +38,7 @@ impl CompileContext {
         Self {
             data_names: HashSet::new(),
             optional_fields: std::collections::HashMap::new(),
+            variant_to_enum: std::collections::HashMap::new(),
         }
     }
 }
@@ -346,25 +349,34 @@ fn compile_match(scrutinee: &ast::Expr, arms: &[ast::MatchArm], ctx: &CompileCon
 
 fn compile_match_arm(arm: &ast::MatchArm, ctx: &CompileContext) -> code_ir::MatchArm {
     code_ir::MatchArm {
-        pattern: compile_pattern(&arm.pattern),
+        pattern: compile_pattern(&arm.pattern, ctx),
         body: vec![code_ir::Stmt::TailExpr(compile_expr(&arm.body, ctx))],
     }
 }
 
-fn compile_pattern(pat: &ast::Pattern) -> String {
+fn compile_pattern(pat: &ast::Pattern, ctx: &CompileContext) -> String {
     match pat {
         ast::Pattern::Ident(name) => {
-            if name == "null" { "None".to_string() } else { name.clone() }
+            if name == "null" {
+                "None".to_string()
+            } else if let Some(enum_name) = ctx.variant_to_enum.get(name.as_str()) {
+                format!("{enum_name}::{name}")
+            } else {
+                name.clone()
+            }
         }
         ast::Pattern::Variant(name, fields) => {
+            let qualified = ctx.variant_to_enum.get(name.as_str())
+                .map(|e| format!("{e}::{name}"))
+                .unwrap_or_else(|| name.clone());
             if fields.is_empty() {
-                name.clone()
+                qualified
             } else {
                 let field_pats: Vec<String> = fields
                     .iter()
-                    .map(|(n, p)| format!("{}: {}", n, compile_pattern(p)))
+                    .map(|(n, p)| format!("{}: {}", n, compile_pattern(p, ctx)))
                     .collect();
-                format!("{} {{ {} }}", name, field_pats.join(", "))
+                format!("{} {{ {} }}", qualified, field_pats.join(", "))
             }
         }
         ast::Pattern::Wildcard => "_".to_string(),

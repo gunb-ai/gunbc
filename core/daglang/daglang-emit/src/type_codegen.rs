@@ -297,8 +297,6 @@ struct RenderOpts {
 }
 
 const STATIC_OPTS: RenderOpts = RenderOpts { static_context: true };
-#[allow(dead_code)]
-const RUNTIME_OPTS: RenderOpts = RenderOpts { static_context: false };
 
 /// Render a DSL expression to a Rust expression string.
 ///
@@ -436,7 +434,7 @@ fn to_screaming_snake(name: &str) -> String {
 ///
 /// `data_names` provides the set of `data` definition names visible in the
 /// module so that identifier references can be mapped to SCREAMING_SNAKE_CASE.
-pub fn fndef_to_code_ir(fd: &FnDef, data_names: &std::collections::HashSet<String>) -> Vec<code_ir::Item> {
+pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<code_ir::Item> {
     let params: Vec<(String, String)> = fd
         .params
         .iter()
@@ -451,8 +449,7 @@ pub fn fndef_to_code_ir(fd: &FnDef, data_names: &std::collections::HashSet<Strin
         })]
     } else {
         fn_codegen::reset_tmp_counter();
-        let ctx = fn_codegen::CompileContext { data_names: data_names.clone() };
-        fn_codegen::compile_fn_body(&fd.body, &ctx)
+        fn_codegen::compile_fn_body(&fd.body, ctx)
     };
 
     vec![code_ir::Item::Fn(code_ir::FnDef {
@@ -464,6 +461,35 @@ pub fn fndef_to_code_ir(fd: &FnDef, data_names: &std::collections::HashSet<Strin
         doc: vec![],
         attributes: vec![],
     })]
+}
+
+/// Build a map of struct_name → {optional field names} for `Some()` wrapping.
+fn collect_optional_fields(
+    td: &TypeDef,
+    map: &mut std::collections::HashMap<String, std::collections::HashSet<String>>,
+) {
+    if let TypeBody::Record(fields) = &td.body {
+        let opt: std::collections::HashSet<String> = fields
+            .iter()
+            .filter(|f| matches!(&f.ty, TypeExpr::Optional(_)))
+            .map(|f| f.name.clone())
+            .collect();
+        if !opt.is_empty() {
+            map.insert(td.name.clone(), opt);
+        }
+    }
+}
+
+/// Build a map of variant_name → enum_name for qualifying bare identifiers.
+fn collect_variant_to_enum(
+    td: &TypeDef,
+    map: &mut std::collections::HashMap<String, String>,
+) {
+    if let TypeBody::Sum(variants) = &td.body {
+        for v in variants {
+            map.insert(v.name.clone(), td.name.clone());
+        }
+    }
 }
 
 pub fn to_snake_case(name: &str) -> String {
@@ -570,11 +596,21 @@ pub fn typedefs_to_source_file(
     module_doc: &str,
 ) -> SourceFile {
     let mut data_names = std::collections::HashSet::new();
+    let mut optional_fields = std::collections::HashMap::new();
+    let mut variant_to_enum = std::collections::HashMap::new();
     for item in items {
-        if let daglang_syntax::ast::Item::DataDef(dd) = &item.node {
-            data_names.insert(dd.name.clone());
+        match &item.node {
+            daglang_syntax::ast::Item::DataDef(dd) => {
+                data_names.insert(dd.name.clone());
+            }
+            daglang_syntax::ast::Item::TypeDef(td) => {
+                collect_optional_fields(td, &mut optional_fields);
+                collect_variant_to_enum(td, &mut variant_to_enum);
+            }
+            _ => {}
         }
     }
+    let ctx = fn_codegen::CompileContext { data_names, optional_fields, variant_to_enum };
     let mut code_items = Vec::new();
     for item in items {
         match &item.node {
@@ -585,7 +621,7 @@ pub fn typedefs_to_source_file(
                 code_items.extend(datadef_to_code_ir(dd));
             }
             daglang_syntax::ast::Item::FnDef(fd) => {
-                code_items.extend(fndef_to_code_ir(fd, &data_names));
+                code_items.extend(fndef_to_code_ir(fd, &ctx));
             }
             _ => {}
         }
@@ -679,7 +715,18 @@ pub fn generate_types_for_modules(
                     for dd in &data_defs {
                         fn_data_names.insert(dd.name.clone());
                     }
-                    all_items.extend(fndef_to_code_ir(fd, &fn_data_names));
+                    let mut opt_fields = std::collections::HashMap::new();
+                    let mut v2e = std::collections::HashMap::new();
+                    for td in &type_defs {
+                        collect_optional_fields(td, &mut opt_fields);
+                        collect_variant_to_enum(td, &mut v2e);
+                    }
+                    let fn_ctx = fn_codegen::CompileContext {
+                        data_names: fn_data_names,
+                        optional_fields: opt_fields,
+                        variant_to_enum: v2e,
+                    };
+                    all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
                 }
                 _ => {}
             }
@@ -944,7 +991,8 @@ mod tests {
             return_type: TypeExpr::Named("String".into()),
             body: FnBody { stmts: vec![], lossy: false },
         };
-        let items = fndef_to_code_ir(&fd, &std::collections::HashSet::new());
+        let ctx = fn_codegen::CompileContext::new();
+        let items = fndef_to_code_ir(&fd, &ctx);
         assert_eq!(items.len(), 1);
         match &items[0] {
             code_ir::Item::Fn(f) => {
@@ -982,7 +1030,8 @@ mod tests {
                 lossy: false,
             },
         };
-        let items = fndef_to_code_ir(&fd, &std::collections::HashSet::new());
+        let ctx = fn_codegen::CompileContext::new();
+        let items = fndef_to_code_ir(&fd, &ctx);
         assert_eq!(items.len(), 1);
         match &items[0] {
             code_ir::Item::Fn(f) => {

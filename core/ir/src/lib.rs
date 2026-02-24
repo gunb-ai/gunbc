@@ -53,7 +53,6 @@
 ///   --module std.symbols --module std.render --module std.box_draw \
 ///   --output core/ir/src/generated/mod.rs
 /// ```
-#[allow(dead_code)]
 pub mod generated;
 
 pub mod algebra;

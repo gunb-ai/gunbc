@@ -810,7 +810,6 @@ pub struct WorkflowSpec {
 }
 
 impl WorkflowSpec {
-    #[allow(dead_code)]
     fn core(name: &str, description: &str, deps: &[&str]) -> Self {
         Self {
             name: name.to_string(),
@@ -823,7 +822,6 @@ impl WorkflowSpec {
         }
     }
 
-    #[allow(dead_code)]
     fn with_resource(mut self, id: ResourceId, base_mode: ExecMode) -> Self {
         self.resources.push(ResourceNeed { id, base_mode });
         self
