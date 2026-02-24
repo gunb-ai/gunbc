@@ -28,13 +28,11 @@ members = [
     # Library crates (DAG op libraries)
     "lib/primitives",
     "lib/blob",
-    "lib/git-ops",
     "lib/cloud-ops",
     "lib/aws-ops",
     "lib/llm-ops",
     "lib/review",
     "lib/design-ops",
-    "lib/markdown",
     "lib/transport",
     "lib/gcp-ops",
     

@@ -378,9 +378,7 @@ dependencies = [
  "gunbc-lib-blob",
  "gunbc-lib-cloud-ops",
  "gunbc-lib-gcp-ops",
- "gunbc-lib-git-ops",
  "gunbc-lib-llm-ops",
- "gunbc-lib-markdown",
  "gunbc-lib-review",
  "gunbc-lib-transport",
  "gunbc-primitives",
@@ -508,27 +506,13 @@ dependencies = [
 name = "gunbc-lib-gcp-ops"
 version = "0.1.0"
 dependencies = [
- "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-test",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
  "serde",
  "serde_json",
  "urlencoding",
-]
-
-[[package]]
-name = "gunbc-lib-git-ops"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
- "gunbc-test",
 ]
 
 [[package]]
@@ -543,15 +527,6 @@ dependencies = [
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
  "serde_json",
-]
-
-[[package]]
-name = "gunbc-lib-markdown"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-test",
 ]
 
 [[package]]

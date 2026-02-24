@@ -64,8 +64,6 @@ pub mod codegen_bridge;
 pub mod coerce;
 pub mod contract;
 pub mod dag;
-pub mod dag_diff;
-pub mod dag_mermaid;
 pub mod dag_topology;
 pub mod entrypoint;
 pub mod git;
@@ -131,10 +129,6 @@ pub use contract::{
 pub use dag::{
     build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
     Edge, EdgeKind, Guard, Port,
-};
-pub use dag_diff::{diff_topologies, DagDiffResult, NodeChangeSummary, NodeDiffStatus, PortChange};
-pub use dag_mermaid::{
-    render_changelog, to_mermaid_expanded_diff, to_mermaid_overview_diff, to_mermaid_snapshot,
 };
 pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
