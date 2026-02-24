@@ -28,33 +28,33 @@ fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> St
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
 }
 
-func gist_snapshot() -> { url: Url }
+func gist_snapshot(public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
 {
   ctx = branch_context()
   listing = git.Core.LsFiles()
   markdown = render_snapshot_markdown(files: listing.files, branch: ctx.branch)
-  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: None)
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: None, public: public)
   return { url: result.url }
 }
 
-func gist_diff(base_ref: CommitSha = "HEAD~1") -> { url: Url }
+func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
 {
   ctx = branch_context()
   changes = git.Core.Diff(base: base_ref)
   markdown = render_diff_markdown(diff: changes.diff, branch: ctx.branch, base_ref: base_ref)
-  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref)
+  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref, public: public)
   return { url: result.url }
 }
 
-func gist_recent(since: String = "3.days.ago") -> { url: Url }
+func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
 {
   recent = resolve_recent_base(since: since)
   changes = git.Core.Diff(base: recent.base_ref)
   markdown = render_diff_markdown(diff: changes.diff, branch: recent.branch, base_ref: recent.base_ref)
-  result = share_content(markdown: markdown, branch: recent.branch, base_ref: recent.base_ref)
+  result = share_content(markdown: markdown, branch: recent.branch, base_ref: recent.base_ref, public: public)
   return { url: result.url }
 }
 

@@ -19,7 +19,7 @@ preflight-fix:
 
 # Ensure CLI entrypoints exist (bootstrap-safe)
 ensure-codegen:
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-codegen -- codegen
+	@GUNBC_FRESHNESS_ACTIVE=1 RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-codegen -- codegen
 
 # Build workspace binaries once for direct tool execution
 build-release-bins: ensure-codegen

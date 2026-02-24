@@ -200,6 +200,7 @@ pub enum PrimitiveLiteral {
     String(String),
     Int(i64),
     Bool(bool),
+    Json(serde_json::Value),
     Unit,
 }
 
@@ -1536,6 +1537,7 @@ fn lower_typed_project_with_callable_scope(
         &mut builder,
         project,
         &endpoints_by_full,
+        &endpoints_by_name,
         &service_registry,
         active_profile_bindings.as_ref(),
         &profile_bound_interfaces,
@@ -1546,6 +1548,7 @@ fn lower_typed_project_with_callable_scope(
         &mut builder,
         project,
         &endpoints_by_full,
+        &endpoints_by_name,
         &service_registry,
         &auth_provider_names,
     );
@@ -4810,6 +4813,7 @@ fn add_service_call_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
     service_registry: &ServiceEndpointRegistry,
     active_profile_bindings: Option<&ActiveProfileBindings>,
     profile_bound_interfaces: &HashSet<String>,
@@ -4863,13 +4867,26 @@ fn add_service_call_edges(
                 .iter()
                 .map(|param| (param.name.clone(), type_expr_to_string(&param.ty)))
                 .collect::<HashMap<_, _>>();
-            let bound_callable_sources =
-                collect_bound_callable_sources(module_name.as_str(), stmts, endpoints_by_full);
+            let bound_callable_sources = collect_bound_callable_sources(
+                module_name.as_str(),
+                stmts,
+                endpoints_by_full,
+                endpoints_by_name,
+            );
+            let caller = format!("{module_name}::{item_name}");
+            let bound_service_sources = collect_bound_service_sources(
+                caller.as_str(),
+                stmts,
+                &uses_binding_types,
+                service_registry,
+                active_profile_bindings,
+                profile_bound_interfaces,
+                known_interface_types,
+            )?;
             let mut service_calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut service_calls);
             let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
             for (call_index, call) in service_calls.into_iter().enumerate() {
-                let caller = format!("{module_name}::{item_name}");
                 let Some(source) = resolve_service_call_source(
                     caller.as_str(),
                     &call.path,
@@ -4912,22 +4929,40 @@ fn add_service_call_edges(
                     };
                     supplied_prepare_inputs.insert(prepare_input.to_string());
                     if let Some(arg_ident) = arg.ident.as_deref() {
-                        let Some(param_ty) = param_types.get(arg_ident) else {
+                        if let Some(param_ty) = param_types.get(arg_ident) {
+                            let param_source = ensure_param_source_node(
+                                builder,
+                                module_name.as_str(),
+                                item_name,
+                                arg_ident,
+                                param_ty.as_str(),
+                            );
+                            builder.add_edge(
+                                param_source.as_str(),
+                                arg_ident,
+                                effective_endpoint.prepare_node_id.as_str(),
+                                prepare_input,
+                            );
                             continue;
-                        };
-                        let param_source = ensure_param_source_node(
-                            builder,
-                            module_name.as_str(),
-                            item_name,
-                            arg_ident,
-                            param_ty.as_str(),
-                        );
-                        builder.add_edge(
-                            param_source.as_str(),
-                            arg_ident,
-                            effective_endpoint.prepare_node_id.as_str(),
-                            prepare_input,
-                        );
+                        }
+                        if let Some(bound_source) = bound_callable_sources.get(arg_ident) {
+                            builder.add_edge(
+                                bound_source.node_id.as_str(),
+                                bound_source.primary_output.as_str(),
+                                effective_endpoint.prepare_node_id.as_str(),
+                                prepare_input,
+                            );
+                            continue;
+                        }
+                        if let Some(bound_source) = bound_service_sources.get(arg_ident) {
+                            builder.add_edge(
+                                bound_source.parse.node_id.as_str(),
+                                bound_source.parse.primary_output.as_str(),
+                                effective_endpoint.prepare_node_id.as_str(),
+                                prepare_input,
+                            );
+                            continue;
+                        }
                         continue;
                     }
                     if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
@@ -4935,6 +4970,26 @@ fn add_service_call_edges(
                             builder.add_edge(
                                 bound_source.node_id.as_str(),
                                 field_name.as_str(),
+                                effective_endpoint.prepare_node_id.as_str(),
+                                prepare_input,
+                            );
+                            continue;
+                        }
+                        if let Some(bound_source) = bound_service_sources.get(base_ident) {
+                            builder.add_edge(
+                                bound_source.parse.node_id.as_str(),
+                                field_name.as_str(),
+                                effective_endpoint.prepare_node_id.as_str(),
+                                prepare_input,
+                            );
+                            continue;
+                        }
+                    }
+                    if let Some(call_name) = arg.call.as_deref() {
+                        if let Some(Some(call_source)) = endpoints_by_name.get(call_name) {
+                            builder.add_edge(
+                                call_source.node_id.as_str(),
+                                call_source.primary_output.as_str(),
                                 effective_endpoint.prepare_node_id.as_str(),
                                 prepare_input,
                             );
@@ -5118,6 +5173,45 @@ fn resolve_service_call_source(
     }))
 }
 
+fn collect_bound_service_sources(
+    caller: &str,
+    stmts: &[Stmt],
+    uses_binding_types: &HashMap<String, String>,
+    service_registry: &ServiceEndpointRegistry,
+    active_profile_bindings: Option<&ActiveProfileBindings>,
+    profile_bound_interfaces: &HashSet<String>,
+    known_interface_types: &HashSet<String>,
+) -> Result<HashMap<String, ServiceTransportEndpoint>, LowerError> {
+    let mut bound = HashMap::<String, ServiceTransportEndpoint>::new();
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(binding, expr) | Stmt::Assign(binding, expr) => match expr {
+                Expr::ServiceCall(path, _) => {
+                    if let Some(source) = resolve_service_call_source(
+                        caller,
+                        path,
+                        uses_binding_types,
+                        service_registry,
+                        active_profile_bindings,
+                        profile_bound_interfaces,
+                        known_interface_types,
+                    )? {
+                        bound.insert(binding.clone(), source.endpoint);
+                    }
+                }
+                Expr::Ident(source) => {
+                    if let Some(endpoint) = bound.get(source).cloned() {
+                        bound.insert(binding.clone(), endpoint);
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    Ok(bound)
+}
+
 fn wire_profile_binding_config_inputs(
     builder: &mut DagBuilder,
     binding_config: Option<&HashMap<String, ProfileConfigValue>>,
@@ -5236,6 +5330,7 @@ fn wire_auth_credential_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
     service_registry: &ServiceEndpointRegistry,
     auth_provider_names: &HashSet<String>,
 ) {
@@ -5248,8 +5343,12 @@ fn wire_auth_credential_edges(
                 _ => continue,
             };
 
-            let bound_callable_sources =
-                collect_bound_callable_sources(module_name.as_str(), stmts, endpoints_by_full);
+            let bound_callable_sources = collect_bound_callable_sources(
+                module_name.as_str(),
+                stmts,
+                endpoints_by_full,
+                endpoints_by_name,
+            );
 
             // Find credential provider bindings: calls to auth-providing patterns.
             let credential_sources = collect_credential_provider_bindings(
@@ -5886,6 +5985,7 @@ fn encode_literal_for_name(literal: &ServiceCallArgLiteral) -> String {
         ServiceCallArgLiteral::String(value) => format!("strhex:{}", hex_encode(value.as_bytes())),
         ServiceCallArgLiteral::Int(value) => format!("int:{value}"),
         ServiceCallArgLiteral::Bool(value) => format!("bool:{value}"),
+        ServiceCallArgLiteral::Json(value) => format!("jsonhex:{}", hex_encode(value.to_string().as_bytes())),
         ServiceCallArgLiteral::None => "none".to_string(),
     }
 }
@@ -5895,6 +5995,7 @@ fn primitive_literal_from_service_literal(literal: &ServiceCallArgLiteral) -> Pr
         ServiceCallArgLiteral::String(value) => PrimitiveLiteral::String(value.clone()),
         ServiceCallArgLiteral::Int(value) => PrimitiveLiteral::Int(*value),
         ServiceCallArgLiteral::Bool(value) => PrimitiveLiteral::Bool(*value),
+        ServiceCallArgLiteral::Json(value) => PrimitiveLiteral::Json(value.clone()),
         ServiceCallArgLiteral::None => PrimitiveLiteral::Unit,
     }
 }
@@ -5960,6 +6061,7 @@ struct ServiceCallArgSite {
     name: Option<String>,
     ident: Option<String>,
     field_access: Option<(String, String)>,
+    call: Option<String>,
     literal: Option<ServiceCallArgLiteral>,
 }
 
@@ -5974,6 +6076,7 @@ enum ServiceCallArgLiteral {
     String(String),
     Int(i64),
     Bool(bool),
+    Json(serde_json::Value),
     None,
 }
 
@@ -6123,29 +6226,32 @@ fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallS
         if let Expr::ServiceCall(path, args) = expr {
             calls.push(ServiceCallSite {
                 path: path.clone(),
-                args: args
-                    .iter()
-                    .map(|(name, arg)| ServiceCallArgSite {
-                        name: name.clone(),
-                        ident: match arg {
-                            Expr::Ident(ident) => Some(ident.clone()),
-                            _ => None,
-                        },
-                        field_access: match arg {
-                            Expr::FieldAccess(base, field) => match base.as_ref() {
-                                Expr::Ident(base_ident) => {
-                                    Some((base_ident.clone(), field.clone()))
-                                }
-                                _ => None,
-                            },
-                            _ => None,
-                        },
-                        literal: service_call_literal_arg(arg),
-                    })
-                    .collect::<Vec<_>>(),
+                args: args.iter().map(service_call_arg_site).collect::<Vec<_>>(),
             });
         }
     });
+}
+
+fn service_call_arg_site((name, arg): &(Option<String>, Expr)) -> ServiceCallArgSite {
+    ServiceCallArgSite {
+        name: name.clone(),
+        ident: match arg {
+            Expr::Ident(ident) => Some(ident.clone()),
+            _ => None,
+        },
+        field_access: match arg {
+            Expr::FieldAccess(base, field) => match base.as_ref() {
+                Expr::Ident(base_ident) => Some((base_ident.clone(), field.clone())),
+                _ => None,
+            },
+            _ => None,
+        },
+        call: match arg {
+            Expr::Call(call_name, _) => Some(call_name.clone()),
+            _ => None,
+        },
+        literal: service_call_literal_arg(arg),
+    }
 }
 
 fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
@@ -6154,6 +6260,35 @@ fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
         Expr::Literal(Literal::Int(value)) => Some(ServiceCallArgLiteral::Int(*value)),
         Expr::Literal(Literal::Bool(value)) => Some(ServiceCallArgLiteral::Bool(*value)),
         Expr::Literal(Literal::None) => Some(ServiceCallArgLiteral::None),
+        Expr::List(_) | Expr::Map(_) => expr_to_json_literal(arg).map(ServiceCallArgLiteral::Json),
+        _ => None,
+    }
+}
+
+fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Some(serde_json::Value::String(value.clone())),
+        Expr::Literal(Literal::Int(value)) => Some(serde_json::Value::Number((*value).into())),
+        Expr::Literal(Literal::Bool(value)) => Some(serde_json::Value::Bool(*value)),
+        Expr::Literal(Literal::None) => Some(serde_json::Value::Null),
+        Expr::List(values) => {
+            let mut out = Vec::with_capacity(values.len());
+            for value in values {
+                out.push(expr_to_json_literal(value)?);
+            }
+            Some(serde_json::Value::Array(out))
+        }
+        Expr::Map(entries) => {
+            let mut out = serde_json::Map::new();
+            for (key, value) in entries {
+                let key = match key {
+                    Expr::Literal(Literal::String(raw)) => raw.clone(),
+                    _ => return None,
+                };
+                out.insert(key, expr_to_json_literal(value)?);
+            }
+            Some(serde_json::Value::Object(out))
+        }
         _ => None,
     }
 }
@@ -6162,6 +6297,7 @@ fn collect_bound_callable_sources(
     module_name: &str,
     stmts: &[Stmt],
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
 ) -> HashMap<String, LoweredEndpoint> {
     let mut bound = HashMap::<String, LoweredEndpoint>::new();
     let module_key = module_name.to_string();
@@ -6169,9 +6305,10 @@ fn collect_bound_callable_sources(
         match stmt {
             Stmt::Let(binding, expr) | Stmt::Assign(binding, expr) => match expr {
                 Expr::Call(name, _) => {
-                    if let Some(endpoint) =
-                        endpoints_by_full.get(&(module_key.clone(), name.clone()))
+                    if let Some(endpoint) = endpoints_by_full.get(&(module_key.clone(), name.clone()))
                     {
+                        bound.insert(binding.clone(), endpoint.clone());
+                    } else if let Some(Some(endpoint)) = endpoints_by_name.get(name) {
                         bound.insert(binding.clone(), endpoint.clone());
                     }
                 }

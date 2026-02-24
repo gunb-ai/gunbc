@@ -693,6 +693,7 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
                 PrimitiveLiteral::String(value) => Value::Str(value.clone()),
                 PrimitiveLiteral::Int(value) => Value::Int(*value),
                 PrimitiveLiteral::Bool(value) => Value::Bool(*value),
+                PrimitiveLiteral::Json(value) => Value::Json(value.clone()),
                 PrimitiveLiteral::Unit => Value::Unit,
             };
             Ok(DynOp::new(LiteralSourceOp { output_port, value }))

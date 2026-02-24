@@ -432,6 +432,7 @@ fn primitive_literal_to_json(literal: &PrimitiveLiteral) -> serde_json::Value {
         PrimitiveLiteral::String(value) => serde_json::Value::String(value.clone()),
         PrimitiveLiteral::Int(value) => serde_json::Value::Number((*value).into()),
         PrimitiveLiteral::Bool(value) => serde_json::Value::Bool(*value),
+        PrimitiveLiteral::Json(value) => value.clone(),
         PrimitiveLiteral::Unit => serde_json::Value::Null,
     }
 }

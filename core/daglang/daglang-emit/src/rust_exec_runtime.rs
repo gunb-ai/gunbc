@@ -380,6 +380,12 @@ fn primitive_literal_to_runtime_value_expr(literal: &PrimitiveLiteral) -> String
         }
         PrimitiveLiteral::Int(value) => format!("Value::Int({value})"),
         PrimitiveLiteral::Bool(value) => format!("Value::Bool({value})"),
+        PrimitiveLiteral::Json(value) => {
+            let encoded = rust_string_literal(&value.to_string());
+            format!(
+                "Value::Json(serde_json::from_str::<serde_json::Value>({encoded}).expect(\"valid literal json\"))"
+            )
+        }
         PrimitiveLiteral::Unit => "Value::Unit".to_string(),
     }
 }

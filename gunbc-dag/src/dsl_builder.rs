@@ -58,12 +58,66 @@ fn strip_pipeline_nodes(mut dag: Dag<daglang_lower::LoweredOp>) -> Dag<daglang_l
     dag
 }
 
+fn slice_dag_from_entry<T>(mut dag: Dag<T>, entry_node_id: &str) -> Result<Dag<T>, BuilderError> {
+    if !dag.nodes.iter().any(|node| node.id.0 == entry_node_id) {
+        return Err(BuilderError::InternalInvariant(format!(
+            "entry node `{entry_node_id}` not found in compiled DAG"
+        )));
+    }
+
+    let mut include = HashSet::<String>::new();
+    let mut backward_stack = vec![entry_node_id.to_string()];
+    while let Some(node_id) = backward_stack.pop() {
+        if !include.insert(node_id.clone()) {
+            continue;
+        }
+        for edge in &dag.edges {
+            if edge.to_node.0 == node_id {
+                backward_stack.push(edge.from_node.0.clone());
+            }
+        }
+    }
+
+    let mut forward_seen = HashSet::<String>::new();
+    let mut forward_stack = vec![entry_node_id.to_string()];
+    while let Some(node_id) = forward_stack.pop() {
+        if !forward_seen.insert(node_id.clone()) {
+            continue;
+        }
+        include.insert(node_id.clone());
+        for edge in &dag.edges {
+            if edge.from_node.0 == node_id {
+                forward_stack.push(edge.to_node.0.clone());
+            }
+        }
+    }
+
+    dag.nodes.retain(|node| include.contains(&node.id.0));
+    dag.edges.retain(|edge| {
+        include.contains(&edge.from_node.0) && include.contains(&edge.to_node.0)
+    });
+    Ok(dag)
+}
+
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
 pub(crate) fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
     let lowered = strip_pipeline_nodes(compile_lowered(relative_module)?);
     resolve_lowered_dag(&lowered).map_err(|error| {
         BuilderError::InternalInvariant(format!(
             "failed to resolve lowered DAG for `{relative_module}`: {error}"
+        ))
+    })
+}
+
+fn build_dsl_graph_for_entry(
+    relative_module: &str,
+    entry_node_id: &str,
+) -> Result<Dag<DynOp>, BuilderError> {
+    let lowered = strip_pipeline_nodes(compile_lowered(relative_module)?);
+    let lowered = slice_dag_from_entry(lowered, entry_node_id)?;
+    resolve_lowered_dag(&lowered).map_err(|error| {
+        BuilderError::InternalInvariant(format!(
+            "failed to resolve lowered DAG for `{relative_module}` entry `{entry_node_id}`: {error}"
         ))
     })
 }
@@ -93,11 +147,11 @@ pub(crate) fn build_infra_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
 }
 
 pub(crate) fn build_makegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/makegen.dag")
+    build_dsl_graph_for_entry("tools/makegen.dag", "tools.makegen::makegen")
 }
 
 pub(crate) fn build_pragma_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/pragma.dag")
+    build_dsl_graph_for_entry("tools/pragma.dag", "tools.pragma::pragma")
 }
 
 pub(crate) fn build_deps_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
@@ -125,15 +179,15 @@ pub fn build_dimension_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
 }
 
 pub fn build_gist_snapshot_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/gist.dag")
+    build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_snapshot")
 }
 
 pub fn build_gist_diff_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/gist.dag")
+    build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_diff")
 }
 
 pub fn build_gist_recent_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/gist.dag")
+    build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
 }
 
 #[cfg(test)]

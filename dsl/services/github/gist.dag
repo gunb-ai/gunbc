@@ -6,23 +6,24 @@ module services.github.gist
 
 service github.Gist {
   @endpoint("https://api.github.com")
-  @auth(BearerToken)
 
   operation Create {
     input {
       description: String
       files: Map<String, String>
       public: Bool = false
+      auth_token: String
     }
     output {
-      url: Url @json("html_url")
       id: GistId
+      url: Url @json("html_url")
     }
     @rest(POST, "/gists")
+    @headers({ "Authorization": "Bearer {auth_token}" })
     @permissions(["gist"])
     @mock_response(
       status: 201,
-      body: { "html_url": "https://gist.github.com/mock/{id}", "id": "{id}" }
+      body: { "html_url": "https://gist.github.com/mock/mock-id", "id": "mock-id" }
     )
   }
 }
