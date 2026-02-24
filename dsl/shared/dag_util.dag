@@ -19,8 +19,6 @@ import std.types {
   TextFile,
   TextFilePath
 }
-import std.patterns { content_upsert }
-
 // --- Result aggregation -----------------------------------------------
 
 fn aggregate_results(stages: List<StageResult>) -> Summary {
@@ -168,19 +166,3 @@ fn render_document(document: Document) -> String {
   }
 }
 
-// --- Render-then-upsert -----------------------------------------------
-// The pattern: render content via a pure fn, then content_upsert to disk.
-// This is the most common 2-liner across all tools. Since content_upsert
-// is already a pattern, this func just composes the render + upsert call
-// into a single step for tools that generate a single file.
-
-func render_and_upsert(content: String, path: String) -> { written: Bool } {
-  result = content_upsert(content: content, path: path)
-  return { written: result.written }
-}
-
-func render_document_and_upsert(document: Document, path: String) -> { written: Bool } {
-  rendered = render_document(document: document)
-  result = content_upsert(content: rendered, path: path)
-  return { written: result.written }
-}

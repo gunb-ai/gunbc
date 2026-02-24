@@ -1350,35 +1350,35 @@ impl std::fmt::Display for LowerError {
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, false, None)
+    lower_typed_project_with_callable_scope(project, None, false, None, None)
 }
 
 pub fn lower_typed_project_with_profile(
     project: &TypedProject,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, false, active_profile)
+    lower_typed_project_with_callable_scope(project, None, false, active_profile, None)
 }
 
 /// Lowers typed modules while emitting explicit collection pipeline nodes.
 pub fn lower_typed_project_with_collection_nodes(
     project: &TypedProject,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, true, None)
+    lower_typed_project_with_callable_scope(project, None, true, None, None)
 }
 
 pub fn lower_typed_project_with_profile_and_collection_nodes(
     project: &TypedProject,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, None, true, active_profile)
+    lower_typed_project_with_callable_scope(project, None, true, active_profile, None)
 }
 
 pub fn lower_typed_project_for_modules(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), false, None)
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), false, None, None)
 }
 
 pub fn lower_typed_project_for_modules_with_profile(
@@ -1386,7 +1386,13 @@ pub fn lower_typed_project_for_modules_with_profile(
     callable_modules: &HashSet<String>,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), false, active_profile)
+    lower_typed_project_with_callable_scope(
+        project,
+        Some(callable_modules),
+        false,
+        active_profile,
+        None,
+    )
 }
 
 /// Lowers only scoped modules while emitting explicit collection pipeline nodes.
@@ -1394,7 +1400,7 @@ pub fn lower_typed_project_for_modules_with_collection_nodes(
     project: &TypedProject,
     callable_modules: &HashSet<String>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), true, None)
+    lower_typed_project_with_callable_scope(project, Some(callable_modules), true, None, None)
 }
 
 pub fn lower_typed_project_for_modules_with_profile_and_collection_nodes(
@@ -1402,7 +1408,43 @@ pub fn lower_typed_project_for_modules_with_profile_and_collection_nodes(
     callable_modules: &HashSet<String>,
     active_profile: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
-    lower_typed_project_with_callable_scope(project, Some(callable_modules), true, active_profile)
+    lower_typed_project_with_callable_scope(
+        project,
+        Some(callable_modules),
+        true,
+        active_profile,
+        None,
+    )
+}
+
+pub fn lower_typed_project_for_modules_with_entry(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+    active_profile: Option<&str>,
+    entry_module: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(
+        project,
+        Some(callable_modules),
+        false,
+        active_profile,
+        entry_module,
+    )
+}
+
+pub fn lower_typed_project_for_modules_with_entry_and_collection_nodes(
+    project: &TypedProject,
+    callable_modules: &HashSet<String>,
+    active_profile: Option<&str>,
+    entry_module: Option<&str>,
+) -> Result<Dag<LoweredOp>, LowerError> {
+    lower_typed_project_with_callable_scope(
+        project,
+        Some(callable_modules),
+        true,
+        active_profile,
+        entry_module,
+    )
 }
 
 fn lower_typed_project_with_callable_scope(
@@ -1410,6 +1452,7 @@ fn lower_typed_project_with_callable_scope(
     callable_modules: Option<&HashSet<String>>,
     emit_collection_nodes: bool,
     active_profile: Option<&str>,
+    entry_module: Option<&str>,
 ) -> Result<Dag<LoweredOp>, LowerError> {
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
@@ -1527,6 +1570,7 @@ fn lower_typed_project_with_callable_scope(
         &endpoints_by_full,
         &endpoints_by_name,
         emit_collection_nodes,
+        entry_module,
     );
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
     let service_registry = if callable_modules.is_some() && active_profile.is_none() {
@@ -3211,6 +3255,7 @@ fn add_dependency_edges(
     endpoints_by_full: &HashMap<(String, String), LoweredEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
     emit_collection_nodes: bool,
+    entry_module: Option<&str>,
 ) {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -3261,15 +3306,17 @@ fn add_dependency_edges(
                 );
             }
 
-            expand_content_upsert_patterns(
-                builder,
-                &module_name,
-                item_name,
-                stmts,
-                target,
-                endpoints_by_name,
-                &param_types,
-            );
+            if entry_module.is_none_or(|em| module_name == em) {
+                expand_content_upsert_patterns(
+                    builder,
+                    &module_name,
+                    item_name,
+                    stmts,
+                    target,
+                    endpoints_by_name,
+                    &param_types,
+                );
+            }
             if emit_collection_nodes {
                 add_collection_pipeline_nodes(builder, &module_name, stmts, target);
             }

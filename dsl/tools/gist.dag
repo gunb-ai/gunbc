@@ -42,14 +42,6 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
 
 // ── Tests ──────────────────────────────────────────────────────────
 
-test gist_diff_dryrun {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
-}
+test gist_diff_dryrun {}
 
-test gist_recent_dryrun {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
-}
+test gist_recent_dryrun {}

@@ -134,7 +134,7 @@ fn interpret_shell_response(args: &[(Option<String>, Expr)]) -> Value {
         .map(|(_, e)| expr_to_string(e))
         .unwrap_or_default();
     Value::Response(TransportResponse::Shell(ShellResponse {
-        exit_code,
+        exit_code: exit_code as i32,
         stdout,
         stderr: String::new(),
     }))
@@ -215,7 +215,7 @@ fn interpret_named_transport_record(kind: &str, fields: &[(String, Expr)]) -> Va
                 .map(expr_to_string)
                 .unwrap_or_default();
             Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code,
+                exit_code: exit_code as i32,
                 stdout,
                 stderr: String::new(),
             }))

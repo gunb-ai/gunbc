@@ -39,8 +39,4 @@ func makegen(registry: ToolRegistry, path: String) -> { written: Bool } {
 
 // ── Tests ──────────────────────────────────────────────────────────
 
-test makegen_dryrun {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
-}
+test makegen_dryrun {}

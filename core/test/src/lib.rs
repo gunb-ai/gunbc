@@ -60,9 +60,10 @@ pub use mock_requirements::{
 };
 pub use mock_spec::{
     assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,
-    ChainValidationResult, ExpectedOutput, InputConstraint, InputExpectation, MockSpec,
-    NodeExample, OutputMatcher, ResourceAcquireResult, ResourceBehavior, ResourceMocks,
-    ResourceRefreshResult, ResourceSimulation, ResourceType, TransportMock,
+    ChainValidationResult, ExpectedOutput, InputConstraint, InputExpectation, InputMock,
+    LiveExpectedOutput, MockSpec, NodeExample, OutputMatcher, ResourceAcquireResult,
+    ResourceBehavior, ResourceMocks, ResourceRefreshResult, ResourceSimulation, ResourceType,
+    TransportMock,
 };
 pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 pub use simulator::{IoContract, Simulator};

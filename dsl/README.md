@@ -127,7 +127,7 @@ Each `.dag` file replaces a specific Rust graph builder:
 
 ### `shared/` -- Composition helpers
 
-- **`dag_util.dag`** -- Common utility functions: `aggregate_results`, `all_succeeded`, `format_report`, `stage_result`, `stage_from_output`, `generated_header`, `render_and_upsert`. Extracted from duplicated logic across tool files.
+- **`dag_util.dag`** -- Common utility functions: `aggregate_results`, `all_succeeded`, `format_report`, `stage_result`, `stage_from_output`, `generated_header`. Extracted from duplicated logic across tool files.
 - **`gist_modes.dag`** -- `branch_context`, `resolve_recent_base`, `share_content`. The shared scaffolding for the snapshot/diff/recent mode pattern. Both `gist.dag` and `dag_viz.dag` import from here.
 
 ### `tools/` -- Tool funcs

@@ -9,8 +9,8 @@ use daglang_emit::{
     EmissionSummary,
 };
 use daglang_lower::{
-    lower_typed_project_for_modules_with_profile,
-    lower_typed_project_for_modules_with_profile_and_collection_nodes,
+    lower_typed_project_for_modules_with_entry,
+    lower_typed_project_for_modules_with_entry_and_collection_nodes,
     lower_typed_project_with_profile, lower_typed_project_with_profile_and_collection_nodes,
     LoweredOp,
 };
@@ -158,7 +158,11 @@ pub fn compile_from_module_graph_with_options(
     options: CompileOptions,
 ) -> Result<CompileOutput, CompileError> {
     include_profile_modules(&mut module_graph, &context.roots, options.profile.is_some())?;
-    let callable_scope = callable_scope_for_context(context, &module_graph)?;
+    let callable_scope_result = callable_scope_for_context(context, &module_graph)?;
+    let (callable_scope, entry_module_name) = match callable_scope_result {
+        Some((scope, entry)) => (Some(scope), Some(entry)),
+        None => (None, None),
+    };
     validate_module_path_consistency(
         &module_graph,
         &context.roots,
@@ -173,13 +177,19 @@ pub fn compile_from_module_graph_with_options(
     .map_err(format_typecheck_errors)?;
     let lowered = if let Some(scope) = callable_scope.as_ref() {
         if options.emit_collection_nodes {
-            lower_typed_project_for_modules_with_profile_and_collection_nodes(
+            lower_typed_project_for_modules_with_entry_and_collection_nodes(
                 &typed,
                 scope,
                 options.profile.as_deref(),
+                entry_module_name.as_deref(),
             )
         } else {
-            lower_typed_project_for_modules_with_profile(&typed, scope, options.profile.as_deref())
+            lower_typed_project_for_modules_with_entry(
+                &typed,
+                scope,
+                options.profile.as_deref(),
+                entry_module_name.as_deref(),
+            )
         }
     } else if options.emit_collection_nodes {
         lower_typed_project_with_profile_and_collection_nodes(&typed, options.profile.as_deref())
@@ -685,7 +695,7 @@ fn resolve_import_file_path(roots: &[PathBuf], import_path: &[String]) -> Option
 fn callable_scope_for_context(
     context: &DriverContext,
     module_graph: &ModuleGraph,
-) -> Result<Option<HashSet<String>>, CompileError> {
+) -> Result<Option<(HashSet<String>, String)>, CompileError> {
     let Some(target_file) = context.target_file.as_ref() else {
         return Ok(None);
     };
@@ -715,6 +725,7 @@ fn callable_scope_for_context(
     if !has_callable_items {
         return Ok(None);
     }
+    let entry_module_name = target_module.module_path.join(".");
     let mut scope = HashSet::new();
     let mut visited = HashSet::new();
     let mut queue = VecDeque::from([target_index]);
@@ -731,9 +742,9 @@ fn callable_scope_for_context(
         }
     }
     if scope.is_empty() {
-        scope.insert(target_module.module_path.join("."));
+        scope.insert(entry_module_name.clone());
     }
-    Ok(Some(scope))
+    Ok(Some((scope, entry_module_name)))
 }
 
 fn module_has_callable_items(module: &ResolvedModule) -> bool {

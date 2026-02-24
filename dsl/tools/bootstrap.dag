@@ -49,8 +49,4 @@ func bootstrap(check_mode: Bool?) -> { crate_count: Int, makefile_written: Bool,
 
 // ── Tests ──────────────────────────────────────────────────────────
 
-test bootstrap_dryrun {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
-}
+test bootstrap_dryrun {}

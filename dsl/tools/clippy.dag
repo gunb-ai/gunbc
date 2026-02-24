@@ -59,8 +59,6 @@ func clippy_lint(paths: List<String>?) -> { clean: Bool, findings: String }
 // ── Tests ──────────────────────────────────────────────────────────
 
 test clippy_lint_all {
-    @tier(Unit)
-    @hermetic(true)
     @testgen_skip(true)
 
     // Transport mocks for the three shell commands

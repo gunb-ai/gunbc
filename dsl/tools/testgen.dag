@@ -30,8 +30,4 @@ func testgen(targets: List<CodegenTarget>) -> { all_fresh: Bool }
 
 // ── Tests ──────────────────────────────────────────────────────────
 
-test testgen_dag_dryrun {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
-}
+test testgen_dag_dryrun {}

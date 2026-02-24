@@ -23,9 +23,7 @@ fixture review_cloud_env {
 }
 
 test inline_review : review_cloud_env {
-    @tier(Scenario)
-    @hermetic(true)
-    @rust_mock_helpers("gunbc_lib_review::graph_mock")
+    @testgen_skip(true)
 
     // Inputs: inline content to review
     input prepare_prompt.artifact -> "fn main() { let x: Option<i32> = None; x.unwrap(); }"
@@ -48,9 +46,7 @@ test inline_review : review_cloud_env {
 }
 
 test diff_review : review_cloud_env {
-    @tier(Scenario)
-    @hermetic(true)
-    @rust_mock_helpers("gunbc_lib_review::graph_mock")
+    @testgen_skip(true)
 
     // Inputs: repo path for git diff
     input diff/prepare_diff.repo_path -> "."

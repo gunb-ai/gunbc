@@ -13428,12 +13428,10 @@ fn pragma_e2e_generated_binary_produces_correct_config_files() {
         .arg(&directives_json)
         .output()
         .expect("failed to run generated pragma binary");
-    // The binary may not succeed if it can't resolve paths, but it should at
-    // least not panic during handler execution.
     let stderr = String::from_utf8_lossy(&run_output.stderr);
     assert!(
-        !stderr.contains("panicked"),
-        "generated pragma binary should not panic: {stderr}"
+        run_output.status.success(),
+        "generated pragma binary should run successfully: {stderr}"
     );
 
     // 4. Cleanup.

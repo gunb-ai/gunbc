@@ -363,6 +363,7 @@ version = "0.1.0"
 dependencies = [
  "cargo_metadata",
  "daglang-driver",
+ "daglang-emit",
  "daglang-lower",
  "daglang-syntax",
  "glob",

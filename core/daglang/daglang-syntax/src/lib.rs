@@ -339,7 +339,7 @@ pub mod ast {
     ///     mock cloud_env.request_url -> "https://example.com/oidc"
     /// }
     /// ```
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct FixtureDef {
         pub name: String,
         pub mocks: Vec<MockDecl>,
@@ -360,7 +360,7 @@ pub mod ast {
     ///     expect result.ok == true
     /// }
     /// ```
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct TestDef {
         pub name: String,
         pub annotations: Vec<Annotation>,

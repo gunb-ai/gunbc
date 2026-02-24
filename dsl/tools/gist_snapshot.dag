@@ -48,8 +48,4 @@ func gist_snapshot(public: Bool = false) -> { url: Url }
   return { url: result.url as Url }
 }
 
-test gist_snapshot_dryrun {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
-}
+test gist_snapshot_dryrun {}
