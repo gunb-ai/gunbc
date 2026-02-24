@@ -60,7 +60,7 @@ impl CanonicalKeyPayload {
     }
 }
 
-/// Full materialization key object used by ledger and planner.
+/// Full materialization key object used by planner.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MaterializationKey {
     pub work_id: WorkIdentity,
@@ -115,71 +115,6 @@ pub enum MissReason {
     },
 }
 
-/// Derive a typed miss reason from previous vs current canonical payload.
-pub fn derive_miss_reason(
-    previous: &MaterializationKey,
-    current: &MaterializationKey,
-) -> Option<MissReason> {
-    if previous.digest == current.digest {
-        return None;
-    }
-
-    if previous.payload.op_version != current.payload.op_version {
-        return Some(MissReason::OpVersionChanged {
-            old: previous.payload.op_version,
-            new: current.payload.op_version,
-        });
-    }
-    if previous.payload.policy_version != current.payload.policy_version {
-        return Some(MissReason::PolicyVersionChanged {
-            old: previous.payload.policy_version,
-            new: current.payload.policy_version,
-        });
-    }
-
-    for (port, new_hashes) in &current.payload.input_hashes {
-        let old_hashes = previous.payload.input_hashes.get(port);
-        if old_hashes != Some(new_hashes) {
-            return Some(MissReason::InputChanged {
-                port: port.clone(),
-                old: old_hashes.cloned().unwrap_or_default(),
-                new: new_hashes.clone(),
-            });
-        }
-    }
-    for (port, old_hashes) in &previous.payload.input_hashes {
-        if !current.payload.input_hashes.contains_key(port) {
-            return Some(MissReason::InputChanged {
-                port: port.clone(),
-                old: old_hashes.clone(),
-                new: Vec::new(),
-            });
-        }
-    }
-
-    for (port, new_keys) in &current.payload.upstream_keys {
-        let old_keys = previous.payload.upstream_keys.get(port);
-        if old_keys != Some(new_keys) {
-            return Some(MissReason::UpstreamKeyChanged {
-                port: port.clone(),
-                old: old_keys.cloned().unwrap_or_default(),
-                new: new_keys.clone(),
-            });
-        }
-    }
-    for (port, old_keys) in &previous.payload.upstream_keys {
-        if !current.payload.upstream_keys.contains_key(port) {
-            return Some(MissReason::UpstreamKeyChanged {
-                port: port.clone(),
-                old: old_keys.clone(),
-                new: Vec::new(),
-            });
-        }
-    }
-
-    Some(MissReason::NoPriorRun)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,10 +141,9 @@ mod tests {
     }
 
     #[test]
-    fn miss_reason_identifies_input_change() {
-        let old = key_with_input_hash("source", "aaa");
-        let new = key_with_input_hash("source", "bbb");
-        let reason = derive_miss_reason(&old, &new).expect("digest changed should produce reason");
-        assert!(matches!(reason, MissReason::InputChanged { .. }));
+    fn key_digest_changes_for_different_input() {
+        let a = key_with_input_hash("source", "aaa");
+        let b = key_with_input_hash("source", "bbb");
+        assert_ne!(a.digest, b.digest);
     }
 }

@@ -28,7 +28,7 @@ fn temp_root() -> std::path::PathBuf {
 // ============================================================================
 
 #[test]
-fn ci_workflow_dry_run_plans_all_units_as_execute_on_cold_ledger() {
+fn ci_workflow_dry_run_plans_all_units_as_execute() {
     let root = temp_root();
     let spec = ci_workflow_spec().expect("ci spec");
     let registry = default_process_unit_registry();
@@ -37,13 +37,10 @@ fn ci_workflow_dry_run_plans_all_units_as_execute_on_cold_ledger() {
     let commands = ci_unit_commands();
     let summary = execute_workflow_plan(&spec, &plan, &commands, &root, true);
 
-    // Cold ledger: all units should be executed (no cache hits).
+    // All units should be executed (no cache hits).
     assert!(summary.success(), "dry-run should always succeed");
     assert_eq!(summary.total_units, plan.nodes.len());
-    assert_eq!(
-        summary.cache_hits, 0,
-        "cold ledger should have no cache hits"
-    );
+    assert_eq!(summary.cache_hits, 0, "should have no cache hits");
     assert!(summary.executed > 0, "should have executed units");
     let _ = std::fs::remove_dir_all(root);
 }

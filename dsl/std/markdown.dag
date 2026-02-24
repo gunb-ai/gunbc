@@ -1,0 +1,42 @@
+// std/markdown.dag -- Markdown document model.
+//
+// Defines a structural representation of Markdown documents. These
+// types mirror render_ir.rs::MarkupNode in core/ir -- the DSL is the
+// source of truth; generated Rust will eventually replace the
+// hand-written rendering layer.
+//
+// Rendering fn implementations live in the compiled fn bridge
+// (gunbc-dag/src/compiled_fns.rs). They are NOT defined here as DSL
+// fn items because the lowerer creates standalone nodes for all fn
+// items in a module -- importing this module would inject unconnected
+// render_heading / render_node / etc. nodes into the consumer's DAG.
+
+module std.markdown
+
+// ── Document structure ───────────────────────────────────────────────
+
+type MarkdownNode
+  = Heading { level: Int, text: String }
+  | CodeBlock { language: String?, code: String }
+  | Paragraph { text: String }
+  | BulletList { items: List<String> }
+  | NumberedList { items: List<String> }
+  | Tree { paths: List<String> }
+  | ThematicBreak
+  | BlockQuote { text: String }
+
+type MarkdownDoc {
+  nodes: List<MarkdownNode>
+}
+
+// ── Rendering fn signatures (compiled fn bridge) ─────────────────────
+//
+// Implementations: gunbc-dag/src/compiled_fns.rs
+//
+//   render_heading(level: Int, text: String) -> String
+//   render_code_block(code: String, language: String?) -> String
+//   render_bullet_list(items: List<String>) -> String
+//   render_numbered_list(items: List<String>) -> String
+//   render_tree(paths: List<String>) -> String
+//   render_node(node: MarkdownNode) -> String
+//   render_markdown(doc: MarkdownDoc) -> String

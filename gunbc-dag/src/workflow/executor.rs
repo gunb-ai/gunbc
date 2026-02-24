@@ -1,10 +1,8 @@
 //! Workflow executor: runs planned units via shell commands (WF6/WF7).
 //!
 //! This module takes a computed `WorkflowPlan` and executes it:
-//! - CachedHit nodes are skipped (outputs rehydrated from ledger CAS).
-//! - Execute nodes run their mapped shell command.
-//! - Results are persisted to the global ledger after each unit.
-//! - A typed execution summary is returned with timing and hit/miss stats.
+//! - All nodes are executed (no caching).
+//! - A typed execution summary is returned with timing stats.
 //!
 //! `Command::new` is used here intentionally: the executor dispatches
 //! coarse-grained CLI subprocesses (not fine-grained DAG node operations).
@@ -15,16 +13,11 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 use std::time::Instant;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use gunbc_ir::{NodeId, PortName, Value};
+use gunbc_ir::NodeId;
 
 use super::key::MissReason;
-use super::ledger::{
-    append_global_ledger_entry, append_pending_approval_entry, store_output_payload, LedgerStatus,
-    RunLedgerEntry,
-};
-use super::planner::{NodePlan, PlanAction, WorkflowPlan};
+use super::planner::{PlanAction, WorkflowPlan};
 use super::schema::WorkflowSpec;
 
 /// Shell command to execute for a workflow unit.
@@ -83,23 +76,20 @@ impl ExecutionSummary {
 
 const PENDING_APPROVAL_EXIT_CODE: i32 = 42;
 
-/// Execute a workflow plan, running only units marked `Execute`.
+/// Execute a workflow plan, running all units.
 ///
 /// Units are processed in topological order (as produced by the planner).
-/// CachedHit units are skipped. Execute units run the mapped shell command.
-/// Results are persisted to the global ledger after each unit completes.
 ///
 /// If `dry_run` is true, commands are printed but not executed.
 pub fn execute_workflow_plan(
     spec: &WorkflowSpec,
     plan: &WorkflowPlan,
     commands: &BTreeMap<NodeId, UnitCommand>,
-    workspace_root: &Path,
+    _workspace_root: &Path,
     dry_run: bool,
 ) -> ExecutionSummary {
     let run_start = Instant::now();
     let mut results = Vec::new();
-    let mut cache_hits = 0usize;
     let mut executed = 0usize;
     let mut failed = 0usize;
     let mut pending_approvals = 0usize;
@@ -107,120 +97,99 @@ pub fn execute_workflow_plan(
     let mut has_failure = false;
 
     for node_plan in &plan.nodes {
-        match &node_plan.action {
-            PlanAction::CachedHit { .. } => {
-                cache_hits += 1;
-                results.push(UnitResult {
-                    node_id: node_plan.node_id.clone(),
-                    success: true,
-                    cached: true,
-                    pending_approval: false,
-                    duration_ms: 0,
-                    miss_reason: None,
-                });
-                emit_unit_status(&node_plan.node_id, UnitStatus::CachedHit);
-            }
-            PlanAction::Execute { miss_reason } => {
-                if has_failure {
-                    // Skip downstream units after a failure (fail-closed).
-                    skipped += 1;
-                    results.push(UnitResult {
-                        node_id: node_plan.node_id.clone(),
-                        success: false,
-                        cached: false,
-                        pending_approval: false,
-                        duration_ms: 0,
-                        miss_reason: Some(miss_reason.clone()),
-                    });
-                    persist_skipped_entry(workspace_root, node_plan);
-                    emit_unit_status(&node_plan.node_id, UnitStatus::Skipped);
-                    continue;
-                }
+        let PlanAction::Execute { miss_reason } = &node_plan.action;
 
-                let Some(cmd) = commands.get(&node_plan.node_id) else {
-                    // Report nodes and aggregate nodes may not have commands.
-                    // Treat them as successful no-ops.
-                    executed += 1;
-                    results.push(UnitResult {
-                        node_id: node_plan.node_id.clone(),
-                        success: true,
-                        cached: false,
-                        pending_approval: false,
-                        duration_ms: 0,
-                        miss_reason: Some(miss_reason.clone()),
-                    });
-                    if !dry_run {
-                        persist_executed_entry(workspace_root, node_plan, true, 0);
-                    }
-                    emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
-                    continue;
-                };
-
-                if dry_run {
-                    executed += 1;
-                    emit_unit_status(&node_plan.node_id, UnitStatus::DryRun(&cmd.label));
-                    results.push(UnitResult {
-                        node_id: node_plan.node_id.clone(),
-                        success: true,
-                        cached: false,
-                        pending_approval: false,
-                        duration_ms: 0,
-                        miss_reason: Some(miss_reason.clone()),
-                    });
-                    continue;
-                }
-
-                emit_unit_status(&node_plan.node_id, UnitStatus::Running(&cmd.label));
-                let unit_start = Instant::now();
-                let execution_outcome = run_unit_command(cmd);
-                let duration_ms = unit_start.elapsed().as_millis() as u64;
-                executed += 1;
-
-                let (success, pending_approval) = match execution_outcome {
-                    CommandExecutionOutcome::Success => {
-                        persist_executed_entry(workspace_root, node_plan, true, duration_ms);
-                        emit_unit_status(
-                            &node_plan.node_id,
-                            UnitStatus::Executed { success: true },
-                        );
-                        (true, false)
-                    }
-                    CommandExecutionOutcome::PendingApproval => {
-                        pending_approvals += 1;
-                        has_failure = true;
-                        persist_pending_approval_entry(workspace_root, node_plan, duration_ms);
-                        emit_unit_status(&node_plan.node_id, UnitStatus::PendingApproval);
-                        (false, true)
-                    }
-                    CommandExecutionOutcome::Failure => {
-                        failed += 1;
-                        has_failure = true;
-                        persist_executed_entry(workspace_root, node_plan, false, duration_ms);
-                        emit_unit_status(
-                            &node_plan.node_id,
-                            UnitStatus::Executed { success: false },
-                        );
-                        (false, false)
-                    }
-                };
-
-                results.push(UnitResult {
-                    node_id: node_plan.node_id.clone(),
-                    success,
-                    cached: false,
-                    pending_approval,
-                    duration_ms,
-                    miss_reason: Some(miss_reason.clone()),
-                });
-            }
+        if has_failure {
+            // Skip downstream units after a failure (fail-closed).
+            skipped += 1;
+            results.push(UnitResult {
+                node_id: node_plan.node_id.clone(),
+                success: false,
+                cached: false,
+                pending_approval: false,
+                duration_ms: 0,
+                miss_reason: Some(miss_reason.clone()),
+            });
+            emit_unit_status(&node_plan.node_id, UnitStatus::Skipped);
+            continue;
         }
+
+        let Some(cmd) = commands.get(&node_plan.node_id) else {
+            // Report nodes and aggregate nodes may not have commands.
+            // Treat them as successful no-ops.
+            executed += 1;
+            results.push(UnitResult {
+                node_id: node_plan.node_id.clone(),
+                success: true,
+                cached: false,
+                pending_approval: false,
+                duration_ms: 0,
+                miss_reason: Some(miss_reason.clone()),
+            });
+            emit_unit_status(&node_plan.node_id, UnitStatus::Executed { success: true });
+            continue;
+        };
+
+        if dry_run {
+            executed += 1;
+            emit_unit_status(&node_plan.node_id, UnitStatus::DryRun(&cmd.label));
+            results.push(UnitResult {
+                node_id: node_plan.node_id.clone(),
+                success: true,
+                cached: false,
+                pending_approval: false,
+                duration_ms: 0,
+                miss_reason: Some(miss_reason.clone()),
+            });
+            continue;
+        }
+
+        emit_unit_status(&node_plan.node_id, UnitStatus::Running(&cmd.label));
+        let unit_start = Instant::now();
+        let execution_outcome = run_unit_command(cmd);
+        let duration_ms = unit_start.elapsed().as_millis() as u64;
+        executed += 1;
+
+        let (success, pending_approval) = match execution_outcome {
+            CommandExecutionOutcome::Success => {
+                emit_unit_status(
+                    &node_plan.node_id,
+                    UnitStatus::Executed { success: true },
+                );
+                (true, false)
+            }
+            CommandExecutionOutcome::PendingApproval => {
+                pending_approvals += 1;
+                has_failure = true;
+                emit_unit_status(&node_plan.node_id, UnitStatus::PendingApproval);
+                (false, true)
+            }
+            CommandExecutionOutcome::Failure => {
+                failed += 1;
+                has_failure = true;
+                emit_unit_status(
+                    &node_plan.node_id,
+                    UnitStatus::Executed { success: false },
+                );
+                (false, false)
+            }
+        };
+
+        results.push(UnitResult {
+            node_id: node_plan.node_id.clone(),
+            success,
+            cached: false,
+            pending_approval,
+            duration_ms,
+            miss_reason: Some(miss_reason.clone()),
+        });
     }
 
     let total_duration_ms = run_start.elapsed().as_millis() as u64;
     ExecutionSummary {
         workflow_id: spec.id.0.clone(),
         total_units: plan.nodes.len(),
-        cache_hits,
+        cache_hits: 0,
         executed,
         failed,
         pending_approvals,
@@ -255,110 +224,7 @@ fn run_unit_command(cmd: &UnitCommand) -> CommandExecutionOutcome {
     }
 }
 
-/// Persist a ledger entry for an executed unit.
-fn persist_executed_entry(
-    workspace_root: &Path,
-    node_plan: &NodePlan,
-    success: bool,
-    duration_ms: u64,
-) {
-    let result_payload = Value::Map(BTreeMap::from([(
-        "success".to_string(),
-        Value::Bool(success),
-    )]));
-    let hash = match store_output_payload(workspace_root, &result_payload) {
-        Ok(h) => h,
-        Err(error) => {
-            eprintln!(
-                "  warning: failed to store output payload for '{}': {}",
-                node_plan.node_id.0, error
-            );
-            return;
-        }
-    };
-
-    let status = if success {
-        LedgerStatus::Executed {
-            reason: match &node_plan.action {
-                PlanAction::Execute { miss_reason } => miss_reason.clone(),
-                _ => MissReason::NoPriorRun,
-            },
-        }
-    } else {
-        LedgerStatus::Failed {
-            reason: match &node_plan.action {
-                PlanAction::Execute { miss_reason } => miss_reason.clone(),
-                _ => MissReason::NoPriorRun,
-            },
-            error: "unit command failed".to_string(),
-        }
-    };
-
-    let entry = RunLedgerEntry {
-        exec_node_id: node_plan.node_id.clone(),
-        work_id: node_plan.work_id.clone(),
-        key: node_plan.key.clone(),
-        status,
-        output_hashes: BTreeMap::from([(PortName::from("result"), hash)]),
-        duration_ms,
-    };
-    if let Err(error) = append_global_ledger_entry(workspace_root, entry) {
-        eprintln!(
-            "  warning: failed to persist ledger entry for '{}': {}",
-            node_plan.node_id.0, error
-        );
-    }
-}
-
-/// Persist a ledger entry for a skipped unit (blocked by upstream failure).
-fn persist_skipped_entry(workspace_root: &Path, node_plan: &NodePlan) {
-    let entry = RunLedgerEntry {
-        exec_node_id: node_plan.node_id.clone(),
-        work_id: node_plan.work_id.clone(),
-        key: node_plan.key.clone(),
-        status: LedgerStatus::Skipped {
-            blocked_by: node_plan.node_id.clone(),
-        },
-        output_hashes: BTreeMap::new(),
-        duration_ms: 0,
-    };
-    if let Err(error) = append_global_ledger_entry(workspace_root, entry) {
-        eprintln!(
-            "  warning: failed to persist skipped entry for '{}': {}",
-            node_plan.node_id.0, error
-        );
-    }
-}
-
-/// Persist a ledger entry for a unit yielding pending approval.
-fn persist_pending_approval_entry(workspace_root: &Path, node_plan: &NodePlan, duration_ms: u64) {
-    let awaiting_since_epoch_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let entry = RunLedgerEntry {
-        exec_node_id: node_plan.node_id.clone(),
-        work_id: node_plan.work_id.clone(),
-        key: node_plan.key.clone(),
-        status: LedgerStatus::PendingApproval {
-            awaiting_since_epoch_ms,
-            claim_released: false,
-        },
-        output_hashes: BTreeMap::new(),
-        duration_ms,
-    };
-    if let Err(error) =
-        append_pending_approval_entry(workspace_root, entry, awaiting_since_epoch_ms, false)
-    {
-        eprintln!(
-            "  warning: failed to persist pending approval entry for '{}': {}",
-            node_plan.node_id.0, error
-        );
-    }
-}
-
 enum UnitStatus<'a> {
-    CachedHit,
     Running(&'a str),
     Executed { success: bool },
     DryRun(&'a str),
@@ -369,9 +235,6 @@ enum UnitStatus<'a> {
 fn emit_unit_status(node_id: &NodeId, status: UnitStatus<'_>) {
     let is_ci = std::env::var("GITHUB_ACTIONS").is_ok();
     match status {
-        UnitStatus::CachedHit => {
-            println!("  [hit] {}", node_id.0);
-        }
         UnitStatus::Running(label) => {
             if is_ci {
                 println!("::group::{}", node_id.0);
@@ -408,7 +271,7 @@ mod tests {
     use crate::workflow::planner::WorkflowPlan;
     use crate::workflow::process_registry::ProcessId;
 
-    fn make_node_plan(name: &str, action: PlanAction) -> NodePlan {
+    fn make_node_plan(name: &str, action: PlanAction) -> super::super::planner::NodePlan {
         let work_id = WorkIdentity::new(ProcessId::new("test"), NodeId::from(name));
         let key = MaterializationKey::new(
             work_id.clone(),
@@ -422,41 +285,12 @@ mod tests {
         )
         .expect("key should build");
 
-        NodePlan {
+        super::super::planner::NodePlan {
             node_id: NodeId::from(name),
             work_id,
             key,
             action,
         }
-    }
-
-    #[test]
-    fn cached_hit_nodes_are_counted_not_executed() {
-        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
-        let plan = WorkflowPlan {
-            nodes: vec![make_node_plan(
-                "a",
-                PlanAction::CachedHit {
-                    previous_run: "run-1".to_string(),
-                    rehydrated_outputs: BTreeMap::new(),
-                },
-            )],
-            coordination: CoordinationStatus {
-                ready: vec![],
-                blocked: BTreeMap::new(),
-            },
-        };
-
-        let summary = execute_workflow_plan(
-            &spec,
-            &plan,
-            &BTreeMap::new(),
-            Path::new("/tmp/nonexistent"),
-            true,
-        );
-        assert_eq!(summary.cache_hits, 1);
-        assert_eq!(summary.executed, 0);
-        assert!(summary.success());
     }
 
     #[test]
@@ -484,38 +318,6 @@ mod tests {
         );
         assert_eq!(summary.executed, 1);
         assert!(summary.success());
-    }
-
-    #[test]
-    fn dry_run_noop_nodes_do_not_persist_ledger_entries() {
-        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
-        let plan = WorkflowPlan {
-            nodes: vec![make_node_plan(
-                "report",
-                PlanAction::Execute {
-                    miss_reason: MissReason::NoPriorRun,
-                },
-            )],
-            coordination: CoordinationStatus {
-                ready: vec![],
-                blocked: BTreeMap::new(),
-            },
-        };
-        let root = std::env::temp_dir().join(format!(
-            "gunbc-executor-dry-run-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-
-        let summary = execute_workflow_plan(&spec, &plan, &BTreeMap::new(), &root, true);
-        assert!(summary.success());
-        assert!(
-            !root.exists(),
-            "dry-run with no-op nodes must not create ledger state"
-        );
     }
 
     #[test]
@@ -554,9 +356,8 @@ mod tests {
             nodes: vec![
                 make_node_plan(
                     "a",
-                    PlanAction::CachedHit {
-                        previous_run: "run-1".to_string(),
-                        rehydrated_outputs: BTreeMap::new(),
+                    PlanAction::Execute {
+                        miss_reason: MissReason::NoPriorRun,
                     },
                 ),
                 make_node_plan(
@@ -580,12 +381,12 @@ mod tests {
             true,
         );
         assert_eq!(summary.total_units, 2);
-        assert_eq!(summary.cache_hits, 1);
-        assert_eq!(summary.executed, 1);
+        assert_eq!(summary.cache_hits, 0);
+        assert_eq!(summary.executed, 2);
     }
 
     #[test]
-    fn pending_approval_exit_code_persists_pending_status() {
+    fn pending_approval_exit_code_detected() {
         let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![make_node_plan(
@@ -609,27 +410,12 @@ mod tests {
             ),
         );
 
-        let root = std::env::temp_dir().join(format!(
-            "gunbc-executor-pending-approval-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
+        let root = std::env::temp_dir().join("gunbc-executor-pending-approval-test");
 
         let summary = execute_workflow_plan(&spec, &plan, &commands, &root, false);
         assert_eq!(summary.pending_approvals, 1);
         assert_eq!(summary.failed, 0);
         assert!(!summary.success());
-
-        let entries =
-            crate::workflow::ledger::load_global_ledger(&root).expect("load workflow ledger");
-        assert_eq!(entries.len(), 1);
-        assert!(matches!(
-            entries[0].status,
-            LedgerStatus::PendingApproval { .. }
-        ));
         let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -78,9 +78,6 @@ fn merge_workflow_plan(
             .and_modify(|existing| {
                 existing.node_refs.push(node_ref.clone());
                 existing.node_refs.sort();
-                if matches!(node.action, PlanAction::Execute { .. }) {
-                    existing.action = node.action.clone();
-                }
             })
             .or_insert_with(|| GlobalExecutionVertex {
                 work_id: key.0,

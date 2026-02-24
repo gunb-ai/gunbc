@@ -3,8 +3,9 @@
 // The snapshot mode lives in tools/gist_snapshot.dag (inlined service calls).
 // These modes use shared/gist_modes.dag helpers, which have cross-callable
 // data flow that the lowerer doesn't fully wire yet. They compile and run but
-// produce empty results. Will be fixed when the lowerer supports callable
-// argument wiring.
+// produce empty results for the cross-callable parts. The `render_diff_markdown`
+// fn now executes via the compiled fn bridge (gunbc-dag/src/compiled_fns.rs),
+// producing actual markdown content.
 //
 // Replaces: lib/tools/gist/src/graph.rs (~1,449 lines)
 

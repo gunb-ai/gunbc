@@ -333,14 +333,11 @@ fn render_plan_text(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> St
         out.push_str(&format!("  - {}\n", node.0));
     }
 
-    // WF22: Per-capability hit/miss/execute breakdown
+    // WF22: Per-capability execution breakdown
     if !explain.capability_status.is_empty() {
         out.push_str("capabilities:\n");
         for status in explain.capability_status.values() {
             let action_str = match &status.action {
-                CapabilityAction::CachedHit { previous_run } => {
-                    format!("CachedHit from {previous_run}")
-                }
                 CapabilityAction::Execute { miss_reason } => {
                     format!("Execute ({})", format_miss_reason(miss_reason))
                 }
@@ -440,9 +437,6 @@ fn render_plan_json(workflow_name: &str, explain: &gunbc_dag::PlanExplain) -> St
         .values()
         .map(|status| {
             let (action, detail) = match &status.action {
-                CapabilityAction::CachedHit { previous_run } => {
-                    ("CachedHit".to_string(), previous_run.clone())
-                }
                 CapabilityAction::Execute { miss_reason } => {
                     ("Execute".to_string(), format_miss_reason(miss_reason))
                 }
@@ -499,7 +493,7 @@ fn print_help() {
     println!();
     println!("OPTIONS:");
     println!("  --plan <name>           Plan-only mode (show execute set + miss reasons)");
-    println!("  --workspace-root <dir>  Workspace root for ledger/CAS paths");
+    println!("  --workspace-root <dir>  Workspace root path");
     println!("  --dry-run               Dry-run: show commands without executing (run mode)");
     println!("  --dry-run <mode>        Dry-run strictness for plan mode (strict|lenient)");
     println!("  -n                      Alias for --dry-run");

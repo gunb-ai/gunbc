@@ -8,6 +8,11 @@
 // conflicts -- the lowerer creates one transport node per service operation
 // per module, and multiple callables wiring to the same node causes rejected
 // duplicate scalar-port edges at runtime.
+//
+// Content rendering: `build_snapshot_content` is a local fn whose body is a
+// placeholder -- the actual rendering is handled by the compiled fn bridge
+// (gunbc-dag/src/compiled_fns.rs :: BuildSnapshotContentOp), which produces
+// a full markdown document with heading, branch info, and directory tree.
 
 module tools.gist_snapshot
 
@@ -17,20 +22,27 @@ import services.github.gist
 import std.resources { Filesystem, Network }
 import std.types { Url }
 
+// Compiled fn: produces markdown from branch name + file listing.
+// Implementation: gunbc-dag/src/compiled_fns.rs (BuildSnapshotContentOp)
+fn build_snapshot_content(branch: String, files: List<String>) -> String {
+  "{branch}"
+}
+
 func gist_snapshot(public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network
 {
   branch_info = git.Core.CurrentBranch()
   listing = git.Core.LsFiles()
+  content = build_snapshot_content(branch: branch_info.branch, files: listing.files)
   secret = shell.GCloud.SecretManagerAccessVersion(
     project_id: "gunbai-secrets",
     secret_name: "github-token"
   )
   result = github.Gist.Create(
     description: branch_info.branch,
-    content: listing.files,
-    public: false,
+    content: content,
+    public: public,
     auth_token: secret.secret_value
   )
   return { url: result.url as Url }

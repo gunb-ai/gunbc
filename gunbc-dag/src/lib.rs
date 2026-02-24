@@ -22,6 +22,7 @@ pub mod bootstrap;
 pub mod build;
 pub mod ci;
 pub mod codegen;
+pub mod compiled_fns;
 pub mod deps_tool;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
@@ -92,35 +93,35 @@ pub use tool_runner::{
     RunToolOptions,
 };
 pub use workflow::{
-    all_tool_workflow_names, append_global_ledger_entry, append_pending_approval_entry,
+    all_tool_workflow_names,
     bootstrap_workflow_spec, bootstrap_workflow_spec_with_registry, build_all_workflow_spec,
     build_all_workflow_spec_with_registry, check_slo, ci_unit_commands, ci_workflow_spec,
     ci_workflow_spec_with_registry, claim_handle_type_id, codegen_key, compilation_key,
     coordination_status, default_process_unit_registry,
-    default_slo_budgets, deps_workflow_spec, deps_workflow_spec_with_registry, derive_miss_reason,
+    default_slo_budgets, deps_workflow_spec, deps_workflow_spec_with_registry,
     execute_workflow_plan, explain_plan, gist_diff_workflow_spec,
     gist_diff_workflow_spec_with_registry, gist_recent_workflow_spec,
     gist_recent_workflow_spec_with_registry, gist_snapshot_workflow_spec,
     gist_snapshot_workflow_spec_with_registry, gist_workflow_spec,
-    gist_workflow_spec_with_registry, has_required_unit_contract, load_global_ledger,
+    gist_workflow_spec_with_registry, has_required_unit_contract,
     makegen_workflow_spec, makegen_workflow_spec_with_registry, plan_global_workflows,
     plan_workflow, plan_workflow_with_mode, pragma_workflow_spec,
     pragma_workflow_spec_with_registry, project_execute_set, prove_non_redundancy,
-    rehydrate_outputs_for_entry, render_execution_report, required_input_contract,
-    required_output_contract, save_global_ledger, sdlc_workflow_spec,
-    sdlc_workflow_spec_with_registry, store_output_payload, test_all_unit_commands,
+    render_execution_report, required_input_contract,
+    required_output_contract, sdlc_workflow_spec,
+    sdlc_workflow_spec_with_registry, test_all_unit_commands,
     test_all_workflow_spec, test_all_workflow_spec_with_registry, tool_workflow_spec,
     top_slow_units, validate_conflicting_claims, validate_effectful_claim_declarations,
     validate_projection_equivalence, validate_required_claims, validate_workflow_admission,
-    workflow_ledger_paths, workflow_unit_commands, AggregateSpec, BlockedReason,
+    workflow_unit_commands, AggregateSpec, BlockedReason,
     CanonicalKeyPayload, CapabilityAction, CapabilityStatus, ClaimId, CodegenMissReason,
     CompilationMissReason, CompilationPhase, CoordinationStatus, DryRunMode, ExecuteProjection,
-    ExecutionSummary, GlobalExecutionVertex, GlobalWorkflowPlan, InvariantViolation, LedgerStatus,
+    ExecutionSummary, GlobalExecutionVertex, GlobalWorkflowPlan, InvariantViolation,
     MaterializationDigest, MaterializationKey, MissReason, NodePlan, PlanAction, PlanExplain,
     PlannerInputs, PlannerInputsByWorkflow, ProcessId, ProcessUnitRef, ProcessUnitRegistry,
-    ProcessUnitSpec, ProjectionDrift, ReportSpec, RunId, RunLedgerEntry, SloBudget, SloResult,
+    ProcessUnitSpec, ProjectionDrift, ReportSpec, SloBudget, SloResult,
     SlowUnit, UnitClaim, UnitCommand, UnitResult, WorkIdentity, WorkflowAdmissionError, WorkflowId,
-    WorkflowLedgerError, WorkflowLedgerPaths, WorkflowNodeRef, WorkflowOp, WorkflowPlan,
+    WorkflowNodeRef, WorkflowOp, WorkflowPlan,
     WorkflowPlannerError, WorkflowSpec as PlannerWorkflowSpec, WorkflowUnit, CODEGEN_ENSURE_UNIT,
     CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID, PORT_AFTER, PORT_COMMIT,
     PORT_RESULT, TYPE_WORKFLOW_RESULT,

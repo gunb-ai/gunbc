@@ -50,6 +50,7 @@ impl WorkspaceLayout {
     const CODEGEN_BIN_REL: &'static str = "target/codegen/bin";
     const CODEGEN_LIB_REL: &'static str = "target/codegen/lib";
     const CODEGEN_STAMP_REL: &'static str = "target/codegen/.codegen-stamp";
+    const TEST_ARTIFACTS_REL: &'static str = "target/test-artifacts";
 
     /// Resolve layout from `cargo metadata` starting in the current directory.
     pub fn from_cargo_metadata() -> Result<Self, WorkspaceLayoutError> {
@@ -199,6 +200,11 @@ impl WorkspaceLayout {
     /// Absolute `target/codegen/.codegen-stamp` path for this workspace.
     pub fn codegen_stamp_path(&self) -> PathBuf {
         self.workspace_root.join(Self::CODEGEN_STAMP_REL)
+    }
+
+    /// Absolute `target/test-artifacts` directory for this workspace.
+    pub fn test_artifacts_dir(&self) -> PathBuf {
+        self.workspace_root.join(Self::TEST_ARTIFACTS_REL)
     }
 
     /// Absolute DSL tool module root.

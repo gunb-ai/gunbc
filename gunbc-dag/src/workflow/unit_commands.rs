@@ -106,9 +106,8 @@ pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
 
 /// Build command map for test-all workflow units.
 ///
-/// test-all shares many units with CI via the global ledger's cross-workflow
-/// dedup. Commands that match CI counterparts produce identical ledger keys,
-/// so warm-path runs skip them via CachedHit.
+/// test-all shares many units with CI via the global planner's cross-workflow
+/// dedup. Commands that match CI counterparts produce identical planner keys.
 pub fn test_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     let mut commands = BTreeMap::new();
 

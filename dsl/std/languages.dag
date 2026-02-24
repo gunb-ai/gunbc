@@ -1,0 +1,316 @@
+// std/languages.dag -- Language model: tautological definitions.
+//
+// Each type is a compositional building block. Each data declaration
+// is a tautology -- "what is Rust?", "what is Markdown?" -- that the
+// entire codebase inherits.
+//
+// Layering:
+//   Layer 0: Primitives (NamingCase, CommentSyntax, TypeMapping)
+//   Layer 1: Categories (TuringComplete, ConfigFormat, MarkupFormat)
+//   Layer 2: Languages (Rust, Go, Markdown, HTML, Makefile, ...)
+//   Layer 3: Rendering (render_heading, render_code_block, ...)
+//   Layer 4: Tools (gist, docgen, etc.)
+//
+// Generated Rust replaces hand-written code in core/ir/src/language/.
+
+module std.languages
+
+// ── Layer 0: Primitives ──────────────────────────────────────────────
+
+// "How are identifiers cased?" -- universal across all languages.
+type NamingCase
+  = SnakeCase
+  | ScreamingSnakeCase
+  | PascalCase
+  | CamelCase
+  | Lowercase
+  | KebabCase
+
+// "What is a comment?" -- universal across all languages.
+type CommentSyntax {
+  line_prefix: String?
+  block_start: String?
+  block_end: String?
+  doc_prefix: String?
+}
+
+// "What is naming?" -- how identifiers are written.
+type NamingConvention {
+  type_case: NamingCase
+  function_case: NamingCase
+  variable_case: NamingCase
+  constant_case: NamingCase
+  module_case: NamingCase
+}
+
+// "What is a type system mapping?" -- abstract -> concrete types.
+type TypeMapping {
+  string: String
+  int: String
+  float: String
+  bool: String
+  bytes: String
+  list_template: String
+  optional_template: String
+  map_template: String
+}
+
+// ── Layer 1: Categories ──────────────────────────────────────────────
+
+// "What is a language?" -- the complete invariant.
+type Language {
+  id: String
+  name: String
+  extensions: List<String>
+  comment: CommentSyntax
+  naming: NamingConvention?
+  types: TypeMapping?
+}
+
+// "What is a markup format?" -- subset for non-Turing languages.
+type MarkupFormat {
+  id: String
+  name: String
+  extensions: List<String>
+  comment: CommentSyntax
+  code_fence: String?
+}
+
+// "What is a config format?" -- subset for configuration files.
+type ConfigFormat {
+  id: String
+  name: String
+  extensions: List<String>
+  comment: CommentSyntax
+}
+
+// ── Layer 2: Language data declarations ──────────────────────────────
+
+// "What is Rust?"
+data rust_language: Language = {
+  id: "rust",
+  name: "Rust",
+  extensions: [".rs"],
+  comment: {
+    line_prefix: "//",
+    block_start: "/*",
+    block_end: "*/",
+    doc_prefix: "///"
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: SnakeCase,
+    variable_case: SnakeCase,
+    constant_case: ScreamingSnakeCase,
+    module_case: SnakeCase
+  },
+  types: {
+    string: "String",
+    int: "i64",
+    float: "f64",
+    bool: "bool",
+    bytes: "Vec<u8>",
+    list_template: "Vec<{0}>",
+    optional_template: "Option<{0}>",
+    map_template: "HashMap<{0}, {1}>"
+  }
+}
+
+// "What is Go?"
+data go_language: Language = {
+  id: "go",
+  name: "Go",
+  extensions: [".go"],
+  comment: {
+    line_prefix: "//",
+    block_start: "/*",
+    block_end: "*/",
+    doc_prefix: null
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: CamelCase,
+    variable_case: CamelCase,
+    constant_case: PascalCase,
+    module_case: Lowercase
+  },
+  types: {
+    string: "string",
+    int: "int64",
+    float: "float64",
+    bool: "bool",
+    bytes: "[]byte",
+    list_template: "[]{0}",
+    optional_template: "*{0}",
+    map_template: "map[{0}]{1}"
+  }
+}
+
+// "What is Python?"
+data python_language: Language = {
+  id: "python",
+  name: "Python",
+  extensions: [".py"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: SnakeCase,
+    variable_case: SnakeCase,
+    constant_case: ScreamingSnakeCase,
+    module_case: SnakeCase
+  },
+  types: {
+    string: "str",
+    int: "int",
+    float: "float",
+    bool: "bool",
+    bytes: "bytes",
+    list_template: "list[{0}]",
+    optional_template: "{0} | None",
+    map_template: "dict[{0}, {1}]"
+  }
+}
+
+// "What is TypeScript?"
+data typescript_language: Language = {
+  id: "typescript",
+  name: "TypeScript",
+  extensions: [".ts", ".tsx"],
+  comment: {
+    line_prefix: "//",
+    block_start: "/*",
+    block_end: "*/",
+    doc_prefix: "/**"
+  },
+  naming: {
+    type_case: PascalCase,
+    function_case: CamelCase,
+    variable_case: CamelCase,
+    constant_case: ScreamingSnakeCase,
+    module_case: CamelCase
+  },
+  types: {
+    string: "string",
+    int: "number",
+    float: "number",
+    bool: "boolean",
+    bytes: "Uint8Array",
+    list_template: "{0}[]",
+    optional_template: "{0} | undefined",
+    map_template: "Map<{0}, {1}>"
+  }
+}
+
+// ── Markup formats ───────────────────────────────────────────────────
+
+// "What is Markdown?"
+data markdown_format: MarkupFormat = {
+  id: "markdown",
+  name: "Markdown",
+  extensions: [".md", ".markdown"],
+  comment: {
+    line_prefix: null,
+    block_start: "<!-- ",
+    block_end: " -->",
+    doc_prefix: null
+  },
+  code_fence: "```"
+}
+
+// "What is HTML?"
+data html_format: MarkupFormat = {
+  id: "html",
+  name: "HTML",
+  extensions: [".html", ".htm"],
+  comment: {
+    line_prefix: null,
+    block_start: "<!-- ",
+    block_end: " -->",
+    doc_prefix: null
+  },
+  code_fence: null
+}
+
+// ── Config formats ───────────────────────────────────────────────────
+
+// "What is YAML?"
+data yaml_format: ConfigFormat = {
+  id: "yaml",
+  name: "YAML",
+  extensions: [".yml", ".yaml"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  }
+}
+
+// "What is TOML?"
+data toml_format: ConfigFormat = {
+  id: "toml",
+  name: "TOML",
+  extensions: [".toml"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  }
+}
+
+// "What is a Makefile?"
+data makefile_format: ConfigFormat = {
+  id: "makefile",
+  name: "Makefile",
+  extensions: ["Makefile", "*.mk"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  }
+}
+
+// "What is a .gitignore?"
+data gitignore_format: ConfigFormat = {
+  id: "gitignore",
+  name: "Gitignore",
+  extensions: [".gitignore"],
+  comment: {
+    line_prefix: "#",
+    block_start: null,
+    block_end: null,
+    doc_prefix: null
+  }
+}
+
+// "What is CSS?"
+data css_format: ConfigFormat = {
+  id: "css",
+  name: "CSS",
+  extensions: [".css"],
+  comment: {
+    line_prefix: null,
+    block_start: "/*",
+    block_end: "*/",
+    doc_prefix: null
+  }
+}
+
+// ── Utility fn signatures (compiled fn bridge) ──────────────────────
+//
+// These fns have implementations in the compiled fn bridge
+// (gunbc-dag/src/compiled_fns.rs). They are NOT defined here as DSL
+// fn items because the lowerer creates standalone nodes for all fn
+// items in a module, causing "missing input" errors when the module
+// is imported transitively.
+//
+// Signatures (for documentation):
+//   comment_line(text: String, syntax: CommentSyntax) -> String
+//   map_abstract_type(abstract_type: String, mapping: TypeMapping) -> String

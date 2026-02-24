@@ -9,7 +9,6 @@ pub mod errors;
 pub mod executor;
 pub mod global_plan;
 pub mod key;
-pub mod ledger;
 pub mod planner;
 pub mod process_registry;
 pub mod projection;
@@ -35,13 +34,7 @@ pub use global_plan::{
     WorkflowNodeRef,
 };
 pub use key::{
-    derive_miss_reason, CanonicalKeyPayload, MaterializationDigest, MaterializationKey, MissReason,
-    WorkIdentity,
-};
-pub use ledger::{
-    append_global_ledger_entry, append_pending_approval_entry, load_global_ledger,
-    rehydrate_outputs_for_entry, save_global_ledger, store_output_payload, workflow_ledger_paths,
-    LedgerStatus, RunId, RunLedgerEntry, WorkflowLedgerError, WorkflowLedgerPaths,
+    CanonicalKeyPayload, MaterializationDigest, MaterializationKey, MissReason, WorkIdentity,
 };
 pub use planner::{
     explain_plan, plan_workflow, plan_workflow_with_mode, CapabilityAction, CapabilityStatus,

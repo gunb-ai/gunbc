@@ -1020,7 +1020,7 @@ fn check_command_parses_full_dsl_corpus() {
     assert_no_compile_stage_banners(&stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("OK: checked 101 file(s)"),
+        stdout.contains("OK: checked 103 file(s)"),
         "unexpected check output: {stdout}"
     );
     assert!(
@@ -1049,7 +1049,7 @@ fn check_command_real_corpus_stdout_matches_expected_snapshot() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(stdout, expected_check_success_stdout(101));
+    assert_eq!(stdout, expected_check_success_stdout(103));
     assert!(
         output.stderr.is_empty(),
         "check over golden corpus should not emit stderr: {}",
@@ -11478,7 +11478,7 @@ fn check_command_defaults_to_workspace_dsl_root() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_no_compile_stage_banners(&stderr);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("OK: checked 101 file(s)"),
+        String::from_utf8_lossy(&output.stdout).contains("OK: checked 103 file(s)"),
         "default check should parse full DSL corpus"
     );
 }
@@ -13289,9 +13289,9 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
     //    Cargo.toml workspace path dependencies should be derived from the actual
     //    output directory (not fixed-depth assumptions).
     let ws_root = workspace_root();
-    let out_dir = ws_root.join("e2e_codegen_test/nested/deeper/tools-makegen");
+    let out_dir = ws_root.join("target/test-artifacts/e2e_codegen_test/nested/deeper/tools-makegen");
     // Clean up any leftover from a previous run.
-    let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test"));
+    let _ = std::fs::remove_dir_all(ws_root.join("target/test-artifacts/e2e_codegen_test"));
 
     let compile_output = Command::new(daglang_bin())
         .arg("compile")
@@ -13367,7 +13367,7 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
     );
 
     // 5. Cleanup.
-    let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test"));
+    let _ = std::fs::remove_dir_all(ws_root.join("target/test-artifacts/e2e_codegen_test"));
     let _ = std::fs::remove_file(&makefile_path);
 }
 
@@ -13379,8 +13379,8 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
 #[ignore]
 fn pragma_e2e_generated_binary_produces_correct_config_files() {
     let ws_root = workspace_root();
-    let out_dir = ws_root.join("e2e_codegen_test_pragma/nested/deeper/tools-pragma");
-    let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test_pragma"));
+    let out_dir = ws_root.join("target/test-artifacts/e2e_codegen_test_pragma/nested/deeper/tools-pragma");
+    let _ = std::fs::remove_dir_all(ws_root.join("target/test-artifacts/e2e_codegen_test_pragma"));
 
     // 1. Compile pragma.dag → exec-runtime.
     let compile_output = Command::new(daglang_bin())
@@ -13437,7 +13437,7 @@ fn pragma_e2e_generated_binary_produces_correct_config_files() {
     );
 
     // 4. Cleanup.
-    let _ = std::fs::remove_dir_all(ws_root.join("e2e_codegen_test_pragma"));
+    let _ = std::fs::remove_dir_all(ws_root.join("target/test-artifacts/e2e_codegen_test_pragma"));
     let _ = std::fs::remove_dir_all(&output_dir);
 }
 

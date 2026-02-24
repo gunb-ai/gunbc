@@ -740,7 +740,13 @@ fn resolve_domain(
     if module.starts_with("services.") || module.starts_with("workspace.") {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
-    // 3. Default: passthrough. The compiler validated this callable exists.
+    // 3. Compiled fn bridge — DSL fn items with real Executable implementations.
+    //    Replaces PassthroughOp for fn items that need actual computation
+    //    (e.g., markdown rendering, string interpolation).
+    if let Some(op) = crate::compiled_fns::lookup_compiled_fn(module, name) {
+        return Ok(op);
+    }
+    // 4. Default: passthrough. The compiler validated this callable exists.
     //    If it compiled, it's resolvable. No registry needed.
     Ok(DynOp::new(PassthroughOp {
         output_port_names: declared_output_names(outputs),
