@@ -742,9 +742,6 @@ fn resolve_domain(
     }
     // 3. Default: passthrough. The compiler validated this callable exists.
     //    If it compiled, it's resolvable. No registry needed.
-    //
-    //    GD-6 audit: record passthrough usage so CI can detect drift.
-    record_passthrough_usage(module, name);
     Ok(DynOp::new(PassthroughOp {
         output_port_names: declared_output_names(outputs),
     }))

@@ -420,6 +420,21 @@ fn render_match(expr: &Expr, arms: &[MatchArm]) -> String {
 }
 
 fn render_if(cond: &Expr, then_body: &[Stmt], else_body: Option<&[Stmt]>) -> String {
+    if matches!(cond, Expr::Block(_)) {
+        let cond_rendered = render_expr(cond);
+        let mut out = format!("let __cond = {};\nif __cond {{\n", cond_rendered);
+        for stmt in then_body {
+            out.push_str(&render_stmt(stmt, 1));
+        }
+        if let Some(else_stmts) = else_body {
+            out.push_str("} else {\n");
+            for stmt in else_stmts {
+                out.push_str(&render_stmt(stmt, 1));
+            }
+        }
+        out.push('}');
+        return out;
+    }
     let mut out = format!("if {} {{\n", render_expr(cond));
     for stmt in then_body {
         out.push_str(&render_stmt(stmt, 1));
@@ -523,7 +538,14 @@ fn render_value_expr(expr: &ValueExpr) -> String {
         ValueExpr::Struct { name, fields } => {
             let field_strs: Vec<String> = fields
                 .iter()
-                .map(|(k, v)| format!("{}: {}", k, render_value_expr(v)))
+                .map(|(k, v)| {
+                    let rendered = render_value_expr(v);
+                    if *k == rendered {
+                        k.clone()
+                    } else {
+                        format!("{}: {}", k, rendered)
+                    }
+                })
                 .collect();
             format!("{} {{ {} }}", name, field_strs.join(", "))
         }

@@ -14,7 +14,6 @@
 
 pub mod cloud_run;
 pub mod compute_engine;
-pub mod compute_engine;
 pub mod iam;
 pub mod iam_policy;
 pub mod load_balancer;
@@ -27,9 +26,6 @@ pub mod workload_identity;
 pub use cloud_run::CloudRunService;
 pub use compute_engine::ComputeEngineService;
 pub use iam::IamService;
-pub use iam_policy::{IamBinding, IamPolicy};
-pub use load_balancer::LoadBalancerService;
-pub use local_auth::{GcloudCli, GcloudLoginOptions, LocalAuthService};
 pub use iam_policy::{IamBinding, IamPolicy};
 pub use load_balancer::LoadBalancerService;
 pub use local_auth::{GcloudCli, GcloudLoginOptions, LocalAuthService};
