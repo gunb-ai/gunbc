@@ -57,35 +57,27 @@ path = "src/bin/ci.rs"
 
 [[bin]]
 name = "gunbc-makegen"
-path = "src/bin/makegen.rs"
+path = "../target/codegen/bin/makegen/main.rs"
 
 [[bin]]
 name = "gunbc-bootstrap"
-path = "src/bin/bootstrap.rs"
+path = "../target/codegen/bin/bootstrap/main.rs"
 
 [[bin]]
 name = "gunbc-testgen"
-path = "src/bin/testgen.rs"
-
-[[bin]]
-name = "gunbc-build"
-path = "src/bin/build.rs"
+path = "../target/codegen/bin/testgen/main.rs"
 
 [[bin]]
 name = "gunbc-pragma"
-path = "src/bin/pragma.rs"
+path = "../target/codegen/bin/pragma/main.rs"
 
 [[bin]]
 name = "gunbc-codegen-dag"
-path = "src/bin/codegen.rs"
+path = "../target/codegen/bin/codegen/main.rs"
 
 [[bin]]
 name = "gunbc-codegen"
 path = "src/bin/codegen_cli.rs"
-
-[[bin]]
-name = "gunbc-docgen"
-path = "src/bin/docgen.rs"
 
 [[bin]]
 name = "gunbc-deps-config"
@@ -98,7 +90,7 @@ path = "src/bin/infra.rs"
 
 [[bin]]
 name = "gunbc-review"
-path = "src/bin/review.rs"
+path = "../target/codegen/bin/review/main.rs"
 
 [[bin]]
 name = "gunbc-pipeline"

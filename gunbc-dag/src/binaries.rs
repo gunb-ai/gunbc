@@ -54,13 +54,11 @@ macro_rules! workspace_binaries {
 }
 
 workspace_binaries! {
-    Build       => "build",
     Bootstrap   => "bootstrap",
     Ci          => "ci",
     Codegen     => "codegen",
     CodegenDag  => "codegen-dag",
     DepsConfig  => "deps-config",
-    Docgen      => "docgen",
     Gist        => "gist",
     GistDiff    => "gist-diff",
     GistRecent  => "gist-recent",

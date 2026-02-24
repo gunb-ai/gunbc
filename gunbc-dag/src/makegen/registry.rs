@@ -247,24 +247,6 @@ impl BuildConfig {
         }
     }
 
-    /// Cargo build config that routes build/test/lint through DAG entrypoints.
-    ///
-    /// Used for Makefile generation so `make build/test/clippy` are graph-driven,
-    /// while internal ops (BuildOp/CI) still use raw cargo commands via `cargo()`.
-    pub fn cargo_entrypoints() -> Self {
-        let mut config = Self::cargo();
-        let build_inv = WorkspaceBinary::Build.invocation();
-        let entry = BuildCommand::Cargo(
-            CargoCommand::new(Subcommand::Run(build_inv)).warnings(config.warnings),
-        );
-
-        config.build = entry.clone();
-        config.test = entry.clone();
-        config.lint = entry;
-        config.use_dag_entrypoints = true;
-        config
-    }
-
     /// Buck2-based build config (for future use).
     ///
     /// Uses `BuildCommand::Shell` for buck2-native commands (build, test, lint, check)
@@ -1719,8 +1701,7 @@ impl ManualToolDef {
 
 /// All manual tool definitions. Adding a new manual tool here automatically
 /// validates its DSL module exists and registers its Makefile target.
-const MANUAL_TOOL_DEFS: &[ManualToolDef] =
-    &[ManualToolDef::tool("pragma"), ManualToolDef::tool("build")];
+const MANUAL_TOOL_DEFS: &[ManualToolDef] = &[ManualToolDef::tool("pragma")];
 
 fn validate_required_manual_tool_modules(
     tool_modules: &BTreeSet<String>,
@@ -1763,21 +1744,6 @@ fn manual_workspace_tools_from_dsl_modules(
             .manual(),
         );
     }
-    if tool_modules.contains("build") {
-        // Keep the historical Makefile target name (`build-all`) to avoid
-        // churn for existing local workflows while sourcing availability
-        // from DSL module discovery.
-        tools.push(ToolInfo {
-            invocation: WorkspaceBinary::Build.invocation(),
-            short_name: "build-all".to_string(),
-            description: "Build, test, and lint with progress display".to_string(),
-            entrypoints: Vec::new(),
-            extra_targets: Vec::new(),
-            has_declarative_dag: false,
-            needs_generated_cli: false,
-            live_secrets: Vec::new(),
-        });
-    }
     tools
 }
 
@@ -1811,15 +1777,6 @@ mod tests {
         assert!(config.build_shell().starts_with("@"));
         assert!(config.test_shell().contains("cargo test"));
         assert!(config.lint_shell().contains("clippy"));
-    }
-
-    #[test]
-    fn test_build_config_cargo_entrypoints() {
-        let config = BuildConfig::cargo_entrypoints();
-        assert!(config.use_dag_entrypoints);
-        assert!(config.build_shell().contains("gunbc-build"));
-        assert!(config.test_shell().contains("gunbc-build"));
-        assert!(config.lint_shell().contains("gunbc-build"));
     }
 
     // ========================================================================
@@ -2205,18 +2162,6 @@ mod tests {
         assert_eq!(
             map.resolve(&gitignore_resource_id(), ExecMode::Verify),
             Some("bootstrap-check")
-        );
-    }
-
-    #[test]
-    fn test_resource_target_map_dag_entrypoints() {
-        let config = BuildConfig::cargo_entrypoints();
-        let map = ResourceTargetMap::default_map(&config);
-
-        // compiled_code maps to "codegen" when DAG entrypoints are used
-        assert_eq!(
-            map.resolve(&compiled_code_resource_id(), ExecMode::Ensure),
-            Some("codegen")
         );
     }
 

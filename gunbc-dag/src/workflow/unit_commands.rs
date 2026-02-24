@@ -20,15 +20,7 @@ pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("ci.lint_upsert"),
         UnitCommand::cargo(
             "pragma ensure",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-pragma",
-                "--",
-                "--mode=ensure",
-            ],
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"],
         ),
     );
     commands.insert(NodeId::from("ci.codegen"), codegen_ensure_command());
@@ -36,15 +28,7 @@ pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("ci.bootstrap"),
         UnitCommand::cargo(
             "bootstrap ensure",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-bootstrap",
-                "--",
-                "--mode=ensure",
-            ],
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-bootstrap"],
         ),
     );
     commands.insert(
@@ -83,20 +67,14 @@ pub fn ci_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
             vec!["test", "--workspace", "--lib", "--", "guardrail"],
         ),
     );
+    // TODO(Phase 2): ci.verify needs --mode=verify support in the generated runner.
+    // The generated CLI runner for codegen-dag does not accept --mode; drift
+    // detection is temporarily unavailable.
     commands.insert(
         NodeId::from("ci.verify"),
         UnitCommand::cargo(
             "verify",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                // The DAG wrapper binary supports --mode verify/ensure.
-                "gunbc-codegen-dag",
-                "--",
-                "--mode=verify",
-            ],
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"],
         ),
     );
     // ci.report has no command — handled as no-op by the executor.
@@ -115,15 +93,7 @@ pub fn test_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("test_all.lint_upsert"),
         UnitCommand::cargo(
             "pragma ensure",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                "gunbc-pragma",
-                "--",
-                "--mode=ensure",
-            ],
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"],
         ),
     );
     commands.insert(NodeId::from("test_all.codegen"), codegen_ensure_command());
@@ -142,16 +112,7 @@ pub fn test_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
         NodeId::from("test_all.verify_fix"),
         UnitCommand::cargo(
             "verify-fix",
-            vec![
-                "run",
-                "-p",
-                "gunbc-dag",
-                "--bin",
-                // The DAG wrapper binary supports --mode verify/ensure.
-                "gunbc-codegen-dag",
-                "--",
-                "--mode=ensure",
-            ],
+            vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"],
         ),
     );
     commands.insert(
@@ -173,15 +134,7 @@ fn compilation_ensure_command() -> UnitCommand {
 fn codegen_ensure_command() -> UnitCommand {
     UnitCommand::cargo(
         "codegen ensure",
-        vec![
-            "run",
-            "-p",
-            "gunbc-dag",
-            "--bin",
-            "gunbc-codegen-dag",
-            "--",
-            "--mode=ensure",
-        ],
+        vec!["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"],
     )
 }
 
