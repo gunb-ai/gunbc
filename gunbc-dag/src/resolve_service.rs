@@ -34,6 +34,14 @@ impl Executable for GenericRestPrepareOp {
                 .ok();
         }
 
+        // Service endpoint not configured (e.g., env-var-based endpoint
+        // like github.OIDC on a non-GitHub-Actions runtime).
+        if self.spec.endpoint.is_empty() {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .ok();
+        }
+
         ensure_required_profile_config_inputs(&self.spec, &inputs)?;
 
         // 1. Interpolate path parameters.

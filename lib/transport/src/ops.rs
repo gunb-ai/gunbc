@@ -53,6 +53,14 @@ impl Executable for TransportOps {
                     return out.ok();
                 }
 
+                // Propagate Skipped request from upstream (e.g., empty endpoint).
+                if matches!(inputs.get("request"), Some(Value::Skipped)) {
+                    return OutputMap::new()
+                        .value("response", Value::Skipped)
+                        .bool("skip", true)
+                        .ok();
+                }
+
                 let mut request = require_request(&inputs, "request")?;
 
                 // Apply credentials if provided via `res:credential`.

@@ -3507,12 +3507,17 @@ fn expand_single_content_upsert(
     let execute_transport_id = format!("execute_{suffix}_transport");
     let is_makegen_expansion = suffix == "makegen";
 
+    let mut prepare_read_inputs = vec![Port::scalar("path", "String")];
+    if is_makegen_expansion {
+        prepare_read_inputs.push(Port::resource(
+            "file:Makefile",
+            "FilesystemHandle",
+            AccessMode::Read,
+        ));
+    }
     builder.add_node(Node::opaque(
         prepare_read_id.clone(),
-        vec![
-            Port::scalar("path", "String"),
-            Port::scalar("res:file:Makefile", "FilesystemHandle"),
-        ],
+        prepare_read_inputs,
         vec![
             Port::scalar("request", "TransportRequest"),
             Port::scalar("skip", "Bool"),
@@ -3732,17 +3737,28 @@ fn resolve_source_expr(
     bound_callables: &HashMap<String, String>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
 ) -> Option<LoweredEndpoint> {
-    let source_name = match expr {
-        Expr::Ident(name) => bound_callables
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| name.clone()),
-        Expr::Call(name, _) => name.clone(),
-        _ => return None,
-    };
-    endpoints_by_name
-        .get(&source_name)
-        .and_then(|entry| entry.clone())
+    match expr {
+        Expr::FieldAccess(base, field) => {
+            let base_endpoint = resolve_source_expr(base, bound_callables, endpoints_by_name)?;
+            Some(LoweredEndpoint {
+                node_id: base_endpoint.node_id,
+                primary_output: field.clone(),
+            })
+        }
+        _ => {
+            let source_name = match expr {
+                Expr::Ident(name) => bound_callables
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| name.clone()),
+                Expr::Call(name, _) => name.clone(),
+                _ => return None,
+            };
+            endpoints_by_name
+                .get(&source_name)
+                .and_then(|entry| entry.clone())
+        }
+    }
 }
 
 fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
