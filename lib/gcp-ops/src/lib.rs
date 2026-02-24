@@ -8,14 +8,10 @@
 //! - Secret Manager access + decoding
 //! - Credential assembly for downstream transports
 
-pub mod discovery_graph;
-pub mod discovery_ops;
 mod ops;
 pub mod services;
 pub mod system_models;
 
-pub use discovery_graph::{build_infra_discovery_dag, GcpDiscoveryGraphOp};
-pub use discovery_ops::GcpDiscoveryOps;
 pub use ops::{GcpOps, GcpRuntimeKind};
 
 // ============================================================================
