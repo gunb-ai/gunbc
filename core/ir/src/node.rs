@@ -202,7 +202,7 @@ impl<T> Node<T> {
     /// # Panics
     ///
     /// Panics if no input port with the given name exists.
-    pub(crate) fn with_input_guard(mut self, port: &str, guard: Guard) -> Self {
+    pub fn with_input_guard(mut self, port: &str, guard: Guard) -> Self {
         let port_name: PortName = port.into();
         let p = self
             .inputs

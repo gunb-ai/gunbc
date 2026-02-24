@@ -53,11 +53,11 @@ impl Executable for TransportOps {
                     return out.ok();
                 }
 
-                // Propagate Skipped request from upstream (e.g., empty endpoint).
-                if matches!(inputs.get("request"), Some(Value::Skipped)) {
+                // Upstream prepare may emit Value::Skipped when a
+                // non-taken match branch has missing inputs.
+                if matches!(inputs.get("request"), Some(Value::Skipped) | None) {
                     return OutputMap::new()
                         .value("response", Value::Skipped)
-                        .bool("skip", true)
                         .ok();
                 }
 
@@ -252,10 +252,10 @@ mod tests {
     }
 
     #[test]
-    fn test_transport_ops_requires_request() {
+    fn test_transport_ops_skips_when_request_missing() {
         let op = TransportOps::Execute;
-        let result = op.execute(HashMap::new());
-        assert!(result.is_err());
+        let result = op.execute(HashMap::new()).expect("missing request should skip, not error");
+        assert_eq!(result.get("response"), Some(&Value::Skipped));
     }
 
     #[test]

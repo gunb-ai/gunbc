@@ -10,21 +10,12 @@
 
 pub mod discovery_graph;
 pub mod discovery_ops;
-mod graph;
 mod ops;
 pub mod services;
 pub mod system_models;
 
 pub use discovery_graph::{build_infra_discovery_dag, GcpDiscoveryGraphOp};
 pub use discovery_ops::GcpDiscoveryOps;
-pub use graph::{
-    build_gcp_secret_manager_credential_graph, build_gcp_secret_manager_credential_graph_github,
-    build_gcp_secret_manager_credential_graph_local,
-    build_gcp_secret_manager_credential_graph_metadata, build_gcp_secret_manager_upsert_graph,
-    build_gcp_secret_manager_upsert_graph_github, build_gcp_secret_manager_upsert_graph_local,
-    build_gcp_secret_manager_upsert_graph_metadata, build_local_auth_upsert_dag_pub,
-    GcpSecretManagerGraphOp,
-};
 pub use ops::{GcpOps, GcpRuntimeKind};
 
 // ============================================================================

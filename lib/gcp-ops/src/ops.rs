@@ -42,14 +42,6 @@ impl GcpRuntimeKind {
 pub enum GcpOps {
     /// Resolve runtime kind from an input string ("github" or "gcp").
     ResolveRuntime,
-    /// Prepare the OIDC token request for GitHub Actions.
-    PrepareGitHubOidcRequest,
-    /// Parse the OIDC token response from GitHub Actions.
-    ParseGitHubOidcResponse,
-    /// Prepare the OIDC token request for GCP metadata server.
-    PrepareMetadataOidcRequest,
-    /// Parse the OIDC token response from metadata server.
-    ParseMetadataOidcResponse,
     /// Prepare to check if the ADC file exists (file transport).
     PrepareCheckAdc,
     /// Parse ADC file existence check response.
@@ -62,10 +54,6 @@ pub enum GcpOps {
     PrepareOAuth2Refresh,
     /// Parse OAuth2 token refresh response (extract access_token, expires_in).
     ParseOAuth2Refresh,
-    /// Prepare the STS token exchange request.
-    PrepareStsExchange,
-    /// Parse the STS token exchange response.
-    ParseStsExchange,
     /// Prepare the IAM service account impersonation request.
     PrepareImpersonate,
     /// Parse the impersonation response.

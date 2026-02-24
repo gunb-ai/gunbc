@@ -30,7 +30,7 @@ use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, Node, Port};
+use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, Guard, Node, Port, Value};
 use serde::Serialize;
 
 /// Lowered operation payload for daglang graph nodes.
@@ -4647,7 +4647,7 @@ fn add_service_transport_triplets(
                         Cardinality::ZERO_OR_ONE,
                     ));
                 }
-                builder.add_node(Node::opaque(
+                let execute_node = Node::opaque(
                     execute_id.clone(),
                     execute_inputs,
                     vec![Port::scalar("response", "TransportResponse")],
@@ -4663,7 +4663,9 @@ fn add_service_transport_triplets(
                         is_interactive: false,
                         resource_target: None,
                     },
-                ));
+                )
+                .with_input_guard("request", Guard::NotEq(Value::Skipped));
+                builder.add_node(execute_node);
                 let parse_outputs = if operation.outputs.is_empty() {
                     vec![Port::scalar("result", "Unit")]
                 } else {

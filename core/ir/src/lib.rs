@@ -133,7 +133,7 @@ pub use contract::{
 };
 pub use dag::{
     build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
-    Edge, EdgeKind, Port,
+    Edge, EdgeKind, Guard, Port,
 };
 pub use dag_diff::{diff_topologies, DagDiffResult, NodeChangeSummary, NodeDiffStatus, PortChange};
 pub use dag_mermaid::{

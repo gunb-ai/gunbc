@@ -27,13 +27,21 @@ service gcp.STS {
 // to acquire subject tokens for the STS exchange.
 
 service github.OIDC {
-  // Endpoint comes from ACTIONS_ID_TOKEN_REQUEST_URL env var at runtime.
-  @auth(BearerToken)   // uses ACTIONS_ID_TOKEN_REQUEST_TOKEN
+  // Endpoint and auth token come from per-job env vars on GitHub Actions
+  // (ACTIONS_ID_TOKEN_REQUEST_URL / ACTIONS_ID_TOKEN_REQUEST_TOKEN).
+  // Both are wired as explicit data-flow inputs by github_oidc() in
+  // std/patterns.dag so that skip propagation handles the
+  // "not on GitHub Actions" case without any runtime Rust.
 
   operation GetToken {
-    input { audience: NonEmptyStr }
+    input {
+      audience: NonEmptyStr
+      request_url: String
+      request_token: Secret
+    }
     output { subject_token: Secret @json("value") }
-    @rest(GET, "?audience={audience}")
+    @rest(GET, "{request_url}?audience={audience}")
+    @headers({ "Authorization": "Bearer {request_token}" })
     @readonly
   }
 }

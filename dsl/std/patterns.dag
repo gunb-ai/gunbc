@@ -374,7 +374,14 @@ pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Int = 1000) -> {} {
 func github_oidc(audience: String) -> { token: String }
   uses net: Network
 {
-  response = github.OIDC.GetToken(audience: audience)
+  url = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_URL")
+  auth = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+
+  response = github.OIDC.GetToken(
+    audience: audience,
+    request_url: url.value,
+    request_token: auth.value
+  )
   return { token: response.subject_token as String }
 }
 

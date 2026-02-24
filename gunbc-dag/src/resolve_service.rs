@@ -34,9 +34,15 @@ impl Executable for GenericRestPrepareOp {
                 .ok();
         }
 
-        // Service endpoint not configured (e.g., env-var-based endpoint
-        // like github.OIDC on a non-GitHub-Actions runtime).
-        if self.spec.endpoint.is_empty() {
+        // Skip when required non-config inputs are missing (e.g., param_source
+        // nodes in non-taken match branches whose data edges were never wired).
+        // Config inputs are excluded — missing config is a real user error.
+        let has_missing_required = self.spec.input_fields.iter().any(|field| {
+            field.default.is_none()
+                && !field.name.starts_with("config.")
+                && !inputs.contains_key(&field.name)
+        });
+        if has_missing_required {
             return OutputMap::new()
                 .value("request", Value::Skipped)
                 .ok();
@@ -282,6 +288,17 @@ impl Executable for GenericShellPrepareOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // Propagate skip from upstream (e.g., non-selected match branches).
         if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
+
+        // Skip when required inputs are missing (non-taken branch param sources).
+        let has_missing_required = self.spec.input_fields.iter().any(|field| {
+            field.default.is_none() && !inputs.contains_key(&field.name)
+        });
+        if has_missing_required {
             return OutputMap::new()
                 .value("request", Value::Skipped)
                 .bool("skip", true)

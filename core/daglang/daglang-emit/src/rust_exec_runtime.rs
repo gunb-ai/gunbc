@@ -536,6 +536,9 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     if skip {
         return OutputMap::new().value("response", Value::Skipped).ok();
     }
+    if matches!(inputs.get("request"), Some(Value::Skipped) | None) {
+        return OutputMap::new().value("response", Value::Skipped).ok();
+    }
     let Some(request) = inputs.get("request").and_then(Value::as_request) else {
         return Err(ExecError::new("missing required `request` input for execute_transport"));
     };

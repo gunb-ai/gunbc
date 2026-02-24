@@ -707,15 +707,14 @@ impl Port {
     }
 }
 
-/// Guard predicate for conditional routing in patterns (internal use only).
+/// Guard predicate for conditional routing.
 ///
-/// Guards are used internally by Branch and other patterns to route values
-/// based on conditions. They are NOT exposed on Port — conditional execution
-/// should use explicit Branch patterns and optional types instead.
-///
-/// See the design doc "No Meta-Annotations" principle.
+/// Guards are used by Branch/If patterns and by the lowering pass to
+/// control conditional execution.  The execution engine skips any node
+/// whose guarded input fails the predicate, setting all outputs to
+/// `Value::Skipped`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum Guard {
+pub enum Guard {
     /// Value must equal expected
     Eq(Value),
     /// Value must not equal expected
@@ -724,7 +723,7 @@ pub(crate) enum Guard {
 
 impl Guard {
     /// Evaluate the guard against an actual value.
-    pub(crate) fn evaluate(&self, actual: &Value) -> bool {
+    pub fn evaluate(&self, actual: &Value) -> bool {
         match self {
             Guard::Eq(expected) => actual == expected,
             Guard::NotEq(expected) => actual != expected,
