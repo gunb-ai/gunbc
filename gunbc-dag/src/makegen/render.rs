@@ -13,7 +13,7 @@ use crate::makegen::registry::{
     ToolRegistry, WorkflowSpec,
 };
 use crate::WorkspaceBinary;
-use gunbc_ir::cargo::{CargoCommand, Subcommand};
+use gunbc_ir::cargo::{CargoCommand, CargoInvocation, Subcommand};
 use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer, Target};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::symbols::{Tier, STANDARD};
@@ -276,9 +276,9 @@ pub(crate) fn core_workflow_body(
         "fmt-fix" => vec![config.fmt_shell().into()],
         "lint-fix" => vec![config.lint_fix_shell().into()],
         // WF8: CI and test-all are thin wrappers over workflow planner execution.
-        "ci" => vec!["@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- ci".into()],
+        "ci" => vec![workflow_planner_command("ci", config).into()],
         "test-all" => {
-            vec!["@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- test-all".into()]
+            vec![workflow_planner_command("test-all", config).into()]
         }
         _ => panic!(
             "missing core workflow body renderer for '{}'",
@@ -574,24 +574,37 @@ pub(crate) fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow
 }
 
 fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String {
-    let _ = config;
-    workflow_tool_command(tool, dry_run)
+    workflow_tool_command(tool, dry_run, config)
+}
+
+/// Render a workflow planner command for core workflows (ci, test-all).
+fn workflow_planner_command(name: &str, config: &BuildConfig) -> String {
+    let workflow_inv = CargoInvocation::composed("workflow", "dag");
+    let cmd = CargoCommand::new(Subcommand::Run(workflow_inv))
+        .quiet()
+        .release()
+        .warnings(config.warnings);
+    format!("@{} -- {name}", cmd.to_shell_with_env())
 }
 
 /// Render a workflow-dispatched tool command.
 ///
 /// All tool targets dispatch through `gunbc-workflow` run mode via `cargo run`,
 /// so cold-start clones and stale binaries are handled by Cargo freshness.
-fn workflow_tool_command(tool: &ToolInfo, dry_run: bool) -> String {
-    let base = format!(
-        "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- {}",
-        tool.short_name
-    );
+/// Uses `CargoCommand` from `BuildConfig` to inherit the repo's warning policy.
+fn workflow_tool_command(tool: &ToolInfo, dry_run: bool, config: &BuildConfig) -> String {
+    let workflow_inv = CargoInvocation::composed("workflow", "dag");
+    let cmd = CargoCommand::new(Subcommand::Run(workflow_inv))
+        .quiet()
+        .release()
+        .warnings(config.warnings);
+
+    let mut shell = format!("@{}", cmd.to_shell_with_env());
+    shell.push_str(&format!(" -- {}", tool.short_name));
     if dry_run {
-        format!("{base} --dry-run strict")
-    } else {
-        base
+        shell.push_str(" --dry-run strict");
     }
+    shell
 }
 
 /// Build an extra composite target.
@@ -846,14 +859,14 @@ mod tests {
         assert!(
             makefile.contains("RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")
         );
-        // Tool targets dispatch through workflow binary via cargo run.
+        // Tool targets dispatch through workflow binary via cargo run with RUSTFLAGS.
         assert!(
-            makefile.contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- deps"),
-            "tool targets should dispatch through gunbc-workflow"
+            makefile.contains("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- deps"),
+            "tool targets should dispatch through gunbc-workflow with warning policy"
         );
         assert!(
             makefile.contains(
-                "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- deps --dry-run strict"
+                "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- deps --dry-run strict"
             ),
             "dry-run targets should pass strict dry-run mode to gunbc-workflow"
         );
@@ -1034,8 +1047,7 @@ mod tests {
 
         // Bootstrap should use workflow run dispatch, no ensure-codegen dep.
         assert!(
-            makefile
-                .contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- bootstrap"),
+            makefile.contains("cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- bootstrap"),
             "bootstrap should dispatch via gunbc-workflow"
         );
         assert!(
@@ -1045,14 +1057,13 @@ mod tests {
 
         // Pragma should use gunbc-workflow dispatch
         assert!(
-            makefile
-                .contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- pragma"),
+            makefile.contains("cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- pragma"),
             "pragma should dispatch via gunbc-workflow"
         );
 
         // Deps should also dispatch via workflow (no legacy cargo-run path).
         assert!(
-            makefile.contains("@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- deps"),
+            makefile.contains("cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- deps"),
             "deps should dispatch via gunbc-workflow"
         );
         assert!(
@@ -1068,7 +1079,7 @@ mod tests {
 
         assert!(
             makefile.contains(
-                "@cargo run -q --release -p gunbc-dag --bin gunbc-workflow -- bootstrap --dry-run strict"
+                "cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- bootstrap --dry-run strict"
             ),
             "bootstrap-dry should dispatch via gunbc-workflow with --dry-run strict"
         );

@@ -146,6 +146,7 @@ type ServiceAccountEmail = String @pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.
 
 // --- Domain enums (Level 4: Finite Coproducts) ------------------------
 
+type WarningPolicy = DenyAll | Default                    // |⟦WarningPolicy⟧| = 2
 type CloudRuntime = GitHubActions | Metadata | LocalDev  // |⟦CloudRuntime⟧| = 3
 type Platform     = Linux | Macos | Windows              // aligned with canonical Os tokens
 

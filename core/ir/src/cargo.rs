@@ -385,6 +385,8 @@ pub struct CargoCommand {
     pub with_all_targets: bool,
     pub with_release: bool,
     pub with_warnings: Warnings,
+    /// Enable `-q` (quiet mode, suppress cargo's own output).
+    pub with_quiet: bool,
     /// Enable `--fix` (clippy auto-fix mode).
     pub with_fix: bool,
     /// Enable `--workspace` (operate on all workspace members).
@@ -415,6 +417,7 @@ impl CargoCommand {
             with_all_targets: false,
             with_release: false,
             with_warnings: Warnings::Default,
+            with_quiet: false,
             with_fix: false,
             with_workspace: false,
             with_allow_dirty: false,
@@ -441,6 +444,12 @@ impl CargoCommand {
     /// Set the warning policy.
     pub fn warnings(mut self, w: Warnings) -> Self {
         self.with_warnings = w;
+        self
+    }
+
+    /// Enable `-q` (quiet mode).
+    pub fn quiet(mut self) -> Self {
+        self.with_quiet = true;
         self
     }
 
@@ -523,6 +532,9 @@ impl CargoCommand {
             sub => args.push(sub.as_str().to_string()),
         }
 
+        if self.with_quiet {
+            args.push("-q".to_string());
+        }
         if self.with_all_targets {
             args.push("--all-targets".to_string());
         }
@@ -800,6 +812,32 @@ mod tests {
         assert_eq!(
             cmd.to_shell_with_env(),
             "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-codegen"
+        );
+    }
+
+    #[test]
+    fn test_cargo_run_quiet_release_deny_warnings() {
+        let inv = CargoInvocation::composed("workflow", "dag");
+        let cmd = CargoCommand::new(Subcommand::Run(inv))
+            .quiet()
+            .release()
+            .warnings(Warnings::Deny);
+        assert_eq!(
+            cmd.to_args(),
+            vec![
+                "cargo",
+                "run",
+                "-p",
+                "gunbc-dag",
+                "--bin",
+                "gunbc-workflow",
+                "-q",
+                "--release"
+            ]
+        );
+        assert_eq!(
+            cmd.to_shell_with_env(),
+            "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release"
         );
     }
 

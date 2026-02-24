@@ -1,6 +1,7 @@
 use daglang_driver::{compile_from_context, DriverContext};
 use gunbc_codegen::derive_tool_defs;
-use gunbc_dag::makegen::{ToolInfo, ToolRegistry};
+use gunbc_dag::makegen::{BuildConfig, ToolInfo, ToolRegistry};
+use gunbc_ir::cargo::Warnings;
 use gunbc_ir::resource::ResourceIo;
 use gunbc_lib_transport::TransportIo;
 use gunbc_tool_registry::iter_tool_targets;
@@ -955,5 +956,20 @@ fn make_var_cli_flag_bijection() {
     assert!(
         checked_tools > 0,
         "no tools with make_var entrypoints found — bijection test is vacuous"
+    );
+}
+
+/// Contract test: BuildConfig.warnings must match dsl/config/build_policy.dag warning_policy=DenyAll.
+///
+/// The DSL source of truth declares `data warning_policy: WarningPolicy = DenyAll`. The Rust
+/// `BuildConfig::cargo()` must agree, ensuring `make gist` and all tool targets compile with
+/// `RUSTFLAGS="-D warnings"`. If this test fails, the DSL and Rust config have drifted.
+#[test]
+fn dsl_warning_policy_matches_build_config() {
+    let config = BuildConfig::cargo();
+    assert_eq!(
+        config.warnings,
+        Warnings::Deny,
+        "BuildConfig.warnings must match dsl/config/build_policy.dag warning_policy=DenyAll"
     );
 }

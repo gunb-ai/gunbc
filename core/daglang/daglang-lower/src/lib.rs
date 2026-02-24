@@ -18,7 +18,9 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use daglang_syntax::ast::{Annotation, Expr, Item, Literal, OperationDef, ServiceDef, Stmt};
+use daglang_syntax::ast::{
+    Annotation, DataDef, Expr, Item, Literal, OperationDef, ServiceDef, Stmt,
+};
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name as canonical_type_name, resource_type_name,
     service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
@@ -337,6 +339,9 @@ pub struct ShellOperationSpec {
     pub output_fields: Vec<OutputFieldSpec>,
     /// How to parse the shell response.
     pub output_parsing: ShellOutputParsing,
+    /// Environment variables for the shell process.
+    /// Resolved from `env: Map<String, String>` input defaults at compile time.
+    pub env: Vec<(String, String)>,
 }
 
 /// Specification for an input field.
@@ -3878,6 +3883,7 @@ fn annotation_permissions(annotations: &[Annotation]) -> Vec<String> {
 fn derive_service_call_metadata(
     service: &ServiceDef,
     operation: &OperationDef,
+    data_registry: &DataRegistry<'_>,
 ) -> ServiceCallMetadata {
     let transport = annotation_transport_class(&operation.annotations)
         .or_else(|| annotation_transport_class(&service.annotations))
@@ -3887,7 +3893,7 @@ fn derive_service_call_metadata(
     permissions.sort();
     permissions.dedup();
 
-    let spec = derive_operation_spec(service, operation, transport);
+    let spec = derive_operation_spec(service, operation, transport, data_registry);
 
     ServiceCallMetadata {
         service: service.name.clone(),
@@ -3904,6 +3910,94 @@ fn derive_service_call_metadata(
 }
 
 // ============================================================================
+// Data registry: compile-time resolution of `data` item values
+// ============================================================================
+
+/// Registry of module-level `data` definitions, keyed by both qualified and
+/// unqualified names. Used to resolve compile-time constants (e.g., env maps).
+type DataRegistry<'a> = HashMap<String, &'a DataDef>;
+
+/// Build a data registry from all modules in the project.
+fn build_data_registry(project: &TypedProject) -> DataRegistry<'_> {
+    let mut registry = DataRegistry::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            if let Item::DataDef(def) = &item.node {
+                registry.insert(format!("{module_name}.{}", def.name), def);
+                // Also register unqualified name for cross-module references.
+                registry.insert(def.name.clone(), def);
+            }
+        }
+    }
+    registry
+}
+
+/// Resolve a `Map<String, String>` expression to key-value pairs.
+///
+/// Handles: map literals `{ "k": "v" }`, data references (`cargo_compile_env`),
+/// and record literals `Foo { k: "v" }`. Only compile-time-evaluable expressions.
+fn resolve_const_map(expr: &Expr, data_registry: &DataRegistry<'_>) -> Vec<(String, String)> {
+    match expr {
+        Expr::Map(entries) => entries
+            .iter()
+            .filter_map(|(k, v)| {
+                let key = expr_as_string(k)?;
+                let val = expr_as_string(v)?;
+                Some((key, val))
+            })
+            .collect(),
+        Expr::Record(_, fields) => fields
+            .iter()
+            .filter_map(|(k, v)| {
+                let val = expr_as_string(v)?;
+                Some((k.clone(), val))
+            })
+            .collect(),
+        Expr::Ident(name) => {
+            if let Some(def) = data_registry.get(name.as_str()) {
+                resolve_const_map(&def.value, data_registry)
+            } else {
+                Vec::new()
+            }
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Extract a string value from a literal expression.
+fn expr_as_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(s)) => Some(s.clone()),
+        _ => None,
+    }
+}
+
+/// Extract env vars from an operation's `env: Map<String, String>` input default.
+///
+/// Convention: an input field named `env` of type `Map<String, String>` whose
+/// default resolves to a const map becomes shell environment variables.
+fn extract_env_from_inputs(
+    inputs: &[daglang_syntax::ast::Field],
+    data_registry: &DataRegistry<'_>,
+) -> Vec<(String, String)> {
+    for field in inputs {
+        if field.name == "env" && type_expr_to_string(&field.ty) == "Map<String, String>" {
+            if let Some(default_expr) = &field.default {
+                return resolve_const_map(default_expr, data_registry);
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Returns true if this field is the `env: Map<String, String>` input that
+/// gets consumed by the lowering layer (projected to `spec.env`).
+fn is_env_map_field(field: &daglang_syntax::ast::Field) -> bool {
+    field.name == "env" && type_expr_to_string(&field.ty) == "Map<String, String>"
+}
+
+// ============================================================================
 // ServiceOperationSpec extraction from annotations
 // ============================================================================
 
@@ -3912,13 +4006,14 @@ fn derive_operation_spec(
     service: &ServiceDef,
     operation: &OperationDef,
     transport: ServiceTransportClass,
+    data_registry: &DataRegistry<'_>,
 ) -> Option<ServiceOperationSpec> {
     match transport {
         ServiceTransportClass::RestNetwork => {
             derive_rest_spec(service, operation).map(ServiceOperationSpec::Rest)
         }
         ServiceTransportClass::ShellLocal => {
-            derive_shell_spec(service, operation).map(ServiceOperationSpec::Shell)
+            derive_shell_spec(service, operation, data_registry).map(ServiceOperationSpec::Shell)
         }
         _ => None,
     }
@@ -3949,7 +4044,11 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     })
 }
 
-fn derive_shell_spec(service: &ServiceDef, operation: &OperationDef) -> Option<ShellOperationSpec> {
+fn derive_shell_spec(
+    service: &ServiceDef,
+    operation: &OperationDef,
+    data_registry: &DataRegistry<'_>,
+) -> Option<ShellOperationSpec> {
     let argv_template = annotation_shell_argv(&operation.annotations, &service.annotations)?;
 
     let input_fields = derive_input_fields_for_shell(&operation.inputs, &argv_template);
@@ -3958,11 +4057,15 @@ fn derive_shell_spec(service: &ServiceDef, operation: &OperationDef) -> Option<S
         .or_else(|| annotation_shell_output_parsing(&service.annotations))
         .unwrap_or_else(|| infer_shell_output_parsing(&operation.outputs));
 
+    // Extract env from `env: Map<String, String>` input default.
+    let env = extract_env_from_inputs(&operation.inputs, data_registry);
+
     Some(ShellOperationSpec {
         argv_template,
         input_fields,
         output_fields,
         output_parsing,
+        env,
     })
 }
 
@@ -4271,6 +4374,8 @@ fn derive_input_fields_for_shell(
 
     inputs
         .iter()
+        // Filter out `env: Map<String, String>` — consumed by lowering (→ spec.env).
+        .filter(|field| !is_env_map_field(field))
         .map(|field| {
             let type_id = type_expr_to_string(&field.ty);
             FieldSpec {
@@ -4455,6 +4560,7 @@ fn add_service_transport_triplets(
     project: &TypedProject,
     required_calls: Option<&HashSet<String>>,
 ) -> ServiceEndpointRegistry {
+    let data_registry = build_data_registry(project);
     let mut registry = ServiceEndpointRegistry::default();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -4481,7 +4587,8 @@ fn add_service_transport_triplets(
                         continue;
                     }
                 }
-                let service_metadata = derive_service_call_metadata(service, operation);
+                let service_metadata =
+                    derive_service_call_metadata(service, operation, &data_registry);
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
                     service.name, operation.name

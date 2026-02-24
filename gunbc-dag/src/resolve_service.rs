@@ -322,7 +322,11 @@ impl Executable for GenericShellPrepareOp {
         }
 
         let command = argv.remove(0);
-        let request = ShellRequest::new(command).args(argv);
+        let mut request = ShellRequest::new(command).args(argv);
+
+        for (key, value) in &self.spec.env {
+            request = request.env(key, value);
+        }
 
         OutputMap::new()
             .request("request", TransportRequest::Shell(request))
@@ -761,6 +765,7 @@ mod tests {
                 is_raw_body: false,
             }],
             output_parsing: ShellOutputParsing::TrimStdout,
+            env: vec![],
         }
     }
 
@@ -780,6 +785,7 @@ mod tests {
                 is_raw_body: false,
             }],
             output_parsing: ShellOutputParsing::ExitCodeBool,
+            env: vec![],
         }
     }
 
@@ -965,6 +971,54 @@ mod tests {
     }
 
     #[test]
+    fn shell_prepare_injects_env_from_spec() {
+        let op = GenericShellPrepareOp {
+            spec: ShellOperationSpec {
+                argv_template: vec![
+                    ArgvSegment::Literal("cargo".to_string()),
+                    ArgvSegment::Literal("build".to_string()),
+                ],
+                input_fields: vec![],
+                output_fields: vec![],
+                output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+                env: vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())],
+            },
+        };
+
+        let outputs = op.execute(HashMap::new()).unwrap();
+        match outputs.get("request").unwrap() {
+            Value::Request(TransportRequest::Shell(s)) => {
+                assert_eq!(s.command, "cargo");
+                assert_eq!(s.args, vec!["build"]);
+                assert_eq!(
+                    s.env.get("RUSTFLAGS"),
+                    Some(&"-D warnings".to_string()),
+                    "env from spec should be injected into ShellRequest"
+                );
+            }
+            other => panic!("expected Shell request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_prepare_empty_env_by_default() {
+        let op = GenericShellPrepareOp {
+            spec: shell_spec_simple(),
+        };
+
+        let outputs = op.execute(HashMap::new()).unwrap();
+        match outputs.get("request").unwrap() {
+            Value::Request(TransportRequest::Shell(s)) => {
+                assert!(
+                    s.env.is_empty(),
+                    "shell spec with empty env should produce no env vars"
+                );
+            }
+            other => panic!("expected Shell request, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn shell_parse_trim_stdout() {
         let op = GenericShellParseOp {
             spec: shell_spec_simple(),
@@ -1013,6 +1067,7 @@ mod tests {
                 is_raw_body: false,
             }],
             output_parsing: ShellOutputParsing::SplitLines,
+            env: vec![],
         };
         let op = GenericShellParseOp { spec };
         let response = ShellResponse::ok("origin/main\norigin/dev\n\n");
@@ -1064,6 +1119,7 @@ mod tests {
                 },
             ],
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+            env: vec![],
         };
         let op = GenericShellParseOp { spec };
         let mut response = ShellResponse::ok("compiled ok");

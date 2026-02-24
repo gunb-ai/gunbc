@@ -1,7 +1,9 @@
 // services/cargo.dag -- Cargo build system operations.
 //
-// All operations use @shell transport. The cargo commands enforce
-// RUSTFLAGS="-D warnings" to deny warnings at the transport level.
+// All operations use @shell transport. The warning policy is configured
+// compositionally via data items from config/build_policy.dag:
+//   - Build/Test take `env: Map<String, String>` defaulting to cargo_compile_env
+//   - Clippy takes `deny_args: List<String>` defaulting to clippy_deny_args
 //
 // Replaces: gunbc-dag/src/build/graph.rs (transport definitions)
 
@@ -9,7 +11,7 @@ module services.cargo
 
 service cargo.Build {
   operation Build {
-    input { all_targets: Bool = true }
+    input { all_targets: Bool = true, env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool
       stdout: String
@@ -20,7 +22,7 @@ service cargo.Build {
   }
 
   operation Test {
-    input {}
+    input { env: Map<String, String> = cargo_compile_env }
     output {
       success: Bool
       stdout: String
@@ -31,13 +33,13 @@ service cargo.Build {
   }
 
   operation Clippy {
-    input { all_targets: Bool = true }
+    input { all_targets: Bool = true, deny_args: List<String> = clippy_deny_args }
     output {
       success: Bool
       stdout: String
       stderr: String
     }
-    @shell(["cargo", "clippy", "--all-targets", "--", "-D", "warnings"])
+    @shell(["cargo", "clippy", "--all-targets", "--"])
     @hermetic
   }
 

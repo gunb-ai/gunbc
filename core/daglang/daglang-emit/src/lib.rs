@@ -944,6 +944,7 @@ mod tests {
             input_fields: vec![],
             output_fields: vec![],
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+            env: vec![],
         });
 
         let mut dag = Dag::new();

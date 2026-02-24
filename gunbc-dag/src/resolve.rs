@@ -1960,6 +1960,7 @@ mod tests {
                     is_raw_body: false,
                 }],
                 output_parsing: ShellOutputParsing::ExitCodeBool,
+                env: vec![],
             })),
             retry_policy: None,
         }
@@ -2010,6 +2011,7 @@ mod tests {
                     },
                 ],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
+                env: vec![],
             })),
             retry_policy: None,
         }
