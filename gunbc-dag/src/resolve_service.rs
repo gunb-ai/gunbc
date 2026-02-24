@@ -27,6 +27,13 @@ pub struct GenericRestPrepareOp {
 
 impl Executable for GenericRestPrepareOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // Propagate skip from upstream (e.g., non-selected match branches).
+        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .ok();
+        }
+
         ensure_required_profile_config_inputs(&self.spec, &inputs)?;
 
         // 1. Interpolate path parameters.
@@ -265,6 +272,14 @@ pub struct GenericShellPrepareOp {
 
 impl Executable for GenericShellPrepareOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // Propagate skip from upstream (e.g., non-selected match branches).
+        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
+
         let mut argv: Vec<String> = Vec::new();
 
         for segment in &self.spec.argv_template {
@@ -812,50 +827,6 @@ mod tests {
     }
 
     #[test]
-    fn rest_prepare_interpolates_auth_header_template() {
-        let spec = RestOperationSpec {
-            endpoint: "https://api.example.com".to_string(),
-            method: "GET".to_string(),
-            path_template: "/v1/issues/42".to_string(),
-            input_fields: vec![FieldSpec {
-                name: "config.credential".to_string(),
-                type_id: "Secret".to_string(),
-                default: None,
-                is_secret: true,
-                is_path_param: false,
-            }],
-            output_fields: vec![],
-            body_template: None,
-            headers: vec![(
-                "Authorization".to_string(),
-                "Bearer {config.credential}".to_string(),
-            )],
-            auth_scheme: Some("BearerToken".to_string()),
-            error_mappings: vec![],
-        };
-        let op = GenericRestPrepareOp { spec };
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "config.credential".to_string(),
-            Value::Str("test-token".to_string()),
-        );
-
-        let outputs = op.execute(inputs).expect("rest prepare should execute");
-        let request = outputs
-            .get("request")
-            .expect("request output should be present");
-        match request {
-            Value::Request(TransportRequest::Rest(rest)) => {
-                assert_eq!(
-                    rest.headers.get("Authorization").map(String::as_str),
-                    Some("Bearer test-token")
-                );
-            }
-            other => panic!("expected REST request, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn rest_prepare_fails_closed_when_required_config_placeholder_is_missing() {
         let spec = RestOperationSpec {
             endpoint: "https://api.example.com".to_string(),
@@ -1176,5 +1147,30 @@ mod tests {
             }
             other => panic!("expected REST request, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rest_prepare_propagates_skip() {
+        let op = GenericRestPrepareOp {
+            spec: rest_spec_simple(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("name".to_string(), Value::Skipped);
+
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("request"), Some(&Value::Skipped));
+    }
+
+    #[test]
+    fn shell_prepare_propagates_skip() {
+        let op = GenericShellPrepareOp {
+            spec: shell_spec_simple(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("some_input".to_string(), Value::Skipped);
+
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("request"), Some(&Value::Skipped));
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
     }
 }

@@ -36,7 +36,6 @@ use gunbc_cli::BinaryArgs;
 use gunbc_dag::{build_dimension_review_graph_dsl, print_tool_header, run_tool, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_lib_review::graph::build_diff_review_graph_with;
 use gunbc_lib_review::ReviewPipelineConfig;
 use std::process;
 
@@ -46,19 +45,6 @@ fn default_model_for_provider(provider: &str) -> &'static str {
         "anthropic" => "claude-sonnet-4-20250514",
         "openai" => "gpt-4o",
         _ => "gpt-4o",
-    }
-}
-
-/// Parse a FermiDepth string (XS/S/M/L/XL) and return a depth-appropriate
-/// review criteria description suffix.
-fn depth_suffix(depth: &str) -> &'static str {
-    match depth.to_uppercase().as_str() {
-        "XS" => " (quick sanity check — focus on critical issues only)",
-        "S" => " (focused review — key issues only)",
-        "M" => "",
-        "L" => " (thorough review — explore edge cases)",
-        "XL" => " (exhaustive deep-dive — multi-pass analysis)",
-        _ => "",
     }
 }
 
@@ -119,47 +105,16 @@ fn main() {
         (provider.clone(), m)
     };
 
-    // Build criteria with depth adjustment
-    let mut criteria = gunbc_lib_review::default_criteria();
-    let suffix = depth_suffix(&depth_upper);
-    if !suffix.is_empty() {
-        criteria.description = format!("{}{}", criteria.description, suffix);
-    }
-
-    // Build pipeline config
-    let config = ReviewPipelineConfig {
-        provider: effective_provider.clone(),
-        model: model.clone(),
-        criteria,
-        default_branch: base_ref.clone().unwrap_or_else(|| "main".to_string()),
-    };
-
-    // Build the review DAG.
-    // Dry-run uses the legacy Rust mock-backed graph for deterministic smoke tests.
-    // Real mode uses the DSL-compiled dimension review pipeline (D-1).
-    let dag = if dry_run {
-        match build_diff_review_graph_with(config.clone()) {
-            Ok(d) => d,
-            Err(e) => {
-                print_attention(
-                    AttentionLevel::Error,
-                    "Review graph build failed",
-                    &e.to_string(),
-                );
-                process::exit(1);
-            }
-        }
-    } else {
-        match build_dimension_review_graph_dsl() {
-            Ok(d) => d,
-            Err(e) => {
-                print_attention(
-                    AttentionLevel::Error,
-                    "DSL review graph build failed",
-                    &e.to_string(),
-                );
-                process::exit(1);
-            }
+    // Build the review DAG from the DSL-compiled dimension review pipeline.
+    let dag = match build_dimension_review_graph_dsl() {
+        Ok(d) => d,
+        Err(e) => {
+            print_attention(
+                AttentionLevel::Error,
+                "Review graph build failed",
+                &e.to_string(),
+            );
+            process::exit(1);
         }
     };
 

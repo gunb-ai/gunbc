@@ -21,7 +21,6 @@
 //! ```
 
 pub mod dimension;
-pub mod graph;
 pub mod profile;
 
 use gunbc_exec::{

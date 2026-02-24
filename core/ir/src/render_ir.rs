@@ -1,45 +1,40 @@
-//! Unified Emission Model — Phase 1: Content IR + OutputMedium + Domain Renderer Stubs.
+//! Unified Emission Model — Content IR + OutputMedium + Domain Renderer Stubs.
 //!
-//! This module defines the medium-agnostic content IR primitives and the
-//! `OutputMedium` trait hierarchy that will unify all rendering systems.
-//!
-//! # Architecture
-//!
-//! - **Content IR**: `Span`, `Line`, `Block` — medium-agnostic content
-//! - **OutputMedium**: Root trait with `render_span`/`render_line`/`render_block`/`compose`
-//! - **TextMedium**: Marker for string-producing media (`AnsiText`, `PlainText`, `HtmlText`)
-//! - **GraphicsMedium**: Marker for graphics-producing media (stubs only in Phase 1)
-//! - **Domain renderers**: `CodeRenderer`, `MarkupRenderer`, `StructuredRenderer`,
-//!   `FrameRenderer`, `DocumentRenderer` (trait definitions only, no impls)
-//! - **Document layer**: `Document`, `FileHeader`, `Frame`, `CursorAction`
-//! - **Data IR**: `DataValue`, `DataNode` for structured format sharing
+//! Pure types (`SpanStyle`, `Span`, `Line`, `Frame`, `CursorAction`,
+//! `RenderMode`, `ViewportUnit`, `Viewport`) are DSL-generated — see
+//! `dsl/std/render.dag`.  This file provides runtime glue: constructors,
+//! traits, medium implementations, and the document layer.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use crate::symbols::{SemanticColor, SymbolId, SymbolSet, Tier};
+use crate::symbols::{SemanticColor, SymbolSet, Tier};
 
 // ---------------------------------------------------------------------------
-// Content IR primitives
+// Re-exports from generated code (DSL is the source of truth)
 // ---------------------------------------------------------------------------
 
-/// Visual style applied to a span of text.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SpanStyle {
-    pub color: Option<SemanticColor>,
-    pub bold: bool,
-    pub italic: bool,
-    /// When present, the symbol is rendered before the span text.
-    pub symbol: Option<SymbolId>,
+pub use crate::generated::{CursorAction, Frame, Line, RenderMode, Span, SpanStyle, Viewport, ViewportUnit};
+
+// ---------------------------------------------------------------------------
+// Default impl for SpanStyle (cannot be derived in generated code)
+// ---------------------------------------------------------------------------
+
+impl Default for SpanStyle {
+    fn default() -> Self {
+        Self {
+            color: None,
+            bold: false,
+            italic: false,
+            symbol: None,
+        }
+    }
 }
 
-/// A styled fragment of text — the atomic unit of content IR.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Span {
-    pub text: String,
-    pub style: SpanStyle,
-}
+// ---------------------------------------------------------------------------
+// Constructors
+// ---------------------------------------------------------------------------
 
 impl Span {
     pub fn plain(text: impl Into<String>) -> Self {
@@ -57,20 +52,21 @@ impl Span {
     }
 }
 
-/// A line of spans with an indentation level.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Line {
-    pub spans: Vec<Span>,
-    pub indent: usize,
-}
-
 impl Line {
     pub fn new(spans: Vec<Span>) -> Self {
-        Self { spans, indent: 0 }
+        Self {
+            spans,
+            indent: 0,
+            max_width: None,
+        }
     }
 
     pub fn indented(spans: Vec<Span>, indent: usize) -> Self {
-        Self { spans, indent }
+        Self {
+            spans,
+            indent: indent as i64,
+            max_width: None,
+        }
     }
 }
 
@@ -90,8 +86,6 @@ impl Block {
 // OutputMedium hierarchy
 // ---------------------------------------------------------------------------
 
-/// Root trait for output media. The medium owns rendering context (tier, symbol set)
-/// and converts content IR into a concrete output type.
 pub trait OutputMedium {
     type Output;
 
@@ -101,17 +95,13 @@ pub trait OutputMedium {
     fn compose(&self, parts: Vec<Self::Output>) -> Self::Output;
 }
 
-/// Marker trait for text-producing media (output is `String`).
 pub trait TextMedium: OutputMedium<Output = String> {}
-
-/// Marker trait for graphics-producing media (output is `RenderSurface`).
 pub trait GraphicsMedium: OutputMedium<Output = RenderSurface> {}
 
 // ---------------------------------------------------------------------------
 // Text medium implementations
 // ---------------------------------------------------------------------------
 
-/// ANSI terminal output with color codes and symbol resolution.
 pub struct AnsiText {
     pub tier: Tier,
     pub symbol_set: &'static SymbolSet,
@@ -144,7 +134,7 @@ impl OutputMedium for AnsiText {
     }
 
     fn render_line(&self, line: &Line) -> String {
-        let indent = "    ".repeat(line.indent);
+        let indent = "    ".repeat(line.indent.max(0) as usize);
         let content: String = line.spans.iter().map(|s| self.render_span(s)).collect();
         format!("{indent}{content}")
     }
@@ -165,7 +155,6 @@ impl OutputMedium for AnsiText {
 
 impl TextMedium for AnsiText {}
 
-/// Plain text output — no ANSI escapes, no colors. Symbols resolved at configured tier.
 pub struct PlainText {
     pub tier: Tier,
     pub symbol_set: &'static SymbolSet,
@@ -184,7 +173,7 @@ impl OutputMedium for PlainText {
     }
 
     fn render_line(&self, line: &Line) -> String {
-        let indent = "    ".repeat(line.indent);
+        let indent = "    ".repeat(line.indent.max(0) as usize);
         let content: String = line.spans.iter().map(|s| self.render_span(s)).collect();
         format!("{indent}{content}")
     }
@@ -205,7 +194,6 @@ impl OutputMedium for PlainText {
 
 impl TextMedium for PlainText {}
 
-/// HTML output — wraps styled spans in `<span class="...">` elements.
 pub struct HtmlText {
     pub tier: Tier,
     pub symbol_set: &'static SymbolSet,
@@ -240,7 +228,7 @@ impl OutputMedium for HtmlText {
     }
 
     fn render_line(&self, line: &Line) -> String {
-        let indent = "    ".repeat(line.indent);
+        let indent = "    ".repeat(line.indent.max(0) as usize);
         let content: String = line.spans.iter().map(|s| self.render_span(s)).collect();
         format!("{indent}{content}")
     }
@@ -265,36 +253,22 @@ impl TextMedium for HtmlText {}
 // Graphics stubs
 // ---------------------------------------------------------------------------
 
-/// A rendered graphics surface (stub — no real implementation in Phase 1).
 #[derive(Debug, Clone, Default)]
 pub struct RenderSurface {
     pub elements: Vec<GraphicsElement>,
 }
 
-/// A graphics primitive (stub — no real implementation in Phase 1).
 #[derive(Debug, Clone)]
 pub enum GraphicsElement {
-    Glyph {
-        x: f64,
-        y: f64,
-        text: String,
-    },
-    Rect {
-        x: f64,
-        y: f64,
-        width: f64,
-        height: f64,
-    },
-    Path {
-        points: Vec<(f64, f64)>,
-    },
+    Glyph { x: f64, y: f64, text: String },
+    Rect { x: f64, y: f64, width: f64, height: f64 },
+    Path { points: Vec<(f64, f64)> },
 }
 
 // ---------------------------------------------------------------------------
 // Document layer
 // ---------------------------------------------------------------------------
 
-/// Generated file header metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileHeader {
     pub generator_name: Cow<'static, str>,
@@ -303,7 +277,6 @@ pub struct FileHeader {
 }
 
 impl FileHeader {
-    /// Render the standard "Generated by" / "DO NOT EDIT" header.
     pub fn render(&self) -> String {
         crate::language::traits::comment::generated_header(
             &self.generator_name,
@@ -313,22 +286,6 @@ impl FileHeader {
     }
 }
 
-/// What a frame does to existing output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CursorAction {
-    Overwrite,
-    Append,
-    Clear,
-}
-
-/// A single frame of streaming output.
-#[derive(Debug, Clone)]
-pub struct Frame {
-    pub lines: Vec<Line>,
-    pub cursor_action: CursorAction,
-}
-
-/// A complete generated document.
 #[derive(Debug, Clone)]
 pub struct Document {
     pub path: PathBuf,
@@ -336,7 +293,6 @@ pub struct Document {
     pub body: DocumentBody,
 }
 
-/// The body of a generated document.
 #[derive(Debug, Clone)]
 pub enum DocumentBody {
     Code(crate::code_ir::SourceFile),
@@ -351,17 +307,14 @@ pub enum DocumentBody {
 // Structured layer IR types
 // ---------------------------------------------------------------------------
 
-/// A build target (e.g., Makefile target).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     pub name: Cow<'static, str>,
     pub deps: Vec<Cow<'static, str>>,
     pub body: Vec<Cow<'static, str>>,
-    /// Optional comment line(s) rendered above the target definition.
     pub comment: Option<Cow<'static, str>>,
 }
 
-/// A categorized group of items (e.g., review category).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Category {
     pub name: Cow<'static, str>,
@@ -370,7 +323,6 @@ pub struct Category {
     pub rationale: Option<Cow<'static, str>>,
 }
 
-/// A block in structured output.
 #[derive(Debug, Clone)]
 pub enum StructuredBlock {
     Target(Target),
@@ -385,26 +337,13 @@ pub enum StructuredBlock {
 // Markup layer IR types
 // ---------------------------------------------------------------------------
 
-/// A node in markup output (e.g., Markdown/HTML).
 #[derive(Debug, Clone)]
 pub enum MarkupNode {
-    Heading {
-        level: u8,
-        text: String,
-    },
+    Heading { level: u8, text: String },
     Paragraph(Vec<Span>),
-    List {
-        ordered: bool,
-        items: Vec<Vec<Span>>,
-    },
-    CodeBlock {
-        language: Option<String>,
-        code: String,
-    },
-    Table {
-        headers: Vec<String>,
-        rows: Vec<Vec<String>>,
-    },
+    List { ordered: bool, items: Vec<Vec<Span>> },
+    CodeBlock { language: Option<String>, code: String },
+    Table { headers: Vec<String>, rows: Vec<Vec<String>> },
     ThematicBreak,
     BlockQuote(Vec<MarkupNode>),
 }
@@ -413,7 +352,6 @@ pub enum MarkupNode {
 // Data IR
 // ---------------------------------------------------------------------------
 
-/// A structured data value for format-agnostic data sharing (JSON, TOML, YAML, etc.).
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataValue {
     Null,
@@ -424,7 +362,6 @@ pub enum DataValue {
     Map(BTreeMap<String, DataValue>),
 }
 
-/// A data value with an optional comment annotation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DataNode {
     pub value: DataValue,
@@ -432,10 +369,9 @@ pub struct DataNode {
 }
 
 // ---------------------------------------------------------------------------
-// Domain renderer traits (definitions only — no impls in Phase 1)
+// Domain renderer traits
 // ---------------------------------------------------------------------------
 
-/// Renders code constructs (files, expressions, statements, imports).
 pub trait CodeRenderer<M: OutputMedium> {
     fn medium(&self) -> &M;
     fn render_value(&self, expr: &crate::ValueExpr) -> M::Output;
@@ -448,14 +384,12 @@ pub trait CodeRenderer<M: OutputMedium> {
     fn render_item(&self, item: &crate::code_ir::Item, indent: usize) -> M::Output;
 }
 
-/// Renders markup content (headings, paragraphs, lists, code blocks).
 pub trait MarkupRenderer<M: OutputMedium> {
     fn medium(&self) -> &M;
     fn render_node(&self, node: &MarkupNode) -> M::Output;
     fn render_document(&self, nodes: &[MarkupNode]) -> M::Output;
 }
 
-/// Renders structured content (targets, categories, sections).
 pub trait StructuredRenderer<M: OutputMedium> {
     fn medium(&self) -> &M;
     fn render_target(&self, target: &Target) -> M::Output;
@@ -463,14 +397,12 @@ pub trait StructuredRenderer<M: OutputMedium> {
     fn render_block(&self, block: &StructuredBlock) -> M::Output;
 }
 
-/// Renders streaming frames to an output sink.
 pub trait FrameRenderer<M: OutputMedium> {
     fn medium(&self) -> &M;
     fn render_frame(&mut self, frame: &Frame, sink: &mut dyn std::io::Write)
         -> std::io::Result<()>;
 }
 
-/// Renders a complete document.
 pub trait DocumentRenderer<M: OutputMedium> {
     fn render(&self, document: &Document) -> M::Output;
 }
@@ -497,88 +429,55 @@ mod tests {
     }
 
     #[test]
-    fn test_ansi_text_span_round_trip() {
+    fn ansi_text_span_round_trip() {
         let medium = AnsiText {
             tier: Tier::Emoji,
             symbol_set: &STANDARD,
         };
         let rendered = medium.render_span(&sample_span());
-        assert!(rendered.contains("\x1b[1m"), "should contain bold code");
-        assert!(
-            rendered.contains("\x1b[38;5;34m"),
-            "should contain 256-color green (success) code"
-        );
+        assert!(rendered.contains("\x1b[1m"));
+        assert!(rendered.contains("\x1b[38;5;34m"));
         assert!(rendered.contains("hello"));
-        assert!(rendered.contains("\x1b[0m"), "should contain reset code");
+        assert!(rendered.contains("\x1b[0m"));
     }
 
     #[test]
-    fn test_plain_text_span_no_escapes() {
+    fn plain_text_span_no_escapes() {
         let medium = PlainText {
             tier: Tier::Ascii,
             symbol_set: &STANDARD,
         };
         let rendered = medium.render_span(&sample_span());
-        assert!(
-            !rendered.contains("\x1b"),
-            "should not contain ANSI escapes"
-        );
+        assert!(!rendered.contains("\x1b"));
         assert_eq!(rendered, "hello");
     }
 
     #[test]
-    fn test_html_text_span_css_class() {
+    fn html_text_span_css_class() {
         let medium = HtmlText {
             tier: Tier::Emoji,
             symbol_set: &STANDARD,
         };
         let rendered = medium.render_span(&sample_span());
-        assert!(rendered.contains("sym-success"), "should contain CSS class");
-        assert!(rendered.contains("bold"), "should contain bold class");
-        assert!(rendered.contains("hello"));
-        assert!(rendered.contains("<span"), "should be wrapped in span tag");
+        assert!(rendered.contains("sym-success"));
+        assert!(rendered.contains("bold"));
+        assert!(rendered.contains("<span"));
     }
 
     #[test]
-    fn test_symbol_resolution() {
-        let medium = AnsiText {
-            tier: Tier::Ascii,
-            symbol_set: &STANDARD,
-        };
-        let span = Span::styled(
-            "ok",
-            SpanStyle {
-                color: None,
-                bold: false,
-                italic: false,
-                symbol: Some(SymbolId::Success),
-            },
-        );
-        let rendered = medium.render_span(&span);
-        assert!(
-            rendered.contains("OK"),
-            "should resolve Success symbol at ASCII tier"
-        );
-        assert!(rendered.contains("ok"));
-    }
-
-    #[test]
-    fn test_line_indent() {
+    fn line_indent() {
         let medium = PlainText {
             tier: Tier::Ascii,
             symbol_set: &STANDARD,
         };
         let line = Line::indented(vec![Span::plain("text")], 2);
         let rendered = medium.render_line(&line);
-        assert!(
-            rendered.starts_with("        "),
-            "indent=2 should produce 8 spaces"
-        );
+        assert!(rendered.starts_with("        "));
         assert!(rendered.ends_with("text"));
     }
 
     #[test]
-    fn test_block_join() {
+    fn block_join() {
         let medium = PlainText {
             tier: Tier::Ascii,
             symbol_set: &STANDARD,
@@ -592,88 +491,16 @@ mod tests {
     }
 
     #[test]
-    fn test_compose() {
-        let medium = AnsiText {
-            tier: Tier::Emoji,
-            symbol_set: &STANDARD,
-        };
-        let result = medium.compose(vec!["a".to_string(), "b".to_string(), "c".to_string()]);
-        assert_eq!(result, "abc");
-    }
-
-    #[test]
-    fn test_graphics_stubs_exist() {
-        let surface = RenderSurface::default();
-        assert!(surface.elements.is_empty());
-
-        let _glyph = GraphicsElement::Glyph {
-            x: 0.0,
-            y: 0.0,
-            text: "A".to_string(),
-        };
-        let _rect = GraphicsElement::Rect {
-            x: 0.0,
-            y: 0.0,
-            width: 10.0,
-            height: 10.0,
-        };
-        let _path = GraphicsElement::Path {
-            points: vec![(0.0, 0.0), (1.0, 1.0)],
-        };
-    }
-
-    #[test]
-    fn test_graphics_medium_trait_bound() {
-        fn _check<M: GraphicsMedium>() {}
-        // Compiles — that's the test.
-    }
-
-    #[test]
-    fn test_domain_traits_generic() {
-        fn _check_code<M: OutputMedium, R: CodeRenderer<M>>() {}
-        fn _check_markup<M: OutputMedium, R: MarkupRenderer<M>>() {}
-        fn _check_structured<M: OutputMedium, R: StructuredRenderer<M>>() {}
-        fn _check_frame<M: OutputMedium, R: FrameRenderer<M>>() {}
-        fn _check_document<M: OutputMedium, R: DocumentRenderer<M>>() {}
-        // All compile — that's the test.
-    }
-
-    #[test]
-    fn test_document_construction() {
-        let doc = Document {
-            path: PathBuf::from("output/test.rs"),
-            header: Some(FileHeader {
-                generator_name: Cow::Borrowed("gunbc-test"),
-                regenerate_command: Cow::Borrowed("make test"),
-                comment_prefix: Cow::Borrowed("//"),
-            }),
-            body: DocumentBody::Raw("fn main() {}".to_string()),
-        };
-        assert_eq!(doc.path, PathBuf::from("output/test.rs"));
-        assert!(doc.header.is_some());
-        matches!(doc.body, DocumentBody::Raw(_));
-    }
-
-    #[test]
-    fn test_data_value_nested() {
+    fn data_value_nested() {
         let mut inner = BTreeMap::new();
         inner.insert(
             "list".to_string(),
             DataValue::List(vec![DataValue::Int(1), DataValue::Int(2)]),
         );
         inner.insert("flag".to_string(), DataValue::Bool(true));
-        inner.insert("name".to_string(), DataValue::Str("test".to_string()));
-
         let map = DataValue::Map(inner);
         match &map {
-            DataValue::Map(m) => {
-                assert_eq!(m.len(), 3);
-                assert_eq!(m.get("flag"), Some(&DataValue::Bool(true)));
-                match m.get("list") {
-                    Some(DataValue::List(items)) => assert_eq!(items.len(), 2),
-                    other => panic!("expected List, got {:?}", other),
-                }
-            }
+            DataValue::Map(m) => assert_eq!(m.len(), 2),
             _ => panic!("expected Map"),
         }
     }

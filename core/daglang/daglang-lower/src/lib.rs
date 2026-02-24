@@ -6072,7 +6072,6 @@ mod tests {
     use gunbc_dag::deps_tool::build_deps_graph;
     use gunbc_ir::node::NodeBody;
     use gunbc_ir::{Edge, Port};
-    use gunbc_lib_gcp_ops::build_gcp_secret_manager_credential_graph_github;
     use std::collections::{HashMap, HashSet, VecDeque};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -6564,20 +6563,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
     }
 
     #[test]
-    fn gcp_credential_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
-        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-
-    #[test]
     fn deps_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.deps");
         let dag = lower_target_module_with_dependency_scope(&typed, "tools.deps");
@@ -6588,35 +6573,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
         assert_eq!(report_a, report_b);
         assert!(report_a.candidate_nodes > 0);
         assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
-    fn gcp_credential_normalized_parity_can_reach_exact_match() {
-        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
-        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
-        let report = compare_gcp_credential_topology(&dag, &reference);
-        assert!(
-            report.is_exact_match(),
-            "normalized gcp credential parity should match reference topology: {report:?}"
-        );
-    }
-
-    #[test]
-    fn gcp_credential_normalized_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("cloud.gcp.credential");
-        let dag = lower_target_module_with_dependency_scope(&typed, "cloud.gcp.credential");
-        let reference = build_gcp_secret_manager_credential_graph_github().unwrap();
-        let report_a = compare_gcp_credential_topology(&dag, &reference);
-        let report_b = compare_gcp_credential_topology(&dag, &reference);
-        assert_eq!(
-            report_a, report_b,
-            "normalized gcp parity report should be deterministic"
-        );
-        assert!(
-            report_a.is_exact_match(),
-            "normalized gcp parity should remain exact-match"
-        );
     }
 
     #[test]

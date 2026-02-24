@@ -21,7 +21,6 @@
 //! ```
 
 #![deny(dead_code)]
-pub mod graph;
 
 use gunbc_exec::{
     optional_int_strict, optional_json_strict, optional_str_strict, propagate_skipped,
