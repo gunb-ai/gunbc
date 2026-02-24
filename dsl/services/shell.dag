@@ -112,6 +112,25 @@ service shell.GCloud {
     @shell(["gcloud", "auth", "print-access-token"])
     @hermetic @readonly
   }
+
+  operation SecretManagerAccessVersion {
+    input {
+      project_id: NonEmptyStr
+      secret_name: NonEmptyStr
+      version: NonEmptyStr = "latest"
+    }
+    output { secret_value: String }
+    @shell([
+      "gcloud",
+      "secrets",
+      "versions",
+      "access",
+      "{version}",
+      "--secret={secret_name}",
+      "--project={project_id}"
+    ])
+    @hermetic @readonly
+  }
 }
 
 service shell.Which {
