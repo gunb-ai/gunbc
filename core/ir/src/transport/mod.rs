@@ -53,7 +53,6 @@ pub mod git;
 pub mod github;
 pub mod github_actions;
 pub mod http;
-pub mod infra_scope;
 pub mod llm;
 pub mod rest;
 pub mod review;
@@ -117,7 +116,6 @@ pub use github_actions::{
     WorkflowConfig,
 };
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
-pub use infra_scope::{GcpScope, InfraAccessLevel, InfraScope, InfraScopeType};
 pub use llm::{
     anthropic_provider, build_chat_request, builtin_provider_ids, openai_provider,
     parse_chat_response, provider_by_id, ChatMessage, ChatRequest, ChatResponse, FinishReason,

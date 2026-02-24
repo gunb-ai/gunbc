@@ -62,13 +62,11 @@ pub mod cargo;
 pub mod code_ir;
 pub mod codegen_bridge;
 pub mod coerce;
-pub mod compose;
 pub mod contract;
 pub mod dag;
 pub mod dag_diff;
 pub mod dag_mermaid;
 pub mod dag_topology;
-pub mod effect;
 pub mod entrypoint;
 pub mod git;
 pub mod invocation_contract;
@@ -139,7 +137,6 @@ pub use dag_mermaid::{
     render_changelog, to_mermaid_expanded_diff, to_mermaid_overview_diff, to_mermaid_snapshot,
 };
 pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
-pub use effect::Effect;
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
 pub use git::GitConfig;
 pub use invocation_contract::InvocationContract;
