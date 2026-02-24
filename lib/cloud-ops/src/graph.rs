@@ -22,6 +22,7 @@ pub type CloudSecretManagerGraphOp = DynOp;
 // ---------------------------------------------------------------------------
 
 /// Build a cloud credential graph based on a concrete config.
+#[allow(dead_code)]
 pub fn build_cloud_secret_manager_credential_graph_from_config(
     config: &CloudSecretConfig,
 ) -> Result<Dag<CloudSecretManagerGraphOp>, BuilderError> {
