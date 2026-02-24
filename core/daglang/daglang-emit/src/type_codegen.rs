@@ -54,6 +54,7 @@ fn map_primitive(name: &str) -> String {
         "Float" => "f64".to_string(),
         "Bool" => "bool".to_string(),
         "String" => "String".to_string(),
+        "Char" => "char".to_string(),
         "List" => "Vec".to_string(),
         "Map" => "std::collections::HashMap".to_string(),
         other => other.to_string(),
@@ -716,6 +717,18 @@ pub fn generate_types_for_modules(
         return String::new();
     }
 
+    // Emit built-in helper functions needed by generated code.
+    let needs_char_funcs = all_items.iter().any(|item| {
+        matches!(item, code_ir::Item::Fn(f) if f.body.iter().any(|s| {
+            format!("{s:?}").contains("code_point_i64")
+        }))
+    });
+    if needs_char_funcs {
+        all_items.insert(0, code_ir::Item::Raw(
+            "#[inline]\npub fn code_point_i64(c: char) -> i64 { c as u32 as i64 }".to_string(),
+        ));
+    }
+
     let source = SourceFile {
         doc: vec!["Generated from DSL type definitions. Do not edit.".to_string()],
         items: all_items,
@@ -931,7 +944,7 @@ mod tests {
             return_type: TypeExpr::Named("String".into()),
             body: FnBody { stmts: vec![], lossy: false },
         };
-        let items = fndef_to_code_ir(&fd);
+        let items = fndef_to_code_ir(&fd, &std::collections::HashSet::new());
         assert_eq!(items.len(), 1);
         match &items[0] {
             code_ir::Item::Fn(f) => {
@@ -969,7 +982,7 @@ mod tests {
                 lossy: false,
             },
         };
-        let items = fndef_to_code_ir(&fd);
+        let items = fndef_to_code_ir(&fd, &std::collections::HashSet::new());
         assert_eq!(items.len(), 1);
         match &items[0] {
             code_ir::Item::Fn(f) => {

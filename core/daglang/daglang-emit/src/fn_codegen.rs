@@ -230,9 +230,17 @@ fn compile_call(name: &str, args: &[(Option<String>, ast::Expr)], ctx: &CompileC
     let rust_name = to_snake_case(name);
 
     match rust_name.as_str() {
-        // code_point on a branded Int (Char = Int) is the identity.
+        // code_point converts a char to its integer code point (u32 → i64).
         "code_point" => {
-            ir_args.into_iter().next().unwrap_or(code_ir::Expr::IntLit(0))
+            if let Some(arg) = ir_args.into_iter().next() {
+                code_ir::Expr::Call {
+                    func: Box::new(code_ir::Expr::Var("code_point_i64".to_string())),
+                    args: vec![arg],
+                    obligation: None,
+                }
+            } else {
+                code_ir::Expr::IntLit(0)
+            }
         }
         "chars" => {
             if let Some(arg) = ir_args.into_iter().next() {
@@ -878,27 +886,28 @@ mod tests {
     use super::*;
     use daglang_syntax::ast::{Expr, FnBody, Literal, Stmt, BinOp, MatchArm, Pattern};
 
+    fn empty_ctx() -> CompileContext {
+        CompileContext::new()
+    }
+
     #[test]
     fn compile_literal_int() {
         reset_tmp_counter();
-        let expr = Expr::Literal(Literal::Int(42));
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&Expr::Literal(Literal::Int(42)), &empty_ctx());
         assert!(matches!(ir, code_ir::Expr::IntLit(42)));
     }
 
     #[test]
     fn compile_literal_bool() {
         reset_tmp_counter();
-        let expr = Expr::Literal(Literal::Bool(true));
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&Expr::Literal(Literal::Bool(true)), &empty_ctx());
         assert!(matches!(ir, code_ir::Expr::BoolLit(true)));
     }
 
     #[test]
     fn compile_literal_string() {
         reset_tmp_counter();
-        let expr = Expr::Literal(Literal::String("hello".into()));
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&Expr::Literal(Literal::String("hello".into())), &empty_ctx());
         assert!(matches!(ir, code_ir::Expr::Str(s) if s == "hello"));
     }
 
@@ -909,7 +918,7 @@ mod tests {
             Box::new(Expr::Ident("block".into())),
             "start".into(),
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         match ir {
             code_ir::Expr::Field(receiver, field) => {
                 assert!(matches!(*receiver, code_ir::Expr::Var(ref n) if n == "block"));
@@ -927,7 +936,7 @@ mod tests {
             BinOp::Ge,
             Box::new(Expr::Literal(Literal::Int(10))),
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         match ir {
             code_ir::Expr::BinOp { op, .. } => assert_eq!(op, ">="),
             other => panic!("expected BinOp, got: {other:?}"),
@@ -952,7 +961,7 @@ mod tests {
                 },
             ],
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         match ir {
             code_ir::Expr::Match { arms, .. } => {
                 assert_eq!(arms.len(), 2);
@@ -971,7 +980,7 @@ mod tests {
             Box::new(Expr::Literal(Literal::Int(1))),
             Some(Box::new(Expr::Literal(Literal::Int(0)))),
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         match ir {
             code_ir::Expr::If { then_body, else_body, .. } => {
                 assert_eq!(then_body.len(), 1);
@@ -991,7 +1000,7 @@ mod tests {
             ],
             lossy: false,
         };
-        let ir = compile_fn_body(&body);
+        let ir = compile_fn_body(&body, &empty_ctx());
         assert_eq!(ir.len(), 2);
         assert!(matches!(ir[0], code_ir::Stmt::Let { .. }));
         assert!(matches!(ir[1], code_ir::Stmt::TailExpr(_)));
@@ -1007,7 +1016,7 @@ mod tests {
                 vec![(Some("item".into()), Expr::Ident("target".into()))],
             )),
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         match ir {
             code_ir::Expr::Block(stmts) => {
                 assert!(stmts.len() >= 3, "should have let, for, tail");
@@ -1037,7 +1046,7 @@ mod tests {
                 )],
             )),
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         assert!(matches!(ir, code_ir::Expr::Block(_)));
     }
 
@@ -1064,7 +1073,7 @@ mod tests {
                 ],
             )),
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         assert!(matches!(ir, code_ir::Expr::Block(_)));
     }
 
@@ -1075,7 +1084,7 @@ mod tests {
             Box::new(Expr::Ident("nums".into())),
             Box::new(Expr::Call("sum".into(), vec![])),
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         match ir {
             code_ir::Expr::Block(stmts) => {
                 assert_eq!(stmts.len(), 3);
@@ -1094,7 +1103,7 @@ mod tests {
                 ("y".into(), Expr::Literal(Literal::Int(2))),
             ],
         );
-        let ir = compile_expr(&expr);
+        let ir = compile_expr(&expr, &empty_ctx());
         match ir {
             code_ir::Expr::Struct { name, fields } => {
                 assert_eq!(name, "Point");
@@ -1102,5 +1111,14 @@ mod tests {
             }
             other => panic!("expected Struct, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn compile_data_table_ident_uses_screaming_snake() {
+        reset_tmp_counter();
+        let mut ctx = CompileContext::new();
+        ctx.data_names.insert("zero_width_blocks".to_string());
+        let ir = compile_expr(&Expr::Ident("zero_width_blocks".into()), &ctx);
+        assert!(matches!(ir, code_ir::Expr::Var(ref n) if n == "ZERO_WIDTH_BLOCKS"));
     }
 }
