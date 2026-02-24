@@ -80,19 +80,8 @@ impl Executable for GenericRestPrepareOp {
         // 4. Build JSON body.
         if self.spec.method != "GET" {
             let body = if let Some(template) = &self.spec.body_template {
-                // Explicit body template: use literal constants + input refs.
-                let mut map = serde_json::Map::new();
-                for entry in template {
-                    match entry {
-                        BodyEntry::Literal(key, value) => {
-                            map.insert(key.clone(), serde_json::Value::String(value.clone()));
-                        }
-                        BodyEntry::InputRef(key, field_name) => {
-                            let value = input_as_string(&inputs, field_name, None);
-                            map.insert(key.clone(), serde_json::Value::String(value));
-                        }
-                    }
-                }
+                // Explicit body template: use literal constants + input refs + nested objects.
+                let map = build_body_from_template(template, &inputs);
                 serde_json::Value::Object(map)
             } else {
                 // Auto-build body from all non-path, non-header-only input fields.
@@ -538,11 +527,7 @@ fn ensure_required_profile_config_inputs(
         placeholders.extend(collect_template_placeholders(value));
     }
     if let Some(body_template) = &spec.body_template {
-        for entry in body_template {
-            if let BodyEntry::InputRef(_, input_name) = entry {
-                placeholders.insert(input_name.clone());
-            }
-        }
+        collect_body_template_input_refs(body_template, &mut placeholders);
     }
 
     for placeholder in placeholders {
@@ -599,6 +584,46 @@ fn collect_template_placeholders(template: &str) -> BTreeSet<String> {
         }
     }
     placeholders
+}
+
+/// Build a JSON object from a body template, resolving input refs and nested entries.
+/// Recursively collect input field names referenced in a body template.
+fn collect_body_template_input_refs(entries: &[BodyEntry], out: &mut BTreeSet<String>) {
+    for entry in entries {
+        match entry {
+            BodyEntry::InputRef(_, input_name) => {
+                out.insert(input_name.clone());
+            }
+            BodyEntry::Nested(_, inner) => {
+                collect_body_template_input_refs(inner, out);
+            }
+            BodyEntry::Literal(_, _) => {}
+        }
+    }
+}
+
+fn build_body_from_template(
+    entries: &[BodyEntry],
+    inputs: &HashMap<String, Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut map = serde_json::Map::new();
+    for entry in entries {
+        match entry {
+            BodyEntry::Literal(key, value) => {
+                map.insert(key.clone(), serde_json::Value::String(value.clone()));
+            }
+            BodyEntry::InputRef(key, field_name) => {
+                if let Some(value) = inputs.get(field_name.as_str()) {
+                    insert_value_as_json(&mut map, key, value);
+                }
+            }
+            BodyEntry::Nested(key, inner_entries) => {
+                let inner = build_body_from_template(inner_entries, inputs);
+                map.insert(key.clone(), serde_json::Value::Object(inner));
+            }
+        }
+    }
+    map
 }
 
 /// Insert a `Value` into a JSON map with appropriate conversion.

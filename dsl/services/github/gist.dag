@@ -10,7 +10,7 @@ service github.Gist {
   operation Create {
     input {
       description: String
-      files: Map<String, String>
+      content: String
       public: Bool = false
       auth_token: String
     }
@@ -19,6 +19,11 @@ service github.Gist {
       url: Url @json("html_url")
     }
     @rest(POST, "/gists")
+    @body_template({
+      description: description,
+      files: { "gunbc-snapshot.md": { content: content } },
+      public: public
+    })
     @headers({
       "Authorization": "Bearer {auth_token}",
       "Accept": "application/vnd.github+json",

@@ -45,6 +45,32 @@ pub fn emit_go_service_func(
     }
 }
 
+/// Emit nested body template entries as Go map literal syntax.
+fn emit_nested_body_entries(
+    out: &mut String,
+    key: &str,
+    entries: &[daglang_lower::BodyEntry],
+    indent: usize,
+) {
+    let pad = "    ".repeat(indent);
+    out.push_str(&format!("{pad}\"{key}\": map[string]interface{{}}{{\n"));
+    for entry in entries {
+        let inner_pad = "    ".repeat(indent + 1);
+        match entry {
+            daglang_lower::BodyEntry::Literal(k, v) => {
+                out.push_str(&format!("{inner_pad}\"{k}\": \"{v}\",\n"));
+            }
+            daglang_lower::BodyEntry::InputRef(k, field) => {
+                out.push_str(&format!("{inner_pad}\"{k}\": {field},\n"));
+            }
+            daglang_lower::BodyEntry::Nested(k, inner) => {
+                emit_nested_body_entries(out, k, inner, indent + 1);
+            }
+        }
+    }
+    out.push_str(&format!("{pad}}},\n"));
+}
+
 fn emit_go_execute_stub(symbol_name: &str) -> String {
     format!(
         "// {symbol_name} executes the transport request (HTTP or shell).\n\
@@ -90,6 +116,9 @@ fn emit_go_rest_prepare(symbol_name: &str, spec: &RestOperationSpec) -> String {
                     }
                     daglang_lower::BodyEntry::InputRef(key, field) => {
                         out.push_str(&format!("        \"{key}\": {field},\n"));
+                    }
+                    daglang_lower::BodyEntry::Nested(key, inner) => {
+                        emit_nested_body_entries(&mut out, key, inner, 2);
                     }
                 }
             }

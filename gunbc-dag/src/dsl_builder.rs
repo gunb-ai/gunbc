@@ -268,6 +268,64 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_gist_dag_structure() {
+        let dag = build_gist_snapshot_graph_dsl().expect("gist DSL graph should resolve");
+        let boundaries = gunbc_ir::detect_boundaries(&dag);
+
+        println!("\n=== GIST DAG NODES ({}) ===", dag.nodes.len());
+        for node in &dag.nodes {
+            let outputs: Vec<String> = node
+                .outputs
+                .iter()
+                .map(|p| format!("{}:{}", p.name.0, &p.type_id.0))
+                .collect();
+            println!("  {} → [{}]", node.id.0, outputs.join(", "));
+        }
+
+        println!("\n=== BOUNDARY PORTS ===");
+        for (node_id, port_name) in &boundaries.boundary_ports {
+            println!("  {}.{}", node_id.0, port_name.0);
+        }
+
+        println!("\n=== EDGES TO/FROM PARSE NODE ===");
+        for edge in &dag.edges {
+            if edge.from_node.0.contains("parse_transport_services_github_gist")
+                || edge.to_node.0.contains("parse_transport_services_github_gist")
+            {
+                println!(
+                    "  {}.{} → {}.{}",
+                    edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+                );
+            }
+        }
+
+        // Verify parse node has url output
+        let parse_node = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0.contains("parse_transport_services_github_gist"));
+        assert!(parse_node.is_some(), "parse node should exist");
+        let parse_node = parse_node.unwrap();
+        let url_port = parse_node.outputs.iter().find(|p| p.name.0 == "url");
+        assert!(url_port.is_some(), "parse node should have url output port");
+
+        // Inspect the DynOp on the parse node to see the RestOperationSpec
+        println!("\n=== PARSE NODE OP DEBUG ===");
+        println!("  {:?}", parse_node.body);
+
+        // Check edges TO the prepare node
+        println!("\n=== EDGES TO PREPARE NODE ===");
+        for edge in &dag.edges {
+            if edge.to_node.0.contains("prepare_transport_services_github_gist") {
+                println!(
+                    "  {}.{} → {}.{}",
+                    edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
+                );
+            }
+        }
+    }
+
+    #[test]
     fn builds_ci_dsl_graph() {
         let dag = build_ci_graph_dsl().expect("ci DSL graph should resolve");
         assert!(!dag.nodes.is_empty());

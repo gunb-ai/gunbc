@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
-    Annotation, DataDef, Expr, Item, Literal, OperationDef, ServiceDef, Stmt,
+    Annotation, DataDef, Expr, Item, Literal, OperationDef, ServiceDef, Stmt, TypeExpr,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name as canonical_type_name, resource_type_name,
@@ -368,13 +368,15 @@ pub struct OutputFieldSpec {
     pub is_raw_body: bool,
 }
 
-/// Body template entry: either a literal constant or a reference to an input field.
+/// Body template entry: a literal constant, an input field reference, or nested entries.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum BodyEntry {
     /// Literal JSON key-value: `"grant_type": "urn:ietf:..."`.
     Literal(String, String),
     /// Reference to an input field: `"audience": audience`.
     InputRef(String, String),
+    /// Nested object: `files: { "filename.md": { content: content } }`.
+    Nested(String, Vec<BodyEntry>),
 }
 
 /// Argv segment in a shell command template.
@@ -4283,22 +4285,40 @@ fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOu
 }
 
 /// Extract body template from `@body_template({ "key": value, ... })`.
+///
+/// Supports nested structures:
+/// ```dagl
+/// @body_template({
+///   description: description,
+///   files: { "filename.md": { content: content } },
+///   public: public
+/// })
+/// ```
 fn annotation_body_template(annotations: &[Annotation]) -> Option<Vec<BodyEntry>> {
     let ann = annotations.iter().find(|a| a.name == "body_template")?;
     let record = ann.args.first()?;
+    body_template_entries_from_expr(record)
+}
 
-    match record {
+/// Recursively convert an expression (Record or Map) to body template entries.
+fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
+    match expr {
         Expr::Record(_, fields) => {
             let mut entries = Vec::new();
             for (key, value) in fields {
-                match value {
-                    Expr::Ident(field_name) => {
-                        entries.push(BodyEntry::InputRef(key.clone(), field_name.clone()));
+                if let Some(entry) = body_template_entry(key, value) {
+                    entries.push(entry);
+                }
+            }
+            Some(entries)
+        }
+        Expr::Map(map_entries) => {
+            let mut entries = Vec::new();
+            for (key_expr, value) in map_entries {
+                if let Expr::Literal(Literal::String(key)) = key_expr {
+                    if let Some(entry) = body_template_entry(key, value) {
+                        entries.push(entry);
                     }
-                    Expr::Literal(Literal::String(s)) => {
-                        entries.push(BodyEntry::Literal(key.clone(), s.clone()));
-                    }
-                    _ => {}
                 }
             }
             Some(entries)
@@ -4307,7 +4327,22 @@ fn annotation_body_template(annotations: &[Annotation]) -> Option<Vec<BodyEntry>
     }
 }
 
+/// Convert a single key-value pair to a BodyEntry.
+fn body_template_entry(key: &str, value: &Expr) -> Option<BodyEntry> {
+    match value {
+        Expr::Ident(field_name) => Some(BodyEntry::InputRef(key.to_string(), field_name.clone())),
+        Expr::Literal(Literal::String(s)) => Some(BodyEntry::Literal(key.to_string(), s.clone())),
+        Expr::Record(_, _) | Expr::Map(_) => {
+            let inner = body_template_entries_from_expr(value)?;
+            Some(BodyEntry::Nested(key.to_string(), inner))
+        }
+        _ => None,
+    }
+}
+
 /// Extract custom headers from `@headers({ "key": "value", ... })`.
+///
+/// Handles both `Expr::Record` (unquoted keys) and `Expr::Map` (quoted keys).
 fn annotation_headers(
     op_annotations: &[Annotation],
     service_annotations: &[Annotation],
@@ -4318,12 +4353,24 @@ fn annotation_headers(
         .chain(service_annotations.iter())
         .filter(|a| a.name == "headers")
     {
-        if let Some(Expr::Record(_, fields)) = ann.args.first() {
-            for (key, value) in fields {
-                if let Some(v) = expr_to_template_string(value) {
-                    headers.push((key.clone(), v));
+        match ann.args.first() {
+            Some(Expr::Record(_, fields)) => {
+                for (key, value) in fields {
+                    if let Some(v) = expr_to_template_string(value) {
+                        headers.push((key.clone(), v));
+                    }
                 }
             }
+            Some(Expr::Map(entries)) => {
+                for (key_expr, value) in entries {
+                    if let Expr::Literal(Literal::String(key)) = key_expr {
+                        if let Some(v) = expr_to_template_string(value) {
+                            headers.push((key.clone(), v));
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
     headers
@@ -4464,19 +4511,32 @@ fn derive_input_fields_for_shell(
 }
 
 /// Derive output field specs from operation outputs.
+///
+/// Annotations like `@json("html_url")` may appear on either the field
+/// or on the type (`url: Url @json("html_url")`).  The parser places
+/// `@json` on the type as `TypeExpr::Annotated`, so we check both.
 fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFieldSpec> {
     outputs
         .iter()
         .map(|field| {
-            let type_id = type_expr_to_string(&field.ty);
+            // Extract base type and type-level annotations from TypeExpr::Annotated.
+            let (base_type_id, type_annotations) = match &field.ty {
+                TypeExpr::Annotated(inner, annotations) => {
+                    (type_expr_to_string(inner), annotations.as_slice())
+                }
+                other => (type_expr_to_string(other), [].as_slice()),
+            };
+            // Check field annotations first, fall back to type annotations.
             let json_path = annotation_string_arg(&field.annotations, "json")
+                .or_else(|| annotation_string_arg(type_annotations, "json"))
                 .unwrap_or_else(|| field.name.clone());
-            let is_raw_body = has_annotation(&field.annotations, "raw_body");
+            let is_raw_body = has_annotation(&field.annotations, "raw_body")
+                || has_annotation(type_annotations, "raw_body");
             OutputFieldSpec {
                 name: field.name.clone(),
-                type_id: type_id.clone(),
+                type_id: base_type_id.clone(),
                 json_path,
-                is_secret: type_id == "Secret",
+                is_secret: base_type_id == "Secret",
                 is_raw_body,
             }
         })
@@ -6260,6 +6320,9 @@ fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
         Expr::Literal(Literal::Int(value)) => Some(ServiceCallArgLiteral::Int(*value)),
         Expr::Literal(Literal::Bool(value)) => Some(ServiceCallArgLiteral::Bool(*value)),
         Expr::Literal(Literal::None) => Some(ServiceCallArgLiteral::None),
+        Expr::StringInterp(_) => {
+            expr_to_template_string(arg).map(ServiceCallArgLiteral::String)
+        }
         Expr::List(_) | Expr::Map(_) => expr_to_json_literal(arg).map(ServiceCallArgLiteral::Json),
         _ => None,
     }

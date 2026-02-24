@@ -51,8 +51,8 @@ func gist_upload(markdown: String, branch: String, base_ref: CommitSha?, public:
   )
 
   result = github.Gist.Create(
-    description: "gunbc snapshot — {branch}",
-    files: { "gunbc-snapshot.md": { "content": markdown } },
+    description: branch,
+    content: markdown,
     public: public,
     auth_token: secret.secret_value
   )
