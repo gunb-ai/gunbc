@@ -1,8 +1,8 @@
 // tools/gist_snapshot.dag -- Create a GitHub gist from workspace file listing.
 //
-// Inlines all service calls directly because the current lowerer only wires
-// data flow within a single callable body (service-to-service field access).
-// Cross-callable argument wiring produces __deps ordering only, not data edges.
+// Inlines all service calls directly to avoid transport node deduplication
+// conflicts (see below). Fn call arguments are wired as data edges by the
+// lowerer's wire_fn_call_arguments pass.
 //
 // This module is separate from gist.dag to avoid transport node deduplication
 // conflicts -- the lowerer creates one transport node per service operation

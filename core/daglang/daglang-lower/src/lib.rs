@@ -1118,6 +1118,12 @@ impl DagBuilder {
         self.seen_nodes.contains(id)
     }
 
+    fn has_edge_to_port(&self, to_node: &str, to_port: &str) -> bool {
+        self.seen_edges
+            .iter()
+            .any(|(_, _, tn, tp)| tn == to_node && tp == to_port)
+    }
+
     fn clone_transport_triplet(
         &mut self,
         original: &ServiceTransportEndpoint,
@@ -5086,6 +5092,16 @@ fn add_service_call_edges(
                     call_index,
                 );
             }
+            wire_fn_call_arguments(
+                builder,
+                stmts,
+                endpoints_by_name,
+                &param_types,
+                &bound_callable_sources,
+                &bound_service_sources,
+                module_name.as_str(),
+                item_name,
+            );
         }
     }
     for module in &project.modules {
@@ -6133,6 +6149,12 @@ struct ServiceCallSite {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct FnCallSite {
+    name: String,
+    args: Vec<ServiceCallArgSite>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ServiceCallArgLiteral {
     String(String),
     Int(i64),
@@ -6293,6 +6315,19 @@ fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallS
     });
 }
 
+fn collect_fn_calls_with_args(stmts: &[Stmt], calls: &mut Vec<FnCallSite>) {
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Call(name, args) = expr {
+            if should_track_call(name) {
+                calls.push(FnCallSite {
+                    name: name.clone(),
+                    args: args.iter().map(service_call_arg_site).collect(),
+                });
+            }
+        }
+    });
+}
+
 fn service_call_arg_site((name, arg): &(Option<String>, Expr)) -> ServiceCallArgSite {
     ServiceCallArgSite {
         name: name.clone(),
@@ -6354,6 +6389,102 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
             Some(serde_json::Value::Object(out))
         }
         _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn wire_fn_call_arguments(
+    builder: &mut DagBuilder,
+    stmts: &[Stmt],
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    module_name: &str,
+    item_name: &str,
+) {
+    let mut fn_calls = Vec::new();
+    collect_fn_calls_with_args(stmts, &mut fn_calls);
+    for fn_call in &fn_calls {
+        let Some(Some(fn_endpoint)) = endpoints_by_name.get(&fn_call.name) else {
+            continue;
+        };
+        for (index, arg) in fn_call.args.iter().enumerate() {
+            let Some(param_name) = arg.name.as_deref() else {
+                continue;
+            };
+            if builder.has_edge_to_port(fn_endpoint.node_id.as_str(), param_name) {
+                continue;
+            }
+            if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
+                if let Some(source) = bound_callable_sources.get(base_ident) {
+                    builder.add_edge(
+                        source.node_id.as_str(),
+                        field_name.as_str(),
+                        fn_endpoint.node_id.as_str(),
+                        param_name,
+                    );
+                    continue;
+                }
+                if let Some(source) = bound_service_sources.get(base_ident) {
+                    builder.add_edge(
+                        source.parse.node_id.as_str(),
+                        field_name.as_str(),
+                        fn_endpoint.node_id.as_str(),
+                        param_name,
+                    );
+                    continue;
+                }
+            }
+            if let Some(arg_ident) = arg.ident.as_deref() {
+                if let Some(param_ty) = param_types.get(arg_ident) {
+                    let src = ensure_param_source_node(
+                        builder,
+                        module_name,
+                        item_name,
+                        arg_ident,
+                        param_ty.as_str(),
+                    );
+                    builder.add_edge(
+                        src.as_str(),
+                        arg_ident,
+                        fn_endpoint.node_id.as_str(),
+                        param_name,
+                    );
+                    continue;
+                }
+                if let Some(source) = bound_callable_sources.get(arg_ident) {
+                    builder.add_edge(
+                        source.node_id.as_str(),
+                        source.primary_output.as_str(),
+                        fn_endpoint.node_id.as_str(),
+                        param_name,
+                    );
+                    continue;
+                }
+                if let Some(source) = bound_service_sources.get(arg_ident) {
+                    builder.add_edge(
+                        source.parse.node_id.as_str(),
+                        source.parse.primary_output.as_str(),
+                        fn_endpoint.node_id.as_str(),
+                        param_name,
+                    );
+                    continue;
+                }
+            }
+            if let Some(literal) = arg.literal.as_ref() {
+                let src = ensure_literal_source_node(
+                    builder,
+                    module_name,
+                    item_name,
+                    param_name,
+                    "Any",
+                    literal,
+                    &format!("fn_{index}"),
+                );
+                builder.add_edge(src.as_str(), param_name, fn_endpoint.node_id.as_str(), param_name);
+            }
+        }
     }
 }
 
