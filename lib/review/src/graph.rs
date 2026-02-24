@@ -1053,6 +1053,7 @@ pub fn build_dimension_diff_review_graph() -> Result<Dag<ReviewGraphOp>, Builder
 }
 
 /// Build a 4-dimension diff review graph with explicit pipeline config + profile.
+#[deprecated(note = "Use DSL-compiled dimension review: build_dimension_review_graph_dsl()")]
 pub fn build_dimension_diff_review_graph_with(
     config: ReviewPipelineConfig,
     profile: ReviewProfile,
@@ -1064,6 +1065,7 @@ pub fn build_dimension_diff_review_graph_with(
 ///
 /// Parallel first-wave dimensions: coherence, quality, requirements.
 /// Aspirational runs last and receives prior findings context.
+#[deprecated(note = "Use DSL-compiled dimension review: build_dimension_review_graph_dsl()")]
 pub fn build_dimension_diff_review_graph_with_cloud_config(
     config: ReviewPipelineConfig,
     profile: ReviewProfile,

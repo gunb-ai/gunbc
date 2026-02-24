@@ -1,0 +1,28 @@
+// std/width.dag -- Width-aware text operations.
+//
+// Consumes the unicode domain model (std.unicode) to provide
+// width-aware text truncation for terminal rendering.
+
+module std.width
+
+import std.unicode { string_display_width, char_width }
+import std.types { Char }
+
+fn truncate_text(text: String, max_width: Int) -> String {
+  let text_chars = chars(s: text)
+  let result = text_chars |> fold(
+    init: { kept: [], used: 0, done: false },
+    f: (acc, c) => {
+      if acc.done { acc }
+      else {
+        let w = char_width(c: c)
+        if acc.used + w > max_width {
+          { kept: acc.kept, used: acc.used, done: true }
+        } else {
+          { kept: acc.kept |> append(items: [c]), used: acc.used + w, done: false }
+        }
+      }
+    }
+  )
+  result.kept |> join(separator: "")
+}

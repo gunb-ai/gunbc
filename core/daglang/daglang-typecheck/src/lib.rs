@@ -1389,6 +1389,38 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 output: ValueType::Named("CloudRuntime".to_string()),
             },
         ),
+        (
+            "chars".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["s".to_string()]),
+                output: ValueType::Named("List<Char>".to_string()),
+            },
+        ),
+        (
+            "code_point".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["c".to_string()]),
+                output: ValueType::Named("Int".to_string()),
+            },
+        ),
+        (
+            "sum".to_string(),
+            CallableContract {
+                arity: 0,
+                params: HashSet::new(),
+                output: ValueType::Named("Int".to_string()),
+            },
+        ),
+        (
+            "contains".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["item".to_string()]),
+                output: ValueType::Named("Bool".to_string()),
+            },
+        ),
     ]
 }
 

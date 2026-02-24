@@ -14,6 +14,8 @@ import std.types {
   NonEmptyStr, ReviewConcern, DimensionReviewOutput, MergedReviewOutput
 }
 import services.review.dimension
+import services.llm.anthropic
+import services.git
 
 // ── Generic dimension review func ─────────────────────────────────────
 // One func handles any single dimension. The caller instantiates it
@@ -62,7 +64,6 @@ func dimension_review(
 // sequential after parallel.
 
 func diff_dimension_review(
-  repo_path: String,
   base_ref: String,
   provider: NonEmptyStr,
   model: NonEmptyStr,
@@ -73,8 +74,8 @@ func diff_dimension_review(
   depth: String
 ) -> { output: Json, summary: String }
 {
-  diff = git.Core.Diff(repo_path: repo_path, base_ref: base_ref)
-  artifact = review.Dimension.FormatDiffArtifact(diff_files: diff.diff_files)
+  diff = git.Core.Diff(base: base_ref)
+  artifact = review.Dimension.FormatDiffArtifact(diff_files: diff.diff)
 
   // ── Parallel dimensions ─────────────────────────────────────────
   coherence_result = if coherence_criteria != None {
@@ -85,7 +86,6 @@ func diff_dimension_review(
       },
       artifact: artifact.artifact,
       criteria: coherence_criteria,
-      dimension: "coherence",
       depth: depth,
       provider: provider,
       model: model
@@ -100,7 +100,6 @@ func diff_dimension_review(
       },
       artifact: artifact.artifact,
       criteria: quality_criteria,
-      dimension: "quality",
       depth: depth,
       provider: provider,
       model: model
@@ -115,7 +114,6 @@ func diff_dimension_review(
       },
       artifact: artifact.artifact,
       criteria: requirements_criteria,
-      dimension: "requirements",
       depth: depth,
       provider: provider,
       model: model
@@ -137,7 +135,6 @@ func diff_dimension_review(
       },
       artifact: artifact.artifact,
       criteria: aspirational_criteria,
-      dimension: "aspirational",
       depth: depth,
       provider: provider,
       model: model,

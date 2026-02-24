@@ -19,16 +19,10 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::{print_tool_header, run_tool, RunToolOptions};
+use gunbc_dag::{build_dimension_review_graph_dsl, print_tool_header, run_tool, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_review::dimension::FermiDepth;
-use gunbc_lib_review::graph::build_diff_review_graph_with;
-use gunbc_lib_review::profile::{
-    coding_review_profile_with_context, coding_review_profile_with_requirements, ProjectContext,
-};
-use gunbc_lib_review::ReviewPipelineConfig;
-use std::path::Path;
 use std::process;
 
 /// Query CI status for a PR using `gh run list`.
@@ -121,20 +115,6 @@ fn query_issue_description(issue_number: &str) -> Option<String> {
     Some(format!("Issue: {}\n\n{}", title, body))
 }
 
-/// Read project context files from the repo path.
-///
-/// Binary entry points are the I/O boundary — this is where file reads
-/// happen before entering the pure DAG world (I6 compliant).
-#[allow(clippy::disallowed_methods)] // Binary entry point reads (not DAG runtime I/O)
-fn read_project_context(repo: &Path) -> ProjectContext {
-    let agent_md = std::fs::read_to_string(repo.join("AGENT.md")).ok();
-    let clippy_toml = std::fs::read_to_string(repo.join("clippy.toml")).ok();
-    ProjectContext {
-        agent_md,
-        clippy_toml,
-    }
-}
-
 fn main() {
     let parsed = BinaryArgs::new()
         .with_string_param("repo_path", Some('r'), Some("."))
@@ -224,43 +204,10 @@ fn main() {
     };
 
     // ========================================================================
-    // Phase 2: Build review profile (W5)
+    // Phase 2: Resolve provider and model
     // ========================================================================
 
-    let repo = Path::new(&repo_path);
-
-    // Read project context files (binary is the I/O boundary — I6 compliant)
-    let project_context = read_project_context(repo);
-
-    let requirements_text = combined_context.as_deref().unwrap_or("");
-
-    let profile = if requirements_text.is_empty() {
-        coding_review_profile_with_context(depth, &project_context)
-    } else {
-        coding_review_profile_with_requirements(depth, &project_context, requirements_text)
-    };
-
-    // Select criteria for the single-pass review config node.
-    // When requirements context is available (--pr / --issue), use the
-    // requirements dimension so CI/PR/issue context reaches prompt generation.
-    // Otherwise fall back to quality criteria for standard code review.
-    let criteria = if combined_context.is_some() {
-        profile
-            .criteria_for(gunbc_lib_review::dimension::ReviewDimension::Requirements)
-            .cloned()
-            .unwrap_or_else(gunbc_lib_review::default_criteria)
-    } else {
-        profile
-            .criteria_for(gunbc_lib_review::dimension::ReviewDimension::Quality)
-            .cloned()
-            .unwrap_or_else(gunbc_lib_review::default_criteria)
-    };
-
-    // In dry-run mode, use the default config (OpenAI) to match mock specs.
-    let (effective_provider, model) = if dry_run {
-        let default_config = ReviewPipelineConfig::gunbc_default();
-        (default_config.provider, default_config.model)
-    } else {
+    let (effective_provider, model) = {
         let m = match provider.as_str() {
             "anthropic" => "claude-sonnet-4-20250514".to_string(),
             _ => "gpt-4o".to_string(),
@@ -268,18 +215,11 @@ fn main() {
         (provider.clone(), m)
     };
 
-    let config = ReviewPipelineConfig {
-        provider: effective_provider.clone(),
-        model: model.clone(),
-        criteria,
-        default_branch: base_ref.clone().unwrap_or_else(|| "main".to_string()),
-    };
-
     // ========================================================================
-    // Phase 3: Build and execute review DAG
+    // Phase 3: Build and execute review DAG (DSL-compiled, D-1)
     // ========================================================================
 
-    let dag = match build_diff_review_graph_with(config) {
+    let dag = match build_dimension_review_graph_dsl() {
         Ok(d) => d,
         Err(e) => {
             print_attention(
@@ -339,16 +279,7 @@ fn main() {
         ("model", model),
         ("depth", depth.to_string()),
         ("repo", repo_path),
-        ("profile", profile.name.clone()),
-        (
-            "dimensions",
-            profile
-                .active_dimensions()
-                .iter()
-                .map(|d| d.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
-        ),
+        ("pipeline", "dsl-dimension-review".to_string()),
     ];
     if let Some(ref br) = base_ref {
         metadata.push(("base_ref", br.clone()));

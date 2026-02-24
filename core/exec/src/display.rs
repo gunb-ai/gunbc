@@ -427,12 +427,11 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
     let _cursor_guard = crate::frame_write::CursorGuard::new(profile.is_tty);
     let spinner_frames = resolve_spinner_frames(profile.tier);
     let mut spinner = Animation::cycle(spinner_frames, PROGRESS_TICK);
-    let mut writer = FrameWriter::with_viewport(
+    let mut writer = FrameWriter::new(
         profile.supports_color,
         profile.tier,
         &STANDARD,
         profile.is_tty,
-        Some(profile.viewport.width as usize),
     );
     let mut stderr = io::stderr();
     let mut last_tick = Instant::now();
@@ -483,20 +482,6 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
     }
 
     let last_lines = writer.last_frame_lines();
-
-    // #region agent log
-    {
-        let log_entry = format!(
-            r#"{{"sessionId":"6ac446","hypothesisId":"B","location":"display.rs:after_animated_loop","message":"animated loop exit","data":{{"last_frame_lines":{},"viewport_width":{},"phase":"{:?}"}},"timestamp":{}}}"#,
-            last_lines, profile.viewport.width, progress.phase,
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
-        );
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/home/briansrls/gunbc/.cursor/debug-6ac446.log") {
-            use std::io::Write as W;
-            let _ = writeln!(f, "{}", log_entry);
-        }
-    }
-    // #endregion
 
     // CursorGuard drops here (restores cursor)
     drop(_cursor_guard);
@@ -844,39 +829,15 @@ fn render_final_static_frame_seeded(
         "", // empty → static icons
         profile.tier,
         &STANDARD,
+        Some(profile.viewport.width as usize),
     );
     let line_count = frame.lines.len();
 
-    // #region agent log
-    {
-        let plain_medium = gunbc_ir::render_ir::PlainText { tier: profile.tier, symbol_set: &STANDARD };
-        let line_widths: Vec<usize> = frame.lines.iter().map(|l| {
-            use gunbc_ir::render_ir::OutputMedium;
-            plain_medium.render_line(l).chars().count()
-        }).collect();
-        let max_width = line_widths.iter().copied().max().unwrap_or(0);
-        let wrapping_lines: Vec<usize> = line_widths.iter().enumerate()
-            .filter(|(_, &w)| w > profile.viewport.width as usize)
-            .map(|(i, _)| i)
-            .collect();
-        let log_entry = format!(
-            r#"{{"sessionId":"6ac446","hypothesisId":"A","location":"display.rs:render_final_static_frame_seeded","message":"final frame render","data":{{"viewport_width":{},"seed_lines":{},"line_count":{},"max_line_width":{},"wrapping_line_indices":{:?},"line_widths":{:?},"is_tty":{}}},"timestamp":{}}}"#,
-            profile.viewport.width, seed_lines, line_count, max_width, wrapping_lines, line_widths, profile.is_tty,
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
-        );
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/home/briansrls/gunbc/.cursor/debug-6ac446.log") {
-            use std::io::Write as W;
-            let _ = writeln!(f, "{}", log_entry);
-        }
-    }
-    // #endregion
-
-    let mut writer = FrameWriter::with_viewport(
+    let mut writer = FrameWriter::new(
         profile.supports_color,
         profile.tier,
         &STANDARD,
         profile.is_tty,
-        Some(profile.viewport.width as usize),
     );
     writer.seed_last_frame_lines(seed_lines);
     let _ = writer.write_frame(&frame, &mut io::stderr());
@@ -898,6 +859,7 @@ fn render_progress_frame(
         spinner.frame(),
         profile.tier,
         &STANDARD,
+        Some(profile.viewport.width as usize),
     );
     let _ = writer.write_frame(&frame, sink);
 }

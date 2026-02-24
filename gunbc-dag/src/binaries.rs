@@ -61,6 +61,9 @@ workspace_binaries! {
     CodegenDag  => "codegen-dag",
     DepsConfig  => "deps-config",
     Docgen      => "docgen",
+    Gist        => "gist",
+    GistDiff    => "gist-diff",
+    GistRecent  => "gist-recent",
     Infra       => "infra",
     Makegen     => "makegen",
     Pragma      => "pragma",
@@ -77,7 +80,10 @@ impl WorkspaceBinary {
     /// Whether this binary corresponds to a DSL tool module.
     pub fn is_dsl_tool_module(self) -> bool {
         !self.is_dsl_pipeline_module()
-            && !matches!(self, Self::CodegenDag | Self::DepsConfig | Self::Sdlc)
+            && !matches!(
+                self,
+                Self::CodegenDag | Self::DepsConfig | Self::Sdlc | Self::GistDiff | Self::GistRecent
+            )
     }
 
     /// Cargo invocation for this workspace binary.

@@ -25,6 +25,7 @@ pub fn build_frame(
     spinner_frame: &str,
     tier: Tier,
     symbol_set: &'static SymbolSet,
+    viewport_width: Option<usize>,
 ) -> Frame {
     let mut lines = Vec::new();
 
@@ -39,7 +40,6 @@ pub fn build_frame(
         }
         RenderMode::Standard | RenderMode::Dynamic => {
             lines.push(build_dag_header(progress, spinner_frame, tier, symbol_set));
-            // No DAG grid — show only the grouped stage panel (gunb.ai style).
             lines.extend(build_legend_lines(
                 progress,
                 layout,
@@ -53,10 +53,55 @@ pub fn build_frame(
         }
     }
 
+    if let Some(max_w) = viewport_width {
+        constrain_lines(&mut lines, max_w);
+    }
+
     Frame {
         lines,
         cursor_action: CursorAction::Overwrite,
     }
+}
+
+/// Apply viewport width constraint to all lines, truncating spans to fit.
+/// Implements the same logic as `std.render.constrain_line` in DSL.
+fn constrain_lines(lines: &mut [Line], max_width: usize) {
+    for line in lines.iter_mut() {
+        let mut budget = max_width as isize;
+        let mut constrained = Vec::new();
+        for span in &line.spans {
+            if budget <= 0 {
+                break;
+            }
+            let w = display_width(&span.text) as isize;
+            if w <= budget {
+                constrained.push(span.clone());
+                budget -= w;
+            } else {
+                let truncated = truncate_text_to_width(&span.text, budget as usize);
+                constrained.push(Span {
+                    text: truncated,
+                    style: span.style.clone(),
+                });
+                break;
+            }
+        }
+        line.spans = constrained;
+    }
+}
+
+fn truncate_text_to_width(text: &str, max_width: usize) -> String {
+    let mut result = String::new();
+    let mut used = 0;
+    for c in text.chars() {
+        let w = char_width(c);
+        if used + w > max_width {
+            break;
+        }
+        result.push(c);
+        used += w;
+    }
+    result
 }
 
 // ---------------------------------------------------------------------------
@@ -774,18 +819,6 @@ pub fn full_label(node_id: &NodeId, labels: &HashMap<NodeId, String>) -> String 
         .to_string()
 }
 
-/// Pad or truncate a connector string to exactly `w` display characters.
-pub fn pad_connector(s: &str, w: usize) -> String {
-    let display_w = display_width(s);
-    if display_w >= w {
-        s.chars().take(w).collect()
-    } else {
-        let mut result = s.to_string();
-        result.push_str(&" ".repeat(w - display_w));
-        result
-    }
-}
-
 /// Compute the display width of a string in terminal columns.
 pub fn display_width(s: &str) -> usize {
     s.chars().map(char_width).sum()
@@ -921,6 +954,7 @@ mod tests {
             "◐",
             Tier::Unicode,
             &STANDARD,
+            None,
         );
 
         assert!(
@@ -948,6 +982,7 @@ mod tests {
             "◐",
             Tier::Unicode,
             &STANDARD,
+            None,
         );
 
         assert_eq!(frame.lines.len(), 1, "Compact mode should produce one line");
@@ -969,6 +1004,7 @@ mod tests {
             "\u{280B}",
             Tier::Unicode,
             &STANDARD,
+            None,
         );
 
         // Standard mode should have header + legend panel lines
@@ -1102,6 +1138,7 @@ mod tests {
             "◐",
             Tier::Unicode,
             &STANDARD,
+            None,
         );
 
         // Collect all text from the frame
@@ -1142,6 +1179,7 @@ mod tests {
             "◐",
             Tier::Unicode,
             &STANDARD,
+            None,
         );
 
         let all_text: String = frame
@@ -1213,6 +1251,7 @@ mod tests {
             "◐",
             Tier::Unicode,
             &STANDARD,
+            None,
         );
 
         let all_text: String = frame
@@ -1281,6 +1320,7 @@ mod tests {
             "◐",
             Tier::Unicode,
             &STANDARD,
+            None,
         );
 
         let all_text: String = frame

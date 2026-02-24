@@ -45,6 +45,14 @@ module std.types
 //
 // (built-in to the compiler, listed here for documentation)
 
+// --- Char type (structural primitive) ----------------------------------
+// Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
+// Structural definition per structural-primitives-codegen.md:
+//   Char = Brand("Char", Int)
+// String decomposes to List<Char> via the chars() builtin.
+//   ⟦Char⟧ = {n ∈ ℤ | 0 ≤ n ≤ 1114111}
+type Char = Int @brand("Char") @range(min: 0, max: 1114111)
+
 // --- Refinement types (Level 1: Subset Comprehension) -----------------
 // Each adds a Validate node to the base type's DAG:
 //   Url = Dag { Identity("String") → Validate(NonEmpty) → Validate(Matches("^https?://")) }

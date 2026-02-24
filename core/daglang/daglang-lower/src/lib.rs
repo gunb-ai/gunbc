@@ -5653,6 +5653,7 @@ fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
         "all" => Some(CollectionOpKind::All),
         "len" | "count" => Some(CollectionOpKind::Len),
         "contains" => Some(CollectionOpKind::Contains),
+        "sum" => Some(CollectionOpKind::Fold),
         _ => None,
     }
 }

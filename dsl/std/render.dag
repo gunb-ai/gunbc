@@ -1,0 +1,89 @@
+// std/render.dag -- Rendering domain types and composition.
+//
+// Defines the terminal rendering IR as structured DSL types, with
+// pure width-constrained composition functions.  These types mirror
+// the Rust IR structs in core/ir/src/render_ir.rs -- the Rust types
+// remain as runtime infrastructure that DSL-generated code targets.
+
+module std.render
+
+import std.width { truncate_text }
+import std.unicode { string_display_width }
+
+// --- Rendering domain types ---
+
+type SemanticColor = Default | Success | Warning | Error | Info | Dim | Active | Accent
+
+type SpanStyle {
+  color: SemanticColor?
+  bold: Bool
+  italic: Bool
+}
+
+type Span {
+  text: String
+  style: SpanStyle
+}
+
+type Line {
+  spans: List<Span>
+  indent: Int
+  max_width: Int?
+}
+
+type CursorAction = Overwrite | Append | Clear
+
+type Frame {
+  lines: List<Line>
+  cursor_action: CursorAction
+}
+
+type ViewportUnit = Chars | Pixels
+
+type Viewport {
+  width: Int
+  height: Int
+  unit: ViewportUnit
+}
+
+// --- Width-constrained composition (pure fn) ---
+
+fn span_width(span: Span) -> Int {
+  string_display_width(s: span.text)
+}
+
+fn truncate_spans(spans: List<Span>, budget: Int) -> List<Span> {
+  let result = spans |> fold(
+    init: { kept: [], remaining: budget },
+    f: (acc, span) => {
+      let w = span_width(span: span)
+      if acc.remaining <= 0 { acc }
+      else if w <= acc.remaining {
+        { kept: acc.kept |> append(items: [span]), remaining: acc.remaining - w }
+      } else {
+        let truncated = truncate_text(text: span.text, max_width: acc.remaining)
+        let t_span = Span { text: truncated, style: span.style }
+        { kept: acc.kept |> append(items: [t_span]), remaining: 0 }
+      }
+    }
+  )
+  result.kept
+}
+
+fn constrain_line(line: Line, max_width: Int) -> Line {
+  let indent_width = line.indent * 4
+  let budget = max_width - indent_width
+  if budget <= 0 { return Line { spans: [], indent: line.indent, max_width: max_width } }
+  Line {
+    spans: truncate_spans(spans: line.spans, budget: budget),
+    indent: line.indent,
+    max_width: max_width
+  }
+}
+
+fn constrain_frame(frame: Frame, viewport: Viewport) -> Frame {
+  Frame {
+    lines: frame.lines |> map(line => constrain_line(line: line, max_width: viewport.width)),
+    cursor_action: frame.cursor_action
+  }
+}

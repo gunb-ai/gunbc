@@ -278,13 +278,8 @@ impl TermBox {
     }
 }
 
-/// Calculate the display width of a string (ASCII char count).
-///
-/// This is a simplified version — counts bytes for ASCII, which is correct
-/// for box-drawing chars and labels that are typically ASCII. For CJK or
-/// combining marks, the frame_build module has a more sophisticated version.
 fn display_width(s: &str) -> usize {
-    s.chars().count()
+    crate::frame_build::display_width(s)
 }
 
 // ---------------------------------------------------------------------------

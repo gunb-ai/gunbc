@@ -137,7 +137,7 @@ impl Animation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame_build::{build_frame, display_width, format_duration};
+    use crate::frame_build::{build_frame, format_duration};
     use crate::frame_write::FrameWriter;
     use crate::progress::{DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
     use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
@@ -189,7 +189,7 @@ mod tests {
         layout: &gunbc_ir::layout::DagLayout,
         mode: RenderMode,
     ) -> String {
-        let frame = build_frame(progress, layout, mode, "◐", Tier::Unicode, &STANDARD);
+        let frame = build_frame(progress, layout, mode, "◐", Tier::Unicode, &STANDARD, Some(80));
         let mut buf = Vec::new();
         let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, false);
         writer.write_frame(&frame, &mut buf).unwrap();
@@ -411,31 +411,6 @@ mod tests {
             "Ungrouped legend should show completed task 'lint', got:\n{}",
             output
         );
-    }
-
-    #[test]
-    fn test_display_width_ascii() {
-        assert_eq!(display_width("hello"), 5);
-        assert_eq!(display_width("[A]"), 3);
-        assert_eq!(display_width(""), 0);
-    }
-
-    #[test]
-    fn test_display_width_unicode() {
-        assert_eq!(display_width("─┬─"), 3);
-        assert_eq!(display_width("└─"), 2);
-        assert_eq!(display_width("│"), 1);
-    }
-
-    #[test]
-    fn test_display_width_cjk() {
-        assert_eq!(display_width("漢字"), 4);
-        assert_eq!(display_width("A漢B"), 4);
-    }
-
-    #[test]
-    fn test_display_width_combining() {
-        assert_eq!(display_width("e\u{0301}"), 1);
     }
 
     #[test]

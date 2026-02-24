@@ -33,14 +33,10 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::{print_tool_header, run_tool, RunToolOptions};
+use gunbc_dag::{build_dimension_review_graph_dsl, print_tool_header, run_tool, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_lib_review::dimension::FermiDepth;
-use gunbc_lib_review::graph::{
-    build_diff_review_graph_with, build_dimension_diff_review_graph_with,
-};
-use gunbc_lib_review::profile::coding_review_profile;
+use gunbc_lib_review::graph::build_diff_review_graph_with;
 use gunbc_lib_review::ReviewPipelineConfig;
 use std::process;
 
@@ -113,8 +109,6 @@ fn main() {
         );
         process::exit(1);
     }
-    let depth_level = FermiDepth::parse(&depth_upper).unwrap_or(FermiDepth::M);
-
     // In dry-run mode, use the default config (OpenAI) to match mock specs.
     // In real mode, use the user-selected provider.
     let (effective_provider, model) = if dry_run {
@@ -141,8 +135,8 @@ fn main() {
     };
 
     // Build the review DAG.
-    // Keep dry-run on the legacy mock-backed graph for deterministic local smoke tests.
-    // Real mode uses the W4 4-dimension graph wired from ReviewProfile.
+    // Dry-run uses the legacy Rust mock-backed graph for deterministic smoke tests.
+    // Real mode uses the DSL-compiled dimension review pipeline (D-1).
     let dag = if dry_run {
         match build_diff_review_graph_with(config.clone()) {
             Ok(d) => d,
@@ -156,13 +150,12 @@ fn main() {
             }
         }
     } else {
-        let profile = coding_review_profile(depth_level);
-        match build_dimension_diff_review_graph_with(config, profile) {
+        match build_dimension_review_graph_dsl() {
             Ok(d) => d,
             Err(e) => {
                 print_attention(
                     AttentionLevel::Error,
-                    "Review graph build failed",
+                    "DSL review graph build failed",
                     &e.to_string(),
                 );
                 process::exit(1);

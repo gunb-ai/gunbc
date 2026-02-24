@@ -1,0 +1,104 @@
+// std/unicode.dag -- Unicode domain model for character classification.
+//
+// Follows the same modelling pattern as ContentEncoding + @file_types:
+// structured types for the domain, `data` for lookup tables, `fn` for
+// classification.  Everything here is reusable -- other modules can
+// import `char_display_width` for terminal layout, `in_block` for
+// block membership queries, or the data tables for encoding detection.
+
+module std.unicode
+
+import std.types { Char }
+
+// --- Display width classification ---
+//
+//      DisplayWidth
+//      /     |     \
+//  ZeroWidth Narrow Wide
+//
+// Set meaning:
+//   ZeroWidth -- combining marks, zero-width joiners (0 terminal columns)
+//   Narrow    -- most characters including ASCII, Latin (1 terminal column)
+//   Wide      -- CJK ideographs, fullwidth forms, emoji (2 terminal columns)
+
+type DisplayWidth = ZeroWidth | Narrow | Wide
+
+fn display_width_columns(w: DisplayWidth) -> Int {
+  match w {
+    ZeroWidth => 0
+    Narrow    => 1
+    Wide      => 2
+  }
+}
+
+// --- Unicode block model ---
+// Each block is a named range of code points with a default display width.
+// Reusable: other modules can query blocks for character classification,
+// encoding detection, identifier validation, etc.
+
+type UnicodeBlock {
+  name: String
+  start: Int
+  end_inclusive: Int
+  default_width: DisplayWidth
+}
+
+// Zero-width blocks (combining marks, variation selectors)
+data zero_width_blocks: List<UnicodeBlock> = [
+  { name: "Combining Diacritical Marks",             start: 768,   end_inclusive: 879,   default_width: ZeroWidth },
+  { name: "Combining Diacritical Marks Extended",    start: 6832,  end_inclusive: 6911,  default_width: ZeroWidth },
+  { name: "Combining Diacritical Marks Supplement",  start: 7616,  end_inclusive: 7679,  default_width: ZeroWidth },
+  { name: "Combining Marks for Symbols",             start: 8400,  end_inclusive: 8447,  default_width: ZeroWidth },
+  { name: "Variation Selectors",                     start: 65024, end_inclusive: 65039, default_width: ZeroWidth },
+  { name: "Combining Half Marks",                    start: 65056, end_inclusive: 65071, default_width: ZeroWidth }
+]
+
+// Individual zero-width code points (outside zero-width blocks)
+data zero_width_codepoints: List<Int> = [
+  8203,   // U+200B Zero Width Space
+  8204,   // U+200C Zero Width Non-Joiner
+  8205,   // U+200D Zero Width Joiner
+  65279   // U+FEFF Zero Width No-Break Space (BOM)
+]
+
+// Wide blocks (CJK, fullwidth forms, emoji)
+data wide_blocks: List<UnicodeBlock> = [
+  { name: "Hangul Jamo",                        start: 4352,   end_inclusive: 4447,   default_width: Wide },
+  { name: "CJK Radicals and Symbols",           start: 11904,  end_inclusive: 12350,  default_width: Wide },
+  { name: "Hiragana / Katakana / CJK Compat",   start: 12353,  end_inclusive: 13247,  default_width: Wide },
+  { name: "CJK Extension A",                    start: 13312,  end_inclusive: 19903,  default_width: Wide },
+  { name: "CJK Unified Ideographs",             start: 19968,  end_inclusive: 40959,  default_width: Wide },
+  { name: "Yi Syllables and Radicals",           start: 40960,  end_inclusive: 42191,  default_width: Wide },
+  { name: "Hangul Syllables",                    start: 44032,  end_inclusive: 55215,  default_width: Wide },
+  { name: "CJK Compatibility Ideographs",       start: 63744,  end_inclusive: 64255,  default_width: Wide },
+  { name: "CJK Compatibility Forms",            start: 65072,  end_inclusive: 65135,  default_width: Wide },
+  { name: "Fullwidth ASCII",                    start: 65281,  end_inclusive: 65376,  default_width: Wide },
+  { name: "Fullwidth Signs",                    start: 65504,  end_inclusive: 65510,  default_width: Wide },
+  { name: "CJK Extension B+",                   start: 131072, end_inclusive: 196607, default_width: Wide },
+  { name: "CJK Extension G+",                   start: 196608, end_inclusive: 262143, default_width: Wide },
+  { name: "Misc Symbols and Dingbats",           start: 9728,   end_inclusive: 10175,  default_width: Wide },
+  { name: "Symbols / Pictographs / Emoticons",   start: 127744, end_inclusive: 129535, default_width: Wide },
+  { name: "Symbols Extended",                   start: 129536, end_inclusive: 131071, default_width: Wide }
+]
+
+// --- Classification functions ---
+
+fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
+  cp >= block.start && cp <= block.end_inclusive
+}
+
+fn char_display_width(c: Char) -> DisplayWidth {
+  let cp = code_point(c: c)
+  if zero_width_codepoints |> contains(item: cp) { return ZeroWidth }
+  if zero_width_blocks |> any(predicate: b => in_block(cp: cp, block: b)) { return ZeroWidth }
+  if wide_blocks |> any(predicate: b => in_block(cp: cp, block: b)) { return Wide }
+  return Narrow
+}
+
+fn char_width(c: Char) -> Int {
+  display_width_columns(w: char_display_width(c: c))
+}
+
+fn string_display_width(s: String) -> Int {
+  chars(s: s) |> map(c => char_width(c: c)) |> sum()
+}
