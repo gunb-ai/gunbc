@@ -13,7 +13,7 @@
     binary = "gist",
     mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "gist")"#,
     entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
-    dsl_module = "gist",
+    dsl_module = "gist_snapshot",
     has_invocation,
     returns_result
 )]

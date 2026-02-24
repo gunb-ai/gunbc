@@ -323,11 +323,11 @@ impl ClippyConfig {
             )
             // Secret plaintext extraction aliases - enforce approved transport-boundary naming
             .disallow(
-                "gunbc_ir::value::SecretString::expose",
+                "gunbc_ir::value::SecretString::expose_plaintext_for_transport",
                 "M7: Use expose_plaintext_for_transport at approved transport boundaries only",
             )
             .disallow(
-                "gunbc_ir::transport::credential::Secret::expose",
+                "gunbc_ir::transport::credential::Secret::expose_plaintext_for_transport",
                 "M7: Use expose_plaintext_for_transport at approved transport boundaries only",
             )
             // Filesystem types - disallow owning raw file handles outside transport
@@ -480,16 +480,16 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
         let secret_plaintext_methods: Vec<_> = other_methods
             .iter()
             .filter(|method| {
-                method.path == "gunbc_ir::value::SecretString::expose"
-                    || method.path == "gunbc_ir::transport::credential::Secret::expose"
+                method.path == "gunbc_ir::value::SecretString::expose_plaintext_for_transport"
+                    || method.path == "gunbc_ir::transport::credential::Secret::expose_plaintext_for_transport"
             })
             .copied()
             .collect();
         let generic_other_methods: Vec<_> = other_methods
             .iter()
             .filter(|method| {
-                method.path != "gunbc_ir::value::SecretString::expose"
-                    && method.path != "gunbc_ir::transport::credential::Secret::expose"
+                method.path != "gunbc_ir::value::SecretString::expose_plaintext_for_transport"
+                    && method.path != "gunbc_ir::transport::credential::Secret::expose_plaintext_for_transport"
             })
             .copied()
             .collect();

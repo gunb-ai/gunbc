@@ -1,11 +1,10 @@
-// tools/gist.dag -- Gist creation tool (snapshot/diff/recent modes).
+// tools/gist.dag -- Gist creation tool (diff/recent modes).
 //
-// Three modes:
-//   snapshot: list workspace files -> read content -> render markdown -> upload gist
-//   diff:     git diff against base_ref -> render diff markdown -> upload gist
-//   recent:   resolve recent base ref -> diff -> render diff markdown -> upload gist
-//
-// Composes shared/gist_modes.dag for branch detection and gist upload.
+// The snapshot mode lives in tools/gist_snapshot.dag (inlined service calls).
+// These modes use shared/gist_modes.dag helpers, which have cross-callable
+// data flow that the lowerer doesn't fully wire yet. They compile and run but
+// produce empty results. Will be fixed when the lowerer supports callable
+// argument wiring.
 //
 // Replaces: lib/tools/gist/src/graph.rs (~1,449 lines)
 
@@ -16,26 +15,8 @@ import shared.gist_modes { branch_context, resolve_recent_base, share_content }
 import std.resources { Filesystem }
 import std.types { CommitSha, Url }
 
-fn render_snapshot_markdown(files: List<String>, branch: String) -> String {
-  let header = "# Snapshot: {branch}\n\n"
-  let listing = files
-    |> map(f => "- `{f}`")
-    |> join("\n")
-  "{header}{listing}\n"
-}
-
 fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> String {
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
-}
-
-func gist_snapshot(public: Bool = false) -> { url: Url }
-  uses fs: Filesystem(mode: Read)
-{
-  ctx = branch_context()
-  listing = git.Core.LsFiles()
-  markdown = render_snapshot_markdown(files: listing.files, branch: ctx.branch)
-  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: None, public: public)
-  return { url: result.url }
 }
 
 func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
@@ -59,12 +40,6 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
-
-test gist_snapshot_dryrun {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
-}
 
 test gist_diff_dryrun {
     @tier(Unit)

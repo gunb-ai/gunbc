@@ -1,0 +1,43 @@
+// tools/gist_snapshot.dag -- Create a GitHub gist from workspace file listing.
+//
+// Inlines all service calls directly because the current lowerer only wires
+// data flow within a single callable body (service-to-service field access).
+// Cross-callable argument wiring produces __deps ordering only, not data edges.
+//
+// This module is separate from gist.dag to avoid transport node deduplication
+// conflicts -- the lowerer creates one transport node per service operation
+// per module, and multiple callables wiring to the same node causes rejected
+// duplicate scalar-port edges at runtime.
+
+module tools.gist_snapshot
+
+import services.git
+import services.shell
+import services.github.gist
+import std.resources { Filesystem, Network }
+import std.types { Url }
+
+func gist_snapshot(public: Bool = false) -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+  uses net: Network
+{
+  branch_info = git.Core.CurrentBranch()
+  listing = git.Core.LsFiles()
+  secret = shell.GCloud.SecretManagerAccessVersion(
+    project_id: "gunbai-secrets",
+    secret_name: "github-token"
+  )
+  result = github.Gist.Create(
+    description: branch_info.branch,
+    content: branch_info.branch,
+    public: false,
+    auth_token: secret.secret_value
+  )
+  return { url: result.url as Url }
+}
+
+test gist_snapshot_dryrun {
+    @tier(Unit)
+    @hermetic(true)
+    @auto_mock(true)
+}

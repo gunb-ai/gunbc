@@ -179,7 +179,7 @@ pub fn build_dimension_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
 }
 
 pub fn build_gist_snapshot_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_snapshot")
+    build_dsl_graph("tools/gist_snapshot.dag")
 }
 
 pub fn build_gist_diff_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
@@ -266,6 +266,7 @@ mod tests {
         let dag = build_gist_snapshot_graph_dsl().expect("gist DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
+
 
     #[test]
     fn builds_ci_dsl_graph() {
