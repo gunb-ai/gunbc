@@ -509,8 +509,6 @@ dependencies = [
  "gunbc-delegate-macros",
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-lib-aws-ops",
- "gunbc-lib-azure-ops",
  "gunbc-lib-gcp-ops",
  "gunbc-lib-transport",
  "gunbc-testgen-registry",

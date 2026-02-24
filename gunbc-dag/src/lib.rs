@@ -46,7 +46,6 @@ pub mod resources;
 pub mod sdlc;
 pub mod testgen_dag;
 pub mod tool_runner;
-pub mod viewer;
 pub mod workflow;
 // Re-exports for convenience
 pub use binaries::WorkspaceBinary;

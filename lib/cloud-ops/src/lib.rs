@@ -1,21 +1,19 @@
-//! Provider-neutral cloud credential graphs.
+//! Provider-neutral cloud credential operations.
 //!
-//! This crate stitches provider-specific secret manager DAGs together behind a
-//! stable interface so callers can switch providers without reworking DAG shapes.
+//! This crate provides credential policy, infrastructure bootstrapping,
+//! secret provisioning, and environment configuration for cloud providers.
 
 pub mod config_loader;
 pub mod config_resource;
 pub mod credential_policy;
 pub mod env_requirements;
 mod env_status;
-mod github_ops;
 pub mod health_status;
 pub mod infra_bootstrap;
 pub mod infra_graph;
 pub mod infra_plan_apply;
 pub mod infra_spec;
 pub mod login_flow;
-mod ops;
 pub mod project_registry;
 pub mod project_spec;
 pub mod secret_cache;
@@ -38,7 +36,6 @@ pub use env_requirements::{
     requirements_for, CloudEnvRequirements, MissingCloudEnvRequirements, CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use env_status::CloudEnvStatus;
-pub use github_ops::GitHubCredentialOps;
 pub use health_status::{evaluate_health, HealthCheckItem, HealthCheckReport};
 pub use infra_bootstrap::{build_wif_bootstrap_dag, InfraBootstrapGraphOp, InfraBootstrapOps};
 pub use infra_graph::render_infra_spec_dot;
@@ -48,7 +45,6 @@ pub use infra_plan_apply::{
 };
 pub use infra_spec::{EnvironmentConfig, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC};
 pub use login_flow::{inspect_login_flow, LoginDiagnostics};
-pub use ops::CloudOps;
 pub use project_registry::{
     derive_cross_project_wif_bindings, CrossProjectWifBinding, ProjectRegistry, GUNBAI_PLATFORM,
 };
@@ -59,28 +55,3 @@ pub use secret_provision_graph::{
     build_secrets_provision_dag_from_spec_with_filter, SecretProvisionFilter,
 };
 pub use secret_rotation::{check_secret_age, rotate_secret, SecretAgeCheck, SecretRotationAction};
-
-// ---------------------------------------------------------------------------
-// ConstCloudConfig: drop-in replacement for CloudEnv in tool graphs
-// ---------------------------------------------------------------------------
-
-/// Create a `CloudOps::ConstCloudConfig` that emits a pre-resolved
-/// `CloudSecretConfig` as constant outputs.
-///
-/// This replaces the legacy `CloudEnv` env-reader. The config is resolved
-/// once at graph construction time and baked into the node, eliminating
-/// all environment variable reads.
-///
-/// # Usage in tool graphs
-///
-/// ```ignore
-/// let cloud_config = builder.add_root_node(Node::opaque(
-///     "cloud_env", ...,
-///     GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
-///         const_cloud_config(resolved_config),
-///     )),
-/// ));
-/// ```
-pub fn const_cloud_config(config: gunbc_ir::transport::cloud::CloudSecretConfig) -> CloudOps {
-    CloudOps::ConstCloudConfig { config }
-}
