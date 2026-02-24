@@ -2636,8 +2636,17 @@ fn add_collection_pipeline_nodes(
 // ── Control Flow Pattern Lowering (for / if) ───────────────────────
 
 #[derive(Debug)]
+enum IterableRef {
+    /// `for x in some_var { ... }`
+    Ident(String),
+    /// `for x in some_var.field { ... }`
+    FieldAccess(String, String),
+}
+
+#[derive(Debug)]
 struct ForLoopSite {
     element_var: String,
+    iterable: Option<IterableRef>,
     passthrough: Vec<String>,
     /// Service call paths found inside the for-loop body expression.
     /// Each entry is the dot-separated path (e.g., `["fs", "read"]`).
@@ -2657,11 +2666,22 @@ struct MatchBranchSite {
 fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
     let mut sites = Vec::new();
     walk_stmts(stmts, &mut |expr| {
-        if let Expr::For(var, _, passthrough, body) = expr {
+        if let Expr::For(var, iterable, passthrough, body) = expr {
+            let iterable_ref = match iterable.as_ref() {
+                Expr::Ident(name) => Some(IterableRef::Ident(name.clone())),
+                Expr::FieldAccess(base, field) => match base.as_ref() {
+                    Expr::Ident(base_ident) => {
+                        Some(IterableRef::FieldAccess(base_ident.clone(), field.clone()))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            };
             let mut body_calls = Vec::new();
             collect_service_call_paths_from_expr(body, &mut body_calls);
             sites.push(ForLoopSite {
                 element_var: var.clone(),
+                iterable: iterable_ref,
                 passthrough: passthrough.clone(),
                 body_service_call_paths: body_calls,
             });
@@ -4877,10 +4897,26 @@ fn add_service_call_edges(
                     call_index,
                 );
             }
+            // Augment callable sources with for-loop result bindings so that
+            // downstream fn call arguments like `file_contents: file_contents`
+            // can resolve to the loop node's "result" output.
+            let mut augmented_callable_sources = bound_callable_sources.clone();
+            collect_for_loop_bindings(stmts, target, &mut augmented_callable_sources);
             wire_fn_call_arguments(
                 builder,
                 stmts,
                 endpoints_by_name,
+                &param_types,
+                &augmented_callable_sources,
+                &bound_service_sources,
+                module_name.as_str(),
+                item_name,
+            );
+            // Wire for-loop iterable expressions to loop node "items" ports.
+            wire_for_loop_iterables(
+                builder,
+                stmts,
+                target,
                 &param_types,
                 &bound_callable_sources,
                 &bound_service_sources,
@@ -6298,6 +6334,116 @@ fn wire_fn_call_arguments(
                     &format!("fn_{index}"),
                 );
                 builder.add_edge(src.as_str(), param_name, fn_endpoint.node_id.as_str(), param_name);
+            }
+        }
+    }
+}
+
+/// Collect for-loop result bindings from top-level statements.
+///
+/// For each `binding = for var in iterable { body }`, creates a `LoweredEndpoint`
+/// pointing to the loop node's "result" output, allowing downstream fn calls to
+/// reference the binding as a data source.
+fn collect_for_loop_bindings(
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+    out: &mut HashMap<String, LoweredEndpoint>,
+) {
+    let mut for_index = 0usize;
+    for stmt in stmts {
+        match stmt {
+            Stmt::Let(binding, expr) | Stmt::Assign(binding, expr) => {
+                if matches!(expr, Expr::For(..)) {
+                    let loop_node_id = format!("{}::cf_for_{for_index}", target.node_id);
+                    out.insert(
+                        binding.clone(),
+                        LoweredEndpoint {
+                            node_id: loop_node_id,
+                            primary_output: "result".to_string(),
+                        },
+                    );
+                }
+                // Count for-loops in walk order to match add_control_flow_pattern_nodes
+                // indexing. walk_stmts visits inner for-loops too, so recurse.
+                let mut count = 0usize;
+                walk_stmts(std::slice::from_ref(stmt), &mut |e| {
+                    if matches!(e, Expr::For(..)) {
+                        count += 1;
+                    }
+                });
+                for_index += count;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Wire for-loop iterable expressions to their corresponding loop node "items" ports.
+///
+/// Each `for x in <iterable> { ... }` produces a loop node with ID
+/// `{target}::cf_for_{index}` and an input port named `"items"`. This function
+/// resolves `<iterable>` to a source node (service call result, callable result,
+/// or parameter) and wires the data edge.
+#[allow(clippy::too_many_arguments)]
+fn wire_for_loop_iterables(
+    builder: &mut DagBuilder,
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    module_name: &str,
+    item_name: &str,
+) {
+    let for_sites = detect_for_loops_in_stmts(stmts);
+    for (index, site) in for_sites.iter().enumerate() {
+        let loop_node_id = format!("{}::cf_for_{index}", target.node_id);
+        let Some(iterable) = &site.iterable else {
+            continue;
+        };
+        match iterable {
+            IterableRef::FieldAccess(base_ident, field_name) => {
+                if let Some(source) = bound_callable_sources.get(base_ident) {
+                    builder.add_edge(
+                        source.node_id.as_str(),
+                        field_name.as_str(),
+                        loop_node_id.as_str(),
+                        "items",
+                    );
+                } else if let Some(source) = bound_service_sources.get(base_ident) {
+                    builder.add_edge(
+                        source.parse.node_id.as_str(),
+                        field_name.as_str(),
+                        loop_node_id.as_str(),
+                        "items",
+                    );
+                }
+            }
+            IterableRef::Ident(name) => {
+                if let Some(param_ty) = param_types.get(name) {
+                    let src = ensure_param_source_node(
+                        builder,
+                        module_name,
+                        item_name,
+                        name,
+                        param_ty.as_str(),
+                    );
+                    builder.add_edge(src.as_str(), name, loop_node_id.as_str(), "items");
+                } else if let Some(source) = bound_callable_sources.get(name) {
+                    builder.add_edge(
+                        source.node_id.as_str(),
+                        source.primary_output.as_str(),
+                        loop_node_id.as_str(),
+                        "items",
+                    );
+                } else if let Some(source) = bound_service_sources.get(name) {
+                    builder.add_edge(
+                        source.parse.node_id.as_str(),
+                        source.parse.primary_output.as_str(),
+                        loop_node_id.as_str(),
+                        "items",
+                    );
+                }
             }
         }
     }

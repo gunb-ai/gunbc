@@ -68,9 +68,10 @@ fn corpus_module_declarations_match_file_paths() {
         "module declaration mismatches:\n{}",
         failures.join("\n")
     );
+    let expected_count = expected_dsl_files_sorted().len();
     assert_eq!(
         seen_modules.len(),
-        87,
-        "expected 87 unique module declarations in corpus"
+        expected_count,
+        "expected unique module count to match corpus size ({expected_count})"
     );
 }

@@ -464,6 +464,11 @@ Nodes:
   - literal_source_tools_makegen_render_makefile_tool_fn_0 [primitive::CallLiteralSource { literal: String("makegen") } tools.makegen.call_literal_source::strhex:6d616b6567656e]
     outputs:
       * tool: Any (1)
+  - param_source_std_patterns_classify_files_paths [primitive::CallParamSource { callable: "classify_files", param: "paths" } std.patterns.call_param_source::classify_files::paths]
+    inputs:
+      * paths: List<FilePath> (1)
+    outputs:
+      * paths: List<FilePath> (1)
   - param_source_std_patterns_acquire_subject_token_audience [primitive::CallParamSource { callable: "acquire_subject_token", param: "audience" } std.patterns.call_param_source::acquire_subject_token::audience]
     inputs:
       * audience: NonEmptyStr (1)
@@ -646,6 +651,7 @@ Edges:
   - shared.dag_util::doc_with_header.return -> shared.dag_util::render_document.document
   - tools.makegen::render_makefile.return -> std.patterns::content_upsert.content
   - param_source_tools_makegen_makegen_path.path -> std.patterns::content_upsert.path
+  - param_source_std_patterns_classify_files_paths.paths -> std.patterns::classify_files::cf_for_0.items
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::github_oidc.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::metadata_oidc.audience
   - param_source_std_patterns_content_upsert_path.path -> std.patterns::file_content_matches.path
