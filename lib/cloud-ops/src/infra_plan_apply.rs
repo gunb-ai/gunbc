@@ -1,14 +1,7 @@
-//! Infrastructure plan/apply DAG builders.
+//! Infrastructure plan DAG builder.
 
-use gunbc_exec::DynOp;
-
-type CloudSecretManagerGraphOp = DynOp;
 use crate::infra_spec::InfraSpec;
 use crate::project_spec::ProjectSpec;
-use crate::secret_provision_graph::{
-    build_secrets_provision_dag_from_spec_with_filter, SecretProvisionFilter,
-};
-use gunbc_delegate_macros::DelegateExecutable;
 use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::build::{list, port};
 use gunbc_ir::transport::cloud::CloudRuntimeKind;
@@ -33,31 +26,18 @@ impl InfraApplyFilter {
     }
 }
 
-#[derive(Debug, Clone, DelegateExecutable)]
-pub enum InfraPlanApplyGraphOp {
-    Infra(InfraPlanApplyOps),
-    Cloud(CloudSecretManagerGraphOp),
-}
-
 #[derive(Debug, Clone)]
 pub enum InfraPlanApplyOps {
     BuildPlan {
         environment: String,
         targets: Vec<String>,
     },
-    ReconcileRuntimeDependencies {
-        environment: String,
-        targets: Vec<String>,
-    },
-    SummarizeApply {
-        environment: String,
-    },
 }
 
 impl Executable for InfraPlanApplyOps {
     fn execute(
         &self,
-        inputs: HashMap<String, gunbc_ir::Value>,
+        _inputs: HashMap<String, gunbc_ir::Value>,
     ) -> Result<HashMap<String, gunbc_ir::Value>, ExecError> {
         match self {
             InfraPlanApplyOps::BuildPlan {
@@ -68,35 +48,6 @@ impl Executable for InfraPlanApplyOps {
                 .str_list("planned_targets", targets.clone())
                 .int("target_count", targets.len() as i64)
                 .ok(),
-            InfraPlanApplyOps::ReconcileRuntimeDependencies {
-                environment,
-                targets,
-            } => OutputMap::new()
-                .str("environment", environment)
-                .str_list("reconciled_targets", targets.clone())
-                .int("reconciled_count", targets.len() as i64)
-                .ok(),
-            InfraPlanApplyOps::SummarizeApply { environment } => {
-                let target_count = inputs
-                    .get("target_count")
-                    .and_then(|v| v.as_int())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'target_count' input"))?;
-                let _reconciled_count = inputs
-                    .get("reconciled_count")
-                    .and_then(|v| v.as_int())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'reconciled_count' input"))?;
-                OutputMap::new()
-                    .str("environment", environment)
-                    .int("applied_count", target_count)
-                    .str(
-                        "report",
-                        format!(
-                            "Applied {} infrastructure targets for {}",
-                            target_count, environment
-                        ),
-                    )
-                    .ok()
-            }
         }
     }
 }
@@ -107,9 +58,9 @@ pub fn build_infra_plan_dag(
     infra_spec: &InfraSpec,
     runtime: CloudRuntimeKind,
     filter: &InfraApplyFilter,
-) -> Result<Dag<InfraPlanApplyGraphOp>, String> {
+) -> Result<Dag<InfraPlanApplyOps>, String> {
     let targets = collect_targets(project_spec, infra_spec, runtime, filter)?;
-    let mut builder: DagBuilder<InfraPlanApplyGraphOp> = DagBuilder::new();
+    let mut builder: DagBuilder<InfraPlanApplyOps> = DagBuilder::new();
     builder
         .add_root_node(Node::opaque(
             "plan",
@@ -119,114 +70,12 @@ pub fn build_infra_plan_dag(
                 list("planned_targets", "String"),
                 port("target_count", "Int"),
             ],
-            InfraPlanApplyGraphOp::Infra(InfraPlanApplyOps::BuildPlan {
+            InfraPlanApplyOps::BuildPlan {
                 environment: infra_spec.environment.to_string(),
                 targets,
-            }),
+            },
         ))
         .map_err(|e| format!("failed to build plan node: {e}"))?;
-
-    Ok(builder.build())
-}
-
-/// Build an apply DAG (plan + provisioning execution).
-pub fn build_infra_apply_dag(
-    project_spec: &'static ProjectSpec,
-    infra_spec: &InfraSpec,
-    runtime: CloudRuntimeKind,
-    filter: &InfraApplyFilter,
-) -> Result<Dag<InfraPlanApplyGraphOp>, String> {
-    let targets = collect_targets(project_spec, infra_spec, runtime, filter)?;
-    let runtime_targets: Vec<String> = targets
-        .iter()
-        .filter(|target| !target.starts_with("secret:"))
-        .cloned()
-        .collect();
-    let provision_filter = SecretProvisionFilter {
-        include_secret_ids: targets
-            .iter()
-            .filter_map(|t| t.strip_prefix("secret:").map(|s| s.to_string()))
-            .collect(),
-        exclude_secret_ids: Vec::new(),
-    };
-    let provision = build_secrets_provision_dag_from_spec_with_filter(
-        project_spec,
-        infra_spec.environment,
-        runtime,
-        &provision_filter,
-    )?;
-
-    let mut builder: DagBuilder<InfraPlanApplyGraphOp> = DagBuilder::new();
-    let plan = builder
-        .add_root_node(Node::opaque(
-            "plan",
-            vec![],
-            vec![
-                port("environment", "NonEmptyString"),
-                list("planned_targets", "String"),
-                port("target_count", "Int"),
-            ],
-            InfraPlanApplyGraphOp::Infra(InfraPlanApplyOps::BuildPlan {
-                environment: infra_spec.environment.to_string(),
-                targets,
-            }),
-        ))
-        .map_err(|e| format!("failed to build plan node: {e}"))?;
-
-    let runtime_reconcile = builder
-        .add_node_after(
-            Node::opaque(
-                "runtime_reconcile",
-                vec![],
-                vec![
-                    port("environment", "NonEmptyString"),
-                    list("reconciled_targets", "String"),
-                    port("reconciled_count", "Int"),
-                ],
-                InfraPlanApplyGraphOp::Infra(InfraPlanApplyOps::ReconcileRuntimeDependencies {
-                    environment: infra_spec.environment.to_string(),
-                    targets: runtime_targets,
-                }),
-            ),
-            &plan,
-        )
-        .map_err(|e| format!("failed to build runtime_reconcile node: {e}"))?;
-
-    let provision_subdag = provision.map_ops(&mut InfraPlanApplyGraphOp::Cloud);
-    let provision_node = builder
-        .add_node_after(
-            Node::subdag("provision", provision_subdag),
-            &runtime_reconcile,
-        )
-        .map_err(|e| format!("failed to build provision node: {e}"))?;
-
-    let summary = builder
-        .add_node_after(
-            Node::opaque(
-                "apply_summary",
-                vec![port("target_count", "Int"), port("reconciled_count", "Int")],
-                vec![
-                    port("environment", "NonEmptyString"),
-                    port("applied_count", "Int"),
-                    port("report", "NonEmptyString"),
-                ],
-                InfraPlanApplyGraphOp::Infra(InfraPlanApplyOps::SummarizeApply {
-                    environment: infra_spec.environment.to_string(),
-                }),
-            ),
-            &provision_node,
-        )
-        .map_err(|e| format!("failed to build apply_summary node: {e}"))?;
-
-    builder
-        .add_edge(plan.out("target_count"), summary.in_port("target_count"))
-        .map_err(|e| format!("failed to wire apply summary: {e}"))?;
-    builder
-        .add_edge(
-            runtime_reconcile.out("reconciled_count"),
-            summary.in_port("reconciled_count"),
-        )
-        .map_err(|e| format!("failed to wire runtime reconcile summary input: {e}"))?;
 
     Ok(builder.build())
 }

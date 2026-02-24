@@ -18,7 +18,6 @@ pub mod project_registry;
 pub mod project_spec;
 pub mod secret_cache;
 pub mod secret_exports;
-pub mod secret_provision_graph;
 pub mod secret_rotation;
 
 pub use config_loader::{
@@ -40,8 +39,7 @@ pub use health_status::{evaluate_health, HealthCheckItem, HealthCheckReport};
 pub use infra_bootstrap::{build_wif_bootstrap_dag, InfraBootstrapGraphOp, InfraBootstrapOps};
 pub use infra_graph::render_infra_spec_dot;
 pub use infra_plan_apply::{
-    build_infra_apply_dag, build_infra_plan_dag, InfraApplyFilter, InfraPlanApplyGraphOp,
-    InfraPlanApplyOps,
+    build_infra_plan_dag, InfraApplyFilter, InfraPlanApplyOps,
 };
 pub use infra_spec::{EnvironmentConfig, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC};
 pub use login_flow::{inspect_login_flow, LoginDiagnostics};
@@ -50,8 +48,4 @@ pub use project_registry::{
 };
 pub use secret_cache::{plan_secret_fetch, SecretCacheEntry, SecretValueCache};
 pub use secret_exports::{render_direnv_exports, SecretExportResult};
-pub use secret_provision_graph::{
-    build_secrets_provision_dag, build_secrets_provision_dag_from_spec,
-    build_secrets_provision_dag_from_spec_with_filter, SecretProvisionFilter,
-};
 pub use secret_rotation::{check_secret_age, rotate_secret, SecretAgeCheck, SecretRotationAction};
