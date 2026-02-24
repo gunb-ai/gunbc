@@ -19,7 +19,11 @@ service github.Gist {
       url: Url @json("html_url")
     }
     @rest(POST, "/gists")
-    @headers({ "Authorization": "Bearer {auth_token}" })
+    @headers({
+      "Authorization": "Bearer {auth_token}",
+      "Accept": "application/vnd.github+json",
+      "User-Agent": "gunbc/1.0"
+    })
     @permissions(["gist"])
     @mock_response(
       status: 201,

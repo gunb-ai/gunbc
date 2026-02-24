@@ -4320,8 +4320,8 @@ fn annotation_headers(
     {
         if let Some(Expr::Record(_, fields)) = ann.args.first() {
             for (key, value) in fields {
-                if let Expr::Literal(Literal::String(v)) = value {
-                    headers.push((key.clone(), v.clone()));
+                if let Some(v) = expr_to_template_string(value) {
+                    headers.push((key.clone(), v));
                 }
             }
         }

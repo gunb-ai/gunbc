@@ -119,7 +119,7 @@ service shell.GCloud {
       secret_name: NonEmptyStr
       version: NonEmptyStr = "latest"
     }
-    output { secret_value: String }
+    output { secret_value: Secret }
     @shell([
       "gcloud",
       "secrets",

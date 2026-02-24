@@ -95,10 +95,16 @@ impl Executable for GenericRestPrepareOp {
                 }
                 serde_json::Value::Object(map)
             } else {
-                // Auto-build body from all non-path input fields.
+                // Auto-build body from all non-path, non-header-only input fields.
+                let header_fields: BTreeSet<String> = self
+                    .spec
+                    .headers
+                    .iter()
+                    .flat_map(|(_, v)| collect_template_placeholders(v))
+                    .collect();
                 let mut map = serde_json::Map::new();
                 for field in &self.spec.input_fields {
-                    if field.is_path_param {
+                    if field.is_path_param || header_fields.contains(&field.name) {
                         continue;
                     }
                     if let Some(value) = inputs.get(&field.name) {
@@ -145,10 +151,26 @@ impl Executable for GenericRestParseOp {
         match inputs.get("response") {
             Some(Value::Response(TransportResponse::Rest(rest))) => {
                 if !rest.is_success() {
-                    return Err(ExecError::new(format!(
-                        "{} {} failed (status {})",
-                        self.spec.method, self.spec.path_template, rest.status
-                    )));
+                    let body_excerpt = match &rest.body {
+                        serde_json::Value::Object(map) => map
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        _ => String::new(),
+                    };
+                    let detail = if body_excerpt.is_empty() {
+                        format!(
+                            "{} {} failed (status {})",
+                            self.spec.method, self.spec.path_template, rest.status
+                        )
+                    } else {
+                        format!(
+                            "{} {} failed (status {}): {}",
+                            self.spec.method, self.spec.path_template, rest.status, body_excerpt
+                        )
+                    };
+                    return Err(ExecError::new(detail));
                 }
 
                 let mut out = OutputMap::new();
@@ -607,26 +629,45 @@ fn insert_value_as_json(
         Value::List(items) => {
             let arr: Vec<serde_json::Value> = items
                 .iter()
-                .filter_map(|v| match v {
-                    Value::Str(s) => Some(serde_json::Value::String(s.clone())),
-                    Value::Int(n) => Some(serde_json::json!(*n)),
-                    _ => None,
-                })
+                .filter_map(|v| value_to_json(v))
                 .collect();
             map.insert(key.to_string(), serde_json::Value::Array(arr));
         }
         Value::Map(entries) => {
             let mut inner = serde_json::Map::new();
             for (k, v) in entries {
-                if let Value::Str(s) = v {
-                    inner.insert(k.clone(), serde_json::Value::String(s.clone()));
-                }
+                insert_value_as_json(&mut inner, k, v);
             }
             map.insert(key.to_string(), serde_json::Value::Object(inner));
         }
         _ => {
             // Unit, Skipped, Request, Response — skip.
         }
+    }
+}
+
+/// Convert a single `Value` to a `serde_json::Value` (for list items and nested maps).
+fn value_to_json(value: &Value) -> Option<serde_json::Value> {
+    match value {
+        Value::Str(s) => Some(serde_json::Value::String(s.clone())),
+        Value::Secret(secret) => Some(serde_json::Value::String(
+            secret.expose_plaintext_for_transport().to_string(),
+        )),
+        Value::Int(n) => Some(serde_json::json!(*n)),
+        Value::Bool(b) => Some(serde_json::Value::Bool(*b)),
+        Value::Json(j) => Some(j.clone()),
+        Value::Map(entries) => {
+            let mut inner = serde_json::Map::new();
+            for (k, v) in entries {
+                insert_value_as_json(&mut inner, k, v);
+            }
+            Some(serde_json::Value::Object(inner))
+        }
+        Value::List(items) => {
+            let arr: Vec<serde_json::Value> = items.iter().filter_map(value_to_json).collect();
+            Some(serde_json::Value::Array(arr))
+        }
+        _ => None,
     }
 }
 
