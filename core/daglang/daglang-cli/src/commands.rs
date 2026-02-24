@@ -372,14 +372,13 @@ fn embed_layer1_handler_data(options: &CompileOptions, output: &mut CompileOutpu
     if options.layer != CodegenLayer::ExecRuntime {
         return;
     }
-    let module_name = output
+    let is_makegen = output
         .derived
         .tool_metadata
         .modules
-        .first()
-        .map(|module| module.module.as_str())
-        .unwrap_or("");
-    if module_name == "tools.makegen" {
+        .iter()
+        .any(|module| module.module == "tools.makegen");
+    if is_makegen {
         let makefile_content = options
             .makegen_content_override
             .clone()

@@ -168,14 +168,6 @@ fn render_document(document: Document) -> String {
   }
 }
 
-fn text_file(path: String, document: Document) -> TextFile {
-  { path: path, document: document }
-}
-
-fn render_text_file(file: TextFile) -> RenderedTextFile {
-  { path: file.path, content: render_document(document: file.document) }
-}
-
 // --- Render-then-upsert -----------------------------------------------
 // The pattern: render content via a pure fn, then content_upsert to disk.
 // This is the most common 2-liner across all tools. Since content_upsert
@@ -190,11 +182,5 @@ func render_and_upsert(content: String, path: String) -> { written: Bool } {
 func render_document_and_upsert(document: Document, path: String) -> { written: Bool } {
   rendered = render_document(document: document)
   result = content_upsert(content: rendered, path: path)
-  return { written: result.written }
-}
-
-func upsert_text_file(file: TextFile) -> { written: Bool } {
-  rendered = render_text_file(file: file)
-  result = content_upsert(content: rendered.content, path: rendered.path)
   return { written: result.written }
 }

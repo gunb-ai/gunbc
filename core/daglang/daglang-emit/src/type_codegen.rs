@@ -891,6 +891,11 @@ fn replace_builtin_stubs(items: &mut [code_ir::Item]) {
             if is_todo_stub(&f.body) {
                 if let Some(replacement) = builtin_body(&f.name) {
                     f.body = replacement;
+                    // These functions delegate to generated impl methods that
+                    // return &'static str, so adjust the return type to match.
+                    if matches!(f.name.as_str(), "resolve_symbol" | "ansi_code") {
+                        f.return_type = Some("&'static str".to_string());
+                    }
                 }
             }
         }
@@ -905,16 +910,16 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
     match name {
         "resolve_symbol" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "match tier {\n        \
-             Tier::Emoji => id.emoji().to_string(),\n        \
-             Tier::Unicode => id.unicode().to_string(),\n        \
-             Tier::Ascii => id.ascii().to_string(),\n    \
+             Tier::Emoji => id.emoji(),\n        \
+             Tier::Unicode => id.unicode(),\n        \
+             Tier::Ascii => id.ascii(),\n    \
              }".to_string(),
         ))]),
         "symbol_color" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "id.color()".to_string(),
         ))]),
         "ansi_code" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
-            "c.code().to_string()".to_string(),
+            "c.code()".to_string(),
         ))]),
         "truncate_text" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "{\n        \
