@@ -45,6 +45,17 @@
 //! This allows business logic to remain pure while transport execution
 //! happens at well-defined boundaries.
 
+/// DSL-generated types from `dsl/std/{symbols,render,box_draw}.dag`.
+///
+/// Regenerate:
+/// ```sh
+/// daglang gen-types dsl/std \
+///   --module std.symbols --module std.render --module std.box_draw \
+///   --output core/ir/src/generated/mod.rs
+/// ```
+#[allow(dead_code)]
+pub mod generated;
+
 pub mod algebra;
 pub mod boundary;
 pub mod builder;

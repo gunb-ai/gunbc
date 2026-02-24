@@ -298,6 +298,21 @@ impl<'a> Lexer<'a> {
         std::str::from_utf8(&self.source[start..end]).unwrap_or("")
     }
 
+    /// Decode a single UTF-8 character starting at `self.pos`.
+    /// Returns the character and the number of bytes it occupies.
+    fn decode_utf8_char(&self) -> (char, usize) {
+        let b0 = self.source[self.pos];
+        let seq_len = if b0 < 0x80 { 1 }
+            else if b0 < 0xE0 { 2 }
+            else if b0 < 0xF0 { 3 }
+            else { 4 };
+        let end = (self.pos + seq_len).min(self.source.len());
+        match std::str::from_utf8(&self.source[self.pos..end]) {
+            Ok(s) => (s.chars().next().unwrap_or('\u{FFFD}'), seq_len),
+            Err(_) => ('\u{FFFD}', 1),
+        }
+    }
+
     fn tok(&self, kind: TokenKind, start: usize) -> Token {
         Token {
             kind,
@@ -646,6 +661,12 @@ impl<'a> Lexer<'a> {
                 buf.push('}');
                 self.pos += 1;
             }
+            other if other >= 0x80 => {
+                buf.push('\\');
+                let (ch, len) = self.decode_utf8_char();
+                buf.push(ch);
+                self.pos += len;
+            }
             other => {
                 buf.push('\\');
                 buf.push(other as char);
@@ -677,15 +698,16 @@ impl<'a> Lexer<'a> {
                 }
                 b'\\' => {
                     if !self.interp_depth.is_empty() && self.peek_at(1) == b'"' {
-                        // Inside interpolation expressions, callers may escape
-                        // quotes as `\"` while still expecting normal string
-                        // lexing. Drop the slash and let the quote handling
-                        // path run on the next iteration.
                         self.pos += 1;
                         continue;
                     }
                     self.pos += 1;
                     self.scan_escape(&mut buf);
+                }
+                b if b >= 0x80 => {
+                    let (ch, len) = self.decode_utf8_char();
+                    buf.push(ch);
+                    self.pos += len;
                 }
                 ch => {
                     buf.push(ch as char);
@@ -726,6 +748,11 @@ impl<'a> Lexer<'a> {
                 b'\\' => {
                     self.pos += 1;
                     self.scan_escape(&mut buf);
+                }
+                b if b >= 0x80 => {
+                    let (ch, len) = self.decode_utf8_char();
+                    buf.push(ch);
+                    self.pos += len;
                 }
                 ch => {
                     buf.push(ch as char);
