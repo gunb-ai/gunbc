@@ -1451,4 +1451,92 @@ mod tests {
         assert_eq!(outputs.get("request"), Some(&Value::Skipped));
         assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
     }
+
+    // ── File ops ─────────────────────────────────────────────────────
+
+    fn file_read_spec() -> FileOperationSpec {
+        FileOperationSpec {
+            operation: "READ".to_string(),
+            path_template: "{path}".to_string(),
+            input_fields: vec![FieldSpec {
+                name: "path".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: true,
+            }],
+            output_fields: vec![OutputFieldSpec {
+                name: "content".to_string(),
+                type_id: "String".to_string(),
+                json_path: "content".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+        }
+    }
+
+    #[test]
+    fn file_prepare_builds_read_request() {
+        let op = GenericFilePrepareOp {
+            spec: file_read_spec(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("path".to_string(), Value::Str("/tmp/test.txt".to_string()));
+
+        let outputs = op.execute(inputs).unwrap();
+        let req = outputs.get("request").unwrap();
+        match req {
+            Value::Request(TransportRequest::File(r)) => {
+                assert_eq!(r.path, "/tmp/test.txt");
+                assert_eq!(r.operation, gunbc_ir::transport::FileOp::Read);
+            }
+            other => panic!("expected File request, got {other:?}"),
+        }
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn file_prepare_propagates_skip() {
+        let op = GenericFilePrepareOp {
+            spec: file_read_spec(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("path".to_string(), Value::Skipped);
+
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("request"), Some(&Value::Skipped));
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn file_parse_extracts_content() {
+        use gunbc_ir::transport::file::FileResponse;
+        let op = GenericFileParseOp {
+            spec: file_read_spec(),
+        };
+        let resp = FileResponse::read_ok("/tmp/test.txt", "hello world");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(resp)),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(
+            outputs.get("content"),
+            Some(&Value::Str("hello world".to_string()))
+        );
+    }
+
+    #[test]
+    fn file_parse_propagates_skip() {
+        let op = GenericFileParseOp {
+            spec: file_read_spec(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("response".to_string(), Value::Skipped);
+
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("content"), Some(&Value::Skipped));
+    }
 }

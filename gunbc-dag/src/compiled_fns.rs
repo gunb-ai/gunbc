@@ -16,7 +16,7 @@
 //! - `tools.gist_snapshot` — Gist snapshot content building
 //! - `tools.gist` — Gist diff/recent content rendering
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
@@ -143,18 +143,17 @@ impl Executable for RenderNumberedListOp {
 
 /// `render_tree(paths: List<String>) -> String`
 ///
-/// Produces sorted paths joined by newlines.
+/// Produces a tree-character directory tree inside a fenced code block.
 #[derive(Debug, Clone)]
 struct RenderTreeOp;
 
 impl Executable for RenderTreeOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut paths = inputs
+        let paths = inputs
             .get("paths")
             .and_then(Value::as_str_list)
             .unwrap_or_default();
-        paths.sort();
-        let result = paths.join("\n");
+        let result = render_path_tree(&paths.iter().map(String::as_str).collect::<Vec<_>>());
         OutputMap::new().str("return", result).ok()
     }
 }
@@ -210,10 +209,11 @@ impl Executable for RenderMarkdownOp {
 // tools.gist_snapshot compiled fns
 // ============================================================================
 
-/// `build_snapshot_content(branch: String, files: List<String>) -> String`
+/// `build_snapshot_content(branch: String, files: List<String>, file_contents: List<String>) -> String`
 ///
 /// Renders a full markdown document for the workspace snapshot:
-/// heading, branch info, and sorted directory tree.
+/// heading, branch info, tree-character directory tree, and fenced code
+/// blocks for every tracked file.
 #[derive(Debug, Clone)]
 struct BuildSnapshotContentOp;
 
@@ -228,15 +228,53 @@ impl Executable for BuildSnapshotContentOp {
             .and_then(Value::as_str_list)
             .unwrap_or_default();
 
-        let mut sorted_files = files;
-        sorted_files.sort();
-        let tree = sorted_files.join("\n");
+        // file_contents can be List<String> or List<Map{content: String}>.
+        let file_contents = extract_file_contents(&inputs);
 
-        let content = format!(
-            "# Workspace Snapshot\n\nBranch: {branch}\n\n## Directory Tree\n\n{tree}\n"
+        let mut sorted_files = files.clone();
+        sorted_files.sort();
+
+        let tree = render_path_tree(&sorted_files.iter().map(String::as_str).collect::<Vec<_>>());
+
+        let mut content = format!(
+            "# Workspace Snapshot\n\nBranch: `{branch}`\n\n## Directory Tree\n\n{tree}\n"
         );
 
+        if !file_contents.is_empty() {
+            content.push_str("\n## File Contents\n");
+            // Zip paths and contents (maintain original order).
+            for (path, file_content) in files.iter().zip(file_contents.iter()) {
+                let lang = lang_for_path(path);
+                content.push_str(&format!(
+                    "\n### {path}\n\n```{lang}\n{file_content}\n```\n"
+                ));
+            }
+        }
+
         OutputMap::new().str("return", content).ok()
+    }
+}
+
+/// Extract file content strings from inputs. Handles both `List<String>` and
+/// `List<Map{content: String}>` (the latter from transport parse outputs).
+fn extract_file_contents(inputs: &HashMap<String, Value>) -> Vec<String> {
+    let Some(value) = inputs.get("file_contents") else {
+        return Vec::new();
+    };
+    match value {
+        Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => s.clone(),
+                Value::Map(map) => map
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                _ => String::new(),
+            })
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -267,6 +305,114 @@ impl Executable for RenderDiffMarkdownOp {
 
         let result = format!("# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n");
         OutputMap::new().str("return", result).ok()
+    }
+}
+
+// ============================================================================
+// Tree rendering + language hints
+// ============================================================================
+
+/// Render sorted file paths as a tree-character directory tree in a fenced code block.
+///
+/// Example output:
+/// ```text
+/// .
+/// ├── Cargo.toml
+/// ├── src
+/// │   ├── lib.rs
+/// │   └── main.rs
+/// └── tests
+///     └── test.rs
+/// ```
+fn render_path_tree(paths: &[&str]) -> String {
+    let mut sorted: Vec<&str> = paths.to_vec();
+    sorted.sort();
+    let mut result = String::from("```\n.\n");
+    let tree = build_tree(&sorted);
+    render_tree_node(&tree, &mut result, "");
+    result.push_str("```");
+    result
+}
+
+/// Internal tree node for directory structure.
+struct TreeNode {
+    children: BTreeMap<String, TreeNode>,
+}
+
+impl TreeNode {
+    fn new() -> Self {
+        Self {
+            children: BTreeMap::new(),
+        }
+    }
+}
+
+fn build_tree(paths: &[&str]) -> TreeNode {
+    let mut root = TreeNode::new();
+    for path in paths {
+        let parts: Vec<&str> = path.split('/').collect();
+        let mut current = &mut root;
+        for part in parts {
+            current = current
+                .children
+                .entry(part.to_string())
+                .or_insert_with(TreeNode::new);
+        }
+    }
+    root
+}
+
+fn render_tree_node(node: &TreeNode, out: &mut String, prefix: &str) {
+    let count = node.children.len();
+    for (i, (name, child)) in node.children.iter().enumerate() {
+        let is_last = i == count - 1;
+        let connector = if is_last { "└── " } else { "├── " };
+        out.push_str(prefix);
+        out.push_str(connector);
+        out.push_str(name);
+        out.push('\n');
+        let child_prefix = if is_last {
+            format!("{prefix}    ")
+        } else {
+            format!("{prefix}│   ")
+        };
+        render_tree_node(child, out, &child_prefix);
+    }
+}
+
+/// Map file extension to language hint for fenced code blocks.
+fn lang_for_path(path: &str) -> &'static str {
+    let ext = path.rsplit('.').next().unwrap_or("");
+    match ext {
+        "rs" => "rust",
+        "toml" => "toml",
+        "json" => "json",
+        "yaml" | "yml" => "yaml",
+        "md" => "markdown",
+        "sh" | "bash" => "bash",
+        "py" => "python",
+        "js" => "javascript",
+        "ts" => "typescript",
+        "go" => "go",
+        "java" => "java",
+        "html" => "html",
+        "css" => "css",
+        "sql" => "sql",
+        "xml" => "xml",
+        "dag" => "dag",
+        "txt" => "text",
+        "lock" => "text",
+        "gitignore" => "gitignore",
+        "Makefile" | "makefile" => "makefile",
+        _ => {
+            // Handle files like "Makefile" where the filename IS the type.
+            let filename = path.rsplit('/').next().unwrap_or(path);
+            match filename {
+                "Makefile" | "makefile" => "makefile",
+                "Dockerfile" => "dockerfile",
+                _ => "",
+            }
+        }
     }
 }
 
@@ -483,20 +629,21 @@ mod tests {
     }
 
     #[test]
-    fn render_tree_sorted() {
+    fn render_tree_produces_tree_characters() {
         let inputs = HashMap::from([(
             "paths".to_string(),
             Value::str_list(vec![
                 "src/main.rs".to_string(),
                 "Cargo.toml".to_string(),
-                "README.md".to_string(),
             ]),
         )]);
         let out = RenderTreeOp.execute(inputs).unwrap();
-        assert_eq!(
-            out["return"],
-            Value::Str("Cargo.toml\nREADME.md\nsrc/main.rs".to_string())
-        );
+        let rendered = out["return"].as_str().unwrap();
+        assert!(rendered.starts_with("```\n."));
+        assert!(rendered.ends_with("```"));
+        assert!(rendered.contains("Cargo.toml"));
+        assert!(rendered.contains("src"));
+        assert!(rendered.contains("main.rs"));
     }
 
     #[test]
@@ -527,14 +674,23 @@ mod tests {
                     "Cargo.toml".to_string(),
                 ]),
             ),
+            (
+                "file_contents".to_string(),
+                Value::str_list(vec![
+                    "fn main() {}".to_string(),
+                    "[package]\nname = \"test\"".to_string(),
+                ]),
+            ),
         ]);
         let out = BuildSnapshotContentOp.execute(inputs).unwrap();
         let rendered = out["return"].as_str().unwrap();
         assert!(rendered.contains("# Workspace Snapshot"));
-        assert!(rendered.contains("Branch: main"));
+        assert!(rendered.contains("Branch: `main`"));
         assert!(rendered.contains("## Directory Tree"));
-        // Files should be sorted
-        assert!(rendered.contains("Cargo.toml\nsrc/main.rs"));
+        assert!(rendered.contains("## File Contents"));
+        // File contents should appear as fenced code blocks
+        assert!(rendered.contains("```rust\nfn main() {}\n```"));
+        assert!(rendered.contains("```toml\n[package]\nname = \"test\"\n```"));
     }
 
     #[test]
@@ -557,8 +713,7 @@ mod tests {
     }
 
     #[test]
-    fn build_snapshot_content_sorts_files() {
-        // Verify files are sorted in the output.
+    fn build_snapshot_content_sorts_files_in_tree() {
         let inputs = HashMap::from([
             ("branch".to_string(), Value::Str("feature".to_string())),
             (
@@ -574,10 +729,90 @@ mod tests {
         let rendered = out["return"].as_str().unwrap();
 
         assert!(rendered.contains("# Workspace Snapshot"));
-        assert!(rendered.contains("Branch: feature"));
-        // Files sorted: Cargo.toml < README.md < src/lib.rs
+        assert!(rendered.contains("Branch: `feature`"));
         let tree_start = rendered.find("## Directory Tree").unwrap();
         let tree_section = &rendered[tree_start..];
-        assert!(tree_section.contains("Cargo.toml\nREADME.md\nsrc/lib.rs"));
+        // Tree contains sorted entries with tree characters
+        assert!(tree_section.contains("Cargo.toml"));
+        assert!(tree_section.contains("README.md"));
+        assert!(tree_section.contains("lib.rs"));
+    }
+
+    #[test]
+    fn render_path_tree_basic() {
+        let tree = render_path_tree(&["src/main.rs", "Cargo.toml", "src/lib.rs"]);
+        assert!(tree.starts_with("```\n."));
+        assert!(tree.ends_with("```"));
+        // Tree should contain all entries
+        assert!(tree.contains("Cargo.toml"));
+        assert!(tree.contains("main.rs"));
+        assert!(tree.contains("lib.rs"));
+        // Should have tree characters
+        assert!(tree.contains("├──") || tree.contains("└──"));
+    }
+
+    #[test]
+    fn render_path_tree_nested() {
+        let tree = render_path_tree(&["a/b/c.rs", "a/d.rs", "e.rs"]);
+        assert!(tree.contains("a"));
+        assert!(tree.contains("c.rs"));
+        assert!(tree.contains("d.rs"));
+        assert!(tree.contains("e.rs"));
+        // Nested items should have indent
+        assert!(tree.contains("│"));
+    }
+
+    #[test]
+    fn lang_for_path_common_extensions() {
+        assert_eq!(lang_for_path("src/main.rs"), "rust");
+        assert_eq!(lang_for_path("Cargo.toml"), "toml");
+        assert_eq!(lang_for_path("package.json"), "json");
+        assert_eq!(lang_for_path("style.css"), "css");
+        assert_eq!(lang_for_path("script.py"), "python");
+        assert_eq!(lang_for_path("README.md"), "markdown");
+        assert_eq!(lang_for_path("config.yaml"), "yaml");
+        assert_eq!(lang_for_path("query.sql"), "sql");
+        assert_eq!(lang_for_path("rules.dag"), "dag");
+    }
+
+    #[test]
+    fn build_snapshot_with_file_contents() {
+        let inputs = HashMap::from([
+            ("branch".to_string(), Value::Str("main".to_string())),
+            (
+                "files".to_string(),
+                Value::str_list(vec!["lib.rs".to_string(), "Cargo.toml".to_string()]),
+            ),
+            (
+                "file_contents".to_string(),
+                Value::str_list(vec![
+                    "pub fn hello() {}".to_string(),
+                    "[package]\nname = \"test\"".to_string(),
+                ]),
+            ),
+        ]);
+        let out = BuildSnapshotContentOp.execute(inputs).unwrap();
+        let rendered = out["return"].as_str().unwrap();
+        assert!(rendered.contains("## File Contents"));
+        assert!(rendered.contains("### lib.rs"));
+        assert!(rendered.contains("```rust\npub fn hello() {}\n```"));
+        assert!(rendered.contains("### Cargo.toml"));
+        assert!(rendered.contains("```toml\n[package]\nname = \"test\"\n```"));
+    }
+
+    #[test]
+    fn build_snapshot_without_file_contents() {
+        let inputs = HashMap::from([
+            ("branch".to_string(), Value::Str("main".to_string())),
+            (
+                "files".to_string(),
+                Value::str_list(vec!["file.rs".to_string()]),
+            ),
+        ]);
+        let out = BuildSnapshotContentOp.execute(inputs).unwrap();
+        let rendered = out["return"].as_str().unwrap();
+        assert!(rendered.contains("## Directory Tree"));
+        // No File Contents section when file_contents is absent
+        assert!(!rendered.contains("## File Contents"));
     }
 }

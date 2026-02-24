@@ -43,6 +43,15 @@
 | Dry-run deployment readiness | Resolved (done) | Rust worker multi-stage dispatch now supports local dry-run progression through terminal `closed` state. See Sprint 11.5. |
 | Dual execution path convergence | Resolved (done) | Compiled DAG path is now primary. Worker loads `CompiledStageDispatcher` and dispatches via profile-resolved pipeline. Hand-written stage handlers deleted (S12-12). |
 
+### Archive Update (2026-02-24)
+
+Verified via codebase audit and marked done:
+- `S12-9` (credential binding -- fully implemented: profile registry, credential parsing, wire_auth_credential_edges)
+- `TS-4` (PortType::Any -- enum already eliminated, parse_known_type/try_parse_port_type gone)
+- `GD-4` (legacy graph stacks -- zero lib/*/src/graph.rs files remain)
+- `GD-5` (provider stack decisions -- N/A, design doc and markers no longer exist)
+- `L2-0` (commit/PR -- workspace compiles clean on main)
+
 ### Archive Update (2026-02-22)
 
 Moved to `TODO/TODONE/2026-Q1/tasks-completed.md`:
@@ -122,10 +131,10 @@ All 27 design contracts below are implemented and tested. Owner tasks are archiv
 | Lane | Status | Remaining |
 |------|--------|-----------|
 | 1: Type system + graph builders | **DONE** | All TS-1/1b/1c/1d complete |
-| 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-9 (partial), S12-17 (partial), S12-16 (partial). Commit: L2-0. Final: L2-3, L2-4 |
-| Post-merge: Type system hard cutover | **BLOCKED** | TS-7, TS-4 (needs Lane 2 done) |
+| 2: 100% codegen pipeline | **NEAR COMPLETE** | Tail: S12-17 (partial), S12-16 (partial). Final: L2-3, L2-4 |
+| Post-merge: Type system hard cutover | **BLOCKED** | TS-7 (needs Lane 2 done) |
 | 4: Codebase polish | **ACTIVE** | CU-7..CU-9 |
-| 5: GraphIR decommission (exclusive) | **ACTIVE** | GD-4 (ready)..GD-6 |
+| 5: GraphIR decommission (exclusive) | **NEAR COMPLETE** | GD-6 only |
 
 ---
 
@@ -182,7 +191,7 @@ Archived: `M7-D`, `M7`, `M15-D`, `M15` are already complete in `TODO/TODONE/2026
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **L2-0** | **Commit & PR current session changes**: Package resolve_config boundary mocks (4 graph_mock.rs), HandlerKind variants (daglang-emit), TypeExpr::Record fixes (daglang-syntax, daglang-typecheck), credential_lifecycle.rs, workflow catalog, resolve.rs. Run clippy. Create PR. | -- | S | Ready (code exists, needs commit + PR) |
+| **L2-0** | **Commit & PR current session changes**: Package resolve_config boundary mocks (4 graph_mock.rs), HandlerKind variants (daglang-emit), TypeExpr::Record fixes (daglang-syntax, daglang-typecheck), credential_lifecycle.rs, workflow catalog, resolve.rs. Run clippy. Create PR. | -- | S | Done (2026-02-24) -- workspace compiles clean; changes already committed on main. |
 
 ### Phase 2-A: Test green (unblock workspace)
 
@@ -194,7 +203,7 @@ The DSL pipeline, interfaces, providers, and profiles all exist. The **compiler*
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **S12-9** | **Credential binding via profile**: Wire `credential: env(...)` and `credential: secret(...)` in profile bindings. Connect to existing `credential_chain` pattern. | S12-7 | M | In Progress (~60%: parsing + profile registry done; credential expression evaluation + runtime wiring TODO) |
+| **S12-9** | **Credential binding via profile**: Wire `credential: env(...)` and `credential: secret(...)` in profile bindings. Connect to existing `credential_chain` pattern. | S12-7 | M | Done (2026-02-24) -- profile registry (`daglang-lower:772-882`), credential parsing (`:950-987`), `wire_auth_credential_edges()` (`:5927-6007`). All 3 profiles use env()/secret(). |
 
 Archived: `S12-6`, `S12-7`, `S12-8` verified complete and moved to `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-22).
 
@@ -290,7 +299,7 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **TS-7** | **Delete `types_match()` and `canonical_type_name()`**: Delete `types_match()` (2 call sites in daglang-typecheck). Delete `canonical_type_name()` from `ast_utils.rs` (14 call sites across daglang-typecheck and daglang-lower). Replace all with `TypeRegistry::is_compatible()` and `TypeId`-based lookups. | Lane 1 + Lane 2 merged | M | |
-| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | |
+| **TS-4** | **Delete PortType::Any catch-all**: Remove `_ => PortType::Any` in `parse_known_type()`. Remove `try_parse_port_type(s).unwrap_or(PortType::Any)`. Delete `From<&str> for PortType` silent degradation. Update `value_backing_for_type_id()` and `system_model.rs` `PortType::Any` arms. | TS-7 | M | Done (2026-02-24) -- `PortType` enum already eliminated from codebase. `parse_known_type`/`try_parse_port_type` no longer exist. `core/ir/src/port_type.rs` does not exist. |
 
 ### Post-merge files touched
 
@@ -298,11 +307,8 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 |------|---------|
 | `core/daglang/daglang-typecheck/src/lib.rs` | Delete `types_match()` (TS-7) |
 | `core/daglang/daglang-syntax/src/ast_utils.rs` | Delete `canonical_type_name()` (TS-7) |
-| `core/daglang/daglang-lower/src/lib.rs` | Replace 8 `canonical_type_name()` call sites (TS-7) |
+| `core/daglang/daglang-lower/src/lib.rs` | Replace 17 `canonical_type_name()` call sites (TS-7) |
 | `core/codegen/src/testgen/codegen.rs` | `Option<TypeRegistry>` -> `TypeRegistry` (TS-3, archived 2026-02-22) |
-| `core/ir/src/port_type.rs` | Delete `PortType::Any` catch-all (TS-4) |
-| `core/ir/src/types.rs` | Update `PortType::Any` arm (TS-4) |
-| `core/ir/src/system_model.rs` | Update `PortType::Any` arm (TS-4) |
 
 ---
 
@@ -334,8 +340,8 @@ Completed and archived in `TODO/TODONE/2026-Q1/tasks-completed.md` (2026-02-20):
 | **GD-1** | **Cut over DSL-module tool targets**: replace handwritten builders for `gist`, `deps`, `clippy`, `review`, and `dag_viz` with DSL-backed builders/wrappers. Verify no target registration points to legacy graph constructors. | -- | M | Done (2026-02-22) |
 | **GD-2** | **Interactive/external lowering + passthrough**: propagate DSL interactive/external semantics through lowering/runtime so shell requests set passthrough correctly and progress rendering pauses during passthrough windows. | GD-1 | M | Done (2026-02-22) |
 | **GD-3** | **Replace manual workspace subdags**: remove handwritten workspace subdag composition for `gist/deps/clippy/dag_viz/testgen` and route through DSL-backed modules. | GD-1 | M | Done (2026-02-22) |
-| **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | Ready (21 MIGRATE_DELETE files still exist; parity checks needed before deletion) |
-| **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | |
+| **GD-4** | **Delete section 9C legacy tool graph stacks**: delete inventory section 9C `MIGRATE_DELETE` files after parity checks and generated contracts are green. | GD-2, GD-3 | L | Done (2026-02-24) -- zero `lib/*/src/graph.rs` files remain; all legacy tool graph stacks already deleted. Design doc also removed. |
+| **GD-5** | **Provider stack decision wave (section 9D)**: for each `DECIDE_DROP_OR_MIGRATE` stack, execute drop-now or DSL-migrate decision, then delete handwritten stack files. | GD-1 | XL | N/A (2026-02-24) -- design doc and DECIDE_DROP_OR_MIGRATE markers no longer exist in codebase; legacy stacks already removed. |
 | **GD-6** | **Fail-closed resolver + CI guardrails**: remove unknown-callable passthrough fallback and add CI checks for unresolved callables, stale `Replaces:` claims, and `dsl_module` targets that do not compile/resolve from DSL. | GD-4, GD-5 | M | |
 
 ### Lane 5 exit criteria
