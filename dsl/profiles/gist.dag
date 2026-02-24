@@ -1,0 +1,36 @@
+// profiles/gist.dag -- Deployment profiles for gist upload credential flow.
+//
+// The credential chain in std/patterns.dag selects an auth strategy via
+// match runtime { GitHubActions => github_oidc(), LocalDev => local_auth() }.
+//
+// github_oidc() reads ACTIONS_ID_TOKEN_REQUEST_URL / _TOKEN via
+// shell.Env.Get and passes them as explicit data-flow inputs to
+// github.OIDC.GetToken.  When the env vars are absent (not on
+// GitHub Actions), the values propagate as Skipped and the transport
+// triplet is skipped by the compiler guard on the execute node.
+//
+// These profile stubs document the runtime contract per environment.
+
+module profiles.gist
+
+import std.types { CloudRuntime }
+
+// Local development -- OIDC unavailable.
+// credential_chain selects local_auth() which uses ADC / gcloud CLI.
+// github.OIDC transport triplet skips via Skipped propagation.
+profile local {
+}
+
+// Development -- same as local.
+profile dev {
+}
+
+// CI / GitHub Actions -- OIDC available via per-job env vars.
+// GH Actions injects ACTIONS_ID_TOKEN_REQUEST_URL and _TOKEN when
+// the workflow declares `permissions: { id-token: write }`.
+profile test {
+}
+
+// Production -- same as test (runs on GitHub Actions).
+profile prod {
+}
