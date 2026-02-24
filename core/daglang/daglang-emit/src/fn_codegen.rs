@@ -150,12 +150,26 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
             expr: Box::new(compile_expr(expr, ctx)),
         },
         ast::Expr::Record(name, fields) => {
+            let struct_name = name.clone().unwrap_or_default();
+            let opt_set = ctx.optional_fields.get(&struct_name);
             let ir_fields: Vec<(String, code_ir::Expr)> = fields
                 .iter()
-                .map(|(n, e)| (n.clone(), compile_expr(e, ctx)))
+                .map(|(n, e)| {
+                    let compiled = compile_expr(e, ctx);
+                    let is_opt = opt_set.map_or(false, |s| s.contains(n.as_str()));
+                    if is_opt && !is_none_expr(&compiled) {
+                        (n.clone(), code_ir::Expr::Call {
+                            func: Box::new(code_ir::Expr::Var("Some".to_string())),
+                            args: vec![compiled],
+                            obligation: None,
+                        })
+                    } else {
+                        (n.clone(), compiled)
+                    }
+                })
                 .collect();
             code_ir::Expr::Struct {
-                name: name.clone().unwrap_or_default(),
+                name: struct_name,
                 fields: ir_fields,
             }
         }
@@ -176,11 +190,15 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
         ast::Expr::StringInterp(parts) => compile_string_interp(parts, ctx),
         ast::Expr::For(binding, iter_expr, _passthrough, body) => {
             let result_var = fresh("for_result");
+            let iter = make_owned_iter(compile_expr(iter_expr, ctx));
             code_ir::Expr::Block(vec![
-                code_ir::Stmt::let_mut(&result_var, code_ir::Expr::Array(vec![])),
+                code_ir::Stmt::let_mut(&result_var, code_ir::Expr::MacroCall {
+                    name: "vec".to_string(),
+                    args: vec![],
+                }),
                 code_ir::Stmt::For {
                     binding: binding.clone(),
-                    iter: compile_expr(iter_expr, ctx),
+                    iter,
                     body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                         receiver: Box::new(code_ir::Expr::Var(result_var.clone())),
                         method: "push".to_string(),
@@ -431,7 +449,7 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
                 code_ir::Stmt::let_mut(&result, code_ir::Expr::BoolLit(false)),
                 code_ir::Stmt::For {
                     binding: elem.clone(),
-                    iter: collection,
+                    iter: make_owned_iter(collection),
                     body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
                         cond: Box::new(code_ir::Expr::BinOp {
                             left: Box::new(code_ir::Expr::Var(elem)),
@@ -493,7 +511,7 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
                 code_ir::Stmt::let_mut(&result, code_ir::Expr::IntLit(0)),
                 code_ir::Stmt::For {
                     binding: elem.clone(),
-                    iter: collection,
+                    iter: make_owned_iter(collection),
                     body: vec![code_ir::Stmt::Assign {
                         dest: code_ir::Expr::Var(result.clone()),
                         value: code_ir::Expr::BinOp {
@@ -563,7 +581,7 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
                 code_ir::Stmt::let_mut(&first, code_ir::Expr::BoolLit(true)),
                 code_ir::Stmt::For {
                     binding: elem.clone(),
-                    iter: collection,
+                    iter: make_owned_iter(collection),
                     body: vec![
                         code_ir::Stmt::Expr(code_ir::Expr::If {
                             cond: Box::new(code_ir::Expr::UnaryOp {
@@ -653,7 +671,7 @@ fn compile_any_pipe(collection: &code_ir::Expr, predicate: Option<&ast::Expr>, c
         code_ir::Stmt::let_mut(&result, code_ir::Expr::BoolLit(false)),
         code_ir::Stmt::For {
             binding: elem,
-            iter: collection.clone(),
+            iter: make_owned_iter(collection.clone()),
             body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
                 cond: Box::new(cond),
                 then_body: vec![
@@ -692,10 +710,13 @@ fn compile_map_pipe(collection: &code_ir::Expr, mapper: Option<&ast::Expr>, ctx:
     };
 
     code_ir::Expr::Block(vec![
-        code_ir::Stmt::let_mut(&result, code_ir::Expr::Array(vec![])),
+        code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall {
+            name: "vec".to_string(),
+            args: vec![],
+        }),
         code_ir::Stmt::For {
             binding: elem,
-            iter: collection.clone(),
+            iter: make_owned_iter(collection.clone()),
             body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
                 receiver: Box::new(code_ir::Expr::Var(result.clone())),
                 method: "push".to_string(),
@@ -751,7 +772,7 @@ fn compile_fold_pipe(
         code_ir::Stmt::let_mut(&acc, init_expr),
         code_ir::Stmt::For {
             binding: elem,
-            iter: collection.clone(),
+            iter: make_owned_iter(collection.clone()),
             body: vec![code_ir::Stmt::Assign {
                 dest: code_ir::Expr::Var(acc.clone()),
                 value: body_expr,
@@ -907,6 +928,87 @@ fn substitute_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) -> code
     }
 }
 
+// ---------------------------------------------------------------------------
+// Helpers — static iteration, string concat, Option wrapping
+// ---------------------------------------------------------------------------
+
+/// When a compiled collection expression is a `.clone()` call on a static
+/// data table, replace `STATIC.clone()` with `STATIC.iter().cloned()` so
+/// the for-loop iterates by value.  For non-static collections, returns
+/// the expression unchanged.
+fn make_owned_iter(collection: code_ir::Expr) -> code_ir::Expr {
+    match &collection {
+        code_ir::Expr::MethodCall { receiver, method, args }
+            if method == "clone" && args.is_empty() =>
+        {
+            code_ir::Expr::MethodCall {
+                receiver: Box::new(code_ir::Expr::MethodCall {
+                    receiver: receiver.clone(),
+                    method: "iter".to_string(),
+                    args: vec![],
+                }),
+                method: "cloned".to_string(),
+                args: vec![],
+            }
+        }
+        _ => collection,
+    }
+}
+
+fn is_none_expr(expr: &code_ir::Expr) -> bool {
+    matches!(expr, code_ir::Expr::Var(name) if name == "None")
+}
+
+/// Check if any leaf of a `+` chain is a string literal.
+fn contains_string_literal(expr: &ast::Expr) -> bool {
+    match expr {
+        ast::Expr::Literal(ast::Literal::String(_)) => true,
+        ast::Expr::BinOp(left, ast::BinOp::Add, right) => {
+            contains_string_literal(left) || contains_string_literal(right)
+        }
+        _ => false,
+    }
+}
+
+enum ConcatPart {
+    Lit(String),
+    Dyn(code_ir::Expr),
+}
+
+/// Flatten a chain of `a + " " + b + " "` into FormatStr parts.
+fn flatten_concat_parts(expr: &ast::Expr, parts: &mut Vec<ConcatPart>, ctx: &CompileContext) {
+    match expr {
+        ast::Expr::BinOp(left, ast::BinOp::Add, right) if contains_string_literal(expr) => {
+            flatten_concat_parts(left, parts, ctx);
+            flatten_concat_parts(right, parts, ctx);
+        }
+        ast::Expr::Literal(ast::Literal::String(s)) => {
+            parts.push(ConcatPart::Lit(s.clone()));
+        }
+        other => {
+            parts.push(ConcatPart::Dyn(compile_expr(other, ctx)));
+        }
+    }
+}
+
+fn compile_string_concat(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
+    let mut parts = Vec::new();
+    flatten_concat_parts(expr, &mut parts, ctx);
+
+    let mut template = String::new();
+    let mut args = Vec::new();
+    for part in parts {
+        match part {
+            ConcatPart::Lit(s) => template.push_str(&s),
+            ConcatPart::Dyn(e) => {
+                template.push_str("{}");
+                args.push(e);
+            }
+        }
+    }
+    code_ir::Expr::FormatStr { template, args }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -914,6 +1016,14 @@ mod tests {
 
     fn empty_ctx() -> CompileContext {
         CompileContext::new()
+    }
+
+    fn ctx_with_data(names: &[&str]) -> CompileContext {
+        let mut ctx = CompileContext::new();
+        for n in names {
+            ctx.data_names.insert(n.to_string());
+        }
+        ctx
     }
 
     #[test]
@@ -1140,11 +1250,23 @@ mod tests {
     }
 
     #[test]
-    fn compile_data_table_ident_uses_screaming_snake() {
+    fn compile_data_table_ident_uses_screaming_snake_with_clone() {
         reset_tmp_counter();
-        let mut ctx = CompileContext::new();
-        ctx.data_names.insert("zero_width_blocks".to_string());
+        let ctx = ctx_with_data(&["zero_width_blocks"]);
         let ir = compile_expr(&Expr::Ident("zero_width_blocks".into()), &ctx);
-        assert!(matches!(ir, code_ir::Expr::Var(ref n) if n == "ZERO_WIDTH_BLOCKS"));
+        match &ir {
+            code_ir::Expr::MethodCall { receiver, method, .. } => {
+                assert_eq!(method, "clone");
+                assert!(matches!(receiver.as_ref(), code_ir::Expr::Var(ref n) if n == "ZERO_WIDTH_BLOCKS"));
+            }
+            other => panic!("expected MethodCall(clone), got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compile_null_ident_becomes_none() {
+        reset_tmp_counter();
+        let ir = compile_expr(&Expr::Ident("null".into()), &empty_ctx());
+        assert!(matches!(ir, code_ir::Expr::Var(ref n) if n == "None"));
     }
 }
