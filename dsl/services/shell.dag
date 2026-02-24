@@ -87,6 +87,33 @@ service rustup.Component {
   }
 }
 
+service shell.Env {
+  operation Get {
+    input { name: NonEmptyStr }
+    output { value: String? }
+    @shell(["printenv", "{name}"])
+    @hermetic @readonly
+  }
+}
+
+service shell.OAuth2 {
+  operation RefreshToken {
+    input { refresh_token: Secret }
+    output { access_token: Secret, valid: Bool }
+    @rest(POST, "/token")
+    @hermetic
+  }
+}
+
+service shell.GCloud {
+  operation AuthPrintAccessToken {
+    input {}
+    output { access_token: Secret }
+    @shell(["gcloud", "auth", "print-access-token"])
+    @hermetic @readonly
+  }
+}
+
 service shell.Which {
   operation Check {
     input { command: NonEmptyStr }

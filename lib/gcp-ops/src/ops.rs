@@ -1143,29 +1143,6 @@ pub(crate) fn adc_file_path() -> String {
         .into_owned()
 }
 
-fn url_encode_component(input: &str) -> String {
-    const HEX: &[u8; 16] = b"0123456789ABCDEF";
-    let bytes = input.as_bytes();
-    let mut out = String::with_capacity(bytes.len());
-    for &b in bytes {
-        if is_unreserved_url_byte(b) {
-            out.push(b as char);
-        } else {
-            out.push('%');
-            out.push(HEX[(b >> 4) as usize] as char);
-            out.push(HEX[(b & 0x0f) as usize] as char);
-        }
-    }
-    out
-}
-
-fn is_unreserved_url_byte(b: u8) -> bool {
-    matches!(
-        b,
-        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~'
-    )
-}
-
 fn optional_secret_or_str(
     inputs: &HashMap<String, Value>,
     key: &str,

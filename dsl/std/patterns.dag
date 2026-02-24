@@ -29,6 +29,7 @@ import std.types {
 import services.gcp.secret_manager
 import services.gcp.iam
 import services.gcp.sts
+import services.shell
 
 // =====================================================================
 // Fundamental Steps

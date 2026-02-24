@@ -53,9 +53,7 @@ impl Executable for TransportOps {
                     return out.ok();
                 }
 
-                // Upstream prepare may emit Value::Skipped when a
-                // non-taken match branch has missing inputs.
-                if matches!(inputs.get("request"), Some(Value::Skipped) | None) {
+                if inputs.get("request").is_none() {
                     return OutputMap::new()
                         .value("response", Value::Skipped)
                         .ok();

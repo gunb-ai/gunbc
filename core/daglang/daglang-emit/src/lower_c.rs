@@ -515,8 +515,53 @@ fn lower_expr(expr: &Expr, config: &CConfig) -> CExpr {
                 lower_expr(&elems[0], config)
             }
         }
-        Expr::Match { .. } | Expr::Block(_) | Expr::RawCode(_) => {
-            CExpr::Var("/* unsupported expr */0".to_string())
+        Expr::Match { expr, arms } => {
+            // Lower match to nested if-else chain.
+            // match scrutinee { A => x, B => y, _ => z }
+            //   becomes: (scrutinee == A) ? x : (scrutinee == B) ? y : z
+            let scrutinee = lower_expr(expr, config);
+            let mut result = CExpr::IntLit(0);
+            for arm in arms.iter().rev() {
+                let arm_value = if arm.body.len() == 1 {
+                    match &arm.body[0] {
+                        Stmt::TailExpr(e) | Stmt::Return(e) => lower_expr(e, config),
+                        Stmt::Expr(e) => lower_expr(e, config),
+                        _ => CExpr::IntLit(0),
+                    }
+                } else {
+                    CExpr::IntLit(0)
+                };
+                if arm.pattern == "_" {
+                    result = arm_value;
+                } else {
+                    result = CExpr::Ternary {
+                        cond: Box::new(CExpr::BinOp {
+                            left: Box::new(scrutinee.clone()),
+                            op: "==".to_string(),
+                            right: Box::new(CExpr::Var(arm.pattern.clone())),
+                        }),
+                        then_expr: Box::new(arm_value),
+                        else_expr: Box::new(result),
+                    };
+                }
+            }
+            result
+        }
+        Expr::Block(stmts) => {
+            // Block expressions need a temp variable. For simple single-tail-expr
+            // blocks, inline the expression directly.
+            if stmts.len() == 1 {
+                match &stmts[0] {
+                    Stmt::TailExpr(e) | Stmt::Return(e) => return lower_expr(e, config),
+                    Stmt::Expr(e) => return lower_expr(e, config),
+                    _ => {}
+                }
+            }
+            // Complex blocks cannot be lowered to a C expression context.
+            CExpr::Var("/* block expr */0".to_string())
+        }
+        Expr::RawCode(code) => {
+            CExpr::Var(code.clone())
         }
     }
 }

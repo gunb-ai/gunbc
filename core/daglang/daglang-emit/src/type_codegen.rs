@@ -19,6 +19,8 @@ use daglang_syntax::ast::{DataDef, Expr, FnDef, Literal, TypeBody, TypeDef, Type
 use daglang_syntax::span::Spanned;
 use gunbc_ir::code_ir::{self, EnumDef, SourceFile, StructDef};
 
+use crate::fn_codegen;
+
 /// Default derives applied to every generated type.
 const DEFAULT_DERIVES: &[&str] = &["Debug", "Clone", "PartialEq", "Eq"];
 
@@ -425,23 +427,45 @@ fn to_screaming_snake(name: &str) -> String {
 // FnDef → Rust function signature
 // ---------------------------------------------------------------------------
 
-/// Convert a DSL `FnDef` to a Rust function signature (body as `todo!()`).
-pub fn fndef_to_code_ir(fd: &FnDef) -> Vec<code_ir::Item> {
-    let params: Vec<String> = fd
+/// Convert a DSL `FnDef` to an abstract IR function definition.
+///
+/// If the function body contains statements, they are compiled to abstract IR
+/// via `fn_codegen::compile_fn_body`. This produces target-agnostic IR that
+/// flows through all backends (Rust, Go, C, MIPS).
+///
+/// `data_names` provides the set of `data` definition names visible in the
+/// module so that identifier references can be mapped to SCREAMING_SNAKE_CASE.
+pub fn fndef_to_code_ir(fd: &FnDef, data_names: &std::collections::HashSet<String>) -> Vec<code_ir::Item> {
+    let params: Vec<(String, String)> = fd
         .params
         .iter()
-        .map(|p| format!("{}: {}", p.name, type_expr_to_rust(&p.ty)))
+        .map(|p| (p.name.clone(), type_expr_to_rust(&p.ty)))
         .collect();
     let ret = type_expr_to_rust(&fd.return_type);
-    vec![code_ir::Item::Raw(format!(
-        "pub fn {}({}) -> {} {{\n    todo!(\"generated from DSL\")\n}}",
-        to_snake_case(&fd.name),
-        params.join(", "),
-        ret,
-    ))]
+
+    let body = if fd.body.stmts.is_empty() {
+        vec![code_ir::Stmt::Expr(code_ir::Expr::MacroCall {
+            name: "todo".to_string(),
+            args: vec![code_ir::Expr::Str("generated from DSL".to_string())],
+        })]
+    } else {
+        fn_codegen::reset_tmp_counter();
+        let ctx = fn_codegen::CompileContext { data_names: data_names.clone() };
+        fn_codegen::compile_fn_body(&fd.body, &ctx)
+    };
+
+    vec![code_ir::Item::Fn(code_ir::FnDef {
+        name: to_snake_case(&fd.name),
+        is_pub: true,
+        params,
+        return_type: Some(ret),
+        body,
+        doc: vec![],
+        attributes: vec![],
+    })]
 }
 
-fn to_snake_case(name: &str) -> String {
+pub fn to_snake_case(name: &str) -> String {
     let mut result = String::new();
     for (i, c) in name.chars().enumerate() {
         if c.is_uppercase() && i > 0 {
@@ -544,6 +568,12 @@ pub fn typedefs_to_source_file(
     items: &[Spanned<daglang_syntax::ast::Item>],
     module_doc: &str,
 ) -> SourceFile {
+    let mut data_names = std::collections::HashSet::new();
+    for item in items {
+        if let daglang_syntax::ast::Item::DataDef(dd) = &item.node {
+            data_names.insert(dd.name.clone());
+        }
+    }
     let mut code_items = Vec::new();
     for item in items {
         match &item.node {
@@ -554,7 +584,7 @@ pub fn typedefs_to_source_file(
                 code_items.extend(datadef_to_code_ir(dd));
             }
             daglang_syntax::ast::Item::FnDef(fd) => {
-                code_items.extend(fndef_to_code_ir(fd));
+                code_items.extend(fndef_to_code_ir(fd, &data_names));
             }
             _ => {}
         }
@@ -643,8 +673,12 @@ pub fn generate_types_for_modules(
                 daglang_syntax::ast::Item::DataDef(dd) => {
                     all_items.extend(datadef_to_code_ir_with(dd, &type_defs));
                 }
-                daglang_syntax::ast::Item::FnDef(_) => {
-                    // fn stubs replaced by impl blocks from data tables (pass 3)
+                daglang_syntax::ast::Item::FnDef(fd) => {
+                    let mut fn_data_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    for dd in &data_defs {
+                        fn_data_names.insert(dd.name.clone());
+                    }
+                    all_items.extend(fndef_to_code_ir(fd, &fn_data_names));
                 }
                 _ => {}
             }
@@ -886,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    fn fndef_generates_function_signature() {
+    fn fndef_generates_function_definition() {
         let fd = FnDef {
             name: "resolve_symbol".to_string(),
             type_params: vec![],
@@ -900,11 +934,50 @@ mod tests {
         let items = fndef_to_code_ir(&fd);
         assert_eq!(items.len(), 1);
         match &items[0] {
-            code_ir::Item::Raw(s) => {
-                assert!(s.contains("pub fn resolve_symbol(id: SymbolId, tier: Tier) -> String"), "got: {s}");
-                assert!(s.contains("todo!"), "should contain todo body: {s}");
+            code_ir::Item::Fn(f) => {
+                assert_eq!(f.name, "resolve_symbol");
+                assert!(f.is_pub);
+                assert_eq!(f.params, vec![
+                    ("id".to_string(), "SymbolId".to_string()),
+                    ("tier".to_string(), "Tier".to_string()),
+                ]);
+                assert_eq!(f.return_type.as_deref(), Some("String"));
             }
-            _ => panic!("expected Raw"),
+            other => panic!("expected Fn, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fndef_with_body_generates_compiled_ir() {
+        let fd = FnDef {
+            name: "add_one".to_string(),
+            type_params: vec![],
+            params: vec![
+                Param { name: "x".into(), ty: TypeExpr::Named("Int".into()), default: None },
+            ],
+            return_type: TypeExpr::Named("Int".into()),
+            body: FnBody {
+                stmts: vec![
+                    daglang_syntax::ast::Stmt::Expr(
+                        Expr::BinOp(
+                            Box::new(Expr::Ident("x".into())),
+                            daglang_syntax::ast::BinOp::Add,
+                            Box::new(Expr::Literal(Literal::Int(1))),
+                        ),
+                    ),
+                ],
+                lossy: false,
+            },
+        };
+        let items = fndef_to_code_ir(&fd);
+        assert_eq!(items.len(), 1);
+        match &items[0] {
+            code_ir::Item::Fn(f) => {
+                assert_eq!(f.name, "add_one");
+                assert_eq!(f.body.len(), 1);
+                assert!(matches!(f.body[0], code_ir::Stmt::TailExpr(code_ir::Expr::BinOp { .. })));
+            }
+            other => panic!("expected Fn, got: {other:?}"),
         }
     }
 

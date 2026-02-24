@@ -61,6 +61,9 @@ pub mod test_mock_emit;
 // Wave 8: TypeDef → Rust type codegen (struct/enum generation from DSL types).
 pub mod type_codegen;
 
+// Wave 9: DSL FnBody → abstract IR compiler (function body generation).
+pub mod fn_codegen;
+
 #[cfg(test)]
 mod backend_harness;
 
