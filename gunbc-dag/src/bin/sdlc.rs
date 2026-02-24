@@ -972,8 +972,9 @@ fn run_worker(
         preflight.worker_count.map(|count| count as usize)
     };
 
+    let agent_adapter = select_agent_adapter(&compiled_stage_dispatcher.pipeline_param_defaults);
+
     if !dry_run {
-        let poll_adapter = StubAgentAdapter::new("sdlc/polled", "stub-polled");
         let poll_candidates = intake_keys
             .iter()
             .filter_map(|intake_key| {
@@ -987,7 +988,7 @@ fn run_worker(
             })
             .collect::<Vec<_>>();
         for (intake_key, handle) in poll_candidates {
-            let status = poll_adapter
+            let status = agent_adapter
                 .poll_status(&handle)
                 .map_err(|error| format!("agent poll failed for intake `{intake_key}`: {error}"))?;
             update_agent_status(&mut agent_ledger, &intake_key, status.clone(), now)?;
@@ -1221,6 +1222,7 @@ fn run_worker(
                                     record,
                                     &artifact_ledger,
                                     &mut agent_ledger,
+                                    agent_adapter.as_ref(),
                                     now,
                                 )? {
                                     agent_spawns.push(spawn);
@@ -1780,7 +1782,8 @@ fn run_agent_spawn(intake_key: Option<&str>, dry_run: bool) -> Result<(), String
 
     let now = epoch_millis();
     let mut agent_ledger = load_agent_ledger(&agent_ledger_path)?;
-    let (handle, status) = spawn_agent_for_spec(intake_key, &spec, &mut agent_ledger, now)?;
+    let adapter = select_agent_adapter(&BTreeMap::new());
+    let (handle, status) = spawn_agent_for_spec(intake_key, &spec, &mut agent_ledger, adapter.as_ref(), now)?;
     save_agent_ledger(&agent_ledger_path, &agent_ledger)?;
 
     println!(
@@ -1847,9 +1850,9 @@ fn spawn_agent_for_spec(
     intake_key: &str,
     spec: &HandoffSpec,
     agent_ledger: &mut AgentLedger,
+    adapter: &dyn AgentAdapter,
     now_epoch_ms: u128,
 ) -> Result<(gunbc_ir::transport::agent::AgentHandle, AgentStatus), String> {
-    let adapter = StubAgentAdapter::new(&spec.target_branch, "0000000");
     let handle = adapter
         .spawn(spec)
         .map_err(|e| format!("agent spawn failed for intake `{intake_key}`: {e}"))?;
@@ -1871,6 +1874,7 @@ fn ensure_agent_spawn_for_accepted_transition(
     record: &IntakeRecord,
     artifact_ledger: &ArtifactLedger,
     agent_ledger: &mut AgentLedger,
+    adapter: &dyn AgentAdapter,
     now_epoch_ms: u128,
 ) -> Result<Option<serde_json::Value>, String> {
     if record.stage != IssueLifecycleStage::Accepted {
@@ -1880,7 +1884,7 @@ fn ensure_agent_spawn_for_accepted_transition(
         return Ok(None);
     }
     let spec = build_agent_handoff_spec(intake_key, record, artifact_ledger)?;
-    let (handle, status) = spawn_agent_for_spec(intake_key, &spec, agent_ledger, now_epoch_ms)?;
+    let (handle, status) = spawn_agent_for_spec(intake_key, &spec, agent_ledger, adapter, now_epoch_ms)?;
     Ok(Some(json!({
         "intake_key": intake_key,
         "provider": handle.provider,
@@ -3049,6 +3053,8 @@ struct StageDispatchDecision {
 struct CompiledStageDispatcher {
     dag: Dag<DynOp>,
     stage_order: Vec<IssueLifecycleStage>,
+    /// Default values from pipeline `param` declarations in `dsl/pipelines/sdlc.dag`.
+    pipeline_param_defaults: BTreeMap<String, String>,
 }
 
 struct CompiledValidationDispatcher {
@@ -3133,14 +3139,24 @@ impl CompiledStageDispatcher {
         runtime_params: &BTreeMap<String, Value>,
     ) -> Result<StageDispatchDecision, String> {
         let callable_name = stage_dispatch_callable_name(record.stage);
-        let default_owner = detect_repo_owner().unwrap_or_else(|| "unknown".to_string());
-        let default_repo = detect_repo_name().unwrap_or_else(|| "unknown".to_string());
+        // Seed defaults from pipeline param declarations, then layer runtime overrides.
         let mut callable_inputs = BTreeMap::new();
+        for (name, default_val) in &self.pipeline_param_defaults {
+            callable_inputs.insert(name.clone(), Value::Str(default_val.clone()));
+        }
+        // Built-in context values (always injected).
         callable_inputs.insert("run_key".to_string(), Value::Str(record.run_key.clone()));
         callable_inputs.insert("worker_id".to_string(), Value::Str(worker_id.to_string()));
         callable_inputs.insert("issue_id".to_string(), Value::Int(issue_id as i64));
-        callable_inputs.insert("owner".to_string(), Value::Str(default_owner));
-        callable_inputs.insert("repo".to_string(), Value::Str(default_repo));
+        if !callable_inputs.contains_key("owner") {
+            let default_owner = detect_repo_owner().unwrap_or_else(|| "unknown".to_string());
+            callable_inputs.insert("owner".to_string(), Value::Str(default_owner));
+        }
+        if !callable_inputs.contains_key("repo") {
+            let default_repo = detect_repo_name().unwrap_or_else(|| "unknown".to_string());
+            callable_inputs.insert("repo".to_string(), Value::Str(default_repo));
+        }
+        // Explicit --param overrides take highest priority.
         for (key, value) in runtime_params {
             callable_inputs.insert(key.clone(), value.clone());
         }
@@ -3495,7 +3511,54 @@ fn compile_worker_stage_dispatch_dag_with_stage_order(
     })?;
     let dag = resolve_lowered_dag(&output.lowered_dag)
         .map_err(|error| format!("failed to resolve compiled stage dispatcher DAG: {error}"))?;
-    Ok(CompiledStageDispatcher { dag, stage_order })
+
+    // Load pipeline param defaults from dsl/pipelines/sdlc.dag.
+    let pipeline_param_defaults = load_pipeline_param_defaults(&dsl_root);
+
+    Ok(CompiledStageDispatcher {
+        dag,
+        stage_order,
+        pipeline_param_defaults,
+    })
+}
+
+/// Load pipeline `param` defaults from `dsl/pipelines/sdlc.dag`.
+/// Returns empty map on failure (non-fatal — defaults will fall back to detect_repo_*).
+fn load_pipeline_param_defaults(dsl_root: &std::path::Path) -> BTreeMap<String, String> {
+    let pipeline_file = dsl_root.join("pipelines/sdlc.dag");
+    if !pipeline_file.exists() {
+        return BTreeMap::new();
+    }
+    let context = DriverContext {
+        roots: vec![dsl_root.to_path_buf()],
+        target_file: Some(pipeline_file),
+    };
+    match daglang_driver::load_pipeline_params(&context) {
+        Ok(params) => params
+            .into_iter()
+            .filter_map(|p| p.default_value.map(|v| (p.name, v)))
+            .collect(),
+        Err(_) => BTreeMap::new(),
+    }
+}
+
+/// Select the agent adapter for the current worker sweep.
+///
+/// Pipeline params `agent_model` and `agent_timeout` are available for future
+/// adapter selection (e.g. CodexAgentAdapter vs LocalAgentAdapter). For now,
+/// only StubAgentAdapter exists — a real adapter will be wired here when available.
+fn select_agent_adapter(
+    pipeline_params: &BTreeMap<String, String>,
+) -> Box<dyn AgentAdapter> {
+    let _agent_model = pipeline_params
+        .get("agent_model")
+        .map(String::as_str)
+        .unwrap_or("o4-mini");
+    let _agent_timeout = pipeline_params
+        .get("agent_timeout")
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(600);
+    Box::new(StubAgentAdapter::new("sdlc/agent", "0000000"))
 }
 
 struct StageDispatchRuntime<'a> {

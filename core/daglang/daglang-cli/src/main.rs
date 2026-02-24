@@ -97,6 +97,7 @@ struct RunArgs {
     input_path: String,
     output_path: String,
     mode: RunMode,
+    params: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -736,6 +737,7 @@ pub(crate) fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
     let mut output_path = "Makefile".to_string();
     let mut has_output = false;
     let mut input_path: Option<String> = None;
+    let mut params = std::collections::BTreeMap::new();
     let mut i = 2usize;
 
     while i < args.len() {
@@ -789,6 +791,25 @@ pub(crate) fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
             i += 1;
             continue;
         }
+        if token == "--param" {
+            let value = args
+                .get(i + 1)
+                .ok_or_else(|| "--param requires KEY=VALUE".to_string())?;
+            let (key, val) = value
+                .split_once('=')
+                .ok_or_else(|| format!("--param value must be KEY=VALUE, got `{value}`"))?;
+            params.insert(key.to_string(), val.to_string());
+            i += 2;
+            continue;
+        }
+        if let Some(kv) = token.strip_prefix("--param=") {
+            let (key, val) = kv
+                .split_once('=')
+                .ok_or_else(|| format!("--param value must be KEY=VALUE, got `{kv}`"))?;
+            params.insert(key.to_string(), val.to_string());
+            i += 1;
+            continue;
+        }
         if token.starts_with("--") {
             return Err(format!("unknown flag `{token}`"));
         }
@@ -814,6 +835,7 @@ pub(crate) fn parse_run_args(args: &[String]) -> Result<RunArgs, String> {
         input_path,
         output_path,
         mode,
+        params,
     })
 }
 

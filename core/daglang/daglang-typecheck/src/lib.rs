@@ -29,7 +29,7 @@ use daglang_syntax::ast::{
     TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
-    canonical_type_name, resource_type_name, service_call_lookup_keys,
+    resource_type_name, service_call_lookup_keys,
     should_track_call_name as should_validate_call_name, type_expr_to_string, walk_stmts,
 };
 
@@ -2270,7 +2270,9 @@ fn infer_expr_type_for_expected_named_record(
             compatible = false;
             continue;
         };
-        if !types_match(expected_field_ty, &inferred_name) {
+        if !gunbc_ir::type_registry::TypeRegistry::with_core_types()
+            .is_compatible(&normalize_type_id(&inferred_name), &normalize_type_id(expected_field_ty))
+        {
             eprintln!("[DEBUG field_mismatch] expected_type={expected_type:?} field={name:?} expected_field_ty={expected_field_ty:?} inferred={inferred_name:?}");
             errors.push(TypeError::TypeMismatch {
                 expected: expected_field_ty.clone(),
@@ -2409,7 +2411,7 @@ fn infer_expr_type(
                 daglang_syntax::ast::BinOp::NullCoalesce => lhs_ty,
                 _ => match (lhs_ty, rhs_ty) {
                     (ValueType::Named(lhs), ValueType::Named(rhs))
-                        if canonical_type_name(&lhs) == canonical_type_name(&rhs) =>
+                        if strip_generic_params(&lhs) == strip_generic_params(&rhs) =>
                     {
                         ValueType::Named(lhs)
                     }
@@ -2579,7 +2581,9 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     let Some(got) = inferred.display_name() else {
         return Vec::new();
     };
-    if !types_match(expected, &got) {
+    if !gunbc_ir::type_registry::TypeRegistry::with_core_types()
+        .is_compatible(&normalize_type_id(&got), &normalize_type_id(expected))
+    {
         eprintln!("[DEBUG type_mismatch] expected={expected:?} got={got:?} inferred={inferred:?} backtrace:");
         // Print a short backtrace to identify call site
         let bt = std::backtrace::Backtrace::force_capture();
@@ -2596,37 +2600,24 @@ fn push_type_mismatch_if_needed(expected: &str, inferred: &ValueType) -> Vec<Typ
     }
 }
 
-/// Check whether `got` is compatible with `expected` using the TypeRegistry.
-fn types_match(expected: &str, got: &str) -> bool {
-    if expected == got {
-        return true;
-    }
-    // Unparameterized generic base matches any parameterized version.
-    // Builtin operators (map, filter, append, etc.) infer `List` without
-    // propagating generic parameters; accept `List` where `List<T>` is expected.
-    if let Some(base) = expected.split('<').next() {
-        if base == got {
-            return true;
-        }
-    }
-    // Short-name fallback for qualified DSL names (e.g. std.types.String == String)
-    if expected.rsplit('.').next() == got.rsplit('.').next() {
-        return true;
-    }
-    // TypeRegistry coercion paths (e.g. TextFilePath → FilePath → String)
-    use gunbc_ir::type_registry::TypeRegistry;
-    let registry = TypeRegistry::with_core_types();
-    let got_id = gunbc_ir::TypeId::from(got.rsplit('.').next().unwrap_or(got));
-    let expected_id =
-        gunbc_ir::TypeId::from(expected.rsplit('.').next().unwrap_or(expected));
-    registry.is_compatible(&got_id, &expected_id)
+/// Normalize a DSL type name to a `TypeId` by stripping generic parameters
+/// and module-qualified prefixes.
+fn normalize_type_id(name: &str) -> gunbc_ir::TypeId {
+    let base = name.split('<').next().unwrap_or(name).trim();
+    let short = base.rsplit('.').next().unwrap_or(base);
+    gunbc_ir::TypeId::from(short)
+}
+
+/// Strip generic parameters from a type name (e.g., `List<String>` → `List`).
+fn strip_generic_params(name: &str) -> &str {
+    name.split('<').next().unwrap_or(name).trim()
 }
 
 fn resolve_record_fields(
     ty: &str,
     registry: &RecordTypeRegistry,
 ) -> Option<HashMap<String, String>> {
-    let canonical = canonical_type_name(ty);
+    let canonical = strip_generic_params(ty).to_string();
     if let Some(fields) = registry.full.get(&canonical) {
         return Some(fields.clone());
     }
@@ -2840,7 +2831,7 @@ fn resolve_interface_contract(
     implemented: &str,
     registry: &InterfaceRegistry,
 ) -> InterfaceResolution {
-    let canonical = canonical_type_name(implemented);
+    let canonical = strip_generic_params(implemented).to_string();
     if let Some(contract) = registry.full.get(&canonical) {
         return InterfaceResolution::Resolved(contract.clone());
     }
@@ -2853,7 +2844,7 @@ fn resolve_interface_contract(
 }
 
 fn canonical_interface_name(name: &str) -> String {
-    canonical_type_name(name)
+    strip_generic_params(name).to_string()
 }
 
 fn resolve_resource_type_name(

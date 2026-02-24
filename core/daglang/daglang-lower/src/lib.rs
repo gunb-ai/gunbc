@@ -23,7 +23,7 @@ use daglang_syntax::ast::{
     TypeExpr,
 };
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name as canonical_type_name, resource_type_name,
+    canonical_resource_type_name, resource_type_name,
     service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
     walk_stmts,
 };
@@ -721,7 +721,7 @@ impl NameAliasRegistry {
     }
 
     fn resolve(&self, name: &str) -> NameResolution {
-        let canonical = canonical_type_name(name);
+        let canonical = canonical_resource_type_name(name);
         if self.full.contains(&canonical) {
             return NameResolution::Resolved(canonical);
         }
@@ -846,7 +846,7 @@ fn collect_profile_binding_registry(
                                 ),
                             });
                         }
-                        canonical_type_name(&bind.implementation_type)
+                        canonical_resource_type_name(&bind.implementation_type)
                     }
                 };
                 if bindings
@@ -1005,7 +1005,7 @@ fn collect_profile_bound_interface_names(registry: &ProfileBindingRegistry) -> H
     let mut names = HashSet::new();
     for bindings in registry.by_full.values() {
         for interface in bindings.keys() {
-            let canonical = canonical_type_name(interface);
+            let canonical = canonical_resource_type_name(interface);
             names.insert(canonical.clone());
             if let Some(short) = canonical.rsplit('.').next() {
                 names.insert(short.to_string());
@@ -1024,8 +1024,8 @@ fn collect_interface_type_names(project: &TypedProject) -> HashSet<String> {
                 continue;
             };
             let full = format!("{module_name}.{}", def.name);
-            names.insert(canonical_type_name(&full));
-            names.insert(canonical_type_name(&def.name));
+            names.insert(canonical_resource_type_name(&full));
+            names.insert(canonical_resource_type_name(&def.name));
             if let Some(tail) = def.name.rsplit('.').next() {
                 names.insert(tail.to_string());
             }
@@ -1035,7 +1035,7 @@ fn collect_interface_type_names(project: &TypedProject) -> HashSet<String> {
 }
 
 fn is_bound_interface_type_name(names: &HashSet<String>, interface_type: &str) -> bool {
-    let canonical = canonical_type_name(interface_type);
+    let canonical = canonical_resource_type_name(interface_type);
     if names.contains(&canonical) {
         return true;
     }
@@ -1080,7 +1080,7 @@ fn enforce_profile_for_bound_uses(
 }
 
 fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
-    let canonical = canonical_type_name(name);
+    let canonical = canonical_resource_type_name(name);
     let short = canonical
         .rsplit('.')
         .next()
@@ -1091,7 +1091,7 @@ fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
 }
 
 fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
-    let canonical = canonical_type_name(name);
+    let canonical = canonical_resource_type_name(name);
     set.contains(&canonical)
         || set.contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
 }
@@ -5758,7 +5758,7 @@ fn resolve_service_call_source(
     ) else {
         return Err(LowerError::MissingProfileBinding {
             profile: active_profile_bindings.profile_name.clone(),
-            interface_type: canonical_type_name(interface_type),
+            interface_type: canonical_resource_type_name(interface_type),
         });
     };
     let Some(binding) = active_profile_bindings
@@ -6027,7 +6027,7 @@ fn resolve_profile_interface_key(
     bindings: &HashMap<String, ActiveProfileBinding>,
     interface_type: &str,
 ) -> Option<String> {
-    let canonical = canonical_type_name(interface_type);
+    let canonical = canonical_resource_type_name(interface_type);
     if bindings.contains_key(&canonical) {
         return Some(canonical);
     }
@@ -6245,7 +6245,7 @@ fn resolve_interface_resource_endpoint(
     project: &TypedProject,
     registry: &ResourceLifecycleRegistry,
 ) -> ResourceEndpointResolution {
-    let target_canonical = canonical_type_name(resource_type);
+    let target_canonical = canonical_resource_type_name(resource_type);
     let target_short = target_canonical
         .rsplit('.')
         .next()
@@ -6261,7 +6261,7 @@ fn resolve_interface_resource_endpoint(
             let Some(implemented) = &resource.implements else {
                 continue;
             };
-            let implemented_canonical = canonical_type_name(implemented);
+            let implemented_canonical = canonical_resource_type_name(implemented);
             let implemented_short = implemented_canonical
                 .rsplit('.')
                 .next()
@@ -6454,7 +6454,7 @@ fn add_interface_contract_verification_nodes(
                     sanitize_identifier(&format!(
                         "{module_name}_{}_{}_{}",
                         resource.name,
-                        canonical_type_name(interface_name),
+                        canonical_resource_type_name(interface_name),
                         index
                     ))
                 );
@@ -6468,7 +6468,7 @@ fn add_interface_contract_verification_nodes(
                         name: format!(
                             "interface_contract::{}::{}::{}",
                             resource.name,
-                            canonical_type_name(interface_name),
+                            canonical_resource_type_name(interface_name),
                             index
                         ),
                         obligation: ObligationCategory::InterfaceContractVerification,
@@ -6494,7 +6494,7 @@ fn add_interface_contract_verification_nodes(
 }
 
 fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str) -> usize {
-    let target = canonical_type_name(interface_name);
+    let target = canonical_resource_type_name(interface_name);
     let target_short = target.rsplit('.').next().unwrap_or(target.as_str());
     let mut counts = Vec::new();
     for module in &project.modules {
@@ -6504,7 +6504,7 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
                 continue;
             };
             let qualified = format!("{module_name}.{}", interface.name);
-            let qualified_canonical = canonical_type_name(&qualified);
+            let qualified_canonical = canonical_resource_type_name(&qualified);
             let interface_short = interface
                 .name
                 .rsplit('.')

@@ -15,10 +15,11 @@ use daglang_lower::{
     LoweredOp,
 };
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
-use daglang_syntax::ast::Item;
+use daglang_syntax::ast::{Expr, Item, Literal};
+use daglang_syntax::ast_utils::type_expr_to_string;
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
-use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions};
+use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions, TypedProject};
 use gunbc_ir::Dag;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +36,17 @@ pub struct CompileOutput {
     /// All output file paths this tool produces, auto-extracted from
     /// `content_upsert` literal paths and `@outputs` annotations.
     pub output_paths: Vec<String>,
+    /// Pipeline-level `param` declarations extracted from the DSL source.
+    /// Each entry includes the param name, type, and optional default value.
+    pub pipeline_params: Vec<PipelineParam>,
+}
+
+/// A pipeline-level parameter declaration from `param name: Type = default`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PipelineParam {
+    pub name: String,
+    pub type_id: String,
+    pub default_value: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,12 +239,45 @@ pub fn compile_from_module_graph_with_options(
     let emitted = emit_with_options(&lowered, &derived, options, target_module_name.as_deref())
         .map_err(|error| format!("emit error: {error}"))?;
 
+    let pipeline_params = collect_pipeline_params(&typed);
+
     Ok(CompileOutput {
         lowered_dag: lowered,
         derived,
         emitted,
         output_paths,
+        pipeline_params,
     })
+}
+
+/// Collect `param` declarations from all modules in the typed project.
+fn collect_pipeline_params(typed: &TypedProject) -> Vec<PipelineParam> {
+    let mut params = Vec::new();
+    for module in &typed.modules {
+        for item in &module.ast.items {
+            if let Item::ParamDecl(decl) = &item.node {
+                let type_id = type_expr_to_string(&decl.ty);
+                let default_value = decl.default.as_ref().and_then(expr_to_default_string);
+                params.push(PipelineParam {
+                    name: decl.name.clone(),
+                    type_id,
+                    default_value,
+                });
+            }
+        }
+    }
+    params
+}
+
+/// Convert a literal default expression to its string representation.
+fn expr_to_default_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(s)) => Some(s.clone()),
+        Expr::Literal(Literal::Int(n)) => Some(n.to_string()),
+        Expr::Literal(Literal::Bool(b)) => Some(b.to_string()),
+        Expr::Literal(Literal::Float(f)) => Some(f.to_string()),
+        _ => None,
+    }
 }
 
 pub fn check_from_context(context: &DriverContext) -> Result<CheckOutput, CompileError> {
@@ -251,6 +296,22 @@ pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput,
         return Err(format_typecheck_errors(errors));
     }
     Ok(CheckOutput { parsed_files })
+}
+
+/// Extract pipeline `param` declarations from a DSL file without full compilation.
+///
+/// Parses and typechecks the module graph, then collects all `ParamDecl` items.
+/// Lighter weight than `compile_from_context` — no lowering, deriving, or emission.
+pub fn load_pipeline_params(context: &DriverContext) -> Result<Vec<PipelineParam>, CompileError> {
+    let module_graph = discover_module_graph_for_context(context)?;
+    let typed = typecheck_module_graph_with_options(
+        module_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: true,
+        },
+    )
+    .map_err(format_typecheck_errors)?;
+    Ok(collect_pipeline_params(&typed))
 }
 
 /// Generate Rust type definitions from DSL TypeDefs in the given modules.
