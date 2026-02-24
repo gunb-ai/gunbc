@@ -3,9 +3,11 @@
 //!
 //! If this test fails, regenerate with:
 //!   cargo run -p daglang-cli -- gen-types dsl/std \
-//!     --module std.symbols --module std.render --module std.box_draw \
+//!     --module std.symbols --module std.unicode --module std.width \
+//!     --module std.render --module std.box_draw \
 //!     --output core/ir/src/generated/mod.rs
 
+#[allow(clippy::disallowed_methods)] // Test infrastructure: needs Command::new and fs::read_to_string
 #[test]
 fn generated_types_are_not_stale() {
     let output = std::process::Command::new(env!("CARGO"))
@@ -18,6 +20,10 @@ fn generated_types_are_not_stale() {
             "dsl/std",
             "--module",
             "std.symbols",
+            "--module",
+            "std.unicode",
+            "--module",
+            "std.width",
             "--module",
             "std.render",
             "--module",
@@ -44,7 +50,8 @@ fn generated_types_are_not_stale() {
         panic!(
             "core/ir/src/generated/mod.rs is stale. Regenerate with:\n  \
              cargo run -p daglang-cli -- gen-types dsl/std \
-             --module std.symbols --module std.render --module std.box_draw \
+             --module std.symbols --module std.unicode --module std.width \
+             --module std.render --module std.box_draw \
              --output core/ir/src/generated/mod.rs"
         );
     }

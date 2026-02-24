@@ -77,6 +77,32 @@ impl Executable for GenericRestPrepareOp {
             _ => RestRequest::post(&url),
         };
 
+        // 3b. Coerce List<String> → String when the declared field type is "String".
+        // This handles e.g. `content: listing.files` where a List<String> flows into a
+        // service input declared as String — join with newlines for the HTTP body.
+        let coercions: Vec<(String, String)> = self
+            .spec
+            .input_fields
+            .iter()
+            .filter(|f| f.type_id == "String")
+            .filter_map(|f| {
+                if let Some(Value::List(items)) = inputs.get(&f.name) {
+                    let joined = items
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    Some((f.name.clone(), joined))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let mut inputs = inputs;
+        for (name, joined) in coercions {
+            inputs.insert(name, Value::Str(joined));
+        }
+
         // 4. Build JSON body.
         if self.spec.method != "GET" {
             let body = if let Some(template) = &self.spec.body_template {
@@ -478,6 +504,7 @@ impl Executable for GenericShellParseOp {
 // ============================================================================
 
 /// Extract an input value as a string, handling Secret and defaults.
+#[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret values marshalled into service requests
 fn input_as_string(inputs: &HashMap<String, Value>, name: &str, default: Option<&str>) -> String {
     match inputs.get(name) {
         Some(Value::Str(s)) => s.clone(),
@@ -636,6 +663,7 @@ fn insert_value_as_json(
         Value::Str(s) => {
             map.insert(key.to_string(), serde_json::Value::String(s.clone()));
         }
+        #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret serialized for service request
         Value::Secret(secret) => {
             map.insert(
                 key.to_string(),
@@ -654,7 +682,7 @@ fn insert_value_as_json(
         Value::List(items) => {
             let arr: Vec<serde_json::Value> = items
                 .iter()
-                .filter_map(|v| value_to_json(v))
+                .filter_map(value_to_json)
                 .collect();
             map.insert(key.to_string(), serde_json::Value::Array(arr));
         }
@@ -672,6 +700,7 @@ fn insert_value_as_json(
 }
 
 /// Convert a single `Value` to a `serde_json::Value` (for list items and nested maps).
+#[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret serialized for JSON payload
 fn value_to_json(value: &Value) -> Option<serde_json::Value> {
     match value {
         Value::Str(s) => Some(serde_json::Value::String(s.clone())),
@@ -757,6 +786,7 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // Tests: secret inspection is inherent to testing service resolution
 mod tests {
     use super::*;
     use gunbc_ir::transport::{RestResponse, ShellResponse};

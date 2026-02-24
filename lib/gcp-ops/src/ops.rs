@@ -583,8 +583,10 @@ impl Executable for GcpOps {
                     "https://secretmanager.googleapis.com/v1/projects/{}/secrets/{}:addVersion",
                     project, secret
                 );
+                #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret sent to GCP Secret Manager
+                let encoded_secret = base64_encode(secret_value.expose_plaintext_for_transport());
                 let body = serde_json::json!({
-                    "payload": { "data": base64_encode(secret_value.expose_plaintext_for_transport()) }
+                    "payload": { "data": encoded_secret }
                 });
                 let req = RestRequest::post(url)
                     .header("Authorization", format!("Bearer {}", access_token))
@@ -1143,6 +1145,7 @@ pub(crate) fn adc_file_path() -> String {
         .into_owned()
 }
 
+#[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret extracted for service request
 fn optional_secret_or_str(
     inputs: &HashMap<String, Value>,
     key: &str,

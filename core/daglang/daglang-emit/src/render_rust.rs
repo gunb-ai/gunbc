@@ -239,6 +239,12 @@ fn render_stmt(stmt: &Stmt, indent: usize) -> String {
             }
         }
         Stmt::Assign { dest, value } => {
+            if let Expr::BinOp { left, op, right } = value {
+                let dest_str = render_expr(dest);
+                if render_expr(left) == dest_str {
+                    return format!("{}{} {}= {};\n", pad, dest_str, op, render_expr(right));
+                }
+            }
             format!("{}{} = {};\n", pad, render_expr(dest), render_expr(value))
         }
         Stmt::BlockScope(body) => {
@@ -344,7 +350,14 @@ fn render_expr(expr: &Expr) -> String {
         Expr::Struct { name, fields } => {
             let field_strs: Vec<String> = fields
                 .iter()
-                .map(|(k, v)| format!("{}: {}", k, render_expr(v)))
+                .map(|(k, v)| {
+                    let rendered = render_expr(v);
+                    if *k == rendered {
+                        k.clone()
+                    } else {
+                        format!("{}: {}", k, rendered)
+                    }
+                })
                 .collect();
             format!("{} {{ {} }}", name, field_strs.join(", "))
         }

@@ -221,7 +221,7 @@ pub fn in_block(cp: i64, block: UnicodeBlock) -> bool {
 
 pub fn char_display_width(c: char) -> DisplayWidth {
     let cp = code_point_i64(c);
-    if {
+    let __cond = {
     let mut __contains_0 = false;
     for __elem_1 in ZERO_WIDTH_CODEPOINTS.iter().cloned() {
         if __elem_1 == cp {
@@ -230,10 +230,11 @@ pub fn char_display_width(c: char) -> DisplayWidth {
 };
     }
     __contains_0
-} {
+};
+if __cond {
     return DisplayWidth::ZeroWidth;
 };
-    if {
+    let __cond = {
     let mut __any_2 = false;
     for __elem_3 in ZERO_WIDTH_BLOCKS.iter().cloned() {
         if in_block(cp, __elem_3) {
@@ -242,10 +243,11 @@ pub fn char_display_width(c: char) -> DisplayWidth {
 };
     }
     __any_2
-} {
+};
+if __cond {
     return DisplayWidth::ZeroWidth;
 };
-    if {
+    let __cond = {
     let mut __any_4 = false;
     for __elem_5 in WIDE_BLOCKS.iter().cloned() {
         if in_block(cp, __elem_5) {
@@ -254,10 +256,11 @@ pub fn char_display_width(c: char) -> DisplayWidth {
 };
     }
     __any_4
-} {
+};
+if __cond {
     return DisplayWidth::Wide;
 };
-    return DisplayWidth::Narrow;
+    DisplayWidth::Narrow
 }
 
 pub fn char_width(c: char) -> i64 {
@@ -274,7 +277,7 @@ pub fn string_display_width(s: String) -> i64 {
     }
     __mapped_0
 } {
-        __sum_2 = __sum_2 + __elem_3;
+        __sum_2 += __elem_3;
     }
     __sum_2
 }
@@ -294,7 +297,7 @@ pub fn truncate_text(text: String, max_width: i64) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SpanStyle {
     pub color: Option<SemanticColor>,
     pub bold: bool,
@@ -486,15 +489,15 @@ pub fn box_bottom_line(_config: BoxConfig) -> Line {
 }
 
 pub fn error_box(title: String, tier: Tier) -> BoxConfig {
-    BoxConfig { title: title, style: BoxStyle::OpenRight, width: 60, min_width: 40, color: SemanticColor::Error, content_color: Some(SemanticColor::Dim), tier: tier }
+    BoxConfig { title, style: BoxStyle::OpenRight, width: 60, min_width: 40, color: SemanticColor::Error, content_color: Some(SemanticColor::Dim), tier }
 }
 
 pub fn preamble_box(title: String, tier: Tier) -> BoxConfig {
-    BoxConfig { title: title, style: BoxStyle::Closed, width: 60, min_width: 40, color: SemanticColor::Accent, content_color: None, tier: tier }
+    BoxConfig { title, style: BoxStyle::Closed, width: 60, min_width: 40, color: SemanticColor::Accent, content_color: None, tier }
 }
 
 pub fn info_box(title: String, tier: Tier) -> BoxConfig {
-    BoxConfig { title: title, style: BoxStyle::OpenRight, width: 60, min_width: 40, color: SemanticColor::Info, content_color: None, tier: tier }
+    BoxConfig { title, style: BoxStyle::OpenRight, width: 60, min_width: 40, color: SemanticColor::Info, content_color: None, tier }
 }
 
 pub fn repeat_char(c: String, n: i64) -> String {
@@ -703,3 +706,4 @@ impl SemanticColor {
         }
     }
 }
+

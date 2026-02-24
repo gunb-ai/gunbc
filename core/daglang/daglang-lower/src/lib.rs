@@ -4869,6 +4869,7 @@ fn add_service_transport_triplets(
     registry
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_service_call_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,

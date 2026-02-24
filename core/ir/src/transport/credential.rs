@@ -261,6 +261,7 @@ impl Credential {
     ///
     /// Sets the appropriate header(s) and clears `request.auth` since
     /// the credential is now directly embedded.
+    #[allow(clippy::disallowed_methods)] // Approved: transport boundary — credential applied to outbound request
     pub fn apply(&self, req: &mut RestRequest) {
         let token = self.secret.expose_plaintext_for_transport();
         match &self.scheme {
@@ -412,6 +413,7 @@ impl TryFrom<&Value> for Credential {
 
         // Token
         let token = match map.get("token") {
+            #[allow(clippy::disallowed_methods)] // Approved: transport boundary — credential deserialization
             Some(Value::Secret(s)) => s.expose_plaintext_for_transport().to_string(),
             _ => return Err("Credential missing 'token' secret".to_string()),
         };
@@ -494,6 +496,7 @@ impl TryFrom<Value> for Credential {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // Tests: secret inspection is inherent to testing credential behavior
 mod tests {
     use super::*;
     use std::time::Duration;

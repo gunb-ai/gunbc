@@ -66,6 +66,21 @@ fn is_simple_enum(variants: &[Variant]) -> bool {
     variants.iter().all(|v| v.fields.is_empty())
 }
 
+/// Check whether a type expression is compatible with `Default` derive.
+fn is_default_compatible(ty: &TypeExpr) -> bool {
+    match ty {
+        TypeExpr::Optional(_) => true,
+        TypeExpr::Named(name) => name == "Bool",
+        TypeExpr::Annotated(inner, _) => is_default_compatible(inner),
+        _ => false,
+    }
+}
+
+/// Check whether all fields of a record are default-compatible.
+fn all_fields_default_compatible(fields: &[daglang_syntax::ast::Field]) -> bool {
+    fields.iter().all(|f| is_default_compatible(&f.ty))
+}
+
 /// Convert a single `TypeDef` into one or more code IR items.
 pub fn typedef_to_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
     let derives: Vec<String> = DEFAULT_DERIVES.iter().map(|s| s.to_string()).collect();
@@ -76,6 +91,10 @@ pub fn typedef_to_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
                 .iter()
                 .map(|f| (f.name.clone(), type_expr_to_rust(&f.ty), true))
                 .collect();
+            let mut derives = derives;
+            if all_fields_default_compatible(fields) {
+                derives.push("Default".to_string());
+            }
             vec![code_ir::Item::Struct(StructDef {
                 name: td.name.clone(),
                 is_pub: true,
@@ -93,7 +112,7 @@ pub fn typedef_to_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
 
             let variant_strs: Vec<String> = variants
                 .iter()
-                .map(|v| format_variant(v))
+                .map(format_variant)
                 .collect();
 
             vec![code_ir::Item::Enum(EnumDef {
@@ -866,7 +885,7 @@ pub fn generate_types_for_modules(
 
 /// Replace `todo!()` stub functions with proper built-in implementations
 /// that delegate to generated `impl` methods from data tables.
-fn replace_builtin_stubs(items: &mut Vec<code_ir::Item>) {
+fn replace_builtin_stubs(items: &mut [code_ir::Item]) {
     for item in items.iter_mut() {
         if let code_ir::Item::Fn(f) = item {
             if is_todo_stub(&f.body) {

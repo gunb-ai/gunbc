@@ -333,6 +333,7 @@ fn is_ci_environment() -> bool {
 ///
 /// Iterates through all log entries and emits `::add-mask::` for each
 /// secret value so CI runners redact them from all subsequent output.
+#[allow(clippy::disallowed_methods)] // Approved: CI secret masking at transport boundary
 fn mask_secrets_in_log(ci: &mut crate::CiContext, log: &crate::ExecutionLog) {
     for entry in &log.entries {
         for value in entry.outputs.values() {

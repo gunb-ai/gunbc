@@ -337,6 +337,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                         std::process::exit(1);
                     }
                     if let Some(path) = &gen_args.output {
+                        #[allow(clippy::disallowed_methods)] // CLI tool: direct filesystem write for codegen output
                         match std::fs::write(path, &output) {
                             Ok(()) => eprintln!("wrote {}", path),
                             Err(e) => {

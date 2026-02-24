@@ -166,6 +166,7 @@ impl<R> TryFrom<&Value> for ResourceHandle<R> {
 
         // Check capability marker (per-process secret prevents forgery)
         match map.get("cap") {
+            #[allow(clippy::disallowed_methods)] // Approved: capability-marker validation
             Some(Value::Secret(s)) if s.expose_plaintext_for_transport() == *PROCESS_SECRET => {}
             _ => {
                 return Err(HandleParseError {

@@ -18,21 +18,6 @@ use crate::symbols::{SemanticColor, SymbolSet, Tier};
 pub use crate::generated::{CursorAction, Frame, Line, RenderMode, Span, SpanStyle, Viewport, ViewportUnit};
 
 // ---------------------------------------------------------------------------
-// Default impl for SpanStyle (cannot be derived in generated code)
-// ---------------------------------------------------------------------------
-
-impl Default for SpanStyle {
-    fn default() -> Self {
-        Self {
-            color: None,
-            bold: false,
-            italic: false,
-            symbol: None,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Constructors
 // ---------------------------------------------------------------------------
 

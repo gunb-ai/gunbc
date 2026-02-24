@@ -875,6 +875,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
 
         // Mask any secret values so CI runners redact them from all output.
         // This happens inside the CI group (before on_node_complete closes it).
+        #[allow(clippy::disallowed_methods)] // Approved: CI secret masking at transport boundary
         for value in outputs.values() {
             if let Value::Secret(s) = value {
                 observer.on_secret_output(node_id, s.expose_plaintext_for_transport());

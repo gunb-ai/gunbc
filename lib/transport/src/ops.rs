@@ -53,7 +53,7 @@ impl Executable for TransportOps {
                     return out.ok();
                 }
 
-                if inputs.get("request").is_none() {
+                if !inputs.contains_key("request") {
                     return OutputMap::new()
                         .value("response", Value::Skipped)
                         .ok();
@@ -69,6 +69,7 @@ impl Executable for TransportOps {
                         match Credential::try_from(cred_value) {
                             Ok(cred) => cred.apply(r),
                             Err(_) => {
+                                #[allow(clippy::disallowed_methods)] // Approved: transport boundary — raw secret applied as Bearer token
                                 let token = match cred_value {
                                     Value::Secret(s) => {
                                         s.expose_plaintext_for_transport().to_string()

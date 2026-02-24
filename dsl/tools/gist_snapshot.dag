@@ -29,7 +29,7 @@ func gist_snapshot(public: Bool = false) -> { url: Url }
   )
   result = github.Gist.Create(
     description: branch_info.branch,
-    content: branch_info.branch,
+    content: listing.files,
     public: false,
     auth_token: secret.secret_value
   )

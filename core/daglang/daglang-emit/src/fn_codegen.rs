@@ -38,6 +38,12 @@ pub struct CompileContext {
     pub enum_variants: std::collections::HashMap<String, HashSet<String>>,
 }
 
+impl Default for CompileContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CompileContext {
     pub fn new() -> Self {
         Self {
@@ -111,7 +117,11 @@ fn compile_stmt(stmt: &ast::Stmt, is_last: bool, ctx: &CompileContext) -> code_i
         }
         ast::Stmt::Return(fields) => {
             let ir_expr = compile_return_fields(fields, ctx);
-            code_ir::Stmt::Return(ir_expr)
+            if is_last {
+                code_ir::Stmt::TailExpr(ir_expr)
+            } else {
+                code_ir::Stmt::Return(ir_expr)
+            }
         }
     }
 }
@@ -167,7 +177,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
                 .iter()
                 .map(|(n, e)| {
                     let compiled = compile_expr_in_field_context(e, n, field_types, ctx);
-                    let is_opt = opt_set.map_or(false, |s| s.contains(n.as_str()));
+                    let is_opt = opt_set.is_some_and(|s| s.contains(n.as_str()));
                     if is_opt && !is_none_expr(&compiled) {
                         (n.clone(), code_ir::Expr::Call {
                             func: Box::new(code_ir::Expr::Var("Some".to_string())),
@@ -1081,7 +1091,7 @@ fn expr_has_empty(e: &code_ir::Expr) -> bool {
         code_ir::Expr::Match { arms, .. } => arms.iter().any(|a| body_has_empty_construct(&a.body)),
         code_ir::Expr::If { then_body, else_body, .. } => {
             body_has_empty_construct(then_body)
-                || else_body.as_ref().map_or(false, |b| body_has_empty_construct(b))
+                || else_body.as_ref().is_some_and(|b| body_has_empty_construct(b))
         }
         code_ir::Expr::Block(stmts) => body_has_empty_construct(stmts),
         _ => false,
