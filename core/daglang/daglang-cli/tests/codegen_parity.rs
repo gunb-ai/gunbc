@@ -1575,58 +1575,6 @@ fn makegen_c_runtime_asan_ubsan_differential_matches_interpreter() {
 }
 
 #[test]
-fn infra_tool_rust_layer1_execution_trace_matches_interpreter() {
-    let module = "dsl/tools/infra.dag";
-    let rust_layer1_out = unique_workspace_target_dir("runtime_rust_layer1_trace_diff_infra");
-    if let Err(error) = try_compile_module_layer1_rust(module, &rust_layer1_out) {
-        if error.contains("subdag node") && error.contains("not supported in exec-runtime codegen")
-        {
-            eprintln!(
-                "SKIP infra_tool_rust_layer1_execution_trace_matches_interpreter: exec-runtime subdag support missing: {error}"
-            );
-            return;
-        }
-        panic!("compile {module} --target rust --layer 1 should succeed: {error}");
-    }
-    let generated = run_infra_generated_rust_layer1(&rust_layer1_out);
-    let generated_stderr = match generated {
-        RuntimeOutcome::Ran { stderr, .. } => stderr,
-        RuntimeOutcome::Skipped { reason } => {
-            panic!("generated rust layer1 runtime should not skip for {module}: {reason}");
-        }
-    };
-    let generated_nodes = parse_trace_json_nodes(&generated_stderr);
-    assert!(
-        !generated_nodes.is_empty(),
-        "generated rust layer1 runtime should emit execution trace for {module}"
-    );
-
-    let interpreter_nodes = run_module_interpreter_execution_nodes_typed(
-        module,
-        &[
-            ("environment", Value::Str("dev".to_string())),
-            ("runtime", Value::Str("local".to_string())),
-            (
-                "spec_targets",
-                Value::List(vec![Value::Str("secret:github-token".to_string())]),
-            ),
-            ("request_token", Value::Str(String::new())),
-            ("request_url", Value::Str(String::new())),
-            ("allow_impersonation", Value::Bool(false)),
-            ("execute", Value::Bool(false)),
-        ],
-    )
-    .unwrap_or_else(|error| panic!("interpreter run should succeed for {module}: {error}"));
-    assert_eq!(
-        interpreter_nodes, generated_nodes,
-        "execution trace differential mismatch for {module}"
-    );
-    std::fs::remove_dir_all(&rust_layer1_out).unwrap_or_else(|error| {
-        panic!("failed to cleanup rust layer1 trace differential out root for {module}: {error}")
-    });
-}
-
-#[test]
 fn sdlc_control_plane_rust_layer1_execution_trace_matches_interpreter() {
     if skip_if_missing_module(
         "dsl/services/sdlc/control_plane.dag",

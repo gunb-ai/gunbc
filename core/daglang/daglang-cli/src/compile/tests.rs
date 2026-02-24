@@ -407,14 +407,14 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
         },
     ));
 
-    // Unknown callables now resolve to PassthroughOp (the compiler validated
+    // Unknown callables resolve to DeclaredOutputCallableOp (the compiler validated
     // the callable exists; if it compiled, it's resolvable without a registry entry).
     let resolved =
-        resolve_lowered_dag(&dag).expect("unknown callables should resolve to passthrough");
+        resolve_lowered_dag(&dag).expect("unknown callables should resolve to declared output callable");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
     assert!(
-        debug.contains("PassthroughOp"),
+        debug.contains("DeclaredOutputCallableOp"),
         "unexpected op debug: {debug}"
     );
 }
@@ -438,18 +438,18 @@ fn resolve_lowered_dag_defers_pipeline_nodes() {
         },
     ));
 
-    // Pipeline nodes resolve to PassthroughOp via resolve_domain's default fallback.
+    // Pipeline nodes resolve to PipelineDispatchOp via resolve_op's Pipeline arm.
     let resolved = resolve_lowered_dag(&dag).expect("pipeline nodes should resolve");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
     assert!(
-        debug.contains("PassthroughOp"),
+        debug.contains("PipelineDispatchOp"),
         "unexpected op debug: {debug}"
     );
     let NodeBody::Opaque(op) = &resolved.nodes[0].body else {
         panic!("pipeline fixture should not contain subdag nodes")
     };
-    // PassthroughOp uses output passthrough — execution should succeed.
+    // PipelineDispatchOp uses output passthrough — execution should succeed.
     let result = op
         .execute(HashMap::new())
         .expect("passthrough op should execute");

@@ -1,6 +1,6 @@
 //! Compiled fn bridge: DSL `fn` items with real Executable implementations.
 //!
-//! DSL pure functions (`fn` items) normally resolve to `PassthroughOp` which
+//! DSL pure functions (`fn` items) normally resolve to `DeclaredOutputCallableOp` which
 //! cannot compute — it just forwards inputs to outputs. This module provides
 //! compiled implementations for specific fn items that need actual computation.
 //!
@@ -8,7 +8,7 @@
 //!
 //! `lookup_compiled_fn(module, name)` returns `Some(DynOp)` for fn items with
 //! compiled implementations, `None` for everything else (which falls through
-//! to PassthroughOp in the resolver).
+//! to DeclaredOutputCallableOp in the resolver).
 //!
 //! # Supported modules
 //!

@@ -158,16 +158,18 @@ fn passthrough_value_to_text(value: &Value) -> String {
     }
 }
 
-/// Single passthrough op that replaces all `domain_passthrough_op!` macro
-/// instances.  Every registered callable gets the same behavior: forward
-/// all inputs to outputs, filling any declared output port that has no
-/// matching input with `Value::Skipped`.
+/// Identity callable op for DSL-compiled callables.
+///
+/// Forwards all inputs to outputs, filling any declared output port that
+/// has no matching input with `Value::Skipped`. This is the correct runtime
+/// behavior for DSL `fn`/`func` items that don't have compiled fn bridge
+/// implementations — they are pure data transformations validated at compile time.
 #[derive(Debug, Clone)]
-struct PassthroughOp {
+struct DeclaredOutputCallableOp {
     output_port_names: Vec<String>,
 }
 
-impl Executable for PassthroughOp {
+impl Executable for DeclaredOutputCallableOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         execute_with_declared_output_passthrough(&self.output_port_names, inputs)
     }
@@ -192,7 +194,7 @@ struct PipelineDispatchOp {
 impl std::fmt::Debug for PipelineDispatchOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PipelineDispatchOp")
-            .field("compat_mode", &"PassthroughOp")
+            .field("compat_mode", &"DeclaredOutputCallableOp")
             .field("stage_count", &self.stage_count)
             .field("stage_names", &self.stage_names)
             .field("output_port_names", &self.output_port_names)
@@ -742,14 +744,15 @@ fn resolve_domain(
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
     // 3. Compiled fn bridge — DSL fn items with real Executable implementations.
-    //    Replaces PassthroughOp for fn items that need actual computation
+    //    Replaces DeclaredOutputCallableOp for fn items that need actual computation
     //    (e.g., markdown rendering, string interpolation).
     if let Some(op) = crate::compiled_fns::lookup_compiled_fn(module, name) {
         return Ok(op);
     }
-    // 4. Default: passthrough. The compiler validated this callable exists.
-    //    If it compiled, it's resolvable. No registry needed.
-    Ok(DynOp::new(PassthroughOp {
+    // 4. Default: identity callable. The compiler validated this callable exists.
+    //    DSL fn/func items without compiled fn bridge implementations use identity
+    //    forwarding — inputs are passed through as outputs.
+    Ok(DynOp::new(DeclaredOutputCallableOp {
         output_port_names: declared_output_names(outputs),
     }))
 }
@@ -1313,7 +1316,7 @@ fn resolve_service_transport(
     node_id: &str,
     module: &str,
     name: &str,
-    outputs: &[Port],
+    _outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
     // Execute nodes are always the same transport executor.
@@ -1361,14 +1364,15 @@ fn resolve_service_transport(
                 _ => {}
             }
         }
-        // Metadata present but no spec (or unmatched spec variant). The
-        // compiler validated this node exists; it may be from a provider
-        // not selected by the active profile. Passthrough is safe — if the
-        // node is reachable, the executor will feed it inputs and collect
-        // whatever it emits.
-        return Ok(DynOp::new(PassthroughOp {
-            output_port_names: declared_output_names(outputs),
-        }));
+        // Fail-closed: metadata present but no matching operation spec.
+        // This indicates a resolver gap (missing service operation handler)
+        // rather than a valid passthrough scenario.
+        return Err(ResolveError {
+            node_id: node_id.to_string(),
+            reason: format!(
+                "service transport node has metadata but no matching operation spec: module={module} name={name}"
+            ),
+        });
     }
 
     Err(unknown_callable(node_id, module, name))
@@ -1527,9 +1531,9 @@ mod tests {
 
     // ---- Behavioral assertion helpers ----
 
-    /// Assert a resolved op behaves as passthrough: inputs forwarded,
+    /// Assert a resolved op behaves as identity callable: inputs forwarded,
     /// declared output ports filled with Skipped when no matching input.
-    fn assert_passthrough_behavior(op: &DynOp) {
+    fn assert_identity_callable_behavior(op: &DynOp) {
         let mut inputs = HashMap::new();
         inputs.insert("x".to_string(), Value::Str("hello".to_string()));
         let outputs = op.execute(inputs).expect("passthrough should succeed");
@@ -1547,8 +1551,8 @@ mod tests {
     }
 
     #[test]
-    fn passthrough_result_port_falls_back_to_input_alias() {
-        let op = PassthroughOp {
+    fn identity_callable_result_port_falls_back_to_input_alias() {
+        let op = DeclaredOutputCallableOp {
             output_port_names: vec!["result".to_string()],
         };
         let mut inputs = HashMap::new();
@@ -1558,8 +1562,8 @@ mod tests {
     }
 
     #[test]
-    fn passthrough_return_port_falls_back_to_content_alias() {
-        let op = PassthroughOp {
+    fn identity_callable_return_port_falls_back_to_content_alias() {
+        let op = DeclaredOutputCallableOp {
             output_port_names: vec!["return".to_string()],
         };
         let mut inputs = HashMap::new();
@@ -2079,7 +2083,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_tools_codegen_entrypoint_passthrough() {
+    fn resolve_tools_codegen_entrypoint_identity_callable() {
         let node = callable_node(
             "codegen",
             "tools.codegen",
@@ -2087,7 +2091,7 @@ mod tests {
             ObligationCategory::None,
         );
         let result = resolve_node(&node).expect("tools.codegen::codegen");
-        assert_passthrough_behavior(&result);
+        assert_identity_callable_behavior(&result);
     }
 
     #[test]
@@ -2423,19 +2427,19 @@ mod tests {
     }
 
     #[test]
-    fn resolve_unknown_module_defaults_to_passthrough() {
+    fn resolve_unknown_module_defaults_to_identity_callable() {
         let node = callable_node(
             "unknown_op",
             "tools.unknown",
             "do_something",
             ObligationCategory::None,
         );
-        let result = resolve_node(&node).expect("unknown modules should default to passthrough");
-        assert_passthrough_behavior(&result);
+        let result = resolve_node(&node).expect("unknown modules should default to identity callable");
+        assert_identity_callable_behavior(&result);
     }
 
     #[test]
-    fn resolve_unknown_callable_in_custom_module_falls_through_to_passthrough() {
+    fn resolve_unknown_callable_in_custom_module_uses_identity_callable() {
         let node = callable_node(
             "bad_op",
             "tools.pragma",
@@ -2443,8 +2447,8 @@ mod tests {
             ObligationCategory::None,
         );
         let result =
-            resolve_node(&node).expect("unknown callable should fall through to passthrough");
-        assert_passthrough_behavior(&result);
+            resolve_node(&node).expect("unknown callable should use identity callable");
+        assert_identity_callable_behavior(&result);
     }
 
     #[test]

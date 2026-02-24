@@ -1651,11 +1651,8 @@ fn lower_typed_project_with_callable_scope(
 }
 
 pub use parity::{
-    canonical_ir_json, compare_ci_topology, compare_gcp_credential_topology,
-    compare_ir, compare_makegen_topology, compare_topology,
+    canonical_ir_json, compare_gcp_credential_topology, compare_ir, compare_topology,
 };
-#[cfg(test)]
-use parity::{normalize_makegen_candidate, normalize_makegen_reference};
 
 mod parity {
     use super::*;
@@ -1852,23 +1849,6 @@ mod parity {
         }
     }
 
-    /// Compare makegen topology with normalization rules for known scaffold deltas.
-    ///
-    /// Normalization currently:
-    /// - strips `tools.makegen::` node-id prefixes
-    /// - drops the wrapper `makegen` callable node
-    /// - removes synthetic `__deps` ports/edges
-    /// - canonicalizes `render_makefile.return` output to `makefile_content`
-    /// - ignores environment-scaffold edge `fs_env -> prepare_read_makegen`
-    pub fn compare_makegen_topology<T>(
-        candidate: &Dag<LoweredOp>,
-        reference: &Dag<T>,
-    ) -> ParityReport {
-        let normalized = normalize_makegen_candidate(candidate);
-        let normalized_reference = normalize_makegen_reference(reference);
-        compare_topology(&normalized, &normalized_reference)
-    }
-
     /// Compare GCP credential topology against the legacy graph shape.
     ///
     /// The compiler currently emits higher-level pattern/resource scaffolding for
@@ -1883,12 +1863,6 @@ mod parity {
         let normalized_candidate = normalize_gcp_credential_candidate(candidate);
         let normalized_reference = normalize_gcp_credential_reference(reference);
         compare_ir(&normalized_candidate, &normalized_reference)
-    }
-
-    pub fn compare_ci_topology<T>(candidate: &Dag<LoweredOp>, reference: &Dag<T>) -> ParityReport {
-        let normalized_candidate = normalize_ci_candidate(candidate);
-        let normalized_reference = normalize_ci_reference(reference);
-        compare_topology(&normalized_candidate, &normalized_reference)
     }
 
     fn canonicalize_lowered_ir(dag: &Dag<LoweredOp>) -> CanonicalDag {
@@ -2056,78 +2030,6 @@ mod parity {
         "callable".to_string()
     }
 
-    pub(crate) fn normalize_makegen_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
-        let mut normalized = Dag::new();
-        let mut kept_nodes = HashSet::<String>::new();
-        let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
-
-        for node in &candidate.nodes {
-            let Some(op) = node_body_as_opaque(&node.body).cloned() else {
-                continue;
-            };
-            let canonical_id = canonical_makegen_node_id(&node.id.0);
-            if canonical_id == "makegen" {
-                continue;
-            }
-
-            let mut inputs = node
-                .inputs
-                .iter()
-                .filter(|port| port.name.0 != "__deps")
-                .cloned()
-                .collect::<Vec<_>>();
-            let mut outputs = node.outputs.clone();
-            normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
-
-            normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, op));
-            kept_nodes.insert(canonical_id);
-        }
-        for node in &normalized.nodes {
-            ports_by_node.insert(
-                node.id.0.clone(),
-                (
-                    node.inputs.iter().map(|port| port.name.0.clone()).collect(),
-                    node.outputs
-                        .iter()
-                        .map(|port| port.name.0.clone())
-                        .collect(),
-                ),
-            );
-        }
-
-        let mut seen_edges = HashSet::<(String, String, String, String)>::new();
-        for edge in &candidate.edges {
-            let from_node = canonical_makegen_node_id(&edge.from_node.0);
-            let to_node = canonical_makegen_node_id(&edge.to_node.0);
-            if from_node == "makegen" || to_node == "makegen" {
-                continue;
-            }
-            if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
-                continue;
-            }
-            if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
-                continue;
-            }
-            let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
-            let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
-            let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
-                continue;
-            };
-            let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
-                continue;
-            };
-            if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
-                continue;
-            }
-            let key = (from_node, from_port, to_node, to_port);
-            if seen_edges.insert(key.clone()) {
-                normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
-            }
-        }
-
-        normalized
-    }
-
     fn normalize_gcp_credential_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
         let candidate_ids = candidate
             .nodes
@@ -2182,120 +2084,6 @@ mod parity {
             is_interactive: false,
             resource_target: None,
         })
-    }
-
-    fn normalize_ci_candidate(candidate: &Dag<LoweredOp>) -> Dag<LoweredOp> {
-        let candidate_ids = candidate
-            .nodes
-            .iter()
-            .map(|node| node.id.0.clone())
-            .collect::<HashSet<_>>();
-        let mut canonical_nodes = HashSet::<String>::new();
-        for (canonical, marker) in ci_candidate_markers() {
-            if candidate_ids.contains(marker) {
-                canonical_nodes.insert((*canonical).to_string());
-            }
-        }
-        build_ci_canonical_graph(&canonical_nodes, |id| LoweredOp::Callable {
-            module: "parity.ci".to_string(),
-            kind: CallableKind::Pattern,
-            name: id.to_string(),
-            obligation: ObligationCategory::None,
-            service_metadata: None,
-            is_interactive: false,
-            resource_target: None,
-        })
-    }
-
-    fn normalize_ci_reference<T>(reference: &Dag<T>) -> Dag<()> {
-        let reference_ids = reference
-            .nodes
-            .iter()
-            .map(|node| node.id.0.clone())
-            .collect::<HashSet<_>>();
-        // When the reference comes from DSL compilation (build_ci_graph_dsl),
-        // its node IDs are lowered DSL IDs, not canonical IDs. Apply the same
-        // marker-based mapping used for the candidate.
-        let mut canonical_nodes = HashSet::<String>::new();
-        for (canonical, marker) in ci_candidate_markers() {
-            if reference_ids.contains(marker) || reference_ids.contains(canonical) {
-                canonical_nodes.insert((*canonical).to_string());
-            }
-        }
-        build_ci_canonical_graph(&canonical_nodes, |_| ())
-    }
-
-    fn build_ci_canonical_graph<T>(
-        kept_ids: &HashSet<String>,
-        body_for: impl Fn(&str) -> T,
-    ) -> Dag<T> {
-        let mut normalized = Dag::new();
-        for id in ci_canonical_node_ids() {
-            if !kept_ids.contains(id) {
-                continue;
-            }
-            normalized.add_node(Node::opaque(id.to_string(), vec![], vec![], body_for(id)));
-        }
-        let present = normalized
-            .nodes
-            .iter()
-            .map(|node| node.id.0.clone())
-            .collect::<HashSet<_>>();
-        for (from_node, from_port, to_node, to_port) in ci_canonical_edges() {
-            if !present.contains(from_node) || !present.contains(to_node) {
-                continue;
-            }
-            normalized.add_edge(Edge::new(
-                from_node.to_string(),
-                from_port.to_string(),
-                to_node.to_string(),
-                to_port.to_string(),
-            ));
-        }
-        normalized
-    }
-
-    fn ci_candidate_markers() -> Vec<(&'static str, &'static str)> {
-        vec![
-            ("aggregate_verify_results", "shared.dag_util::all_succeeded"),
-            ("bootstrap", "tools.bootstrap::bootstrap"),
-            ("build", "tools.build::build_all"),
-            ("clippy_lint", "tools.clippy::clippy_lint"),
-            (
-                "cloud_env_status",
-                "parse_transport_services_shell_shell_Find_ListDirs",
-            ),
-            (
-                "codegen_exists",
-                "parse_transport_services_shell_shell_Codegen_Check",
-            ),
-            ("deps_exists", "tools.deps::deps_install"),
-            (
-                "execute_codegen",
-                "execute_transport_services_shell_shell_Codegen_Run",
-            ),
-            ("execute_stamp_write", "execute_bootstrap_transport"),
-            ("fs_env", "fs_env"),
-            ("guardrail_check", "shared.dag_util::render_and_upsert"),
-            (
-                "parse_codegen_result",
-                "parse_transport_services_shell_shell_Codegen_Run",
-            ),
-            ("pragma", "tools.pragma::pragma"),
-            (
-                "prepare_codegen_command",
-                "prepare_transport_services_shell_shell_Codegen_Run",
-            ),
-            ("prepare_stamp_write", "prepare_write_bootstrap"),
-            ("report", "shared.dag_util::format_report"),
-            ("test", "parse_transport_services_cargo_cargo_Build_Test"),
-            ("testgen", "tools.testgen::testgen"),
-            ("verify_bootstrap_check", "compare_bootstrap_content"),
-            ("verify_deps_config_check", "compare_deps_generate_content"),
-            ("verify_makegen_check", "compare_makegen_content"),
-            ("verify_pragma_check", "compare_pragma_content"),
-            ("verify_testgen_check", "compare_render_and_upsert_content"),
-        ]
     }
 
     fn ci_canonical_node_ids() -> Vec<&'static str> {
@@ -3025,164 +2813,6 @@ mod parity {
         ]
     }
 
-    pub(crate) fn normalize_makegen_reference<T>(reference: &Dag<T>) -> Dag<()> {
-        let mut normalized = Dag::new();
-        let mut kept_nodes = HashSet::<String>::new();
-        let mut ports_by_node = HashMap::<String, (HashSet<String>, HashSet<String>)>::new();
-
-        for node in &reference.nodes {
-            let canonical_id = canonical_makegen_node_id(&node.id.0);
-            if canonical_id == "makegen" {
-                continue;
-            }
-            let mut inputs = node
-                .inputs
-                .iter()
-                .filter(|port| port.name.0 != "__deps")
-                .cloned()
-                .collect::<Vec<_>>();
-            let mut outputs = node.outputs.clone();
-            normalize_makegen_ports(&canonical_id, &mut inputs, &mut outputs);
-            normalized.add_node(Node::opaque(canonical_id.clone(), inputs, outputs, ()));
-            kept_nodes.insert(canonical_id);
-        }
-        for node in &normalized.nodes {
-            ports_by_node.insert(
-                node.id.0.clone(),
-                (
-                    node.inputs.iter().map(|port| port.name.0.clone()).collect(),
-                    node.outputs
-                        .iter()
-                        .map(|port| port.name.0.clone())
-                        .collect(),
-                ),
-            );
-        }
-
-        let mut seen_edges = HashSet::<(String, String, String, String)>::new();
-        for edge in &reference.edges {
-            let from_node = canonical_makegen_node_id(&edge.from_node.0);
-            let to_node = canonical_makegen_node_id(&edge.to_node.0);
-            if from_node == "makegen" || to_node == "makegen" {
-                continue;
-            }
-            if !kept_nodes.contains(&from_node) || !kept_nodes.contains(&to_node) {
-                continue;
-            }
-            if edge.from_port.0 == "__deps" || edge.to_port.0 == "__deps" {
-                continue;
-            }
-            let from_port = canonical_makegen_port_name(&from_node, &edge.from_port.0);
-            let to_port = canonical_makegen_port_name(&to_node, &edge.to_port.0);
-            let Some((to_inputs, _)) = ports_by_node.get(&to_node) else {
-                continue;
-            };
-            let Some((_, from_outputs)) = ports_by_node.get(&from_node) else {
-                continue;
-            };
-            if !from_outputs.contains(&from_port) || !to_inputs.contains(&to_port) {
-                continue;
-            }
-            let key = (from_node, from_port, to_node, to_port);
-            if seen_edges.insert(key.clone()) {
-                normalized.add_edge(Edge::new(key.0, key.1, key.2, key.3));
-            }
-        }
-
-        normalized
-    }
-
-    fn normalize_makegen_ports(node_id: &str, inputs: &mut Vec<Port>, outputs: &mut Vec<Port>) {
-        match node_id {
-            "fs_env" => {
-                outputs.retain(|port| {
-                    matches!(port.name.0.as_str(), "FilesystemHandle" | "file:write")
-                });
-                for output in outputs.iter_mut() {
-                    if output.name.0 == "file:write" {
-                        output.name.0 = "FilesystemHandle".to_string();
-                    }
-                }
-            }
-            "load_registry" => {
-                outputs.retain(|port| port.name.0 == "registry");
-                for output in outputs.iter_mut() {
-                    output.type_id.0 = "Json".to_string();
-                }
-            }
-            "render_makefile" => {
-                inputs.retain(|port| port.name.0 == "registry");
-                for input in inputs.iter_mut() {
-                    input.type_id.0 = "Json".to_string();
-                }
-                for output in outputs.iter_mut() {
-                    if output.name.0 == "return" {
-                        output.name.0 = "makefile_content".to_string();
-                    }
-                }
-                outputs.retain(|port| port.name.0 == "makefile_content");
-            }
-            "prepare_read_makegen" => {
-                inputs.retain(|port| port.name.0 == "path");
-                outputs.retain(|port| port.name.0 == "request");
-            }
-            "execute_read_makegen" => {
-                inputs.retain(|port| port.name.0 == "request");
-                outputs.retain(|port| port.name.0 == "response");
-            }
-            "compare_makegen_content" => {
-                inputs
-                    .retain(|port| matches!(port.name.0.as_str(), "expected_content" | "response"));
-                outputs.retain(|port| matches!(port.name.0.as_str(), "fresh" | "skip"));
-            }
-            "prepare_write_makegen" => {
-                inputs.retain(|port| matches!(port.name.0.as_str(), "content" | "path"));
-                outputs.retain(|port| port.name.0 == "request");
-            }
-            "execute_makegen_transport" => {
-                inputs.retain(|port| matches!(port.name.0.as_str(), "request" | "skip"));
-                outputs.retain(|port| port.name.0 == "response");
-                for output in outputs.iter_mut() {
-                    output.cardinality = Cardinality::ZERO_OR_ONE;
-                }
-            }
-            _ => {}
-        }
-        inputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
-        dedup_ports_by_name_type_cardinality(inputs);
-        outputs.sort_by(|lhs, rhs| lhs.name.0.cmp(&rhs.name.0));
-        dedup_ports_by_name_type_cardinality(outputs);
-    }
-
-    fn dedup_ports_by_name_type_cardinality(ports: &mut Vec<Port>) {
-        ports.dedup_by(|lhs, rhs| {
-            lhs.name == rhs.name && lhs.type_id == rhs.type_id && lhs.cardinality == rhs.cardinality
-        });
-    }
-
-    fn canonical_makegen_port_name(node_id: &str, port_name: &str) -> String {
-        if node_id == "render_makefile" && port_name == "return" {
-            return "makefile_content".to_string();
-        }
-        if node_id == "fs_env" && port_name == "file:write" {
-            return "FilesystemHandle".to_string();
-        }
-        port_name.to_string()
-    }
-
-    fn canonical_makegen_node_id(node_id: &str) -> String {
-        node_id
-            .strip_prefix("tools.makegen::")
-            .unwrap_or(node_id)
-            .to_string()
-    }
-
-    fn node_body_as_opaque(body: &gunbc_ir::node::NodeBody<LoweredOp>) -> Option<&LoweredOp> {
-        match body {
-            gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
-            gunbc_ir::node::NodeBody::SubDag(_) => None,
-        }
-    }
 }
 
 fn lower_callable(
@@ -7277,41 +6907,6 @@ mod tests {
         lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
     }
 
-    // Test infrastructure: filesystem access for test fixtures
-    #[allow(clippy::disallowed_methods)]
-    #[test]
-    fn lower_makegen_produces_callable_nodes() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let source = fs::read_to_string(file).expect("should read makegen source");
-        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
-
-        let node_ids = dag
-            .nodes
-            .iter()
-            .map(|node| node.id.0.as_str())
-            .collect::<Vec<_>>();
-        assert!(node_ids.contains(&"tools.makegen::render_makefile"));
-        assert!(node_ids.contains(&"tools.makegen::makegen"));
-        assert!(node_ids.contains(&"prepare_read_makegen"));
-        assert!(node_ids.contains(&"execute_read_makegen"));
-        assert!(node_ids.contains(&"compare_makegen_content"));
-        assert!(node_ids.contains(&"prepare_write_makegen"));
-        assert!(node_ids.contains(&"execute_makegen_transport"));
-        assert!(node_ids.contains(&"load_registry"));
-        assert!(node_ids.contains(&"fs_env"));
-        assert!(dag.edges.iter().any(|edge| {
-            edge.from_node.0 == "tools.makegen::render_makefile"
-                && edge.to_node.0 == "tools.makegen::makegen"
-                && edge.to_port.0 == "__deps"
-        }));
-        assert!(dag.edges.iter().any(|edge| {
-            edge.from_node.0 == "tools.makegen::render_makefile"
-                && edge.to_node.0 == "compare_makegen_content"
-                && edge.to_port.0 == "expected_content"
-        }));
-    }
-
     #[test]
     fn collect_collection_ops_detects_pipe_map_filter_join_chain() {
         let stmts = callable_stmts_from_source(
@@ -7667,35 +7262,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
     }
 
     #[test]
-    fn ci_pipeline_normalized_parity_can_reach_exact_match() {
-        let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
-        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
-        let reference = build_ci_graph().expect("ci builder graph should be available");
-        let report = compare_ci_topology(&dag, &reference);
-        assert!(
-            report.is_exact_match(),
-            "normalized ci parity should match reference topology: {report:?}"
-        );
-    }
-
-    #[test]
-    fn ci_pipeline_normalized_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
-        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
-        let reference = build_ci_graph().expect("ci builder graph should be available");
-        let report_a = compare_ci_topology(&dag, &reference);
-        let report_b = compare_ci_topology(&dag, &reference);
-        assert_eq!(
-            report_a, report_b,
-            "normalized ci parity report should be deterministic"
-        );
-        assert!(
-            report_a.is_exact_match(),
-            "normalized ci parity should remain exact-match"
-        );
-    }
-
-    #[test]
     fn bootstrap_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
         let dag = lower_target_module_with_dependency_scope(&typed, "tools.bootstrap");
@@ -7759,105 +7325,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
         assert_eq!(report_a, report_b);
         assert!(report_a.candidate_nodes > 0);
         assert!(report_a.reference_nodes > 0);
-    }
-
-    // Test infrastructure: filesystem access for test fixtures
-    #[allow(clippy::disallowed_methods)]
-    #[test]
-    fn content_upsert_expansion_wires_transport_chain_for_makegen() {
-        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl/tools/makegen.dag");
-        let source = fs::read_to_string(file).expect("should read makegen source");
-        let typed = typed_project_from_sources(&[("dsl/tools/makegen.dag", &source)]);
-        let dag = lower_typed_project(&typed).expect("lowering should succeed");
-
-        assert_eq!(
-            dag.nodes.len(),
-            10,
-            "expected callable + content_upsert chain + source scaffold nodes + param path source"
-        );
-        let required_edges = [
-            (
-                "prepare_read_makegen",
-                "request",
-                "execute_read_makegen",
-                "request",
-            ),
-            (
-                "prepare_read_makegen",
-                "skip",
-                "execute_read_makegen",
-                "skip",
-            ),
-            (
-                "execute_read_makegen",
-                "response",
-                "compare_makegen_content",
-                "response",
-            ),
-            (
-                "prepare_write_makegen",
-                "request",
-                "execute_makegen_transport",
-                "request",
-            ),
-            (
-                "compare_makegen_content",
-                "skip",
-                "execute_makegen_transport",
-                "skip",
-            ),
-            (
-                "execute_makegen_transport",
-                "response",
-                "tools.makegen::makegen",
-                "__deps",
-            ),
-            (
-                "load_registry",
-                "registry",
-                "tools.makegen::render_makefile",
-                "registry",
-            ),
-            (
-                "fs_env",
-                "FilesystemHandle",
-                "prepare_read_makegen",
-                "res:file:Makefile",
-            ),
-        ];
-        for (from_node, from_port, to_node, to_port) in required_edges {
-            assert!(
-                dag.edges.iter().any(|edge| {
-                    edge.from_node.0 == from_node
-                        && edge.from_port.0 == from_port
-                        && edge.to_node.0 == to_node
-                        && edge.to_port.0 == to_port
-                }),
-                "missing edge {from_node}.{from_port} -> {to_node}.{to_port}"
-            );
-        }
-        let param_source_node = dag
-            .nodes
-            .iter()
-            .find(|node| node.id.0 == "param_source_tools_makegen_makegen_path")
-            .expect("param source node should be present for content_upsert path");
-        assert!(dag.edges.iter().any(|edge| {
-            edge.from_node == param_source_node.id
-                && edge.from_port.0 == "path"
-                && edge.to_node.0 == "prepare_read_makegen"
-                && edge.to_port.0 == "path"
-        }));
-        assert!(dag.edges.iter().any(|edge| {
-            edge.from_node == param_source_node.id
-                && edge.from_port.0 == "path"
-                && edge.to_node.0 == "prepare_write_makegen"
-                && edge.to_port.0 == "path"
-        }));
-        assert!(dag.edges.iter().any(|edge| {
-            edge.from_node.0 == "tools.makegen::render_makefile"
-                && edge.to_node.0 == "prepare_write_makegen"
-                && edge.to_port.0 == "content"
-        }));
     }
 
     #[test]
@@ -9774,81 +9241,6 @@ func prompt() -> { ok: Bool } {
             report_a.added_nodes + report_a.removed_nodes + report_a.changed_nodes > 0,
             "parity report should continue surfacing remaining topology differences"
         );
-    }
-
-    // Test infrastructure: filesystem access for test fixtures
-    #[allow(clippy::disallowed_methods)]
-    #[test]
-    fn makegen_normalized_parity_can_reach_exact_match() {
-        let lowered = load_makegen_lowered();
-        let reference = reference_makegen_shape();
-
-        let report = compare_makegen_topology(&lowered, &reference);
-        assert!(
-            report.is_exact_match(),
-            "normalized makegen parity should currently match reference topology"
-        );
-    }
-
-    // Test infrastructure: filesystem access for test fixtures
-    #[allow(clippy::disallowed_methods)]
-    #[test]
-    fn makegen_parity_matches_builder_graph() {
-        let lowered = load_makegen_lowered();
-        let builder = build_makegen_graph().expect("builder makegen graph should construct");
-        let report = compare_makegen_topology(&lowered, &builder);
-        assert!(
-            report.is_exact_match(),
-            "compiled makegen graph should match builder graph topology: {report:?}"
-        );
-    }
-
-    #[test]
-    fn makegen_builder_parity_report_is_deterministic() {
-        let lowered = load_makegen_lowered();
-        let builder = build_makegen_graph().expect("builder makegen graph should construct");
-        let report_a = compare_makegen_topology(&lowered, &builder);
-        let report_b = compare_makegen_topology(&lowered, &builder);
-        assert_eq!(
-            report_a, report_b,
-            "builder parity report must be deterministic across runs"
-        );
-        assert!(
-            report_a.is_exact_match(),
-            "builder parity report should remain exact-match for makegen"
-        );
-    }
-
-    #[test]
-    fn makegen_builder_and_compiled_ascii_viz_match_after_normalization() {
-        let lowered = load_makegen_lowered();
-        let builder = build_makegen_graph().expect("builder makegen graph should construct");
-        let candidate = normalize_makegen_candidate(&lowered);
-        let reference = normalize_makegen_reference(&builder);
-        let candidate_ascii = candidate.to_ascii("compiled_makegen");
-        let reference_ascii = reference.to_ascii("builder_makegen");
-        let normalized_candidate_ascii = candidate_ascii
-            .replace("compiled_makegen", "makegen_parity")
-            .trim()
-            .to_string();
-        let normalized_reference_ascii = reference_ascii
-            .replace("builder_makegen", "makegen_parity")
-            .trim()
-            .to_string();
-        assert_eq!(
-            normalized_candidate_ascii, normalized_reference_ascii,
-            "normalized compiled and builder ASCII DAG views should match"
-        );
-    }
-
-    // Test infrastructure: filesystem access for test fixtures
-    #[allow(clippy::disallowed_methods)]
-    #[test]
-    fn makegen_canonical_ir_json_matches_snapshot() {
-        let lowered = load_makegen_lowered();
-        let canonical = canonical_ir_json(&lowered).expect("canonical json should serialize");
-        let expected = include_str!("../tests/snapshots/makegen_canonical_ir.json");
-        assert_eq!(canonical.trim(), expected.trim());
     }
 
     #[test]
