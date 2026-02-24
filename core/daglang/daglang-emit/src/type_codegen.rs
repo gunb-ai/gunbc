@@ -442,14 +442,20 @@ pub fn fndef_to_code_ir(fd: &FnDef, ctx: &fn_codegen::CompileContext) -> Vec<cod
         .collect();
     let ret = type_expr_to_rust(&fd.return_type);
 
-    let body = if fd.body.stmts.is_empty() {
-        vec![code_ir::Stmt::Expr(code_ir::Expr::MacroCall {
-            name: "todo".to_string(),
-            args: vec![code_ir::Expr::Str("generated from DSL".to_string())],
-        })]
+    let todo_body = vec![code_ir::Stmt::Expr(code_ir::Expr::MacroCall {
+        name: "todo".to_string(),
+        args: vec![code_ir::Expr::Str("generated from DSL".to_string())],
+    })];
+    let body = if fd.body.stmts.is_empty() || fd.body.lossy {
+        todo_body
     } else {
         fn_codegen::reset_tmp_counter();
-        fn_codegen::compile_fn_body(&fd.body, ctx)
+        let compiled = fn_codegen::compile_fn_body(&fd.body, ctx);
+        if fn_codegen::body_has_empty_construct(&compiled) {
+            todo_body
+        } else {
+            compiled
+        }
     };
 
     vec![code_ir::Item::Fn(code_ir::FnDef {
@@ -481,13 +487,53 @@ fn collect_optional_fields(
 }
 
 /// Build a map of variant_name → enum_name for qualifying bare identifiers.
+/// Ambiguous variants (same name in multiple enums) are excluded.
 fn collect_variant_to_enum(
     td: &TypeDef,
     map: &mut std::collections::HashMap<String, String>,
+    ambiguous: &mut std::collections::HashSet<String>,
 ) {
     if let TypeBody::Sum(variants) = &td.body {
         for v in variants {
-            map.insert(v.name.clone(), td.name.clone());
+            if ambiguous.contains(&v.name) {
+                continue;
+            }
+            if let Some(existing) = map.get(&v.name) {
+                if existing != &td.name {
+                    ambiguous.insert(v.name.clone());
+                    map.remove(&v.name);
+                }
+            } else {
+                map.insert(v.name.clone(), td.name.clone());
+            }
+        }
+    }
+}
+
+/// Build a map of enum_name → {variant names} for field-type disambiguation.
+fn collect_enum_variants(
+    td: &TypeDef,
+    map: &mut std::collections::HashMap<String, std::collections::HashSet<String>>,
+) {
+    if let TypeBody::Sum(variants) = &td.body {
+        let names: std::collections::HashSet<String> =
+            variants.iter().map(|v| v.name.clone()).collect();
+        map.insert(td.name.clone(), names);
+    }
+}
+
+/// Build a map of struct_name → (field_name → type_name) for contextual variant resolution.
+fn collect_struct_field_types(
+    td: &TypeDef,
+    map: &mut std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+) {
+    if let TypeBody::Record(fields) = &td.body {
+        let field_map: std::collections::HashMap<String, String> = fields
+            .iter()
+            .map(|f| (f.name.clone(), type_expr_to_rust_name(&f.ty)))
+            .collect();
+        if !field_map.is_empty() {
+            map.insert(td.name.clone(), field_map);
         }
     }
 }
@@ -598,6 +644,9 @@ pub fn typedefs_to_source_file(
     let mut data_names = std::collections::HashSet::new();
     let mut optional_fields = std::collections::HashMap::new();
     let mut variant_to_enum = std::collections::HashMap::new();
+    let mut ambiguous = std::collections::HashSet::new();
+    let mut struct_field_types = std::collections::HashMap::new();
+    let mut enum_variants = std::collections::HashMap::new();
     for item in items {
         match &item.node {
             daglang_syntax::ast::Item::DataDef(dd) => {
@@ -605,12 +654,17 @@ pub fn typedefs_to_source_file(
             }
             daglang_syntax::ast::Item::TypeDef(td) => {
                 collect_optional_fields(td, &mut optional_fields);
-                collect_variant_to_enum(td, &mut variant_to_enum);
+                collect_variant_to_enum(td, &mut variant_to_enum, &mut ambiguous);
+                collect_struct_field_types(td, &mut struct_field_types);
+                collect_enum_variants(td, &mut enum_variants);
             }
             _ => {}
         }
     }
-    let ctx = fn_codegen::CompileContext { data_names, optional_fields, variant_to_enum };
+    let ctx = fn_codegen::CompileContext {
+        data_names, optional_fields, variant_to_enum,
+        struct_field_types, enum_variants,
+    };
     let mut code_items = Vec::new();
     for item in items {
         match &item.node {
@@ -717,14 +771,21 @@ pub fn generate_types_for_modules(
                     }
                     let mut opt_fields = std::collections::HashMap::new();
                     let mut v2e = std::collections::HashMap::new();
+                    let mut ambig = std::collections::HashSet::new();
+                    let mut sft = std::collections::HashMap::new();
+                    let mut ev = std::collections::HashMap::new();
                     for td in &type_defs {
                         collect_optional_fields(td, &mut opt_fields);
-                        collect_variant_to_enum(td, &mut v2e);
+                        collect_variant_to_enum(td, &mut v2e, &mut ambig);
+                        collect_struct_field_types(td, &mut sft);
+                        collect_enum_variants(td, &mut ev);
                     }
                     let fn_ctx = fn_codegen::CompileContext {
                         data_names: fn_data_names,
                         optional_fields: opt_fields,
                         variant_to_enum: v2e,
+                        struct_field_types: sft,
+                        enum_variants: ev,
                     };
                     all_items.extend(fndef_to_code_ir(fd, &fn_ctx));
                 }
@@ -776,12 +837,88 @@ pub fn generate_types_for_modules(
         ));
     }
 
+    // Replace resolve_symbol/symbol_color/ansi_code todo!() stubs with
+    // proper implementations that delegate to generated impl methods.
+    replace_builtin_stubs(&mut all_items);
+
     let source = SourceFile {
         doc: vec!["Generated from DSL type definitions. Do not edit.".to_string()],
         items: all_items,
     };
 
     render_rust_source(&source)
+}
+
+/// Replace `todo!()` stub functions with proper built-in implementations
+/// that delegate to generated `impl` methods from data tables.
+fn replace_builtin_stubs(items: &mut Vec<code_ir::Item>) {
+    for item in items.iter_mut() {
+        if let code_ir::Item::Fn(f) = item {
+            if is_todo_stub(&f.body) {
+                if let Some(replacement) = builtin_body(&f.name) {
+                    f.body = replacement;
+                }
+            }
+        }
+    }
+}
+
+fn is_todo_stub(body: &[code_ir::Stmt]) -> bool {
+    matches!(body, [code_ir::Stmt::Expr(code_ir::Expr::MacroCall { name, .. })] if name == "todo")
+}
+
+fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
+    match name {
+        "resolve_symbol" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
+            "match tier {\n        \
+             Tier::Emoji => id.emoji().to_string(),\n        \
+             Tier::Unicode => id.unicode().to_string(),\n        \
+             Tier::Ascii => id.ascii().to_string(),\n    \
+             }".to_string(),
+        ))]),
+        "symbol_color" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
+            "id.color()".to_string(),
+        ))]),
+        "ansi_code" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
+            "c.code().to_string()".to_string(),
+        ))]),
+        "truncate_text" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
+            "{\n        \
+             let mut result = String::new();\n        \
+             let mut used: i64 = 0;\n        \
+             for c in text.chars() {\n            \
+                 let w = char_width(c);\n            \
+                 if used + w > max_width { break; }\n            \
+                 result.push(c);\n            \
+                 used += w;\n        \
+             }\n        \
+             result\n    \
+             }".to_string(),
+        ))]),
+        "truncate_spans" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
+            "{\n        \
+             let mut kept = Vec::new();\n        \
+             let mut remaining = budget;\n        \
+             for span in spans {\n            \
+                 if remaining <= 0 { break; }\n            \
+                 let w = span_width(span.clone(), tier);\n            \
+                 if w <= remaining {\n                \
+                     kept.push(span);\n                \
+                     remaining -= w;\n            \
+                 } else {\n                \
+                     let truncated = truncate_text(span.text.clone(), remaining);\n                \
+                     kept.push(Span { text: truncated, style: span.style });\n                \
+                     break;\n            \
+                 }\n        \
+             }\n        \
+             kept\n    \
+             }".to_string(),
+        ))]),
+        "repeat_char" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
+            "c.repeat(n.max(0) as usize)".to_string(),
+        ))]),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ module std.render
 
 import std.width { truncate_text }
 import std.unicode { string_display_width }
-import std.symbols { SemanticColor, SymbolId, Tier }
+import std.symbols { SemanticColor, SymbolId, Tier, resolve_symbol }
 
 // --- Rendering domain types ---
 
@@ -54,15 +54,19 @@ type Viewport {
 
 // --- Width-constrained composition (pure fn) ---
 
-fn span_width(span: Span) -> Int {
-  string_display_width(s: span.text)
+fn span_width(span: Span, tier: Tier) -> Int {
+  let text_w = string_display_width(s: span.text)
+  match span.style.symbol {
+    null => text_w
+    sym  => text_w + string_display_width(s: resolve_symbol(id: sym, tier: tier))
+  }
 }
 
-fn truncate_spans(spans: List<Span>, budget: Int) -> List<Span> {
+fn truncate_spans(spans: List<Span>, budget: Int, tier: Tier) -> List<Span> {
   let result = spans |> fold(
     init: { kept: [], remaining: budget },
     f: (acc, span) => {
-      let w = span_width(span: span)
+      let w = span_width(span: span, tier: tier)
       if acc.remaining <= 0 { acc }
       else if w <= acc.remaining {
         { kept: acc.kept |> append(items: [span]), remaining: acc.remaining - w }
@@ -76,20 +80,20 @@ fn truncate_spans(spans: List<Span>, budget: Int) -> List<Span> {
   result.kept
 }
 
-fn constrain_line(line: Line, max_width: Int) -> Line {
+fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line {
   let indent_width = line.indent * 4
   let budget = max_width - indent_width
   if budget <= 0 { return Line { spans: [], indent: line.indent, max_width: max_width } }
   Line {
-    spans: truncate_spans(spans: line.spans, budget: budget),
+    spans: truncate_spans(spans: line.spans, budget: budget, tier: tier),
     indent: line.indent,
     max_width: max_width
   }
 }
 
-fn constrain_frame(frame: Frame, viewport: Viewport) -> Frame {
+fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame {
   Frame {
-    lines: frame.lines |> map(line => constrain_line(line: line, max_width: viewport.width)),
+    lines: frame.lines |> map(line => constrain_line(line: line, max_width: viewport.width, tier: tier)),
     cursor_action: frame.cursor_action
   }
 }

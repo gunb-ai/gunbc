@@ -30,7 +30,12 @@ pub struct CompileContext {
     /// Map from struct name → set of field names that are `Option<T>`.
     pub optional_fields: std::collections::HashMap<String, HashSet<String>>,
     /// Map from bare variant name → parent enum name (e.g. "ZeroWidth" → "DisplayWidth").
+    /// Ambiguous variants (present in multiple enums) are excluded.
     pub variant_to_enum: std::collections::HashMap<String, String>,
+    /// Map from struct name → (field name → field type name) for contextual resolution.
+    pub struct_field_types: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    /// Map from enum name → set of variant names, for field-type-based disambiguation.
+    pub enum_variants: std::collections::HashMap<String, HashSet<String>>,
 }
 
 impl CompileContext {
@@ -39,6 +44,8 @@ impl CompileContext {
             data_names: HashSet::new(),
             optional_fields: std::collections::HashMap::new(),
             variant_to_enum: std::collections::HashMap::new(),
+            struct_field_types: std::collections::HashMap::new(),
+            enum_variants: std::collections::HashMap::new(),
         }
     }
 }
@@ -155,10 +162,11 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
         ast::Expr::Record(name, fields) => {
             let struct_name = name.clone().unwrap_or_default();
             let opt_set = ctx.optional_fields.get(&struct_name);
+            let field_types = ctx.struct_field_types.get(&struct_name);
             let ir_fields: Vec<(String, code_ir::Expr)> = fields
                 .iter()
                 .map(|(n, e)| {
-                    let compiled = compile_expr(e, ctx);
+                    let compiled = compile_expr_in_field_context(e, n, field_types, ctx);
                     let is_opt = opt_set.map_or(false, |s| s.contains(n.as_str()));
                     if is_opt && !is_none_expr(&compiled) {
                         (n.clone(), code_ir::Expr::Call {
@@ -242,14 +250,13 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
         return code_ir::Expr::Var("None".to_string());
     }
     if ctx.data_names.contains(name) {
-        // Data tables are Rust statics; `.clone()` prevents move-out-of-static errors.
-        // For `&[T]` statics this is a no-op (cloning a reference); for scalar statics
-        // it produces an owned copy.
         code_ir::Expr::MethodCall {
             receiver: Box::new(code_ir::Expr::Var(to_screaming_snake(name))),
             method: "clone".to_string(),
             args: vec![],
         }
+    } else if let Some(enum_name) = ctx.variant_to_enum.get(name) {
+        code_ir::Expr::Path(vec![enum_name.clone(), name.to_string()])
     } else {
         code_ir::Expr::Var(name.to_string())
     }
@@ -341,17 +348,27 @@ fn compile_unaryop(op: &ast::UnaryOp) -> String {
 // ---------------------------------------------------------------------------
 
 fn compile_match(scrutinee: &ast::Expr, arms: &[ast::MatchArm], ctx: &CompileContext) -> code_ir::Expr {
+    let has_none_arm = arms.iter().any(|a| is_null_pattern(&a.pattern));
     code_ir::Expr::Match {
         expr: Box::new(compile_expr(scrutinee, ctx)),
-        arms: arms.iter().map(|a| compile_match_arm(a, ctx)).collect(),
+        arms: arms.iter().map(|a| compile_match_arm(a, has_none_arm, ctx)).collect(),
     }
 }
 
-fn compile_match_arm(arm: &ast::MatchArm, ctx: &CompileContext) -> code_ir::MatchArm {
+fn compile_match_arm(arm: &ast::MatchArm, option_context: bool, ctx: &CompileContext) -> code_ir::MatchArm {
+    let mut pattern = compile_pattern(&arm.pattern, ctx);
+    if option_context && !is_null_pattern(&arm.pattern) && !matches!(arm.pattern, ast::Pattern::Wildcard) {
+        pattern = format!("Some({pattern})");
+    }
     code_ir::MatchArm {
-        pattern: compile_pattern(&arm.pattern, ctx),
+        pattern,
         body: vec![code_ir::Stmt::TailExpr(compile_expr(&arm.body, ctx))],
     }
+}
+
+fn is_null_pattern(pat: &ast::Pattern) -> bool {
+    matches!(pat, ast::Pattern::Ident(name) if name == "null")
+        || matches!(pat, ast::Pattern::Literal(ast::Literal::None))
 }
 
 fn compile_pattern(pat: &ast::Pattern, ctx: &CompileContext) -> String {
@@ -490,6 +507,12 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
                 .or_else(|| args.first())
                 .map(|(_, e)| e);
             compile_any_pipe(&collection, predicate, ctx)
+        }
+
+        // list |> filter(predicate: lambda) => for-loop building filtered result
+        ast::Expr::Call(name, args) if name == "filter" => {
+            let predicate = args.first().map(|(_, e)| e);
+            compile_filter_pipe(&collection, predicate, ctx)
         }
 
         // list |> map(f) => for-loop building result
@@ -739,6 +762,49 @@ fn compile_map_pipe(collection: &code_ir::Expr, mapper: Option<&ast::Expr>, ctx:
     ])
 }
 
+fn compile_filter_pipe(collection: &code_ir::Expr, predicate: Option<&ast::Expr>, ctx: &CompileContext) -> code_ir::Expr {
+    let result = fresh("filtered");
+    let elem = fresh("elem");
+
+    let cond = match predicate {
+        Some(ast::Expr::Lambda(params, body)) => {
+            let compiled_body = compile_expr(body, ctx);
+            if let Some(param) = params.first() {
+                substitute_var(&compiled_body, param, &code_ir::Expr::Var(elem.clone()))
+            } else {
+                compiled_body
+            }
+        }
+        Some(other) => code_ir::Expr::Call {
+            func: Box::new(compile_expr(other, ctx)),
+            args: vec![code_ir::Expr::Var(elem.clone())],
+            obligation: None,
+        },
+        None => code_ir::Expr::BoolLit(true),
+    };
+
+    code_ir::Expr::Block(vec![
+        code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall {
+            name: "vec".to_string(),
+            args: vec![],
+        }),
+        code_ir::Stmt::For {
+            binding: elem.clone(),
+            iter: make_owned_iter(collection.clone()),
+            body: vec![code_ir::Stmt::Expr(code_ir::Expr::If {
+                cond: Box::new(cond),
+                then_body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                    receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                    method: "push".to_string(),
+                    args: vec![code_ir::Expr::Var(elem)],
+                })],
+                else_body: None,
+            })],
+        },
+        code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+    ])
+}
+
 fn compile_fold_pipe(
     collection: &code_ir::Expr,
     init: Option<&ast::Expr>,
@@ -969,6 +1035,57 @@ fn make_owned_iter(collection: code_ir::Expr) -> code_ir::Expr {
 
 fn is_none_expr(expr: &code_ir::Expr) -> bool {
     matches!(expr, code_ir::Expr::Var(name) if name == "None")
+}
+
+/// Compile a field value expression with type-aware variant resolution.
+///
+/// When the field's declared type is an enum that contains the bare identifier
+/// as a variant, use `EnumType::Variant` instead of the global `variant_to_enum`
+/// mapping (which may be wrong for ambiguous variants like `Info`).
+fn compile_expr_in_field_context(
+    expr: &ast::Expr,
+    field_name: &str,
+    field_types: Option<&std::collections::HashMap<String, String>>,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
+    if let ast::Expr::Ident(name) = expr {
+        if name == "null" {
+            return code_ir::Expr::Var("None".to_string());
+        }
+        if let Some(ft_map) = field_types {
+            if let Some(type_name) = ft_map.get(field_name) {
+                if let Some(variants) = ctx.enum_variants.get(type_name) {
+                    if variants.contains(name.as_str()) {
+                        return code_ir::Expr::Path(vec![type_name.clone(), name.to_string()]);
+                    }
+                }
+            }
+        }
+    }
+    compile_expr(expr, ctx)
+}
+
+/// Check if compiled IR contains empty anonymous records in match arms,
+/// which indicates the DSL parser failed to capture complex block bodies.
+pub fn body_has_empty_construct(stmts: &[code_ir::Stmt]) -> bool {
+    stmts.iter().any(|s| match s {
+        code_ir::Stmt::TailExpr(e) | code_ir::Stmt::Expr(e) => expr_has_empty(e),
+        code_ir::Stmt::Let { expr, .. } => expr_has_empty(expr),
+        _ => false,
+    })
+}
+
+fn expr_has_empty(e: &code_ir::Expr) -> bool {
+    match e {
+        code_ir::Expr::Struct { name, fields } if name.is_empty() && fields.is_empty() => true,
+        code_ir::Expr::Match { arms, .. } => arms.iter().any(|a| body_has_empty_construct(&a.body)),
+        code_ir::Expr::If { then_body, else_body, .. } => {
+            body_has_empty_construct(then_body)
+                || else_body.as_ref().map_or(false, |b| body_has_empty_construct(b))
+        }
+        code_ir::Expr::Block(stmts) => body_has_empty_construct(stmts),
+        _ => false,
+    }
 }
 
 /// Check if any leaf of a `+` chain is a string literal.
@@ -1280,5 +1397,113 @@ mod tests {
         reset_tmp_counter();
         let ir = compile_expr(&Expr::Ident("null".into()), &empty_ctx());
         assert!(matches!(ir, code_ir::Expr::Var(ref n) if n == "None"));
+    }
+
+    #[test]
+    fn compile_pipe_filter() {
+        reset_tmp_counter();
+        let expr = Expr::Pipe(
+            Box::new(Expr::Ident("items".into())),
+            Box::new(Expr::Call(
+                "filter".into(),
+                vec![(
+                    None,
+                    Expr::Lambda(
+                        vec!["x".into()],
+                        Box::new(Expr::FieldAccess(
+                            Box::new(Expr::Ident("x".into())),
+                            "active".into(),
+                        )),
+                    ),
+                )],
+            )),
+        );
+        let ir = compile_expr(&expr, &empty_ctx());
+        match ir {
+            code_ir::Expr::Block(stmts) => {
+                assert!(stmts.len() >= 3, "filter: let, for, tail");
+                assert!(matches!(stmts[0], code_ir::Stmt::Let { .. }));
+                assert!(matches!(stmts[1], code_ir::Stmt::For { .. }));
+            }
+            other => panic!("expected Block for filter, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn option_match_wraps_non_null_patterns_in_some() {
+        reset_tmp_counter();
+        let expr = Expr::Match(
+            Box::new(Expr::Ident("color".into())),
+            vec![
+                MatchArm {
+                    pattern: Pattern::Ident("null".into()),
+                    guard: None,
+                    body: Expr::Literal(Literal::Int(0)),
+                },
+                MatchArm {
+                    pattern: Pattern::Ident("c".into()),
+                    guard: None,
+                    body: Expr::Literal(Literal::Int(1)),
+                },
+            ],
+        );
+        let ir = compile_expr(&expr, &empty_ctx());
+        match ir {
+            code_ir::Expr::Match { arms, .. } => {
+                assert_eq!(arms[0].pattern, "None");
+                assert_eq!(arms[1].pattern, "Some(c)");
+            }
+            other => panic!("expected Match, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn field_context_resolves_ambiguous_variant() {
+        reset_tmp_counter();
+        let mut ctx = CompileContext::new();
+        ctx.struct_field_types.insert(
+            "BoxConfig".to_string(),
+            [("color".to_string(), "SemanticColor".to_string())]
+                .into_iter()
+                .collect(),
+        );
+        ctx.enum_variants.insert(
+            "SemanticColor".to_string(),
+            ["Info".to_string(), "Error".to_string()].into_iter().collect(),
+        );
+        ctx.enum_variants.insert(
+            "SymbolId".to_string(),
+            ["Info".to_string(), "Error".to_string()].into_iter().collect(),
+        );
+        let expr = Expr::Record(
+            Some("BoxConfig".into()),
+            vec![("color".into(), Expr::Ident("Info".into()))],
+        );
+        let ir = compile_expr(&expr, &ctx);
+        match ir {
+            code_ir::Expr::Struct { fields, .. } => {
+                assert!(
+                    matches!(&fields[0].1, code_ir::Expr::Path(parts) if parts == &["SemanticColor", "Info"]),
+                    "expected SemanticColor::Info, got: {:?}",
+                    fields[0].1
+                );
+            }
+            other => panic!("expected Struct, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_construct_detected_in_match_arms() {
+        let stmts = vec![code_ir::Stmt::TailExpr(code_ir::Expr::Match {
+            expr: Box::new(code_ir::Expr::Var("x".into())),
+            arms: vec![code_ir::MatchArm {
+                pattern: "A".into(),
+                body: vec![code_ir::Stmt::TailExpr(code_ir::Expr::Struct {
+                    name: String::new(),
+                    fields: vec![],
+                })],
+            }],
+        })];
+        assert!(body_has_empty_construct(&stmts));
     }
 }

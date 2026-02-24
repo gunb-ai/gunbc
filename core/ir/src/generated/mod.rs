@@ -119,11 +119,15 @@ pub static STANDARD_SYMBOLS: &[SymbolEntry] = &[
 ];
 
 pub fn resolve_symbol(id: SymbolId, tier: Tier) -> String {
-    todo!("generated from DSL");
+    match tier {
+        Tier::Emoji => id.emoji().to_string(),
+        Tier::Unicode => id.unicode().to_string(),
+        Tier::Ascii => id.ascii().to_string(),
+    }
 }
 
 pub fn symbol_color(id: SymbolId) -> SemanticColor {
-    todo!("generated from DSL");
+    id.color()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,7 +148,7 @@ pub static ANSI_MAPPINGS: &[AnsiMapping] = &[
 ];
 
 pub fn ansi_code(c: SemanticColor) -> String {
-    todo!("generated from DSL");
+    c.code().to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
@@ -227,7 +231,7 @@ pub fn char_display_width(c: char) -> DisplayWidth {
     }
     __contains_0
 } {
-    return ZeroWidth;
+    return DisplayWidth::ZeroWidth;
 };
     if {
     let mut __any_2 = false;
@@ -239,7 +243,7 @@ pub fn char_display_width(c: char) -> DisplayWidth {
     }
     __any_2
 } {
-    return ZeroWidth;
+    return DisplayWidth::ZeroWidth;
 };
     if {
     let mut __any_4 = false;
@@ -251,9 +255,9 @@ pub fn char_display_width(c: char) -> DisplayWidth {
     }
     __any_4
 } {
-    return Wide;
+    return DisplayWidth::Wide;
 };
-    return Narrow;
+    return DisplayWidth::Narrow;
 }
 
 pub fn char_width(c: char) -> i64 {
@@ -277,7 +281,17 @@ pub fn string_display_width(s: String) -> i64 {
 }
 
 pub fn truncate_text(text: String, max_width: i64) -> String {
-    todo!("generated from DSL");
+    {
+        let mut result = String::new();
+        let mut used: i64 = 0;
+        for c in text.chars() {
+            let w = char_width(c);
+            if used + w > max_width { break; }
+            result.push(c);
+            used += w;
+        }
+        result
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -334,28 +348,52 @@ pub struct Viewport {
     pub unit: ViewportUnit,
 }
 
-pub fn span_width(span: Span) -> i64 {
-    string_display_width(span.text)
+pub fn span_width(span: Span, tier: Tier) -> i64 {
+    let text_w = string_display_width(span.text);
+    match span.style.symbol {
+    None => {
+        text_w
+    }
+    Some(sym) => {
+        text_w + string_display_width(resolve_symbol(sym, tier))
+    }
+}
 }
 
-pub fn truncate_spans(spans: Vec<Span>, budget: i64) -> Vec<Span> {
-    todo!("generated from DSL");
+pub fn truncate_spans(spans: Vec<Span>, budget: i64, tier: Tier) -> Vec<Span> {
+    {
+        let mut kept = Vec::new();
+        let mut remaining = budget;
+        for span in spans {
+            if remaining <= 0 { break; }
+            let w = span_width(span.clone(), tier);
+            if w <= remaining {
+                kept.push(span);
+                remaining -= w;
+            } else {
+                let truncated = truncate_text(span.text.clone(), remaining);
+                kept.push(Span { text: truncated, style: span.style });
+                break;
+            }
+        }
+        kept
+    }
 }
 
-pub fn constrain_line(line: Line, max_width: i64) -> Line {
+pub fn constrain_line(line: Line, max_width: i64, tier: Tier) -> Line {
     let indent_width = line.indent * 4;
     let budget = max_width - indent_width;
     if budget <= 0 {
     return Line { spans: vec!(), indent: line.indent, max_width: Some(max_width) };
 };
-    Line { spans: truncate_spans(line.spans, budget), indent: line.indent, max_width: Some(max_width) }
+    Line { spans: truncate_spans(line.spans, budget, tier), indent: line.indent, max_width: Some(max_width) }
 }
 
-pub fn constrain_frame(frame: Frame, viewport: Viewport) -> Frame {
+pub fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame {
     Frame { lines: {
     let mut __mapped_0 = vec!();
     for __elem_1 in frame.lines {
-        __mapped_0.push(constrain_line(__elem_1, viewport.width));
+        __mapped_0.push(constrain_line(__elem_1, viewport.width, tier));
     }
     __mapped_0
 }, cursor_action: frame.cursor_action }
@@ -425,18 +463,7 @@ pub fn effective_width(config: BoxConfig, title_part: String) -> i64 {
 }
 
 pub fn box_top_line(config: BoxConfig) -> Line {
-    let chars = box_chars_for_tier(config.tier);
-    let title_part = format!("{} {} ", chars.horizontal, config.title);
-    let eff = effective_width(config, title_part);
-    let title_width = string_display_width(title_part);
-    match config.style {
-    BoxStyle::Closed => {
-         {  }
-    }
-    BoxStyle::OpenRight => {
-         {  }
-    }
-}
+    todo!("generated from DSL");
 }
 
 pub fn box_content_line(config: BoxConfig, content: String) -> Line {
@@ -446,7 +473,7 @@ pub fn box_content_line(config: BoxConfig, content: String) -> Line {
     None => {
         SpanStyle { color: None, bold: false, italic: false, symbol: None }
     }
-    c => {
+    Some(c) => {
         SpanStyle { color: Some(c), bold: false, italic: false, symbol: None }
     }
 };
@@ -455,33 +482,23 @@ pub fn box_content_line(config: BoxConfig, content: String) -> Line {
 }
 
 pub fn box_bottom_line(config: BoxConfig) -> Line {
-    let chars = box_chars_for_tier(config.tier);
-    let title_part = format!("{} {} ", chars.horizontal, config.title);
-    let eff = effective_width(config, title_part);
-    match config.style {
-    BoxStyle::Closed => {
-         {  }
-    }
-    BoxStyle::OpenRight => {
-         {  }
-    }
-}
+    todo!("generated from DSL");
 }
 
 pub fn error_box(title: String, tier: Tier) -> BoxConfig {
-    BoxConfig { title: title, style: OpenRight, width: 60, min_width: 40, color: Error, content_color: Some(Dim), tier: tier }
+    BoxConfig { title: title, style: BoxStyle::OpenRight, width: 60, min_width: 40, color: SemanticColor::Error, content_color: Some(SemanticColor::Dim), tier: tier }
 }
 
 pub fn preamble_box(title: String, tier: Tier) -> BoxConfig {
-    BoxConfig { title: title, style: Closed, width: 60, min_width: 40, color: Accent, content_color: None, tier: tier }
+    BoxConfig { title: title, style: BoxStyle::Closed, width: 60, min_width: 40, color: SemanticColor::Accent, content_color: None, tier: tier }
 }
 
 pub fn info_box(title: String, tier: Tier) -> BoxConfig {
-    BoxConfig { title: title, style: OpenRight, width: 60, min_width: 40, color: Info, content_color: None, tier: tier }
+    BoxConfig { title: title, style: BoxStyle::OpenRight, width: 60, min_width: 40, color: SemanticColor::Info, content_color: None, tier: tier }
 }
 
 pub fn repeat_char(c: String, n: i64) -> String {
-    todo!("generated from DSL");
+    c.repeat(n.max(0) as usize)
 }
 
 impl SymbolId {

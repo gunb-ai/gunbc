@@ -54,7 +54,7 @@ pub fn build_frame(
     }
 
     if let Some(max_w) = viewport_width {
-        constrain_lines(&mut lines, max_w);
+        constrain_lines(&mut lines, max_w, tier);
     }
 
     Frame {
@@ -63,45 +63,11 @@ pub fn build_frame(
     }
 }
 
-/// Apply viewport width constraint to all lines, truncating spans to fit.
-/// Implements the same logic as `std.render.constrain_line` in DSL.
-fn constrain_lines(lines: &mut [Line], max_width: usize) {
+/// Apply viewport width constraint to all lines via DSL-generated `constrain_line`.
+fn constrain_lines(lines: &mut [Line], max_width: usize, tier: Tier) {
     for line in lines.iter_mut() {
-        let mut budget = max_width as isize;
-        let mut constrained = Vec::new();
-        for span in &line.spans {
-            if budget <= 0 {
-                break;
-            }
-            let w = display_width(&span.text) as isize;
-            if w <= budget {
-                constrained.push(span.clone());
-                budget -= w;
-            } else {
-                let truncated = truncate_text_to_width(&span.text, budget as usize);
-                constrained.push(Span {
-                    text: truncated,
-                    style: span.style.clone(),
-                });
-                break;
-            }
-        }
-        line.spans = constrained;
+        *line = gunbc_ir::generated::constrain_line(line.clone(), max_width as i64, tier);
     }
-}
-
-fn truncate_text_to_width(text: &str, max_width: usize) -> String {
-    let mut result = String::new();
-    let mut used = 0;
-    for c in text.chars() {
-        let w = char_width(c);
-        if used + w > max_width {
-            break;
-        }
-        result.push(c);
-        used += w;
-    }
-    result
 }
 
 // ---------------------------------------------------------------------------
@@ -820,50 +786,15 @@ pub fn full_label(node_id: &NodeId, labels: &HashMap<NodeId, String>) -> String 
 }
 
 /// Compute the display width of a string in terminal columns.
+/// Delegates to the DSL-generated `string_display_width`.
 pub fn display_width(s: &str) -> usize {
-    s.chars().map(char_width).sum()
+    gunbc_ir::generated::string_display_width(s.to_string()) as usize
 }
 
 /// Approximate terminal display width of a single character.
-///
-/// Returns 2 for CJK/fullwidth characters, 0 for combining marks
-/// and zero-width characters, 1 for everything else.
+/// Delegates to the DSL-generated `char_width`.
 pub fn char_width(c: char) -> usize {
-    let cp = c as u32;
-    // Zero-width: combining marks, zero-width joiners, variation selectors
-    if (0x0300..=0x036F).contains(&cp)      // Combining Diacritical Marks
-        || (0x1AB0..=0x1AFF).contains(&cp)  // Combining Diacritical Marks Extended
-        || (0x1DC0..=0x1DFF).contains(&cp)  // Combining Diacritical Marks Supplement
-        || (0x20D0..=0x20FF).contains(&cp)  // Combining Diacritical Marks for Symbols
-        || (0xFE00..=0xFE0F).contains(&cp)  // Variation Selectors
-        || (0xFE20..=0xFE2F).contains(&cp)  // Combining Half Marks
-        || cp == 0x200B                      // Zero Width Space
-        || cp == 0x200C                      // Zero Width Non-Joiner
-        || cp == 0x200D                      // Zero Width Joiner
-        || cp == 0xFEFF
-    // Zero Width No-Break Space (BOM)
-    {
-        return 0;
-    }
-    // Fullwidth / CJK: most CJK unified ideographs and fullwidth forms
-    if (0x1100..=0x115F).contains(&cp)      // Hangul Jamo
-        || (0x2E80..=0x303E).contains(&cp)  // CJK Radicals, Kangxi, CJK Symbols
-        || (0x3041..=0x33BF).contains(&cp)  // Hiragana, Katakana, Bopomofo, CJK Compat
-        || (0x3400..=0x4DBF).contains(&cp)  // CJK Unified Ideographs Extension A
-        || (0x4E00..=0x9FFF).contains(&cp)  // CJK Unified Ideographs
-        || (0xA000..=0xA4CF).contains(&cp)  // Yi Syllables + Radicals
-        || (0xAC00..=0xD7AF).contains(&cp)  // Hangul Syllables
-        || (0xF900..=0xFAFF).contains(&cp)  // CJK Compatibility Ideographs
-        || (0xFE30..=0xFE6F).contains(&cp)  // CJK Compatibility Forms + Small Form Variants
-        || (0xFF01..=0xFF60).contains(&cp)  // Fullwidth ASCII
-        || (0xFFE0..=0xFFE6).contains(&cp)  // Fullwidth Signs
-        || (0x20000..=0x2FFFF).contains(&cp) // CJK Unified Ideographs Extension B+
-        || (0x30000..=0x3FFFF).contains(&cp)
-    // CJK Unified Ideographs Extension G+
-    {
-        return 2;
-    }
-    1
+    gunbc_ir::generated::char_width(c) as usize
 }
 
 /// Animal emojis picked at random for successful DAG completion (Emoji tier only).
@@ -1053,6 +984,33 @@ mod tests {
     fn test_display_width_cjk() {
         assert_eq!(display_width("漢字"), 4);
         assert_eq!(display_width("A漢B"), 4);
+    }
+
+    #[test]
+    fn test_display_width_emoji_regression() {
+        assert!(display_width("✅") >= 1, "checkmark emoji should have width >= 1");
+        assert!(display_width("🔄") >= 1, "rotation emoji should have width >= 1");
+        assert_eq!(display_width(""), 0);
+        assert_eq!(display_width("a"), 1);
+    }
+
+    #[test]
+    fn test_span_width_includes_symbol() {
+        use gunbc_ir::generated::{span_width, SymbolId};
+        let span_no_symbol = Span::plain("hello");
+        let text_only = span_width(span_no_symbol, Tier::Unicode);
+        assert_eq!(text_only, 5);
+
+        let span_with_symbol = Span {
+            text: String::new(),
+            style: SpanStyle {
+                symbol: Some(SymbolId::NodeCompleted),
+                color: Some(SemanticColor::Success),
+                ..Default::default()
+            },
+        };
+        let with_sym = span_width(span_with_symbol, Tier::Unicode);
+        assert!(with_sym > 0, "symbol span should have non-zero width");
     }
 
     #[test]
