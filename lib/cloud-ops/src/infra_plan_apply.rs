@@ -274,7 +274,7 @@ mod tests {
     use super::*;
     use crate::infra_spec::DEV_SPEC;
     use crate::project_spec::GUNBAI_SECRETS;
-    use gunbc_ir::{detect_boundaries, detect_entrypoints};
+    use gunbc_ir::detect_boundaries;
 
     #[test]
     fn build_infra_plan_dag_reports_filtered_targets() {
@@ -292,24 +292,6 @@ mod tests {
         assert!(dag.get_node(&"plan".into()).is_some());
         let boundaries = detect_boundaries(&dag);
         assert!(boundaries.is_boundary_node(&"plan".into()));
-    }
-
-    #[test]
-    #[ignore = "legacy graph builders deleted"]
-    fn build_infra_apply_dag_contains_plan_provision_and_summary() {
-        let dag = build_infra_apply_dag(
-            &GUNBAI_SECRETS,
-            &DEV_SPEC,
-            CloudRuntimeKind::LocalDev,
-            &InfraApplyFilter::default(),
-        )
-        .expect("apply dag should build");
-        assert!(dag.get_node(&"plan".into()).is_some());
-        assert!(dag.get_node(&"provision".into()).is_some());
-        assert!(dag.get_node(&"runtime_reconcile".into()).is_some());
-        assert!(dag.get_node(&"apply_summary".into()).is_some());
-        let entrypoints = detect_entrypoints(&dag);
-        assert!(entrypoints.is_entrypoint_node(&"provision".into()));
     }
 
     #[test]
