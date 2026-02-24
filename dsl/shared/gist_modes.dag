@@ -47,7 +47,7 @@ func gist_upload(markdown: String, branch: String, base_ref: CommitSha?, public:
 {
   _access = shell.GCloud.AuthPrintAccessToken()
   secret = shell.GCloud.SecretManagerAccessVersion(
-    project_id: "gunbc",
+    project_id: "gunbai-secrets",
     secret_name: "github-token"
   )
 
