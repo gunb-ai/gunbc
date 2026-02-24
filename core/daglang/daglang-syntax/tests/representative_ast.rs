@@ -106,7 +106,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     let source = parse_dsl("std/types.dag");
     assert_eq!(
         source.items.len(),
-        104,
+        112,
         "std/types.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -136,6 +136,7 @@ fn types_file_contains_record_sum_and_alias_definitions() {
     assert_eq!(
         item_signatures(&source),
         vec![
+            "type Char",
             "type CommitSha",
             "type RetryCount",
             "type HttpStatus",
@@ -166,8 +167,15 @@ fn types_file_contains_record_sum_and_alias_definitions() {
             "type GitRef",
             "type ProjectId",
             "type ServiceAccountEmail",
+            "type WarningPolicy",
             "type CloudRuntime",
             "type Platform",
+            "type ReviewDimension",
+            "type FermiDepth",
+            "type ReviewConcern",
+            "type DimensionReviewOutput",
+            "type MergedReviewOutput",
+            "type CredentialFlow",
             "type Arch",
             "type Vendor",
             "type Os",
@@ -249,7 +257,7 @@ fn patterns_file_contains_pattern_defs() {
     let source = parse_dsl("std/patterns.dag");
     assert_eq!(
         source.items.len(),
-        15,
+        18,
         "std/patterns.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -278,9 +286,12 @@ fn patterns_file_contains_pattern_defs() {
             "pattern credential_chain",
             "pattern transaction",
             "pattern retry",
-            "fn github_oidc",
-            "fn metadata_oidc",
-            "fn local_auth",
+            "func github_oidc",
+            "func metadata_oidc",
+            "func local_auth",
+            "fn check_iam_binding",
+            "fn add_iam_binding",
+            "func iam_preflight_check",
         ]
     );
 }
@@ -290,7 +301,7 @@ fn shell_service_file_contains_service_defs() {
     let source = parse_dsl("services/shell.dag");
     assert_eq!(
         source.items.len(),
-        6,
+        9,
         "services/shell.dag item count changed unexpectedly"
     );
     assert_eq!(
@@ -312,6 +323,9 @@ fn shell_service_file_contains_service_defs() {
             "service shell.Find",
             "service shell.Codegen",
             "service rustup.Component",
+            "service shell.Env",
+            "service shell.OAuth2",
+            "service shell.GCloud",
             "service shell.Which",
         ]
     );

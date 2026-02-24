@@ -2953,8 +2953,17 @@ fn add_control_flow_pattern_nodes(
                 resolve_loop_body_service_call(call_path, uses_binding_types, service_registry)
             {
                 body_transports.push(transport);
+            } else {
+                eprintln!(
+                    "[DEBUG] resolve_loop_body_service_call FAILED for call_path={call_path:?} \
+                     uses_binding_types={uses_binding_types:?}"
+                );
             }
         }
+        eprintln!(
+            "[DEBUG] for_loop {node_id}: body_calls={:?} body_transports={}",
+            site.body_service_call_paths, body_transports.len()
+        );
         let body_dag = make_loop_body_dag(
             module_name,
             &target.node_id,
@@ -4266,6 +4275,9 @@ fn collect_required_service_call_keys(
             let Some((_, stmts)) = item_callable_body(&item.node) else {
                 continue;
             };
+            // Collect uses-binding types for resolving resource capability calls
+            // (e.g., `fs.read` → `Filesystem.read`).
+            let uses_binding_types = item_uses_binding_types(&item.node);
             let mut calls = Vec::<ServiceCallSite>::new();
             collect_service_calls_from_stmts(stmts, &mut calls);
             for call in calls {
@@ -4273,6 +4285,15 @@ fn collect_required_service_call_keys(
                     required.insert(keys[0].clone());
                     required.insert(keys[1].clone());
                     required.insert(keys[2].clone());
+                }
+                // For uses-binding calls like `fs.read(...)`, also add the
+                // resolved resource capability key `Filesystem.read` so the
+                // transport triplet filter doesn't prune it.
+                if call.path.len() >= 2 {
+                    if let Some(resource_type) = uses_binding_types.get(&call.path[0]) {
+                        let capability = &call.path[call.path.len() - 1];
+                        required.insert(format!("{resource_type}.{capability}"));
+                    }
                 }
             }
         }

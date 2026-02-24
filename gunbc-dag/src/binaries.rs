@@ -67,7 +67,6 @@ workspace_binaries! {
     Infra       => "infra",
     Makegen     => "makegen",
     Pragma      => "pragma",
-    Sdlc        => "sdlc",
     Testgen     => "testgen",
 }
 
@@ -82,7 +81,7 @@ impl WorkspaceBinary {
         !self.is_dsl_pipeline_module()
             && !matches!(
                 self,
-                Self::CodegenDag | Self::DepsConfig | Self::Sdlc | Self::GistDiff | Self::GistRecent
+                Self::CodegenDag | Self::DepsConfig | Self::GistDiff | Self::GistRecent
             )
     }
 

@@ -28,10 +28,11 @@ fn lex_all_golden_dag_files_without_diagnostics() {
         "golden corpus inventory changed unexpectedly"
     );
 
+    let expected_count = expected_dsl_files_sorted().len();
     assert_eq!(
         dag_files.len(),
-        87,
-        "expected 87 golden .dag files, found {}",
+        expected_count,
+        "expected {expected_count} golden .dag files, found {}",
         dag_files.len()
     );
 

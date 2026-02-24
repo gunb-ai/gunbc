@@ -109,10 +109,6 @@ name = "gunbc-workflow"
 path = "src/bin/workflow.rs"
 
 [[bin]]
-name = "gunbc-sdlc"
-path = "src/bin/sdlc.rs"
-
-[[bin]]
 name = "gunbc-gist"
 path = "../target/codegen/bin/gist/main.rs"
 

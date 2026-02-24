@@ -1,8 +1,8 @@
 //! Shared binary entry helpers for DAG tool runners.
 
 use gunbc_exec::{
-    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
-    Executable, ExecutionMode, FreshnessStep,
+    compose_with_freshness, execute_and_display, execute_and_display_with_result, print_attention,
+    AttentionLevel, BoundaryMocks, Executable, ExecutionMode, FreshnessStep,
 };
 use gunbc_ir::Dag;
 use std::io::IsTerminal;
@@ -52,6 +52,46 @@ pub fn run_tool<T: Executable + Clone + Send + 'static>(
             options.input_mocks,
         );
     }
+}
+
+/// Execute a DAG using shared display/freshness ceremony, returning a Result
+/// instead of calling `process::exit`. Used by in-process tool dispatch.
+pub fn run_tool_result<T: Executable + Clone + Send + 'static>(
+    dag: Dag<T>,
+    mode: ExecutionMode,
+    options: RunToolOptions<'_>,
+) -> Result<(), String> {
+    let animated = std::io::stdout().is_terminal();
+    if options.with_freshness {
+        let steps = gunbc_lib_transport::check_and_plan_freshness();
+        let should_update_manifest = steps.as_ref().is_some_and(|s| !s.is_empty());
+        let dag_with_freshness = compose_with_freshness(dag, steps);
+        let result = execute_and_display_with_result(
+            &dag_with_freshness,
+            mode,
+            animated,
+            options.success_port,
+            options.input_mocks,
+        )
+        .map_err(|e| e.to_string())?;
+        update_freshness_manifest_if_needed(should_update_manifest);
+        if result.should_fail {
+            return Err("A required success check returned false.".into());
+        }
+    } else {
+        let result = execute_and_display_with_result(
+            &dag,
+            mode,
+            animated,
+            options.success_port,
+            options.input_mocks,
+        )
+        .map_err(|e| e.to_string())?;
+        if result.should_fail {
+            return Err("A required success check returned false.".into());
+        }
+    }
+    Ok(())
 }
 
 /// Persist freshness state after successful execution when freshness steps ran.

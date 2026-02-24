@@ -44,8 +44,8 @@ pub mod pragma;
 pub mod resolve;
 pub mod resolve_service;
 pub mod resources;
-pub mod sdlc;
 pub mod testgen_dag;
+pub mod tool_dispatch;
 pub mod tool_runner;
 pub mod workflow;
 // Re-exports for convenience
@@ -76,21 +76,11 @@ pub use resolve::{resolve_lowered_dag, ResolveError};
 pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
-pub use sdlc::{
-    canonical_marker, claim_slot_key, content_hash_for_payload, heartbeat_claim,
-    mark_run_completed, mark_run_failed, promote_to_canonical_artifact,
-    promote_to_canonical_artifact_with_payload, provisional_marker, reconcile_entries,
-    register_retry_failure, release_claim, retry_ready, should_replay_skip, try_acquire_claim,
-    update_agent_pr, update_agent_status, upsert_agent_record, upsert_provisional_artifact,
-    upsert_provisional_artifact_with_payload, validate_stage_transition, AgentLedger,
-    AgentLedgerRecord, AgentUpsertOutcome, ArtifactLedger, ArtifactPayload, ArtifactRecord,
-    ArtifactUpsertOutcome, ClaimAcquireResult, ClaimLedger, ClaimRecord, ReconcileAction,
-    ReconcileEntry, ReconcilePlan, RetryState, RunExecutionStatus, RunStateLedger, RunStateRecord,
-};
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
+pub use tool_dispatch::{dispatch_tool, ToolError};
 pub use tool_runner::{
-    freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
-    RunToolOptions,
+    freshness_steps_planned, print_tool_header, run_tool, run_tool_result,
+    update_freshness_manifest_if_needed, RunToolOptions,
 };
 pub use workflow::{
     all_tool_workflow_names,
@@ -108,8 +98,8 @@ pub use workflow::{
     plan_workflow, plan_workflow_with_mode, pragma_workflow_spec,
     pragma_workflow_spec_with_registry, project_execute_set, prove_non_redundancy,
     render_execution_report, required_input_contract,
-    required_output_contract, sdlc_workflow_spec,
-    sdlc_workflow_spec_with_registry, test_all_unit_commands,
+    required_output_contract,
+    test_all_unit_commands,
     test_all_workflow_spec, test_all_workflow_spec_with_registry, tool_workflow_spec,
     top_slow_units, validate_conflicting_claims, validate_effectful_claim_declarations,
     validate_projection_equivalence, validate_required_claims, validate_workflow_admission,

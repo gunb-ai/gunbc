@@ -342,6 +342,52 @@ Nodes:
       * response: TransportResponse (1)
     outputs:
       * value: String? (1)
+  - prepare_transport_std_resources_Filesystem_probe [callable::Pattern std.resources.service_transport::prepare::Filesystem::probe]
+    inputs:
+      * path: FilePath (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_std_resources_Filesystem_probe [callable::Pattern std.resources.service_transport::execute::Filesystem::probe]
+    inputs:
+      * request: TransportRequest (1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_std_resources_Filesystem_probe [callable::Pattern std.resources.service_transport::parse::Filesystem::probe]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * classification: FileClassification (1)
+  - prepare_transport_std_resources_Filesystem_read [callable::Pattern std.resources.service_transport::prepare::Filesystem::read]
+    inputs:
+      * path: String (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_std_resources_Filesystem_read [callable::Pattern std.resources.service_transport::execute::Filesystem::read]
+    inputs:
+      * request: TransportRequest (1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_std_resources_Filesystem_read [callable::Pattern std.resources.service_transport::parse::Filesystem::read]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * content: String (1)
+  - prepare_transport_std_resources_Filesystem_write [callable::Pattern std.resources.service_transport::prepare::Filesystem::write]
+    inputs:
+      * path: FilePath (1)
+      * content: String (1)
+    outputs:
+      * request: TransportRequest (1)
+  - execute_transport_std_resources_Filesystem_write [callable::Pattern std.resources.service_transport::execute::Filesystem::write]
+    inputs:
+      * request: TransportRequest (1)
+    outputs:
+      * response: TransportResponse (1)
+  - parse_transport_std_resources_Filesystem_write [callable::Pattern std.resources.service_transport::parse::Filesystem::write]
+    inputs:
+      * response: TransportResponse (1)
+    outputs:
+      * written: Bool (1)
   - prepare_read_makegen [primitive::IoPrepareFileRead tools.makegen.content_upsert::prepare_read_makegen]
     inputs:
       * path: String (1)
@@ -464,6 +510,11 @@ Nodes:
   - literal_source_tools_makegen_render_makefile_tool_fn_0 [primitive::CallLiteralSource { literal: String("makegen") } tools.makegen.call_literal_source::strhex:6d616b6567656e]
     outputs:
       * tool: Any (1)
+  - param_source_std_patterns_file_content_matches_path [primitive::CallParamSource { callable: "file_content_matches", param: "path" } std.patterns.call_param_source::file_content_matches::path]
+    inputs:
+      * path: String (1)
+    outputs:
+      * path: String (1)
   - param_source_std_patterns_classify_files_paths [primitive::CallParamSource { callable: "classify_files", param: "paths" } std.patterns.call_param_source::classify_files::paths]
     inputs:
       * paths: List<FilePath> (1)
@@ -603,6 +654,12 @@ Edges:
   - execute_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.response -> parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.response
   - prepare_transport_services_shell_shell_Env_Get.request -> execute_transport_services_shell_shell_Env_Get.request
   - execute_transport_services_shell_shell_Env_Get.response -> parse_transport_services_shell_shell_Env_Get.response
+  - prepare_transport_std_resources_Filesystem_probe.request -> execute_transport_std_resources_Filesystem_probe.request
+  - execute_transport_std_resources_Filesystem_probe.response -> parse_transport_std_resources_Filesystem_probe.response
+  - prepare_transport_std_resources_Filesystem_read.request -> execute_transport_std_resources_Filesystem_read.request
+  - execute_transport_std_resources_Filesystem_read.response -> parse_transport_std_resources_Filesystem_read.response
+  - prepare_transport_std_resources_Filesystem_write.request -> execute_transport_std_resources_Filesystem_write.request
+  - execute_transport_std_resources_Filesystem_write.response -> parse_transport_std_resources_Filesystem_write.response
   - shared.dag_util::doc_with_header.return -> tools.makegen::render_makefile.__deps
   - shared.dag_util::generated_header.return -> tools.makegen::render_makefile.__deps
   - shared.dag_util::render_document.return -> tools.makegen::render_makefile.__deps
@@ -651,9 +708,14 @@ Edges:
   - shared.dag_util::doc_with_header.return -> shared.dag_util::render_document.document
   - tools.makegen::render_makefile.return -> std.patterns::content_upsert.content
   - param_source_tools_makegen_makegen_path.path -> std.patterns::content_upsert.path
+  - parse_transport_std_resources_Filesystem_read.content -> std.patterns::file_content_matches.__deps
+  - param_source_std_patterns_file_content_matches_path.path -> prepare_transport_std_resources_Filesystem_read.path
   - param_source_std_patterns_classify_files_paths.paths -> std.patterns::classify_files::cf_for_0.items
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::github_oidc.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::metadata_oidc.audience
+  - parse_transport_std_resources_Filesystem_write.written -> std.patterns::content_upsert.__deps
+  - param_source_std_patterns_content_upsert_path.path -> prepare_transport_std_resources_Filesystem_write.path
+  - param_source_std_patterns_content_upsert_content.content -> prepare_transport_std_resources_Filesystem_write.content
   - param_source_std_patterns_content_upsert_path.path -> std.patterns::file_content_matches.path
   - param_source_std_patterns_content_upsert_content.content -> std.patterns::file_content_matches.expected
   - parse_transport_services_gcp_sts_gcp_STS_Exchange.access_token -> std.patterns::credential_chain.__deps

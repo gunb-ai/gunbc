@@ -27,12 +27,13 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::OnceLock;
 
+use daglang_syntax::ast::{BinOp, Expr, Item, Literal, Stmt, StringPart, UnaryOp};
+use daglang_syntax::parser;
+
 use daglang_lower::{
     CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
     ServiceCallMetadata, ServiceOperationSpec,
 };
-use daglang_syntax::ast::{BinOp, Expr, Item, Literal, Stmt, StringPart, UnaryOp};
-use daglang_syntax::parser;
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::patterns::PatternOp;
@@ -728,12 +729,6 @@ fn resolve_domain(
         "tools.makegen" => resolve_tools_makegen(name),
         "tools.infra" => resolve_tools_infra(name),
         "tools.pragma" => resolve_tools_pragma(name),
-        "funcs.sdlc_dispatch_runtime" | "funcs.sdlc_validation_runtime" => {
-            resolve_sdlc_runtime_callable(module, name).map_err(|reason| ResolveError {
-                node_id: node_id.to_string(),
-                reason,
-            })?
-        }
         _ => None,
     };
     if let Some(op) = custom {
@@ -879,24 +874,39 @@ impl Executable for InfraDispatchOp {
     }
 }
 
-const SDLC_DISPATCH_RUNTIME_SOURCE: &str = include_str!("../../dsl/funcs/sdlc_dispatch_runtime.dag");
+#[allow(dead_code)]
+fn resolve_service_transport_marker() -> ! {
+    unreachable!("marker replaced during edit")
+}
+
+// --- SDLC runtime callable evaluator (scaffolding for S12-16, not yet wired) ---
+
+#[allow(dead_code)]
+const SDLC_DISPATCH_RUNTIME_SOURCE: &str =
+    include_str!("../../dsl/funcs/sdlc_dispatch_runtime.dag");
+#[allow(dead_code)]
 const SDLC_VALIDATION_RUNTIME_SOURCE: &str =
     include_str!("../../dsl/funcs/sdlc_validation_runtime.dag");
 
+#[allow(dead_code)]
 type SdlcCallableRegistry = BTreeMap<String, ParsedSdlcCallable>;
 
+#[allow(dead_code)]
 static SDLC_DISPATCH_RUNTIME_REGISTRY: OnceLock<Result<SdlcCallableRegistry, String>> =
     OnceLock::new();
+#[allow(dead_code)]
 static SDLC_VALIDATION_RUNTIME_REGISTRY: OnceLock<Result<SdlcCallableRegistry, String>> =
     OnceLock::new();
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ParsedSdlcCallable {
     params: Vec<String>,
     stmts: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct SdlcDslCallableOp {
     module: String,
     callable: String,
@@ -915,6 +925,7 @@ impl Executable for SdlcDslCallableOp {
     }
 }
 
+#[allow(dead_code)]
 fn resolve_sdlc_runtime_callable(module: &str, name: &str) -> Result<Option<DynOp>, String> {
     let registry = sdlc_callable_registry(module)?;
     if registry.contains_key(name) {
