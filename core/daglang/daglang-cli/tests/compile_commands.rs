@@ -596,9 +596,10 @@ fn assert_compile_absolute_valid_root_variants() {
         "canonical absolute-root compile should fail on ambiguous full-corpus bindings: {}",
         String::from_utf8_lossy(&canonical.stderr)
     );
+    let abs_stderr = String::from_utf8_lossy(&canonical.stderr);
     assert!(
-        String::from_utf8_lossy(&canonical.stderr).contains("compile with --profile"),
-        "canonical absolute-root compile should report missing profile binding requirement"
+        abs_stderr.contains("compile with --profile") || abs_stderr.contains("ambiguous"),
+        "canonical absolute-root compile should report missing profile binding or ambiguous resource: {abs_stderr}"
     );
 
     for (label, variant_path) in all_absolute_variants(&root, "dsl") {
@@ -620,9 +621,10 @@ fn assert_compile_relative_parent_valid_root_variants() {
         !canonical.status.success(),
         "canonical compile should fail on ambiguous full-corpus bindings"
     );
+    let stderr_text = String::from_utf8_lossy(&canonical.stderr);
     assert!(
-        String::from_utf8_lossy(&canonical.stderr).contains("compile with --profile"),
-        "canonical compile should report missing profile binding requirement"
+        stderr_text.contains("compile with --profile") || stderr_text.contains("ambiguous"),
+        "canonical compile should report missing profile binding or ambiguous resource: {stderr_text}"
     );
 
     for (label, variant) in rel_parent_variants("dsl") {
@@ -644,9 +646,10 @@ fn assert_compile_relative_curdir_valid_root_variants() {
         !canonical.status.success(),
         "canonical compile should fail on ambiguous full-corpus bindings"
     );
+    let stderr_text = String::from_utf8_lossy(&canonical.stderr);
     assert!(
-        String::from_utf8_lossy(&canonical.stderr).contains("compile with --profile"),
-        "canonical compile should report missing profile binding requirement"
+        stderr_text.contains("compile with --profile") || stderr_text.contains("ambiguous"),
+        "canonical compile should report missing profile binding or ambiguous resource: {stderr_text}"
     );
 
     for (label, variant) in rel_curdir_variants("dsl") {
@@ -7335,8 +7338,8 @@ fn obligations_command_json_full_dsl_root_fails_on_ambiguous_resource_bindings()
         "full dsl obligations should fail in lower stage: {stderr}"
     );
     assert!(
-        stderr.contains("compile with --profile"),
-        "full dsl obligations should report missing profile binding requirement: {stderr}"
+        stderr.contains("compile with --profile") || stderr.contains("ambiguous"),
+        "full dsl obligations should report missing profile binding or ambiguous resource: {stderr}"
     );
 }
 

@@ -734,11 +734,16 @@ fn resolve_domain(
     if module.starts_with("services.") || module.starts_with("workspace.") {
         return resolve_service_transport(node_id, module, name, outputs, service_metadata);
     }
-    // 3. Compiled fn bridge — DSL fn items with real Executable implementations.
+    // 3. Service transport nodes from non-service modules (e.g., loop body
+    //    transport nodes which inherit the tool module name, not the service module).
+    if name.starts_with("service_transport::") && service_metadata.is_some() {
+        return resolve_service_transport(node_id, module, name, outputs, service_metadata);
+    }
+    // 4. Compiled fn bridge — DSL fn items with real Executable implementations.
     if let Some(op) = crate::compiled_fns::lookup_compiled_fn(module, name) {
         return Ok(op);
     }
-    // 4. Default: identity callable. The compiler validated this callable exists.
+    // 5. Default: identity callable. The compiler validated this callable exists.
     Ok(DynOp::new(DeclaredOutputCallableOp {
         output_port_names: declared_output_names(outputs),
     }))

@@ -718,11 +718,9 @@ fn render_triplets_text_is_deterministic() {
 #[test]
 fn workspace_tool_transport_triplet_audit_preserves_prepare_execute_parse_structure() {
     let tool_files = [
-        ("tools/build.dag", 1usize),
         ("tools/bootstrap.dag", 1usize),
         ("tools/codegen.dag", 1usize),
         ("tools/deps.dag", 1usize),
-        ("tools/docgen.dag", 1usize),
         ("tools/makegen.dag", 1usize),
         ("tools/pragma.dag", 1usize),
         ("tools/testgen.dag", 0usize),

@@ -108,7 +108,10 @@ fn add_upsert_chain(
     let generate = builder.add_root_node(Node::opaque(
         gen_id.as_str(),
         vec![],
-        vec![port("content", "NonEmptyString")],
+        vec![
+            port("content", "NonEmptyString"),
+            port("path", "String"),
+        ],
         generate_op,
     ))?;
 
@@ -126,6 +129,10 @@ fn add_upsert_chain(
         dyn_op(BlobOps::CompareContent),
         dyn_op(TransportOps::Execute),
     )?;
+
+    // Wire the output path from generate into the upsert chain's read/write prepare nodes.
+    builder.add_edge(generate.out("path"), chain.prepare_read.in_port("path"))?;
+    builder.add_edge(generate.out("path"), chain.prepare_write.in_port("path"))?;
 
     wire_fs_env_write_edges(
         builder,
@@ -167,8 +174,9 @@ mod tests {
             .is_entrypoint_port(&"compare_mock-alpha_content".into(), &"check_mode".into()));
         assert!(entrypoints
             .is_entrypoint_port(&"compare_mock-beta_content".into(), &"check_mode".into()));
-        assert!(entrypoints.is_entrypoint_port(&"prepare_read_mock-alpha".into(), &"path".into()));
-        assert!(entrypoints.is_entrypoint_port(&"prepare_read_mock-beta".into(), &"path".into()));
+        // path ports are now internally wired from the generate node, not entrypoints.
+        assert!(!entrypoints.is_entrypoint_port(&"prepare_read_mock-alpha".into(), &"path".into()));
+        assert!(!entrypoints.is_entrypoint_port(&"prepare_read_mock-beta".into(), &"path".into()));
     }
 
     #[test]

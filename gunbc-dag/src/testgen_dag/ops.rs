@@ -47,7 +47,10 @@ impl Executable for TestgenOp {
                 let f = *generate_fn;
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (f)(&def)));
                 match result {
-                    Ok(content) => OutputMap::new().str("content", content).ok(),
+                    Ok(content) => OutputMap::new()
+                        .str("content", content)
+                        .str("path", target_def.output_path.to_string())
+                        .ok(),
                     Err(payload) => {
                         let message = if let Some(s) = payload.downcast_ref::<String>() {
                             s.clone()
@@ -73,8 +76,11 @@ use gunbc_test::Mockable;
 impl Mockable for TestgenOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            TestgenOp::Generate { name, .. } => OutputMap::new()
+            TestgenOp::Generate {
+                name, target_def, ..
+            } => OutputMap::new()
                 .str("content", format!("// Mock generated tests for {}", name))
+                .str("path", target_def.output_path.to_string())
                 .build(),
         }
     }

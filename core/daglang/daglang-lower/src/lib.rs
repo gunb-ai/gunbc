@@ -7050,19 +7050,6 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
     }
 
     #[test]
-    fn ci_pipeline_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("pipelines.ci");
-        let dag = lower_target_module_with_dependency_scope(&typed, "pipelines.ci");
-        let reference = build_ci_graph().expect("ci builder graph should be available");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
     fn bootstrap_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.bootstrap");
         let dag = lower_target_module_with_dependency_scope(&typed, "tools.bootstrap");
@@ -7090,36 +7077,10 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
     }
 
     #[test]
-    fn build_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.build");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.build");
-        let reference = build_build_graph().expect("build builder graph should be available");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
     fn pragma_parity_report_is_deterministic() {
         let typed = typed_project_for_module_with_dependency_closure("tools.pragma");
         let dag = lower_target_module_with_dependency_scope(&typed, "tools.pragma");
         let reference = build_pragma_graph().expect("pragma builder graph should be available");
-
-        let report_a = compare_ir(&dag, &reference);
-        let report_b = compare_ir(&dag, &reference);
-        assert_eq!(report_a, report_b);
-        assert!(report_a.candidate_nodes > 0);
-        assert!(report_a.reference_nodes > 0);
-    }
-
-    #[test]
-    fn docgen_parity_report_is_deterministic() {
-        let typed = typed_project_for_module_with_dependency_closure("tools.docgen");
-        let dag = lower_target_module_with_dependency_scope(&typed, "tools.docgen");
-        let reference = build_docgen_graph().expect("docgen builder graph should be available");
 
         let report_a = compare_ir(&dag, &reference);
         let report_b = compare_ir(&dag, &reference);

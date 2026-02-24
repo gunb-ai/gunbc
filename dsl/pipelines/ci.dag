@@ -31,7 +31,6 @@ import tools.bootstrap
 import tools.codegen
 import tools.testgen
 import tools.pragma
-import tools.build
 import tools.clippy { clippy_lint }
 import tools.deps
 import std.types { Summary, StageResult }

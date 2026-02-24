@@ -1,8 +1,14 @@
-//! Direct .dag test block discovery and MockSpec construction.
+//! DAG test discovery and auto-testgen pipeline.
 //!
-//! Scans `dsl/tools/*.dag` files at runtime, parses inline test/fixture blocks,
-//! and builds `MockSpec` + `TestgenTargetDef` for each test — without generating
-//! intermediate `graph_mock.rs` files.
+//! Two discovery modes:
+//!
+//! 1. **Auto-discovery** (`discover_compilable_modules`): Scans all of `dsl/`
+//!    recursively for `.dag` files with `func` items. Every compilable module
+//!    gets full testgen treatment via `auto_mock_spec()` — zero manual input.
+//!
+//! 2. **Test-block discovery** (`discover_dag_tests`): Legacy path that scans
+//!    `dsl/tools/*.dag` for inline `test` blocks. Provides fixture overrides
+//!    on top of auto-mocked defaults.
 //!
 //! Tier, hermetic, and fermi metadata are inferred from DAG topology by
 //! `generate_target()`, not declared statically in annotations.
@@ -22,6 +28,185 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::mock_interpreter::{interpret_expr, is_transport_response};
+
+// ── Auto-discovery: any compilable .dag file ──────────────────────────
+
+/// A compilable `.dag` module discovered by scanning `dsl/`.
+#[derive(Debug, Clone)]
+pub struct CompilableModule {
+    /// Relative path from dsl root (e.g., "tools/bootstrap.dag").
+    pub dsl_path: String,
+    /// Dot-separated module name (e.g., "tools.bootstrap").
+    pub module_name: String,
+    /// Number of `func` items in the module.
+    pub func_count: usize,
+    /// Whether the module has inline `test` blocks.
+    pub has_test_blocks: bool,
+}
+
+/// Result of attempting auto-testgen on a module.
+#[derive(Debug)]
+pub enum AutoTestgenResult {
+    /// Successfully generated test code.
+    Generated {
+        target_def: TestgenTargetDef,
+        test_code: String,
+    },
+    /// Module failed to compile — skipped.
+    Skipped { reason: String },
+}
+
+/// Discover all compilable `.dag` modules under `dsl_root`.
+///
+/// Scans recursively for `.dag` files that contain `func` items (compilation
+/// units that produce DAGs with nodes). Pure-library modules with only
+/// types/data/services are excluded — they're tested transitively when
+/// imported by a compilable module.
+#[allow(clippy::disallowed_methods)] // Needs fs access for recursive .dag discovery
+pub fn discover_compilable_modules(dsl_root: &Path) -> Vec<CompilableModule> {
+    let mut modules = Vec::new();
+    collect_dag_files(dsl_root, dsl_root, &mut modules);
+    modules.sort_by(|a, b| a.dsl_path.cmp(&b.dsl_path));
+    modules
+}
+
+#[allow(clippy::disallowed_methods)]
+fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(base, &path, out);
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+            continue;
+        }
+
+        let source = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let ast = match daglang_syntax::parser::parse(&source) {
+            Ok(ast) => ast,
+            Err(_) => continue,
+        };
+
+        // Count func items — only modules with funcs are compilable units
+        let func_count = ast
+            .items
+            .iter()
+            .filter(|item| matches!(item, daglang_syntax::ast::Item::FuncDef(_)))
+            .count();
+
+        if func_count == 0 {
+            continue;
+        }
+
+        let has_test_blocks = ast
+            .items
+            .iter()
+            .any(|item| matches!(item, daglang_syntax::ast::Item::TestDef(_)));
+
+        // Build relative path from dsl root
+        let rel_path = path
+            .strip_prefix(base)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .to_string();
+
+        let module_name = rel_path
+            .strip_suffix(".dag")
+            .unwrap_or(&rel_path)
+            .replace('/', ".");
+
+        out.push(CompilableModule {
+            dsl_path: rel_path,
+            module_name,
+            func_count,
+            has_test_blocks,
+        });
+    }
+}
+
+/// Run the auto-testgen pipeline on a single compilable module.
+///
+/// Pipeline: compile → auto_mock_spec → generate_target. Zero manual input.
+/// Returns `Skipped` if compilation fails (graceful degradation).
+pub fn auto_testgen_for_module(
+    module: &CompilableModule,
+    output_dir: &Path,
+) -> AutoTestgenResult {
+    // 1. Compile to Dag<DynOp>
+    let dag = match build_dsl_graph(&module.dsl_path) {
+        Ok(dag) => dag,
+        Err(e) => {
+            return AutoTestgenResult::Skipped {
+                reason: format!("compile error: {e}"),
+            };
+        }
+    };
+
+    // 2. Auto-generate MockSpec from types + DAG structure
+    let safe_name = module.module_name.replace('.', "-");
+    let spec = auto_mock_spec(&dag, &safe_name);
+
+    // 3. Build TestgenTargetDef
+    let output_path = format!(
+        "{}/generated_tests_{}.rs",
+        output_dir.display(),
+        module.module_name.replace('.', "_"),
+    );
+    let module_test_name = format!("{}_generated_tests", module.module_name.replace('.', "_"));
+    let dag_builder_call = format!(
+        "crate::dsl_builder::build_dsl_graph(\"{}\").expect(\"graph should build\")",
+        module.dsl_path,
+    );
+    let mock_spec_path = format!(
+        "crate::mock_defaults::auto_mock_spec(&dag, \"{}\")",
+        safe_name,
+    );
+
+    let target_def = TestgenTargetDef {
+        name: Cow::Owned(safe_name.clone()),
+        output_path: Cow::Owned(output_path),
+        module_name: Cow::Owned(module_test_name),
+        mock_spec_path: Cow::Owned(mock_spec_path),
+        dag_builder_call: Cow::Owned(dag_builder_call),
+        signature_path: None,
+        boundary_tests: true,
+        chain_tests: true,
+        flow_tests: true,
+        live_flow_tests: false,
+        window_max_nodes: None,
+        test_class: None,
+        fermi_cost: None,
+        requires: None,
+        secrets: None,
+        live_test_class: None,
+        live_fermi_cost: None,
+        live_requires: None,
+        live_required: None,
+        live_required_any_of: None,
+        tool_name: None,
+    };
+
+    // 4. Generate test code
+    let target = gunbc_codegen::registry::to_testgen_target(&target_def);
+    let test_code = (target.generate)(&target_def);
+
+    AutoTestgenResult::Generated {
+        target_def,
+        test_code,
+    }
+}
+
+// ── Test-block discovery (legacy path) ────────────────────────────────
 
 /// A discovered test target from a `.dag` file.
 #[derive(Debug)]
