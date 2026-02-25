@@ -448,8 +448,9 @@ impl LoweredOp {
             | Self::Pipeline { .. }
             | Self::LoopUnpack { .. }
             | Self::LoopPack { .. }
-            | Self::BranchMerge { .. } => ObligationCategory::None,
-        }
+            | Self::BranchMerge { .. }
+            | Self::UnsupportedPattern { .. } => ObligationCategory::None,
+    }
     }
 
     pub fn service_call_metadata(&self) -> Option<&ServiceCallMetadata> {
@@ -462,7 +463,8 @@ impl LoweredOp {
             | Self::Pipeline { .. }
             | Self::LoopUnpack { .. }
             | Self::LoopPack { .. }
-            | Self::BranchMerge { .. } => None,
+            | Self::BranchMerge { .. }
+            | Self::UnsupportedPattern { .. } => None,
         }
     }
 }
@@ -1988,6 +1990,9 @@ mod parity {
             | gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopPack { .. })
             | gunbc_ir::node::NodeBody::Opaque(LoweredOp::BranchMerge { .. }) => {
                 "pattern_internal".to_string()
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::UnsupportedPattern { name }) => {
+                format!("unsupported_pattern:{name}")
             }
         }
     }
