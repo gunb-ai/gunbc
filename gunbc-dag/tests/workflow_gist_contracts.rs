@@ -2,7 +2,7 @@
 //!
 //! These tests pin:
 //! 1. Shared base units across gist modes.
-//! 2. Mode-specific node shape for snapshot/diff/recent.
+//! 2. Mode-specific node shape for gist/diff/recent.
 //! 3. Cross-workflow dedup for shared capability units.
 
 #![allow(clippy::disallowed_methods)]
@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use gunbc_dag::{
     default_process_unit_registry, explain_plan, gist_diff_workflow_spec,
-    gist_recent_workflow_spec, gist_snapshot_workflow_spec, plan_global_workflows,
+    gist_recent_workflow_spec, gist_workflow_spec, plan_global_workflows,
     plan_workflow_with_mode, DryRunMode, PlanAction, PlannerInputs, PlannerInputsByWorkflow,
 };
 
@@ -29,9 +29,9 @@ fn temp_root() -> PathBuf {
 }
 
 #[test]
-fn gist_snapshot_plan_produces_execute_on_first_run() {
+fn gist_plan_produces_execute_on_first_run() {
     let root = temp_root();
-    let spec = gist_snapshot_workflow_spec().expect("gist-snapshot spec");
+    let spec = gist_workflow_spec().expect("gist spec");
     let registry = default_process_unit_registry();
     let plan = plan_workflow_with_mode(
         &spec,
@@ -77,14 +77,14 @@ fn gist_recent_critical_path_includes_rev_list() {
 }
 
 #[test]
-fn gist_diff_has_fewer_nodes_than_snapshot() {
-    let snapshot = gist_snapshot_workflow_spec().expect("snapshot");
+fn gist_diff_has_fewer_nodes_than_gist() {
+    let gist = gist_workflow_spec().expect("gist");
     let diff = gist_diff_workflow_spec().expect("diff");
     assert!(
-        diff.dag.nodes.len() < snapshot.dag.nodes.len(),
-        "diff ({}) should have fewer nodes than snapshot ({})",
+        diff.dag.nodes.len() < gist.dag.nodes.len(),
+        "diff ({}) should have fewer nodes than gist ({})",
         diff.dag.nodes.len(),
-        snapshot.dag.nodes.len()
+        gist.dag.nodes.len()
     );
 }
 
@@ -92,18 +92,18 @@ fn gist_diff_has_fewer_nodes_than_snapshot() {
 fn shared_base_units_keep_identical_work_identity_across_modes() {
     let root = temp_root();
     let registry = default_process_unit_registry();
-    let snapshot = gist_snapshot_workflow_spec().expect("snapshot");
+    let gist = gist_workflow_spec().expect("gist");
     let diff = gist_diff_workflow_spec().expect("diff");
     let recent = gist_recent_workflow_spec().expect("recent");
 
-    let snapshot_plan = plan_workflow_with_mode(
-        &snapshot,
+    let gist_plan = plan_workflow_with_mode(
+        &gist,
         &registry,
         &PlannerInputs::new(),
         &root,
         DryRunMode::Lenient,
     )
-    .expect("snapshot plan");
+    .expect("gist plan");
     let diff_plan = plan_workflow_with_mode(
         &diff,
         &registry,
@@ -128,12 +128,12 @@ fn shared_base_units_keep_identical_work_identity_across_modes() {
         "gist.credential_resolve",
         "gist.gist_create",
     ] {
-        let a = snapshot_plan
+        let a = gist_plan
             .nodes
             .iter()
             .find(|n| n.node_id.0 == node_name)
             .map(|n| &n.work_id)
-            .unwrap_or_else(|| panic!("snapshot should include {node_name}"));
+            .unwrap_or_else(|| panic!("gist should include {node_name}"));
         let b = diff_plan
             .nodes
             .iter()
@@ -149,7 +149,7 @@ fn shared_base_units_keep_identical_work_identity_across_modes() {
 
         assert_eq!(
             a, b,
-            "work identity drift for {node_name} between snapshot/diff"
+            "work identity drift for {node_name} between gist/diff"
         );
         assert_eq!(
             b, c,
@@ -161,20 +161,20 @@ fn shared_base_units_keep_identical_work_identity_across_modes() {
 }
 
 #[test]
-fn shared_compilation_key_is_identical_between_snapshot_and_diff() {
+fn shared_compilation_key_is_identical_between_gist_and_diff() {
     let root = temp_root();
     let registry = default_process_unit_registry();
-    let snapshot = gist_snapshot_workflow_spec().expect("snapshot");
+    let gist = gist_workflow_spec().expect("gist");
     let diff = gist_diff_workflow_spec().expect("diff");
 
-    let snapshot_plan = plan_workflow_with_mode(
-        &snapshot,
+    let gist_plan = plan_workflow_with_mode(
+        &gist,
         &registry,
         &PlannerInputs::new(),
         &root,
         DryRunMode::Lenient,
     )
-    .expect("snapshot plan");
+    .expect("gist plan");
     let diff_plan = plan_workflow_with_mode(
         &diff,
         &registry,
@@ -184,11 +184,11 @@ fn shared_compilation_key_is_identical_between_snapshot_and_diff() {
     )
     .expect("diff plan");
 
-    let a = snapshot_plan
+    let a = gist_plan
         .nodes
         .iter()
         .find(|n| n.node_id.0 == "gist.compilation_ensure")
-        .expect("snapshot compilation");
+        .expect("gist compilation");
     let b = diff_plan
         .nodes
         .iter()
@@ -207,14 +207,14 @@ fn shared_compilation_key_is_identical_between_snapshot_and_diff() {
 fn global_plan_deduplicates_shared_gist_base_units() {
     let root = temp_root();
     let registry = default_process_unit_registry();
-    let snapshot = gist_snapshot_workflow_spec().expect("snapshot");
+    let gist = gist_workflow_spec().expect("gist");
     let diff = gist_diff_workflow_spec().expect("diff");
 
     let mut inputs = PlannerInputsByWorkflow::new();
-    inputs.insert(snapshot.id.clone(), PlannerInputs::new());
+    inputs.insert(gist.id.clone(), PlannerInputs::new());
     inputs.insert(diff.id.clone(), PlannerInputs::new());
 
-    let specs = vec![snapshot, diff];
+    let specs = vec![gist, diff];
     let global = plan_global_workflows(&specs, &registry, &inputs, &root).expect("global plan");
 
     let compile_vertices: Vec<_> = global
@@ -243,7 +243,7 @@ fn global_plan_deduplicates_shared_gist_base_units() {
 #[test]
 fn explain_execute_set_matches_node_count_for_snapshot() {
     let root = temp_root();
-    let spec = gist_snapshot_workflow_spec().expect("snapshot");
+    let spec = gist_workflow_spec().expect("gist");
     let registry = default_process_unit_registry();
     let plan = plan_workflow_with_mode(
         &spec,

@@ -138,7 +138,7 @@ fn codegen_ensure_command() -> UnitCommand {
     )
 }
 
-fn gist_snapshot_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
+fn gist_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
     let mut commands = BTreeMap::new();
     commands.insert(
         NodeId::from("gist.compilation_ensure"),
@@ -304,7 +304,7 @@ pub fn workflow_unit_commands(
     let commands = match normalized.as_str() {
         "ci" => ci_unit_commands(),
         "test-all" => test_all_unit_commands(),
-        "gist" | "gist-snapshot" => gist_snapshot_unit_commands(),
+        "gist" | "gist-snapshot" => gist_unit_commands(),
         "gist-diff" => gist_diff_unit_commands(),
         "gist-recent" => gist_recent_unit_commands(),
         "bootstrap" => bootstrap_unit_commands(),

@@ -24,6 +24,7 @@ gunbc-primitives = { path = "../lib/primitives" }
 gunbc-lib-transport = { path = "../lib/transport" }
 gunbc-lib-blob = { path = "../lib/blob" }
 gunbc-lib-cloud-ops = { path = "../lib/cloud-ops" }
+gunbc-lib-aws-ops = { path = "../lib/aws-ops" }
 gunbc-lib-gcp-ops = { path = "../lib/gcp-ops" }
 
 # General tools (reusable)

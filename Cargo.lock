@@ -377,6 +377,7 @@ dependencies = [
  "gunbc-exec",
  "gunbc-infra",
  "gunbc-ir",
+ "gunbc-lib-aws-ops",
  "gunbc-lib-blob",
  "gunbc-lib-cloud-ops",
  "gunbc-lib-gcp-ops",
