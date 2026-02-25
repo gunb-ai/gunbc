@@ -1,134 +1,28 @@
-// config/pragma_policy.dag -- Pragma policy data (Phase 6).
+// config/pragma_policy.dag -- Static lint policy data (EX-3).
 
 module config.pragma_policy
 
-type CrateSelector = Exact { name: String } | Prefix { prefix: String }
-
-type AllowlistRule {
-  selector: CrateSelector
-  suffix: String
-  as_prefix: Bool
-  rationale: String
-  fallback_pattern: String
-}
-
-type DeadCodeRule {
-  crate_name: String
-  relative_path: String
-  fallback_path: String
-}
-
-data allowlist_rules: List<AllowlistRule> = [
-  AllowlistRule {
-    selector: Exact { name: "gunbc-lib-transport" },
-    suffix: "",
-    as_prefix: true,
-    rationale: "transport boundary",
-    fallback_pattern: "lib/transport/"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-exec" },
-    suffix: "src/freshness.rs",
-    as_prefix: false,
-    rationale: "freshness steps run external tooling as child processes",
-    fallback_pattern: "core/exec/src/freshness.rs"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-exec" },
-    suffix: "src/display.rs",
-    as_prefix: false,
-    rationale: "CI secret masking at transport boundary",
-    fallback_pattern: "core/exec/src/display.rs"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-exec" },
-    suffix: "src/execute.rs",
-    as_prefix: false,
-    rationale: "CI secret masking at transport boundary",
-    fallback_pattern: "core/exec/src/execute.rs"
-  },
-  AllowlistRule {
-    selector: Prefix { prefix: "daglang-" },
-    suffix: "",
-    as_prefix: true,
-    rationale: "compiler pipeline: filesystem discovery for .dag module resolution",
-    fallback_pattern: "core/daglang/"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-dag" },
-    suffix: "src/",
-    as_prefix: true,
-    rationale: "build-time DSL module discovery and workspace graph construction",
-    fallback_pattern: "gunbc-dag/src/"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-ir" },
-    suffix: "src/workspace_layout.rs",
-    as_prefix: false,
-    rationale: "workspace layout discovery uses cargo metadata subprocess",
-    fallback_pattern: "core/ir/src/workspace_layout.rs"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-ir" },
-    suffix: "src/transport/credential.rs",
-    as_prefix: false,
-    rationale: "transport boundary: credential applied to outbound requests",
-    fallback_pattern: "core/ir/src/transport/credential.rs"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-ir" },
-    suffix: "src/resource/",
-    as_prefix: true,
-    rationale: "capability-marker validation for resource handles",
-    fallback_pattern: "core/ir/src/resource/"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-lib-cloud-ops" },
-    suffix: "",
-    as_prefix: true,
-    rationale: "cloud ops: file-backed config, credential policy, secret cache",
-    fallback_pattern: "lib/cloud-ops/"
-  },
-  AllowlistRule {
-    selector: Exact { name: "gunbc-lib-gcp-ops" },
-    suffix: "",
-    as_prefix: true,
-    rationale: "GCP ops: secret extraction for GCP service requests",
-    fallback_pattern: "lib/gcp-ops/"
-  }
+data clippy_allowlist_rules: List<String> = [
+  "unwrap_used",
+  "expect_used",
+  "todo",
+  "dbg_macro",
+  "panic",
+  "print_stdout",
+  "print_stderr",
+  "unimplemented"
 ]
 
-data dead_code_rules: List<DeadCodeRule> = [
-  DeadCodeRule {
-    crate_name: "daglang-syntax",
-    relative_path: "src/parser.rs",
-    fallback_path: "core/daglang/daglang-syntax/src/parser.rs"
-  },
-  DeadCodeRule {
-    crate_name: "daglang-emit",
-    relative_path: "src/lower_mips.rs",
-    fallback_path: "core/daglang/daglang-emit/src/lower_mips.rs"
-  },
-  DeadCodeRule {
-    crate_name: "gunbc-dag",
-    relative_path: "src/makegen/registry.rs",
-    fallback_path: "gunbc-dag/src/makegen/registry.rs"
-  },
-  DeadCodeRule {
-    crate_name: "gunbc-dag",
-    relative_path: "src/workspace/subdags/languages.rs",
-    fallback_path: "gunbc-dag/src/workspace/subdags/languages.rs"
-  },
-  DeadCodeRule {
-    crate_name: "gunbc-lib-gcp-ops",
-    relative_path: "src/graph.rs",
-    fallback_path: "lib/gcp-ops/src/graph.rs"
-  }
+data dead_code_policy_rules: List<String> = [
+  "allow_generated",
+  "allow_tests",
+  "allow_binaries",
+  "allow_examples",
+  "allow_benchmarks"
 ]
 
 data allow_lints: List<String> = [
-  "clippy::large_enum_variant",
-  "clippy::too_many_arguments",
-  "clippy::vec_init_then_push",
-  "unused_variables"
+  "clippy::module_name_repetitions",
+  "clippy::missing_errors_doc",
+  "clippy::missing_panics_doc"
 ]
