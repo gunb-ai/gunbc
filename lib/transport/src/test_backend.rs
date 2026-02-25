@@ -275,6 +275,7 @@ impl VirtualTransportBackend {
     fn execute_shell(&self, request: &ShellRequest) -> Result<ShellResponse, TransportError> {
         match request.command.as_str() {
             "find" => self.execute_find(request),
+            "printenv" => self.execute_printenv(request),
             "sh" => self.execute_sh(request),
             other => Err(TransportError::new(format!(
                 "virtual backend: unsupported shell command '{}'",
@@ -330,6 +331,18 @@ impl VirtualTransportBackend {
         }
 
         Ok(ShellResponse::ok(stdout))
+    }
+
+    fn execute_printenv(&self, request: &ShellRequest) -> Result<ShellResponse, TransportError> {
+        // printenv in the virtual backend always returns empty (env var not set).
+        // The bootstrap graph calls services.shell::GetEnv which compiles to
+        // `printenv <name>`. In tests we return exit code 1 (var not set).
+        let name = request.args.first().map(|s| s.as_str()).unwrap_or("");
+        // Check the request's env map first (for test-injected values).
+        if let Some(value) = request.env.get(name) {
+            return Ok(ShellResponse::ok(value));
+        }
+        Ok(ShellResponse::failed(1, ""))
     }
 
     fn execute_sh(&self, request: &ShellRequest) -> Result<ShellResponse, TransportError> {
