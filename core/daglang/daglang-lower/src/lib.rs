@@ -205,6 +205,9 @@ pub enum PrimitiveOpKind {
     CompareEquality,
     IoPrepareFileWrite,
     IoExecuteFileWrite,
+    /// FC-7: Explicit output path annotation for content_upsert patterns.
+    /// Replaces the `content_upsert_path_` ID substring hack.
+    ContentUpsertOutputPath { path: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -521,6 +524,7 @@ impl LoweredOp {
                     PrimitiveOpKind::CompareEquality => IntrinsicOp::CompareEquality,
                     PrimitiveOpKind::IoPrepareFileWrite => IntrinsicOp::PrepareFileWrite,
                     PrimitiveOpKind::IoExecuteFileWrite => IntrinsicOp::ExecuteFileWrite,
+                    PrimitiveOpKind::ContentUpsertOutputPath { .. } => IntrinsicOp::LiteralSource,
                 };
                 OpRef::Intrinsic(intrinsic)
             }
@@ -568,6 +572,7 @@ impl PrimitiveOpKind {
                 ObligationCategory::ServiceTransportExecute
             }
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
+            Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
         }
     }
 }
@@ -3410,6 +3415,23 @@ fn expand_single_content_upsert(
                 &literal,
                 format!("content_upsert_path_{suffix}").as_str(),
             );
+            // FC-7: Also add an explicit output path annotation node so
+            // extract_output_paths() doesn't need the ID substring hack.
+            if let ServiceCallArgLiteral::String(path_str) = &literal {
+                let path_annotation_id = format!("output_path_annotation_{suffix}");
+                builder.add_node(Node::opaque(
+                    path_annotation_id.clone(),
+                    vec![],
+                    vec![Port::scalar("path", "String")],
+                    LoweredOp::Primitive {
+                        module: module_name.to_string(),
+                        name: format!("content_upsert::output_path_annotation_{suffix}"),
+                        kind: PrimitiveOpKind::ContentUpsertOutputPath {
+                            path: path_str.clone(),
+                        },
+                    },
+                ));
+            }
             builder.add_edge(literal_source.as_str(), "path", &prepare_read_id, "path");
             builder.add_edge(literal_source.as_str(), "path", &prepare_write_id, "path");
         }
@@ -6728,9 +6750,10 @@ pub fn build_symbol_table(dag: &gunbc_ir::Dag<LoweredOp>) -> gunbc_ir::SymbolTab
 
 /// Extract output file paths from a lowered DAG.
 ///
-/// Walks the DAG looking for `CallLiteralSource` nodes whose ID contains
-/// `content_upsert_path_`, which carry the literal path arguments to
-/// `content_upsert` patterns. Returns a sorted, deduplicated list of paths.
+/// FC-7: Uses explicit `ContentUpsertOutputPath` primitive kind annotation
+/// to identify output path nodes. Falls back to legacy `content_upsert_path_`
+/// ID substring check for backward compatibility with DAGs lowered before
+/// this change.
 pub fn extract_output_paths(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<String> {
     let mut paths = std::collections::BTreeSet::new();
     collect_output_paths_recursive(&dag.nodes, &mut paths);
@@ -6742,7 +6765,17 @@ fn collect_output_paths_recursive(
     paths: &mut std::collections::BTreeSet<String>,
 ) {
     for node in nodes {
-        if node.id.0.contains("content_upsert_path_") {
+        // FC-7: Primary path — explicit ContentUpsertOutputPath annotation.
+        if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ContentUpsertOutputPath { path },
+            ..
+        }) = &node.body
+        {
+            paths.insert(path.clone());
+        }
+        // FC-7: Legacy fallback — substring check (will be removed once all
+        // lowering paths use ContentUpsertOutputPath).
+        else if node.id.0.contains("content_upsert_path_") {
             if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
                 kind: PrimitiveOpKind::CallLiteralSource {
                     literal: PrimitiveLiteral::String(path),

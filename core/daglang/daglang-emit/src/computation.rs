@@ -430,6 +430,12 @@ fn classify_primitive(
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
+        // FC-7: Output path annotation nodes are metadata-only, no computation.
+        PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::Null),
+        }),
     }
 }
 

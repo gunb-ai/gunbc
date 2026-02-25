@@ -741,6 +741,8 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         PrimitiveOpKind::CompareEquality => Ok(DynOp::new(BlobOps::CompareContent)),
         PrimitiveOpKind::IoPrepareFileWrite => Ok(DynOp::new(PrepareFileWriteCompatOp)),
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
+        // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
+        PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
     }
 }
 

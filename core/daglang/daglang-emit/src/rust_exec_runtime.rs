@@ -352,6 +352,11 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         | LoweredOp::BranchMerge { .. }
         | LoweredOp::UnsupportedPattern { .. }
         | LoweredOp::ExternCall { .. } => return None,
+        // FC-7: Output path annotation nodes are metadata-only.
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ContentUpsertOutputPath { .. },
+            ..
+        } => return None,
     }
 
     let (module, name) = match op {
