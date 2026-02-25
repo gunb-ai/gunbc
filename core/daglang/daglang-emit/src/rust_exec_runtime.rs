@@ -750,32 +750,8 @@ fn build_exec_runtime_source(
     use gunbc_ir::code_ir::{Import, Item, SourceFile};
 
     let mut items = Vec::new();
-
-    // ── Imports (proper IR) ──
-    items.push(Item::Use(Import {
-        path: vec!["std".into(), "collections".into()],
-        items: vec!["HashMap".into()],
-    }));
-    items.push(Item::Use(Import {
-        path: vec!["gunbc_exec".into()],
-        items: vec![
-            "ExecError".into(),
-            "Executable".into(),
-            "ExecutionMode".into(),
-            "execute_with_mode_and_inputs".into(),
-            "OutputMap".into(),
-        ],
-    }));
-    items.push(Item::Use(Import {
-        path: vec!["gunbc_ir".into()],
-        items: vec![
-            "Dag".into(),
-            "Edge".into(),
-            "Node".into(),
-            "Port".into(),
-            "Value".into(),
-        ],
-    }));
+    let needs_output_map = handler_kinds.iter().any(|kind| handler_uses_output_map(*kind));
+    let has_classified_edges = emitted_dag_has_edges(dag, classified);
     let needs_transport = handler_kinds.iter().any(|k| {
         matches!(
             k,
@@ -797,6 +773,33 @@ fn build_exec_runtime_source(
                 | HandlerKind::PragmaEntrypoint
         )
     });
+
+    // ── Imports (proper IR) ──
+    items.push(Item::Use(Import {
+        path: vec!["std".into(), "collections".into()],
+        items: vec!["HashMap".into()],
+    }));
+    let mut gunbc_exec_items = vec![
+        "ExecError".into(),
+        "Executable".into(),
+        "ExecutionMode".into(),
+        "execute_with_mode_and_inputs".into(),
+    ];
+    if needs_output_map {
+        gunbc_exec_items.push("OutputMap".into());
+    }
+    items.push(Item::Use(Import {
+        path: vec!["gunbc_exec".into()],
+        items: gunbc_exec_items,
+    }));
+    let mut gunbc_ir_items = vec!["Dag".into(), "Node".into(), "Port".into(), "Value".into()];
+    if has_classified_edges {
+        gunbc_ir_items.push("Edge".into());
+    }
+    items.push(Item::Use(Import {
+        path: vec!["gunbc_ir".into()],
+        items: gunbc_ir_items,
+    }));
 
     if needs_transport {
         items.push(Item::Use(Import {
@@ -1076,21 +1079,29 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
 
     let mut text = String::new();
     writeln!(text, "fn main() {{").unwrap();
-    writeln!(
-        text,
-        "    let raw_args: Vec<String> = std::env::args().collect();"
-    )
-    .unwrap();
-    writeln!(
-        text,
-        r#"    let trace_json = raw_args.iter().any(|a| a == "--trace-json");"#
-    )
-    .unwrap();
-    writeln!(
-        text,
-        r#"    let args: Vec<String> = raw_args.into_iter().filter(|a| a != "--trace-json").collect();"#
-    )
-    .unwrap();
+    if entrypoints.is_empty() {
+        writeln!(
+            text,
+            r#"    let trace_json = std::env::args().any(|a| a == "--trace-json");"#
+        )
+        .unwrap();
+    } else {
+        writeln!(
+            text,
+            "    let raw_args: Vec<String> = std::env::args().collect();"
+        )
+        .unwrap();
+        writeln!(
+            text,
+            r#"    let trace_json = raw_args.iter().any(|a| a == "--trace-json");"#
+        )
+        .unwrap();
+        writeln!(
+            text,
+            r#"    let args: Vec<String> = raw_args.into_iter().filter(|a| a != "--trace-json").collect();"#
+        )
+        .unwrap();
+    }
     writeln!(text).unwrap();
 
     if !entrypoints.is_empty() {
@@ -1153,6 +1164,37 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
 
     // Raw because main() is emitted as a single procedural text template.
     gunbc_ir::code_ir::Item::Raw(text)
+}
+
+fn handler_uses_output_map(kind: HandlerKind) -> bool {
+    matches!(
+        kind,
+        HandlerKind::FsEnv
+            | HandlerKind::LiteralSource
+            | HandlerKind::MakegenLoadRegistry
+            | HandlerKind::MakegenRenderMakefile
+            | HandlerKind::MakegenEntrypoint
+            | HandlerKind::RenderPragmaClippyToml
+            | HandlerKind::RenderPragmaAllowlist
+            | HandlerKind::RenderPragmaLintPolicy
+            | HandlerKind::PragmaEntrypoint
+            | HandlerKind::PrepareReadContent
+            | HandlerKind::ExecuteReadContent
+            | HandlerKind::PrepareWriteContent
+            | HandlerKind::CompareContent
+            | HandlerKind::ExecuteTransport
+            | HandlerKind::Collection
+    )
+}
+
+fn emitted_dag_has_edges(dag: &Dag<LoweredOp>, classified: &[ClassifiedNode]) -> bool {
+    let classified_ids: std::collections::HashSet<&str> =
+        classified.iter().map(|node| node.node_id.as_str()).collect();
+
+    dag.edges.iter().any(|edge| {
+        classified_ids.contains(edge.from_node.0.as_str())
+            && classified_ids.contains(edge.to_node.0.as_str())
+    })
 }
 
 // ===========================================================================
@@ -1262,6 +1304,44 @@ mod tests {
         assert_eq!(
             classify_handler(&service_prepare),
             Some(HandlerKind::UnimplementedPassthrough)
+        );
+    }
+
+    #[test]
+    fn emit_exec_runtime_omits_unused_imports_and_args_for_passthrough_only_graph() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "tools.infra::infra",
+            vec![],
+            vec![Port::scalar("return", "String")],
+            LoweredOp::Callable {
+                module: "tools.infra".to_string(),
+                kind: CallableKind::Fn,
+                name: "infra".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+
+        let files = emit_exec_runtime(&dag, "tools.infra").expect("emit should succeed");
+        let main_rs = &files[0].content;
+        assert!(
+            !main_rs.contains("OutputMap"),
+            "passthrough-only graph should not import OutputMap"
+        );
+        assert!(
+            !main_rs.contains("Edge"),
+            "single-node graph should not import Edge"
+        );
+        assert!(
+            !main_rs.contains("let args: Vec<String>"),
+            "graph with no entrypoint CLI params should not create args vector"
+        );
+        assert!(
+            main_rs.contains("let trace_json = std::env::args().any"),
+            "trace flag parsing should still work without entrypoint args"
         );
     }
 }

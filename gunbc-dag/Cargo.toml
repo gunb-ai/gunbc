@@ -134,3 +134,11 @@ path = "../target/codegen/bin/deps-generate/main.rs"
 [[bin]]
 name = "gunbc-codegen-ensure"
 path = "../target/codegen/bin/codegen-ensure/main.rs"
+
+[[bin]]
+name = "gunbc-clippy-lint"
+path = "../target/codegen/bin/clippy-lint/main.rs"
+
+[[bin]]
+name = "gunbc-build-all"
+path = "../target/codegen/bin/build-all/main.rs"
