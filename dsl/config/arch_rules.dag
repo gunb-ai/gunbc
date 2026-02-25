@@ -184,3 +184,29 @@ data pragma_allow_lints: List<String> = [
 // ── Thresholds ────────────────────────────────────────────────────────
 
 data large_error_threshold: Int = 256
+
+// ── Exec-runtime handler policy ─────────────────────────────────────
+// Obligations classified as passthrough_safe produce Ok(inputs) stubs
+// in generated exec-runtime code. Obligations in require_handler MUST
+// resolve to a specialized handler or extern impl — passthrough is
+// a build error for these.
+
+data passthrough_safe_obligations: List<String> = [
+  "None",
+  "PureGeneric",
+  "ServiceTransportPrepare",
+  "ServiceTransportExecute",
+  "ServiceTransportParse",
+  "ServiceParamSource",
+  "ResourceProvide",
+  "ResourceAcquire",
+  "ResourceRelease",
+  "InterfaceContractVerification"
+]
+
+// NF-5: These obligations need real handlers. Currently passthrough
+// during migration; moving here makes the migration target explicit.
+data require_handler_obligations: List<String> = [
+  "PureRender",
+  "PureDataLoad"
+]

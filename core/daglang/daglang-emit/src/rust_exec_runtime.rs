@@ -363,32 +363,34 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         // Obligation-gated passthrough: each obligation must be explicitly
         // classified. Adding a new ObligationCategory variant produces a
         // compile error here, forcing a conscious classification decision
-        // instead of silent passthrough.
+        // instead of silent passthrough. The sets below mirror the policy
+        // declarations in dsl/config/arch_rules.dag.
         _ => match obligation {
-            // Func/pattern entrypoints and generic callables — DSL body
-            // is wired in the DAG, wrapper node is pure passthrough.
+            // Passthrough-safe obligations (mirrors passthrough_safe_obligations()).
             Some(ObligationCategory::None) | Some(ObligationCategory::PureGeneric) => {
                 Some(HandlerKind::Passthrough)
             }
-            // PureRender/PureDataLoad callables without an explicit handler
-            // above — still passthrough during migration. These should
-            // eventually either get specialized handlers or be converted to
-            // extern func declarations resolved at link time.
-            // TODO(NF-5): promote to specialized handlers or fail-closed.
-            Some(ObligationCategory::PureRender) | Some(ObligationCategory::PureDataLoad) => {
-                Some(HandlerKind::Passthrough)
-            }
-            // Resource and service obligations — structural, passthrough OK.
             Some(ObligationCategory::ServiceParamSource)
             | Some(ObligationCategory::InterfaceContractVerification)
             | Some(ObligationCategory::ResourceProvide)
             | Some(ObligationCategory::ResourceAcquire)
             | Some(ObligationCategory::ResourceRelease) => Some(HandlerKind::Passthrough),
             // Service transport obligations — should have been caught by the
-            // early return above (lines 320-328). Defensive passthrough.
+            // early return above. Defensive passthrough.
             Some(ObligationCategory::ServiceTransportPrepare)
             | Some(ObligationCategory::ServiceTransportExecute)
             | Some(ObligationCategory::ServiceTransportParse) => Some(HandlerKind::Passthrough),
+            // NF-5: require_handler obligations — still passthrough during
+            // migration, but flagged in debug builds. These should eventually
+            // get specialized handlers or fail-closed.
+            Some(ObligationCategory::PureRender) | Some(ObligationCategory::PureDataLoad) => {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "NF-5: obligation {:?} for {module}::{name} is passthrough but should require a handler",
+                    obligation.unwrap(),
+                );
+                Some(HandlerKind::Passthrough)
+            }
             // Pipeline nodes (no obligation) — passthrough.
             None => Some(HandlerKind::Passthrough),
         },
@@ -1210,6 +1212,38 @@ fn emitted_dag_has_edges(dag: &Dag<LoweredOp>, classified: &[ClassifiedNode]) ->
 }
 
 // ===========================================================================
+// Obligation classification policy (Phase 1 mirror of arch_rules.dag)
+// ===========================================================================
+
+/// Obligations that are safe to emit as passthrough stubs in generated
+/// exec-runtime code. Mirrors `passthrough_safe_obligations` in
+/// `dsl/config/arch_rules.dag`.
+fn passthrough_safe_obligations() -> &'static [ObligationCategory] {
+    &[
+        ObligationCategory::None,
+        ObligationCategory::PureGeneric,
+        ObligationCategory::ServiceTransportPrepare,
+        ObligationCategory::ServiceTransportExecute,
+        ObligationCategory::ServiceTransportParse,
+        ObligationCategory::ServiceParamSource,
+        ObligationCategory::ResourceProvide,
+        ObligationCategory::ResourceAcquire,
+        ObligationCategory::ResourceRelease,
+        ObligationCategory::InterfaceContractVerification,
+    ]
+}
+
+/// Obligations that require real handlers. Currently passthrough during
+/// migration (NF-5). Mirrors `require_handler_obligations` in
+/// `dsl/config/arch_rules.dag`.
+fn require_handler_obligations() -> &'static [ObligationCategory] {
+    &[
+        ObligationCategory::PureRender,
+        ObligationCategory::PureDataLoad,
+    ]
+}
+
+// ===========================================================================
 // Tests
 // ===========================================================================
 
@@ -1402,5 +1436,60 @@ mod tests {
             main_rs.contains("let trace_json = std::env::args().any"),
             "trace flag parsing should still work without entrypoint args"
         );
+    }
+
+    #[test]
+    fn passthrough_obligations_pinned_to_policy() {
+        // The passthrough arms in classify_handler must exactly match the
+        // policy declarations. Adding a new passthrough obligation without
+        // updating passthrough_safe_obligations() or
+        // require_handler_obligations() fails this test.
+        let safe = passthrough_safe_obligations();
+        let require = require_handler_obligations();
+
+        // No overlap between safe and require-handler sets.
+        for ob in require {
+            assert!(
+                !safe.contains(ob),
+                "obligation {ob:?} appears in both passthrough_safe and require_handler"
+            );
+        }
+
+        // Every ObligationCategory variant is accounted for in exactly one set.
+        let all_obligations = [
+            ObligationCategory::None,
+            ObligationCategory::PureGeneric,
+            ObligationCategory::ServiceTransportPrepare,
+            ObligationCategory::ServiceTransportExecute,
+            ObligationCategory::ServiceTransportParse,
+            ObligationCategory::ServiceParamSource,
+            ObligationCategory::ResourceProvide,
+            ObligationCategory::ResourceAcquire,
+            ObligationCategory::ResourceRelease,
+            ObligationCategory::InterfaceContractVerification,
+            ObligationCategory::PureRender,
+            ObligationCategory::PureDataLoad,
+        ];
+
+        for ob in &all_obligations {
+            assert!(
+                safe.contains(ob) || require.contains(ob),
+                "ObligationCategory::{ob:?} is not in passthrough_safe or require_handler"
+            );
+        }
+
+        // Every entry in the policy sets is a real variant.
+        for ob in safe {
+            assert!(
+                all_obligations.contains(ob),
+                "passthrough_safe contains unknown obligation: {ob:?}"
+            );
+        }
+        for ob in require {
+            assert!(
+                all_obligations.contains(ob),
+                "require_handler contains unknown obligation: {ob:?}"
+            );
+        }
     }
 }
