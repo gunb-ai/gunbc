@@ -49,6 +49,23 @@ type ToolTarget {
   entrypoints: List<EntrypointParam>
 }
 
+// A core build workflow (e.g., "codegen", "build", "testgen").
+// These are the orchestration targets, not tools or meta targets.
+type CoreWorkflow {
+  name: String
+  description: String
+  deps: List<String>
+}
+
+// A meta target definition (e.g., "test", "check", "fmt").
+// Meta targets compose resource needs with a build operation.
+type MetaTargetDef {
+  name: String
+  description: String
+  has_check: Bool
+  has_fix: Bool
+}
+
 // Complete Makefile structure.
 type Makefile {
   variables: List<MakeVariable>

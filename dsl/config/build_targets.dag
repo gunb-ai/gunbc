@@ -1,0 +1,49 @@
+// config/build_targets.dag -- Canonical build target declarations.
+//
+// These data declarations are the source of truth for core workflows
+// and meta targets. Rust mirrors these definitions (contract-tested).
+
+module config.build_targets
+
+import extdeps.make
+
+// ============================================================================
+// Core Workflows — orchestration targets with dependency ordering
+// ============================================================================
+
+data core_workflows: List<CoreWorkflow> = [
+  { name: "preflight-fix", description: "Preflight: auto-fix rustc warnings before running generators", deps: [] },
+  { name: "ensure-codegen", description: "Ensure CLI entrypoints exist (bootstrap-safe)", deps: [] },
+  { name: "build-release-bins", description: "Build workspace binaries once for direct tool execution", deps: ["ensure-codegen"] },
+  { name: "lint-upsert", description: "Lint upsert: fix if needed, then verify", deps: ["ensure-codegen", "preflight-fix"] },
+  { name: "codegen", description: "Generate CLI entrypoints (DAG upsert)", deps: ["lint-upsert"] },
+  { name: "build", description: "Full build transaction", deps: ["codegen", "testgen"] },
+  { name: "clean", description: "Clean build artifacts", deps: [] },
+  { name: "testgen", description: "Regenerate tests from DAG structures and MockSpecs", deps: ["lint-upsert"] },
+  { name: "testgen-check", description: "Check if generated tests are stale", deps: ["lint-upsert"] },
+  { name: "deps-config", description: "Ensure deps.toml matches canonical generated configuration", deps: ["build-release-bins"] },
+  { name: "deps-config-check", description: "Check if deps.toml is stale", deps: ["build-release-bins"] },
+  { name: "makegen-check", description: "Check if generated Makefile is stale", deps: ["lint-upsert"] },
+  { name: "bootstrap-check", description: "Check if generated bootstrap artifacts are stale", deps: ["lint-upsert"] },
+  { name: "pragma-check", description: "Check if pragma artifacts are stale", deps: ["lint-upsert"] },
+  { name: "verify", description: "Verify generated artifacts match their generators", deps: ["lint-upsert"] },
+  { name: "verify-fix", description: "Ensure generated artifacts are up to date", deps: ["lint-upsert"] },
+  { name: "fmt-fix", description: "fmt-fix: apply formatting (alias for fmt)", deps: [] },
+  { name: "lint-fix", description: "lint-fix: auto-fix lint issues where possible", deps: ["pragma"] },
+  { name: "ci", description: "Run CI via workflow planner (typed units, deterministic keying)", deps: [] },
+  { name: "test-all", description: "Run all tests via workflow planner (warm-path optimized)", deps: [] }
+]
+
+// ============================================================================
+// Meta Targets — resource-based composite operations
+// ============================================================================
+
+data meta_targets: List<MetaTargetDef> = [
+  { name: "test", description: "Run tests (<=S)", has_check: false, has_fix: true },
+  { name: "test-integration", description: "Run integration-focused tests", has_check: false, has_fix: false },
+  { name: "test-external", description: "Run external/live-flow tests", has_check: false, has_fix: false },
+  { name: "check", description: "Type check all targets", has_check: false, has_fix: true },
+  { name: "clippy", description: "Run clippy linter", has_check: false, has_fix: true },
+  { name: "fmt", description: "Format all code", has_check: true, has_fix: false },
+  { name: "ci-yaml", description: "Generate CI workflow YAML (GitHub Actions & GitLab CI)", has_check: false, has_fix: false }
+]

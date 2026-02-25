@@ -27,6 +27,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "cloud/gcp/credential.dag",
         "config/arch_rules.dag",
         "config/build_policy.dag",
+        "config/build_targets.dag",
         "config/clippy_policy.dag",
         "config/codegen_paths.dag",
         "config/gitignore_categories.dag",

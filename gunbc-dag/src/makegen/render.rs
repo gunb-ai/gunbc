@@ -573,8 +573,17 @@ pub(crate) fn tool_target_deps(tool: &ToolInfo, config: &BuildConfig) -> Vec<Cow
         .collect()
 }
 
+/// Render a direct tool binary command.
+///
+/// Tool targets invoke their binary directly via `cargo run`, with the
+/// tool's own `CargoInvocation` determining `-p` and `--bin` flags.
+/// Make deps handle prerequisites (ensure-codegen etc.) instead of
+/// the workflow runner.
+///
+/// ci and test-all still use `workflow_planner_command()` since they
+/// are multi-stage orchestration targets that benefit from the planner.
 fn tool_command(tool: &ToolInfo, config: &BuildConfig, dry_run: bool) -> String {
-    workflow_tool_command(tool, dry_run, config)
+    direct_tool_command(tool, dry_run, config)
 }
 
 /// Render a workflow planner command for core workflows (ci, test-all).
@@ -587,22 +596,19 @@ fn workflow_planner_command(name: &str, config: &BuildConfig) -> String {
     format!("@{} -- {name}", cmd.to_shell_with_env())
 }
 
-/// Render a workflow-dispatched tool command.
+/// Render a direct tool binary invocation command.
 ///
-/// All tool targets dispatch through `gunbc-workflow` run mode via `cargo run`,
-/// so cold-start clones and stale binaries are handled by Cargo freshness.
-/// Uses `CargoCommand` from `BuildConfig` to inherit the repo's warning policy.
-fn workflow_tool_command(tool: &ToolInfo, dry_run: bool, config: &BuildConfig) -> String {
-    let workflow_inv = CargoInvocation::composed("workflow", "dag");
-    let cmd = CargoCommand::new(Subcommand::Run(workflow_inv))
+/// Uses the tool's own `CargoInvocation` to produce a `cargo run` command
+/// that directly invokes the tool binary (e.g., `cargo run -p gunbc-dag --bin gunbc-gist`).
+fn direct_tool_command(tool: &ToolInfo, dry_run: bool, config: &BuildConfig) -> String {
+    let cmd = CargoCommand::new(Subcommand::Run(tool.invocation.clone()))
         .quiet()
         .release()
         .warnings(config.warnings);
 
     let mut shell = format!("@{}", cmd.to_shell_with_env());
-    shell.push_str(&format!(" -- {}", tool.short_name));
     if dry_run {
-        shell.push_str(" --dry-run strict");
+        shell.push_str(" -- --dry-run strict");
     }
     shell
 }
@@ -860,16 +866,16 @@ mod tests {
         assert!(
             makefile.contains("RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins")
         );
-        // Tool targets dispatch through workflow binary via cargo run with RUSTFLAGS.
+        // Tool targets invoke binaries directly via cargo run with RUSTFLAGS.
         assert!(
-            makefile.contains("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- deps"),
-            "tool targets should dispatch through gunbc-workflow with warning policy"
+            makefile.contains("@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release"),
+            "tool targets should invoke binaries directly with warning policy"
         );
         assert!(
             makefile.contains(
-                "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- deps --dry-run strict"
+                "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-deps -q --release -- --dry-run strict"
             ),
-            "dry-run targets should pass strict dry-run mode to gunbc-workflow"
+            "dry-run targets should pass strict dry-run mode to direct binary"
         );
     }
 
@@ -1010,7 +1016,8 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        // Tool targets should have no Make prerequisites; freshness is planner-managed.
+        // Tool targets with generated CLIs should depend on ensure-codegen.
+        // Manual tools (pragma) should have no prerequisites.
         for tool in &registry.tools {
             let expected = format!("{}:", tool.short_name);
             assert!(
@@ -1018,9 +1025,20 @@ mod tests {
                 "tool '{}' should exist as a make target",
                 tool.short_name
             );
+            if tool.needs_generated_cli {
+                assert!(
+                    makefile.contains(&format!("{}: ensure-codegen", tool.short_name)),
+                    "tool '{}' (needs_generated_cli) should depend on ensure-codegen",
+                    tool.short_name
+                );
+            }
+        }
+
+        // Manual tools should NOT depend on ensure-codegen.
+        for tool in registry.tools.iter().filter(|t| !t.needs_generated_cli) {
             assert!(
                 !makefile.contains(&format!("{}: ensure-codegen", tool.short_name)),
-                "tool '{}' should not depend on ensure-codegen",
+                "manual tool '{}' should not depend on ensure-codegen",
                 tool.short_name
             );
         }
@@ -1042,35 +1060,47 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_targets_dispatch_via_workflow_binary() {
+    fn test_tool_targets_invoke_binaries_directly() {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        // Bootstrap should use workflow run dispatch, no ensure-codegen dep.
+        // Bootstrap should invoke its binary directly.
         assert!(
-            makefile.contains("cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- bootstrap"),
-            "bootstrap should dispatch via gunbc-workflow"
-        );
-        assert!(
-            !makefile.contains("bootstrap: ensure-codegen"),
-            "bootstrap should not have ensure-codegen prerequisite"
+            makefile.contains("cargo run -p gunbc-dag --bin gunbc-bootstrap -q --release"),
+            "bootstrap should invoke its binary directly"
         );
 
-        // Pragma should use gunbc-workflow dispatch
+        // Pragma should invoke its binary directly (manual tool, no ensure-codegen).
         assert!(
-            makefile.contains("cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- pragma"),
-            "pragma should dispatch via gunbc-workflow"
+            makefile.contains("cargo run -p gunbc-dag --bin gunbc-pragma -q --release"),
+            "pragma should invoke its binary directly"
+        );
+        assert!(
+            !makefile.contains("pragma: ensure-codegen"),
+            "pragma (manual tool) should not depend on ensure-codegen"
         );
 
-        // Deps should also dispatch via workflow (no legacy cargo-run path).
+        // Deps should invoke its binary directly with ensure-codegen dep.
         assert!(
-            makefile.contains("cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- deps"),
-            "deps should dispatch via gunbc-workflow"
+            makefile.contains("cargo run -p gunbc-dag --bin gunbc-deps -q --release"),
+            "deps should invoke its binary directly"
         );
         assert!(
-            !makefile.contains("deps: ensure-codegen"),
-            "deps should not have ensure-codegen prerequisite"
+            makefile.contains("deps: ensure-codegen"),
+            "deps (generated CLI) should depend on ensure-codegen"
         );
+
+        // No tool should dispatch through gunbc-workflow (only ci/test-all do).
+        for tool in &registry.tools {
+            assert!(
+                !makefile.contains(&format!(
+                    "gunbc-workflow -q --release -- {}",
+                    tool.short_name
+                )),
+                "tool '{}' should not dispatch through gunbc-workflow",
+                tool.short_name
+            );
+        }
     }
 
     #[test]
@@ -1080,20 +1110,25 @@ mod tests {
 
         assert!(
             makefile.contains(
-                "cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- bootstrap --dry-run strict"
+                "cargo run -p gunbc-dag --bin gunbc-bootstrap -q --release -- --dry-run strict"
             ),
-            "bootstrap-dry should dispatch via gunbc-workflow with --dry-run strict"
+            "bootstrap-dry should invoke binary directly with --dry-run strict"
         );
     }
 
     #[test]
-    fn test_no_tool_target_uses_cargo_run_directly() {
+    fn test_ci_and_test_all_use_workflow_planner() {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
+        // ci and test-all should still dispatch through gunbc-workflow
         assert!(
-            !makefile.contains("cargo run -p gunbc-deps --bin gunbc-deps"),
-            "tool targets must dispatch through gunbc-workflow"
+            makefile.contains("cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- ci"),
+            "ci should dispatch via gunbc-workflow planner"
+        );
+        assert!(
+            makefile.contains("cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- test-all"),
+            "test-all should dispatch via gunbc-workflow planner"
         );
     }
 }
