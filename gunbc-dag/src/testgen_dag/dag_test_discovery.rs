@@ -226,6 +226,7 @@ pub fn auto_testgen_for_module(
         live_required: None,
         live_required_any_of: None,
         tool_name: None,
+        live_profile_tests: Vec::new(),
     };
 
     // 4. Generate test code via the shared codegen path with DSL type awareness
@@ -411,6 +412,7 @@ pub fn build_testgen_target_def(
         live_required: None,
         live_required_any_of: None,
         tool_name: None,
+        live_profile_tests: Vec::new(),
     }
 }
 

@@ -137,6 +137,7 @@ impl Executable for TestgenOp {
                     live_required: None,
                     live_required_any_of: None,
                     tool_name: None,
+                    live_profile_tests: Vec::new(),
                 };
 
                 // 4. Generate test code with DSL type awareness

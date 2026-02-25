@@ -1,6 +1,9 @@
 //! Shared helpers for DSL-backed graph builders (T3).
 
-use daglang_driver::{compile_from_context, DriverContext, InferredEntrypoint};
+use daglang_driver::{
+    compile_from_context, compile_from_context_with_options, CompileOptions, DriverContext,
+    InferredEntrypoint,
+};
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
 use std::collections::HashSet;
@@ -42,6 +45,57 @@ fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, Builde
         dag: output.lowered_dag,
         dsl_type_registry: output.dsl_type_registry,
         inferred_entrypoints: output.inferred_entrypoints,
+    })
+}
+
+/// Compile a DSL module with an active profile (PT-4).
+///
+/// Threads the profile name through `CompileOptions`, which causes the lowerer
+/// to resolve interface bindings via the profile's bind declarations instead of
+/// using stub transport.
+fn compile_lowered_with_profile(
+    relative_module: &str,
+    profile: &str,
+) -> Result<CompileLoweredResult, BuilderError> {
+    let layout = workspace_layout()?;
+    let dsl_root = layout.workspace_root.join("dsl");
+    let target_file = dsl_root.join(relative_module);
+
+    let context = DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(target_file),
+    };
+    let options = CompileOptions {
+        profile: Some(profile.to_string()),
+        ..CompileOptions::default()
+    };
+
+    let output = compile_from_context_with_options(&context, options).map_err(|error| {
+        BuilderError::InternalInvariant(format!(
+            "failed to compile DSL module `{relative_module}` with profile `{profile}`: {error}"
+        ))
+    })?;
+    Ok(CompileLoweredResult {
+        dag: output.lowered_dag,
+        dsl_type_registry: output.dsl_type_registry,
+        inferred_entrypoints: output.inferred_entrypoints,
+    })
+}
+
+/// Build a DSL graph with an active profile (PT-4).
+///
+/// This is the compilation path for per-profile live tests. The profile
+/// resolves interface bindings to concrete service implementations.
+pub fn build_dsl_graph_with_profile(
+    relative_module: &str,
+    profile: &str,
+) -> Result<Dag<DynOp>, BuilderError> {
+    let result = compile_lowered_with_profile(relative_module, profile)?;
+    let lowered = strip_pipeline_nodes(result.dag);
+    resolve_lowered_dag(&lowered).map_err(|error| {
+        BuilderError::InternalInvariant(format!(
+            "failed to resolve lowered DAG for `{relative_module}` with profile `{profile}`: {error}"
+        ))
     })
 }
 

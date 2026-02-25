@@ -74,6 +74,30 @@ pub struct TestgenTargetDef {
     /// are looked up from `derive_tool_defs()` and a CLI contract test is emitted
     /// alongside the DAG tests.
     pub tool_name: Option<Cow<'static, str>>,
+    /// Per-profile live test configurations (PT-3).
+    /// Each entry generates a `test_live_flow_{module}_{profile}()` function
+    /// gated by the profile's env requirements.
+    pub live_profile_tests: Vec<LiveProfileTestConfig>,
+}
+
+/// Configuration for a per-profile live test (PT-3).
+///
+/// Each config generates one test function that compiles the module with
+/// the specified profile and executes with `ExecutionMode::Real`.
+#[derive(Debug, Clone)]
+pub struct LiveProfileTestConfig {
+    /// Profile name (e.g., "unit_test", "local").
+    pub profile_name: String,
+    /// Test class for this profile test (Hermetic, Integration, etc.).
+    pub test_class: TestClass,
+    /// Estimated cost for test prioritization.
+    pub fermi_cost: FermiCost,
+    /// Environment variables that MUST be set for this test to run.
+    pub required_env: Vec<String>,
+    /// Groups of env vars where at least one must be set.
+    pub required_any_of: Vec<Vec<String>>,
+    /// DAG builder call expression for this profile.
+    pub dag_builder_call: String,
 }
 
 impl TestgenTargetDef {
@@ -105,6 +129,7 @@ impl TestgenTargetDef {
             live_required: None,
             live_required_any_of: None,
             tool_name: None,
+            live_profile_tests: Vec::new(),
         }
     }
 
