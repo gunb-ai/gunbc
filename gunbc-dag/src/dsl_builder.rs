@@ -183,11 +183,11 @@ pub fn build_gist_snapshot_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
 }
 
 pub fn build_gist_diff_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_diff")
+    build_dsl_graph_for_entry("tools/gist_diff.dag", "tools.gist_diff::gist_diff")
 }
 
 pub fn build_gist_recent_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+    build_dsl_graph_for_entry("tools/gist_recent.dag", "tools.gist_recent::gist_recent")
 }
 
 #[cfg(test)]

@@ -1,0 +1,97 @@
+// std/filesystem.dag -- Filesystem model: tautological definitions.
+//
+// "What is a file?" -- answered compositionally from primitives.
+//
+// Layering:
+//   Layer 0: Primitives (EntryKind, SymlinkTarget)
+//   Layer 1: Categories (FileEntry -- the composed invariant)
+//   Layer 2: Pure functions (is_text_readable, partition_entries)
+//   Layer 3: Patterns (classify_files, read_text_files -- in patterns.dag)
+//   Layer 4: Tools (gist_snapshot, etc.)
+
+module std.filesystem
+
+import std.types { FilePath, ContentEncoding, MimeType }
+
+// -- Layer 0: Primitives ---------------------------------------------------
+
+// "What can a path point to?"
+type EntryKind
+  = RegularFile
+  | Directory
+  | Symlink
+  | Missing
+  | Other                        // device, socket, pipe, fifo
+
+// "What does a symlink resolve to?" (only meaningful when kind = Symlink)
+type SymlinkTarget
+  = TargetFile
+  | TargetDir
+  | Broken                       // dangling symlink
+
+// -- Layer 1: Categories ---------------------------------------------------
+
+// "What is a filesystem entry?" -- the complete invariant.
+// This is what Filesystem.probe returns: everything we know about a path.
+//
+// Parallels Language in languages.dag:
+//   Language = { id, name, extensions, comment, naming, types }
+//   FileEntry = { path, kind, encoding?, symlink_target?, size, mime? }
+type FileEntry {
+  path: FilePath
+  kind: EntryKind
+  encoding: ContentEncoding?     // only for RegularFile or Symlink->TargetFile
+  symlink_target: SymlinkTarget? // only for kind = Symlink
+  size: Int
+  mime: MimeType?
+}
+
+// "What is a readable file?" -- the subset we can fs.read().
+// A path is readable when it resolves to a regular text file,
+// either directly or through a symlink.
+//
+//   [ReadableEntry] < [FileEntry]
+//   [ReadableEntry] = { e in [FileEntry] | is_text_readable(e) }
+type ReadableEntry = FileEntry @where(is_text_readable)
+
+// Partition result -- every input entry lands in exactly one list.
+type PartitionResult {
+  readable: List<FileEntry>      // text files (safe for fs.read)
+  skipped: List<FileEntry>       // everything else (with reason)
+}
+
+// -- Layer 2: Pure functions -----------------------------------------------
+
+// "Is this entry a text file we can read?"
+// Exhaustive over EntryKind -- every branch is explicit.
+fn is_text_readable(entry: FileEntry) -> Bool {
+  match entry.kind {
+    RegularFile => entry.encoding != Binary
+    Symlink     => entry.symlink_target == TargetFile and entry.encoding != Binary
+    Directory   => false
+    Missing     => false
+    Other       => false
+  }
+}
+
+// "Split entries into readable text files vs everything else."
+fn partition_entries(entries: List<FileEntry>) -> { readable: List<FileEntry>, skipped: List<FileEntry> } {
+  readable = entries |> filter(e => is_text_readable(entry: e))
+  skipped  = entries |> filter(e => !is_text_readable(entry: e))
+  return { readable: readable, skipped: skipped }
+}
+
+// "What skip reason should we show for this entry?"
+fn skip_reason(entry: FileEntry) -> String {
+  match entry.kind {
+    Directory   => "directory"
+    Missing     => "missing"
+    Other       => "special file"
+    Symlink     => match entry.symlink_target {
+      TargetDir => "symlink to directory"
+      Broken    => "broken symlink"
+      TargetFile => "binary file (via symlink)"
+    }
+    RegularFile => "binary file"
+  }
+}

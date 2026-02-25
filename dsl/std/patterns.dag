@@ -18,14 +18,13 @@ import std.resources { Filesystem, Network, AuthContext }
 import std.types {
   AccessToken,
   AuthScheme,
-  BinaryFilePath,
   CloudRuntime,
   FilePath,
   NonEmptyStr,
   ProjectId,
-  ServiceAccountEmail,
-  TextFilePath
+  ServiceAccountEmail
 }
+import std.filesystem { partition_entries, is_text_readable }
 import services.gcp.secret_manager
 import services.gcp.iam
 import services.gcp.sts
@@ -49,76 +48,70 @@ pattern file_content_matches(path: String, expected: String) -> { matches: Bool 
   return { matches: check.equal }
 }
 
-// Classify a list of file paths into text and binary partitions.
-// Uses Filesystem.probe to determine content encoding, then narrows
-// each FilePath to TextFilePath or BinaryFilePath.
+// Classify a list of file paths into readable and skipped partitions.
+// Uses Filesystem.probe to determine entry kind and content encoding,
+// then partitions using is_text_readable from std.filesystem.
 //
 // This is the standard pattern for safely consuming file listings
 // from services that return unclassified paths (git.Core.LsFiles,
-// directory listings, etc).
+// directory listings, etc). Handles all entry kinds: regular files,
+// directories, symlinks, missing paths, and special files.
 //
-// Set meaning:
-//   input:  List<FilePath> = List<⟦TextFilePath⟧ ⊔ ⟦BinaryFilePath⟧>
-//   output: { text: List<TextFilePath>, binary: List<BinaryFilePath> }
-// The coproduct is partitioned -- every input path appears in exactly
-// one output list. The compiler generates scenarios for both branches.
+// Every input path appears in exactly one output list.
 
-pattern classify_files(paths: List<FilePath>) -> { text: List<TextFilePath>, binary: List<BinaryFilePath> }
+pattern classify_files(paths: List<FilePath>) -> { readable: List<FilePath>, skipped: List<FilePath> }
   uses fs: Filesystem(mode: Read)
 {
-  classifications = for path in paths {
+  entries = for path in paths {
     fs.probe(path: path)
   }
-
-  text = classifications
-    |> filter(c => c.classification.encoding != Binary)
-    |> map(c => c.classification.path as TextFilePath)
-
-  binary = classifications
-    |> filter(c => c.classification.encoding == Binary)
-    |> map(c => c.classification.path as BinaryFilePath)
-
-  return { text: text, binary: binary }
+  partitioned = partition_entries(entries: entries)
+  return {
+    readable: partitioned.readable |> map(e => e.path),
+    skipped: partitioned.skipped |> map(e => e.path)
+  }
 }
 
-// Read all text files from a list, skipping binary files.
+// Read all text files from a list, skipping non-readable entries.
 // Composes classify_files (partition step) + parallel fs.read (content step).
 //
-// Returns both the successfully read files AND the skipped binary paths,
-// so callers can report/log what was excluded. This is the safe
-// alternative to looping fs.read over unclassified paths.
+// Returns both the successfully read files AND the skipped paths,
+// so callers can report/log what was excluded. Skipped entries include
+// directories, symlinks to directories, broken symlinks, binary files,
+// missing paths, and special files.
 
-pattern read_text_files(paths: List<FilePath>) -> { files: List<{ path: TextFilePath, content: String }>, skipped: List<BinaryFilePath> }
+pattern read_text_files(paths: List<FilePath>) -> { files: List<{ path: FilePath, content: String }>, skipped: List<FilePath> }
   uses fs: Filesystem(mode: Read)
 {
-  node classified: classify_files(paths: paths)
+  classified = classify_files(paths: paths)
 
-  contents = for path in classified.text {
+  contents = for path in classified.readable {
     content = fs.read(path: path)
     { path: path, content: content.content }
   }
 
-  return { files: contents, skipped: classified.binary }
+  return { files: contents, skipped: classified.skipped }
 }
 
-// Read all binary files from a list, skipping text files.
+// Read all binary files from a list, skipping readable text files.
 // Parallel to read_text_files but uses fs.read_bytes for binary-safe I/O.
 //
-// Returns both the successfully read binary files AND the skipped text paths,
-// so callers can report what was included from each partition. This is the
-// binary counterpart to read_text_files.
+// Returns both the successfully read binary files AND the skipped paths.
+// Note: "skipped" here means readable text files (the inverse of
+// read_text_files). Non-file entries (dirs, symlinks, missing) are
+// also skipped since they can't be read as binary content.
 
-pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: BinaryFilePath, size: Int }>, skipped: List<TextFilePath> }
+pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePath, size: Int }>, skipped: List<FilePath> }
   uses fs: Filesystem(mode: Read)
 {
-  node classified: classify_files(paths: paths)
+  classified = classify_files(paths: paths)
 
-  data = for path in classified.binary {
+  data = for path in classified.skipped {
     info = fs.stat(path: path)
     { path: path, size: info.size }
   }
 
-  return { files: data, skipped: classified.text }
+  return { files: data, skipped: classified.readable }
 }
 
 // Acquire a subject token based on runtime environment.

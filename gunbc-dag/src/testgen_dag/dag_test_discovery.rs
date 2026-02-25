@@ -404,6 +404,8 @@ pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
         "deps" => "crate::dsl_builder::build_deps_graph_dsl().expect(\"graph should build\")".to_string(),
         "gist_snapshot" => "crate::build_gist_snapshot_graph_dsl().expect(\"graph should build\")".to_string(),
         "gist" => "crate::build_gist_diff_graph_dsl().expect(\"graph should build\")".to_string(),
+        "gist_diff" => "crate::build_gist_diff_graph_dsl().expect(\"graph should build\")".to_string(),
+        "gist_recent" => "crate::build_gist_recent_graph_dsl().expect(\"graph should build\")".to_string(),
         "makegen" => "crate::dsl_builder::build_makegen_graph_dsl().expect(\"graph should build\")".to_string(),
         "pragma" => "crate::dsl_builder::build_pragma_graph_dsl().expect(\"graph should build\")".to_string(),
         "review" => "crate::build_review_graph_dsl().expect(\"graph should build\")".to_string(),

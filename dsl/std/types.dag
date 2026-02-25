@@ -213,6 +213,24 @@ type RuntimePlatform {
 // Simple enums are finite sets. Pattern matching must be exhaustive
 // (cover the full ⊔). CloudRuntime <: Json (by injection into String).
 
+// --- Filesystem entry kinds (Level 4: Finite Coproducts) ----------------
+// "What can a path point to?" -- exhaustive over POSIX entry types.
+// Canonical definitions live in std/filesystem.dag; these are the base
+// sum types that FileClassification uses.
+
+type EntryKind
+  = RegularFile
+  | Directory
+  | Symlink
+  | Missing
+  | Other                        // device, socket, pipe, fifo
+
+// "What does a symlink resolve to?" (only meaningful when kind = Symlink)
+type SymlinkTarget
+  = TargetFile
+  | TargetDir
+  | Broken                       // dangling symlink
+
 // --- Content encoding (Level 4+1: Coproduct with lattice structure) ----
 // Content encodings classify what a file path's referent contains.
 // This is NOT a property of the path string -- it's a property of the
@@ -260,9 +278,14 @@ type TextFilePath   = FilePath @content(Text)     // referent is Σ* decodable
 type BinaryFilePath = FilePath @content(Binary)   // referent is {0..255}*
 
 // What Filesystem.probe returns -- classifies a path's referent.
+// Now includes entry kind (regular file, directory, symlink, etc.)
+// and symlink target resolution. The encoding field is optional
+// because directories, missing paths, and special files have no encoding.
 type FileClassification {
   path: FilePath
-  encoding: ContentEncoding
+  kind: EntryKind
+  encoding: ContentEncoding?     // null for dirs/missing/other
+  symlink_target: SymlinkTarget? // null unless kind = Symlink
   size: Int
   mime: MimeType?
 }

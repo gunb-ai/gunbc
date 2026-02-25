@@ -1135,12 +1135,28 @@ fn validate_codegen_dsl_coverage(
 
 fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
     let mut set = BTreeSet::new();
+    // Workflow-internal build orchestration module. Executed via planner/workflow
+    // paths, not exposed as a standalone generated CLI target.
+    set.insert("build");
+    // Canonical SDLC design transforms are consumed by pipeline/runtime flows,
+    // not by a standalone codegen-generated CLI binary.
     set.insert("design");
+    // Documentation assembly module consumed by higher-level workflow surfaces;
+    // currently no standalone generated CLI target.
+    set.insert("docgen");
+    // Legacy composite gist module retained for DSL corpus/docs.
+    // Runtime gist binaries are backed by gist_diff/gist_recent modules.
+    set.insert("gist");
     set
 }
 
 fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    BTreeSet::new()
+    let mut set = BTreeSet::new();
+    // SDLC control-loop pipelines are modeled in DSL but currently executed via
+    // planner/runtime orchestration, not as workspace binary entrypoints.
+    set.insert("reconciler");
+    set.insert("sdlc");
+    set
 }
 
 fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
@@ -1572,8 +1588,9 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_codegen_tools, generate_github_actions_template, generate_gitlab_ci_template,
-        parse_command_arg, parse_tool_defs_from_file, validate_codegen_dsl_coverage,
+        discover_codegen_tools, discover_dsl_module_names, generate_github_actions_template,
+        generate_gitlab_ci_template, parse_command_arg, parse_tool_defs_from_file,
+        validate_codegen_dsl_coverage,
         validate_generated_ci_template, CiTemplateKind, WorkspaceBinary,
     };
     use gunbc_ir::transport::ci::{CacheConfig, RenderConfig};
@@ -1750,5 +1767,26 @@ pub fn sample_tool() {}
             .expect_err("unknown tool module must fail coverage validation");
         assert!(err.contains("unmapped DSL tool modules"));
         assert!(err.contains("unknown_new_tool"));
+    }
+
+    #[test]
+    fn codegen_dsl_coverage_rejects_unknown_pipeline_module() {
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root should exist")
+            .to_path_buf();
+        let tools = discover_codegen_tools(&workspace_root)
+            .expect("source discovery should return tool defs");
+        let tool_modules = discover_dsl_module_names(&workspace_root.join("dsl/tools"), "tool")
+            .expect("tool module discovery should succeed");
+        let mut pipeline_modules =
+            discover_dsl_module_names(&workspace_root.join("dsl/pipelines"), "pipeline")
+                .expect("pipeline module discovery should succeed");
+        pipeline_modules.insert("unknown_new_pipeline".to_string());
+
+        let err = validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
+            .expect_err("unknown pipeline module must fail coverage validation");
+        assert!(err.contains("unmapped DSL pipeline modules"));
+        assert!(err.contains("unknown_new_pipeline"));
     }
 }

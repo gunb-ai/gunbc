@@ -209,11 +209,12 @@ impl Executable for RenderMarkdownOp {
 // tools.gist_snapshot compiled fns
 // ============================================================================
 
-/// `build_snapshot_content(branch: String, files: List<String>, file_contents: List<String>) -> String`
+/// `build_snapshot_content(branch: String, files: List<String>, file_contents: List<String>, skipped: List<String>) -> String`
 ///
 /// Renders a full markdown document for the workspace snapshot:
-/// heading, branch info, tree-character directory tree, and fenced code
-/// blocks for every tracked file.
+/// heading, branch info, tree-character directory tree, fenced code
+/// blocks for every tracked file, and a list of skipped entries
+/// (directories, symlinks, binary files, etc.).
 #[derive(Debug, Clone)]
 struct BuildSnapshotContentOp;
 
@@ -225,6 +226,10 @@ impl Executable for BuildSnapshotContentOp {
             .unwrap_or("unknown");
         let files = inputs
             .get("files")
+            .and_then(Value::as_str_list)
+            .unwrap_or_default();
+        let skipped = inputs
+            .get("skipped")
             .and_then(Value::as_str_list)
             .unwrap_or_default();
 
@@ -239,6 +244,13 @@ impl Executable for BuildSnapshotContentOp {
         let mut content = format!(
             "# Workspace Snapshot\n\nBranch: `{branch}`\n\n## Directory Tree\n\n{tree}\n"
         );
+
+        if !skipped.is_empty() {
+            content.push_str("\n## Skipped Entries\n\n");
+            for path in &skipped {
+                content.push_str(&format!("- {path}\n"));
+            }
+        }
 
         if !file_contents.is_empty() {
             content.push_str("\n## File Contents\n");

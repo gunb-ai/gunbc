@@ -1,18 +1,16 @@
 // tools/gist.dag -- Gist creation tool (diff/recent modes).
 //
-// The snapshot mode lives in tools/gist_snapshot.dag (inlined service calls).
-// These modes use shared/gist_modes.dag helpers, which have cross-callable
-// data flow that the lowerer doesn't fully wire yet. They compile and run but
-// produce empty results for the cross-callable parts. The `render_diff_markdown`
-// fn now executes via the compiled fn bridge (gunbc-dag/src/compiled_fns.rs),
-// producing actual markdown content.
+// The snapshot mode lives in tools/gist_snapshot.dag.
+// Diff/recent share a single local gist upload helper to avoid duplicate
+// scalar fan-in edges while keeping transport wiring inside this module.
 //
 // Replaces: lib/tools/gist/src/graph.rs (~1,449 lines)
 
 module tools.gist
 
 import services.git
-import shared.gist_modes { branch_context, resolve_recent_base, share_content }
+import services.github.gist
+import services.shell
 import std.resources { Filesystem }
 import std.types { CommitSha, Url }
 
@@ -20,24 +18,40 @@ fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> St
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
 }
 
+fn gist_upload(markdown: String, branch: String, public: Bool = false) -> { url: Url } {
+  secret = shell.GCloud.SecretManagerAccessVersion(
+    project_id: "gunbai-secrets",
+    secret_name: "github-token"
+  )
+  result = github.Gist.Create(
+    description: branch,
+    content: markdown,
+    public: public,
+    auth_token: secret.secret_value
+  )
+  return { url: result.url as Url }
+}
+
 func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
 {
-  ctx = branch_context()
+  current = git.Core.CurrentBranch()
   changes = git.Core.Diff(base: base_ref)
-  markdown = render_diff_markdown(diff: changes.diff, branch: ctx.branch, base_ref: base_ref)
-  result = share_content(markdown: markdown, branch: ctx.branch, base_ref: base_ref, public: public)
-  return { url: result.url }
+  markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
+  result = gist_upload(markdown: markdown, branch: current.branch, public: public)
+  return { url: result.url as Url }
 }
 
 func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
 {
-  recent = resolve_recent_base(since: since)
-  changes = git.Core.Diff(base: recent.base_ref)
-  markdown = render_diff_markdown(diff: changes.diff, branch: recent.branch, base_ref: recent.base_ref)
-  result = share_content(markdown: markdown, branch: recent.branch, base_ref: recent.base_ref, public: public)
-  return { url: result.url }
+  current = git.Core.CurrentBranch()
+  commits = git.Core.RevList(since: since)
+  base_ref = (commits.commits |> last()) as CommitSha
+  changes = git.Core.Diff(base: base_ref)
+  markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
+  result = gist_upload(markdown: markdown, branch: current.branch, public: public)
+  return { url: result.url as Url }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
