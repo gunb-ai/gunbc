@@ -7,7 +7,7 @@
 //!
 //! # Usage
 //!
-//! ```ignore
+//! ```text
 //! let dag = build_workspace_dag().unwrap();
 //! let topo = dag.topology();
 //! let json = serde_json::to_string_pretty(&topo).unwrap();

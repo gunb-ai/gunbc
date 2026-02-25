@@ -71,7 +71,7 @@ pub const TYPESCRIPT_TYPES: TypeMapping = TypeMapping {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let tsm_node = build_type_system_mapping_subdag();
 /// // Execute with abstract_type = "String", language = "rust"
 /// // → concrete_type = "String"

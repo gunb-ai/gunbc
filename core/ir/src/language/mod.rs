@@ -29,7 +29,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::language::{build_languages_dag, LanguageOp};
 //!
 //! let languages = build_languages_dag();

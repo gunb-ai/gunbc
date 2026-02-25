@@ -24,7 +24,7 @@ use crate::node::Node;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let regex_node = build_regex_subdag();
 /// // Execute with pattern = "\\d+" → valid = true
 /// // Execute with pattern = "\\d+", text = "abc123def" → matches = ["123"]

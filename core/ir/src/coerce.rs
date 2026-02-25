@@ -16,7 +16,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! let dag = build_multi_source_review_graph();
 //! let coercions = detect_coercions(&dag);
 //! // Reports: parse_response.output [1,1] → merge.outputs [0,∞) = WrapScalar

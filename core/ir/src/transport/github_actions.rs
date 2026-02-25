@@ -24,7 +24,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::github_actions::*;
 //!
 //! // Declare integrations used by a workflow
@@ -478,7 +478,7 @@ pub fn runner_image_by_id(id: &str) -> Option<RunnerImage> {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// use gunbc_ir::transport::github_actions::*;
 ///
 /// let config = WorkflowConfig::new(

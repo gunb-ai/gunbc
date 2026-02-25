@@ -31,7 +31,7 @@ use crate::node::Node;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let glob_node = build_glob_subdag();
 /// // Execute with pattern = "*.rs", files = ["main.rs", "lib.py"]
 /// // → matched = ["main.rs"]

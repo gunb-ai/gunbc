@@ -20,7 +20,7 @@ use crate::node::Node;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let cf_node = build_config_format_subdag();
 /// // Formats like Makefile, gitignore compose this SubDag
 /// ```

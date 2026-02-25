@@ -74,6 +74,20 @@ const DISALLOWED_METHODS_ALLOWLIST_RULES: &[DisallowedMethodsAllowRule] = &[
         fallback_pattern: "core/exec/src/freshness.rs",
     },
     DisallowedMethodsAllowRule {
+        selector: CrateSelector::Exact("gunbc-exec"),
+        suffix: "src/display.rs",
+        as_prefix: false,
+        rationale: "CI secret masking at transport boundary",
+        fallback_pattern: "core/exec/src/display.rs",
+    },
+    DisallowedMethodsAllowRule {
+        selector: CrateSelector::Exact("gunbc-exec"),
+        suffix: "src/execute.rs",
+        as_prefix: false,
+        rationale: "CI secret masking at transport boundary",
+        fallback_pattern: "core/exec/src/execute.rs",
+    },
+    DisallowedMethodsAllowRule {
         selector: CrateSelector::Prefix("daglang-"),
         suffix: "",
         as_prefix: true,
@@ -95,11 +109,32 @@ const DISALLOWED_METHODS_ALLOWLIST_RULES: &[DisallowedMethodsAllowRule] = &[
         fallback_pattern: "core/ir/src/workspace_layout.rs",
     },
     DisallowedMethodsAllowRule {
+        selector: CrateSelector::Exact("gunbc-ir"),
+        suffix: "src/transport/credential.rs",
+        as_prefix: false,
+        rationale: "transport boundary: credential applied to outbound requests",
+        fallback_pattern: "core/ir/src/transport/credential.rs",
+    },
+    DisallowedMethodsAllowRule {
+        selector: CrateSelector::Exact("gunbc-ir"),
+        suffix: "src/resource/",
+        as_prefix: true,
+        rationale: "capability-marker validation for resource handles",
+        fallback_pattern: "core/ir/src/resource/",
+    },
+    DisallowedMethodsAllowRule {
         selector: CrateSelector::Exact("gunbc-lib-cloud-ops"),
         suffix: "",
         as_prefix: true,
         rationale: "cloud ops: file-backed config, credential policy, secret cache",
         fallback_pattern: "lib/cloud-ops/",
+    },
+    DisallowedMethodsAllowRule {
+        selector: CrateSelector::Exact("gunbc-lib-gcp-ops"),
+        suffix: "",
+        as_prefix: true,
+        rationale: "GCP ops: secret extraction for GCP service requests",
+        fallback_pattern: "lib/gcp-ops/",
     },
 ];
 
@@ -132,6 +167,7 @@ const DEAD_CODE_ALLOW_RULES: &[DeadCodeAllowRule] = &[
 ];
 
 const PRAGMA_ALLOW_LINTS: &[LintId] = &[
+    LintId::clippy("large_enum_variant"),
     LintId::clippy("too_many_arguments"),
     LintId::clippy("vec_init_then_push"),
     LintId::rustc("unused_variables"),

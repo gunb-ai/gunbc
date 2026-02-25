@@ -37,7 +37,7 @@ use crate::value::Value;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let atomic = AtomicBuilder::new("safe_delete")
 ///     .with_precondition(FileOp::CheckEmpty)
 ///     .with_operation(FileOp::Delete)

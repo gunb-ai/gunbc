@@ -10,7 +10,7 @@
 //!
 //! Messages support both simple text and structured content blocks:
 //!
-//! ```ignore
+//! ```text
 //! // Simple text (most common)
 //! ChatMessage::user("Hello!")
 //!
@@ -29,7 +29,7 @@
 //!
 //! Extended thinking is configured per-request via `ThinkingConfig`:
 //!
-//! ```ignore
+//! ```text
 //! let req = ChatRequest::new("claude-sonnet-4-5", messages)
 //!     .thinking(ThinkingConfig::anthropic(10000));
 //!
@@ -341,7 +341,7 @@ impl std::fmt::Display for Role {
 ///
 /// Content can be simple text or structured content blocks with cache hints:
 ///
-/// ```ignore
+/// ```text
 /// ChatMessage::user("Simple text")
 /// ChatMessage::user_blocks(vec![
 ///     ContentBlock::text("Cached context").with_cache(CacheControl::ephemeral()),

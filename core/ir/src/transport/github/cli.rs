@@ -11,7 +11,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::github::cli::*;
 //!
 //! // Get install instructions
@@ -149,7 +149,7 @@ pub fn gh_cli_commands() -> Vec<GHCommand> {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let req = gh_cli_request(&["gist", "create", "-f", "test.md", "-"])
 ///     .stdin("# My Gist Content");
 /// ```

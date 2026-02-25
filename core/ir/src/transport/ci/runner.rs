@@ -16,7 +16,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::ci::Runner;
 //!
 //! fn check_requirements(runner: &dyn Runner) -> Result<(), Vec<&str>> {

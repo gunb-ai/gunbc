@@ -6,7 +6,7 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```text
 //! use gunbc_ir::{Dag, WorkflowSignature, SignaturePort};
 //! use gunbc_ir::types::Cardinality;
 //!

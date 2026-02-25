@@ -209,7 +209,7 @@ impl Executable for SplitOp {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// // Input: ["check_id", "issue_key"]
 /// // Output: "a1b2c3d4e5f6..." (32 hex chars)
 /// ```
@@ -300,7 +300,7 @@ impl Executable for DeduplicateOp {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// // Input: {"src/main.rs": "@@ ...", "src/lib.rs": "@@ ..."}
 /// // Output with DiffArtifact format:
 /// // "--- src/main.rs\n@@ ...\n\n--- src/lib.rs\n@@ ..."

@@ -592,7 +592,7 @@ pub fn to_snake_case(name: &str) -> String {
 /// Given a data table like `ansi_mappings: List<AnsiMapping>` where
 /// `AnsiMapping { color: SemanticColor, code: String }`, this generates:
 ///
-/// ```ignore
+/// ```text
 /// impl SemanticColor {
 ///     pub fn ansi_code(&self) -> &'static str {
 ///         match self {

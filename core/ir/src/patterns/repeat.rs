@@ -117,7 +117,7 @@ pub enum FailureClassifier {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let retry_node = RetryBuilder::new("fetch_with_retry")
 ///     .with_body(fetch_dag)
 ///     .with_policy(RepeatPolicy::exponential(3, Duration::from_secs(1), 2.0))
@@ -265,7 +265,7 @@ impl<T: Clone> RetryBuilder<T> {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let while_node = WhileBuilder::new("process_queue")
 ///     .with_condition(check_queue_dag)
 ///     .with_body(process_dag)
@@ -406,7 +406,7 @@ impl<T: Clone> WhileBuilder<T> {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let poll_node = PollBuilder::new("wait_for_ready")
 ///     .with_body(check_ready_dag)
 ///     .with_interval(Duration::from_secs(5))

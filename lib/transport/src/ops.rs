@@ -4,7 +4,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_lib_transport::TransportOps;
 //!
 //! // In a DAG node - this is the ONLY way to do I/O

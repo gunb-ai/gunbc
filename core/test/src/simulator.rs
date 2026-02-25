@@ -8,7 +8,7 @@
 //!
 //! ## Input Simulation
 //! Generate constrained random inputs to test node behavior:
-//! ```ignore
+//! ```text
 //! let sim = Simulator::non_empty_string();
 //! for _ in 0..100 {
 //!     let input = sim.generate();
@@ -19,7 +19,7 @@
 //!
 //! ## Output Range Validation
 //! Verify outputs fall within expected bounds:
-//! ```ignore
+//! ```text
 //! let sim = Simulator::exit_code(); // 0-255
 //! assert!(sim.validate(&Value::Int(0)).is_ok());
 //! assert!(sim.validate(&Value::Int(256)).is_err());
@@ -27,7 +27,7 @@
 //!
 //! ## I↔O Contract Testing
 //! Put simulator on input, verify output matches expected range:
-//! ```ignore
+//! ```text
 //! let input_sim = Simulator::shell_command();
 //! let output_sim = Simulator::shell_response();
 //!

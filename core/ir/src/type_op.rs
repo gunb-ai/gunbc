@@ -15,7 +15,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::type_lib;
 //!
 //! // Types are just Dag<TypeOp>

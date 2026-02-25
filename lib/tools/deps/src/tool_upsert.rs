@@ -7,7 +7,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_deps::tool_upsert::*;
 //! use gunbc_ir::transport::{GH_TOOL, default_platform_registry};
 //!

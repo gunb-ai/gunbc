@@ -38,7 +38,7 @@ use crate::value::Value;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let emit = EmitBuilder::new("makefile")
 ///     .with_prepare(MyOp::PrepareMakefile)
 ///     .with_format(MyOp::FormatMakefile)

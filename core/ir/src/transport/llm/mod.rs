@@ -18,7 +18,7 @@
 //!
 //! # Usage
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::llm::*;
 //!
 //! // Simple chat completion

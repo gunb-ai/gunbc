@@ -26,7 +26,7 @@ use super::SourceFile;
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```text
 /// struct RustLowering;
 /// impl LowerIR<SourceFile, SourceFile> for RustLowering {
 ///     type Context = RustConfig;

@@ -12,7 +12,7 @@
 //!
 //! # Usage
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_clippy::config::{ClippyConfig, generate_clippy_toml};
 //!
 //! // Use a preset configuration

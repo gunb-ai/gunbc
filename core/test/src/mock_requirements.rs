@@ -6,7 +6,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! let dag = build_my_dag();
 //!
 //! // DAG knows what mocks it needs
@@ -464,7 +464,7 @@ impl MockRequirements {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let dag = build_my_dag();
 /// let requirements = extract_mock_requirements(&dag, "my_dag");
 ///

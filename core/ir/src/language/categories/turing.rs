@@ -22,7 +22,7 @@ use crate::node::Node;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let tc_node = build_turing_complete_subdag();
 /// // Languages like Rust, Python compose this SubDag
 /// ```

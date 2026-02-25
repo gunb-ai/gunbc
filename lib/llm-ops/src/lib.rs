@@ -11,7 +11,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_lib_llm_ops::LlmOps;
 //!
 //! // In a DAG:

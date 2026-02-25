@@ -899,6 +899,7 @@ mod tests {
             "-z".to_string(),
             "--".to_string(),
             "**/*.rs".to_string(),
+            "**/*.dag".to_string(),
             "**/Cargo.toml".to_string(),
             "Cargo.lock".to_string(),
             "deps.toml".to_string(),

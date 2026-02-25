@@ -15,7 +15,7 @@
 //!
 //! The [`InputsExt`] trait provides method syntax for input extraction:
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_exec::InputsExt;
 //!
 //! fn execute(&self, inputs: HashMap<String, Value>) -> Result<..., ExecError> {
@@ -300,7 +300,7 @@ pub fn optional_response_strict<'a>(
 /// This trait provides the same functionality as the free functions above,
 /// but with method syntax that reduces import lists and reads more naturally:
 ///
-/// ```ignore
+/// ```text
 /// // Before (free functions):
 /// use gunbc_exec::{require_str, require_json, optional_bool};
 /// let name = require_str(&inputs, "name")?;
@@ -479,7 +479,7 @@ impl InputsExt for HashMap<String, Value> {
 
 /// Builder for `execute()` output maps.
 ///
-/// ```ignore
+/// ```text
 /// OutputMap::new()
 ///     .str("key", content)
 ///     .bool("flag", true)
@@ -609,7 +609,7 @@ impl Default for OutputMap {
 /// continue normally.
 ///
 /// This eliminates the repeated pattern:
-/// ```ignore
+/// ```text
 /// if matches!(inputs.get("response"), Some(Value::Skipped)) {
 ///     return OutputMap::new()
 ///         .value("out1", Value::Skipped)
@@ -619,7 +619,7 @@ impl Default for OutputMap {
 /// ```
 ///
 /// becomes:
-/// ```ignore
+/// ```text
 /// if let Some(result) = propagate_skipped(&inputs, "response", &["out1", "out2"]) {
 ///     return result;
 /// }

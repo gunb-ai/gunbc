@@ -17,7 +17,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! // graph_mock.rs
 //! use gunbc_test::MockSpec;
 //!
@@ -840,7 +840,7 @@ fn value_type_name(value: &Value) -> &'static str {
 ///
 /// This helper consolidates the common pattern of testing boundary mock presence:
 ///
-/// ```ignore
+/// ```text
 /// // Before (repeated for each boundary):
 /// assert!(spec.get_boundary_mock("node", "port").is_some(),
 ///     "missing boundary mock for node.port");
@@ -969,7 +969,7 @@ pub enum ChainError {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let example = NodeExample::new("prepare_prompt")
 ///     .input("artifact", Value::Str("fn foo() {}".into()))
 ///     .input("criteria", Value::Json(security_criteria()))

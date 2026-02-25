@@ -35,7 +35,7 @@ use crate::types::Cardinality;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let loop_node = LoopBuilder::new("process_files")
 ///     .with_input("files", "String", Cardinality::ZERO_OR_MORE)
 ///     .with_body(body_dag)

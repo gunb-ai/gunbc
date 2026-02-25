@@ -38,7 +38,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::resource::{load_manifest_default, save_manifest_default, ExecMode, ManagedResource};
 //! use gunbc_lib_transport::TransportIo;
 //!

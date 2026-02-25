@@ -61,7 +61,7 @@ pub const TYPESCRIPT_NAMING: LanguageNaming = LanguageNaming {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let naming_node = build_naming_conventions_subdag();
 /// // Execute with name = "my_function", target_case = "PascalCase"
 /// // → converted = "MyFunction"
