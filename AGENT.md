@@ -21,10 +21,11 @@ After installation, run `make help` to see all available targets.
 
 ## Start Here
 
+- **`docs/start-here.md`** — **Read this first.** Repo orientation, feature development process, conventions, lessons learned, pre-flight checklist, acceptance criteria, design doc index.
+- `docs/modeling.md` for DAG modeling pattern catalog (layer taxonomy, examples, anti-patterns)
 - `docs/handbook.md` for the conceptual map, pattern catalog, and e2e examples (single file — copy-friendly)
 - `docs/design/v4/dsl-design.md` for the full DSL language specification
 - `docs/design/service-codegen.md` for DSL-driven service codegen architecture
-- `docs/design/overview.md` for design rationale and invariants
 - `SPEC.md` for the formal IR specification
 - `docs/design/testgen.md` for test generation and proof obligations
 

@@ -1,0 +1,32 @@
+// config/build_commands.dag -- Pre-rendered build command strings.
+//
+// These are the concrete shell commands for cargo-based builds.
+// BuildConfig::cargo() in Rust computes these; this DSL module
+// is the forward source of truth for the Makefile renderer.
+//
+// All compilation commands include RUSTFLAGS="-D warnings" (deny policy).
+// All commands are prefixed with @ for Makefile silent execution.
+
+module config.build_commands
+
+// ── Compilation commands ───────────────────────────────────────────
+
+data cargo_build: String = "@RUSTFLAGS=\"-D warnings\" cargo build --all-targets"
+data cargo_test: String = "@RUSTFLAGS=\"-D warnings\" cargo test"
+data cargo_clippy: String = "@cargo clippy --all-targets -- -D warnings"
+data cargo_clippy_fix: String = "@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings"
+data cargo_fmt: String = "@cargo fmt"
+data cargo_fmt_check: String = "@cargo fmt --check"
+data cargo_check: String = "@RUSTFLAGS=\"-D warnings\" cargo check --all-targets"
+data cargo_clean: String = "@cargo clean"
+data cargo_fix_preflight: String = "@cargo fix --workspace --all-targets --allow-dirty --allow-staged"
+data cargo_build_release_bins: String = "@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins"
+
+// ── Warning policy ─────────────────────────────────────────────────
+
+data rustflags_deny: String = "RUSTFLAGS=\"-D warnings\""
+
+// ── Tool run prefix ────────────────────────────────────────────────
+
+data cargo_run_prefix: String = "@RUSTFLAGS=\"-D warnings\" cargo run"
+data cargo_run_quiet_release: String = "-q --release"

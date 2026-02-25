@@ -1,37 +1,188 @@
 // config/build_targets.dag -- Canonical build target declarations.
 //
-// These data declarations are the source of truth for core workflows
-// and meta targets. Rust mirrors these definitions (contract-tested).
+// These data declarations are the source of truth for core workflows,
+// meta targets, and resource target mappings. The Makefile renderer
+// consumes these to produce the complete Makefile.
 
 module config.build_targets
 
 import extdeps.make
 
 // ============================================================================
+// Resource Target Mappings — how resources are provided as Make targets
+// ============================================================================
+
+data resource_targets: List<ResourceTargetEntry> = [
+  { resource: "generated_cli",      ensure_target: "ensure-codegen",  verify_target: "ensure-codegen" },
+  { resource: "generated_tests",    ensure_target: "testgen",         verify_target: "testgen-check" },
+  { resource: "pragma_config",      ensure_target: "pragma",          verify_target: "pragma-check" },
+  { resource: "compiled_code",      ensure_target: "build",           verify_target: "build" },
+  { resource: "verified_artifacts", ensure_target: "verify-fix",      verify_target: "verify" },
+  { resource: "deps_config",        ensure_target: "deps-config",     verify_target: "deps-config-check" },
+  { resource: "makefile",           ensure_target: "makegen",         verify_target: "makegen-check" },
+  { resource: "gitignore",          ensure_target: "bootstrap",       verify_target: "bootstrap-check" }
+]
+
+// ============================================================================
 // Core Workflows — orchestration targets with dependency ordering
 // ============================================================================
 
 data core_workflows: List<CoreWorkflow> = [
-  { name: "preflight-fix", description: "Preflight: auto-fix rustc warnings before running generators", deps: [] },
-  { name: "ensure-codegen", description: "Ensure CLI entrypoints exist (bootstrap-safe)", deps: [] },
-  { name: "build-release-bins", description: "Build workspace binaries once for direct tool execution", deps: ["ensure-codegen"] },
-  { name: "lint-upsert", description: "Lint upsert: fix if needed, then verify", deps: ["ensure-codegen", "preflight-fix"] },
-  { name: "codegen", description: "Generate CLI entrypoints (DAG upsert)", deps: ["lint-upsert"] },
-  { name: "build", description: "Full build transaction", deps: ["codegen", "testgen"] },
-  { name: "clean", description: "Clean build artifacts", deps: [] },
-  { name: "testgen", description: "Regenerate tests from DAG structures and MockSpecs", deps: ["lint-upsert"] },
-  { name: "testgen-check", description: "Check if generated tests are stale", deps: ["lint-upsert"] },
-  { name: "deps-config", description: "Ensure deps.toml matches canonical generated configuration", deps: ["build-release-bins"] },
-  { name: "deps-config-check", description: "Check if deps.toml is stale", deps: ["build-release-bins"] },
-  { name: "makegen-check", description: "Check if generated Makefile is stale", deps: ["lint-upsert"] },
-  { name: "bootstrap-check", description: "Check if generated bootstrap artifacts are stale", deps: ["lint-upsert"] },
-  { name: "pragma-check", description: "Check if pragma artifacts are stale", deps: ["lint-upsert"] },
-  { name: "verify", description: "Verify generated artifacts match their generators", deps: ["lint-upsert"] },
-  { name: "verify-fix", description: "Ensure generated artifacts are up to date", deps: ["lint-upsert"] },
-  { name: "fmt-fix", description: "fmt-fix: apply formatting (alias for fmt)", deps: [] },
-  { name: "lint-fix", description: "lint-fix: auto-fix lint issues where possible", deps: ["pragma"] },
-  { name: "ci", description: "Run CI via workflow planner (typed units, deterministic keying)", deps: [] },
-  { name: "test-all", description: "Run all tests via workflow planner (warm-path optimized)", deps: [] }
+  {
+    name: "preflight-fix",
+    description: "Preflight: auto-fix rustc warnings before running generators",
+    deps: [],
+    body: ["@cargo fix --workspace --all-targets --allow-dirty --allow-staged"],
+    comment: None
+  },
+  {
+    name: "ensure-codegen",
+    description: "Ensure CLI entrypoints exist (bootstrap-safe)",
+    deps: [],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen-dag -- --mode=ensure"],
+    comment: None
+  },
+  {
+    name: "build-release-bins",
+    description: "Build workspace binaries once for direct tool execution",
+    deps: ["ensure-codegen"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins"],
+    comment: None
+  },
+  {
+    name: "lint-upsert",
+    description: "Lint upsert: fix if needed, then verify",
+    deps: ["ensure-codegen", "preflight-fix"],
+    body: [
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma",
+      "@cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)"
+    ],
+    comment: None
+  },
+  {
+    name: "codegen",
+    description: "Generate CLI entrypoints (DAG upsert)",
+    deps: ["lint-upsert"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen-dag"],
+    comment: None
+  },
+  {
+    name: "build",
+    description: "Full build transaction",
+    deps: ["codegen", "testgen"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo build --all-targets"],
+    comment: "Full build transaction: codegen \u{2192} testgen \u{2192} cargo build"
+  },
+  {
+    name: "clean",
+    description: "Clean build artifacts",
+    deps: [],
+    body: ["@cargo clean"],
+    comment: None
+  },
+  {
+    name: "testgen",
+    description: "Regenerate tests from DAG structures and MockSpecs",
+    deps: ["lint-upsert"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen"],
+    comment: None
+  },
+  {
+    name: "testgen-check",
+    description: "Check if generated tests are stale",
+    deps: ["lint-upsert"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen -- --mode=verify"],
+    comment: None
+  },
+  {
+    name: "deps-config",
+    description: "Ensure deps.toml matches canonical generated configuration",
+    deps: ["build-release-bins"],
+    body: ["@target/release/gunbc-deps-config --mode=ensure"],
+    comment: None
+  },
+  {
+    name: "deps-config-check",
+    description: "Check if deps.toml is stale",
+    deps: ["build-release-bins"],
+    body: ["@target/release/gunbc-deps-config --mode=verify"],
+    comment: None
+  },
+  {
+    name: "makegen-check",
+    description: "Check if generated Makefile is stale",
+    deps: ["lint-upsert"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen -- --mode=verify"],
+    comment: None
+  },
+  {
+    name: "bootstrap-check",
+    description: "Check if generated bootstrap artifacts are stale",
+    deps: ["lint-upsert"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap -- --mode=verify"],
+    comment: None
+  },
+  {
+    name: "pragma-check",
+    description: "Check if pragma artifacts are stale",
+    deps: ["lint-upsert"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma -- --mode=verify"],
+    comment: None
+  },
+  {
+    name: "verify",
+    description: "Verify generated artifacts match their generators",
+    deps: ["lint-upsert"],
+    body: [
+      "@$(MAKE) deps-config-check",
+      "@$(MAKE) makegen-check",
+      "@$(MAKE) bootstrap-check",
+      "@$(MAKE) testgen-check",
+      "@$(MAKE) pragma-check"
+    ],
+    comment: None
+  },
+  {
+    name: "verify-fix",
+    description: "Ensure generated artifacts are up to date",
+    deps: ["lint-upsert"],
+    body: [
+      "@$(MAKE) deps-config",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen -- --mode=ensure",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap -- --mode=ensure",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen -- --mode=ensure",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma -- --mode=ensure"
+    ],
+    comment: None
+  },
+  {
+    name: "fmt-fix",
+    description: "fmt-fix: apply formatting (alias for fmt)",
+    deps: [],
+    body: ["@cargo fmt"],
+    comment: None
+  },
+  {
+    name: "lint-fix",
+    description: "lint-fix: auto-fix lint issues where possible",
+    deps: ["pragma"],
+    body: ["@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings"],
+    comment: None
+  },
+  {
+    name: "ci",
+    description: "Run CI via workflow planner (typed units, deterministic keying)",
+    deps: [],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- ci"],
+    comment: None
+  },
+  {
+    name: "test-all",
+    description: "Run all tests via workflow planner (warm-path optimized)",
+    deps: [],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- test-all"],
+    comment: None
+  }
 ]
 
 // ============================================================================
@@ -39,11 +190,103 @@ data core_workflows: List<CoreWorkflow> = [
 // ============================================================================
 
 data meta_targets: List<MetaTargetDef> = [
-  { name: "test", description: "Run tests (<=S)", has_check: false, has_fix: true },
-  { name: "test-integration", description: "Run integration-focused tests", has_check: false, has_fix: false },
-  { name: "test-external", description: "Run external/live-flow tests", has_check: false, has_fix: false },
-  { name: "check", description: "Type check all targets", has_check: false, has_fix: true },
-  { name: "clippy", description: "Run clippy linter", has_check: false, has_fix: true },
-  { name: "fmt", description: "Format all code", has_check: true, has_fix: false },
-  { name: "ci-yaml", description: "Generate CI workflow YAML (GitHub Actions & GitLab CI)", has_check: false, has_fix: false }
+  {
+    name: "test",
+    description: "Run tests (<=S)",
+    has_check: false,
+    has_fix: true,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo test",
+    check_command: None,
+    fix_command: None,
+    command_prefix: None,
+    resource_needs: [
+      { resource: "compiled_code", mode: "ensure" },
+      { resource: "verified_artifacts", mode: "ensure" }
+    ],
+    fix_prerequisites: ["fmt-fix", "lint-fix"]
+  },
+  {
+    name: "test-integration",
+    description: "Run integration-focused tests",
+    has_check: false,
+    has_fix: false,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo test integration",
+    check_command: None,
+    fix_command: None,
+    command_prefix: "GUNBC_TEST_MAX_COST=XL",
+    resource_needs: [
+      { resource: "compiled_code", mode: "ensure" },
+      { resource: "verified_artifacts", mode: "ensure" }
+    ],
+    fix_prerequisites: []
+  },
+  {
+    name: "test-external",
+    description: "Run external/live-flow tests",
+    has_check: false,
+    has_fix: false,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo test live_flow",
+    check_command: None,
+    fix_command: None,
+    command_prefix: "GUNBC_TEST_MAX_COST=XL",
+    resource_needs: [
+      { resource: "compiled_code", mode: "ensure" },
+      { resource: "verified_artifacts", mode: "ensure" }
+    ],
+    fix_prerequisites: []
+  },
+  {
+    name: "check",
+    description: "Type check all targets",
+    has_check: false,
+    has_fix: true,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo check --all-targets",
+    check_command: None,
+    fix_command: None,
+    command_prefix: None,
+    resource_needs: [
+      { resource: "generated_cli", mode: "ensure" },
+      { resource: "pragma_config", mode: "verify" }
+    ],
+    fix_prerequisites: ["fmt-fix"]
+  },
+  {
+    name: "clippy",
+    description: "Run clippy linter",
+    has_check: false,
+    has_fix: true,
+    command: "@cargo clippy --all-targets -- -D warnings",
+    check_command: None,
+    fix_command: "@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings",
+    command_prefix: None,
+    resource_needs: [
+      { resource: "generated_cli", mode: "ensure" },
+      { resource: "pragma_config", mode: "verify" }
+    ],
+    fix_prerequisites: []
+  },
+  {
+    name: "fmt",
+    description: "Format all code",
+    has_check: true,
+    has_fix: false,
+    command: "@cargo fmt",
+    check_command: "@cargo fmt --check",
+    fix_command: None,
+    command_prefix: None,
+    resource_needs: [],
+    fix_prerequisites: []
+  },
+  {
+    name: "ci-yaml",
+    description: "Generate CI workflow YAML (GitHub Actions & GitLab CI)",
+    has_check: false,
+    has_fix: false,
+    command: "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen -- cigen",
+    check_command: None,
+    fix_command: None,
+    command_prefix: None,
+    resource_needs: [],
+    fix_prerequisites: []
+  }
 ]

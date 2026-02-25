@@ -143,6 +143,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("cloud.aws.credential".into(), 3),
         ("cloud.azure.credential".into(), 3),
         ("cloud.gcp.credential".into(), 6),
+        ("config.build_commands".into(), 0),
         ("config.build_policy".into(), 0),
         ("config.build_targets".into(), 1),
         ("config.codegen_paths".into(), 0),

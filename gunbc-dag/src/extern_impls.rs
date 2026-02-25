@@ -29,6 +29,7 @@ pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
         ("tools.bootstrap", "render_bootstrap_gitignore"),
         ("tools.bootstrap", "render_bootstrap_makefile"),
         ("tools.gist", "build_snapshot_content"),
+        ("tools.makegen", "discover_tools"),
         ("tools.makegen", "render_makefile_content"),
         ("tools.pragma", "render_clippy_toml"),
         ("tools.pragma", "render_disallowed_methods_allowlist"),
@@ -46,6 +47,7 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
 
         ("tools.gist", "build_snapshot_content") => Some(DynOp::new(BuildSnapshotContentOp)),
 
+        ("tools.makegen", "discover_tools") => Some(DynOp::new(DiscoverToolsOp)),
         ("tools.makegen", "render_makefile_content") => {
             Some(DynOp::new(RenderMakefileContentOp))
         }
@@ -186,6 +188,115 @@ fn extract_file_contents(inputs: &HashMap<String, Value>) -> Result<Vec<String>,
 // ============================================================================
 // tools.makegen extern impls
 // ============================================================================
+
+/// `discover_tools() -> List<DiscoveredTool>`
+///
+/// Returns tool information from the Rust ToolRegistry as structured data
+/// that the DSL rendering functions can consume.
+#[derive(Debug, Clone)]
+struct DiscoverToolsOp;
+
+impl Executable for DiscoverToolsOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::makegen::registry::{BuildConfig, ToolRegistry};
+        use gunbc_ir::cargo::{CargoCommand, Subcommand};
+
+        let registry = ToolRegistry::default_registry();
+        let config = BuildConfig::cargo();
+
+        let tools: Vec<Value> = registry
+            .tools
+            .iter()
+            .map(|tool| {
+                let cmd = CargoCommand::new(Subcommand::Run(tool.invocation.clone()))
+                    .quiet()
+                    .release()
+                    .warnings(config.warnings);
+                let command = format!("@{}", cmd.to_shell_with_env());
+                let dry_run_command = format!("{} -- --dry-run strict", command);
+
+                let deps: Vec<Value> = if tool.needs_generated_cli {
+                    vec![Value::Str("ensure-codegen".to_string())]
+                } else {
+                    vec![]
+                };
+
+                let entrypoints: Vec<Value> = tool
+                    .entrypoints
+                    .iter()
+                    .map(|ep| {
+                        let mut map = BTreeMap::new();
+                        map.insert("port_name".to_string(), Value::Str(ep.port_name.clone()));
+                        map.insert("make_var".to_string(), Value::Str(ep.make_var.clone()));
+                        map.insert("cli_flag".to_string(), Value::Str(ep.cli_flag.clone()));
+                        map.insert("type_hint".to_string(), Value::Str(ep.type_hint.clone()));
+                        map.insert(
+                            "default".to_string(),
+                            match &ep.default {
+                                Some(d) => Value::Str(d.clone()),
+                                None => Value::Unit,
+                            },
+                        );
+                        map.insert("repeatable".to_string(), Value::Bool(ep.repeatable));
+                        Value::Map(map)
+                    })
+                    .collect();
+
+                let extra_targets: Vec<Value> = tool
+                    .extra_targets
+                    .iter()
+                    .map(|extra| {
+                        let mut map = BTreeMap::new();
+                        map.insert("suffix".to_string(), Value::Str(extra.suffix.clone()));
+                        map.insert(
+                            "description".to_string(),
+                            Value::Str(extra.description.clone()),
+                        );
+                        map.insert(
+                            "post_commands".to_string(),
+                            Value::List(
+                                extra
+                                    .post_commands
+                                    .iter()
+                                    .map(|c| Value::Str(c.clone()))
+                                    .collect(),
+                            ),
+                        );
+                        Value::Map(map)
+                    })
+                    .collect();
+
+                let live_secrets: Vec<Value> = tool
+                    .live_secrets
+                    .iter()
+                    .map(|s| Value::Str(s.clone()))
+                    .collect();
+
+                let mut map = BTreeMap::new();
+                map.insert("short_name".to_string(), Value::Str(tool.short_name.clone()));
+                map.insert(
+                    "description".to_string(),
+                    Value::Str(tool.description.clone()),
+                );
+                map.insert(
+                    "binary_name".to_string(),
+                    Value::Str(tool.binary_name().to_string()),
+                );
+                map.insert("command".to_string(), Value::Str(command));
+                map.insert("dry_run_command".to_string(), Value::Str(dry_run_command));
+                map.insert("deps".to_string(), Value::List(deps));
+                map.insert("entrypoints".to_string(), Value::List(entrypoints));
+                map.insert("extra_targets".to_string(), Value::List(extra_targets));
+                map.insert("live_secrets".to_string(), Value::List(live_secrets));
+                Value::Map(map)
+            })
+            .collect();
+
+        OutputMap::new()
+            .value("return", Value::List(tools))
+            .ok()
+    }
+}
 
 /// `render_makefile_content(path: String) -> String`
 ///
@@ -480,6 +591,26 @@ mod tests {
         let result = RenderLintPolicyOp.execute(HashMap::new()).unwrap();
         let content = result.get("content").and_then(Value::as_str).expect("expected lint policy content");
         assert!(content.contains("Generated by gunbc-pragma"));
+    }
+
+    #[test]
+    fn test_discover_tools_returns_list() {
+        let result = DiscoverToolsOp.execute(HashMap::new()).unwrap();
+        let tools = result.get("return").expect("expected return key");
+        match tools {
+            Value::List(items) => {
+                assert!(items.len() >= 5, "should discover at least 5 tools, got {}", items.len());
+                // Check first tool has expected fields
+                if let Value::Map(tool) = &items[0] {
+                    assert!(tool.contains_key("short_name"), "tool missing short_name");
+                    assert!(tool.contains_key("command"), "tool missing command");
+                    assert!(tool.contains_key("dry_run_command"), "tool missing dry_run_command");
+                    assert!(tool.contains_key("deps"), "tool missing deps");
+                    assert!(tool.contains_key("entrypoints"), "tool missing entrypoints");
+                }
+            }
+            _ => panic!("expected List, got {:?}", std::mem::discriminant(tools)),
+        }
     }
 
     #[test]

@@ -55,6 +55,14 @@ type CoreWorkflow {
   name: String
   description: String
   deps: List<String>
+  body: List<String>        // recipe lines (e.g., ["@cargo test --workspace"])
+  comment: String?          // override comment (e.g., "Full build transaction: ...")
+}
+
+// What resource a meta target needs and how.
+type ResourceNeed {
+  resource: String           // resource identifier (e.g., "compiled_code")
+  mode: String               // "ensure" or "verify"
 }
 
 // A meta target definition (e.g., "test", "check", "fmt").
@@ -64,6 +72,39 @@ type MetaTargetDef {
   description: String
   has_check: Bool
   has_fix: Bool
+  command: String                     // pre-rendered shell command
+  check_command: String?              // for -check variant
+  fix_command: String?                // for -fix variant
+  command_prefix: String?             // e.g., "GUNBC_TEST_MAX_COST=XL"
+  resource_needs: List<ResourceNeed>  // [{resource: "compiled_code", mode: "ensure"}, ...]
+  fix_prerequisites: List<String>     // ["fmt-fix", "lint-fix"]
+}
+
+// Maps a resource identifier to its Make targets for ensure/verify modes.
+type ResourceTargetEntry {
+  resource: String           // e.g., "generated_cli"
+  ensure_target: String      // e.g., "ensure-codegen"
+  verify_target: String      // e.g., "ensure-codegen"
+}
+
+// A tool discovered at build time via inventory/DSL introspection.
+type DiscoveredTool {
+  short_name: String
+  description: String
+  binary_name: String
+  command: String             // pre-rendered invocation command
+  dry_run_command: String     // with --dry-run strict
+  deps: List<String>          // make target dependencies
+  entrypoints: List<EntrypointParam>
+  extra_targets: List<ExtraTarget>
+  live_secrets: List<String>
+}
+
+// An extra composite target for a tool (e.g., "viz-serve").
+type ExtraTarget {
+  suffix: String
+  description: String
+  post_commands: List<String>
 }
 
 // Complete Makefile structure.
