@@ -262,6 +262,7 @@ pub enum ServiceOperationSpec {
     Rest(RestOperationSpec),
     Shell(ShellOperationSpec),
     File(FileOperationSpec),
+    Local(LocalOperationSpec),
 }
 
 /// File protocol specification: operation type + path template.
@@ -274,6 +275,14 @@ pub struct FileOperationSpec {
     /// Input fields from `input { ... }`.
     pub input_fields: Vec<FieldSpec>,
     /// Output fields from `output { ... }`.
+    pub output_fields: Vec<OutputFieldSpec>,
+}
+
+/// Local operation specification: pure computation, no I/O transport.
+/// Used for `@local` services whose operations are domain-specific functions.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct LocalOperationSpec {
+    pub input_fields: Vec<FieldSpec>,
     pub output_fields: Vec<OutputFieldSpec>,
 }
 
@@ -3538,6 +3547,9 @@ fn annotation_transport_class(annotations: &[Annotation]) -> Option<ServiceTrans
     if has_annotation(annotations, "file") {
         return Some(ServiceTransportClass::FileBoundary);
     }
+    if has_annotation(annotations, "local") {
+        return Some(ServiceTransportClass::LocalDirect);
+    }
     None
 }
 
@@ -3700,6 +3712,9 @@ fn derive_operation_spec(
         ServiceTransportClass::FileBoundary => {
             derive_file_spec(operation).map(ServiceOperationSpec::File)
         }
+        ServiceTransportClass::LocalDirect => {
+            Some(ServiceOperationSpec::Local(derive_local_spec(operation)))
+        }
         _ => None,
     }
 }
@@ -3807,6 +3822,28 @@ fn derive_file_spec_from_capability(
         input_fields,
         output_fields,
     })
+}
+
+fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
+    let input_fields = operation
+        .inputs
+        .iter()
+        .map(|field| {
+            let type_id = type_expr_to_string(&field.ty);
+            FieldSpec {
+                name: field.name.clone(),
+                type_id: type_id.clone(),
+                default: field.default.as_ref().map(expr_to_default_string),
+                is_secret: false,
+                is_path_param: false,
+            }
+        })
+        .collect();
+    let output_fields = derive_output_fields(&operation.outputs);
+    LocalOperationSpec {
+        input_fields,
+        output_fields,
+    }
 }
 
 /// Extract `@file(OP, "template")` → `(operation, path_template)`.

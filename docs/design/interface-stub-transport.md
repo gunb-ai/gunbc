@@ -184,6 +184,8 @@ Profile metadata extraction (env/secret requirements, bound interface names) com
 
 Add `interface_imports: HashSet<String>`. Populate during `collect_dag_files()` by checking `import interfaces.*` in the AST.
 
+**Stopgap (2026-02-24)**: `requires_profile: bool` added to `CompilableModule` and filtered in `build_testgen_graph_auto()`. Prevents testgen hard-failure for interface-using modules. PT-2 replaces this with the richer `interface_imports: HashSet<String>` and IS-3 removes the need for filtering entirely.
+
 ### PT-3: Add `LiveProfileTestConfig` to `TestgenTargetDef` (S)
 
 **File**: `core/codegen/src/registry.rs`

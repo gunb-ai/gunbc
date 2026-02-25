@@ -47,7 +47,7 @@
 |----|------|------|------|--------|
 | **IS-1** | **Add `InterfaceStub` to `ServiceTransportClass`**: New enum variant in `daglang-lower`. Audit all match arms for exhaustiveness. | -- | S | Planned |
 | **IS-2** | **Add `add_interface_stub_transport_triplets()`**: Mirror resource capability transport pattern. Walk `InterfaceDef.capabilities`, create prepare/execute/parse triplets with `InterfaceStub` transport class. | IS-1 | M | Planned |
-| **IS-3** | **Relax `enforce_profile_for_bound_uses()`**: Convert hard error to informational. Return `HashSet<String>` of interface types needing stubs. | IS-1 | S | Planned |
+| **IS-3** | **Relax `enforce_profile_for_bound_uses()`**: Convert hard error to informational. Return `HashSet<String>` of interface types needing stubs. (Stopgap: `requires_profile` filter in `build_testgen_graph_auto()` skips these modules — remove filter when IS-3 lands.) | IS-1 | S | Planned |
 | **IS-4** | **Wire stubs into lowering flow**: Call `add_interface_stub_transport_triplets()` after service transport, merge into endpoint registry. | IS-2, IS-3 | S | Planned |
 | **IS-5** | **Update `resolve_service_call_source()` fallback**: Try `cap_key` lookup when `active_profile_bindings` is `None`. Only error if stub lookup also fails. | IS-3 | S | Planned |
 | **IS-6** | **Handle `InterfaceStub` in DynOp resolver**: `InterfaceStubPrepareOp`, `InterfaceStubExecuteOp` (errors in Real mode, auto-mocked in DryRun), `InterfaceStubParseOp`. | -- | M | Planned |
@@ -59,7 +59,7 @@
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **PT-1** | **Profile discovery module**: Scan `dsl/profiles/*.dag`, extract profile name, bound interfaces, env/secret requirements, inferred test class. | IS-8 | M | Planned |
-| **PT-2** | **Augment `CompilableModule` with interface imports**: Add `interface_imports: HashSet<String>` populated from `import interfaces.*` in AST. | IS-8 | S | Planned |
+| **PT-2** | **Augment `CompilableModule` with interface imports**: Upgrade `requires_profile: bool` to `interface_imports: HashSet<String>` populated from `import interfaces.*` in AST. | IS-8 | S | Planned |
 | **PT-3** | **Add `LiveProfileTestConfig` to `TestgenTargetDef`**: `profile_name`, `test_class`, `fermi_cost`, `required`, `required_any_of`, `dag_builder_call`. | IS-8 | S | Planned |
 | **PT-4** | **Add `build_dsl_graph_with_profile()`**: New compilation path threading `profile` through `CompileOptions` with `allow_placeholder_env`. | IS-8 | M | Planned |
 | **PT-5** | **Generate per-profile test sections in codegen**: `build_per_profile_live_flow_sections()` — one `test_live_flow_{module}_{profile}()` per config, gated by env requirements. | PT-3, PT-4 | M | Planned |

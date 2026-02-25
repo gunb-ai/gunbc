@@ -41,8 +41,8 @@ use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
 use crate::resolve_service::{
-    GenericFileParseOp, GenericFilePrepareOp, GenericRestParseOp, GenericRestPrepareOp,
-    GenericShellParseOp, GenericShellPrepareOp,
+    GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp, GenericLocalPrepareOp,
+    GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
 };
 
 // ============================================================================
@@ -890,6 +890,16 @@ fn resolve_service_transport(
                 (ServiceOperationSpec::File(file_spec), _, true) => {
                     return Ok(DynOp::new(GenericFileParseOp {
                         spec: file_spec.clone(),
+                    }));
+                }
+                (ServiceOperationSpec::Local(local_spec), true, _) => {
+                    return Ok(DynOp::new(GenericLocalPrepareOp {
+                        spec: local_spec.clone(),
+                    }));
+                }
+                (ServiceOperationSpec::Local(local_spec), _, true) => {
+                    return Ok(DynOp::new(GenericLocalParseOp {
+                        spec: local_spec.clone(),
                     }));
                 }
                 _ => {}

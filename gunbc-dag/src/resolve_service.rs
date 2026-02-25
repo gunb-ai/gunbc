@@ -8,8 +8,8 @@
 use std::collections::{BTreeSet, HashMap};
 
 use daglang_lower::{
-    ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, OutputFieldSpec, RestOperationSpec,
-    ShellOperationSpec, ShellOutputParsing,
+    ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
+    RestOperationSpec, ShellOperationSpec, ShellOutputParsing,
 };
 use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::transport::{
@@ -881,6 +881,84 @@ impl Executable for GenericFileParseOp {
             }
             other => Err(ExecError::new(format!(
                 "GenericFileParse: expected File response, got {other:?}"
+            ))),
+        }
+    }
+}
+
+// ============================================================================
+// Local (pure computation, no I/O)
+// ============================================================================
+
+/// Generic local prepare: packages inputs as a JSON body in a ShellRequest.
+/// In DryRun mode, the execute node returns mock data; in real mode, a local
+/// computation executor would interpret the request.
+#[derive(Debug, Clone)]
+pub struct GenericLocalPrepareOp {
+    pub spec: LocalOperationSpec,
+}
+
+impl Executable for GenericLocalPrepareOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
+        // Package inputs as JSON in a shell request (carrier for local ops).
+        let mut body = serde_json::Map::new();
+        for field in &self.spec.input_fields {
+            if let Some(val) = inputs.get(&field.name) {
+                if let Some(json_val) = value_to_json(val) {
+                    body.insert(field.name.clone(), json_val);
+                }
+            }
+        }
+        let json_str = serde_json::Value::Object(body).to_string();
+        let request = ShellRequest::new("echo").args(vec![json_str]);
+        OutputMap::new()
+            .request("request", TransportRequest::Shell(request))
+            .bool("skip", false)
+            .ok()
+    }
+}
+
+/// Generic local parse: extracts output fields from a ShellResponse JSON body.
+#[derive(Debug, Clone)]
+pub struct GenericLocalParseOp {
+    pub spec: LocalOperationSpec,
+}
+
+impl Executable for GenericLocalParseOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match inputs.get("response") {
+            Some(Value::Response(TransportResponse::Shell(shell))) => {
+                // Parse stdout as JSON and extract named output fields.
+                let parsed: serde_json::Value =
+                    serde_json::from_str(shell.stdout.trim()).unwrap_or_default();
+                let mut out = OutputMap::new();
+                for field in &self.spec.output_fields {
+                    let val = parsed.get(&field.name);
+                    out = match val {
+                        Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
+                        Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
+                        Some(other) => out.str(&field.name, other.to_string()),
+                        None => out.str(&field.name, String::new()),
+                    };
+                }
+                out.ok()
+            }
+            Some(Value::Skipped) | None => {
+                let mut out = OutputMap::new();
+                for field in &self.spec.output_fields {
+                    out = out.value(&field.name, Value::Skipped);
+                }
+                out.ok()
+            }
+            Some(other) => Err(ExecError::new(format!(
+                "GenericLocalParse: expected Shell response, got {:?}",
+                std::mem::discriminant(other)
             ))),
         }
     }
