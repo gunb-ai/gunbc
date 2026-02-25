@@ -37,7 +37,7 @@
 | **NF-1** | **Extern DSL surface**: Add `extern func` and `extern asset` syntax/typechecking/lowering so runtime-provided behavior is explicit in DSL. | -- | L | **Done** |
 | **NF-2** | **Minimal symbol model**: Introduce canonical `SymbolId` + `NodeId` model and lower ops to `Intrinsic`/`Call`/`Extern`. | NF-1 | L | **Done** |
 | **NF-3** | **Link step + backend resolver contract**: Add linker stage that resolves extern funcs/assets through backend interfaces and emits hard missing-symbol errors. | NF-2 | L | **Done** |
-| **NF-4** | **Runtime/asset migration to extern symbols**: Convert existing runtime handler + embedded asset flows to extern symbol resolution. Remove hidden authority from CLI/emitter registries. | NF-3 | L | Planned |
+| **NF-4** | **Collapse link phase into compile-time resolution**: Delete separate linker stage (`Backend` trait, `link()`, `SymbolTable`, `OpRef`, `IntrinsicOp`). Resolution already happens at compile time in `resolve.rs`; `extern` keyword + `ExternCall` + `resolve_extern_call()` remain as the fail-closed contract. | NF-3 | M | In Progress |
 | **NF-5** | **Delete fallback surfaces**: Remove passthrough controls/handlers, stub asset fallbacks, and module-name dispatch heuristics. | NF-4 | M | Planned |
 | **NF-6** | **Determinism contract hardening**: Add compile receipt digests linked to emit-manifest and CI determinism gates (single-file, CI pipeline, directory compile) with deterministic diagnostic ordering. | NF-5 | M | Planned |
 

@@ -70,7 +70,6 @@ pub mod git;
 pub mod invocation_contract;
 pub mod language;
 pub mod layout;
-pub mod linker;
 pub mod log_detail;
 pub mod makefile_render;
 pub mod node;
@@ -140,9 +139,8 @@ pub use layout::{
     compute_layout, compute_levels, ConnectorCell, DagLayout, EdgeLayout, EdgeOrientation,
     NodeLayout, OverflowState, OverflowStrategy, Viewport, ViewportUnit,
 };
-pub use linker::{link, Backend, EmptyBackend, LinkError, LinkResult, ResolvedExternAsset, ResolvedExternFunc};
 pub use log_detail::LogDetailLevel;
-pub use symbol::{IntrinsicOp, OpRef, ProgramSymbolId, SymbolTable};
+pub use symbol::ProgramSymbolId;
 pub use makefile_render::MakefileStructuredRenderer;
 pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{

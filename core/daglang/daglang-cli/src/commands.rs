@@ -248,24 +248,6 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 parsed.input.as_ref(),
                 options.clone(),
             );
-            // NF-4: Wire linker into compilation path (advisory — warnings not failures).
-            {
-                let symbol_table = daglang_lower::build_symbol_table(&output.lowered_dag);
-                let backend = gunbc_dag::backend::RuntimeBackend;
-                match gunbc_ir::link(&symbol_table, &backend) {
-                    Ok(link_result) => {
-                        for diag in &link_result.diagnostics {
-                            eprintln!("link: {diag}");
-                        }
-                        output.link_result = Some(link_result);
-                    }
-                    Err(errors) => {
-                        for error in &errors {
-                            eprintln!("link warning: {error}");
-                        }
-                    }
-                }
-            }
             if matches!(parsed.format, CompileOutputFormat::CanonicalJson) {
                 let canonical_json =
                     render_canonical_ir_json(&output.lowered_dag).unwrap_or_else(|error| {

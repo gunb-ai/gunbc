@@ -53,11 +53,6 @@ pub struct CompileOutput {
     /// the compiled modules. Merge into `TypeRegistry::with_core_types()` to
     /// make DSL-defined types visible to testgen.
     pub dsl_type_registry: TypeRegistry,
-    /// Link result from the compile+link pipeline (NF-4).
-    ///
-    /// `None` if the link step was not performed (e.g., no backend provided).
-    /// Contains resolved extern funcs/assets and diagnostics.
-    pub link_result: Option<gunbc_ir::LinkResult>,
     /// Compile receipt with deterministic digests (NF-6).
     ///
     /// `None` if receipt computation was not requested.
@@ -302,7 +297,6 @@ pub fn compile_from_module_graph_with_options(
         pipeline_params,
         inferred_entrypoints,
         dsl_type_registry,
-        link_result: None,
         receipt,
     })
 }
