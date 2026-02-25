@@ -340,7 +340,7 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 | `dsl/services/` | Service definitions (REST, Shell): gcp, github, cargo, git, llm |
 | `dsl/tools/` | Tool workflows: clippy, gist, codegen, makegen, etc. |
 | `dsl/pipelines/` | Pipeline compositions: ci |
-| `core/daglang/` | DSL compiler: parse → typecheck → lower → emit |
+| `core/daglang/` | DSL compiler: discover → parse → resolve → typecheck → lower → derive → emit |
 | `core/ir/` | Core IR types, patterns, transport model, resource system |
 | `core/exec/` | Execution engine, DryRun interception, simulation |
 | `core/codegen/` | CLI and test generation |
@@ -1459,8 +1459,9 @@ The DSL-first pipeline from authoring to generated tests:
               v
 +-------------------------------+
 | 2. Compile                    |   core/daglang/
-|    parse → typecheck → lower  |   → Dag<LoweredOp> (Graph IR)
-|    → emit (Rust/Go/C/MIPS)   |   ServiceOperationSpec → transport code
+|    discover → parse → resolve |   module graph + typed project
+|    → typecheck → lower → derive | → Dag<LoweredOp> + derived artifacts
+|    → emit (Rust/Go/C/MIPS)    |   ServiceOperationSpec → transport code
 +-------------------------------+
               |
               v

@@ -64,7 +64,7 @@ fn render_pragma_lint_policy(directives: List<PragmaDirective>) -> String {
 }
 
 @binary
-func pragma(directives: List<PragmaDirective>) -> { clippy_written: Bool, allowlist_written: Bool, policy_written: Bool } {
+func pragma(directives: List<PragmaDirective>) -> { success: Bool, clippy_written: Bool, allowlist_written: Bool, policy_written: Bool } {
   clippy = content_upsert(
     content: render_clippy_toml(directives: directives),
     path: "clippy.toml"
@@ -81,6 +81,7 @@ func pragma(directives: List<PragmaDirective>) -> { clippy_written: Bool, allowl
   )
 
   return {
+    success: true,
     clippy_written: clippy.written,
     allowlist_written: allowlist.written,
     policy_written: policy.written

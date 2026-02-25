@@ -657,6 +657,12 @@ fn infer_request_kind(inputs: &[TypedPort], kind: TransportKind) -> RequestKind 
 }
 
 /// Classify a callable with `ObligationCategory::None` using name heuristics.
+///
+/// TODO: This function uses string-prefix matching ("render_", "load_",
+/// "content_upsert::") to determine computation semantics. A purely cosmetic
+/// rename of a DSL callable can silently change emission behavior. Migrate
+/// toward obligation-/type-driven classification for as many patterns as
+/// possible, and pin the remaining name-heuristic surface area with tests.
 fn classify_by_name(
     _module: &str,
     name: &str,

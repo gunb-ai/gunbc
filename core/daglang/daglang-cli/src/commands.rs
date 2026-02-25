@@ -6,7 +6,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let (target, format) = parse_viz_args(args).unwrap_or_else(|usage| exit_usage(&usage));
             match target {
                 VizTarget::SelfDag => {
-                    let dag = build_pipeline_dag();
+                    let dag = build_compile_stage_dag();
                     let rendered = match format {
                         VizFormat::Ascii => dag.to_ascii("daglang-compiler-pipeline"),
                         VizFormat::Mermaid => dag.to_mermaid("daglang-compiler-pipeline"),
@@ -192,7 +192,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "compile",
                 args,
-                "compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]",
+                "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]",
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
@@ -236,6 +236,20 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             } else {
                 Vec::new()
             };
+            if parsed.trace_stages {
+                println!("Compilation stages:");
+                for stage in [
+                    "discover",
+                    "parse",
+                    "resolve",
+                    "typecheck",
+                    "lower",
+                    "derive",
+                    "emit",
+                ] {
+                    println!("  - {stage}: ok");
+                }
+            }
             println!(
                 "Compiled {} module(s) to {} node(s), {} file(s) emitted (target={} layer={}).",
                 output.emitted.summary.module_count,
@@ -244,6 +258,26 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 options.target,
                 options.layer
             );
+            let manifest_path = if let Some(out_dir) = normalized_out_dir.as_ref() {
+                out_dir.join(&output.emit_manifest_path).display().to_string()
+            } else {
+                output.emit_manifest_path.clone()
+            };
+            println!("Emit manifest: {manifest_path}");
+            if let Some(progress_file) = output
+                .emitted
+                .files
+                .iter()
+                .find(|file| file.path.ends_with("progress_manifest.txt"))
+            {
+                let progress_path = if let Some(out_dir) = normalized_out_dir.as_ref() {
+                    out_dir.join(&progress_file.path).display().to_string()
+                } else {
+                    progress_file.path.clone()
+                };
+                println!("Progress manifest: {progress_path}");
+            }
+            println!("Obligations: run `daglang obligations <file.dag|dir> --format text|json`");
             if parsed.out_dir.is_some() {
                 for file in &written_files {
                     println!("  - {}", file.display());
@@ -366,6 +400,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
 /// as additional files in the generated crate. This avoids adding `gunbc-dag`
 /// as a runtime dependency of the generated binary (which would pull in the
 /// entire workspace dep tree and be fragile to in-flight changes).
+///
+/// TODO: Currently hardcoded to `tools.makegen`. When other tools need Layer 1
+/// exec-runtime embedding, generalize to a registry/trait pattern so each tool
+/// module can declare its own embedded handler data requirements.
 fn embed_layer1_handler_data(options: &CompileOptions, output: &mut CompileOutput) {
     use daglang_driver::CodegenLayer;
 

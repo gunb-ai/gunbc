@@ -2710,6 +2710,10 @@ fn collect_service_call_paths_from_expr(expr: &Expr, paths: &mut Vec<Vec<String>
         Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
             collect_service_call_paths_from_expr(inner, paths);
         }
+        Expr::Guarded(inner, guard) => {
+            collect_service_call_paths_from_expr(inner, paths);
+            collect_service_call_paths_from_expr(guard, paths);
+        }
         _ => {}
     }
 }
@@ -3068,6 +3072,7 @@ fn expand_content_upsert_patterns(
                 }
                 None
             }
+            Stmt::Annotation(_) => None,
             Stmt::Return(_) => None,
         };
 

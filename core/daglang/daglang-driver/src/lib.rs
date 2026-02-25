@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::rust_exec_runtime::emit_exec_runtime_with_output_dir;
 use daglang_emit::{
-    emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
+    emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle, EmittedFile,
     EmissionSummary,
 };
 pub use daglang_lower::BinaryAnnotation;
@@ -22,6 +22,8 @@ use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions, TypedProject};
 use gunbc_ir::{Dag, TypeRegistry};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DriverContext {
@@ -34,6 +36,8 @@ pub struct CompileOutput {
     pub lowered_dag: Dag<LoweredOp>,
     pub derived: DerivedArtifacts,
     pub emitted: EmissionBundle,
+    /// Relative path of the deterministic emission manifest.
+    pub emit_manifest_path: String,
     /// All output file paths this tool produces, auto-extracted from
     /// `content_upsert` literal paths and `@outputs` annotations.
     pub output_paths: Vec<String>,
@@ -245,8 +249,12 @@ pub fn compile_from_module_graph_with_options(
                 .map(|m| m.module_path.join("."))
         });
 
-    let emitted = emit_with_options(&lowered, &derived, options, target_module_name.as_deref())
+    let target = options.target;
+    let layer = options.layer;
+    let mut emitted =
+        emit_with_options(&lowered, &derived, options, target_module_name.as_deref())
         .map_err(|error| format!("emit error: {error}"))?;
+    let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
     let pipeline_params = collect_pipeline_params(&typed);
     let binary_annotations = daglang_lower::extract_binary_annotations(&typed);
@@ -256,6 +264,7 @@ pub fn compile_from_module_graph_with_options(
         lowered_dag: lowered,
         derived,
         emitted,
+        emit_manifest_path,
         output_paths,
         pipeline_params,
         binary_annotations,
@@ -467,6 +476,72 @@ fn emit_with_options(
             "unsupported compile target/layer combination: --target {target} --layer 1; layer 1 currently supports only --target rust"
         ))),
     }
+}
+
+#[derive(Debug, Serialize)]
+struct EmitManifestDocument {
+    backend: String,
+    target: String,
+    layer: String,
+    files: Vec<EmitManifestEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct EmitManifestEntry {
+    path: String,
+    bytes: usize,
+    sha256: String,
+}
+
+fn append_emit_manifest(
+    emitted: &mut EmissionBundle,
+    target: CodegenTarget,
+    layer: CodegenLayer,
+) -> Result<String, CompileError> {
+    let manifest_path = emit_manifest_path(target, layer);
+    let mut files = emitted
+        .files
+        .iter()
+        .filter(|file| file.path != manifest_path)
+        .collect::<Vec<_>>();
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+
+    let entries = files
+        .iter()
+        .map(|file| EmitManifestEntry {
+            path: file.path.clone(),
+            bytes: file.content.len(),
+            sha256: sha256_hex(file.content.as_bytes()),
+        })
+        .collect::<Vec<_>>();
+
+    let manifest = EmitManifestDocument {
+        backend: emitted.backend.clone(),
+        target: target.to_string(),
+        layer: layer.to_string(),
+        files: entries,
+    };
+    let content = serde_json::to_string_pretty(&manifest).map_err(|error| {
+        CompileError::from(format!("failed to serialize emit manifest: {error}"))
+    })?;
+    emitted.files.push(EmittedFile {
+        path: manifest_path.clone(),
+        content,
+    });
+    Ok(manifest_path)
+}
+
+fn emit_manifest_path(target: CodegenTarget, layer: CodegenLayer) -> String {
+    match layer {
+        CodegenLayer::Native => format!("target/generated/{target}/emit_manifest.json"),
+        CodegenLayer::ExecRuntime => "emit_manifest.json".to_string(),
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
 }
 
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {
@@ -1507,6 +1582,55 @@ fn run() -> Bool {
             .files
             .iter()
             .any(|file| file.path == "target/generated/go/main.go"));
+    }
+
+    #[test]
+    fn compile_includes_emit_manifest_with_hashes() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let root = workspace.join("dsl");
+        let file = root.join("tools/makegen.dag");
+        let context = DriverContext {
+            roots: vec![root],
+            target_file: Some(file),
+        };
+
+        let output = compile_from_context_with_options(
+            &context,
+            CompileOptions {
+                target: CodegenTarget::Go,
+                ..CompileOptions::default()
+            },
+        )
+        .expect("compile should succeed for go native layer");
+
+        assert_eq!(output.emit_manifest_path, "target/generated/go/emit_manifest.json");
+        let manifest = output
+            .emitted
+            .files
+            .iter()
+            .find(|file| file.path == output.emit_manifest_path)
+            .expect("emit manifest should be present in emitted files");
+        let manifest_json: serde_json::Value =
+            serde_json::from_str(&manifest.content).expect("emit manifest should be valid JSON");
+        let files = manifest_json
+            .get("files")
+            .and_then(|value| value.as_array())
+            .expect("emit manifest should include files array");
+        assert!(
+            files.iter().any(|entry| {
+                entry.get("path").and_then(|v| v.as_str()) == Some("target/generated/go/main.go")
+            }),
+            "emit manifest should include generated main.go entry"
+        );
+        assert!(
+            files.iter().all(|entry| {
+                entry
+                    .get("sha256")
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|hash| hash.len() == 64)
+            }),
+            "every emit manifest entry should include a 64-char sha256 hash"
+        );
     }
 
     /// D1.7 — Structural verification that exec-runtime codegen for the real

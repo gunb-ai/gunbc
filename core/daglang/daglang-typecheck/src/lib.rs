@@ -26,7 +26,7 @@ use std::path::PathBuf;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
     Annotation, Expr, Field, Item, Literal, Param, ProvidesClause, SourceFile, Stmt, TypeBody,
-    TypeExpr, UsesClause,
+    TypeExpr, UsesClause, PipelineDef,
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys,
@@ -130,6 +130,28 @@ pub enum TypeError {
     },
     /// Duplicate top-level item name in a module.
     DuplicateDefinition { module: String, name: String },
+    /// Duplicate stage name in a pipeline.
+    DuplicatePipelineStage { pipeline: String, stage: String },
+    /// Duplicate `after` dependency in a stage header.
+    DuplicatePipelineStageDependency {
+        pipeline: String,
+        stage: String,
+        dependency: String,
+    },
+    /// Unknown `after` dependency in a stage header.
+    UnknownPipelineStageDependency {
+        pipeline: String,
+        stage: String,
+        dependency: String,
+    },
+    /// Stage depends on itself via `after`.
+    PipelineStageSelfDependency { pipeline: String, stage: String },
+    /// Stage `when` condition did not infer to a boolean expression.
+    PipelineStageWhenTypeMismatch {
+        pipeline: String,
+        stage: String,
+        got: String,
+    },
     /// Duplicate parameter name in a callable signature.
     DuplicateParameter { item: String, param: String },
     /// Duplicate output field name in a callable signature.
@@ -280,6 +302,37 @@ impl std::fmt::Display for TypeError {
             Self::DuplicateDefinition { module, name } => {
                 write!(f, "duplicate definition `{name}` in module `{module}`")
             }
+            Self::DuplicatePipelineStage { pipeline, stage } => {
+                write!(f, "duplicate stage `{stage}` in pipeline `{pipeline}`")
+            }
+            Self::DuplicatePipelineStageDependency {
+                pipeline,
+                stage,
+                dependency,
+            } => write!(
+                f,
+                "duplicate stage dependency `{dependency}` in pipeline `{pipeline}` stage `{stage}`"
+            ),
+            Self::UnknownPipelineStageDependency {
+                pipeline,
+                stage,
+                dependency,
+            } => write!(
+                f,
+                "unknown stage dependency `{dependency}` in pipeline `{pipeline}` stage `{stage}`"
+            ),
+            Self::PipelineStageSelfDependency { pipeline, stage } => write!(
+                f,
+                "stage `{stage}` in pipeline `{pipeline}` cannot depend on itself"
+            ),
+            Self::PipelineStageWhenTypeMismatch {
+                pipeline,
+                stage,
+                got,
+            } => write!(
+                f,
+                "stage `{stage}` in pipeline `{pipeline}` has non-bool `when` condition (got `{got}`)"
+            ),
             Self::DuplicateParameter { item, param } => {
                 write!(f, "duplicate parameter `{param}` in `{item}`")
             }
@@ -565,6 +618,7 @@ fn collect_signatures(
         resource_capability_registry: context.resource_capability_registry,
         allow_unresolved_references: context.allow_unresolved_references,
     };
+    let pipeline_param_bindings = collect_pipeline_param_bindings(module);
 
     for item in &module.ast.items {
         match &item.node {
@@ -824,6 +878,11 @@ fn collect_signatures(
                     &def.name,
                     &mut seen_items,
                 ));
+                errors.extend(validate_pipeline_def(
+                    def,
+                    &pipeline_param_bindings,
+                    &body_context,
+                ));
                 signatures.push(TypedItemSignature::Pipeline {
                     name: def.name.clone(),
                     stages: def.stages.len(),
@@ -847,6 +906,97 @@ fn collect_signatures(
     }
 
     (signatures, errors)
+}
+
+fn collect_pipeline_param_bindings(module: &ResolvedModule) -> HashMap<String, ValueType> {
+    let mut bindings = HashMap::new();
+    for item in &module.ast.items {
+        if let Item::ParamDecl(decl) = &item.node {
+            bindings.insert(
+                decl.name.clone(),
+                ValueType::Named(type_expr_to_string(&decl.ty)),
+            );
+        }
+    }
+    bindings
+}
+
+fn validate_pipeline_def(
+    def: &PipelineDef,
+    param_bindings: &HashMap<String, ValueType>,
+    body_context: &BodyInferenceContext<'_>,
+) -> Vec<TypeError> {
+    let mut errors = Vec::new();
+    let pipeline_name = def.name.clone();
+    let mut seen_stage_names = HashSet::new();
+    let mut all_stage_names = HashSet::new();
+
+    for stage in &def.stages {
+        if !seen_stage_names.insert(stage.name.clone()) {
+            errors.push(TypeError::DuplicatePipelineStage {
+                pipeline: pipeline_name.clone(),
+                stage: stage.name.clone(),
+            });
+        }
+        all_stage_names.insert(stage.name.clone());
+    }
+
+    let empty_bound_services = BoundServiceCallRegistry::default();
+    let empty_param_callable_contracts = HashMap::new();
+    let infer_context = ExprInferenceContext {
+        record_type_registry: body_context.record_type_registry,
+        callable_registry: body_context.callable_registry,
+        service_call_registry: body_context.service_call_registry,
+        bound_service_registry: &empty_bound_services,
+        param_callable_contracts: &empty_param_callable_contracts,
+    };
+
+    for stage in &def.stages {
+        let mut seen_dependencies = HashSet::new();
+        for dependency in &stage.after {
+            if !seen_dependencies.insert(dependency.clone()) {
+                errors.push(TypeError::DuplicatePipelineStageDependency {
+                    pipeline: pipeline_name.clone(),
+                    stage: stage.name.clone(),
+                    dependency: dependency.clone(),
+                });
+                continue;
+            }
+            if dependency == &stage.name {
+                errors.push(TypeError::PipelineStageSelfDependency {
+                    pipeline: pipeline_name.clone(),
+                    stage: stage.name.clone(),
+                });
+                continue;
+            }
+            if !all_stage_names.contains(dependency) {
+                errors.push(TypeError::UnknownPipelineStageDependency {
+                    pipeline: pipeline_name.clone(),
+                    stage: stage.name.clone(),
+                    dependency: dependency.clone(),
+                });
+            }
+        }
+
+        if let Some(condition) = &stage.when {
+            let (inferred, infer_errors) =
+                infer_expr_type(condition, param_bindings, &infer_context);
+            errors.extend(infer_errors);
+            let is_bool = matches!(
+                inferred,
+                ValueType::Named(ref name) if strip_generic_params(name) == "Bool"
+            );
+            if !is_bool && !matches!(inferred, ValueType::Unknown) {
+                errors.push(TypeError::PipelineStageWhenTypeMismatch {
+                    pipeline: pipeline_name.clone(),
+                    stage: stage.name.clone(),
+                    got: inferred.display_name().unwrap_or_else(|| "Unknown".to_string()),
+                });
+            }
+        }
+    }
+
+    errors
 }
 
 fn extend_known_types(base: &HashSet<String>, additional: &[String]) -> HashSet<String> {
@@ -2136,6 +2286,10 @@ fn validate_callable_body(
                     infer_expr_type(expr, &local_bindings, &infer_context);
                 errors.extend(infer_errors);
                 local_bindings.insert(name.clone(), inferred);
+                trailing_expr_type = None;
+                trailing_expr = None;
+            }
+            Stmt::Annotation(_) => {
                 trailing_expr_type = None;
                 trailing_expr = None;
             }
@@ -5294,6 +5448,62 @@ fn run(value: Box<String, Int>) -> String { value }"#,
                 expected,
                 got,
             } if name == "Box" && *expected == 1 && *got == 2
+        )));
+    }
+
+    #[test]
+    fn pipeline_unknown_stage_dependency_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "pipeline_unknown_dep.dag",
+            r#"module sample.pipeline
+pipeline ci {
+  stage build [after missing] {}
+}"#,
+        )]);
+        let errors =
+            typecheck_module_graph(graph).expect_err("unknown pipeline stage dependency should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::UnknownPipelineStageDependency {
+                pipeline,
+                stage,
+                dependency,
+            } if pipeline == "ci" && stage == "build" && dependency == "missing"
+        )));
+    }
+
+    #[test]
+    fn duplicate_pipeline_stage_is_reported() {
+        let graph = module_graph_from_sources(&[(
+            "pipeline_duplicate_stage.dag",
+            r#"module sample.pipeline
+pipeline ci {
+  stage build {}
+  stage build {}
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("duplicate pipeline stage should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::DuplicatePipelineStage { pipeline, stage }
+                if pipeline == "ci" && stage == "build"
+        )));
+    }
+
+    #[test]
+    fn pipeline_when_condition_must_be_bool() {
+        let graph = module_graph_from_sources(&[(
+            "pipeline_when_type_mismatch.dag",
+            r#"module sample.pipeline
+pipeline ci {
+  stage build [when 42] {}
+}"#,
+        )]);
+        let errors = typecheck_module_graph(graph).expect_err("non-bool when should fail");
+        assert!(errors.iter().any(|error| matches!(
+            error,
+            TypeError::PipelineStageWhenTypeMismatch { pipeline, stage, got }
+                if pipeline == "ci" && stage == "build" && got == "Int"
         )));
     }
 }

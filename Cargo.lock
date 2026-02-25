@@ -189,6 +189,10 @@ dependencies = [
  "daglang-syntax",
  "daglang-typecheck",
  "gunbc-ir",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

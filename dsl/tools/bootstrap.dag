@@ -30,7 +30,7 @@ fn render_bootstrap_gitignore(crate_names: List<String>) -> String {
 }
 
 @binary
-func bootstrap(check_mode: Bool?) -> { crate_count: Int, makefile_written: Bool, gitignore_written: Bool }
+func bootstrap(check_mode: Bool?) -> { success: Bool, crate_count: Int, makefile_written: Bool, gitignore_written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
   scan = shell.Find.ListDirs(path: "crates")
@@ -42,6 +42,7 @@ func bootstrap(check_mode: Bool?) -> { crate_count: Int, makefile_written: Bool,
   gitignore = content_upsert(content: gitignore_content, path: ".gitignore")
 
   return {
+    success: scan.dirs |> count() > 0,
     crate_count: scan.dirs |> count(),
     makefile_written: makefile.written,
     gitignore_written: gitignore.written

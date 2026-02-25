@@ -3,7 +3,10 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use daglang_syntax::{ast::Item, parser};
+use daglang_syntax::{
+    ast::{Annotation, Expr, Item, Literal, Stmt},
+    parser,
+};
 use gunbc_ir::{AccessMode, Dag, Edge, Node, Port};
 
 use super::capabilities::{
@@ -144,12 +147,6 @@ struct StageTemplate {
 struct WorkflowTemplate {
     pipeline_name: String,
     stages: Vec<StageTemplate>,
-}
-
-#[derive(Debug, Clone)]
-struct StageSection {
-    attrs: String,
-    body: String,
 }
 
 pub(super) fn all_tool_workflow_names() -> Vec<&'static str> {
@@ -415,16 +412,11 @@ fn parse_workflow_template(file: &str, pipeline_name: &str) -> Result<WorkflowTe
             .join("\n")
     })?;
 
-    let mut pipeline_stages: Option<Vec<(String, Vec<String>)>> = None;
+    let mut pipeline_stages = None;
     for item in parsed.items {
         if let Item::PipelineDef(def) = item.node {
             if def.name == pipeline_name {
-                pipeline_stages = Some(
-                    def.stages
-                        .into_iter()
-                        .map(|stage| (stage.name, stage.after))
-                        .collect(),
-                );
+                pipeline_stages = Some(def.stages);
                 break;
             }
         }
@@ -437,29 +429,13 @@ fn parse_workflow_template(file: &str, pipeline_name: &str) -> Result<WorkflowTe
         )
     })?;
 
-    let stage_names = stage_defs
-        .iter()
-        .map(|(name, _)| name.clone())
-        .collect::<Vec<_>>();
-    let sections = extract_stage_sections(&source, &stage_names)?;
-
-    if stage_defs.len() != sections.len() {
-        return Err(format!(
-            "stage section mismatch while parsing '{}': {} defs vs {} sections",
-            file,
-            stage_defs.len(),
-            sections.len()
-        ));
-    }
-
     let stages = stage_defs
         .into_iter()
-        .zip(sections)
-        .map(|((name, after), section)| StageTemplate {
-            name,
-            after,
-            modes: parse_stage_modes(&section.attrs),
-            claims: parse_stage_claims(&section.body),
+        .map(|stage| StageTemplate {
+            name: stage.name,
+            after: stage.after,
+            modes: parse_stage_modes(stage.when.as_ref()),
+            claims: parse_stage_claims(&stage.body.stmts),
         })
         .collect();
 
@@ -469,201 +445,65 @@ fn parse_workflow_template(file: &str, pipeline_name: &str) -> Result<WorkflowTe
     })
 }
 
-fn extract_stage_sections(
-    source: &str,
-    stage_names: &[String],
-) -> Result<Vec<StageSection>, String> {
-    let mut sections = Vec::new();
-    let mut cursor = 0usize;
-
-    for stage_name in stage_names {
-        let stage_start = find_stage_start(source, stage_name, cursor).ok_or_else(|| {
-            format!(
-                "could not locate `stage {}` in workflow source while deriving claims",
-                stage_name
-            )
-        })?;
-
-        let mut i = stage_start + "stage ".len() + stage_name.len();
-        i = skip_ascii_whitespace(source, i);
-
-        let mut attrs = String::new();
-        if source.as_bytes().get(i) == Some(&b'[') {
-            let (attr_inner, next) = extract_delimited_block(source, i, b'[', b']')?;
-            attrs = attr_inner;
-            i = skip_ascii_whitespace(source, next);
-        }
-
-        if source.as_bytes().get(i) != Some(&b'{') {
-            return Err(format!(
-                "expected '{{' after stage '{}' header while deriving claims",
-                stage_name
-            ));
-        }
-
-        let (body, next) = extract_delimited_block(source, i, b'{', b'}')?;
-        sections.push(StageSection { attrs, body });
-        cursor = next;
-    }
-
-    Ok(sections)
+fn parse_stage_modes(condition: Option<&Expr>) -> BTreeSet<String> {
+    let mut modes = BTreeSet::new();
+    let Some(condition) = condition else {
+        return modes;
+    };
+    collect_mode_literals(condition, &mut modes);
+    modes
 }
 
-fn find_stage_start(source: &str, stage_name: &str, start: usize) -> Option<usize> {
-    let target = format!("stage {}", stage_name);
-    let mut cursor = start;
-    while cursor < source.len() {
-        let line_end = source[cursor..]
-            .find('\n')
-            .map(|offset| cursor + offset)
-            .unwrap_or(source.len());
-        let line = &source[cursor..line_end];
-        let trimmed = line.trim_start();
-        if trimmed.starts_with(&target) {
-            let leading_ws = line.len().saturating_sub(trimmed.len());
-            return Some(cursor + leading_ws);
+fn collect_mode_literals(expr: &Expr, modes: &mut BTreeSet<String>) {
+    match expr {
+        Expr::BinOp(lhs, op, rhs) => match op {
+            daglang_syntax::ast::BinOp::Eq => {
+                if let Some(mode) = mode_literal_from_equality(lhs, rhs) {
+                    modes.insert(mode);
+                }
+            }
+            daglang_syntax::ast::BinOp::And | daglang_syntax::ast::BinOp::Or => {
+                collect_mode_literals(lhs, modes);
+                collect_mode_literals(rhs, modes);
+            }
+            _ => {}
+        },
+        Expr::Guarded(inner, guard) => {
+            collect_mode_literals(inner, modes);
+            collect_mode_literals(guard, modes);
         }
-        if line_end == source.len() {
-            break;
-        }
-        cursor = line_end + 1;
+        Expr::After(inner, _) => collect_mode_literals(inner, modes),
+        _ => {}
+    }
+}
+
+fn mode_literal_from_equality(lhs: &Expr, rhs: &Expr) -> Option<String> {
+    let lhs_is_mode = matches!(lhs, Expr::Ident(name) if name == "mode");
+    let rhs_is_mode = matches!(rhs, Expr::Ident(name) if name == "mode");
+    if lhs_is_mode {
+        return literal_string(rhs);
+    }
+    if rhs_is_mode {
+        return literal_string(lhs);
     }
     None
 }
 
-fn skip_ascii_whitespace(source: &str, mut index: usize) -> usize {
-    while let Some(byte) = source.as_bytes().get(index) {
-        if byte.is_ascii_whitespace() {
-            index += 1;
-        } else {
-            break;
-        }
+fn literal_string(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        _ => None,
     }
-    index
 }
 
-fn extract_delimited_block(
-    source: &str,
-    start: usize,
-    open: u8,
-    close: u8,
-) -> Result<(String, usize), String> {
-    let bytes = source.as_bytes();
-    if bytes.get(start) != Some(&open) {
-        return Err(format!(
-            "expected '{}' at byte offset {} while parsing workflow source",
-            open as char, start
-        ));
-    }
-
-    let mut depth = 0usize;
-    let mut i = start;
-    let mut in_string = false;
-    let mut escaped = false;
-
-    while let Some(byte) = bytes.get(i) {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if *byte == b'\\' {
-                escaped = true;
-            } else if *byte == b'"' {
-                in_string = false;
-            }
-            i += 1;
-            continue;
-        }
-
-        if *byte == b'"' {
-            in_string = true;
-            i += 1;
-            continue;
-        }
-
-        if *byte == b'/' && bytes.get(i + 1) == Some(&b'/') {
-            i += 2;
-            while let Some(next) = bytes.get(i) {
-                if *next == b'\n' {
-                    break;
-                }
-                i += 1;
-            }
-            continue;
-        }
-
-        if *byte == open {
-            depth += 1;
-        } else if *byte == close {
-            if depth == 0 {
-                return Err("workflow parser encountered unmatched closing delimiter".to_string());
-            }
-            depth -= 1;
-            if depth == 0 {
-                let inner = source[start + 1..i].to_string();
-                return Ok((inner, i + 1));
-            }
-        }
-
-        i += 1;
-    }
-
-    Err("workflow parser reached EOF before closing delimiter".to_string())
-}
-
-fn parse_stage_modes(attrs: &str) -> BTreeSet<String> {
-    if !attrs.contains("when") {
-        return BTreeSet::new();
-    }
-
-    let mut modes = BTreeSet::new();
-    let bytes = attrs.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'"' {
-            i += 1;
-            let start = i;
-            while i < bytes.len() && bytes[i] != b'"' {
-                if bytes[i] == b'\\' && i + 1 < bytes.len() {
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-            if i <= bytes.len() {
-                let value = attrs[start..i].to_string();
-                if !value.is_empty() {
-                    modes.insert(value);
-                }
-            }
-        }
-        i += 1;
-    }
-
-    modes
-}
-
-fn parse_stage_claims(body: &str) -> Vec<UnitClaim> {
+fn parse_stage_claims(stmts: &[Stmt]) -> Vec<UnitClaim> {
     let mut claims = Vec::new();
 
-    for raw_line in body.lines() {
-        let line = raw_line.trim();
-        if !line.starts_with('@') {
-            continue;
-        }
-
-        let Some(open_idx) = line.find('(') else {
+    for stmt in stmts {
+        let Stmt::Annotation(annotation) = stmt else {
             continue;
         };
-        let Some(close_idx) = line.rfind(')') else {
-            continue;
-        };
-        if close_idx <= open_idx {
-            continue;
-        }
-
-        let name = line[1..open_idx].trim();
-        let args = split_annotation_args(&line[open_idx + 1..close_idx]);
-        let Some(claim) = claim_from_annotation(name, &args) else {
+        let Some(claim) = claim_from_annotation(annotation) else {
             continue;
         };
         claims.push(claim);
@@ -678,53 +518,9 @@ fn parse_stage_claims(body: &str) -> Vec<UnitClaim> {
     claims
 }
 
-fn split_annotation_args(raw: &str) -> Vec<String> {
-    let mut args = Vec::new();
-    let mut current = String::new();
-    let mut in_string = false;
-    let mut escaped = false;
-
-    for ch in raw.chars() {
-        if in_string {
-            current.push(ch);
-            if escaped {
-                escaped = false;
-                continue;
-            }
-            if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-
-        match ch {
-            '"' => {
-                in_string = true;
-                current.push(ch);
-            }
-            ',' => {
-                let value = current.trim();
-                if !value.is_empty() {
-                    args.push(value.to_string());
-                }
-                current.clear();
-            }
-            _ => current.push(ch),
-        }
-    }
-
-    let value = current.trim();
-    if !value.is_empty() {
-        args.push(value.to_string());
-    }
-
-    args
-}
-
-fn claim_from_annotation(name: &str, args: &[String]) -> Option<UnitClaim> {
-    let normalized = name.trim().to_ascii_lowercase();
+fn claim_from_annotation(annotation: &Annotation) -> Option<UnitClaim> {
+    let normalized = annotation.name.trim().to_ascii_lowercase();
+    let args = &annotation.args;
 
     match normalized.as_str() {
         "file" | "tool" | "ledger" | "network" | "credential" => {
@@ -732,7 +528,7 @@ fn claim_from_annotation(name: &str, args: &[String]) -> Option<UnitClaim> {
                 return None;
             }
             let mode = parse_access_mode(&args[0])?;
-            let target = unquote(&args[1]);
+            let target = parse_stringish_arg(&args[1])?;
             let claim_id = compose_claim_id(&normalized, &target);
             Some(UnitClaim::new(ClaimId::new(claim_id), mode))
         }
@@ -741,19 +537,28 @@ fn claim_from_annotation(name: &str, args: &[String]) -> Option<UnitClaim> {
                 return None;
             }
             let mode = parse_access_mode(&args[0])?;
-            let claim_id = unquote(&args[1]);
+            let claim_id = parse_stringish_arg(&args[1])?;
             Some(UnitClaim::new(ClaimId::new(claim_id), mode))
         }
         _ => None,
     }
 }
 
-fn parse_access_mode(raw: &str) -> Option<AccessMode> {
-    let normalized = raw.trim().trim_matches('"').to_ascii_uppercase();
+fn parse_access_mode(expr: &Expr) -> Option<AccessMode> {
+    let raw = parse_stringish_arg(expr)?;
+    let normalized = raw.trim().to_ascii_uppercase();
     match normalized.as_str() {
         "READ" => Some(AccessMode::Read),
         "WRITE" => Some(AccessMode::Write),
         "EXCLUSIVE" => Some(AccessMode::Exclusive),
+        _ => None,
+    }
+}
+
+fn parse_stringish_arg(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Literal(Literal::String(value)) => Some(value.clone()),
+        Expr::Ident(value) => Some(value.clone()),
         _ => None,
     }
 }
@@ -764,10 +569,6 @@ fn compose_claim_id(kind: &str, target: &str) -> String {
     } else {
         format!("{kind}:{target}")
     }
-}
-
-fn unquote(raw: &str) -> String {
-    raw.trim().trim_matches('"').to_string()
 }
 
 fn access_mode_rank(mode: AccessMode) -> u8 {
@@ -811,11 +612,23 @@ mod tests {
 
     #[test]
     fn claim_parser_handles_file_and_network_annotations() {
-        let body = r#"
-            @file(WRITE, "workspace")
-            @network(READ, "github")
-        "#;
-        let claims = parse_stage_claims(body);
+        let stmts = vec![
+            Stmt::Annotation(Annotation {
+                name: "file".to_string(),
+                args: vec![
+                    Expr::Ident("WRITE".to_string()),
+                    Expr::Literal(Literal::String("workspace".to_string())),
+                ],
+            }),
+            Stmt::Annotation(Annotation {
+                name: "network".to_string(),
+                args: vec![
+                    Expr::Ident("READ".to_string()),
+                    Expr::Literal(Literal::String("github".to_string())),
+                ],
+            }),
+        ];
+        let claims = parse_stage_claims(&stmts);
         assert_eq!(claims.len(), 2);
         assert!(claims
             .iter()
@@ -829,11 +642,20 @@ mod tests {
 
     #[test]
     fn stage_mode_parser_extracts_mode_literals() {
-        let attrs = r#"
-            after codegen_ensure,
-            when mode == "gist" || mode == "gist-recent"
-        "#;
-        let modes = parse_stage_modes(attrs);
+        let when = Expr::BinOp(
+            Box::new(Expr::BinOp(
+                Box::new(Expr::Ident("mode".to_string())),
+                daglang_syntax::ast::BinOp::Eq,
+                Box::new(Expr::Literal(Literal::String("gist".to_string()))),
+            )),
+            daglang_syntax::ast::BinOp::Or,
+            Box::new(Expr::BinOp(
+                Box::new(Expr::Ident("mode".to_string())),
+                daglang_syntax::ast::BinOp::Eq,
+                Box::new(Expr::Literal(Literal::String("gist-recent".to_string()))),
+            )),
+        );
+        let modes = parse_stage_modes(Some(&when));
         assert!(modes.contains("gist"));
         assert!(modes.contains("gist-recent"));
     }

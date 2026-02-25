@@ -320,6 +320,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
 
     match (module, name) {
         ("shared.dag_util", _) => Some(HandlerKind::UnimplementedPassthrough),
+        ("std.filesystem", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("std.patterns", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("std.resources", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("pipelines.ci", _) => Some(HandlerKind::UnimplementedPassthrough),

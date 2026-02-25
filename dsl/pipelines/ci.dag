@@ -107,15 +107,15 @@ pipeline ci {
   // Stage 11: Report (depends on everything)
   stage report [after test_stage, after lint_stage, after guardrails, after verify] {
     stages = [
-      stage_result(name: "codegen",    success: codegen_result.success,    stderr: ""),
-      stage_result(name: "bootstrap",  success: true,                      stderr: ""),
-      stage_result(name: "pragma",     success: true,                      stderr: ""),
-      stage_result(name: "testgen",    success: true,                      stderr: ""),
+      stage_result(name: "codegen",    success: codegen_result.success,       stderr: ""),
+      stage_result(name: "bootstrap",  success: bootstrap_result.success,     stderr: ""),
+      stage_result(name: "pragma",     success: pragma_result.success,        stderr: ""),
+      stage_result(name: "testgen",    success: testgen_result.success,       stderr: ""),
       stage_from_output(name: "build", success: build_result.success, stdout: "", stderr: build_result.build_stderr, skipped: false),
       stage_from_output(name: "test",  success: test_result.success,  stdout: test_result.stdout, stderr: test_result.stderr, skipped: !build_result.success),
-      stage_result(name: "lint",       success: lint_result.clean,         stderr: lint_result.findings),
-      stage_result(name: "guardrails", success: guardrail_result.success,  stderr: ""),
-      stage_result(name: "verify",     success: verify_aggregate.all_passed, stderr: "")
+      stage_result(name: "lint",       success: lint_result.clean,            stderr: lint_result.findings),
+      stage_result(name: "guardrails", success: guardrail_result.success,     stderr: ""),
+      stage_result(name: "verify",     success: verify_aggregate.all_passed,  stderr: "")
     ]
 
     summary = aggregate_results(stages: stages)
@@ -139,6 +139,7 @@ test ci_pipeline {
     // NOTE: Module-qualified node IDs (e.g. "tools.bootstrap::bootstrap")
     // are constructed by the Rust helpers. The DSL layer captures the
     // high-level entrypoint input overrides.
+    mock bootstrap.success -> true
     mock bootstrap.crate_count -> 1
     mock bootstrap.makefile_written -> true
     mock bootstrap.gitignore_written -> true

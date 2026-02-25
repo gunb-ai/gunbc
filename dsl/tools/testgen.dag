@@ -17,7 +17,7 @@ fn generate_tests(target: CodegenTarget) -> String {
 }
 
 @outputs("**/generated_tests*.rs")
-func testgen(targets: List<CodegenTarget>) -> { all_fresh: Bool }
+func testgen(targets: List<CodegenTarget>) -> { success: Bool, all_fresh: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {
   results = for target in targets {
@@ -25,7 +25,7 @@ func testgen(targets: List<CodegenTarget>) -> { all_fresh: Bool }
     content_upsert(content: content, path: target.path)
   }
 
-  return { all_fresh: results |> all(r => r.written == false) }
+  return { success: true, all_fresh: results |> all(r => r.written == false) }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────

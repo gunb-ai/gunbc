@@ -14,7 +14,7 @@
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
-//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
+//! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
 //! - `daglang run [--output <path>|--output=<path>] [--dry-run] <file.dag>`: Compile + resolve + execute makegen DAG
 
 use std::path::PathBuf;
@@ -31,7 +31,7 @@ use daglang_cli::compile::{
 };
 use daglang_cli::path_utils;
 use daglang_cli::pipeline::{
-    build_pipeline_dag, run_pipeline, PipelineContext, PipelineResult, PipelineStop,
+    build_compile_stage_dag, run_pipeline, PipelineContext, PipelineResult, PipelineStop,
 };
 use daglang_driver::{CodegenLayer, CodegenTarget};
 use daglang_syntax::diagnostic::DiagnosticKind;
@@ -72,9 +72,9 @@ fn main() {
         eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse + typecheck modules (no lowering)");
         eprintln!(
-            "  compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]"
+            "  compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]"
         );
-        eprintln!("                      Full compilation pipeline");
+        eprintln!("                      Full compilation pipeline (canonical-json: IR only, no file writes)");
         eprintln!("  run [--output <path>|--output=<path>] [--dry-run|--check-mode] <file.dag>");
         eprintln!("                      Compile + resolve + execute makegen DAG");
         eprintln!("  gen-types [<dir>] [--module <module.path>]...");
@@ -268,6 +268,7 @@ fn resolve_default_roots(cwd: &std::path::Path) -> Result<Vec<PathBuf>, String> 
 struct CompileCommandArgs {
     input: Option<String>,
     emit_collection_nodes: bool,
+    trace_stages: bool,
     profile: Option<String>,
     target: Option<CodegenTarget>,
     layer: Option<CodegenLayer>,
@@ -301,6 +302,7 @@ pub(crate) fn parse_compile_command_args(
     }
     let mut input: Option<String> = None;
     let mut emit_collection_nodes = false;
+    let mut trace_stages = false;
     let mut profile: Option<String> = None;
     let mut target: Option<CodegenTarget> = None;
     let mut layer: Option<CodegenLayer> = None;
@@ -315,6 +317,14 @@ pub(crate) fn parse_compile_command_args(
                 return Err(usage.to_string());
             }
             emit_collection_nodes = true;
+            i += 1;
+            continue;
+        }
+        if token == "--trace-stages" {
+            if command != "compile" || trace_stages {
+                return Err(usage.to_string());
+            }
+            trace_stages = true;
             i += 1;
             continue;
         }
@@ -437,13 +447,14 @@ pub(crate) fn parse_compile_command_args(
     }
     if command == "compile"
         && matches!(format, CompileOutputFormat::CanonicalJson)
-        && out_dir.is_some()
+        && (out_dir.is_some() || trace_stages)
     {
         return Err(usage.to_string());
     }
     Ok(CompileCommandArgs {
         input,
         emit_collection_nodes,
+        trace_stages,
         profile,
         target,
         layer,
@@ -1363,16 +1374,18 @@ mod tests {
         assert!(parsed.layer.is_none());
         assert!(matches!(parsed.format, super::CompileOutputFormat::Summary));
         assert!(parsed.profile.is_none());
+        assert!(!parsed.trace_stages);
         assert!(parsed.out_dir.is_none());
     }
 
     #[test]
     fn parse_compile_command_args_handles_codegen_and_output_flags() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
         let valid = vec![
             "daglang".to_string(),
             "compile".to_string(),
             "dsl/tools/makegen.dag".to_string(),
+            "--trace-stages".to_string(),
             "--profile".to_string(),
             "unit_test".to_string(),
             "--target".to_string(),
@@ -1439,6 +1452,14 @@ mod tests {
             "--out".to_string(),
             "target/generated/one".to_string(),
         ];
+        let canonical_with_trace = vec![
+            "daglang".to_string(),
+            "compile".to_string(),
+            "dsl".to_string(),
+            "--format".to_string(),
+            "canonical-json".to_string(),
+            "--trace-stages".to_string(),
+        ];
         let missing_target = vec!["daglang".to_string(), "compile".to_string()];
 
         let parsed_valid = super::parse_compile_command_args("compile", &valid, usage, false)
@@ -1456,6 +1477,7 @@ mod tests {
             parsed_valid.out_dir.as_deref(),
             Some("target/generated/test")
         );
+        assert!(parsed_valid.trace_stages);
         assert_eq!(parsed_valid.profile.as_deref(), Some("unit_test"));
         assert!(matches!(
             parsed_valid.format,
@@ -1469,6 +1491,7 @@ mod tests {
             parsed_canonical.format,
             super::CompileOutputFormat::CanonicalJson
         ));
+        assert!(!parsed_canonical.trace_stages);
         assert!(parsed_canonical.profile.is_none());
         assert!(parsed_canonical.out_dir.is_none());
 
@@ -1498,6 +1521,10 @@ mod tests {
         );
         assert_eq!(
             super::parse_compile_command_args("compile", &canonical_with_out, usage, false),
+            Err(usage.to_string())
+        );
+        assert_eq!(
+            super::parse_compile_command_args("compile", &canonical_with_trace, usage, false),
             Err(usage.to_string())
         );
         assert_eq!(
@@ -1564,7 +1591,7 @@ mod tests {
 
     #[test]
     fn parse_compile_command_args_rejects_invalid_shapes() {
-        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
+        let usage = "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]";
         let unknown_flag = vec![
             "daglang".to_string(),
             "compile".to_string(),

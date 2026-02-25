@@ -2476,8 +2476,8 @@ Proves: parser handles all `.dag` syntax, module graph resolves imports, parity 
 **Target**: Express `makegen` end-to-end.
 
 ```
-tools/makegen.dag → discover → parse → typecheck → lower → validate
-  → derive ProgressManifest → emit Rust → execute with inline progress
+tools/makegen.dag → discover → parse → resolve → typecheck → lower → derive
+  → emit Rust → execute with inline progress
 ```
 
 Proves: parser, types, patterns (content_upsert), `func` syntax, discovery, progress manifest, Rust backend.

@@ -242,14 +242,24 @@ fn expected_viz_self_mermaid() -> &'static str {
         "subgraph daglang_compiler_pipeline[\"daglang-compiler-pipeline\"]\n",
         "    daglang_compiler_pipeline_discover_files[discover_files]\n",
         "    daglang_compiler_pipeline_parse_all[parse_all]\n",
-        "    daglang_compiler_pipeline_build_module_graph[build_module_graph]\n",
-        "    daglang_compiler_pipeline_report_modules[report_modules]\n",
+        "    daglang_compiler_pipeline_resolve_module_graph[resolve_module_graph]\n",
+        "    daglang_compiler_pipeline_typecheck_modules[typecheck_modules]\n",
+        "    daglang_compiler_pipeline_lower_graph_ir[lower_graph_ir]\n",
+        "    daglang_compiler_pipeline_derive_metadata[derive_metadata]\n",
+        "    daglang_compiler_pipeline_emit_target_files[emit_target_files]\n",
         "    daglang_compiler_pipeline_discover_files -->|files:files| daglang_compiler_pipeline_parse_all\n",
         "    daglang_compiler_pipeline_discover_files -->|diagnostics:diagnostics| daglang_compiler_pipeline_parse_all\n",
-        "    daglang_compiler_pipeline_parse_all -->|parsed_modules:parsed_modules| daglang_compiler_pipeline_build_module_graph\n",
-        "    daglang_compiler_pipeline_parse_all -->|diagnostics:diagnostics| daglang_compiler_pipeline_build_module_graph\n",
-        "    daglang_compiler_pipeline_build_module_graph -->|module_graph:module_graph| daglang_compiler_pipeline_report_modules\n",
-        "    daglang_compiler_pipeline_build_module_graph -->|diagnostics:diagnostics| daglang_compiler_pipeline_report_modules\n",
+        "    daglang_compiler_pipeline_parse_all -->|parsed_modules:parsed_modules| daglang_compiler_pipeline_resolve_module_graph\n",
+        "    daglang_compiler_pipeline_parse_all -->|diagnostics:diagnostics| daglang_compiler_pipeline_resolve_module_graph\n",
+        "    daglang_compiler_pipeline_resolve_module_graph -->|module_graph:module_graph| daglang_compiler_pipeline_typecheck_modules\n",
+        "    daglang_compiler_pipeline_resolve_module_graph -->|diagnostics:diagnostics| daglang_compiler_pipeline_typecheck_modules\n",
+        "    daglang_compiler_pipeline_typecheck_modules -->|typed_project:typed_project| daglang_compiler_pipeline_lower_graph_ir\n",
+        "    daglang_compiler_pipeline_typecheck_modules -->|diagnostics:diagnostics| daglang_compiler_pipeline_lower_graph_ir\n",
+        "    daglang_compiler_pipeline_lower_graph_ir -->|lowered_dag:lowered_dag| daglang_compiler_pipeline_derive_metadata\n",
+        "    daglang_compiler_pipeline_lower_graph_ir -->|diagnostics:diagnostics| daglang_compiler_pipeline_derive_metadata\n",
+        "    daglang_compiler_pipeline_lower_graph_ir -->|lowered_dag:lowered_dag| daglang_compiler_pipeline_emit_target_files\n",
+        "    daglang_compiler_pipeline_derive_metadata -->|derived_artifacts:derived_artifacts| daglang_compiler_pipeline_emit_target_files\n",
+        "    daglang_compiler_pipeline_derive_metadata -->|diagnostics:diagnostics| daglang_compiler_pipeline_emit_target_files\n",
         "end\n\n",
     )
 }
@@ -9591,7 +9601,7 @@ fn viz_self_defaults_to_ascii_output() {
     assert!(stdout.contains("Nodes:"));
     assert!(stdout.contains("Edges:"));
     assert!(stdout.contains("discover_files"));
-    assert!(stdout.contains("report_modules"));
+    assert!(stdout.contains("emit_target_files"));
 }
 
 #[test]
@@ -9644,8 +9654,12 @@ fn viz_self_contains_expected_pipeline_edge_labels() {
         "viz --self should include diagnostics flow edges"
     );
     assert!(
-        stdout.contains("build_module_graph.module_graph -> report_modules.module_graph"),
-        "viz --self should include build->report module graph edge label"
+        stdout.contains("resolve_module_graph.module_graph -> typecheck_modules.module_graph"),
+        "viz --self should include resolve->typecheck module graph edge label"
+    );
+    assert!(
+        stdout.contains("derive_metadata.derived_artifacts -> emit_target_files.derived_artifacts"),
+        "viz --self should include derive->emit artifact edge label"
     );
 }
 
@@ -13093,10 +13107,15 @@ fn compile_with_out_writes_native_emitted_files() {
 
     let main_rs = out_dir.join("target/generated/rust/main.rs");
     let manifest = out_dir.join("target/generated/rust/progress_manifest.txt");
+    let emit_manifest = out_dir.join("target/generated/rust/emit_manifest.json");
     assert!(main_rs.is_file(), "compile --out should write main.rs");
     assert!(
         manifest.is_file(),
         "compile --out should write progress_manifest.txt"
+    );
+    assert!(
+        emit_manifest.is_file(),
+        "compile --out should write emit_manifest.json"
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -13106,6 +13125,27 @@ fn compile_with_out_writes_native_emitted_files() {
     );
 
     std::fs::remove_dir_all(&out_dir).expect("failed to cleanup compile --out directory");
+}
+
+#[test]
+fn compile_with_trace_stages_prints_canonical_stage_flow() {
+    let output = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--trace-stages")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang compile --trace-stages");
+    assert!(output.status.success(), "compile --trace-stages should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Compilation stages:"),
+        "trace output should include stage header"
+    );
+    assert!(
+        stdout.contains("discover") && stdout.contains("resolve") && stdout.contains("emit"),
+        "trace output should include canonical stage names: {stdout}"
+    );
 }
 
 #[test]
@@ -13128,6 +13168,7 @@ fn compile_layer_one_with_out_writes_exec_runtime_files() {
 
     let main_rs = out_dir.join("src/main.rs");
     let cargo_toml = out_dir.join("Cargo.toml");
+    let emit_manifest = out_dir.join("emit_manifest.json");
     assert!(
         main_rs.is_file(),
         "layer 1 compile should write src/main.rs"
@@ -13135,6 +13176,10 @@ fn compile_layer_one_with_out_writes_exec_runtime_files() {
     assert!(
         cargo_toml.is_file(),
         "layer 1 compile should write Cargo.toml"
+    );
+    assert!(
+        emit_manifest.is_file(),
+        "layer 1 compile should write emit_manifest.json"
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);

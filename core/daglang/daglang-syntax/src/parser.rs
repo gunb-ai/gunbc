@@ -2925,6 +2925,52 @@ profile unit_test {
     }
 
     #[test]
+    fn parse_pipeline_stage_preserves_after_and_when_clauses() {
+        let sf = parse_or_panic(
+            r#"module workflows.gist
+pipeline gist {
+  stage list_files [after codegen_ensure, when mode == "gist" || mode == "gist-snapshot"] {}
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::PipelineDef(def) => {
+                assert_eq!(def.stages.len(), 1);
+                let stage = &def.stages[0];
+                assert_eq!(stage.name, "list_files");
+                assert_eq!(stage.after, vec!["codegen_ensure".to_string()]);
+                assert!(matches!(
+                    stage.when,
+                    Some(Expr::BinOp(_, BinOp::Or, _))
+                ));
+            }
+            other => panic!("expected PipelineDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_stage_body_preserves_annotation_statements() {
+        let sf = parse_or_panic(
+            r#"module workflows.ci
+pipeline ci {
+  stage build {
+    @file(WRITE, "target")
+  }
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::PipelineDef(def) => {
+                assert_eq!(def.stages.len(), 1);
+                let stage = &def.stages[0];
+                assert!(matches!(
+                    stage.body.stmts.first(),
+                    Some(Stmt::Annotation(annotation)) if annotation.name == "file"
+                ));
+            }
+            other => panic!("expected PipelineDef, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn expression_precedence_multiplicative_over_additive() {
         let expr = parse_expr_only("a + b * c");
         match expr {

@@ -14,11 +14,20 @@ const NODE_DISCOVER: &str = "discover_files";
 const NODE_PARSE: &str = "parse_all";
 const NODE_BUILD: &str = "build_module_graph";
 const NODE_REPORT: &str = "report_modules";
+const NODE_RESOLVE: &str = "resolve_module_graph";
+const NODE_TYPECHECK: &str = "typecheck_modules";
+const NODE_LOWER: &str = "lower_graph_ir";
+const NODE_DERIVE: &str = "derive_metadata";
+const NODE_EMIT: &str = "emit_target_files";
 
 const PORT_CONTEXT: &str = "context";
 const PORT_FILES: &str = "files";
 const PORT_PARSED_MODULES: &str = "parsed_modules";
 const PORT_MODULE_GRAPH: &str = "module_graph";
+const PORT_TYPED_PROJECT: &str = "typed_project";
+const PORT_LOWERED_DAG: &str = "lowered_dag";
+const PORT_DERIVED_ARTIFACTS: &str = "derived_artifacts";
+const PORT_EMITTED_FILES: &str = "emitted_files";
 const PORT_DIAGNOSTICS: &str = "diagnostics";
 const PORT_REPORT: &str = "report";
 
@@ -28,6 +37,11 @@ pub enum CompilerOp {
     ParseAll,
     BuildModuleGraph,
     ReportModules,
+    ResolveModuleGraph,
+    TypecheckModules,
+    LowerGraphIr,
+    DeriveMetadata,
+    EmitTargetFiles,
 }
 
 #[derive(Debug)]
@@ -267,6 +281,174 @@ pub fn build_pipeline_dag() -> Dag<CompilerOp> {
         NODE_BUILD,
         PORT_DIAGNOSTICS,
         NODE_REPORT,
+        PORT_DIAGNOSTICS,
+    ));
+
+    dag
+}
+
+/// Build the canonical full compile-stage DAG used by `daglang viz --self`.
+pub fn build_compile_stage_dag() -> Dag<CompilerOp> {
+    let mut dag = Dag::new();
+
+    dag.add_node(Node::opaque(
+        NODE_DISCOVER,
+        vec![Port::with_cardinality(
+            PORT_CONTEXT,
+            "PipelineContext",
+            Cardinality::ONE,
+        )],
+        vec![
+            Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        CompilerOp::DiscoverFiles,
+    ));
+    dag.add_node(Node::opaque(
+        NODE_PARSE,
+        vec![
+            Port::with_cardinality(PORT_FILES, "Vec<FileSource>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        vec![
+            Port::with_cardinality(PORT_PARSED_MODULES, "Vec<ParsedModule>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        CompilerOp::ParseAll,
+    ));
+    dag.add_node(Node::opaque(
+        NODE_RESOLVE,
+        vec![
+            Port::with_cardinality(PORT_PARSED_MODULES, "Vec<ParsedModule>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        vec![
+            Port::with_cardinality(PORT_MODULE_GRAPH, "ModuleGraph", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        CompilerOp::ResolveModuleGraph,
+    ));
+    dag.add_node(Node::opaque(
+        NODE_TYPECHECK,
+        vec![
+            Port::with_cardinality(PORT_MODULE_GRAPH, "ModuleGraph", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        vec![
+            Port::with_cardinality(PORT_TYPED_PROJECT, "TypedProject", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        CompilerOp::TypecheckModules,
+    ));
+    dag.add_node(Node::opaque(
+        NODE_LOWER,
+        vec![
+            Port::with_cardinality(PORT_TYPED_PROJECT, "TypedProject", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        vec![
+            Port::with_cardinality(PORT_LOWERED_DAG, "Dag<LoweredOp>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        CompilerOp::LowerGraphIr,
+    ));
+    dag.add_node(Node::opaque(
+        NODE_DERIVE,
+        vec![
+            Port::with_cardinality(PORT_LOWERED_DAG, "Dag<LoweredOp>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        vec![
+            Port::with_cardinality(PORT_DERIVED_ARTIFACTS, "DerivedArtifacts", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        CompilerOp::DeriveMetadata,
+    ));
+    dag.add_node(Node::opaque(
+        NODE_EMIT,
+        vec![
+            Port::with_cardinality(PORT_LOWERED_DAG, "Dag<LoweredOp>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DERIVED_ARTIFACTS, "DerivedArtifacts", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        vec![
+            Port::with_cardinality(PORT_EMITTED_FILES, "Vec<EmittedFile>", Cardinality::ONE),
+            Port::with_cardinality(PORT_DIAGNOSTICS, "Vec<Diagnostic>", Cardinality::ONE),
+        ],
+        CompilerOp::EmitTargetFiles,
+    ));
+
+    dag.add_edge(Edge::new(NODE_DISCOVER, PORT_FILES, NODE_PARSE, PORT_FILES));
+    dag.add_edge(Edge::new(
+        NODE_DISCOVER,
+        PORT_DIAGNOSTICS,
+        NODE_PARSE,
+        PORT_DIAGNOSTICS,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_PARSE,
+        PORT_PARSED_MODULES,
+        NODE_RESOLVE,
+        PORT_PARSED_MODULES,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_PARSE,
+        PORT_DIAGNOSTICS,
+        NODE_RESOLVE,
+        PORT_DIAGNOSTICS,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_RESOLVE,
+        PORT_MODULE_GRAPH,
+        NODE_TYPECHECK,
+        PORT_MODULE_GRAPH,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_RESOLVE,
+        PORT_DIAGNOSTICS,
+        NODE_TYPECHECK,
+        PORT_DIAGNOSTICS,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_TYPECHECK,
+        PORT_TYPED_PROJECT,
+        NODE_LOWER,
+        PORT_TYPED_PROJECT,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_TYPECHECK,
+        PORT_DIAGNOSTICS,
+        NODE_LOWER,
+        PORT_DIAGNOSTICS,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_LOWER,
+        PORT_LOWERED_DAG,
+        NODE_DERIVE,
+        PORT_LOWERED_DAG,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_LOWER,
+        PORT_DIAGNOSTICS,
+        NODE_DERIVE,
+        PORT_DIAGNOSTICS,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_LOWER,
+        PORT_LOWERED_DAG,
+        NODE_EMIT,
+        PORT_LOWERED_DAG,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_DERIVE,
+        PORT_DERIVED_ARTIFACTS,
+        NODE_EMIT,
+        PORT_DERIVED_ARTIFACTS,
+    ));
+    dag.add_edge(Edge::new(
+        NODE_DERIVE,
+        PORT_DIAGNOSTICS,
+        NODE_EMIT,
         PORT_DIAGNOSTICS,
     ));
 

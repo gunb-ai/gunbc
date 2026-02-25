@@ -10,7 +10,7 @@
 
 ## Overview
 
-The codebase uses a **DSL-first workflow compiler** (`core/daglang/`) where graphs are defined as `.dag` files and compiled to typed `Dag<LoweredOp>` IR. The compiler handles: parse → typecheck → lower → emit (Rust/Go/C/MIPS). Legacy hand-written Rust builders still exist but are being replaced by DSL definitions. All business logic lives in **pure** nodes; I/O is isolated to **transport** nodes. Graphs are composed via SubDags, loops, and resource acquisition.
+The codebase uses a **DSL-first workflow compiler** (`core/daglang/`) where graphs are defined as `.dag` files and compiled to typed `Dag<LoweredOp>` IR. The compiler stages are: discover → parse → resolve → typecheck → lower → derive → emit (Rust/Go/C/MIPS). Legacy hand-written Rust builders still exist but are being replaced by DSL definitions. All business logic lives in **pure** nodes; I/O is isolated to **transport** nodes. Graphs are composed via SubDags, loops, and resource acquisition.
 
 **Totals:**
 - 44 `.dag` module definitions (services, tools, pipelines, shared)
@@ -359,7 +359,7 @@ Access modes: `Read` (shared), `Write` (exclusive), `Exclusive` (no other access
 | Git operations | `dsl/services/git/core.dag` |
 | Cargo operations | `dsl/services/cargo/build.dag` |
 | GCP operations | `dsl/services/gcp/*.dag` |
-| DSL Compiler | `core/daglang/` (parse, typecheck, lower, emit) |
+| DSL Compiler | `core/daglang/` (discover, parse, resolve, typecheck, lower, derive, emit) |
 
 ### Legacy Rust builders (being migrated)
 
