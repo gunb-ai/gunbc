@@ -39,7 +39,7 @@ data core_workflows: List<CoreWorkflow> = [
     name: "ensure-codegen",
     description: "Ensure CLI entrypoints exist (bootstrap-safe)",
     deps: [],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen-dag -- --mode=ensure"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen -- codegen"],
     comment: None
   },
   {

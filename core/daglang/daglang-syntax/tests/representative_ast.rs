@@ -54,7 +54,7 @@ fn makegen_contains_fn_and_func_items() {
     assert_eq!(
         source.items.len(),
         30,
-        "makegen should contain 30 top-level items (26 fn, 2 extern func, 1 func, 1 test)"
+        "makegen should contain 30 top-level items (27 fn, 1 extern func, 1 func, 1 test)"
     );
     assert_eq!(
         source
@@ -130,7 +130,7 @@ fn makegen_contains_fn_and_func_items() {
             "fn render_naming_convention",
             "fn render_makefile_body",
             "extern func discover_tools",
-            "extern func render_makefile_content",
+            "fn render_makefile_content",
             "fn render_header",
             "func makegen",
             "test makegen_dryrun",

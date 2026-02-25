@@ -245,11 +245,16 @@ fn render_makefile_body(workflows: List<CoreWorkflow>, metas: List<MetaTargetDef
 
 // ── Extern funcs ────────────────────────────────────────────────────
 // Tool discovery uses Rust inventory introspection.
-// render_makefile_content bridges to Rust renderer until the compiler
-// supports fn-level evaluation (PassthroughOp limitation).
 
 extern func discover_tools() -> List<DiscoveredTool>
-extern func render_makefile_content() -> String
+
+// Shadow fn — Rust extern impl (RenderMakefileContentOp) overrides the
+// PassthroughOp at resolve time. Bridge stays until compiler supports
+// fn-level evaluation, at which point func makegen can call the pure-DSL
+// rendering fns above directly.
+fn render_makefile_content() -> String {
+  ""
+}
 
 // ── Makefile header ─────────────────────────────────────────────────
 
