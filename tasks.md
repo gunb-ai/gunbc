@@ -29,7 +29,9 @@ Wk 7-9  │ FC-P8 (anemic)  │               │ SDLC-7 (verify)  │
 ```
 
 SDLC-1:6 can start immediately (no foundation dependency).
-FC-P6 and FC-P7 run in parallel after FC-NF7.
+FC-EG (enforcement gates) can start immediately — no deps, prevents regression.
+FC-NF7 is in progress (fn-level evaluation plan, Phases 0-5).
+FC-P6 and FC-P7 run in parallel after FC-NF7-3 (eval logic).
 FC-CF runs in parallel with P6/P7.
 FC-P8 requires FC-P6 + FC-P7 + FC-CF (split, zip, recursion at minimum).
 
@@ -42,20 +44,49 @@ Delete crates and code with zero dependents. Start now.
 | ID | Task | Size | Status |
 |----|------|------|--------|
 | FC-CL1 | Delete `core/tool-registry` + `core/tool-registry-macros`. Remove from workspace Cargo.toml. | S | Pending |
-| FC-CL2 | Delete orphaned SDLC Rust: spec_builder sdlc fns, dangling pipeline tests in resolve.rs. | S | Pending |
+| FC-CL2 | Delete orphaned SDLC Rust: `sdlc_workflow_spec()` + `build_all_workflow_spec()` + all 12 `*_with_registry()` variants from `spec_builders.rs` (zero callers). Remove re-exports from `workflow/mod.rs` and `lib.rs`. | S | Pending |
 | FC-CL3 | Remove stale `languages.rs` dead_code rule from `policy/pragma.rs` (file doesn't exist). | S | Pending |
+| FC-CL4 | Remove stale `DeferredCallableOp` references from `mock_defaults.rs` comments (lines 449, 478). DeferredCallableOp deleted in P6. | S | Pending |
 
 ---
 
-## Foundation: Lowerer Wiring (FC-NF7)
+## Foundation: Enforcement Gates (FC-EG)
 
-Fix same-module extern func call wiring. Design: `docs/design/v4/externcall-same-module-port-wiring.md`.
+Automated ratchets that prevent modeling regression. Cheap to add, high leverage.
 
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
-| FC-NF7 | `TypedItemSignature::ExternFunc` + `lower_extern_call()` + endpoint registration in `endpoints_by_full` and `endpoints_by_name`. | L | Pending | — |
+| FC-EG1 | Import-direction lint: compiler check that `tools→config→extdeps→std` import direction is never violated. Error on backward imports. | M | Pending | — |
+| FC-EG2 | Extern func count gate: CI test that counts `extern func` declarations in `.dag` files. Assert count ≤ current (ratchet — count only goes down). | S | Pending | — |
+| FC-EG3 | `format!/push_str` boundary gate: grep + allowlist test. No new `format!()` or `push_str()` in non-boundary Rust code (allowlist for transport, codegen, existing scaffolding). | S | Pending | — |
 
-Unblocks shadow fn → extern func conversion in P6 and P7.
+---
+
+## Foundation: Fn-Level Evaluation (FC-NF7)
+
+Enable DSL fn bodies to execute at runtime. Currently fn items resolve to
+PassthroughOp (identity forwarding) — string interpolation, let bindings, pipe
+chains are compiled but never evaluated. Two gaps: (1) NF-7 same-module fn call
+output wiring, (2) fn body computation discarded by lowerer.
+
+**Status**: In progress. Phase 0 scaffolding done (untracked). Phases 1-5 pending.
+
+**Implementation note**: Phase 2 (FnComputation DAG nodes) may be unnecessary —
+`fn_body` is already carried on Callable nodes from Phase 0. Phase 3's
+`FnBodyDelegate` evaluates the whole body as a unit, making per-statement DAG
+nodes redundant. Consider skipping Phase 2 and going Phase 0 → 1 → 3 → 4 → 5.
+
+| ID | Task | Size | Status | Deps |
+|----|------|------|--------|------|
+| FC-NF7-0 | Parity snapshot + fn body IR: `expr.rs` (LoweredFnBody/LoweredExpr IR + `lower_fn_body()` translation), `fn_body` field on Callable, golden `makefile_parity.rs` test. | S | Done (untracked) | — |
+| FC-NF7-1 | Fix NF-7: `wire_fn_call_outputs()` — wire same-module fn call return values back to caller. | M | Pending | — |
+| FC-NF7-1b | Shadow→extern quick win: convert 3 active shadow bridges (`gist::build_snapshot_content`, `bootstrap::render_bootstrap_makefile`, `bootstrap::render_bootstrap_gitignore`) from `fn` to `extern func`. Delete placeholder DSL bodies. Moves from fail-open to fail-closed resolution. No fn-body eval needed. | S | Pending | FC-NF7-1 |
+| FC-NF7-2 | Lower fn body computation: `FnComputation` LoweredOp variant + new pass `add_fn_body_computation_edges()`. **May skip** — see note above. | L | Pending | FC-NF7-1 |
+| FC-NF7-3 | Pure eval functions in `daglang-lower/src/eval.rs` + thin `FnBodyDelegate`/`CollectionDelegate` in resolve.rs. Expressions needed: string interp, let bindings, pipe (join/map/filter/first/append), field access, if/else, fn calls to siblings, string concat, list literals, ==/!=. | L | Pending | FC-NF7-1 |
+| FC-NF7-4 | Prove makegen parity: delete `RenderMakefileContentOp` from extern_impls.rs, verify golden test. | M | Pending | FC-NF7-3 |
+| FC-NF7-5 | Delete `makegen/render.rs` (1137 lines), extract justfile helpers to `makegen/shared.rs`. | M | Pending | FC-NF7-4 |
+
+Unblocks shadow fn → pure DSL conversion in P6 and P7.
 
 ---
 
@@ -65,13 +96,19 @@ Move policy data from Rust const arrays to DSL. Eliminate 3 extern bridges
 (render_clippy_toml, render_disallowed_methods_allowlist, render_pragma_lint_policy).
 No new compiler features needed. Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 6.
 
+**Scaffolding exists**: `dsl/config/clippy_disallowed.dag` (38 disallowed methods in 4
+groups + 8 disallowed types), `dsl/config/clippy_policy.dag` (rendering helpers +
+derive_clippy_toml/derive_disallowed_methods_allowlist/derive_pragma_lint_policy fns),
+`dsl/config/arch_rules.dag` (AllowlistPattern type + 19 allowlist_patterns entries).
+These are compiled but not executed until FC-NF7-3 lands.
+
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
 | FC-P6-0 | Validate flat_map: DSL test exercising `CollectionOpKind::FlatMap` e2e. | S | Pending | — |
 | FC-P6-a | `dsl/config/workspace.dag`: CrateSpec type + workspace_crates data + CI drift test. | M | Pending | — |
-| FC-P6-b | `dsl/config/pragma_policy.dag`: AllowlistRule, DeadCodeRule types + data from pragma.rs. | M | Pending | FC-P6-a |
-| FC-P6-c | DSL policy rendering fns using Document types. | M | Pending | FC-P6-a, FC-P6-b, FC-P6-0 |
-| FC-P6-d | Delete 3 pragma extern impls + shadow fn bodies. | S | Pending | FC-P6-c, FC-NF7 |
+| FC-P6-b | `dsl/config/pragma_policy.dag`: AllowlistRule, DeadCodeRule types + data from pragma.rs. Partial: clippy_disallowed.dag + arch_rules.dag AllowlistPattern data already exist. | M | Pending | FC-P6-a |
+| FC-P6-c | DSL policy rendering fns using Document types. Partial: clippy_policy.dag rendering helpers already exist. | M | Pending | FC-P6-a, FC-P6-b, FC-P6-0 |
+| FC-P6-d | Delete 3 pragma extern impls. Wire pragma.dag to call derive_* fns from clippy_policy.dag. Add parity golden tests for clippy.toml, allowlist, lint policy. | S | Pending | FC-P6-c, FC-NF7-3 |
 
 ---
 
@@ -86,7 +123,7 @@ bridges. Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 7.
 | FC-P7-b | Compiler artifact emitter: emit `generated/tool_registry.dag` from CompileOutput. | L | Pending | — |
 | FC-P7-c1 | DSL Makefile types + rendering: MakefileTarget, GitignoreCategory, render fns. | M | Pending | FC-P7-a |
 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | FC-P7-a, FC-P7-b, FC-P7-c1 |
-| FC-P7-d | Delete 5 makegen/bootstrap extern impls. | S | Pending | FC-P7-c2, FC-NF7 |
+| FC-P7-d | Delete 2 bootstrap extern impls (render_bootstrap_makefile, render_bootstrap_gitignore). Makefile: delegate to makegen DSL rendering. Gitignore: DSL categories + tool output data. Add parity golden tests. Note: makegen render_makefile_content already deleted by FC-NF7-4. | M | Pending | FC-P7-c2, FC-NF7-3 |
 
 ---
 

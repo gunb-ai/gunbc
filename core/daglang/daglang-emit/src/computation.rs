@@ -749,6 +749,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -775,6 +776,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -942,6 +944,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -965,6 +968,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -988,6 +992,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1014,6 +1019,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1040,6 +1046,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1140,6 +1147,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1170,6 +1178,7 @@ mod tests {
                 service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1209,6 +1218,7 @@ mod tests {
                 service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1245,6 +1255,7 @@ mod tests {
                 service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();

@@ -34,6 +34,11 @@ use gunbc_ir::resource::AccessMode;
 use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, Port, PortName, Value};
 use serde::Serialize;
 
+pub mod eval;
+pub mod expr;
+
+pub use expr::LoweredFnBody;
+
 /// Lowered operation payload for daglang graph nodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoweredOp {
@@ -45,6 +50,9 @@ pub enum LoweredOp {
         service_metadata: Option<Box<ServiceCallMetadata>>,
         is_interactive: bool,
         resource_target: Option<String>,
+        /// Lowered fn body for `CallableKind::Fn` items — `None` for
+        /// func/pattern items and non-DSL callables (service transport, etc.).
+        fn_body: Option<Box<LoweredFnBody>>,
     },
     Primitive {
         module: String,
@@ -1242,6 +1250,7 @@ fn add_interface_stub_transport_triplets(
                         service_metadata: Some(Box::new(metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 ));
 
@@ -1261,6 +1270,7 @@ fn add_interface_stub_transport_triplets(
                         service_metadata: Some(Box::new(metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 )
                 .with_input_guard("request", Guard::NotEq(Value::Skipped));
@@ -1298,6 +1308,7 @@ fn add_interface_stub_transport_triplets(
                         service_metadata: Some(Box::new(metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 ));
 
@@ -1763,12 +1774,27 @@ fn lower_typed_project_with_callable_scope(
             .filter_map(|item| item_callable_interactive_flag(&item.node))
             .map(|(name, is_interactive)| (name.to_string(), is_interactive))
             .collect::<HashMap<_, _>>();
+        // Build fn body lookup: name → LoweredFnBody (for fn items only)
+        let fn_bodies: HashMap<&str, LoweredFnBody> = module
+            .ast
+            .items
+            .iter()
+            .filter_map(|item| match &item.node {
+                Item::FnDef(def) if !def.body.lossy => {
+                    Some((def.name.as_str(), expr::lower_fn_body(&def.body)))
+                }
+                _ => None,
+            })
+            .collect();
         for signature in &module.signatures {
             match signature {
                 TypedItemSignature::Fn(callable) => {
                     if !include_callables {
                         continue;
                     }
+                    let body = fn_bodies
+                        .get(callable.name.as_str())
+                        .map(|b| Box::new(b.clone()));
                     let (node, endpoint) = lower_callable(
                         callable,
                         &module_name,
@@ -1776,6 +1802,7 @@ fn lower_typed_project_with_callable_scope(
                         *interactive_by_callable
                             .get(callable.name.as_str())
                             .unwrap_or(&false),
+                        body,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -1797,6 +1824,7 @@ fn lower_typed_project_with_callable_scope(
                         *interactive_by_callable
                             .get(callable.name.as_str())
                             .unwrap_or(&false),
+                        None,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -1818,6 +1846,7 @@ fn lower_typed_project_with_callable_scope(
                         *interactive_by_callable
                             .get(callable.name.as_str())
                             .unwrap_or(&false),
+                        None,
                     );
                     register_endpoint(
                         &mut endpoints_by_full,
@@ -2367,6 +2396,7 @@ mod parity {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         })
     }
 
@@ -2777,6 +2807,7 @@ fn lower_callable(
     module_name: &str,
     kind: CallableKind,
     is_interactive: bool,
+    fn_body: Option<Box<LoweredFnBody>>,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
     let node_id = lowered_node_id(module_name, &callable.name);
     let outputs = if callable.outputs.is_empty() {
@@ -2827,6 +2858,7 @@ fn lower_callable(
                 service_metadata: None,
                 is_interactive,
                 resource_target: None,
+                fn_body,
             },
         ),
         LoweredEndpoint {
@@ -3146,6 +3178,7 @@ fn make_loop_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
     } else {
@@ -3175,6 +3208,7 @@ fn make_loop_body_dag(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         for (ti, transport) in body_transports.iter().enumerate() {
@@ -3202,6 +3236,7 @@ fn make_loop_body_dag(
                     service_metadata: Some(Box::new(transport.metadata.clone())),
                     is_interactive: false,
                     resource_target: None,
+                    fn_body: None,
                 },
             ));
             let execute_node = Node::opaque(
@@ -3219,6 +3254,7 @@ fn make_loop_body_dag(
                     service_metadata: Some(Box::new(transport.metadata.clone())),
                     is_interactive: false,
                     resource_target: None,
+                    fn_body: None,
                 },
             )
             .with_input_guard("request", Guard::NotEq(Value::Skipped));
@@ -3238,6 +3274,7 @@ fn make_loop_body_dag(
                     service_metadata: Some(Box::new(transport.metadata.clone())),
                     is_interactive: false,
                     resource_target: None,
+                    fn_body: None,
                 },
             ));
             // Wire the transport triplet chain: prepare → execute → parse.
@@ -3280,6 +3317,7 @@ fn make_branch_body_dag(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag
@@ -3781,6 +3819,7 @@ fn add_makegen_scaffolding(
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
     }
@@ -4797,6 +4836,7 @@ fn add_service_transport_triplets(
                         service_metadata: Some(Box::new(service_metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 ));
                 let has_auth = matches!(
@@ -4826,6 +4866,7 @@ fn add_service_transport_triplets(
                         service_metadata: Some(Box::new(service_metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 )
                 .with_input_guard("request", Guard::NotEq(Value::Skipped));
@@ -4861,6 +4902,7 @@ fn add_service_transport_triplets(
                         service_metadata: Some(Box::new(service_metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 ));
 
@@ -4978,6 +5020,7 @@ fn add_service_transport_triplets(
                         service_metadata: Some(Box::new(metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 ));
                 let execute_inputs = vec![Port::scalar("request", "TransportRequest")];
@@ -4996,6 +5039,7 @@ fn add_service_transport_triplets(
                         service_metadata: Some(Box::new(metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 )
                 .with_input_guard("request", Guard::NotEq(Value::Skipped));
@@ -5031,6 +5075,7 @@ fn add_service_transport_triplets(
                         service_metadata: Some(Box::new(metadata.clone())),
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 ));
                 builder.add_edge(
@@ -5911,6 +5956,7 @@ fn add_provided_resource_nodes(
                         service_metadata: None,
                         is_interactive: false,
                         resource_target: Some(provided.binding.clone()),
+                        fn_body: None,
                     },
                 ));
                 builder.add_control_edge(
@@ -6115,6 +6161,7 @@ fn add_resource_lifecycle_nodes(
                         service_metadata: None,
                         is_interactive: false,
                         resource_target: Some(resource.name.clone()),
+                        fn_body: None,
                     },
                 ));
                 has_acquire = true;
@@ -6132,6 +6179,7 @@ fn add_resource_lifecycle_nodes(
                         service_metadata: None,
                         is_interactive: false,
                         resource_target: Some(resource.name.clone()),
+                        fn_body: None,
                     },
                 ));
                 has_release = true;
@@ -6205,6 +6253,7 @@ fn add_interface_contract_verification_nodes(
                         service_metadata: None,
                         is_interactive: false,
                         resource_target: None,
+                        fn_body: None,
                     },
                 ));
                 if let Some(acquire_node) = endpoint
@@ -9617,6 +9666,7 @@ func run() -> { ok: Bool } provides auth: AuthContext {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         };
         assert_eq!(
             classify_obligation(&op),
@@ -9708,6 +9758,7 @@ func prompt() -> { ok: Bool } {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -9760,6 +9811,7 @@ func prompt() -> { ok: Bool } {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         let mut reference = Dag::new();
@@ -9795,6 +9847,7 @@ func prompt() -> { ok: Bool } {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         candidate.add_node(Node::opaque(
@@ -9809,6 +9862,7 @@ func prompt() -> { ok: Bool } {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         candidate.add_edge(Edge::new("a", "out", "b", "in"));

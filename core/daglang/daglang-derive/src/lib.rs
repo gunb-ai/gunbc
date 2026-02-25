@@ -780,6 +780,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         )
     }
@@ -944,6 +945,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -958,6 +960,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -972,6 +975,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -986,6 +990,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1000,6 +1005,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: Some("out".to_string()),
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1014,6 +1020,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: Some("TempFile".to_string()),
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1028,6 +1035,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: Some("TempFile".to_string()),
+                fn_body: None,
             },
         ));
         dag.add_edge(Edge::new(
@@ -1152,6 +1160,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1175,6 +1184,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1216,6 +1226,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1230,6 +1241,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1255,6 +1267,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: true,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1269,6 +1282,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 

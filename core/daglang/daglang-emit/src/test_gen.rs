@@ -598,6 +598,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         ReachableDag::from_dag(&dag)
@@ -617,6 +618,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         ReachableDag::from_dag(&dag)

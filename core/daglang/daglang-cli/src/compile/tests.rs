@@ -404,6 +404,7 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
 
@@ -619,6 +620,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             })),
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -642,6 +644,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             })),
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -665,6 +668,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             })),
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_edge(Edge::new(
@@ -864,6 +868,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -878,6 +883,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -892,6 +898,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -906,6 +913,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -920,6 +928,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
 

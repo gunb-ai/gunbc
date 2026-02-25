@@ -1272,6 +1272,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         let result = emit_exec_runtime(&dag, "tools.unknown");
@@ -1336,6 +1337,7 @@ mod tests {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         };
         assert_eq!(
             classify_handler(&pattern_callable),
@@ -1351,6 +1353,7 @@ mod tests {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         };
         assert_eq!(
             classify_handler(&service_prepare),
@@ -1369,6 +1372,7 @@ mod tests {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         };
 
         // PureGeneric → passthrough (DSL body wrapper, no specialized handler needed).
@@ -1415,6 +1419,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 

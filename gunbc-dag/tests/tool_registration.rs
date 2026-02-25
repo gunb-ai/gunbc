@@ -487,30 +487,11 @@ fn is_passthrough_callable(module: &str, name: &str, has_service_metadata: bool)
     true
 }
 
+// Callables with fn_body (fn items) are evaluated by FnBodyDelegate, not passthrough.
+// Only func/pattern items without fn_body appear here.
 const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
-    "shared.dag_util::aggregate_results",
-    "shared.dag_util::all_succeeded",
-    "shared.dag_util::blank_line",
-    "shared.dag_util::comment_line",
-    "shared.dag_util::doc",
-    "shared.dag_util::doc_with_header",
-    "shared.dag_util::format_report",
-    "shared.dag_util::generated_header",
-    "shared.dag_util::render_document",
-    "shared.dag_util::render_document_line",
-    "shared.dag_util::render_document_section",
-    "shared.dag_util::section",
-    "shared.dag_util::skipped_stage",
-    "shared.dag_util::stage_from_output",
-    "shared.dag_util::stage_result",
-    "shared.dag_util::text_line",
-    "shared.dag_util::titled_section",
     "std.filesystem::is_text_readable",
-    "std.filesystem::partition_entries",
-    "std.filesystem::skip_reason",
     "std.patterns::acquire_subject_token",
-    "std.patterns::add_iam_binding",
-    "std.patterns::check_iam_binding",
     "std.patterns::classify_files",
     "std.patterns::content_upsert",
     "std.patterns::credential_chain",
@@ -534,54 +515,14 @@ const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
     "tools.codegen::codegen_ensure",
     "tools.deps::deps_generate",
     "tools.deps::deps",
-    "tools.deps::render_deps_toml",
-    "tools.deps::select_platform_deps",
-    "tools.design::design_system_prompt",
-    "tools.design::design_user_prompt",
     "tools.design::generate_design",
     "tools.design::review_design",
-    "tools.design::review_system_prompt",
-    "tools.design::review_user_prompt",
-    "tools.design::summarize_design",
     "tools.docgen::docgen",
-    "tools.docgen::render_ab_workflows_doc",
-    "tools.docgen::render_ab_workflows_document",
     "tools.gist::gist_diff",
     "tools.gist::gist_recent",
     "tools.gist::gist",
-    "tools.gist::render_diff_markdown",
-    "tools.makegen::apply_prefix",
-    "tools.makegen::collect_core_phony_str",
-    "tools.makegen::collect_meta_phony_str",
-    "tools.makegen::collect_tool_phony_str",
     "tools.makegen::makegen",
-    "tools.makegen::render_core_targets",
-    "tools.makegen::render_header",
-    "tools.makegen::render_help_core_lines",
-    "tools.makegen::render_help_meta_lines",
-    "tools.makegen::render_help_params",
-    "tools.makegen::render_help_target",
-    "tools.makegen::render_help_tool_lines",
-    "tools.makegen::render_makefile_body",
-    "tools.makegen::render_meta_base",
-    "tools.makegen::render_meta_check_variant",
-    "tools.makegen::render_meta_fix_variant",
-    "tools.makegen::render_meta_target",
-    "tools.makegen::render_meta_targets",
-    "tools.makegen::render_naming_convention",
-    "tools.makegen::render_phony_line",
-    "tools.makegen::render_section_header",
-    "tools.makegen::render_target",
-    "tools.makegen::render_tool_target",
-    "tools.makegen::render_tool_targets",
-    "tools.makegen::resolve_meta_deps",
-    "tools.makegen::resolve_meta_fix_deps",
-    "tools.makegen::resolve_resource_target",
     "tools.pragma::pragma",
-    "tools.pragma::render_clippy_toml_document",
-    "tools.pragma::render_disallowed_methods_allowlist_document",
-    "tools.pragma::render_pragma_lint_policy_document",
-    "tools.testgen::generate_tests",
     "tools.testgen::testgen",
 ];
 
@@ -603,9 +544,13 @@ fn passthrough_callables_are_allowlisted() {
 
         for node in &output.lowered_dag.nodes {
             if let NodeBody::Opaque(LoweredOp::Callable {
-                module, name, service_metadata, ..
+                module, name, service_metadata, fn_body, ..
             }) = &node.body
             {
+                // Callables with fn_body are evaluated by FnBodyDelegate, not passthrough.
+                if fn_body.is_some() {
+                    continue;
+                }
                 if is_passthrough_callable(module, name, service_metadata.is_some()) {
                     found_passthrough.insert(format!("{module}::{name}"));
                 }

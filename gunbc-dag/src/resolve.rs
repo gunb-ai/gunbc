@@ -27,8 +27,8 @@
 use std::collections::HashMap;
 
 use daglang_lower::{
-    CallableKind, CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral,
-    PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
+    CallableKind, CollectionOpKind, LoweredFnBody, LoweredOp, ObligationCategory,
+    PrimitiveLiteral, PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
@@ -317,119 +317,38 @@ impl Executable for SubDagDispatchOp {
     }
 }
 
-/// Runtime adapter for lowered collection nodes.
-///
-/// Lowering models collection chains structurally. This adapter provides
-/// conservative executable semantics over the `items` input so collection
-/// nodes are executable in dry-run and integration tests.
+/// Thin delegate to compiler's collection evaluator.
 #[derive(Debug, Clone)]
-struct CollectionDispatchOp {
+struct CollectionDelegate {
     kind: CollectionOpKind,
 }
 
-impl Executable for CollectionDispatchOp {
+impl Executable for CollectionDelegate {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut items = match inputs.get("items") {
+        let items = match inputs.get("items") {
             Some(Value::List(values)) => values.clone(),
             Some(Value::Skipped) | None => Vec::new(),
             Some(value) => vec![value.clone()],
         };
-
-        let output = match self.kind {
-            CollectionOpKind::Map | CollectionOpKind::Filter | CollectionOpKind::FlatMap => {
-                Value::List(items)
-            }
-            CollectionOpKind::Sort => {
-                items.sort_by_key(collection_sort_key);
-                Value::List(items)
-            }
-            CollectionOpKind::Dedup => {
-                let mut out = Vec::new();
-                for item in items {
-                    if !out.contains(&item) {
-                        out.push(item);
-                    }
-                }
-                Value::List(out)
-            }
-            CollectionOpKind::Join => {
-                let joined = items
-                    .iter()
-                    .map(collection_value_to_string)
-                    .collect::<Vec<_>>()
-                    .join(",");
-                Value::Str(joined)
-            }
-            CollectionOpKind::Fold | CollectionOpKind::Len => Value::Int(items.len() as i64),
-            CollectionOpKind::Any => Value::Bool(items.iter().any(collection_value_truthy)),
-            CollectionOpKind::All => Value::Bool(items.iter().all(collection_value_truthy)),
-            CollectionOpKind::Contains => {
-                let needle = inputs
-                    .get("needle")
-                    .or_else(|| inputs.get("item"))
-                    .or_else(|| inputs.get("contains"));
-                let contains = needle
-                    .map(|needle| items.iter().any(|value| value == needle))
-                    .unwrap_or(false);
-                Value::Bool(contains)
-            }
-        };
-
+        let output = daglang_lower::eval::evaluate_collection(&self.kind, items, &inputs)
+            .map_err(|e| ExecError::new(e.message))?;
         OutputMap::new().value("items", output).ok()
     }
 }
 
-fn collection_sort_key(value: &Value) -> String {
-    match value {
-        Value::Str(s) => format!("s:{s}"),
-        Value::Int(i) => format!("i:{i:020}"),
-        Value::Bool(b) => format!("b:{b}"),
-        Value::List(items) => format!("l:{}", items.len()),
-        Value::Map(map) => format!("m:{}", map.len()),
-        Value::Set(items) => format!("set:{}", items.len()),
-        Value::Json(json) => format!("j:{json}"),
-        Value::Request(request) => format!("req:{request:?}"),
-        Value::Response(response) => format!("resp:{response:?}"),
-        Value::Secret(secret) => format!("secret:{}", secret.len()),
-        Value::Float(f) => format!("f:{f}"),
-        Value::Bytes(b) => format!("bytes:{}", b.len()),
-        Value::Skipped => "skipped".to_string(),
-        Value::Unit => "unit".to_string(),
-    }
+/// Thin delegate to compiler's fn body evaluator.
+#[derive(Debug, Clone)]
+struct FnBodyDelegate {
+    fn_body: LoweredFnBody,
+    sibling_fns: HashMap<String, LoweredFnBody>,
 }
 
-fn collection_value_to_string(value: &Value) -> String {
-    match value {
-        Value::Str(s) => s.clone(),
-        Value::Int(i) => i.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Unit => "()".to_string(),
-        Value::Skipped => "<skipped>".to_string(),
-        Value::List(items) => format!("[{}]", items.len()),
-        Value::Set(items) => format!("set({})", items.len()),
-        Value::Map(map) => format!("map({})", map.len()),
-        Value::Json(json) => json.to_string(),
-        Value::Request(request) => format!("{request:?}"),
-        Value::Response(response) => format!("{response:?}"),
-        Value::Secret(secret) => format!("secret({})", secret.len()),
-        Value::Float(f) => f.to_string(),
-        Value::Bytes(b) => format!("<{} bytes>", b.len()),
-    }
-}
-
-fn collection_value_truthy(value: &Value) -> bool {
-    match value {
-        Value::Bool(b) => *b,
-        Value::Int(i) => *i != 0,
-        Value::Float(f) => *f != 0.0,
-        Value::Str(s) => !s.is_empty(),
-        Value::List(items) | Value::Set(items) => !items.is_empty(),
-        Value::Map(map) => !map.is_empty(),
-        Value::Json(json) => !json.is_null(),
-        Value::Secret(secret) => !secret.is_empty(),
-        Value::Bytes(b) => !b.is_empty(),
-        Value::Skipped | Value::Unit => false,
-        Value::Request(_) | Value::Response(_) => true,
+impl Executable for FnBodyDelegate {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let outputs =
+            daglang_lower::eval::evaluate_fn_body(&self.fn_body, &inputs, &self.sibling_fns)
+                .map_err(|e| ExecError::new(e.message))?;
+        Ok(outputs)
     }
 }
 
@@ -614,18 +533,43 @@ impl Executable for PrepareFileWriteCompatOp {
 // Public API
 // ============================================================================
 
+/// Collect all `fn` bodies from a lowered DAG for sibling fn call resolution.
+fn collect_fn_bodies(dag: &Dag<LoweredOp>) -> HashMap<String, LoweredFnBody> {
+    let mut bodies = HashMap::new();
+    for node in &dag.nodes {
+        if let NodeBody::Opaque(LoweredOp::Callable {
+            kind: CallableKind::Fn,
+            name,
+            fn_body: Some(body),
+            ..
+        }) = &node.body
+        {
+            bodies.insert(name.clone(), *body.clone());
+        }
+    }
+    bodies
+}
+
 /// Resolve a lowered DAG into an executable `Dag<DynOp>`.
 ///
 /// Each `LoweredOp` node is replaced with its concrete domain op wrapped
 /// in `DynOp`. Edges and ports are preserved unchanged.
 pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveError> {
+    let sibling_fns = collect_fn_bodies(dag);
+    resolve_lowered_dag_inner(dag, &sibling_fns)
+}
+
+fn resolve_lowered_dag_inner(
+    dag: &Dag<LoweredOp>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<Dag<DynOp>, ResolveError> {
     let mut resolved = Dag::new();
     for node in &dag.nodes {
         let mut resolved_node = Node {
             id: node.id.clone(),
             inputs: node.inputs.clone(),
             outputs: node.outputs.clone(),
-            body: resolve_node_body(node)?,
+            body: resolve_node_body(node, sibling_fns)?,
             examples: node.examples.clone(),
             log_detail: node.log_detail,
         };
@@ -660,22 +604,39 @@ fn normalize_release_resource_inputs(node: &mut Node<DynOp>) {
 #[cfg(test)]
 fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
     let node_id = node.id.0.clone();
+    let sibling_fns = HashMap::new();
     match &node.body {
-        NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs),
+        NodeBody::Opaque(op) => resolve_op(&node_id, op, &node.outputs, &sibling_fns),
         NodeBody::SubDag(inner) => Ok(DynOp::new(SubDagDispatchOp {
             dag: resolve_lowered_dag(inner)?,
         })),
     }
 }
 
-fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveError> {
+fn resolve_node_body(
+    node: &Node<LoweredOp>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<NodeBody<DynOp>, ResolveError> {
     match &node.body {
-        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(&node.id.0, op, &node.outputs)?)),
-        NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag(inner)?)),
+        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(
+            &node.id.0,
+            op,
+            &node.outputs,
+            sibling_fns,
+        )?)),
+        NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag_inner(
+            inner,
+            sibling_fns,
+        )?)),
     }
 }
 
-fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
+fn resolve_op(
+    node_id: &str,
+    op: &LoweredOp,
+    outputs: &[Port],
+    sibling_fns: &HashMap<String, LoweredFnBody>,
+) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
         LoweredOp::Pipeline {
@@ -696,8 +657,18 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             name,
             kind,
             service_metadata,
+            fn_body,
             ..
-        } => resolve_domain(node_id, module, name, *kind, outputs, service_metadata.as_deref()),
+        } => resolve_domain(
+            node_id,
+            module,
+            name,
+            *kind,
+            outputs,
+            service_metadata.as_deref(),
+            fn_body.as_deref(),
+            sibling_fns,
+        ),
         LoweredOp::LoopUnpack {
             input_port,
             element_port,
@@ -763,6 +734,8 @@ fn resolve_domain(
     kind: CallableKind,
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
+    fn_body: Option<&LoweredFnBody>,
+    sibling_fns: &HashMap<String, LoweredFnBody>,
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).
@@ -810,6 +783,16 @@ fn resolve_domain(
             );
         }
         return Ok(op);
+    }
+    // 4.5. Fn body evaluation — if the callable has a lowered fn body, use
+    // the compiler's pure evaluator instead of the identity passthrough.
+    if matches!(kind, CallableKind::Fn) {
+        if let Some(body) = fn_body {
+            return Ok(DynOp::new(FnBodyDelegate {
+                fn_body: body.clone(),
+                sibling_fns: sibling_fns.clone(),
+            }));
+        }
     }
     // 5. Default: identity callable for compiler-validated callables.
     //
@@ -1085,7 +1068,7 @@ fn resolve_service_transport(
 // ============================================================================
 
 fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
-    Ok(DynOp::new(CollectionDispatchOp { kind: *kind }))
+    Ok(DynOp::new(CollectionDelegate { kind: *kind }))
 }
 
 // ============================================================================
@@ -1227,6 +1210,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         )
     }
@@ -1515,6 +1499,7 @@ mod tests {
                 service_metadata: Some(Box::new(metadata)),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         )
     }
@@ -2170,6 +2155,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 

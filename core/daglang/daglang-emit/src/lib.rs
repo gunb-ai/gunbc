@@ -868,6 +868,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -882,6 +883,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_edge(Edge::new(
@@ -1121,6 +1123,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1146,6 +1149,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1171,6 +1175,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1196,6 +1201,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1221,6 +1227,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1477,6 +1484,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1491,6 +1499,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1505,6 +1514,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.edges.push(Edge::new("entry", "out", "downstream", "in"));
@@ -1547,6 +1557,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1561,6 +1572,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -1575,6 +1587,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         // entry -> middle, but orphan has an incoming edge from middle
