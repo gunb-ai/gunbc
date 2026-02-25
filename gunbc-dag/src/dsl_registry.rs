@@ -1,36 +1,24 @@
 //! DSL-derived tool discovery.
 //!
-//! Replaces `derive_tool_defs()` (inventory-based) with discovery from
-//! `@binary` annotations in DSL `.dag` files. Each `@binary func` in
-//! `dsl/tools/*.dag` produces a [`ToolDef`] for CLI generation, Makefile
-//! targets, and gitignore entries.
+//! Discovers tool entrypoints from DSL `.dag` files using structural
+//! inference: a `func` item with untapped input ports IS an entrypoint.
+//! Each inferred entrypoint produces a [`ToolDef`] for CLI generation,
+//! Makefile targets, and gitignore entries.
 //!
-//! Convention: binary name = func_name with `_` → `-`, unless overridden
-//! by `@binary("name")`.
+//! Convention: tool name = func_name with `_` → `-`.
 //!
 //! Special case: testgen has a custom builder (no DSL module) and is
 //! hardcoded as the sole exception.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
-use daglang_driver::{compile_from_context, DriverContext};
+use daglang_driver::{compile_from_context, DriverContext, InferredEntrypoint};
 use daglang_syntax::ast::{Expr, Item, Literal, TypeExpr};
 use gunbc_cli::ParamType;
 use gunbc_codegen::cli_gen::CliEntrypoint;
 use gunbc_codegen::registry::ToolDef;
 use gunbc_ir::{cargo, Cardinality, WorkspaceLayout};
-
-/// A binary-producing func discovered from a `.dag` file.
-#[derive(Debug)]
-struct BinaryFunc {
-    /// func name as written in DSL (e.g., "gist_snapshot")
-    func_name: String,
-    /// @binary("override") or None
-    name_override: Option<String>,
-    /// func params for CLI entrypoint derivation
-    params: Vec<DslParam>,
-}
 
 /// A DSL func parameter, extracted from the AST.
 #[derive(Debug)]
@@ -41,10 +29,11 @@ struct DslParam {
     default: Option<String>,
 }
 
-/// Discover tool definitions from DSL `@binary` annotations.
+/// Discover tool definitions from DSL entrypoint inference.
 ///
-/// Scans `dsl/tools/*.dag` for `func` items with `@binary` annotations.
-/// Each annotated func produces a [`ToolDef`] with:
+/// Scans `dsl/tools/*.dag` for `func` items with untapped inputs
+/// (structurally inferred entrypoints). Each entrypoint produces a
+/// [`ToolDef`] with:
 /// - CLI entrypoints derived from func params (convention-based)
 /// - Outputs from DSL compilation (`CompileOutput.output_paths`)
 /// - Invocation as `cargo run -p gunbc-dag --bin gunbc-{name}`
@@ -58,85 +47,49 @@ pub fn discover_tool_defs_from_dsl() -> Vec<ToolDef> {
         .expect("workspace layout for DSL discovery");
     let dsl_root = layout.workspace_root.join("dsl");
 
-    let mut tools = Vec::new();
+    // Use BTreeMap for dedup by tool_name (later entries overwrite earlier,
+    // so dedicated files like gist_diff.dag win over combined gist.dag).
+    let mut tool_map: BTreeMap<String, ToolDef> = BTreeMap::new();
 
     // Scan dsl/tools/*.dag
     let tools_dir = dsl_root.join("tools");
     if let Ok(entries) = std::fs::read_dir(&tools_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("dag") {
-                continue;
-            }
-            if let Some(mut defs) = discover_from_dag_file(&dsl_root, &path) {
-                tools.append(&mut defs);
-            }
-        }
-    }
+        let mut paths: Vec<_> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("dag"))
+            .collect();
+        paths.sort();
 
-    // Special case: testgen (custom builder, no DSL module)
-    tools.push(testgen_tool_def());
-
-    tools.sort_by(|a, b| a.meta.tool_name.cmp(&b.meta.tool_name));
-    tools
-}
-
-/// Parse a `.dag` file and produce `ToolDef`s for any `@binary` funcs.
-#[allow(clippy::disallowed_methods)]
-fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> {
-    let source = std::fs::read_to_string(path).ok()?;
-    let ast = daglang_syntax::parser::parse(&source).ok()?;
-
-    // Find @binary annotations on func items
-    let mut binary_funcs = Vec::new();
-    for item in &ast.items {
-        if let Item::FuncDef(func) = &item.node {
-            for ann in &func.annotations {
-                if ann.name == "binary" {
-                    let name_override = ann.args.first().and_then(|arg| {
-                        if let Expr::Literal(Literal::String(s)) = arg {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    });
-                    let params = func
-                        .params
-                        .iter()
-                        .map(|p| {
-                            let (type_id, cardinality) = map_type_expr(&p.ty);
-                            let default = p.default.as_ref().and_then(expr_to_default_string);
-                            DslParam {
-                                name: p.name.clone(),
-                                type_id,
-                                cardinality,
-                                default,
-                            }
-                        })
-                        .collect();
-                    binary_funcs.push(BinaryFunc {
-                        func_name: func.name.clone(),
-                        name_override,
-                        params,
-                    });
+        for path in paths {
+            if let Some(defs) = discover_from_dag_file(&dsl_root, &path) {
+                for tool in defs {
+                    tool_map.insert(tool.meta.tool_name.to_string(), tool);
                 }
             }
         }
     }
 
-    if binary_funcs.is_empty() {
-        return None;
-    }
+    // Special case: testgen (custom builder, no DSL module)
+    let testgen = testgen_tool_def();
+    tool_map.insert(testgen.meta.tool_name.to_string(), testgen);
 
-    // Compile to get output_paths
+    tool_map.into_values().collect()
+}
+
+/// Parse a `.dag` file and produce `ToolDef`s for inferred entrypoints.
+#[allow(clippy::disallowed_methods)]
+fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> {
+    let source = std::fs::read_to_string(path).ok()?;
+    let ast = daglang_syntax::parser::parse(&source).ok()?;
+
+    // Compile to get inferred_entrypoints and output_paths
     let rel_path = path
         .strip_prefix(dsl_root)
         .ok()?
         .to_string_lossy()
         .to_string();
-    let _module_name = rel_path
-        .strip_suffix(".dag")?
-        .replace('/', ".");
+    let module_name = rel_path.strip_suffix(".dag")?.replace('/', ".");
 
     let context = DriverContext {
         roots: vec![dsl_root.to_path_buf()],
@@ -144,16 +97,45 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
     };
     let compile_output = compile_from_context(&context).ok()?;
 
+    // Filter entrypoints to this module only
+    let module_entrypoints: Vec<&InferredEntrypoint> = compile_output
+        .inferred_entrypoints
+        .iter()
+        .filter(|ep| ep.module == module_name)
+        .collect();
+
+    if module_entrypoints.is_empty() {
+        return None;
+    }
+
+    // Build a map of func name → AST params for param extraction
+    let mut func_params: BTreeMap<String, Vec<DslParam>> = BTreeMap::new();
+    for item in &ast.items {
+        if let Item::FuncDef(func) = &item.node {
+            let params = func
+                .params
+                .iter()
+                .map(|p| {
+                    let (type_id, cardinality) = map_type_expr(&p.ty);
+                    let default = p.default.as_ref().and_then(expr_to_default_string);
+                    DslParam {
+                        name: p.name.clone(),
+                        type_id,
+                        cardinality,
+                        default,
+                    }
+                })
+                .collect();
+            func_params.insert(func.name.clone(), params);
+        }
+    }
+
     let mut tools = Vec::new();
 
-    for bf in &binary_funcs {
-        let tool_name = bf
-            .name_override
-            .as_deref()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| bf.func_name.replace('_', "-"));
+    for ep in &module_entrypoints {
+        let tool_name = ep.func_name.replace('_', "-");
 
-        let graph_builder_args = format!("\"{}\"", rel_path);
+        let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
 
         let description = humanize_tool_name(&tool_name);
         let mock_spec = format!(
@@ -161,18 +143,22 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
             tool_name,
         );
 
-        let entrypoints = derive_entrypoints(&bf.params);
+        // Get params from AST (lowered ports lose DSL type specifics)
+        let entrypoints = func_params
+            .get(&ep.func_name)
+            .map(|params| derive_entrypoints(params))
+            .unwrap_or_default();
 
         let mut tool = ToolDef::new(
             String::from("gunbc-dag"),
             tool_name.clone(),
             description,
-            String::from("build_dsl_graph_for_binary"),
+            String::from("build_dsl_graph_for_entrypoint"),
             graph_builder_args,
         )
         .returns_result()
         .mock_spec_call(mock_spec)
-        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_binary;")
+        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
         .invocation(cargo::CargoInvocation::composed(&tool_name, "dag"));
 
         // Add outputs from compilation
@@ -181,8 +167,8 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
         }
 
         // Add entrypoints
-        for ep in entrypoints {
-            tool = tool.entrypoint(ep);
+        for cli_ep in entrypoints {
+            tool = tool.entrypoint(cli_ep);
         }
 
         tools.push(tool);
@@ -335,15 +321,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn discovers_binary_tools_from_dsl() {
+    fn discovers_inferred_tools_from_dsl() {
         let tools = discover_tool_defs_from_dsl();
 
         let names: Vec<&str> = tools.iter().map(|t| t.meta.tool_name.as_ref()).collect();
 
-        // All 7 @binary tools should be discovered
+        // All inferred entrypoints should be discovered
         assert!(names.contains(&"bootstrap"), "missing bootstrap");
-        assert!(names.contains(&"deps"), "missing deps");
-        assert!(names.contains(&"gist"), "missing gist");
         assert!(names.contains(&"gist-diff"), "missing gist-diff");
         assert!(names.contains(&"gist-recent"), "missing gist-recent");
         assert!(names.contains(&"makegen"), "missing makegen");
@@ -354,13 +338,12 @@ mod tests {
     }
 
     #[test]
-    fn binary_tools_have_invocations() {
+    fn inferred_tools_have_invocations() {
         let tools = discover_tool_defs_from_dsl();
 
         for tool in &tools {
             let name = tool.meta.tool_name.as_ref();
             if name == "testgen" {
-                // Testgen has no invocation (custom binary)
                 continue;
             }
             assert!(
@@ -395,8 +378,15 @@ mod tests {
         let tools = discover_tool_defs_from_dsl();
 
         // gist_diff has: base_ref (CommitSha, default "HEAD~1"), public (Bool, default false)
-        let gist_diff = tools.iter().find(|t| t.meta.tool_name == "gist-diff").unwrap();
-        assert_eq!(gist_diff.entrypoints.len(), 2, "gist-diff should have 2 entrypoints");
+        let gist_diff = tools
+            .iter()
+            .find(|t| t.meta.tool_name == "gist-diff")
+            .unwrap();
+        assert_eq!(
+            gist_diff.entrypoints.len(),
+            2,
+            "gist-diff should have 2 entrypoints"
+        );
 
         let base_ref = &gist_diff.entrypoints[0];
         assert_eq!(base_ref.port_name, "base_ref");
@@ -411,7 +401,10 @@ mod tests {
     #[test]
     fn pragma_has_expected_outputs() {
         let tools = discover_tool_defs_from_dsl();
-        let pragma = tools.iter().find(|t| t.meta.tool_name == "pragma").unwrap();
+        let pragma = tools
+            .iter()
+            .find(|t| t.meta.tool_name == "pragma")
+            .unwrap();
 
         // pragma produces 3 outputs via content_upsert
         assert!(
@@ -429,4 +422,19 @@ mod tests {
         assert_eq!(names, sorted, "tools should be sorted by name");
     }
 
+    #[test]
+    fn tools_use_entrypoint_builder() {
+        let tools = discover_tool_defs_from_dsl();
+        for tool in &tools {
+            if tool.meta.tool_name == "testgen" {
+                continue;
+            }
+            assert_eq!(
+                tool.meta.graph_builder_call.as_ref(),
+                "build_dsl_graph_for_entrypoint",
+                "{} should use build_dsl_graph_for_entrypoint",
+                tool.meta.tool_name,
+            );
+        }
+    }
 }

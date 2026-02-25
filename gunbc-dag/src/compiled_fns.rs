@@ -13,8 +13,7 @@
 //! # Supported modules
 //!
 //! - `std.markdown` — Markdown rendering functions
-//! - `tools.gist_snapshot` — Gist snapshot content building
-//! - `tools.gist`, `tools.gist_diff`, `tools.gist_recent` — Gist diff/recent content rendering
+//! - `tools.gist` — Gist snapshot content building + diff/recent content rendering
 //! - `tools.pragma` — Clippy config, allowlist, and lint policy rendering
 //! - `tools.bootstrap` — Workspace scan, Makefile/gitignore generation
 //! - `tools.makegen` — Registry loading, Makefile rendering, entrypoint check
@@ -42,15 +41,9 @@ pub fn lookup_compiled_fn(module: &str, name: &str) -> Option<DynOp> {
         ("std.markdown", "render_node") => Some(DynOp::new(RenderNodeOp)),
         ("std.markdown", "render_markdown") => Some(DynOp::new(RenderMarkdownOp)),
 
-        // tools.gist_snapshot compiled fns
-        ("tools.gist_snapshot", "build_snapshot_content") => {
-            Some(DynOp::new(BuildSnapshotContentOp))
-        }
-
-        // tools.gist* compiled fns
+        // tools.gist compiled fns
+        ("tools.gist", "build_snapshot_content") => Some(DynOp::new(BuildSnapshotContentOp)),
         ("tools.gist", "render_diff_markdown") => Some(DynOp::new(RenderDiffMarkdownOp)),
-        ("tools.gist_diff", "render_diff_markdown") => Some(DynOp::new(RenderDiffMarkdownOp)),
-        ("tools.gist_recent", "render_diff_markdown") => Some(DynOp::new(RenderDiffMarkdownOp)),
 
         // tools.pragma compiled fns
         ("tools.pragma", "render_clippy_toml") => Some(DynOp::new(RenderClippyTomlOp)),
@@ -235,7 +228,7 @@ impl Executable for RenderMarkdownOp {
 }
 
 // ============================================================================
-// tools.gist_snapshot compiled fns
+// tools.gist compiled fns
 // ============================================================================
 
 /// `build_snapshot_content(branch: String, files: List<String>, file_contents: List<String>, skipped: List<String>) -> String`

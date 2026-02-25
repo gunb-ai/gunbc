@@ -8,7 +8,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use gunbc_dag::{dsl_builder::build_dsl_graph, mock_defaults::auto_mock_spec};
+use gunbc_dag::{dsl_builder::{build_dsl_graph_for_entry}, mock_defaults::auto_mock_spec};
 use gunbc_exec::{execute_with_mode_and_inputs, lower, ExecutionMode};
 use gunbc_ir::transport::{FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
@@ -19,7 +19,7 @@ use gunbc_ir::Value;
 
 #[test]
 fn for_loop_body_dag_has_filesystem_handle_on_execute_node() {
-    let dag = build_dsl_graph("tools/gist_snapshot.dag").expect("build gist graph");
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_snapshot").expect("build gist graph");
     let lowered = lower(&dag).expect("lower gist graph");
 
     assert!(
@@ -58,7 +58,7 @@ fn for_loop_body_dag_has_filesystem_handle_on_execute_node() {
 
 #[test]
 fn for_loop_body_op_receives_parse_output_not_element_var() {
-    let dag = build_dsl_graph("tools/gist_snapshot.dag").expect("build gist graph");
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_snapshot").expect("build gist graph");
     let lowered = lower(&dag).expect("lower gist graph");
 
     let loop_info = &lowered.loops[0];
@@ -91,7 +91,7 @@ fn for_loop_body_op_receives_parse_output_not_element_var() {
 
 #[test]
 fn for_loop_fs_read_returns_file_content_not_path() {
-    let dag = build_dsl_graph("tools/gist_snapshot.dag").expect("build gist graph");
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_snapshot").expect("build gist graph");
 
     // Auto-mock everything: transport nodes, env nodes, entrypoints.
     let spec = auto_mock_spec(&dag, "gist");

@@ -1,8 +1,8 @@
-// tools/gist.dag -- Gist creation tool (diff/recent modes).
+// tools/gist.dag -- Gist creation tool (snapshot/diff/recent modes).
 //
-// The snapshot mode lives in tools/gist_snapshot.dag.
-// Diff/recent share a single local gist upload helper to avoid duplicate
-// scalar fan-in edges while keeping transport wiring inside this module.
+// Three entrypoints: gist_snapshot (@binary "gist"), gist_diff, gist_recent.
+// Each func directly calls its service operations; the lowerer's cross-
+// callable transport dedup handles cloning shared triplets automatically.
 //
 // Replaces: lib/tools/gist/src/graph.rs (~1,449 lines)
 
@@ -11,20 +11,70 @@ module tools.gist
 import services.git
 import services.github.gist
 import services.shell
-import std.resources { Filesystem }
+import std.resources { Filesystem, Network }
+import std.patterns { read_text_files }
 import std.types { CommitSha, Url }
+
+// ── Compiled fn helpers ─────────────────────────────────────────────
 
 fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> String {
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
 }
 
-fn gist_upload(markdown: String, branch: String, public: Bool = false) -> { url: Url } {
+// Compiled fn: produces markdown from branch name + paths + file contents + skipped.
+// Implementation: gunbc-dag/src/compiled_fns.rs (BuildSnapshotContentOp)
+fn build_snapshot_content(
+    branch: String,
+    files: List<String>,
+    file_contents: List<String>,
+    skipped: List<String>
+) -> String {
+  "{branch}"
+}
+
+// ── Entrypoints ─────────────────────────────────────────────────────
+
+func gist(public: Bool = false) -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+  uses net: Network
+{
+  branch_info = git.Core.CurrentBranch()
+  listing = git.Core.LsFiles()
+
+  result = read_text_files(paths: listing.files)
+
+  content = build_snapshot_content(
+    branch: branch_info.branch,
+    files: result.files |> map(f => f.path),
+    file_contents: result.files |> map(f => f.content),
+    skipped: result.skipped
+  )
+  secret = shell.GCloud.SecretManagerAccessVersion(
+    project_id: "gunbai-secrets",
+    secret_name: "github-token"
+  )
+  gist_result = github.Gist.Create(
+    description: branch_info.branch,
+    content: content,
+    public: public,
+    auth_token: secret.secret_value
+  )
+  return { url: gist_result.html_url as Url }
+}
+
+func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
+  uses fs: Filesystem(mode: Read)
+  uses net: Network
+{
+  current = git.Core.CurrentBranch()
+  changes = git.Core.Diff(base: base_ref)
+  markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
   secret = shell.GCloud.SecretManagerAccessVersion(
     project_id: "gunbai-secrets",
     secret_name: "github-token"
   )
   result = github.Gist.Create(
-    description: branch,
+    description: current.branch,
     content: markdown,
     public: public,
     auth_token: secret.secret_value
@@ -32,18 +82,9 @@ fn gist_upload(markdown: String, branch: String, public: Bool = false) -> { url:
   return { url: result.html_url as Url }
 }
 
-func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
-  uses fs: Filesystem(mode: Read)
-{
-  current = git.Core.CurrentBranch()
-  changes = git.Core.Diff(base: base_ref)
-  markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
-  result = gist_upload(markdown: markdown, branch: current.branch, public: public)
-  return { url: result.url as Url }
-}
-
 func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
+  uses net: Network
 {
   current = git.Core.CurrentBranch()
   base = git.Core.RevListBase(since: since)
@@ -53,11 +94,22 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
     branch: current.branch,
     base_ref: base.base_ref
   )
-  result = gist_upload(markdown: markdown, branch: current.branch, public: public)
-  return { url: result.url as Url }
+  secret = shell.GCloud.SecretManagerAccessVersion(
+    project_id: "gunbai-secrets",
+    secret_name: "github-token"
+  )
+  result = github.Gist.Create(
+    description: current.branch,
+    content: markdown,
+    public: public,
+    auth_token: secret.secret_value
+  )
+  return { url: result.html_url as Url }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
+
+test gist_snapshot_dryrun {}
 
 test gist_diff_dryrun {}
 

@@ -1,6 +1,6 @@
 //! Shared helpers for DSL-backed graph builders (T3).
 
-use daglang_driver::{compile_from_context, BinaryAnnotation, DriverContext};
+use daglang_driver::{compile_from_context, BinaryAnnotation, DriverContext, InferredEntrypoint};
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
 use std::collections::HashSet;
@@ -21,6 +21,7 @@ struct CompileLoweredResult {
     dag: Dag<daglang_lower::LoweredOp>,
     dsl_type_registry: gunbc_ir::TypeRegistry,
     binary_annotations: Vec<BinaryAnnotation>,
+    inferred_entrypoints: Vec<InferredEntrypoint>,
 }
 
 fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, BuilderError> {
@@ -42,6 +43,7 @@ fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, Builde
         dag: output.lowered_dag,
         dsl_type_registry: output.dsl_type_registry,
         binary_annotations: output.binary_annotations,
+        inferred_entrypoints: output.inferred_entrypoints,
     })
 }
 
@@ -163,10 +165,69 @@ fn module_name_from_path(relative_module: &str) -> String {
         .replace('/', ".")
 }
 
+/// Compile a DSL module and resolve to `Dag<DynOp>` by selecting an inferred entrypoint.
+///
+/// - `entry_func: None` — use the sole inferred entrypoint (errors if multiple)
+/// - `entry_func: Some("name")` — select the named entrypoint
+pub fn build_dsl_graph_for_entrypoint(
+    relative_module: &str,
+    entry_func: Option<&str>,
+) -> Result<Dag<DynOp>, BuilderError> {
+    let result = compile_lowered(relative_module)?;
+    let module_name = module_name_from_path(relative_module);
+
+    // Filter entrypoints to this module only
+    let module_entrypoints: Vec<&InferredEntrypoint> = result
+        .inferred_entrypoints
+        .iter()
+        .filter(|ep| ep.module == module_name)
+        .collect();
+
+    let entrypoint = match entry_func {
+        Some(name) => module_entrypoints
+            .iter()
+            .find(|ep| ep.func_name == name)
+            .ok_or_else(|| {
+                BuilderError::InternalInvariant(format!(
+                    "entrypoint `{name}` not found in `{relative_module}` (available: {:?})",
+                    module_entrypoints
+                        .iter()
+                        .map(|ep| ep.func_name.as_str())
+                        .collect::<Vec<_>>()
+                ))
+            })?,
+        None => {
+            if module_entrypoints.len() == 1 {
+                &module_entrypoints[0]
+            } else {
+                return Err(BuilderError::InternalInvariant(format!(
+                    "`{relative_module}` has {} entrypoints — disambiguate with entry_func: {:?}",
+                    module_entrypoints.len(),
+                    module_entrypoints
+                        .iter()
+                        .map(|ep| ep.func_name.as_str())
+                        .collect::<Vec<_>>()
+                )));
+            }
+        }
+    };
+
+    let entry_node_id = &entrypoint.node_id;
+    let lowered = strip_pipeline_nodes(result.dag);
+    let lowered = slice_dag_from_entry(lowered, entry_node_id)?;
+    resolve_lowered_dag(&lowered).map_err(|error| {
+        BuilderError::InternalInvariant(format!(
+            "failed to resolve lowered DAG for `{relative_module}` entry `{entry_node_id}`: {error}"
+        ))
+    })
+}
+
 /// Compile a DSL module with `@binary` entrypoint and resolve to `Dag<DynOp>`.
 ///
 /// Derives the entry node ID from the first `@binary` annotation in the module:
 /// `"{module_name}::{func_name}"`. Errors if no `@binary` annotation is found.
+///
+/// Deprecated: use `build_dsl_graph_for_entrypoint` which uses structural inference.
 pub fn build_dsl_graph_for_binary(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
     let result = compile_lowered(relative_module)?;
     let annotation = result.binary_annotations.first().ok_or_else(|| {
@@ -191,14 +252,14 @@ mod tests {
 
     #[test]
     fn builds_makegen_dsl_graph() {
-        let dag = build_dsl_graph_for_binary("tools/makegen.dag")
+        let dag = build_dsl_graph_for_entrypoint("tools/makegen.dag", Some("makegen"))
             .expect("makegen DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_pragma_dsl_graph() {
-        let dag = build_dsl_graph_for_binary("tools/pragma.dag")
+        let dag = build_dsl_graph_for_entrypoint("tools/pragma.dag", Some("pragma"))
             .expect("pragma DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
@@ -254,7 +315,7 @@ mod tests {
 
     #[test]
     fn builds_gist_dsl_graph() {
-        let dag = build_dsl_graph("tools/gist_snapshot.dag")
+        let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_snapshot")
             .expect("gist DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }

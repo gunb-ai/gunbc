@@ -75,11 +75,11 @@ impl TransportBackend for GistRecentBackend {
 
 #[test]
 fn gist_recent_graph_wires_diff_base_input() {
-    let dag = build_dsl_graph_for_entry("tools/gist_recent.dag", "tools.gist_recent::gist_recent").expect("gist-recent graph should build");
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent").expect("gist-recent graph should build");
     let lowered = lower(&dag).expect("lowered gist-recent");
 
     let has_base_edge = lowered.dag.edges.iter().any(|edge| {
-        edge.to_node.0 == "prepare_transport_services_git_git_Core_Diff" && edge.to_port.0 == "base"
+        edge.to_node.0.starts_with("prepare_transport_services_git_git_Core_Diff") && edge.to_port.0 == "base"
     });
     assert!(
         has_base_edge,
@@ -89,7 +89,7 @@ fn gist_recent_graph_wires_diff_base_input() {
 
 #[test]
 fn gist_recent_end_to_end_emits_gist_url() {
-    let dag = build_dsl_graph_for_entry("tools/gist_recent.dag", "tools.gist_recent::gist_recent").expect("gist-recent graph should build");
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent").expect("gist-recent graph should build");
 
     let requests = Arc::new(Mutex::new(Vec::new()));
     let backend = Arc::new(GistRecentBackend {
@@ -110,30 +110,32 @@ fn gist_recent_end_to_end_emits_gist_url() {
     let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
         .expect("gist-recent execution should succeed with mocked backend");
 
+    // Use pattern-based node lookup: cross-callable dedup may add clone
+    // suffixes (_c1, _c2, …) depending on item order within the module.
     let gist_parse = log
         .entries
         .iter()
-        .find(|entry| entry.node_id == "parse_transport_services_github_gist_github_Gist_Create")
+        .find(|entry| entry.node_id.starts_with("parse_transport_services_github_gist_github_Gist_Create"))
         .expect("gist parse node should be present");
     let gist_prepare = log
         .entries
         .iter()
-        .find(|entry| entry.node_id == "prepare_transport_services_github_gist_github_Gist_Create")
+        .find(|entry| entry.node_id.starts_with("prepare_transport_services_github_gist_github_Gist_Create"))
         .expect("gist prepare node should be present");
     let gist_execute = log
         .entries
         .iter()
-        .find(|entry| entry.node_id == "execute_transport_services_github_gist_github_Gist_Create")
+        .find(|entry| entry.node_id.starts_with("execute_transport_services_github_gist_github_Gist_Create"))
         .expect("gist execute node should be present");
     let diff_parse = log
         .entries
         .iter()
-        .find(|entry| entry.node_id == "parse_transport_services_git_git_Core_Diff")
+        .find(|entry| entry.node_id.starts_with("parse_transport_services_git_git_Core_Diff"))
         .expect("diff parse node should be present");
     let render = log
         .entries
         .iter()
-        .find(|entry| entry.node_id == "tools.gist_recent::render_diff_markdown")
+        .find(|entry| entry.node_id == "tools.gist::render_diff_markdown")
         .expect("render node should be present");
 
     assert!(

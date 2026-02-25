@@ -4756,6 +4756,11 @@ fn add_service_call_edges(
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
+        // Track transport endpoint usage across ALL callables in the module so
+        // that the second callable to reference the same service operation gets
+        // a cloned triplet (_c1, _c2, …) instead of wiring duplicate scalar
+        // edges to the original.
+        let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
         for item in &module.ast.items {
             let (item_name, params, stmts, uses_binding_types) = match &item.node {
                 Item::FnDef(def) => (
@@ -4829,7 +4834,6 @@ fn add_service_call_edges(
             if !loop_body_call_paths.is_empty() {
                 service_calls.retain(|call| !loop_body_call_paths.contains(&call.path));
             }
-            let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
             for (call_index, call) in service_calls.into_iter().enumerate() {
                 let Some(source) = resolve_service_call_source(
                     caller.as_str(),
@@ -6588,6 +6592,69 @@ fn collect_output_paths_recursive(
             collect_output_paths_recursive(&sub.nodes, paths);
         }
     }
+}
+
+/// An entrypoint inferred from graph structure.
+///
+/// A `func` item whose user-facing input ports are not all wired by
+/// incoming edges is an entrypoint — its untapped inputs must be
+/// supplied by the caller (CLI, REST, Lambda, etc.).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InferredEntrypoint {
+    /// The func name as declared in DSL (e.g., "pragma").
+    pub func_name: String,
+    /// The module path (e.g., "tools.pragma").
+    pub module: String,
+    /// The node ID in the lowered DAG (e.g., "tools.pragma::pragma").
+    pub node_id: String,
+}
+
+/// Infer entrypoints from graph structure.
+///
+/// A `func` (not `fn`) node is an entrypoint if any of its user-facing
+/// input ports (excluding `__deps`, `tool:*`, `res:*`) has no incoming
+/// edge in the top-level DAG.
+pub fn infer_entrypoints(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<InferredEntrypoint> {
+    let connected: std::collections::HashSet<(&str, &str)> = dag
+        .edges
+        .iter()
+        .map(|e| (e.to_node.0.as_str(), e.to_port.0.as_str()))
+        .collect();
+
+    let mut entrypoints = Vec::new();
+
+    for node in &dag.nodes {
+        let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+            kind: CallableKind::Func,
+            module,
+            name,
+            ..
+        }) = &node.body
+        else {
+            continue;
+        };
+
+        let has_untapped = node.inputs.iter().any(|port| {
+            let port_name = port.name.0.as_str();
+            if port_name == "__deps"
+                || port_name.starts_with("tool:")
+                || port_name.starts_with("res:")
+            {
+                return false;
+            }
+            !connected.contains(&(node.id.0.as_str(), port_name))
+        });
+
+        if has_untapped {
+            entrypoints.push(InferredEntrypoint {
+                func_name: name.clone(),
+                module: module.clone(),
+                node_id: node.id.0.clone(),
+            });
+        }
+    }
+
+    entrypoints
 }
 
 /// A `@binary` annotation on a `func` item, declaring it as a CLI binary entrypoint.
@@ -9341,5 +9408,97 @@ func prompt() -> { ok: Bool } {
         dag
     }
 
+    // ── Cross-callable transport dedup ─────────────────────────────────
 
+    #[test]
+    fn cross_callable_service_dedup_clones_transport_triplet() {
+        // Two func items in the same module that both call the same service
+        // operation must each get their own transport triplet (original + _c1).
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/dedup_cross.dag",
+            r#"module sample.dedup
+service Echo {
+  operation Ping(message: String) -> { reply: String }
+}
+func alpha(msg: String) -> { reply: String } {
+  result = Echo.Ping(message: msg)
+  return { reply: result.reply }
+}
+func beta(msg: String) -> { reply: String } {
+  result = Echo.Ping(message: msg)
+  return { reply: result.reply }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let prepare_nodes: Vec<_> = dag
+            .nodes
+            .iter()
+            .filter(|n| {
+                n.id.0.starts_with("prepare_transport_") && n.id.0.contains("Echo_Ping")
+            })
+            .collect();
+        assert!(
+            prepare_nodes.len() >= 2,
+            "expected at least 2 prepare nodes for Echo.Ping (original + clone), found {}: {:?}",
+            prepare_nodes.len(),
+            prepare_nodes
+                .iter()
+                .map(|n| &n.id.0)
+                .collect::<Vec<_>>()
+        );
+        // Verify no two edges target the same scalar (node, port) from
+        // different sources — the original duplicate-edge bug.
+        let mut edge_targets: std::collections::HashMap<(String, String), Vec<String>> =
+            std::collections::HashMap::new();
+        for edge in &dag.edges {
+            edge_targets
+                .entry((edge.to_node.0.clone(), edge.to_port.0.clone()))
+                .or_default()
+                .push(edge.from_node.0.clone());
+        }
+        for ((node, port), sources) in &edge_targets {
+            if port == "__deps" || port == "request" || port == "response" {
+                continue; // these are allowed to have multiple sources
+            }
+            assert!(
+                sources.len() <= 1,
+                "duplicate scalar edge to {node}:{port} from {sources:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn same_callable_dual_service_call_still_clones() {
+        // Regression: a single func calling the same service twice must still
+        // produce a cloned triplet for the second invocation.
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/dedup_same.dag",
+            r#"module sample.dedup_same
+service Echo {
+  operation Ping(message: String) -> { reply: String }
+}
+func dual(msg: String) -> { reply: String } {
+  first = Echo.Ping(message: msg)
+  second = Echo.Ping(message: first.reply)
+  return { reply: second.reply }
+}"#,
+        )]);
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+        let prepare_nodes: Vec<_> = dag
+            .nodes
+            .iter()
+            .filter(|n| {
+                n.id.0.starts_with("prepare_transport_") && n.id.0.contains("Echo_Ping")
+            })
+            .collect();
+        assert!(
+            prepare_nodes.len() >= 2,
+            "expected at least 2 prepare nodes (original + clone), found {}: {:?}",
+            prepare_nodes.len(),
+            prepare_nodes
+                .iter()
+                .map(|n| &n.id.0)
+                .collect::<Vec<_>>()
+        );
+    }
 }

@@ -40,8 +40,7 @@ fn select_platform_deps(manifest: DepsManifest, platform: Platform) -> List<DepE
     })
 }
 
-@binary("deps")
-func deps_install(manifest_path: FilePath = "deps.toml", platform: Platform) -> { all_installed: Bool }
+func deps(manifest_path: FilePath = "deps.toml", platform: Platform) -> { all_installed: Bool }
   uses fs: Filesystem(mode: Read)
 {
   manifest_content = fs.read(path: manifest_path)
