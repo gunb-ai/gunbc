@@ -13,8 +13,7 @@ use daglang_lower::{
 };
 use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::transport::{
-    FileRequest, LocalRequest, LocalResponse, RestRequest, ShellRequest, TransportRequest,
-    TransportResponse,
+    FileRequest, LocalRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
 };
 use gunbc_ir::{SecretString, Value};
 

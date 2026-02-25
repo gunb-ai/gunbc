@@ -73,5 +73,6 @@ fn scan_transport_value(value: &Value, kinds: &mut TransportKinds) {
         TransportResponse::Rest(_) => kinds.rest = true,
         TransportResponse::Http(_) => kinds.http = true,
         TransportResponse::Tcp(_) => kinds.tcp = true,
+        TransportResponse::Local(_) => {}
     }
 }
