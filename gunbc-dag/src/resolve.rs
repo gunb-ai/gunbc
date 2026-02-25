@@ -152,15 +152,12 @@ fn passthrough_value_to_text(value: &Value) -> String {
     }
 }
 
-/// Identity callable op for DSL-compiled callables without compiled fn bridge.
+/// Identity callable op for DSL-compiled callables with fn bodies.
 ///
 /// Forwards all inputs to outputs, filling any declared output port that
 /// has no matching input with `Value::Skipped`. This is the correct runtime
-/// behavior for DSL `fn`/`func` items that don't yet have compiled fn bridge
-/// implementations — they are pure data transformations validated at compile time.
-///
-/// NF-5 note: This will be removed once all fn items migrate to extern func
-/// declarations backed by compiled fn bridge entries.
+/// behavior for DSL `fn`/`func` items whose bodies execute as SubDag nodes —
+/// the callable node itself is a passthrough that maps SubDag results to outputs.
 #[derive(Debug, Clone)]
 struct DeclaredOutputCallableOp {
     output_port_names: Vec<String>,
@@ -709,7 +706,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             node_id: node_id.to_string(),
             reason: format!("unsupported pattern `{name}` — not yet implemented in daglang lowering"),
         }),
-        LoweredOp::ExternCall { symbol } => resolve_extern_call(node_id, symbol, outputs),
+        LoweredOp::ExternCall { symbol } => resolve_extern_call(node_id, symbol),
     }
 }
 
@@ -785,18 +782,15 @@ fn resolve_domain(
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
         }
     }
-    // 4. Compiled fn bridge — DSL fn items with real Executable implementations.
-    if let Some(op) = crate::compiled_fns::lookup_compiled_fn(module, name) {
+    // 4. Extern impl lookup — DSL `extern func` items resolved to Rust ops.
+    if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
         return Ok(op);
     }
     // 5. Default: identity callable for compiler-validated callables.
     //
-    // NF-5 note: ExternCall nodes have their own hard-error path in
-    // resolve_extern_call(). Callable nodes still fall through here
-    // because DSL fn items without compiled fn bridge entries are
-    // legitimate passthrough operations (the compiler validated them).
-    // Once all fn items are migrated to extern func + compiled fn, this
-    // fallback can be deleted.
+    // DSL fn items with bodies are legitimate passthrough operations
+    // (the compiler validated them). The fn body's SubDag executes
+    // the DSL-defined logic.
     Ok(DynOp::new(DeclaredOutputCallableOp {
         output_port_names: declared_output_names(outputs),
     }))
@@ -894,47 +888,38 @@ impl Executable for InfraDispatchOp {
 }
 
 // ============================================================================
-// Extern symbol resolution (NF-4)
+// Extern symbol resolution
 // ============================================================================
 
-/// Resolve an `ExternCall` node by parsing its symbol and dispatching to
-/// the compiled fn bridge, std.resources, or tools.infra resolvers.
+/// Resolve an `ExternCall` node at compile time.
 ///
-/// No passthrough fallback — unresolvable extern symbols are hard errors.
-fn resolve_extern_call(
-    node_id: &str,
-    symbol: &str,
-    _outputs: &[Port],
-) -> Result<DynOp, ResolveError> {
+/// Parses the symbol into (module, name) and dispatches to the same
+/// resolvers used by Callable nodes. Unlike Callable, unresolvable
+/// extern symbols are hard errors — no passthrough fallback.
+fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveError> {
     use gunbc_ir::ProgramSymbolId;
 
     let sym = ProgramSymbolId::new(symbol);
     let module = sym.module().unwrap_or("");
     let name = sym.name().unwrap_or("");
 
-    // 1. Compiled fn bridge (covers all KNOWN_EXTERN_FUNCS entries).
-    if let Some(op) = crate::compiled_fns::lookup_compiled_fn(module, name) {
+    if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
         return Ok(op);
     }
-
-    // 2. std.resources dynamic dispatch.
     if module == "std.resources" {
         return Ok(resolve_std_resources(name));
     }
-
-    // 3. tools.infra dispatch.
     if let Some(op) = resolve_tools_infra(name) {
         if module == "tools.infra" {
             return Ok(op);
         }
     }
 
-    // 4. No fallback — hard error.
     Err(ResolveError {
         node_id: node_id.to_string(),
         reason: format!(
             "extern symbol `{symbol}` could not be resolved — \
-             no compiled fn, std.resources, or tools.infra handler found"
+             no extern impl, std.resources, or tools.infra handler found"
         ),
     })
 }
@@ -2292,13 +2277,13 @@ mod tests {
     }
 
     #[test]
-    fn resolve_extern_call_succeeds_for_known_compiled_fn() {
+    fn resolve_extern_call_succeeds_for_known_extern_impl() {
         let node = Node::opaque(
             "extern_render",
             vec![],
             vec![],
             LoweredOp::ExternCall {
-                symbol: "std.markdown::render_heading".to_string(),
+                symbol: "std.markdown::render_tree".to_string(),
             },
         );
         let result = resolve_node(&node);

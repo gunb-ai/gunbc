@@ -1,4 +1,4 @@
-//! Canonical program symbol identity (NF-2).
+//! Canonical program symbol identity.
 //!
 //! `ProgramSymbolId` is the stable key for extern symbols declared via
 //! `extern func` / `extern asset` in DSL modules. Used by `resolve_extern_call()`

@@ -303,13 +303,11 @@ data css_format: ConfigFormat = {
   }
 }
 
-// ── Utility fn signatures (compiled fn bridge) ──────────────────────
+// ── Utility fn signatures ────────────────────────────────────────────
 //
-// These fns have implementations in the compiled fn bridge
-// (gunbc-dag/src/compiled_fns.rs). They are NOT defined here as DSL
-// fn items because the lowerer creates standalone nodes for all fn
-// items in a module, causing "missing input" errors when the module
-// is imported transitively.
+// These fns are not defined here as DSL fn items because the lowerer
+// creates standalone nodes for all fn items in a module, causing
+// "missing input" errors when the module is imported transitively.
 //
 // Signatures (for documentation):
 //   comment_line(text: String, syntax: CommentSyntax) -> String

@@ -13,13 +13,9 @@ import std.resources { Filesystem }
 import services.shell { shell.Find }
 import shared.dag_util { generated_header }
 
-// ── Extern fn declarations (compiled fn bridge) ─────────────────────
-// Only for symbols without DSL fn/func bodies in this module.
-
-extern func prepare_scan_workspace() -> { command: String, args: List<String> }
-extern func parse_scan_result(stdout: String) -> { dirs: List<String> }
-
 // ── Render helpers ──────────────────────────────────────────────────
+// DSL fn bodies are overridden by extern_impls.rs at resolve time.
+// Phase 7 of extern-bridge-gap-analysis.md converts these to pure DSL.
 
 fn render_bootstrap_makefile(crate_names: List<String>) -> String {
   let header = generated_header(tool: "bootstrap") + ".PHONY: all\n\n"

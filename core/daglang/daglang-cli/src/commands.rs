@@ -321,7 +321,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                     println!("  - {}", file.path);
                 }
             }
-            // NF-6: Write compile receipt JSON when --receipt is passed.
+            // Write compile receipt JSON when --receipt is passed.
             if parsed.receipt {
                 if let Some(receipt) = &output.receipt {
                     let receipt_json = serde_json::to_string_pretty(receipt)

@@ -15,16 +15,14 @@ import std.resources { Filesystem, Network }
 import std.patterns { read_text_files }
 import std.types { CommitSha, Url }
 
-// ── Compiled fn helpers ─────────────────────────────────────────────
-// These fn items have compiled fn bridge implementations in
-// gunbc-dag/src/compiled_fns.rs. The fn bodies below are DSL placeholders.
+// ── Helpers ────────────────────────────────────────────────────────
 
 fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> String {
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
 }
 
-// Compiled fn: produces markdown from branch name + paths + file contents + skipped.
-// Implementation: gunbc-dag/src/compiled_fns.rs (BuildSnapshotContentOp)
+// Overridden by extern_impls.rs (BuildSnapshotContentOp) at resolve time.
+// Phase 5 of extern-bridge-gap-analysis.md converts this to pure DSL.
 fn build_snapshot_content(
     branch: String,
     files: List<String>,

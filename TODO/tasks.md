@@ -15,7 +15,7 @@
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-4..NF-6 |
+| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-4..NF-7 |
 
 ---
 
@@ -40,6 +40,13 @@
 | **NF-4** | **Collapse link phase into compile-time resolution**: Delete separate linker stage (`Backend` trait, `link()`, `SymbolTable`, `OpRef`, `IntrinsicOp`). Resolution already happens at compile time in `resolve.rs`; `extern` keyword + `ExternCall` + `resolve_extern_call()` remain as the fail-closed contract. | NF-3 | M | In Progress |
 | **NF-5** | **Delete fallback surfaces**: Remove passthrough controls/handlers, stub asset fallbacks, and module-name dispatch heuristics. | NF-4 | M | Planned |
 | **NF-6** | **Determinism contract hardening**: Add compile receipt digests linked to emit-manifest and CI determinism gates (single-file, CI pipeline, directory compile) with deterministic diagnostic ordering. | NF-5 | M | Planned |
+| **NF-7** | **Lowerer design + fix for shadow-fn to `extern func` conversion**: Support converting shadow `fn` items to `extern func` in DSL files by wiring `ExternCall` output ports correctly for same-module calls from function bodies (codegen data flow currently breaks). Keep shadow fn bodies as documented placeholders until this lands. This is a lowerer limitation, not a DSL design choice. Deliver a design note and implementation/tests. | NF-4 | L | Planned |
+
+**What didn't land (carry-forward)**:
+- Converting shadow `fn` items to `extern func` in DSL files.
+- Current blocker: lowerer does not wire `ExternCall` output ports correctly for same-module calls from function bodies, which breaks codegen data flow.
+- Shadow function bodies stay in place with clear documentation for now.
+- This is a lowerer limitation, not a design choice.
 
 ### Track B: Interface Stub Transport
 
@@ -87,7 +94,7 @@
 
 ### Mega-lane dependency guide
 
-1. `NF-1 -> NF-2 -> NF-3 -> NF-4 -> NF-5 -> NF-6`
+1. `NF-1 -> NF-2 -> NF-3 -> NF-4 -> NF-5 -> NF-6`, with `NF-7` in parallel after `NF-4`.
 2. `IS-1 -> (IS-2, IS-3) -> IS-4 -> IS-7 -> IS-8`, with `IS-6` in parallel.
 3. `IS-8 -> (PT-1, PT-2, PT-3, PT-4) -> PT-5 -> PT-6`
 4. `FC-1 -> (FC-2, FC-3, FC-9)`

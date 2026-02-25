@@ -618,6 +618,28 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
             }
         }
 
+        // string |> repeat(n: Int) => string.repeat(n.max(0) as usize)
+        ast::Expr::Call(name, args) if name == "repeat" => {
+            let n = args
+                .iter()
+                .find(|(n, _)| n.as_deref() == Some("n"))
+                .or_else(|| args.first())
+                .map(|(_, e)| compile_expr(e, ctx))
+                .unwrap_or(code_ir::Expr::IntLit(0));
+
+            let n_var = fresh("repeat_n");
+            code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_bind(n_var.clone(), n),
+                code_ir::Stmt::TailExpr(code_ir::Expr::MethodCall {
+                    receiver: Box::new(collection),
+                    method: "repeat".to_string(),
+                    args: vec![code_ir::Expr::RawCode(format!(
+                        "{n_var}.max(0) as usize"
+                    ))],
+                }),
+            ])
+        }
+
         // list |> join(separator: "") => join call
         ast::Expr::Call(name, args) if name == "join" => {
             let sep = args

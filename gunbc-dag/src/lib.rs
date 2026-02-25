@@ -22,7 +22,7 @@ pub mod bootstrap;
 pub mod build;
 pub mod ci;
 pub mod codegen;
-pub mod compiled_fns;
+pub mod extern_impls;
 pub mod deps_tool;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;

@@ -1,6 +1,6 @@
 use daglang_driver::{compile_from_context, DriverContext};
 use daglang_lower::LoweredOp;
-use gunbc_dag::compiled_fns::lookup_compiled_fn;
+use gunbc_dag::extern_impls::lookup_extern_impl;
 use gunbc_dag::dsl_registry::discover_tool_defs_from_dsl;
 use gunbc_dag::makegen::{BuildConfig, ToolInfo, ToolRegistry};
 use gunbc_ir::cargo::Warnings;
@@ -463,7 +463,7 @@ fn is_passthrough_callable(module: &str, name: &str, has_service_metadata: bool)
     if name.starts_with("service_transport::") && (has_service_metadata || name.starts_with("service_transport::execute::")) {
         return false;
     }
-    if lookup_compiled_fn(module, name).is_some() { return false; }
+    if lookup_extern_impl(module, name).is_some() { return false; }
     true
 }
 
@@ -529,6 +529,7 @@ const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
     "tools.gist::gist_diff",
     "tools.gist::gist_recent",
     "tools.gist::gist",
+    "tools.gist::render_diff_markdown",
     "tools.pragma::pragma",
     "tools.pragma::render_clippy_toml_document",
     "tools.pragma::render_disallowed_methods_allowlist_document",

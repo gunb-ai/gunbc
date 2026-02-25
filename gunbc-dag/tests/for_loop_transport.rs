@@ -57,7 +57,7 @@ fn gist_graph_has_build_snapshot_content_node() {
 
     assert!(
         has_build_snapshot,
-        "gist graph should contain build_snapshot_content compiled fn node. Got nodes: {:?}",
+        "gist graph should contain build_snapshot_content extern fn node. Got nodes: {:?}",
         lowered
             .dag
             .nodes

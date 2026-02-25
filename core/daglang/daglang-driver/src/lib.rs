@@ -53,13 +53,13 @@ pub struct CompileOutput {
     /// the compiled modules. Merge into `TypeRegistry::with_core_types()` to
     /// make DSL-defined types visible to testgen.
     pub dsl_type_registry: TypeRegistry,
-    /// Compile receipt with deterministic digests (NF-6).
+    /// Compile receipt with deterministic digests.
     ///
     /// `None` if receipt computation was not requested.
     pub receipt: Option<CompileReceipt>,
 }
 
-/// Deterministic compilation receipt (NF-6).
+/// Deterministic compilation receipt.
 ///
 /// Contains content-addressable digests for each stage of the compilation
 /// pipeline. Two compilations of the same input must produce identical
@@ -881,7 +881,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 ///
 /// The receipt contains content-addressable digests for source files, the
 /// canonical IR, and the emit manifest. Two compilations of the same input
-/// MUST produce identical receipts — this is the determinism contract (NF-6).
+/// MUST produce identical receipts — this is the determinism contract.
 fn compute_receipt(
     dag: &Dag<LoweredOp>,
     emitted: &EmissionBundle,
@@ -2423,7 +2423,7 @@ fn run() -> Bool {
         );
     }
 
-    // ---- NF-6: Determinism contract tests ----
+    // ---- Determinism contract tests ----
 
     /// Helper: compile a target and return the receipt, panicking on failure.
     fn compile_with_receipt(root: &Path, target_file: Option<&Path>) -> CompileReceipt {

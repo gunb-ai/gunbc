@@ -1246,6 +1246,19 @@ fn collect_unique_callables(
                         },
                     },
                 ),
+                Item::ExternFuncDecl(def) => register_callable_contract(
+                    &mut callables,
+                    def.name.clone(),
+                    CallableContract {
+                        arity: required_field_arity(&def.inputs),
+                        params: def.inputs.iter().map(|field| field.name.clone()).collect(),
+                        output: if def.outputs.len() == 1 && def.outputs[0].name == "return" {
+                            ValueType::Named(type_expr_to_string(&def.outputs[0].ty))
+                        } else {
+                            ValueType::Record(field_signature_map(&def.outputs))
+                        },
+                    },
+                ),
                 Item::TypeDef(def) => {
                     if let TypeBody::Sum(variants) = &def.body {
                         for variant in variants {
@@ -1402,6 +1415,14 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 1,
                 params: HashSet::from(["separator".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "repeat".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["n".to_string()]),
                 output: ValueType::Named("String".to_string()),
             },
         ),
