@@ -19,6 +19,14 @@ import std.patterns { content_upsert }
 import std.types { ToolRegistry }
 import shared.dag_util { doc_with_header, generated_header, render_document, section, text_line }
 
+// ── Extern declarations (compiled fn bridge + assets) ────────────────
+// Only for symbols without DSL fn/func bodies in this module.
+
+extern func load_registry() -> { tool_count: Int, tool_names: List<String>, registry: Json }
+extern asset makefile: String
+
+// ── Render helpers ──────────────────────────────────────────────────
+
 fn render_makefile(registry: ToolRegistry) -> String {
   let targets = registry.tools
     |> map(t => text_line(text: "{t.name}:\n\t{t.command}"))

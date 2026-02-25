@@ -706,10 +706,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             node_id: node_id.to_string(),
             reason: format!("unsupported pattern `{name}` — not yet implemented in daglang lowering"),
         }),
-        LoweredOp::ExternCall { symbol } => Err(ResolveError {
-            node_id: node_id.to_string(),
-            reason: format!("extern symbol `{symbol}` not yet linked — link step required (NF-3)"),
-        }),
+        LoweredOp::ExternCall { symbol } => resolve_extern_call(node_id, symbol, outputs),
     }
 }
 
@@ -885,6 +882,56 @@ impl Executable for InfraDispatchOp {
             .ok()
     }
 }
+
+// ============================================================================
+// Extern symbol resolution (NF-4)
+// ============================================================================
+
+/// Resolve an `ExternCall` node by parsing its symbol and dispatching to
+/// the compiled fn bridge, std.resources, or tools.infra resolvers.
+///
+/// No passthrough fallback — unresolvable extern symbols are hard errors.
+fn resolve_extern_call(
+    node_id: &str,
+    symbol: &str,
+    _outputs: &[Port],
+) -> Result<DynOp, ResolveError> {
+    use gunbc_ir::ProgramSymbolId;
+
+    let sym = ProgramSymbolId::new(symbol);
+    let module = sym.module().unwrap_or("");
+    let name = sym.name().unwrap_or("");
+
+    // 1. Compiled fn bridge (covers all KNOWN_EXTERN_FUNCS entries).
+    if let Some(op) = crate::compiled_fns::lookup_compiled_fn(module, name) {
+        return Ok(op);
+    }
+
+    // 2. std.resources dynamic dispatch.
+    if module == "std.resources" {
+        return Ok(resolve_std_resources(name));
+    }
+
+    // 3. tools.infra dispatch.
+    if let Some(op) = resolve_tools_infra(name) {
+        if module == "tools.infra" {
+            return Ok(op);
+        }
+    }
+
+    // 4. No fallback — hard error.
+    Err(ResolveError {
+        node_id: node_id.to_string(),
+        reason: format!(
+            "extern symbol `{symbol}` could not be resolved — \
+             no compiled fn, std.resources, or tools.infra handler found"
+        ),
+    })
+}
+
+// ============================================================================
+// Service transport resolution
+// ============================================================================
 
 fn resolve_service_transport(
     node_id: &str,

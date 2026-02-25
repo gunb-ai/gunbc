@@ -3911,7 +3911,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         self.config
             .live_profile_tests
             .iter()
-            .filter_map(|profile_test| {
+            .map(|profile_test| {
                 let test_name = format!(
                     "test_live_flow_{}_{}_profile",
                     NamingCase::SnakeCase.apply(&self.config.target_name),
@@ -3979,7 +3979,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     }),
                 ];
 
-                Some(TestSection {
+                TestSection {
                     title: format!(
                         "Per-profile live flow: {} (profile: {})",
                         self.config.target_name, profile_test.profile_name
@@ -3996,7 +3996,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         )],
                         body,
                     }],
-                })
+                }
             })
             .collect()
     }

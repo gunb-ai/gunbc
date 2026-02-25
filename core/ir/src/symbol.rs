@@ -27,6 +27,7 @@ use std::fmt;
 /// - `"tools.makegen::render_makefile"` (func)
 /// - `"pipelines.ci::ci"` (pipeline)
 /// - `"tools.pragma::clippy_toml_content"` (extern asset)
+///
 /// Note: Named `ProgramSymbolId` (not `SymbolId`) to avoid collision with
 /// the visual symbol system in `symbols.rs` / `generated/mod.rs`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

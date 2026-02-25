@@ -16,6 +16,8 @@ import std.patterns { read_text_files }
 import std.types { CommitSha, Url }
 
 // ── Compiled fn helpers ─────────────────────────────────────────────
+// These fn items have compiled fn bridge implementations in
+// gunbc-dag/src/compiled_fns.rs. The fn bodies below are DSL placeholders.
 
 fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> String {
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"

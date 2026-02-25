@@ -17,6 +17,7 @@
 //! - `gunbc-dag::ci` defines gunbc's CI pipeline (repo-specific)
 
 #![deny(dead_code)]
+pub mod backend;
 pub mod binaries;
 pub mod bootstrap;
 pub mod build;

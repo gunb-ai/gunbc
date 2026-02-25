@@ -29,14 +29,14 @@ type MarkdownDoc {
   nodes: List<MarkdownNode>
 }
 
-// ── Rendering fn signatures (compiled fn bridge) ─────────────────────
+// ── Rendering fn declarations (compiled fn bridge) ───────────────────
 //
 // Implementations: gunbc-dag/src/compiled_fns.rs
-//
-//   render_heading(level: Int, text: String) -> String
-//   render_code_block(code: String, language: String?) -> String
-//   render_bullet_list(items: List<String>) -> String
-//   render_numbered_list(items: List<String>) -> String
-//   render_tree(paths: List<String>) -> String
-//   render_node(node: MarkdownNode) -> String
-//   render_markdown(doc: MarkdownDoc) -> String
+
+extern func render_heading(level: Int, text: String) -> { return: String }
+extern func render_code_block(code: String, language: String?) -> { return: String }
+extern func render_bullet_list(items: List<String>) -> { return: String }
+extern func render_numbered_list(items: List<String>) -> { return: String }
+extern func render_tree(paths: List<String>) -> { return: String }
+extern func render_node(node: MarkdownNode) -> { return: String }
+extern func render_markdown(doc: MarkdownDoc) -> { return: String }
