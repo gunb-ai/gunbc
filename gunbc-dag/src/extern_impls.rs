@@ -25,12 +25,11 @@ use gunbc_ir::Value;
 /// Used by tests to snapshot the full key set and prevent silent additions.
 pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
     &[
+        ("config.tool_discovery", "discover_tools"),
         ("std.markdown", "render_tree"),
         ("tools.bootstrap", "render_bootstrap_gitignore"),
         ("tools.bootstrap", "render_bootstrap_makefile"),
         ("tools.gist", "build_snapshot_content"),
-        ("tools.makegen", "discover_tools"),
-        ("tools.makegen", "render_makefile_content"),
     ]
 }
 
@@ -44,10 +43,7 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
 
         ("tools.gist", "build_snapshot_content") => Some(DynOp::new(BuildSnapshotContentOp)),
 
-        ("tools.makegen", "discover_tools") => Some(DynOp::new(DiscoverToolsOp)),
-        ("tools.makegen", "render_makefile_content") => {
-            Some(DynOp::new(RenderMakefileContentOp))
-        }
+        ("config.tool_discovery", "discover_tools") => Some(DynOp::new(DiscoverToolsOp)),
 
         ("tools.bootstrap", "render_bootstrap_makefile") => {
             Some(DynOp::new(GenerateBootstrapMakefileOp))
