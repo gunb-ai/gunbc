@@ -29,9 +29,6 @@ pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
         ("tools.bootstrap", "render_bootstrap_gitignore"),
         ("tools.bootstrap", "render_bootstrap_makefile"),
         ("tools.gist", "build_snapshot_content"),
-        ("tools.makegen", "load_registry"),
-        ("tools.makegen", "makegen"),
-        ("tools.makegen", "render_makefile"),
         ("tools.pragma", "render_clippy_toml"),
         ("tools.pragma", "render_disallowed_methods_allowlist"),
         ("tools.pragma", "render_pragma_lint_policy"),
@@ -60,10 +57,6 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
         ("tools.bootstrap", "render_bootstrap_gitignore") => {
             Some(DynOp::new(GenerateBootstrapGitignoreOp))
         }
-
-        ("tools.makegen", "load_registry") => Some(DynOp::new(LoadRegistryOp)),
-        ("tools.makegen", "makegen") => Some(DynOp::new(MakegenEntrypointOp)),
-        ("tools.makegen", "render_makefile") => Some(DynOp::new(RenderMakefileCompiledOp)),
 
         _ => None,
     }

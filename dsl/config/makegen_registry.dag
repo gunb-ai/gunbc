@@ -1,0 +1,529 @@
+// config/makegen_registry.dag -- Makefile model for DSL-native makegen.
+//
+// This is the single source of truth for Makefile targets and help text.
+// The makegen tool renders this model into the Makefile.
+
+module config.makegen_registry
+
+type EntrypointParam {
+  port_name: String
+  make_var: String
+  type_hint: String
+  default: String?
+  repeatable: Bool
+}
+
+type MakeTarget {
+  name: String
+  description: String
+  deps: List<String>
+  commands: List<String>
+  comment: String?
+}
+
+type ToolTarget {
+  name: String
+  make_target: String?
+  description: String
+  entrypoints: List<EntrypointParam>
+}
+
+type MakegenRegistry {
+  core_targets: List<MakeTarget>
+  meta_targets: List<MakeTarget>
+  tool_targets: List<ToolTarget>
+}
+
+data makegen_registry: MakegenRegistry = {
+  core_targets: [
+    MakeTarget {
+      name: "preflight-fix",
+      description: "Preflight: auto-fix rustc warnings before running generators",
+      deps: [],
+      commands: ["@cargo fix --workspace --all-targets --allow-dirty --allow-staged"],
+      comment: Some("Preflight: auto-fix rustc warnings before running generators")
+    },
+    MakeTarget {
+      name: "ensure-codegen",
+      description: "Ensure CLI entrypoints exist (bootstrap-safe)",
+      deps: [],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen-dag -- --mode=ensure"],
+      comment: Some("Ensure CLI entrypoints exist (bootstrap-safe)")
+    },
+    MakeTarget {
+      name: "build-release-bins",
+      description: "Build workspace binaries once for direct tool execution",
+      deps: ["ensure-codegen"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins"],
+      comment: Some("Build workspace binaries once for direct tool execution")
+    },
+    MakeTarget {
+      name: "lint-upsert",
+      description: "Lint upsert: fix if needed, then verify",
+      deps: ["ensure-codegen", "preflight-fix"],
+      commands: [
+        "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma",
+        "@cargo clippy --all-targets -- -D warnings || (cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings && cargo clippy --all-targets -- -D warnings)"
+      ],
+      comment: Some("Lint upsert: fix if needed, then verify")
+    },
+    MakeTarget {
+      name: "codegen",
+      description: "Generate CLI entrypoints (DAG upsert)",
+      deps: ["lint-upsert"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen-dag"],
+      comment: Some("Generate CLI entrypoints (DAG upsert)")
+    },
+    MakeTarget {
+      name: "build",
+      description: "Full build transaction: codegen -> testgen -> cargo build",
+      deps: ["codegen", "testgen"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo build --all-targets"],
+      comment: Some("Full build transaction: codegen -> testgen -> cargo build")
+    },
+    MakeTarget {
+      name: "clean",
+      description: "Clean build artifacts",
+      deps: [],
+      commands: ["@cargo clean"],
+      comment: Some("Clean build artifacts")
+    },
+    MakeTarget {
+      name: "testgen",
+      description: "Regenerate tests from DAG structures and MockSpecs",
+      deps: ["lint-upsert"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen"],
+      comment: Some("Regenerate tests from DAG structures and MockSpecs")
+    },
+    MakeTarget {
+      name: "testgen-check",
+      description: "Check if generated tests are stale",
+      deps: ["lint-upsert"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen -- --mode=verify"],
+      comment: Some("Check if generated tests are stale")
+    },
+    MakeTarget {
+      name: "deps-config",
+      description: "Ensure deps.toml matches canonical generated configuration",
+      deps: ["build-release-bins"],
+      commands: ["@target/release/gunbc-deps-config --mode=ensure"],
+      comment: Some("Ensure deps.toml matches canonical generated configuration")
+    },
+    MakeTarget {
+      name: "deps-config-check",
+      description: "Check if deps.toml is stale",
+      deps: ["build-release-bins"],
+      commands: ["@target/release/gunbc-deps-config --mode=verify"],
+      comment: Some("Check if deps.toml is stale")
+    },
+    MakeTarget {
+      name: "makegen-check",
+      description: "Check if generated Makefile is stale",
+      deps: ["lint-upsert"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen -- --mode=verify"],
+      comment: Some("Check if generated Makefile is stale")
+    },
+    MakeTarget {
+      name: "bootstrap-check",
+      description: "Check if generated bootstrap artifacts are stale",
+      deps: ["lint-upsert"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap -- --mode=verify"],
+      comment: Some("Check if generated bootstrap artifacts are stale")
+    },
+    MakeTarget {
+      name: "pragma-check",
+      description: "Check if pragma artifacts are stale",
+      deps: ["lint-upsert"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma -- --mode=verify"],
+      comment: Some("Check if pragma artifacts are stale")
+    },
+    MakeTarget {
+      name: "verify",
+      description: "Verify generated artifacts match their generators",
+      deps: ["lint-upsert"],
+      commands: [
+        "@$(MAKE) deps-config-check",
+        "@$(MAKE) makegen-check",
+        "@$(MAKE) bootstrap-check",
+        "@$(MAKE) testgen-check",
+        "@$(MAKE) pragma-check"
+      ],
+      comment: Some("Verify generated artifacts match their generators")
+    },
+    MakeTarget {
+      name: "verify-fix",
+      description: "Ensure generated artifacts are up to date",
+      deps: ["lint-upsert"],
+      commands: [
+        "@$(MAKE) deps-config",
+        "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen -- --mode=ensure",
+        "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap -- --mode=ensure",
+        "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen -- --mode=ensure",
+        "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma -- --mode=ensure"
+      ],
+      comment: Some("Ensure generated artifacts are up to date")
+    },
+    MakeTarget {
+      name: "fmt-fix",
+      description: "fmt-fix: apply formatting (alias for fmt)",
+      deps: [],
+      commands: ["@cargo fmt"],
+      comment: Some("fmt-fix: apply formatting (alias for fmt)")
+    },
+    MakeTarget {
+      name: "lint-fix",
+      description: "lint-fix: auto-fix lint issues where possible",
+      deps: ["pragma"],
+      commands: ["@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings"],
+      comment: Some("lint-fix: auto-fix lint issues where possible")
+    },
+    MakeTarget {
+      name: "ci",
+      description: "Run CI via workflow planner (typed units, deterministic keying)",
+      deps: [],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- ci"],
+      comment: Some("Run CI via workflow planner (typed units, deterministic keying)")
+    },
+    MakeTarget {
+      name: "test-all",
+      description: "Run all tests via workflow planner (warm-path optimized)",
+      deps: [],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- test-all"],
+      comment: Some("Run all tests via workflow planner (warm-path optimized)")
+    }
+  ],
+  meta_targets: [
+    MakeTarget {
+      name: "test",
+      description: "Run tests (<=S)",
+      deps: ["build", "verify-fix"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo test"],
+      comment: Some("test: Run tests (<=S)")
+    },
+    MakeTarget {
+      name: "test-fix",
+      description: "Run tests (<=S) (fmt-fix + lint-fix first)",
+      deps: ["fmt-fix", "lint-fix", "build", "verify-fix"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo test"],
+      comment: Some("test-fix: auto-fix then verify")
+    },
+    MakeTarget {
+      name: "test-integration",
+      description: "Run integration-focused tests",
+      deps: ["build", "verify-fix"],
+      commands: ["@GUNBC_TEST_MAX_COST=XL RUSTFLAGS=\"-D warnings\" cargo test integration"],
+      comment: Some("test-integration: Run integration-focused tests")
+    },
+    MakeTarget {
+      name: "test-external",
+      description: "Run external/live-flow tests",
+      deps: ["build", "verify-fix"],
+      commands: ["@GUNBC_TEST_MAX_COST=XL RUSTFLAGS=\"-D warnings\" cargo test live_flow"],
+      comment: Some("test-external: Run external/live-flow tests")
+    },
+    MakeTarget {
+      name: "check",
+      description: "Type check all targets",
+      deps: ["ensure-codegen", "pragma-check"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo check --all-targets"],
+      comment: Some("check: Type check all targets")
+    },
+    MakeTarget {
+      name: "check-fix",
+      description: "Type check all targets (fmt-fix first)",
+      deps: ["fmt-fix", "ensure-codegen", "pragma"],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo check --all-targets"],
+      comment: Some("check-fix: auto-fix then verify")
+    },
+    MakeTarget {
+      name: "clippy",
+      description: "Run clippy linter",
+      deps: ["ensure-codegen", "pragma-check"],
+      commands: ["@cargo clippy --all-targets -- -D warnings"],
+      comment: Some("clippy: Run clippy linter")
+    },
+    MakeTarget {
+      name: "clippy-fix",
+      description: "Run clippy linter (auto-fix)",
+      deps: ["ensure-codegen", "pragma"],
+      commands: ["@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings"],
+      comment: Some("clippy-fix: auto-fix then verify")
+    },
+    MakeTarget {
+      name: "fmt",
+      description: "Format all code",
+      deps: [],
+      commands: ["@cargo fmt"],
+      comment: Some("fmt: Format all code")
+    },
+    MakeTarget {
+      name: "fmt-check",
+      description: "Format all code (check only)",
+      deps: [],
+      commands: ["@cargo fmt --check"],
+      comment: None
+    },
+    MakeTarget {
+      name: "ci-yaml",
+      description: "Generate CI workflow YAML (GitHub Actions & GitLab CI)",
+      deps: [],
+      commands: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-codegen -- cigen"],
+      comment: Some("ci-yaml: Generate CI workflow YAML (GitHub Actions & GitLab CI)")
+    }
+  ],
+  tool_targets: [
+    ToolTarget {
+      name: "bootstrap",
+      make_target: Some("bootstrap"),
+      description: "Bootstrap",
+      entrypoints: []
+    },
+    ToolTarget {
+      name: "build-all",
+      make_target: Some("build-all"),
+      description: "Build all",
+      entrypoints: []
+    },
+    ToolTarget {
+      name: "clippy-lint",
+      make_target: Some("clippy-lint"),
+      description: "Clippy lint",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "paths",
+          make_var: "PATHS",
+          type_hint: "String",
+          default: None,
+          repeatable: true
+        }
+      ]
+    },
+    ToolTarget {
+      name: "codegen",
+      make_target: None,
+      description: "Codegen",
+      entrypoints: []
+    },
+    ToolTarget {
+      name: "codegen-ensure",
+      make_target: Some("codegen-ensure"),
+      description: "Codegen ensure",
+      entrypoints: []
+    },
+    ToolTarget {
+      name: "deps",
+      make_target: Some("deps"),
+      description: "Deps",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "manifest_path",
+          make_var: "MANIFEST_PATH",
+          type_hint: "String",
+          default: Some("deps.toml"),
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "platform",
+          make_var: "PLATFORM",
+          type_hint: "String",
+          default: None,
+          repeatable: false
+        }
+      ]
+    },
+    ToolTarget {
+      name: "deps-generate",
+      make_target: Some("deps-generate"),
+      description: "Deps generate",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "registry",
+          make_var: "REGISTRY",
+          type_hint: "String",
+          default: None,
+          repeatable: false
+        }
+      ]
+    },
+    ToolTarget {
+      name: "docgen",
+      make_target: Some("docgen"),
+      description: "Docgen",
+      entrypoints: []
+    },
+    ToolTarget {
+      name: "generate-design",
+      make_target: Some("generate-design"),
+      description: "Generate design",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "idea",
+          make_var: "IDEA",
+          type_hint: "String",
+          default: None,
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "context",
+          make_var: "CONTEXT",
+          type_hint: "String",
+          default: None,
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "provider",
+          make_var: "PROVIDER",
+          type_hint: "String",
+          default: Some("anthropic"),
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "model",
+          make_var: "MODEL",
+          type_hint: "String",
+          default: Some("claude-sonnet-4-20250514"),
+          repeatable: false
+        }
+      ]
+    },
+    ToolTarget {
+      name: "gist",
+      make_target: Some("gist"),
+      description: "Gist",
+      entrypoints: []
+    },
+    ToolTarget {
+      name: "gist-diff",
+      make_target: Some("gist-diff"),
+      description: "Gist diff",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "base_ref",
+          make_var: "BASE_REF",
+          type_hint: "String",
+          default: Some("HEAD~1"),
+          repeatable: false
+        }
+      ]
+    },
+    ToolTarget {
+      name: "gist-recent",
+      make_target: Some("gist-recent"),
+      description: "Gist recent",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "since",
+          make_var: "SINCE",
+          type_hint: "String",
+          default: Some("3.days.ago"),
+          repeatable: false
+        }
+      ]
+    },
+    ToolTarget {
+      name: "infra",
+      make_target: Some("infra"),
+      description: "Infra",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "environment",
+          make_var: "ENVIRONMENT",
+          type_hint: "String",
+          default: None,
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "runtime",
+          make_var: "RUNTIME",
+          type_hint: "String",
+          default: None,
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "spec_targets",
+          make_var: "SPEC_TARGETS",
+          type_hint: "String",
+          default: None,
+          repeatable: true
+        },
+        EntrypointParam {
+          port_name: "target",
+          make_var: "TARGET",
+          type_hint: "String",
+          default: None,
+          repeatable: true
+        },
+        EntrypointParam {
+          port_name: "skip",
+          make_var: "SKIP",
+          type_hint: "String",
+          default: None,
+          repeatable: true
+        }
+      ]
+    },
+    ToolTarget {
+      name: "makegen",
+      make_target: Some("makegen"),
+      description: "Makegen",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "registry",
+          make_var: "REGISTRY",
+          type_hint: "String",
+          default: None,
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "path",
+          make_var: "PATH",
+          type_hint: "String",
+          default: Some("Makefile"),
+          repeatable: false
+        }
+      ]
+    },
+    ToolTarget {
+      name: "pragma",
+      make_target: Some("pragma"),
+      description: "Pragma",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "directives",
+          make_var: "DIRECTIVES",
+          type_hint: "String",
+          default: None,
+          repeatable: true
+        }
+      ]
+    },
+    ToolTarget {
+      name: "review-design",
+      make_target: Some("review-design"),
+      description: "Review design",
+      entrypoints: [
+        EntrypointParam {
+          port_name: "design",
+          make_var: "DESIGN",
+          type_hint: "String",
+          default: None,
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "provider",
+          make_var: "PROVIDER",
+          type_hint: "String",
+          default: Some("anthropic"),
+          repeatable: false
+        },
+        EntrypointParam {
+          port_name: "model",
+          make_var: "MODEL",
+          type_hint: "String",
+          default: Some("claude-sonnet-4-20250514"),
+          repeatable: false
+        }
+      ]
+    }
+  ]
+}
