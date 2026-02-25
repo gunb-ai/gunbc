@@ -102,6 +102,22 @@ pub struct CheckOutput {
     pub parsed_files: usize,
 }
 
+/// Pre-computed data to embed into generated artifacts.
+///
+/// Each entry associates a module + semantic key with file content that
+/// backends embed as string literals or Layer 1 writes as additional files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddedData {
+    /// DSL module this data belongs to, e.g. `"tools.makegen"`.
+    pub module: String,
+    /// Layer 1 output file path relative to the crate root, e.g. `"src/embedded_makefile.txt"`.
+    pub layer1_file_path: String,
+    /// Identifier used in Layer 2 backends, e.g. `"makegen_content"`.
+    pub layer2_ident: String,
+    /// The actual content to embed.
+    pub content: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
@@ -113,10 +129,10 @@ pub struct CompileOptions {
     /// Used by emitters that need to derive relative paths in generated
     /// artifacts (for example Cargo.toml workspace path dependencies).
     pub output_dir: Option<PathBuf>,
-    /// Pre-computed makegen Makefile content. When set, Go/C/MIPS backends
-    /// embed this instead of the default stub, and Rust Layer 1 writes it as
-    /// `src/embedded_makefile.txt`.
-    pub makegen_content_override: Option<String>,
+    /// Pre-computed embedded data keyed by `"module::semantic_key"`.
+    /// Go/C/MIPS backends embed these as string literals; Rust Layer 1
+    /// writes them as additional files in the generated crate.
+    pub embedded_data: std::collections::HashMap<String, EmbeddedData>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -426,15 +442,15 @@ fn emit_with_options(
             })
         }
         (CodegenTarget::Go, CodegenLayer::Native) => {
-            emit_go_bundle(dag, derived, options.makegen_content_override.as_deref())
+            emit_go_bundle(dag, derived, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("go emit backend failed: {error}")))
         }
         (CodegenTarget::C, CodegenLayer::Native) => {
-            emit_c_bundle(dag, derived, options.makegen_content_override.as_deref())
+            emit_c_bundle(dag, derived, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("c emit backend failed: {error}")))
         }
         (CodegenTarget::Mips, CodegenLayer::Native) => {
-            emit_mips_bundle(dag, derived, options.makegen_content_override.as_deref())
+            emit_mips_bundle(dag, derived, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}")))
         }
         (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {

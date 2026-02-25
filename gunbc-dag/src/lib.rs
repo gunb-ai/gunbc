@@ -27,7 +27,7 @@ pub mod deps_tool;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
 pub mod dry_run;
-pub(crate) mod dsl_builder;
+pub mod dsl_builder;
 pub mod dsl_registry;
 pub use dsl_builder::{
     build_aws_credential_graph_dsl, build_azure_credential_graph_dsl, build_clippy_graph_dsl,

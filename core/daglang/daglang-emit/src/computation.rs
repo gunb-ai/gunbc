@@ -575,6 +575,26 @@ fn classify_callable(
             },
         }),
 
+        ObligationCategory::PureRender => {
+            let vars = inputs.iter().map(|p| p.name.clone()).collect();
+            Ok(Computation::Pure {
+                inputs,
+                outputs,
+                body: PureBody::Template {
+                    pattern: name.to_string(),
+                    vars,
+                },
+            })
+        }
+
+        ObligationCategory::PureDataLoad | ObligationCategory::PureGeneric => {
+            Ok(Computation::Pure {
+                inputs,
+                outputs,
+                body: PureBody::Literal(serde_json::Value::Null),
+            })
+        }
+
         ObligationCategory::None => classify_by_name(module, name, inputs, outputs),
     }
 }
@@ -656,144 +676,16 @@ fn infer_request_kind(inputs: &[TypedPort], kind: TransportKind) -> RequestKind 
     }
 }
 
-/// Classify a callable with `ObligationCategory::None` using name heuristics.
+/// Safety-net classifier for callables with `ObligationCategory::None`.
 ///
-/// TODO: This function uses string-prefix matching ("render_", "load_",
-/// "content_upsert::") to determine computation semantics. A purely cosmetic
-/// rename of a DSL callable can silently change emission behavior. Migrate
-/// toward obligation-/type-driven classification for as many patterns as
-/// possible, and pin the remaining name-heuristic surface area with tests.
+/// Most callables are now classified by obligation (assigned in the lowerer).
+/// This function handles any remaining untagged callables as a fallback.
 fn classify_by_name(
     _module: &str,
-    name: &str,
+    _name: &str,
     inputs: Vec<TypedPort>,
     outputs: Vec<TypedPort>,
 ) -> Result<Computation, ClassifyError> {
-    // Content upsert pattern: "content_upsert::prepare_read_X", etc.
-    if let Some(op_name) = name.strip_prefix("content_upsert::") {
-        return classify_content_upsert(op_name, inputs, outputs);
-    }
-
-    // Load/env operations: produce literal config data or environment handles.
-    if name.starts_with("load_") || name == "fs_env" || name.starts_with("env_") {
-        if outputs
-            .iter()
-            .any(|p| p.abstract_type.contains("Handle") || p.abstract_type.contains("Env"))
-        {
-            let handle_type = outputs
-                .first()
-                .map(|p| p.abstract_type.clone())
-                .unwrap_or_else(|| "Unknown".to_string());
-            return Ok(Computation::ResourceAcquire {
-                handle_type,
-                handle_value: name.to_string(),
-            });
-        }
-        return Ok(Computation::Pure {
-            inputs,
-            outputs,
-            body: PureBody::Literal(serde_json::Value::Null),
-        });
-    }
-
-    // Render operations: template-based string generation.
-    if name.starts_with("render_") {
-        let vars = inputs.iter().map(|p| p.name.clone()).collect();
-        return Ok(Computation::Pure {
-            inputs,
-            outputs,
-            body: PureBody::Template {
-                pattern: name.to_string(),
-                vars,
-            },
-        });
-    }
-
-    // Fallback: generic pure computation.
-    Ok(Computation::Pure {
-        inputs,
-        outputs,
-        body: PureBody::Literal(serde_json::Value::Null),
-    })
-}
-
-/// Classify a content-upsert sub-operation by its stripped name.
-fn classify_content_upsert(
-    op_name: &str,
-    inputs: Vec<TypedPort>,
-    outputs: Vec<TypedPort>,
-) -> Result<Computation, ClassifyError> {
-    if op_name.starts_with("prepare_read_") {
-        return Ok(Computation::Pure {
-            inputs,
-            outputs,
-            body: PureBody::PrepareTransport {
-                kind: TransportKind::FileRead,
-            },
-        });
-    }
-
-    if op_name.starts_with("execute_read_") {
-        return Ok(Computation::Transport {
-            prepare: RequestSpec {
-                input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
-                kind: RequestKind::FilePath {
-                    path_port: "request".to_string(),
-                },
-            },
-            execute: TransportKind::FileRead,
-            parse: ResponseSpec {
-                output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
-                kind: ResponseKind::RawContent,
-            },
-        });
-    }
-
-    if op_name.starts_with("compare_") && op_name.ends_with("_content") {
-        let left = inputs
-            .iter()
-            .find(|p| p.name == "expected_content")
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| "expected_content".to_string());
-        let right = inputs
-            .iter()
-            .find(|p| p.name == "response")
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| "response".to_string());
-        return Ok(Computation::Pure {
-            inputs,
-            outputs,
-            body: PureBody::Compare { left, right },
-        });
-    }
-
-    if op_name.starts_with("prepare_write_") {
-        return Ok(Computation::Pure {
-            inputs,
-            outputs,
-            body: PureBody::PrepareTransport {
-                kind: TransportKind::FileWrite,
-            },
-        });
-    }
-
-    if op_name.ends_with("_transport") {
-        return Ok(Computation::Transport {
-            prepare: RequestSpec {
-                input_ports: inputs.iter().map(|p| p.name.clone()).collect(),
-                kind: RequestKind::FilePath {
-                    path_port: "request".to_string(),
-                },
-            },
-            execute: TransportKind::FileWrite,
-            parse: ResponseSpec {
-                output_ports: outputs.iter().map(|p| p.name.clone()).collect(),
-                kind: ResponseKind::ExitStatus,
-            },
-        });
-    }
-
-    // Unknown content_upsert sub-operation — still pure.
     Ok(Computation::Pure {
         inputs,
         outputs,
@@ -837,7 +729,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureDataLoad,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
@@ -863,7 +755,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".into(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureRender,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
@@ -891,14 +783,10 @@ mod tests {
                 scalar("res:file:Makefile", "FilesystemHandle"),
             ],
             vec![scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::prepare_read_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoPrepareFileRead,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -922,14 +810,10 @@ mod tests {
             "execute_read_makegen",
             vec![scalar("request", "TransportRequest")],
             vec![scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::execute_read_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoExecuteFileRead,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -954,14 +838,10 @@ mod tests {
                 scalar("response", "TransportResponse"),
             ],
             vec![scalar("fresh", "Bool"), scalar("skip", "Bool")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::compare_makegen_content".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::CompareEquality,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -983,14 +863,10 @@ mod tests {
             "prepare_write_makegen",
             vec![scalar("content", "String"), scalar("path", "String")],
             vec![scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::prepare_write_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoPrepareFileWrite,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1017,14 +893,10 @@ mod tests {
                 scalar("skip", "Bool"),
             ],
             vec![scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::execute_makegen_transport".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoExecuteFileWrite,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1050,7 +922,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "fs_env".into(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::ResourceProvide,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
@@ -1096,7 +968,7 @@ mod tests {
                 module: "pragma".into(),
                 kind: CallableKind::Fn,
                 name: "render_clippy".into(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureRender,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
@@ -1122,7 +994,7 @@ mod tests {
                 module: "pragma".into(),
                 kind: CallableKind::Fn,
                 name: "render_allowlist".into(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureRender,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
@@ -1148,7 +1020,7 @@ mod tests {
                 module: "pragma".into(),
                 kind: CallableKind::Fn,
                 name: "render_lint_policy".into(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureRender,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
@@ -1170,14 +1042,10 @@ mod tests {
             "execute_read_clippy",
             vec![scalar("request", "TransportRequest")],
             vec![scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "pragma".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::execute_read_clippy".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoExecuteFileRead,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1199,14 +1067,10 @@ mod tests {
                 scalar("response", "TransportResponse"),
             ],
             vec![scalar("fresh", "Bool"), scalar("skip", "Bool")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "pragma".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::compare_clippy_content".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::CompareEquality,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1228,14 +1092,10 @@ mod tests {
                 scalar("skip", "Bool"),
             ],
             vec![scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "pragma".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::execute_clippy_transport".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoExecuteFileWrite,
             },
         );
         let comp = classify_computation(&node).unwrap();

@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use daglang_lower::{LoweredOp, PrimitiveLiteral, PrimitiveOpKind};
+use daglang_lower::{LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::Dag;
 use gunbc_ir::{Cardinality, WorkspaceLayout};
@@ -183,6 +183,27 @@ impl HandlerKind {
             Self::UnimplementedPassthrough => "UnimplementedPassthrough",
         }
     }
+
+    fn embedded_asset(self) -> Option<EmbeddedAsset> {
+        match self {
+            Self::MakegenRenderMakefile => Some(EmbeddedAsset::MakegenMakefile),
+            _ => None,
+        }
+    }
+}
+
+/// Embedded data assets required by exec-runtime handler implementations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum EmbeddedAsset {
+    MakegenMakefile,
+}
+
+impl EmbeddedAsset {
+    pub fn path(self) -> &'static str {
+        match self {
+            Self::MakegenMakefile => "src/embedded_makefile.txt",
+        }
+    }
 }
 
 // ===========================================================================
@@ -263,6 +284,23 @@ fn collect_handler_kinds(classified: &[ClassifiedNode]) -> BTreeSet<HandlerKind>
     classified.iter().map(|c| c.handler).collect()
 }
 
+/// Return the embedded assets required by handler kinds present in `dag`.
+pub fn required_embedded_assets(dag: &Dag<LoweredOp>) -> BTreeSet<EmbeddedAsset> {
+    let mut assets = BTreeSet::new();
+    for node in &dag.nodes {
+        let NodeBody::Opaque(op) = &node.body else {
+            continue;
+        };
+        let Some(handler) = classify_handler(op) else {
+            continue;
+        };
+        if let Some(asset) = handler.embedded_asset() {
+            assets.insert(asset);
+        }
+    }
+    assets
+}
+
 fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     match op {
         LoweredOp::Collection { .. } => return Some(HandlerKind::Collection),
@@ -299,11 +337,13 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
             ..
         } => return Some(HandlerKind::ExecuteTransport),
         LoweredOp::Pipeline { .. } => {}
-        LoweredOp::Callable { name, .. }
-            if name.starts_with("service_transport::prepare::")
-                || name.starts_with("service_transport::parse::")
-                || name.starts_with("service_transport::execute::") =>
-        {
+        LoweredOp::Callable {
+            obligation:
+                ObligationCategory::ServiceTransportPrepare
+                | ObligationCategory::ServiceTransportExecute
+                | ObligationCategory::ServiceTransportParse,
+            ..
+        } => {
             return Some(HandlerKind::UnimplementedPassthrough);
         }
         LoweredOp::Callable { .. } => {}

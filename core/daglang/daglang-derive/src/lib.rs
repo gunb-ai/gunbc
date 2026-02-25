@@ -719,6 +719,11 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
             ObligationCategory::InterfaceContractVerification => {
                 counts.interface_contract_verification_targets += 1;
             }
+            ObligationCategory::PureRender
+            | ObligationCategory::PureDataLoad
+            | ObligationCategory::PureGeneric => {
+                // Pure functions: no obligation counting needed
+            }
             ObligationCategory::None => {}
         }
     }

@@ -116,7 +116,7 @@ pub struct DslGraphResult {
 }
 
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
-pub(crate) fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
+pub fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
     Ok(build_dsl_graph_with_types(relative_module)?.dag)
 }
 
@@ -137,7 +137,7 @@ pub(crate) fn build_dsl_graph_with_types(
     })
 }
 
-fn build_dsl_graph_for_entry(
+pub fn build_dsl_graph_for_entry(
     relative_module: &str,
     entry_node_id: &str,
 ) -> Result<Dag<DynOp>, BuilderError> {

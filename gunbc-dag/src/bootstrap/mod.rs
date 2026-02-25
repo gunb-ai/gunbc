@@ -2,7 +2,6 @@
 //!
 //! Bootstrap tool for initializing gunbc projects.
 
-use crate::dsl_builder::build_bootstrap_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 
@@ -22,27 +21,5 @@ pub fn bootstrap_signature() -> WorkflowSignature {
 
 /// Build bootstrap graph from the DSL source.
 pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
-    build_bootstrap_graph_dsl()
+    crate::dsl_builder::build_dsl_graph("tools/bootstrap.dag")
 }
-
-// ============================================================================
-// Tool Target Registrations
-// ============================================================================
-
-#[gunbc_tool_registry_macros::tool_target(
-    name = "bootstrap",
-    crate_name = "gunbc-dag",
-    description = "Generate Makefile and .gitignore",
-    builder = "build_bootstrap_graph",
-    import = "use gunbc_dag::build_bootstrap_graph;",
-    package = "dag",
-    binary = "bootstrap",
-    mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "bootstrap")"#,
-    dsl_module = "bootstrap",
-    outputs = "Makefile,.gitignore",
-    provides = "Makefile,.gitignore",
-    consumes = "deps.toml",
-    has_invocation,
-    returns_result
-)]
-pub fn bootstrap_tool() {}

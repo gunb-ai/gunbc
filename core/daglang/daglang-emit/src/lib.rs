@@ -68,7 +68,7 @@ pub mod fn_codegen;
 mod backend_harness;
 
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
-use daglang_lower::{CallableKind, LoweredOp, ServiceOperationSpec};
+use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
 pub use daglang_lower::{extract_output_paths, extract_outputs_annotation};
 use gunbc_ir::Dag;
 use std::fmt::Write as _;
@@ -287,7 +287,7 @@ pub fn emit_rust_bundle(
 pub fn emit_go_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
-    makegen_content: Option<&str>,
+    embedded_data: &std::collections::HashMap<String, daglang_driver::EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
@@ -305,7 +305,10 @@ pub fn emit_go_bundle(
         .iter()
         .map(|sym| {
             if let Some(ref spec) = sym.spec {
-                service_emit::emit_go_service_func(&sym.name, &sym.raw_name, spec)
+                let phase = sym
+                    .service_phase
+                    .expect("service symbol should include transport phase");
+                service_emit::emit_go_service_func(&sym.name, phase, spec)
             } else {
                 format!(
                     "func {name}() {{\n    // generated callable stub\n}}\n",
@@ -331,7 +334,7 @@ pub fn emit_go_bundle(
     };
 
     let main_go = if is_makegen {
-        let makefile_literal = escape_string_literal(resolve_makegen_content(makegen_content));
+        let makefile_literal = escape_string_literal(resolve_embedded_makegen(embedded_data));
         format!(
             "package main\n\n{imports}\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc makegenContent() string {{\n    return \"{makefile_literal}\"\n}}\n\nfunc main() {{\n    if len(os.Args) > 1 {{\n        path := os.Args[1]\n        if err := os.WriteFile(path, []byte(makegenContent()), 0644); err != nil {{\n            fmt.Fprintf(os.Stderr, \"failed to write `%s`: %v\\n\", path, err)\n            os.Exit(1)\n        }}\n    }}\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
         )
@@ -383,7 +386,7 @@ pub fn emit_go_bundle(
 pub fn emit_c_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
-    makegen_content: Option<&str>,
+    embedded_data: &std::collections::HashMap<String, daglang_driver::EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
@@ -400,7 +403,10 @@ pub fn emit_c_bundle(
         .iter()
         .map(|sym| {
             if let Some(ref spec) = sym.spec {
-                service_emit::emit_c_service_func(&sym.name, &sym.raw_name, spec)
+                let phase = sym
+                    .service_phase
+                    .expect("service symbol should include transport phase");
+                service_emit::emit_c_service_func(&sym.name, phase, spec)
             } else {
                 format!("static void {name}(void) {{}}\n", name = sym.name)
             }
@@ -424,7 +430,7 @@ pub fn emit_c_bundle(
     };
 
     let main_c = if is_makegen {
-        let makefile_literal = escape_string_literal(resolve_makegen_content(makegen_content));
+        let makefile_literal = escape_string_literal(resolve_embedded_makegen(embedded_data));
         format!(
             "{includes}\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\nstatic const char* MAKEGEN_CONTENT = \"{makefile_literal}\";\n\n{symbol_funcs}\nint main(int argc, char** argv) {{\n    (void)CLI_ENTRYPOINTS;\n    if (argc > 1) {{\n        const char* path = argv[1];\n        FILE* file = fopen(path, \"wb\");\n        if (!file) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n        size_t expected = strlen(MAKEGEN_CONTENT);\n        size_t written = fwrite(MAKEGEN_CONTENT, 1, expected, file);\n        fclose(file);\n        if (written != expected) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n    }}\n    printf(\"daglang generated c backend\\n\");\n    return 0;\n}}\n"
         )
@@ -466,7 +472,7 @@ pub fn emit_c_bundle(
 pub fn emit_mips_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
-    makegen_content: Option<&str>,
+    embedded_data: &std::collections::HashMap<String, daglang_driver::EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
@@ -476,7 +482,10 @@ pub fn emit_mips_bundle(
         .iter()
         .map(|sym| {
             if let Some(ref spec) = sym.spec {
-                service_emit::emit_mips_service_func(&sym.name, &sym.raw_name, spec)
+                let phase = sym
+                    .service_phase
+                    .expect("service symbol should include transport phase");
+                service_emit::emit_mips_service_func(&sym.name, phase, spec)
             } else {
                 format!("{name}:\n    jr $ra\n", name = sym.name)
             }
@@ -485,7 +494,7 @@ pub fn emit_mips_bundle(
         .join("\n");
 
     let main_s = if is_makegen {
-        let content = resolve_makegen_content(makegen_content);
+        let content = resolve_embedded_makegen(embedded_data);
         let makefile_bytes = content
             .as_bytes()
             .iter()
@@ -533,8 +542,7 @@ pub fn emit_mips_bundle(
 struct CollectedSymbol {
     name: String,
     spec: Option<ServiceOperationSpec>,
-    /// The raw lowered-op name (e.g., "service_transport::prepare::github.Gist::Create").
-    raw_name: String,
+    service_phase: Option<service_emit::ServiceTransportPhase>,
 }
 
 fn collect_symbols_with_metadata(
@@ -553,6 +561,7 @@ fn collect_symbols_with_metadata(
             LoweredOp::Callable {
                 module,
                 name,
+                obligation,
                 service_metadata,
                 ..
             } => {
@@ -561,7 +570,7 @@ fn collect_symbols_with_metadata(
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{name}")),
                     spec,
-                    raw_name: name.clone(),
+                    service_phase: service_transport_phase(*obligation),
                 });
             }
             LoweredOp::Primitive { module, name, .. } => {
@@ -569,7 +578,7 @@ fn collect_symbols_with_metadata(
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{name}")),
                     spec: None,
-                    raw_name: name.clone(),
+                    service_phase: None,
                 });
             }
             LoweredOp::Collection {
@@ -581,7 +590,7 @@ fn collect_symbols_with_metadata(
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{callable}_collection_{kind:?}")),
                     spec: None,
-                    raw_name: String::new(),
+                    service_phase: None,
                 });
             }
             LoweredOp::Pipeline { module, name, .. } => {
@@ -589,7 +598,7 @@ fn collect_symbols_with_metadata(
                 symbols.push(CollectedSymbol {
                     name: sanitize_identifier(&format!("{module}_{name}")),
                     spec: None,
-                    raw_name: String::new(),
+                    service_phase: None,
                 });
             }
             LoweredOp::LoopUnpack { .. }
@@ -601,6 +610,21 @@ fn collect_symbols_with_metadata(
     Ok((symbols, callable_count, pipeline_count))
 }
 
+fn service_transport_phase(
+    obligation: ObligationCategory,
+) -> Option<service_emit::ServiceTransportPhase> {
+    match obligation {
+        ObligationCategory::ServiceTransportPrepare => {
+            Some(service_emit::ServiceTransportPhase::Prepare)
+        }
+        ObligationCategory::ServiceTransportExecute => {
+            Some(service_emit::ServiceTransportPhase::Execute)
+        }
+        ObligationCategory::ServiceTransportParse => Some(service_emit::ServiceTransportPhase::Parse),
+        _ => None,
+    }
+}
+
 fn is_makegen_module(artifacts: &DerivedArtifacts) -> bool {
     artifacts
         .tool_metadata
@@ -609,8 +633,14 @@ fn is_makegen_module(artifacts: &DerivedArtifacts) -> bool {
         .any(|module| module.module == "tools.makegen")
 }
 
-fn resolve_makegen_content(override_content: Option<&str>) -> &str {
-    override_content.unwrap_or(MAKEGEN_STUB_CONTENT)
+/// Look up the makegen embedded data from the map, falling back to a stub.
+fn resolve_embedded_makegen(
+    embedded_data: &std::collections::HashMap<String, daglang_driver::EmbeddedData>,
+) -> &str {
+    embedded_data
+        .get("tools.makegen::makefile")
+        .map(|data| data.content.as_str())
+        .unwrap_or(MAKEGEN_STUB_CONTENT)
 }
 
 const MAKEGEN_STUB_CONTENT: &str =
@@ -750,7 +780,7 @@ mod tests {
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureRender,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,

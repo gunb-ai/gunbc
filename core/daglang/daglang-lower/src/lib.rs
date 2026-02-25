@@ -216,6 +216,12 @@ pub enum ObligationCategory {
     ResourceAcquire,
     ResourceRelease,
     InterfaceContractVerification,
+    /// Pure function that templates/renders output from inputs (e.g. `render_makefile`).
+    PureRender,
+    /// Pure function that loads configuration data (non-handle output, e.g. `load_registry`).
+    PureDataLoad,
+    /// Catch-all for pure functions with no special semantics.
+    PureGeneric,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -481,6 +487,9 @@ pub fn canonical_kind_for_obligation(obligation: ObligationCategory) -> Option<&
         | ObligationCategory::ResourceAcquire
         | ObligationCategory::ResourceRelease
         | ObligationCategory::InterfaceContractVerification => Some("pattern-expanded"),
+        ObligationCategory::PureRender
+        | ObligationCategory::PureDataLoad
+        | ObligationCategory::PureGeneric => Some("callable"),
     }
 }
 
@@ -2446,6 +2455,39 @@ mod parity {
 
 }
 
+/// Infer an obligation category for `fn` items based on name/output-type heuristics.
+///
+/// Only applies to `CallableKind::Fn` (pure functions). `Func`/`Pattern` callables
+/// keep `ObligationCategory::None` (they are classified structurally elsewhere).
+fn infer_fn_obligation(
+    name: &str,
+    kind: CallableKind,
+    outputs: &[Port],
+) -> ObligationCategory {
+    if kind != CallableKind::Fn {
+        return ObligationCategory::None;
+    }
+    // Handle/Env output + load_/fs_env/env_ name → resource provider.
+    let has_handle_output = outputs.iter().any(|p| {
+        let ty = p.type_id.0.as_str();
+        ty.contains("Handle") || ty.contains("Env")
+    });
+    if has_handle_output
+        && (name.starts_with("load_")
+            || name == "fs_env"
+            || name.starts_with("env_"))
+    {
+        return ObligationCategory::ResourceProvide;
+    }
+    if name.starts_with("render_") {
+        return ObligationCategory::PureRender;
+    }
+    if name.starts_with("load_") || name.starts_with("env_") {
+        return ObligationCategory::PureDataLoad;
+    }
+    ObligationCategory::PureGeneric
+}
+
 fn lower_callable(
     callable: &TypedCallableSignature,
     module_name: &str,
@@ -2476,6 +2518,7 @@ fn lower_callable(
             })
             .collect()
     };
+    let obligation = infer_fn_obligation(&callable.name, kind, &outputs);
     let primary_output = outputs
         .first()
         .map(|port| port.name.0.clone())
@@ -2489,7 +2532,7 @@ fn lower_callable(
                 module: module_name.to_string(),
                 kind,
                 name: callable.name.clone(),
-                obligation: ObligationCategory::None,
+                obligation,
                 service_metadata: None,
                 is_interactive,
                 resource_target: None,

@@ -200,14 +200,14 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 .out_dir
                 .as_ref()
                 .map(|out_dir| path_utils::normalize_cli_path(cwd, &PathBuf::from(out_dir)));
-            let makegen_content = compute_makegen_content();
+            let embedded_data = build_embedded_data();
             let options = CompileOptions {
                 emit_collection_nodes: parsed.emit_collection_nodes,
                 profile: parsed.profile.clone(),
                 target: parsed.target.unwrap_or_default(),
                 layer: parsed.layer.unwrap_or_default(),
                 output_dir: normalized_out_dir.clone(),
-                makegen_content_override: Some(makegen_content),
+                embedded_data,
             };
             let mut output = compile_target_or_exit_with_compile_options(
                 cwd,
@@ -396,35 +396,74 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
     }
 }
 
+/// Static registry of modules that need pre-computed data embedded into
+/// generated artifacts. Adding a new tool = one new entry here.
+struct EmbedRegistration {
+    /// DSL module name, e.g. `"tools.makegen"`.
+    module: &'static str,
+    /// Registry key: `"module::semantic_key"`.
+    embed_key: &'static str,
+    /// Layer 1 output file path relative to crate root.
+    layer1_file_path: &'static str,
+    /// Identifier used in Layer 2 backends.
+    layer2_ident: &'static str,
+    /// Function that computes the content to embed.
+    compute: fn() -> String,
+}
+
+const EMBED_REGISTRY: &[EmbedRegistration] = &[EmbedRegistration {
+    module: "tools.makegen",
+    embed_key: "tools.makegen::makefile",
+    layer1_file_path: "src/embedded_makefile.txt",
+    layer2_ident: "makegen_content",
+    compute: compute_makegen_content,
+}];
+
+/// Build the full embedded data map from the registry.
+fn build_embedded_data() -> std::collections::HashMap<String, daglang_driver::EmbeddedData> {
+    EMBED_REGISTRY
+        .iter()
+        .map(|entry| {
+            (
+                entry.embed_key.to_string(),
+                daglang_driver::EmbeddedData {
+                    module: entry.module.to_string(),
+                    layer1_file_path: entry.layer1_file_path.to_string(),
+                    layer2_ident: entry.layer2_ident.to_string(),
+                    content: (entry.compute)(),
+                },
+            )
+        })
+        .collect()
+}
+
 /// For Layer 1 exec-runtime compilation, embed pre-computed handler data
-/// as additional files in the generated crate. This avoids adding `gunbc-dag`
-/// as a runtime dependency of the generated binary (which would pull in the
-/// entire workspace dep tree and be fragile to in-flight changes).
-///
-/// TODO: Currently hardcoded to `tools.makegen`. When other tools need Layer 1
-/// exec-runtime embedding, generalize to a registry/trait pattern so each tool
-/// module can declare its own embedded handler data requirements.
+/// as additional files in the generated crate.
 fn embed_layer1_handler_data(options: &CompileOptions, output: &mut CompileOutput) {
     use daglang_driver::CodegenLayer;
 
     if options.layer != CodegenLayer::ExecRuntime {
         return;
     }
-    let is_makegen = output
+    let active_modules: Vec<&str> = output
         .derived
         .tool_metadata
         .modules
         .iter()
-        .any(|module| module.module == "tools.makegen");
-    if is_makegen {
-        let makefile_content = options
-            .makegen_content_override
-            .clone()
-            .unwrap_or_else(compute_makegen_content);
-        output.emitted.files.push(daglang_emit::EmittedFile {
-            path: "src/embedded_makefile.txt".to_string(),
-            content: makefile_content,
-        });
+        .map(|m| m.module.as_str())
+        .collect();
+    for entry in EMBED_REGISTRY {
+        if active_modules.contains(&entry.module) {
+            let content = options
+                .embedded_data
+                .get(entry.embed_key)
+                .map(|data| data.content.clone())
+                .unwrap_or_else(|| (entry.compute)());
+            output.emitted.files.push(daglang_emit::EmittedFile {
+                path: entry.layer1_file_path.to_string(),
+                content,
+            });
+        }
     }
 }
 

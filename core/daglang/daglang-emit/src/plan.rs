@@ -559,7 +559,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "load_registry".into(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureDataLoad,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
@@ -573,7 +573,7 @@ mod tests {
                 module: "tools.makegen".into(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".into(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureRender,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
@@ -600,28 +600,20 @@ mod tests {
             "prepare_read_makegen",
             vec![Port::scalar("path", "String")],
             vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::prepare_read_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoPrepareFileRead,
             },
         ));
         dag.add_node(Node::opaque(
             "execute_read_makegen",
             vec![Port::scalar("request", "TransportRequest")],
             vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::execute_read_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoExecuteFileRead,
             },
         ));
         dag.add_node(Node::opaque(
@@ -631,14 +623,10 @@ mod tests {
                 Port::scalar("response", "TransportResponse"),
             ],
             vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::compare_makegen_content".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::CompareEquality,
             },
         ));
         dag.add_node(Node::opaque(
@@ -648,14 +636,10 @@ mod tests {
                 Port::scalar("path", "String"),
             ],
             vec![Port::scalar("request", "TransportRequest")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::prepare_write_makegen".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoPrepareFileWrite,
             },
         ));
         dag.add_node(Node::opaque(
@@ -665,14 +649,10 @@ mod tests {
                 Port::scalar("skip", "Bool"),
             ],
             vec![Port::scalar("response", "TransportResponse")],
-            LoweredOp::Callable {
+            LoweredOp::Primitive {
                 module: "tools.makegen".into(),
-                kind: CallableKind::Pattern,
                 name: "content_upsert::execute_makegen_transport".into(),
-                obligation: ObligationCategory::None,
-                service_metadata: None,
-                is_interactive: false,
-                resource_target: None,
+                kind: daglang_lower::PrimitiveOpKind::IoExecuteFileWrite,
             },
         ));
 

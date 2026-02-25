@@ -613,7 +613,7 @@ mod tests {
                 module: "tools.makegen".to_string(),
                 kind: CallableKind::Fn,
                 name: "render_makefile".to_string(),
-                obligation: ObligationCategory::None,
+                obligation: ObligationCategory::PureRender,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,

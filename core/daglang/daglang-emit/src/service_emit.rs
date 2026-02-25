@@ -18,6 +18,18 @@ use daglang_lower::{
     ShellOutputParsing,
 };
 
+/// Explicit service transport phase for generated operation nodes.
+///
+/// The lowerer already provides structural phase metadata via
+/// `ObligationCategory` (prepare/execute/parse). Emission should consume that
+/// metadata directly instead of re-parsing callable name prefixes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceTransportPhase {
+    Prepare,
+    Execute,
+    Parse,
+}
+
 // ===========================================================================
 // Go service transport code generation (SC5)
 // ===========================================================================
@@ -25,22 +37,26 @@ use daglang_lower::{
 /// Emit a Go function for a service transport node.
 pub fn emit_go_service_func(
     symbol_name: &str,
-    raw_name: &str,
+    phase: ServiceTransportPhase,
     spec: &ServiceOperationSpec,
 ) -> String {
-    let is_prepare = raw_name.starts_with("service_transport::prepare::");
-    let is_parse = raw_name.starts_with("service_transport::parse::");
-    let is_execute = raw_name.starts_with("service_transport::execute::");
-
-    if is_execute {
+    if phase == ServiceTransportPhase::Execute {
         return emit_go_execute_stub(symbol_name);
     }
 
-    match (spec, is_prepare, is_parse) {
-        (ServiceOperationSpec::Rest(rest), true, _) => emit_go_rest_prepare(symbol_name, rest),
-        (ServiceOperationSpec::Rest(rest), _, true) => emit_go_rest_parse(symbol_name, rest),
-        (ServiceOperationSpec::Shell(shell), true, _) => emit_go_shell_prepare(symbol_name, shell),
-        (ServiceOperationSpec::Shell(shell), _, true) => emit_go_shell_parse(symbol_name, shell),
+    match (spec, phase) {
+        (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Prepare) => {
+            emit_go_rest_prepare(symbol_name, rest)
+        }
+        (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Parse) => {
+            emit_go_rest_parse(symbol_name, rest)
+        }
+        (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Prepare) => {
+            emit_go_shell_prepare(symbol_name, shell)
+        }
+        (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Parse) => {
+            emit_go_shell_parse(symbol_name, shell)
+        }
         _ => format!("func {symbol_name}() {{\n    // generated callable stub\n}}\n"),
     }
 }
@@ -296,22 +312,26 @@ fn emit_go_shell_parse(symbol_name: &str, spec: &ShellOperationSpec) -> String {
 /// Emit a C function for a service transport node.
 pub fn emit_c_service_func(
     symbol_name: &str,
-    raw_name: &str,
+    phase: ServiceTransportPhase,
     spec: &ServiceOperationSpec,
 ) -> String {
-    let is_prepare = raw_name.starts_with("service_transport::prepare::");
-    let is_parse = raw_name.starts_with("service_transport::parse::");
-    let is_execute = raw_name.starts_with("service_transport::execute::");
-
-    if is_execute {
+    if phase == ServiceTransportPhase::Execute {
         return emit_c_execute_stub(symbol_name);
     }
 
-    match (spec, is_prepare, is_parse) {
-        (ServiceOperationSpec::Rest(rest), true, _) => emit_c_rest_prepare(symbol_name, rest),
-        (ServiceOperationSpec::Rest(rest), _, true) => emit_c_rest_parse(symbol_name, rest),
-        (ServiceOperationSpec::Shell(shell), true, _) => emit_c_shell_prepare(symbol_name, shell),
-        (ServiceOperationSpec::Shell(shell), _, true) => emit_c_shell_parse(symbol_name, shell),
+    match (spec, phase) {
+        (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Prepare) => {
+            emit_c_rest_prepare(symbol_name, rest)
+        }
+        (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Parse) => {
+            emit_c_rest_parse(symbol_name, rest)
+        }
+        (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Prepare) => {
+            emit_c_shell_prepare(symbol_name, shell)
+        }
+        (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Parse) => {
+            emit_c_shell_parse(symbol_name, shell)
+        }
         _ => format!("static void {symbol_name}(void) {{}}\n"),
     }
 }
@@ -429,26 +449,22 @@ fn emit_c_shell_parse(symbol_name: &str, spec: &ShellOperationSpec) -> String {
 /// Emit a MIPS assembly function for a service transport node.
 pub fn emit_mips_service_func(
     symbol_name: &str,
-    raw_name: &str,
+    phase: ServiceTransportPhase,
     spec: &ServiceOperationSpec,
 ) -> String {
-    let is_prepare = raw_name.starts_with("service_transport::prepare::");
-    let is_parse = raw_name.starts_with("service_transport::parse::");
-    let is_execute = raw_name.starts_with("service_transport::execute::");
-
-    let description = match (spec, is_prepare, is_parse, is_execute) {
-        (ServiceOperationSpec::Rest(rest), true, _, _) => {
+    let description = match (spec, phase) {
+        (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Prepare) => {
             format!(
                 "prepare REST {} {}{}",
                 rest.method, rest.endpoint, rest.path_template
             )
         }
-        (ServiceOperationSpec::Rest(rest), _, true, _) => {
+        (ServiceOperationSpec::Rest(rest), ServiceTransportPhase::Parse) => {
             let fields: Vec<&str> = rest.output_fields.iter().map(|f| f.name.as_str()).collect();
             format!("parse REST response [{}]", fields.join(", "))
         }
-        (_, _, _, true) => "execute transport request".to_string(),
-        (ServiceOperationSpec::Shell(shell), true, _, _) => {
+        (_, ServiceTransportPhase::Execute) => "execute transport request".to_string(),
+        (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Prepare) => {
             let argv: Vec<String> = shell
                 .argv_template
                 .iter()
@@ -459,7 +475,7 @@ pub fn emit_mips_service_func(
                 .collect();
             format!("prepare shell [{}]", argv.join(" "))
         }
-        (ServiceOperationSpec::Shell(shell), _, true, _) => {
+        (ServiceOperationSpec::Shell(shell), ServiceTransportPhase::Parse) => {
             let mode = match &shell.output_parsing {
                 ShellOutputParsing::TrimStdout => "trim_stdout",
                 ShellOutputParsing::SplitLines => "split_lines",
@@ -835,7 +851,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_spec());
         let code = emit_go_service_func(
             "prepare_anthropic_messages",
-            "service_transport::prepare::llm.Anthropic::Messages",
+            ServiceTransportPhase::Prepare,
             &spec,
         );
         assert!(
@@ -860,7 +876,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_spec());
         let code = emit_go_service_func(
             "parse_anthropic_messages",
-            "service_transport::parse::llm.Anthropic::Messages",
+            ServiceTransportPhase::Parse,
             &spec,
         );
         assert!(
@@ -877,7 +893,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_with_bytes_output());
         let code = emit_go_service_func(
             "parse_secret_access",
-            "service_transport::parse::gcp.SecretManager::AccessVersion",
+            ServiceTransportPhase::Parse,
             &spec,
         );
         assert!(
@@ -895,7 +911,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_with_path_params());
         let code = emit_go_service_func(
             "prepare_secret_access",
-            "service_transport::prepare::gcp.SecretManager::AccessVersion",
+            ServiceTransportPhase::Prepare,
             &spec,
         );
         assert!(
@@ -911,7 +927,7 @@ mod tests {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
         let code = emit_go_service_func(
             "prepare_cargo_build",
-            "service_transport::prepare::cargo.Build::Build",
+            ServiceTransportPhase::Prepare,
             &spec,
         );
         assert!(code.contains("*exec.Cmd"), "returns exec.Cmd: {code}");
@@ -925,7 +941,7 @@ mod tests {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
         let code = emit_go_service_func(
             "parse_cargo_build",
-            "service_transport::parse::cargo.Build::Build",
+            ServiceTransportPhase::Parse,
             &spec,
         );
         assert!(code.contains("Success bool"), "has Success: {code}");
@@ -938,7 +954,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_spec());
         let code = emit_go_service_func(
             "execute_anthropic_messages",
-            "service_transport::execute::llm.Anthropic::Messages",
+            ServiceTransportPhase::Execute,
             &spec,
         );
         assert!(code.contains("func execute_anthropic_messages"), "has func");
@@ -955,7 +971,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_with_path_params());
         let code = emit_c_service_func(
             "prepare_secret_access",
-            "service_transport::prepare::gcp.SecretManager::AccessVersion",
+            ServiceTransportPhase::Prepare,
             &spec,
         );
         assert!(code.contains("snprintf"), "uses snprintf: {code}");
@@ -969,7 +985,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_spec());
         let code = emit_c_service_func(
             "parse_anthropic_messages",
-            "service_transport::parse::llm.Anthropic::Messages",
+            ServiceTransportPhase::Parse,
             &spec,
         );
         assert!(
@@ -984,7 +1000,7 @@ mod tests {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
         let code = emit_c_service_func(
             "prepare_cargo_build",
-            "service_transport::prepare::cargo.Build::Build",
+            ServiceTransportPhase::Prepare,
             &spec,
         );
         assert!(code.contains("\"cargo\""), "has cargo in comment: {code}");
@@ -998,7 +1014,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_spec());
         let code = emit_mips_service_func(
             "prepare_anthropic_messages",
-            "service_transport::prepare::llm.Anthropic::Messages",
+            ServiceTransportPhase::Prepare,
             &spec,
         );
         assert!(
@@ -1015,7 +1031,7 @@ mod tests {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
         let code = emit_mips_service_func(
             "prepare_cargo_build",
-            "service_transport::prepare::cargo.Build::Build",
+            ServiceTransportPhase::Prepare,
             &spec,
         );
         assert!(
@@ -1030,7 +1046,7 @@ mod tests {
         let spec = ServiceOperationSpec::Rest(sample_rest_spec());
         let code = emit_mips_service_func(
             "execute_transport",
-            "service_transport::execute::llm.Anthropic::Messages",
+            ServiceTransportPhase::Execute,
             &spec,
         );
         assert!(
