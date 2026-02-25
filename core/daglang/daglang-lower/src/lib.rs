@@ -272,6 +272,31 @@ pub enum ServiceOperationSpec {
     Local(LocalOperationSpec),
 }
 
+impl ServiceOperationSpec {
+    /// Returns the input fields for any spec variant.
+    ///
+    /// This collapses the 4 near-identical match arms that previously appeared
+    /// in `service_prepare_ports()` and similar functions (FC-11).
+    pub fn input_fields(&self) -> &[FieldSpec] {
+        match self {
+            Self::Rest(spec) => &spec.input_fields,
+            Self::Shell(spec) => &spec.input_fields,
+            Self::File(spec) => &spec.input_fields,
+            Self::Local(spec) => &spec.input_fields,
+        }
+    }
+
+    /// Returns the output fields for any spec variant.
+    pub fn output_fields(&self) -> &[OutputFieldSpec] {
+        match self {
+            Self::Rest(spec) => &spec.output_fields,
+            Self::Shell(spec) => &spec.output_fields,
+            Self::File(spec) => &spec.output_fields,
+            Self::Local(spec) => &spec.output_fields,
+        }
+    }
+}
+
 /// File protocol specification: operation type + path template.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct FileOperationSpec {
@@ -4404,23 +4429,8 @@ fn collect_required_service_call_keys(
 
 fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadata) -> Vec<Port> {
     let declared_inputs = match metadata.spec.as_ref() {
-        Some(ServiceOperationSpec::Rest(spec)) => spec
-            .input_fields
-            .iter()
-            .map(|field| (field.name.clone(), field.type_id.clone()))
-            .collect::<Vec<_>>(),
-        Some(ServiceOperationSpec::Shell(spec)) => spec
-            .input_fields
-            .iter()
-            .map(|field| (field.name.clone(), field.type_id.clone()))
-            .collect::<Vec<_>>(),
-        Some(ServiceOperationSpec::File(spec)) => spec
-            .input_fields
-            .iter()
-            .map(|field| (field.name.clone(), field.type_id.clone()))
-            .collect::<Vec<_>>(),
-        Some(ServiceOperationSpec::Local(spec)) => spec
-            .input_fields
+        Some(spec) => spec
+            .input_fields()
             .iter()
             .map(|field| (field.name.clone(), field.type_id.clone()))
             .collect::<Vec<_>>(),
@@ -4440,9 +4450,12 @@ fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadat
 }
 
 fn capability_prepare_ports(capability: &CapabilityDef, metadata: &ServiceCallMetadata) -> Vec<Port> {
+    // When a spec with explicit input fields is available (e.g., File operations),
+    // use the spec's field declarations. Otherwise fall back to the capability's
+    // declared inputs from the interface definition.
     let declared_inputs = match metadata.spec.as_ref() {
-        Some(ServiceOperationSpec::File(spec)) => spec
-            .input_fields
+        Some(spec) if !spec.input_fields().is_empty() => spec
+            .input_fields()
             .iter()
             .map(|field| (field.name.clone(), field.type_id.clone()))
             .collect::<Vec<_>>(),
