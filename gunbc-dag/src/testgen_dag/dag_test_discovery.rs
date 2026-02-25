@@ -682,4 +682,100 @@ mod tests {
         assert!(call.contains("build_dsl_graph"));
         assert!(call.contains("unknown.dag"));
     }
+
+    #[test]
+    fn comprehensive_auto_testgen_pipeline_validation() {
+        let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+            .expect("workspace layout");
+        let dsl_root = layout.workspace_root.join("dsl");
+        let output_dir = std::path::Path::new("/tmp/testgen_validation");
+
+        // Phase 1: Discover all compilable modules
+        let modules = discover_compilable_modules(&dsl_root);
+        let total_discovered = modules.len();
+
+        eprintln!("\n========================================");
+        eprintln!("  Auto-Testgen Pipeline Validation");
+        eprintln!("========================================\n");
+        eprintln!("Discovered {} compilable .dag modules:\n", total_discovered);
+
+        for (i, m) in modules.iter().enumerate() {
+            eprintln!(
+                "  {:>2}. {:<40} funcs={} tests={}",
+                i + 1,
+                m.module_name,
+                m.func_count,
+                if m.has_test_blocks { "yes" } else { "no" }
+            );
+        }
+
+        // Phase 2: Run auto_testgen_for_module on each
+        let mut generated = Vec::new();
+        let mut skipped = Vec::new();
+
+        for module in &modules {
+            let result = auto_testgen_for_module(module, output_dir);
+            match result {
+                AutoTestgenResult::Generated { test_code, target_def } => {
+                    let test_fn_count = test_code.matches("#[test]").count();
+                    generated.push((module.module_name.clone(), test_fn_count, test_code.len()));
+                }
+                AutoTestgenResult::Skipped { reason } => {
+                    skipped.push((module.module_name.clone(), reason));
+                }
+            }
+        }
+
+        let total_generated = generated.len();
+        let total_skipped = skipped.len();
+
+        // Phase 3: Report
+        eprintln!("\n--- Generated ({}) ---\n", total_generated);
+        let mut total_test_fns = 0;
+        let mut total_code_bytes = 0;
+        for (name, test_fn_count, code_len) in &generated {
+            total_test_fns += test_fn_count;
+            total_code_bytes += code_len;
+            eprintln!(
+                "  [OK]  {:<40} {} test fns, {} bytes",
+                name, test_fn_count, code_len
+            );
+        }
+
+        if !skipped.is_empty() {
+            eprintln!("\n--- Skipped ({}) ---\n", total_skipped);
+            for (name, reason) in &skipped {
+                eprintln!("  [SKIP] {:<40} {}", name, reason);
+            }
+        }
+
+        eprintln!("\n--- Summary ---\n");
+        eprintln!("  Total discovered:   {}", total_discovered);
+        eprintln!("  Total generated:    {}", total_generated);
+        eprintln!("  Total skipped:      {}", total_skipped);
+        eprintln!("  Total test fns:     {}", total_test_fns);
+        eprintln!("  Total code bytes:   {}", total_code_bytes);
+        eprintln!("  Success rate:       {:.1}%", (total_generated as f64 / total_discovered as f64) * 100.0);
+        eprintln!("\n========================================\n");
+
+        // Assertions
+        assert!(
+            total_discovered > 14,
+            "expected >14 compilable modules, found {}",
+            total_discovered
+        );
+        assert!(
+            total_generated > 0,
+            "expected at least 1 module to generate tests"
+        );
+        // Every generated module should produce at least 1 #[test] fn
+        for (name, count, _) in &generated {
+            assert!(
+                *count > 0,
+                "{} generated 0 test functions",
+                name
+            );
+        }
+    }
 }
