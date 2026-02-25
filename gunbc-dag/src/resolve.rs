@@ -197,6 +197,17 @@ impl std::fmt::Debug for PipelineDispatchOp {
 }
 
 impl Executable for PipelineDispatchOp {
+    /// Execute pipeline dispatch with explicit stage progression contract.
+    ///
+    /// **Stage progression contract**:
+    /// - `stages`: total stage count (always emitted)
+    /// - `stage_order`: ordered list of stage names (always emitted)
+    /// - `active_stage`: defaults to the first stage (always emitted if stages exist)
+    /// - If `current_stage` is provided:
+    ///   - Must be a non-empty string matching a known stage name
+    ///   - `next_stage` is set to the following stage, or to `current_stage` itself
+    ///     if already at the last stage (terminal self-loop)
+    /// - If `current_stage` is absent: no `next_stage` is emitted
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let mut outputs =
             execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
@@ -209,15 +220,24 @@ impl Executable for PipelineDispatchOp {
             outputs.insert("active_stage".to_string(), Value::Str(first.clone()));
         }
         if let Some(current_stage) = outputs.get("current_stage").and_then(Value::as_str) {
+            // Fail closed on empty current_stage — this is a wiring bug.
+            if current_stage.is_empty() {
+                return Err(ExecError::new(
+                    "pipeline dispatch received empty `current_stage` value — expected a valid stage name",
+                ));
+            }
             let Some(position) = self
                 .stage_names
                 .iter()
                 .position(|stage| stage == current_stage)
             else {
                 return Err(ExecError::new(format!(
-                    "pipeline dispatch received unknown `current_stage` value `{current_stage}`"
+                    "pipeline dispatch received unknown `current_stage` value `{current_stage}` \
+                     (valid stages: {})",
+                    self.stage_names.join(", ")
                 )));
             };
+            // Terminal stage: next_stage is self (no progression past the end).
             let next_stage = self
                 .stage_names
                 .get(position + 1)
@@ -1374,6 +1394,65 @@ mod tests {
                 .to_string()
                 .contains("pipeline dispatch received unknown `current_stage`"),
             "unexpected error: {error}"
+        );
+        // FC-6: error message should include valid stage names for diagnostics
+        assert!(
+            error.to_string().contains("fetch") && error.to_string().contains("design"),
+            "error should list valid stages: {error}"
+        );
+    }
+
+    #[test]
+    fn resolve_pipeline_dispatch_fails_closed_for_empty_stage() {
+        let node = Node::opaque(
+            "pipeline_sdlc",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.sdlc".to_string(),
+                name: "sdlc".to_string(),
+                stages: 2,
+                stage_names: vec!["fetch".to_string(), "design".to_string()],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline node should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("current_stage".to_string(), Value::Str(String::new()));
+        let error = op
+            .execute(inputs)
+            .expect_err("empty current_stage should fail closed");
+        assert!(
+            error.to_string().contains("empty `current_stage`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn resolve_pipeline_dispatch_last_stage_loops_to_self() {
+        let node = Node::opaque(
+            "pipeline_sdlc",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.sdlc".to_string(),
+                name: "sdlc".to_string(),
+                stages: 2,
+                stage_names: vec!["fetch".to_string(), "design".to_string()],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline node should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "current_stage".to_string(),
+            Value::Str("design".to_string()),
+        );
+        let outputs = op
+            .execute(inputs)
+            .expect("last stage should not error");
+        assert_eq!(
+            outputs.get("next_stage"),
+            Some(&Value::Str("design".to_string())),
+            "last stage should loop to self as terminal"
         );
     }
 
