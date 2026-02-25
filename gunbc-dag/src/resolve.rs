@@ -754,6 +754,7 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
 // Domain resolution (per-module callables)
 // ============================================================================
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_domain(
     node_id: &str,
     module: &str,

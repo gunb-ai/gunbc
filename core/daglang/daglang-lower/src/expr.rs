@@ -340,6 +340,9 @@ fn lower_match_arm(arm: &ast::MatchArm) -> LoweredMatchArm {
 
 fn lower_pattern(pattern: &ast::Pattern) -> LoweredPattern {
     match pattern {
+        ast::Pattern::Ident(name) if name == "None" || name == "null" => {
+            LoweredPattern::Literal(LoweredLiteral::None)
+        }
         ast::Pattern::Ident(name) => LoweredPattern::Ident(name.clone()),
         ast::Pattern::Variant(name, fields) => LoweredPattern::Variant(
             name.clone(),
