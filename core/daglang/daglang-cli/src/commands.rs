@@ -258,7 +258,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 return;
             }
             // For Layer 1 exec-runtime: embed pre-computed handler data files.
-            embed_layer1_handler_data(&options, &mut output);
+            if let Err(error) = embed_layer1_handler_data(&options, &mut output) {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
             let written_files = if let Some(out_dir) = normalized_out_dir.as_ref() {
                 match write_emitted_files(cwd, out_dir, &output.emitted.files) {
                     Ok(files) => files,
@@ -450,78 +453,44 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
     }
 }
 
-/// Static registry of modules that need pre-computed data embedded into
-/// generated artifacts. Adding a new tool = one new entry here.
-struct EmbedRegistration {
-    /// DSL module name, e.g. `"tools.makegen"`.
-    module: &'static str,
-    /// Registry key: `"module::semantic_key"`.
-    embed_key: &'static str,
-    /// Layer 1 output file path relative to crate root.
-    layer1_file_path: &'static str,
-    /// Identifier used in Layer 2 backends.
-    layer2_ident: &'static str,
-    /// Function that computes the content to embed.
-    compute: fn() -> String,
-}
-
-const EMBED_REGISTRY: &[EmbedRegistration] = &[EmbedRegistration {
-    module: "tools.makegen",
-    embed_key: "tools.makegen::makefile",
-    layer1_file_path: "src/embedded_makefile.txt",
-    layer2_ident: "makegen_content",
-    compute: compute_makegen_content,
-}];
-
-/// Build the full embedded data map from the registry.
+/// Build the embedded data map for extern assets.
 fn build_embedded_data() -> std::collections::HashMap<String, daglang_emit::EmbeddedData> {
-    EMBED_REGISTRY
-        .iter()
-        .map(|entry| {
-            (
-                entry.embed_key.to_string(),
-                daglang_emit::EmbeddedData {
-                    module: entry.module.to_string(),
-                    layer1_file_path: entry.layer1_file_path.to_string(),
-                    layer2_ident: entry.layer2_ident.to_string(),
-                    content: (entry.compute)(),
-                },
-            )
-        })
-        .collect()
+    gunbc_dag::embedded_assets::build_embedded_data()
 }
 
 /// For Layer 1 exec-runtime compilation, embed pre-computed handler data
 /// as additional files in the generated crate.
-fn embed_layer1_handler_data(options: &CompileOptions, output: &mut CompileOutput) {
+fn embed_layer1_handler_data(
+    options: &CompileOptions,
+    output: &mut CompileOutput,
+) -> Result<(), String> {
     use daglang_driver::CodegenLayer;
 
     if options.layer != CodegenLayer::ExecRuntime {
-        return;
+        return Ok(());
     }
     let assets = daglang_emit::rust_exec_runtime::required_embedded_assets(&output.lowered_dag);
     for asset in assets {
         let path = asset.path();
-        let content = options
-            .embedded_data
-            .values()
-            .find(|data| data.layer1_file_path == path)
-            .map(|data| data.content.clone())
-            .unwrap_or_else(|| match asset {
-                daglang_emit::rust_exec_runtime::EmbeddedAsset::MakegenMakefile => {
-                    compute_makegen_content()
-                }
-            });
+        let key = asset.key();
+        let data = options.embedded_data.get(key).ok_or_else(|| {
+            format!(
+                "missing embedded asset `{key}` required by exec-runtime (path={path})"
+            )
+        })?;
+        if data.layer1_file_path != path {
+            return Err(format!(
+                "embedded asset `{key}` has layer1 path `{}`, expected `{path}`",
+                data.layer1_file_path
+            ));
+        }
+        let content = data.content.clone();
         output.emitted.files.push(daglang_emit::EmittedFile {
             path: path.to_string(),
             content,
         });
     }
-}
-
-fn compute_makegen_content() -> String {
-    let registry = gunbc_dag::makegen::registry::ToolRegistry::default_registry();
-    gunbc_dag::render_makefile(&registry)
+    Ok(())
 }
 
 fn render_report_coverage_text(issues: &[daglang_driver::ReportCoverageIssue]) -> String {

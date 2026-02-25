@@ -28,7 +28,9 @@ extern asset makefile: String
 // ── Render helpers ──────────────────────────────────────────────────
 
 fn render_makefile(registry: ToolRegistry) -> String {
+  let reserved = ["codegen"] // avoid collisions with core workflow targets
   let targets = registry.tools
+    |> filter(t => reserved |> filter(r => r == t.name) |> count() == 0)
     |> map(t => text_line(text: "{t.name}:\n\t{t.command}"))
   let document = doc_with_header(
     header: generated_header(tool: "makegen") + ".PHONY: all",

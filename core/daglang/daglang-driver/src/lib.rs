@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
@@ -22,7 +22,7 @@ use daglang_syntax::ast_utils::type_expr_to_string;
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions, TypedProject};
-use gunbc_ir::{Dag, TypeRegistry};
+use gunbc_ir::{Dag, ProgramSymbolId, TypeRegistry};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -226,6 +226,7 @@ pub fn compile_from_module_graph_with_options(
         },
     )
     .map_err(format_typecheck_errors)?;
+    let extern_assets = collect_extern_assets(&typed);
     let lowered = if let Some(scope) = callable_scope.as_ref() {
         if options.emit_collection_nodes {
             lower_typed_project_for_modules_with_entry_and_collection_nodes(
@@ -277,9 +278,14 @@ pub fn compile_from_module_graph_with_options(
 
     let target = options.target;
     let layer = options.layer;
-    let mut emitted =
-        emit_with_options(&lowered, &derived, options, target_module_name.as_deref())
-        .map_err(|error| format!("emit error: {error}"))?;
+    let mut emitted = emit_with_options(
+        &lowered,
+        &derived,
+        options,
+        target_module_name.as_deref(),
+        &extern_assets,
+    )
+    .map_err(|error| format!("emit error: {error}"))?;
     let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
     let pipeline_params = collect_pipeline_params(&typed);
@@ -299,6 +305,20 @@ pub fn compile_from_module_graph_with_options(
         dsl_type_registry,
         receipt,
     })
+}
+
+/// Collect extern asset declarations from the typed project.
+fn collect_extern_assets(typed: &TypedProject) -> BTreeSet<ProgramSymbolId> {
+    let mut assets = BTreeSet::new();
+    for module in &typed.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            if let Item::ExternAssetDecl(def) = &item.node {
+                assets.insert(ProgramSymbolId::from_parts(&module_name, &def.name));
+            }
+        }
+    }
+    assets
 }
 
 /// Collect `param` declarations from all modules in the typed project.
@@ -751,6 +771,7 @@ fn emit_with_options(
     derived: &DerivedArtifacts,
     options: CompileOptions,
     target_module_name: Option<&str>,
+    extern_assets: &BTreeSet<ProgramSymbolId>,
 ) -> Result<EmissionBundle, CompileError> {
     match (options.target, options.layer) {
         (CodegenTarget::Rust, CodegenLayer::Native) => {
@@ -759,15 +780,15 @@ fn emit_with_options(
             })
         }
         (CodegenTarget::Go, CodegenLayer::Native) => {
-            emit_go_bundle(dag, derived, &options.embedded_data)
+            emit_go_bundle(dag, derived, extern_assets, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("go emit backend failed: {error}")))
         }
         (CodegenTarget::C, CodegenLayer::Native) => {
-            emit_c_bundle(dag, derived, &options.embedded_data)
+            emit_c_bundle(dag, derived, extern_assets, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("c emit backend failed: {error}")))
         }
         (CodegenTarget::Mips, CodegenLayer::Native) => {
-            emit_mips_bundle(dag, derived, &options.embedded_data)
+            emit_mips_bundle(dag, derived, extern_assets, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}")))
         }
         (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {

@@ -70,8 +70,8 @@ mod backend_harness;
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
 pub use daglang_lower::{extract_output_paths, extract_outputs_annotation};
-use gunbc_ir::Dag;
-use std::collections::HashSet;
+use gunbc_ir::{Dag, ProgramSymbolId};
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
 
 // ============================================================================
@@ -194,6 +194,8 @@ pub enum EmitError {
     UnsupportedConstruct { backend: String, construct: String },
     /// A lowered graph node could not be rendered.
     InvalidLoweredNode(String),
+    /// Required embedded data is missing for the target backend.
+    MissingEmbeddedAsset { backend: String, key: String },
 }
 
 impl std::fmt::Display for EmitError {
@@ -204,6 +206,9 @@ impl std::fmt::Display for EmitError {
             }
             Self::InvalidLoweredNode(reason) => {
                 write!(f, "invalid lowered node encountered during emit: {reason}")
+            }
+            Self::MissingEmbeddedAsset { backend, key } => {
+                write!(f, "backend `{backend}` missing embedded asset `{key}`")
             }
         }
     }
@@ -364,11 +369,12 @@ pub fn emit_rust_bundle(
 pub fn emit_go_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
-    let is_makegen = is_makegen_module(artifacts);
+    let has_makegen_asset = has_required_asset(required_assets, MAKEGEN_ASSET_KEY);
     let entrypoints = artifacts
         .manifest
         .entrypoint_nodes
@@ -402,7 +408,7 @@ pub fn emit_go_bundle(
         .collect::<Vec<_>>()
         .join(", ");
 
-    let imports = if is_makegen {
+    let imports = if has_makegen_asset {
         "import (\n    \"fmt\"\n    \"os\"\n)\n".to_string()
     } else if has_service_transport {
         "import (\n    \"fmt\"\n    \"net/http\"\n    \"bytes\"\n    \"encoding/json\"\n    \"os/exec\"\n    \"strings\"\n)\n".to_string()
@@ -410,8 +416,10 @@ pub fn emit_go_bundle(
         "import \"fmt\"\n".to_string()
     };
 
-    let main_go = if is_makegen {
-        let makefile_literal = escape_string_literal(resolve_embedded_makegen(embedded_data));
+    let main_go = if has_makegen_asset {
+        let makefile_literal = escape_string_literal(
+            require_embedded_asset(embedded_data, "go", MAKEGEN_ASSET_KEY)?.content.as_str(),
+        );
         format!(
             "package main\n\n{imports}\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc makegenContent() string {{\n    return \"{makefile_literal}\"\n}}\n\nfunc main() {{\n    if len(os.Args) > 1 {{\n        path := os.Args[1]\n        if err := os.WriteFile(path, []byte(makegenContent()), 0644); err != nil {{\n            fmt.Fprintf(os.Stderr, \"failed to write `%s`: %v\\n\", path, err)\n            os.Exit(1)\n        }}\n    }}\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
         )
@@ -422,7 +430,7 @@ pub fn emit_go_bundle(
     };
 
     // Suppress unused import warnings for service transport code.
-    let main_go = if has_service_transport && !is_makegen {
+    let main_go = if has_service_transport && !has_makegen_asset {
         main_go.replace(
             "func main() {",
             "// Ensure imports used.\nvar _ = http.StatusOK\nvar _ = bytes.Compare\nvar _ = json.Unmarshal\nvar _ = exec.Command\nvar _ = strings.TrimSpace\n\nfunc main() {",
@@ -463,11 +471,12 @@ pub fn emit_go_bundle(
 pub fn emit_c_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
-    let is_makegen = is_makegen_module(artifacts);
+    let has_makegen_asset = has_required_asset(required_assets, MAKEGEN_ASSET_KEY);
     let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
     let entrypoints = artifacts
         .manifest
@@ -497,7 +506,7 @@ pub fn emit_c_bundle(
         .collect::<Vec<_>>()
         .join(", ");
 
-    let includes = if is_makegen {
+    let includes = if has_makegen_asset {
         "#include <stdio.h>\n#include <string.h>\n".to_string()
     } else if has_service_transport {
         "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <curl/curl.h>\n"
@@ -506,8 +515,10 @@ pub fn emit_c_bundle(
         "#include <stdio.h>\n".to_string()
     };
 
-    let main_c = if is_makegen {
-        let makefile_literal = escape_string_literal(resolve_embedded_makegen(embedded_data));
+    let main_c = if has_makegen_asset {
+        let makefile_literal = escape_string_literal(
+            require_embedded_asset(embedded_data, "c", MAKEGEN_ASSET_KEY)?.content.as_str(),
+        );
         format!(
             "{includes}\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\nstatic const char* MAKEGEN_CONTENT = \"{makefile_literal}\";\n\n{symbol_funcs}\nint main(int argc, char** argv) {{\n    (void)CLI_ENTRYPOINTS;\n    if (argc > 1) {{\n        const char* path = argv[1];\n        FILE* file = fopen(path, \"wb\");\n        if (!file) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n        size_t expected = strlen(MAKEGEN_CONTENT);\n        size_t written = fwrite(MAKEGEN_CONTENT, 1, expected, file);\n        fclose(file);\n        if (written != expected) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n    }}\n    printf(\"daglang generated c backend\\n\");\n    return 0;\n}}\n"
         )
@@ -549,11 +560,12 @@ pub fn emit_c_bundle(
 pub fn emit_mips_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
-    let is_makegen = is_makegen_module(artifacts);
+    let has_makegen_asset = has_required_asset(required_assets, MAKEGEN_ASSET_KEY);
 
     let label_defs = symbols
         .iter()
@@ -570,8 +582,9 @@ pub fn emit_mips_bundle(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let main_s = if is_makegen {
-        let content = resolve_embedded_makegen(embedded_data);
+    let main_s = if has_makegen_asset {
+        let content =
+            require_embedded_asset(embedded_data, "mips", MAKEGEN_ASSET_KEY)?.content.clone();
         let makefile_bytes = content
             .as_bytes()
             .iter()
@@ -711,26 +724,22 @@ fn service_transport_phase(
     }
 }
 
-fn is_makegen_module(artifacts: &DerivedArtifacts) -> bool {
-    artifacts
-        .tool_metadata
-        .modules
-        .iter()
-        .any(|module| module.module == "tools.makegen")
+const MAKEGEN_ASSET_KEY: &str = "tools.makegen::makefile";
+
+fn has_required_asset(required_assets: &BTreeSet<ProgramSymbolId>, key: &str) -> bool {
+    required_assets.contains(&ProgramSymbolId::from(key))
 }
 
-/// Look up the makegen embedded data from the map, falling back to a stub.
-fn resolve_embedded_makegen(
-    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
-) -> &str {
-    embedded_data
-        .get("tools.makegen::makefile")
-        .map(|data| data.content.as_str())
-        .unwrap_or(MAKEGEN_STUB_CONTENT)
+fn require_embedded_asset<'a>(
+    embedded_data: &'a std::collections::HashMap<String, EmbeddedData>,
+    backend: &str,
+    key: &str,
+) -> Result<&'a EmbeddedData, EmitError> {
+    embedded_data.get(key).ok_or_else(|| EmitError::MissingEmbeddedAsset {
+        backend: backend.to_string(),
+        key: key.to_string(),
+    })
 }
-
-const MAKEGEN_STUB_CONTENT: &str =
-    "# Generated by daglang\n.PHONY: makegen\n\nmakegen:\n\tcargo run -p gunbc-dag --bin gunbc-makegen\n";
 
 fn escape_string_literal(input: &str) -> String {
     let mut out = String::with_capacity(input.len() + 8);
@@ -855,6 +864,7 @@ mod tests {
     use daglang_derive::derive_artifacts;
     use daglang_lower::ObligationCategory;
     use gunbc_ir::{Edge, Node, Port};
+    use std::collections::{BTreeSet, HashMap};
 
     fn sample_dag() -> Dag<LoweredOp> {
         let mut dag = Dag::new();
@@ -895,6 +905,26 @@ mod tests {
         dag
     }
 
+    fn makegen_required_assets() -> BTreeSet<ProgramSymbolId> {
+        let mut assets = BTreeSet::new();
+        assets.insert(ProgramSymbolId::from(MAKEGEN_ASSET_KEY));
+        assets
+    }
+
+    fn makegen_embedded_data() -> HashMap<String, EmbeddedData> {
+        let mut data = HashMap::new();
+        data.insert(
+            MAKEGEN_ASSET_KEY.to_string(),
+            EmbeddedData {
+                module: "tools.makegen".to_string(),
+                layer1_file_path: "src/embedded_makefile.txt".to_string(),
+                layer2_ident: "makegen_content".to_string(),
+                content: "makegen-test-content".to_string(),
+            },
+        );
+        data
+    }
+
     #[test]
     fn emit_rust_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
@@ -933,7 +963,10 @@ mod tests {
     fn emit_go_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let required_assets = makegen_required_assets();
+        let embedded_data = makegen_embedded_data();
+        let bundle = emit_go_bundle(&dag, &artifacts, &required_assets, &embedded_data)
+            .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "go");
         assert_eq!(bundle.files.len(), 3);
@@ -959,7 +992,10 @@ mod tests {
     fn emit_c_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let required_assets = makegen_required_assets();
+        let embedded_data = makegen_embedded_data();
+        let bundle = emit_c_bundle(&dag, &artifacts, &required_assets, &embedded_data)
+            .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "c");
         assert_eq!(bundle.files.len(), 3);
@@ -982,7 +1018,10 @@ mod tests {
     fn emit_mips_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let required_assets = makegen_required_assets();
+        let embedded_data = makegen_embedded_data();
+        let bundle = emit_mips_bundle(&dag, &artifacts, &required_assets, &embedded_data)
+            .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "mips");
         assert_eq!(bundle.files.len(), 3);
@@ -1216,7 +1255,8 @@ mod tests {
     fn go_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let bundle = emit_go_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("emit should succeed");
 
         let main_go = bundle
             .files
@@ -1270,7 +1310,8 @@ mod tests {
     fn go_bundle_imports_transport_packages() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let bundle = emit_go_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("emit should succeed");
 
         let main_go = bundle
             .files
@@ -1298,7 +1339,8 @@ mod tests {
     fn c_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let bundle = emit_c_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("emit should succeed");
 
         let main_c = bundle
             .files
@@ -1342,7 +1384,8 @@ mod tests {
     fn mips_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let bundle = emit_mips_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("emit should succeed");
 
         let main_s = bundle
             .files
@@ -1386,9 +1429,12 @@ mod tests {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
 
-        let go_bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("go emit");
-        let c_bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("c emit");
-        let mips_bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("mips emit");
+        let go_bundle = emit_go_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("go emit");
+        let c_bundle = emit_c_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("c emit");
+        let mips_bundle = emit_mips_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("mips emit");
 
         // All should report the same callable count.
         assert_eq!(go_bundle.summary.callable_count, 5, "Go callable count");

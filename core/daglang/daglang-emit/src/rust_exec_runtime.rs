@@ -189,6 +189,12 @@ pub enum EmbeddedAsset {
 }
 
 impl EmbeddedAsset {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::MakegenMakefile => "tools.makegen::makefile",
+        }
+    }
+
     pub fn path(self) -> &'static str {
         match self {
             Self::MakegenMakefile => "src/embedded_makefile.txt",
