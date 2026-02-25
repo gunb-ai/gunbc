@@ -1,0 +1,31 @@
+// std/lint.dag -- Abstract lint/policy concepts (Layer 0).
+//
+// Universal vocabulary for lint tools. No tool-specific data.
+// Consumed by understanding files (Layer 2) and policy configs (Layer 3).
+
+module std.lint
+
+// Where a lint rule originates.
+type LintSource = Compiler | ToolPlugin
+
+// A lint rule from any source.
+type LintRule {
+  source: LintSource
+  name: String
+  category: String?
+}
+
+// What to do when a lint fires.
+type LintAction = Deny | Warn | Allow
+
+// What kind of API surface element an entry describes.
+// Used by Layer 2 (understanding files) to classify operations.
+type ApiSurfaceKind = Method | Type | Trait
+
+// Scope of an exemption from a policy rule.
+// Uses generic package terminology (not Rust-specific crate names).
+type ExemptionScope
+  = WholePackage { name: String }
+  | PackagePrefix { prefix: String }
+  | PackageFile { package_name: String, path: String }
+  | PackagePathPrefix { package_name: String, prefix: String }

@@ -53,8 +53,8 @@ fn makegen_contains_fn_and_func_items() {
     let source = parse_dsl("tools/makegen.dag");
     assert_eq!(
         source.items.len(),
-        3,
-        "makegen should contain 3 top-level items (fn, func, test)"
+        7,
+        "makegen should contain 7 top-level items (4 types, fn, func, test)"
     );
     assert_eq!(
         source
@@ -76,13 +76,13 @@ fn makegen_contains_fn_and_func_items() {
         .items
         .iter()
         .find_map(|item| match &item.node {
-            Item::FnDef(def) if def.name == "render_makefile" => Some(def),
+            Item::FnDef(def) if def.name == "render_makefile_content" => Some(def),
             _ => None,
         })
-        .expect("render_makefile fn should exist");
+        .expect("render_makefile_content fn should exist");
     assert!(
         !render_fn.body.stmts.is_empty(),
-        "render_makefile body should retain parsed statements"
+        "render_makefile_content body should retain parsed statements"
     );
 
     let makegen_func = source
@@ -99,7 +99,15 @@ fn makegen_contains_fn_and_func_items() {
     );
     assert_eq!(
         item_signatures(&source),
-        vec!["fn render_makefile", "func makegen", "test makegen_dryrun"]
+        vec![
+            "type EntrypointParam",
+            "type MakeTarget",
+            "type ToolTarget",
+            "type MakegenRegistry",
+            "fn render_makefile_content",
+            "func makegen",
+            "test makegen_dryrun",
+        ]
     );
 }
 

@@ -6806,11 +6806,8 @@ fn collect_return_bindings(
             .collect::<HashSet<_>>();
         return fields
             .iter()
-            .filter_map(|(name, expr)| {
-                output_set
-                    .contains(name.as_str())
-                    .then(|| (name.clone(), expr.clone()))
-            })
+            .filter(|(name, _expr)| output_set.contains(name.as_str()))
+            .map(|(name, expr)| (name.clone(), expr.clone()))
             .collect();
     }
 
@@ -6832,7 +6829,7 @@ fn collect_return_bindings(
     Vec::new()
 }
 
-fn unwrap_return_expr<'a>(expr: &'a Expr) -> &'a Expr {
+fn unwrap_return_expr(expr: &Expr) -> &Expr {
     match expr {
         Expr::After(inner, _) | Expr::Guarded(inner, _) => unwrap_return_expr(inner),
         Expr::Call(name, args)

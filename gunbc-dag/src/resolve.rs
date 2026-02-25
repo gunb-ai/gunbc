@@ -800,6 +800,7 @@ fn resolve_domain(
     // extern func calls don't wire output ports correctly). Once NF-7 is resolved,
     // these callables should be converted to `extern func` declarations in DSL
     // and this shadow bridge path can be removed.
+    let _ = &kind; // used in debug_assertions block below; suppress release warning
     if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
         #[cfg(debug_assertions)]
         if matches!(kind, CallableKind::Fn | CallableKind::Func) {

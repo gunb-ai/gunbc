@@ -1,0 +1,52 @@
+// understanding/clippy.dag -- What is clippy? (Layer 1)
+//
+// Facts about clippy's spec. No policy decisions.
+// These are properties of the tool itself, not our choices.
+
+module understanding.clippy
+
+import std.lint { LintSource, LintRule }
+
+// Clippy's identity as a lint tool.
+type ClippySpec {
+  id: String
+  config_file: String
+  integration: String
+}
+
+data spec: ClippySpec = {
+  id: "clippy",
+  config_file: "clippy.toml",
+  integration: "cargo clippy"
+}
+
+// Clippy lint categories (facts from clippy documentation).
+type ClippyCategory {
+  name: String
+  default_level: String
+  description: String
+}
+
+data categories: List<ClippyCategory> = [
+  { name: "correctness",  default_level: "deny",  description: "Code that is outright wrong or useless" },
+  { name: "suspicious",   default_level: "warn",  description: "Code that is most likely wrong or useless" },
+  { name: "style",        default_level: "warn",  description: "Code that should be written in a more idiomatic way" },
+  { name: "complexity",   default_level: "warn",  description: "Code that does something simple but in a complex way" },
+  { name: "perf",         default_level: "warn",  description: "Code that can be written to run faster" },
+  { name: "pedantic",     default_level: "allow", description: "Lints which are rather strict or have occasional false positives" },
+  { name: "restriction",  default_level: "allow", description: "Lints which prevent the use of language and library features" },
+  { name: "nursery",      default_level: "allow", description: "New lints that are still under development" },
+  { name: "cargo",        default_level: "allow", description: "Lints for the cargo manifest" }
+]
+
+// Restriction lints relevant to boundary enforcement.
+data restriction_lints: List<LintRule> = [
+  { source: ToolPlugin, name: "unwrap_used",    category: "restriction" },
+  { source: ToolPlugin, name: "expect_used",    category: "restriction" },
+  { source: ToolPlugin, name: "todo",           category: "restriction" },
+  { source: ToolPlugin, name: "dbg_macro",      category: "restriction" },
+  { source: ToolPlugin, name: "panic",          category: "restriction" },
+  { source: ToolPlugin, name: "print_stdout",   category: "restriction" },
+  { source: ToolPlugin, name: "print_stderr",   category: "restriction" },
+  { source: ToolPlugin, name: "unimplemented",  category: "restriction" }
+]

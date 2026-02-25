@@ -1,0 +1,40 @@
+// understanding/http_clients.dag -- HTTP client API surfaces (Layer 2).
+//
+// Facts about ureq and reqwest HTTP client libraries.
+// Both provide access to the Network resource.
+
+module understanding.http_clients
+
+import std.lint { ApiSurfaceKind }
+
+type HttpOpKind = Request | ClientInit
+
+type HttpEntry {
+  path: String
+  kind: HttpOpKind
+  surface: ApiSurfaceKind
+  library: String
+}
+
+type ResourceGroup {
+  resource: String
+  entries: List<HttpEntry>
+}
+
+data groups: List<ResourceGroup> = [
+  {
+    resource: "Network",
+    entries: [
+      // ureq
+      { path: "ureq::request", kind: Request,    surface: Method, library: "ureq" },
+      { path: "ureq::get",     kind: Request,    surface: Method, library: "ureq" },
+      { path: "ureq::post",    kind: Request,    surface: Method, library: "ureq" },
+
+      // reqwest
+      { path: "reqwest::get",              kind: Request,    surface: Method, library: "reqwest" },
+      { path: "reqwest::blocking::get",    kind: Request,    surface: Method, library: "reqwest" },
+      { path: "reqwest::Client::new",      kind: ClientInit, surface: Method, library: "reqwest" },
+      { path: "reqwest::blocking::Client::new", kind: ClientInit, surface: Method, library: "reqwest" }
+    ]
+  }
+]

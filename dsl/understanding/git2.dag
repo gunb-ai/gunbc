@@ -1,0 +1,33 @@
+// understanding/git2.dag -- git2 crate API surface (Layer 2).
+//
+// Facts about the git2 crate (libgit2 bindings for Rust).
+// Provides access to the GitRepo resource.
+
+module understanding.git2
+
+import std.lint { ApiSurfaceKind }
+
+type GitOpKind = RepoOpen | RepoInit | RepoDiscover
+
+type GitEntry {
+  path: String
+  kind: GitOpKind
+  surface: ApiSurfaceKind
+}
+
+type ResourceGroup {
+  resource: String
+  entries: List<GitEntry>
+}
+
+data groups: List<ResourceGroup> = [
+  {
+    resource: "GitRepo",
+    entries: [
+      { path: "git2::Repository::open",      kind: RepoOpen,     surface: Method },
+      { path: "git2::Repository::open_bare",  kind: RepoOpen,     surface: Method },
+      { path: "git2::Repository::discover",   kind: RepoDiscover, surface: Method },
+      { path: "git2::Repository::init",       kind: RepoInit,     surface: Method }
+    ]
+  }
+]

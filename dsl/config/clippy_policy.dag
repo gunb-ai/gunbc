@@ -1,0 +1,57 @@
+// config/clippy_policy.dag -- Derived clippy policy (Layer 4).
+//
+// Composition: boundary rules (Layer 3) + understanding files (Layer 2)
+// are joined on the `restricted_resource == provides_resource` key.
+//
+// Phase 1: extern funcs in extern_impls.rs do the derivation in Rust.
+// Phase 2: pure DSL when lowerer supports multi-source filter/map.
+//
+// Import flow strictly downward: Layer 2 + Layer 3 -> here (Layer 4).
+
+module config.clippy_policy
+
+// Layer 3 — this repo's rules
+import config.arch_rules {
+  BoundaryRule,
+  Exemption,
+  DeadCodeAllowance,
+  boundary_rules,
+  exemptions,
+  dead_code_allowances,
+  pragma_allow_lints,
+  large_error_threshold
+}
+
+// Derivation output types.
+
+type DisallowedEntry {
+  path: String
+  reason: String
+  surface: String
+}
+
+type AllowlistEntry {
+  pattern: String
+  rationale: String
+}
+
+type LintPolicyOutput {
+  allow_dead_code: List<String>
+  allow_lints: List<String>
+}
+
+// Phase 1 extern funcs — Rust does derivation, DSL provides data.
+// These shadow fns are overridden by extern impls at resolve time.
+// Inputs are not yet wired from DSL data declarations (Phase 2).
+
+fn derive_clippy_toml() -> String {
+  ""
+}
+
+fn derive_disallowed_methods_allowlist() -> String {
+  ""
+}
+
+fn derive_pragma_lint_policy() -> String {
+  ""
+}
