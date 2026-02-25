@@ -1,5 +1,9 @@
 # Post PR1-PR5 Hardcoded Reduction Plan (Items 5-8)
 
+> **Update (2026-02-25)**: For the strict hard-error/no-fallback direction on items 5/7/8, see
+> [`domain-hard-error-no-fallback-plan.md`](./domain-hard-error-no-fallback-plan.md).
+> This document remains useful as historical context and broad workstream framing.
+
 ## Scope
 
 This document covers only the remaining items:

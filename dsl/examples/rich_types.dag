@@ -28,6 +28,8 @@
 //   - Refinement types + generics enable powerful automatic test generation
 //   - Types flow through deploy boundaries (serialization format selection)
 
+import infra.core { ObjectStorage }
+
 module examples.rich_types
 
 
@@ -174,7 +176,7 @@ fn sort_by_field<T, K: Comparable>(items: List<T>, key_fn: fn(T) -> K) -> List<T
 
 // Generic func: store any serializable value
 func store_value<T: Serializable>(key: String, value: T) -> { ok: Bool }
-  uses store: Storage
+  uses store: ObjectStorage
 {
   bytes = serialize(value: value) |> to_bytes()
   result = store.Put(key: key, value: bytes)
@@ -183,7 +185,7 @@ func store_value<T: Serializable>(key: String, value: T) -> { ok: Bool }
 
 // Generic func: load and deserialize
 func load_value<T: Serializable>(key: String) -> { value: Result<T, String> }
-  uses store: Storage
+  uses store: ObjectStorage
 {
   raw = store.Get(key: key)
   result = match raw.found {
@@ -279,7 +281,7 @@ func submit_review<M: Serializable>(
   artifact: ReviewArtifact<M>,
   reviewer: UserId
 ) -> { result: ReviewArtifact<M> }
-  uses store: Storage
+  uses store: ObjectStorage
 {
   updated = artifact with {
     status: InProgress(reviewer: reviewer, started_at: now())
