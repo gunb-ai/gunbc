@@ -491,7 +491,8 @@ impl LoweredOp {
             | Self::LoopUnpack { .. }
             | Self::LoopPack { .. }
             | Self::BranchMerge { .. }
-            | Self::UnsupportedPattern { .. } => ObligationCategory::None,
+            | Self::UnsupportedPattern { .. }
+            | Self::ExternCall { .. } => ObligationCategory::None,
     }
     }
 
@@ -506,7 +507,8 @@ impl LoweredOp {
             | Self::LoopUnpack { .. }
             | Self::LoopPack { .. }
             | Self::BranchMerge { .. }
-            | Self::UnsupportedPattern { .. } => None,
+            | Self::UnsupportedPattern { .. }
+            | Self::ExternCall { .. } => None,
         }
     }
 }
