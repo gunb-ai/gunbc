@@ -82,7 +82,8 @@
 | **FC-11** | **Collapse `service_prepare_ports()` match arms**: 4 near-identical arms (`Rest`, `Shell`, `File`, `Local`) each doing `spec.input_fields.iter().map(...)`. Add `ServiceOperationSpec::input_fields(&self) -> &[FieldSpec]` method. | -- | S | Planned |
 | **FC-12** | **Fix `WorkspaceBinary` enum alignment**: Hooks added `review-design` binary without updating enum. Add `ReviewDesign` variant to `gunbc-dag/src/binaries.rs`. | -- | S | **Done** |
 | **FC-13** | **Fix `workspace_crates()` count**: Removed 3 phantom crates (`lib/git-ops`, `lib/azure-ops`, `lib/markdown`) not in root Cargo.toml workspace members. | -- | S | **Done** |
-| **FC-14** | **Tonight note: compiler-wide no-dead-path emit variant**: Add a compile/codegen variant that prunes unused code paths and imports across generated outputs (Rust/Go/C) so strict `-D warnings` builds do not fail on dead emit branches. Include parity tests proving behavior is unchanged for live paths. | FC-1 | M | Planned |
+| **FC-14** | **Tonight note: compiler-wide no-dead-path emit variant (hardening pass)**: Add a compile/codegen variant that prunes unused code paths and imports across generated outputs (Rust/Go/C) so strict `-D warnings` builds do not fail on dead emit branches. Include parity tests proving behavior is unchanged for live paths. | FC-1 | M | Planned |
+| **FC-15** | **Next-night follow-up: make unused-path emission structurally impossible (design-first, hard requirement)**: Write and approve a design doc that makes “emit only reachable code” a compiler invariant. End state must be by-construction reachability in IR/backend contracts, not cleanup/pruning passes. Include: invariant spec, failure modes, proof obligations, migration plan, and contract tests. Then ship one flag-gated vertical slice that enforces the invariant for one target end-to-end. | FC-14 | L | Planned |
 
 ### Mega-lane dependency guide
 
@@ -93,6 +94,7 @@
 5. `FC-5 -> FC-6`
 6. `NF-2 -> FC-7 -> FC-8`
 7. `FC-4`, `FC-10`, `FC-11`, `FC-12`, `FC-13`, `FC-14` parallel.
+8. `FC-14 -> FC-15`
 
 ### Lane 1 files touched (aggregate)
 
