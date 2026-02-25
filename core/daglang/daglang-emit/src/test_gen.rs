@@ -11,7 +11,7 @@ use std::fmt::Write;
 
 use daglang_derive::TestObligations;
 use daglang_lower::LoweredOp;
-use gunbc_ir::{value_backing_for_type_id, Dag, ValueBacking};
+use gunbc_ir::{value_backing_for_type_id, ReachableDag, ValueBacking};
 
 use crate::computation::{classify_computation, Computation};
 use crate::EmittedFile;
@@ -65,7 +65,7 @@ pub fn emit_dry_run_completion_test(
 /// instead of flat "mock-response" strings. Each transport node produces a
 /// mock value derived from its output port type (TransportResponse, FileResponse,
 /// RestResponse, ShellResponse).
-pub fn emit_transport_mock_tests(backend: &str, dag: &Dag<LoweredOp>) -> Option<EmittedFile> {
+pub fn emit_transport_mock_tests(backend: &str, dag: &ReachableDag<LoweredOp>) -> Option<EmittedFile> {
     let mut transport_entries: Vec<(String, String)> = dag
         .nodes
         .iter()
@@ -508,7 +508,7 @@ pub fn emit_c_tests(spec: &TestSpec) -> String {
 mod tests {
     use super::*;
     use daglang_lower::{CallableKind, ObligationCategory};
-    use gunbc_ir::{Node, Port};
+    use gunbc_ir::{Dag, Node, Port};
 
     fn obligations(required: bool) -> TestObligations {
         TestObligations {
@@ -584,7 +584,7 @@ mod tests {
         assert!(emit_dry_run_completion_test("python", &obligations(true)).is_none());
     }
 
-    fn dag_with_transport_node() -> Dag<LoweredOp> {
+    fn dag_with_transport_node() -> ReachableDag<LoweredOp> {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
             "transport.node",
@@ -600,10 +600,10 @@ mod tests {
                 resource_target: None,
             },
         ));
-        dag
+        ReachableDag::from_dag(&dag)
     }
 
-    fn dag_without_transport_nodes() -> Dag<LoweredOp> {
+    fn dag_without_transport_nodes() -> ReachableDag<LoweredOp> {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
             "pure.node",
@@ -619,7 +619,7 @@ mod tests {
                 resource_target: None,
             },
         ));
-        dag
+        ReachableDag::from_dag(&dag)
     }
 
     #[test]

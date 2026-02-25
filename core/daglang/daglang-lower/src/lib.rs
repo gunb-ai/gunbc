@@ -1170,6 +1170,179 @@ fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
         || set.contains(canonical.rsplit('.').next().unwrap_or(canonical.as_str()))
 }
 
+/// Register stub transport triplets for interfaces that lack profile bindings (IS-4).
+///
+/// When compiling without a profile, interface capabilities still need transport
+/// triplets in the registry so `resolve_service_call_source` can find them. These
+/// stubs use `ServiceTransportClass::InterfaceStub` and are DryRun-compatible;
+/// real-mode execution will surface a "requires --profile" error at the resolver.
+fn add_interface_stub_transport_triplets(
+    builder: &mut DagBuilder,
+    project: &TypedProject,
+    stub_interfaces: &HashSet<String>,
+    registry: &mut ServiceEndpointRegistry,
+) {
+    if stub_interfaces.is_empty() {
+        return;
+    }
+
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::InterfaceDef(interface) = &item.node else {
+                continue;
+            };
+
+            if !is_bound_interface_type_name(stub_interfaces, &interface.name) {
+                continue;
+            }
+
+            for capability in &interface.capabilities {
+                let metadata = ServiceCallMetadata {
+                    service: interface.name.clone(),
+                    operation: capability.name.clone(),
+                    transport: ServiceTransportClass::InterfaceStub,
+                    idempotent: has_annotation(&capability.annotations, "idempotent"),
+                    readonly: has_annotation(&capability.annotations, "readonly"),
+                    permissions: vec![],
+                    spec: Some(ServiceOperationSpec::InterfaceStub {
+                        interface: interface.name.clone(),
+                        capability: capability.name.clone(),
+                    }),
+                    retry_policy: None,
+                };
+
+                let suffix = sanitize_identifier(&format!(
+                    "{module_name}_{}_{}",
+                    interface.name, capability.name
+                ));
+                let prepare_id = format!("prepare_transport_{suffix}");
+                let execute_id = format!("execute_transport_{suffix}");
+                let parse_id = format!("parse_transport_{suffix}");
+
+                // Prepare node: capability inputs → TransportRequest.
+                let prepare_ports = capability_prepare_ports(capability, &metadata);
+                let prepare_inputs = prepare_ports
+                    .iter()
+                    .map(|port| port.name.0.clone())
+                    .collect::<Vec<_>>();
+
+                builder.add_node(Node::opaque(
+                    prepare_id.clone(),
+                    prepare_ports,
+                    vec![Port::scalar("request", "TransportRequest")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::prepare::{}::{}",
+                            interface.name, capability.name
+                        ),
+                        obligation: ObligationCategory::ServiceTransportPrepare,
+                        service_metadata: Some(Box::new(metadata.clone())),
+                        is_interactive: false,
+                        resource_target: None,
+                    },
+                ));
+
+                // Execute node: TransportRequest → TransportResponse.
+                let execute_node = Node::opaque(
+                    execute_id.clone(),
+                    vec![Port::scalar("request", "TransportRequest")],
+                    vec![Port::scalar("response", "TransportResponse")],
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::execute::{}::{}",
+                            interface.name, capability.name
+                        ),
+                        obligation: ObligationCategory::ServiceTransportExecute,
+                        service_metadata: Some(Box::new(metadata.clone())),
+                        is_interactive: false,
+                        resource_target: None,
+                    },
+                )
+                .with_input_guard("request", Guard::NotEq(Value::Skipped));
+                builder.add_node(execute_node);
+
+                // Parse node: TransportResponse → capability outputs.
+                let parse_outputs = if capability.outputs.is_empty() {
+                    vec![Port::scalar("result", "Unit")]
+                } else {
+                    capability
+                        .outputs
+                        .iter()
+                        .map(|field| {
+                            let ty = type_expr_to_string(&field.ty);
+                            Port::with_cardinality(
+                                field.name.as_str(),
+                                ty.as_str(),
+                                Cardinality::ONE,
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                builder.add_node(Node::opaque(
+                    parse_id.clone(),
+                    vec![Port::scalar("response", "TransportResponse")],
+                    parse_outputs,
+                    LoweredOp::Callable {
+                        module: module_name.clone(),
+                        kind: CallableKind::Pattern,
+                        name: format!(
+                            "service_transport::parse::{}::{}",
+                            interface.name, capability.name
+                        ),
+                        obligation: ObligationCategory::ServiceTransportParse,
+                        service_metadata: Some(Box::new(metadata.clone())),
+                        is_interactive: false,
+                        resource_target: None,
+                    },
+                ));
+
+                // Wire the triplet: prepare → execute → parse.
+                builder.add_edge(
+                    prepare_id.as_str(),
+                    "request",
+                    execute_id.as_str(),
+                    "request",
+                );
+                builder.add_edge(
+                    execute_id.as_str(),
+                    "response",
+                    parse_id.as_str(),
+                    "response",
+                );
+
+                // Register endpoints under multiple keys for flexible resolution.
+                let parse_output = capability
+                    .outputs
+                    .first()
+                    .map(|field| field.name.clone())
+                    .unwrap_or_else(|| "result".to_string());
+                let endpoint = ServiceTransportEndpoint {
+                    parse: LoweredEndpoint {
+                        node_id: parse_id,
+                        primary_output: parse_output,
+                    },
+                    prepare_node_id: prepare_id,
+                    execute_node_id: execute_id,
+                    prepare_inputs,
+                    has_auth: false,
+                    metadata: Some(metadata),
+                };
+                let cap_key = format!("{}.{}", interface.name, capability.name);
+                registry.register(cap_key.clone(), endpoint.clone());
+                registry.register(
+                    format!("{module_name}.{cap_key}"),
+                    endpoint,
+                );
+            }
+        }
+    }
+}
+
 /// Wraps a `Dag` with O(1) deduplication tracking for nodes and edges.
 struct DagBuilder {
     dag: Dag<LoweredOp>,
@@ -1685,7 +1858,7 @@ fn lower_typed_project_with_callable_scope(
     }
 
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
-    let service_registry = if callable_modules.is_some() && active_profile.is_none() {
+    let mut service_registry = if callable_modules.is_some() && active_profile.is_none() {
         let required_service_calls = collect_required_service_call_keys(project, callable_modules);
         add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))
     } else {
@@ -1704,8 +1877,10 @@ fn lower_typed_project_with_callable_scope(
     let active_profile_bindings =
         resolve_active_profile_bindings(&profile_registry, active_profile)?;
     let profile_bound_interfaces = collect_profile_bound_interface_names(&profile_registry);
-    // IS-3: Instead of hard-erroring, collect interfaces needing stub transport.
-    let _stub_interfaces = interfaces_needing_stubs(project, active_profile, &profile_bound_interfaces);
+    // IS-3: Collect interfaces needing stub transport.
+    let stub_interfaces = interfaces_needing_stubs(project, active_profile, &profile_bound_interfaces);
+    // IS-4: Register stub transport triplets so resolve_service_call_source can find them.
+    add_interface_stub_transport_triplets(&mut builder, project, &stub_interfaces, &mut service_registry);
     let known_interface_types = collect_interface_type_names(project);
     add_service_call_edges(
         &mut builder,

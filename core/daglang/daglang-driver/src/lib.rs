@@ -22,7 +22,7 @@ use daglang_syntax::ast_utils::type_expr_to_string;
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions, TypedProject};
-use gunbc_ir::{Dag, ProgramSymbolId, TypeRegistry};
+use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -775,20 +775,24 @@ fn emit_with_options(
 ) -> Result<EmissionBundle, CompileError> {
     match (options.target, options.layer) {
         (CodegenTarget::Rust, CodegenLayer::Native) => {
-            emit_rust_bundle(dag, derived).map_err(|error| {
+            let reachable = ReachableDag::from_dag(dag);
+            emit_rust_bundle(&reachable, derived).map_err(|error| {
                 CompileError::from(format!("rust emit backend failed: {error}"))
             })
         }
         (CodegenTarget::Go, CodegenLayer::Native) => {
-            emit_go_bundle(dag, derived, extern_assets, &options.embedded_data)
+            let reachable = ReachableDag::from_dag(dag);
+            emit_go_bundle(&reachable, derived, extern_assets, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("go emit backend failed: {error}")))
         }
         (CodegenTarget::C, CodegenLayer::Native) => {
-            emit_c_bundle(dag, derived, extern_assets, &options.embedded_data)
+            let reachable = ReachableDag::from_dag(dag);
+            emit_c_bundle(&reachable, derived, extern_assets, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("c emit backend failed: {error}")))
         }
         (CodegenTarget::Mips, CodegenLayer::Native) => {
-            emit_mips_bundle(dag, derived, extern_assets, &options.embedded_data)
+            let reachable = ReachableDag::from_dag(dag);
+            emit_mips_bundle(&reachable, derived, extern_assets, &options.embedded_data)
                 .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}")))
         }
         (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {

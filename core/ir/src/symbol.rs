@@ -43,14 +43,23 @@ impl ProgramSymbolId {
         &self.0
     }
 
-    /// The module portion (before `::`) if present.
+    /// The module portion (before the last `::`) if present.
+    ///
+    /// Returns `None` for bare names like `"fetch_data"`.
+    /// Returns `Some("a::b")` for `"a::b::c"`.
     pub fn module(&self) -> Option<&str> {
-        self.0.split("::").next()
+        self.0.rsplit_once("::").map(|(m, _)| m)
     }
 
-    /// The name portion (after `::`) if present.
+    /// The name portion (after the last `::`) if present.
+    ///
+    /// Returns the full string for bare names: `"fetch_data"` → `Some("fetch_data")`.
+    /// Returns `Some("c")` for `"a::b::c"`.
     pub fn name(&self) -> Option<&str> {
-        self.0.split("::").nth(1)
+        self.0
+            .rsplit_once("::")
+            .map(|(_, n)| n)
+            .or(Some(self.0.as_str()))
     }
 }
 
@@ -86,6 +95,20 @@ mod tests {
         assert_eq!(sym.as_str(), "tools.makegen::render_makefile");
         assert_eq!(sym.module(), Some("tools.makegen"));
         assert_eq!(sym.name(), Some("render_makefile"));
+    }
+
+    #[test]
+    fn symbol_id_bare_name() {
+        let sym = ProgramSymbolId::new("fetch_data");
+        assert_eq!(sym.module(), None);
+        assert_eq!(sym.name(), Some("fetch_data"));
+    }
+
+    #[test]
+    fn symbol_id_multi_segment_module() {
+        let sym = ProgramSymbolId::new("std.resources.resource_lifecycle::acquire");
+        assert_eq!(sym.module(), Some("std.resources.resource_lifecycle"));
+        assert_eq!(sym.name(), Some("acquire"));
     }
 
     #[test]

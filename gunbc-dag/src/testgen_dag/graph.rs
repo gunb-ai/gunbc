@@ -96,7 +96,7 @@ pub fn build_testgen_graph_auto() -> Result<Dag<TestgenGraphOp>, BuilderError> {
                     profile_name: profile.name.clone(),
                     test_class: profile.test_class,
                     fermi_cost: gunbc_test::FermiCost::M,
-                    required_env: Vec::new(),
+                    required_env: profile.required_env.clone(),
                     required_any_of: Vec::new(),
                     dag_builder_call: format!(
                         "crate::dsl_builder::build_dsl_graph_with_profile(\"{}\", \"{}\").expect(\"profile graph should build\")",

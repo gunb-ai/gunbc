@@ -9,7 +9,7 @@
 //! - [`profiles_for_module`]: Filter profiles to those relevant to a module
 //!   based on its interface imports.
 
-use daglang_syntax::ast::Item;
+use daglang_syntax::ast::{Expr, Item, Literal};
 use gunbc_test::TestClass;
 use std::collections::HashSet;
 use std::path::Path;
@@ -26,6 +26,9 @@ pub struct DiscoveredProfile {
     /// Inferred test class: Hermetic for unit_test / test-containing names,
     /// Integration for everything else.
     pub test_class: TestClass,
+    /// Environment variables required by this profile (extracted from `env()` calls
+    /// in profile bind config entries).
+    pub required_env: Vec<String>,
 }
 
 /// Discover all profiles under `dsl_root/profiles/*.dag`.
@@ -78,12 +81,14 @@ pub fn discover_profiles(dsl_root: &Path) -> Vec<DiscoveredProfile> {
                     .collect();
 
                 let test_class = infer_test_class(&def.name);
+                let required_env = extract_env_vars(def);
 
                 profiles.push(DiscoveredProfile {
                     name: def.name.clone(),
                     module_path: module_path.clone(),
                     bound_interfaces,
                     test_class,
+                    required_env,
                 });
             }
         }
@@ -109,5 +114,60 @@ fn infer_test_class(profile_name: &str) -> TestClass {
         TestClass::Hermetic
     } else {
         TestClass::Integration
+    }
+}
+
+/// Extract all env var names from `env("VAR")` calls in a profile's bind config entries.
+fn extract_env_vars(profile: &daglang_syntax::ast::ProfileDef) -> Vec<String> {
+    let mut env_vars = Vec::new();
+    for bind in &profile.binds {
+        for (_key, expr) in &bind.config_entries {
+            collect_env_calls(expr, &mut env_vars);
+        }
+    }
+    env_vars.sort();
+    env_vars.dedup();
+    env_vars
+}
+
+/// Walk an expression tree and collect env var names from `env("VAR")` calls.
+fn collect_env_calls(expr: &Expr, env_vars: &mut Vec<String>) {
+    match expr {
+        Expr::Call(name, args) if name == "env" => {
+            if let [(None, Expr::Literal(Literal::String(var_name)))] = args.as_slice() {
+                env_vars.push(var_name.clone());
+            }
+        }
+        Expr::Call(_, args) | Expr::ServiceCall(_, args) => {
+            for (_, arg) in args {
+                collect_env_calls(arg, env_vars);
+            }
+        }
+        Expr::FieldAccess(base, _) | Expr::UnaryOp(_, base) => {
+            collect_env_calls(base, env_vars);
+        }
+        Expr::BinOp(lhs, _, rhs) | Expr::Pipe(lhs, rhs) | Expr::Guarded(lhs, rhs) => {
+            collect_env_calls(lhs, env_vars);
+            collect_env_calls(rhs, env_vars);
+        }
+        Expr::Record(_, fields) | Expr::Return(fields) => {
+            for (_, value) in fields {
+                collect_env_calls(value, env_vars);
+            }
+        }
+        Expr::If(cond, then_expr, else_expr) => {
+            collect_env_calls(cond, env_vars);
+            collect_env_calls(then_expr, env_vars);
+            if let Some(otherwise) = else_expr {
+                collect_env_calls(otherwise, env_vars);
+            }
+        }
+        Expr::List(items) => {
+            for item in items {
+                collect_env_calls(item, env_vars);
+            }
+        }
+        Expr::Literal(_) | Expr::Ident(_) | Expr::After(_, _) => {}
+        _ => {} // StringInterp, Match, For, Lambda, Map — rare in config entries
     }
 }

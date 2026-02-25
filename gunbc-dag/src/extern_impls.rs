@@ -108,7 +108,7 @@ impl Executable for BuildSnapshotContentOp {
             .and_then(Value::as_str_list)
             .unwrap_or_default();
 
-        let file_contents = extract_file_contents(&inputs);
+        let file_contents = extract_file_contents(&inputs)?;
 
         let mut sorted_files = files.clone();
         sorted_files.sort();
@@ -142,39 +142,39 @@ impl Executable for BuildSnapshotContentOp {
 
 /// Extract file content strings from inputs. Handles both `List<String>` and
 /// `List<Map{content: String}>` (the latter from transport parse outputs).
-fn extract_file_contents(inputs: &HashMap<String, Value>) -> Vec<String> {
+fn extract_file_contents(inputs: &HashMap<String, Value>) -> Result<Vec<String>, ExecError> {
     let Some(value) = inputs.get("file_contents") else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     match value {
-        Value::List(items) => items
-            .iter()
-            .enumerate()
-            .map(|(idx, item)| match item {
-                Value::Str(s) => s.clone(),
-                Value::Map(map) => match map.get("content").and_then(|v| v.as_str()) {
-                    Some(content) => content.to_string(),
-                    None => {
-                        format!(
-                            "[extract_file_contents] item[{idx}]: Map missing 'content' key (keys: {:?})",
-                            map.keys().collect::<Vec<_>>()
-                        )
+        Value::List(items) => {
+            let mut result = Vec::with_capacity(items.len());
+            for (idx, item) in items.iter().enumerate() {
+                match item {
+                    Value::Str(s) => result.push(s.clone()),
+                    Value::Map(map) => match map.get("content").and_then(|v| v.as_str()) {
+                        Some(content) => result.push(content.to_string()),
+                        None => {
+                            return Err(ExecError::new(format!(
+                                "extract_file_contents: item[{idx}]: Map missing 'content' key (keys: {:?})",
+                                map.keys().collect::<Vec<_>>()
+                            )));
+                        }
+                    },
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "extract_file_contents: item[{idx}]: unexpected value type {:?}",
+                            std::mem::discriminant(other)
+                        )));
                     }
-                },
-                other => {
-                    format!(
-                        "[extract_file_contents] item[{idx}]: unexpected value type {:?}",
-                        std::mem::discriminant(other)
-                    )
                 }
-            })
-            .collect(),
-        other => {
-            vec![format!(
-                "[extract_file_contents] expected List, got {:?}",
-                std::mem::discriminant(other)
-            )]
+            }
+            Ok(result)
         }
+        other => Err(ExecError::new(format!(
+            "extract_file_contents: expected List, got {:?}",
+            std::mem::discriminant(other)
+        ))),
     }
 }
 

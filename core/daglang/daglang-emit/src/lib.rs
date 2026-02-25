@@ -70,7 +70,7 @@ mod backend_harness;
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
 pub use daglang_lower::{extract_output_paths, extract_outputs_annotation};
-use gunbc_ir::{Dag, ProgramSymbolId};
+use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag};
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
 
@@ -260,8 +260,11 @@ impl CodegenBackend for RustBackend {
 }
 
 /// Emit a minimal Rust project bundle from lowered GraphIR and derived artifacts.
+///
+/// Accepts a `ReachableDag` to structurally enforce that only reachable nodes
+/// are emitted — the type system prevents access to unreachable code paths.
 pub fn emit_rust_bundle(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
 ) -> Result<EmissionBundle, EmitError> {
     let backend = RustBackend;
@@ -269,15 +272,7 @@ pub fn emit_rust_bundle(
     let mut callable_count = 0usize;
     let mut pipeline_count = 0usize;
 
-    // FC-14: Compute reachable nodes to prune dead paths from emitted code.
-    let reachable = compute_reachable_node_ids(dag);
-
     for node in &dag.nodes {
-        // FC-14: Skip unreachable nodes.
-        if !reachable.contains(&node.id.0) {
-            continue;
-        }
-
         let Some(op) = node.body.as_opaque() else {
             continue;
         };
@@ -367,7 +362,7 @@ pub fn emit_rust_bundle(
 
 /// Emit a minimal Go project bundle from lowered GraphIR and derived artifacts.
 pub fn emit_go_bundle(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
     required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
@@ -469,7 +464,7 @@ pub fn emit_go_bundle(
 
 /// Emit a minimal C project bundle from lowered GraphIR and derived artifacts.
 pub fn emit_c_bundle(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
     required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
@@ -558,7 +553,7 @@ pub fn emit_c_bundle(
 
 /// Emit a minimal MIPS assembly bundle from lowered GraphIR and derived artifacts.
 pub fn emit_mips_bundle(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
     required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
@@ -636,20 +631,13 @@ struct CollectedSymbol {
 }
 
 fn collect_symbols_with_metadata(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
 ) -> Result<(Vec<CollectedSymbol>, usize, usize), EmitError> {
     let mut symbols = Vec::new();
     let mut callable_count = 0usize;
     let mut pipeline_count = 0usize;
 
-    // FC-14: Only collect symbols for reachable nodes.
-    let reachable = compute_reachable_node_ids(dag);
-
     for node in &dag.nodes {
-        if !reachable.contains(&node.id.0) {
-            continue;
-        }
-
         let Some(op) = node.body.as_opaque() else {
             continue;
         };
@@ -929,7 +917,8 @@ mod tests {
     fn emit_rust_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_rust_bundle(&dag, &artifacts).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_rust_bundle(&reachable, &artifacts).expect("emit should succeed");
 
         assert_eq!(bundle.backend, "rust");
         assert_eq!(bundle.files.len(), 3);
@@ -963,9 +952,10 @@ mod tests {
     fn emit_go_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
         let required_assets = makegen_required_assets();
         let embedded_data = makegen_embedded_data();
-        let bundle = emit_go_bundle(&dag, &artifacts, &required_assets, &embedded_data)
+        let bundle = emit_go_bundle(&reachable, &artifacts, &required_assets, &embedded_data)
             .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "go");
@@ -992,9 +982,10 @@ mod tests {
     fn emit_c_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
         let required_assets = makegen_required_assets();
         let embedded_data = makegen_embedded_data();
-        let bundle = emit_c_bundle(&dag, &artifacts, &required_assets, &embedded_data)
+        let bundle = emit_c_bundle(&reachable, &artifacts, &required_assets, &embedded_data)
             .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "c");
@@ -1018,9 +1009,10 @@ mod tests {
     fn emit_mips_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
         let required_assets = makegen_required_assets();
         let embedded_data = makegen_embedded_data();
-        let bundle = emit_mips_bundle(&dag, &artifacts, &required_assets, &embedded_data)
+        let bundle = emit_mips_bundle(&reachable, &artifacts, &required_assets, &embedded_data)
             .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "mips");
@@ -1255,7 +1247,8 @@ mod tests {
     fn go_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_go_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
             .expect("emit should succeed");
 
         let main_go = bundle
@@ -1310,7 +1303,8 @@ mod tests {
     fn go_bundle_imports_transport_packages() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_go_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
             .expect("emit should succeed");
 
         let main_go = bundle
@@ -1339,7 +1333,8 @@ mod tests {
     fn c_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_c_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_c_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
             .expect("emit should succeed");
 
         let main_c = bundle
@@ -1384,7 +1379,8 @@ mod tests {
     fn mips_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_mips_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_mips_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
             .expect("emit should succeed");
 
         let main_s = bundle
@@ -1428,12 +1424,13 @@ mod tests {
     fn all_backends_emit_same_number_of_service_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
 
-        let go_bundle = emit_go_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+        let go_bundle = emit_go_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
             .expect("go emit");
-        let c_bundle = emit_c_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+        let c_bundle = emit_c_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
             .expect("c emit");
-        let mips_bundle = emit_mips_bundle(&dag, &artifacts, &BTreeSet::new(), &HashMap::new())
+        let mips_bundle = emit_mips_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
             .expect("mips emit");
 
         // All should report the same callable count.
