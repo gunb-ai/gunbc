@@ -355,10 +355,39 @@ zero manual MockSpec.
 
 ## Recent Additions (2026-02)
 
-### MockSpec Requirement
+### Auto-Generation from Types + DAG Structure (Primary Model)
 
-DAGs with transport nodes now **require** a MockSpec. The testgen panics if a DAG
-has transport executors but no MockSpec is provided:
+As of 2026-02, testgen uses **auto-discovery** as its primary model. Every
+compilable `.dag` file (any file with `func` items) gets full testgen treatment
+with zero manual input:
+
+```
+discover_compilable_modules(dsl/) → compile → auto_mock_spec() → generate_target()
+```
+
+- `auto_mock_spec(dag, name)` generates a complete `MockSpec` from DAG
+  structure + types alone — no inline `test` blocks, no `#[testgen_target]`
+  annotations, no manual fixtures.
+- `generate_target(config, dag, spec)` emits Rust test code from the
+  auto-generated MockSpec.
+- `build_testgen_graph_auto()` is the registered testgen builder. It discovers
+  all compilable modules and creates content upsert chains for each.
+
+**Inline test blocks** (in `.dag` files) are optional overrides — they layer
+fixture-specific mocks and assertions on top of auto-generated defaults.
+`#[testgen_target]` inventory registrations are also optional; auto-discovery
+supersedes them for all compilable modules.
+
+**Coverage**: 21 of 30 compilable modules generate tests automatically. The
+remaining 9 are skipped due to pre-existing DSL resolver/lowerer gaps (missing
+operation specs, interface binding requiring profiles, typecheck errors). Once
+those gaps close, those modules will automatically get tests too.
+
+### MockSpec Requirement (Safety Net)
+
+DAGs with transport nodes still **require** a MockSpec when using `TestGenerator`
+directly. The auto-discovery path always provides one via `auto_mock_spec()`, so
+this panic is unreachable through the standard pipeline:
 
 ```rust
 // In TestGenerator::generate_test_module()
@@ -366,8 +395,6 @@ if !analysis.transport_executors.is_empty() && self.mock_spec.is_none() {
     panic!("DAG '{}' has transport nodes but no MockSpec provided", module_name);
 }
 ```
-
-This ensures all transport boundaries have proper mock values defined.
 
 ### NodeExample / OutputMatcher
 
@@ -403,11 +430,14 @@ MockSpec::new("llm")
     )
 ```
 
-### Testgen Registry Auto-Discovery
+### Testgen Registry (Legacy, Superseded by Auto-Discovery)
 
-DAGs register themselves via `#[testgen_target(...)]` on each `MockSpec`.
-The proc-macro submits a `TestgenTarget` into an `inventory` registry
-(`core/testgen-registry`), and the testgen binary iterates that registry.
+> **Note**: The inventory-based registry is superseded by auto-discovery
+> (`build_testgen_graph_auto`). New modules do NOT need `#[testgen_target]`
+> registrations — auto-discovery generates tests for all compilable `.dag` files.
+
+DAGs can optionally register via `#[testgen_target(...)]` for custom generate
+functions or override behavior:
 
 ```rust
 #[gunbc_testgen_registry_macros::testgen_target(
@@ -420,9 +450,6 @@ The proc-macro submits a `TestgenTarget` into an `inventory` registry
 )]
 pub fn ci_mock_spec() -> MockSpec { ... }
 ```
-
-The testgen binary uses `iter_targets()` and generates from each registered
-target; there is no manual list to maintain.
 
 ### Makefile Integration
 

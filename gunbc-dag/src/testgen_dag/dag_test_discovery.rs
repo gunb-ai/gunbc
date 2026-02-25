@@ -682,7 +682,6 @@ mod tests {
         assert!(call.contains("build_dsl_graph"));
         assert!(call.contains("unknown.dag"));
     }
-}
 
     #[test]
     fn comprehensive_auto_testgen_pipeline_validation() {
@@ -779,3 +778,4 @@ mod tests {
             );
         }
     }
+}

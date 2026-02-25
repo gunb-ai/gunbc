@@ -809,10 +809,7 @@ impl Executable for GenericFilePrepareOp {
             .get("path")
             .and_then(Value::as_str)
             .ok_or_else(|| {
-                ExecError::new(format!(
-                    "GenericFilePrepare: missing required `path` input (path value: {:?})",
-                    inputs.get("path")
-                ))
+                ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
             })?;
         let request = match self.spec.operation.as_str() {
             "READ" => FileRequest::read(path),

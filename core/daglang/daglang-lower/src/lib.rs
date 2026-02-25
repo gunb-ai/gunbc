@@ -2976,7 +2976,7 @@ fn add_control_flow_pattern_nodes(
             &body_transports,
         );
         let loop_node = LoopBuilder::new(node_id.clone())
-            .with_input("items", "Any", Cardinality::ZERO_OR_MORE)
+            .with_input("items", "Any", Cardinality::ONE)
             .with_element(&site.element_var, "Any")
             .with_body(body_dag)
             .with_output("result", "Any")

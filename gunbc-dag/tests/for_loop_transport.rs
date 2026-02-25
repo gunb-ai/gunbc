@@ -129,23 +129,6 @@ fn for_loop_fs_read_returns_file_content_not_path() {
     // Build input mocks for entrypoints from the auto-mock spec.
     let input_mocks = {
         let lowered = lower(&dag).expect("lower for entrypoint detection");
-
-        // DIAG: check if loop pattern was detected
-        eprintln!("DIAG: lowered.loops.len() = {}", lowered.loops.len());
-        for li in &lowered.loops {
-            eprintln!("  loop: unpack={} pack={} element_port={}", li.unpack_id.0, li.pack_id.0, li.element_port);
-        }
-        // DIAG: check if prepare_body_t0 is in the outer lowered DAG
-        let has_body_t0 = lowered.dag.nodes.iter().any(|n| n.id.0.contains("prepare_body_t0"));
-        eprintln!("DIAG: prepare_body_t0 in outer DAG? {has_body_t0}");
-        if has_body_t0 {
-            for n in &lowered.dag.nodes {
-                if n.id.0.contains("body_t0") || n.id.0.contains("body_op") {
-                    eprintln!("  OUTER node: {}", n.id.0);
-                }
-            }
-        }
-
         let entrypoints = gunbc_ir::detect_entrypoints(&lowered.dag);
         let boundary = spec.to_boundary_mocks();
         let mut mocks = gunbc_exec::BoundaryMocks::new();
