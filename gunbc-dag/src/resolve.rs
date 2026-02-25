@@ -669,6 +669,10 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
         LoweredOp::BranchMerge { output_port } => Ok(DynOp::new(PatternOp::BranchMerge {
             output_port: output_port.clone(),
         })),
+        LoweredOp::UnsupportedPattern { name } => Err(ResolveError {
+            node_id: node_id.to_string(),
+            reason: format!("unsupported pattern `{name}` — not yet implemented in daglang lowering"),
+        }),
     }
 }
 
@@ -2061,6 +2065,24 @@ mod tests {
             handle_port.cardinality,
             Cardinality::ZERO_OR_MORE,
             "release resource_handle input should accept fan-in without scalar conflicts"
+        );
+    }
+
+    #[test]
+    fn resolve_unsupported_pattern_returns_error_not_panic() {
+        let node = Node::opaque(
+            "unsupported_retry",
+            vec![],
+            vec![],
+            LoweredOp::UnsupportedPattern {
+                name: "RetryController".to_string(),
+            },
+        );
+        let err = resolve_node(&node).expect_err("unsupported pattern should return error");
+        assert!(
+            err.reason.contains("unsupported pattern `RetryController`"),
+            "error should name the unsupported pattern: {}",
+            err.reason
         );
     }
 }

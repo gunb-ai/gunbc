@@ -72,6 +72,11 @@ pub enum LoweredOp {
     BranchMerge {
         output_port: String,
     },
+    /// A pattern operation that is not yet supported in daglang lowering.
+    /// Produces a structured error at resolution time instead of panicking.
+    UnsupportedPattern {
+        name: String,
+    },
 }
 
 impl From<PatternOp> for LoweredOp {
@@ -88,24 +93,26 @@ impl From<PatternOp> for LoweredOp {
             PatternOp::BranchMerge { output_port } => LoweredOp::BranchMerge { output_port },
             // Exhaustive arms for patterns not yet supported in daglang lowering.
             // Explicit match ensures compile-time failure when new variants are added.
-            PatternOp::RetryController { .. } => {
-                panic!("RetryController pattern not yet supported in daglang lowering")
-            }
-            PatternOp::RetryCollector { .. } => {
-                panic!("RetryCollector pattern not yet supported in daglang lowering")
-            }
-            PatternOp::WhileInit { .. } => {
-                panic!("WhileInit pattern not yet supported in daglang lowering")
-            }
-            PatternOp::WhileController { .. } => {
-                panic!("WhileController pattern not yet supported in daglang lowering")
-            }
-            PatternOp::PollTimer { .. } => {
-                panic!("PollTimer pattern not yet supported in daglang lowering")
-            }
-            PatternOp::PollCollector { .. } => {
-                panic!("PollCollector pattern not yet supported in daglang lowering")
-            }
+            // Each produces a structured `UnsupportedPattern` node that errors at
+            // resolution time instead of panicking at lowering time.
+            PatternOp::RetryController { .. } => LoweredOp::UnsupportedPattern {
+                name: "RetryController".to_string(),
+            },
+            PatternOp::RetryCollector { .. } => LoweredOp::UnsupportedPattern {
+                name: "RetryCollector".to_string(),
+            },
+            PatternOp::WhileInit { .. } => LoweredOp::UnsupportedPattern {
+                name: "WhileInit".to_string(),
+            },
+            PatternOp::WhileController { .. } => LoweredOp::UnsupportedPattern {
+                name: "WhileController".to_string(),
+            },
+            PatternOp::PollTimer { .. } => LoweredOp::UnsupportedPattern {
+                name: "PollTimer".to_string(),
+            },
+            PatternOp::PollCollector { .. } => LoweredOp::UnsupportedPattern {
+                name: "PollCollector".to_string(),
+            },
         }
     }
 }

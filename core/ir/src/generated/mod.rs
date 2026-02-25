@@ -358,7 +358,7 @@ pub fn span_width(span: Span, tier: Tier) -> i64 {
         text_w
     }
     Some(sym) => {
-        text_w + string_display_width(resolve_symbol(sym, tier))
+        text_w + string_display_width(resolve_symbol(sym, tier).to_string())
     }
 }
 }
