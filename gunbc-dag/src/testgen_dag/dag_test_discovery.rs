@@ -24,7 +24,7 @@ use gunbc_test::{
     BoundaryMock, ExpectedOutput, LiveExpectedOutput, MockSpec, OutputMatcher, TransportMock,
 };
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use super::mock_interpreter::{interpret_expr, is_transport_response};
@@ -42,6 +42,8 @@ pub struct CompilableModule {
     pub func_count: usize,
     /// Whether the module has inline `test` blocks.
     pub has_test_blocks: bool,
+    /// Interface type names imported via `import interfaces.*`.
+    pub interface_imports: HashSet<String>,
     /// Whether the module imports from `interfaces.*` (requires `--profile` to compile).
     pub requires_profile: bool,
 }
@@ -116,16 +118,30 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             .iter()
             .any(|item| matches!(item.node, daglang_syntax::ast::Item::TestDef(_)));
 
-        // Modules that import from `interfaces.*` use profile-bound service
-        // interfaces and cannot be compiled without `--profile <name>`.
-        let requires_profile = ast.imports.iter().any(|import| {
-            import
-                .node
-                .path
-                .segments
-                .first()
-                .is_some_and(|s| s == "interfaces")
-        });
+        // Collect interface type names from `import interfaces.*` statements.
+        let interface_imports: HashSet<String> = ast
+            .imports
+            .iter()
+            .filter(|import| {
+                import
+                    .node
+                    .path
+                    .segments
+                    .first()
+                    .is_some_and(|s| s == "interfaces")
+            })
+            .flat_map(|import| {
+                import
+                    .node
+                    .bindings
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .cloned()
+            })
+            .collect();
+
+        let requires_profile = !interface_imports.is_empty();
 
         // Build relative path from dsl root
         let rel_path = path
@@ -144,6 +160,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             module_name,
             func_count,
             has_test_blocks,
+            interface_imports,
             requires_profile,
         });
     }
@@ -643,6 +660,7 @@ mod tests {
             module_name: "tools.makegen".to_string(),
             func_count: 1,
             has_test_blocks: true,
+            interface_imports: HashSet::new(),
             requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
@@ -671,6 +689,7 @@ mod tests {
             module_name: "nonexistent.fake".to_string(),
             func_count: 1,
             has_test_blocks: false,
+            interface_imports: HashSet::new(),
             requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
