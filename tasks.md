@@ -31,7 +31,7 @@ Wk 7-9  │ FC-P8 (anemic)  │               │ SDLC-7 (verify)  │
 SDLC-1:6 can start immediately (no foundation dependency).
 FC-P6 and FC-P7 run in parallel after FC-NF7.
 FC-CF runs in parallel with P6/P7.
-FC-P8 requires FC-P6 + FC-P7 + FC-CF.
+FC-P8 requires FC-P6 + FC-P7 + FC-CF (split, zip, recursion at minimum).
 
 ---
 
@@ -117,7 +117,7 @@ Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 5.
 
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
-| FC-P8-a | Tree rendering in pure DSL (DirEntry recursive type, build_dir_entries, flatten_entries, render_tree). Delete RenderTreeOp. | L | Pending | FC-CF1:6 |
+| FC-P8-a | Tree rendering in pure DSL (DirEntry recursive type, build_dir_entries, flatten_entries, render_tree). Delete RenderTreeOp. | L | Pending | FC-CF1, FC-CF5, FC-CF6 |
 | FC-P8-b | Snapshot content as MarkdownDoc. Delete BuildSnapshotContentOp. | M | Pending | FC-CF7, FC-P8-a |
 | FC-P8-c | Delete extern_impls.rs, resolve_extern_call(), all_extern_symbols(), lookup_extern_impl(). Zero `extern func` in any .dag file. | S | Pending | FC-P8-a, FC-P8-b |
 

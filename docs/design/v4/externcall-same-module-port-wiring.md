@@ -138,6 +138,100 @@ Lowering should include:
 5. Resolver unit: lowered extern symbol still resolves/fails with existing
    `resolve_extern_call` contract.
 
+## Cleanup Impact
+
+NF-7 is the single gating dependency for eliminating the shadow bridge mechanism
+across the entire codebase. Everything below becomes possible once NF-7 lands.
+
+### Shadow bridges deleted (3 active)
+
+These DSL `fn` items have placeholder bodies that are silently overridden by Rust
+extern impls at resolve time. NF-7 converts them to honest `extern func` declarations.
+
+| Module | fn name | DSL body | Rust impl | What changes |
+|--------|---------|----------|-----------|--------------|
+| tools.gist | build_snapshot_content | `"{branch}"` (placeholder) | BuildSnapshotContentOp — full markdown doc | `fn` → `extern func`, delete placeholder body |
+| tools.bootstrap | render_bootstrap_makefile | partial DSL scaffold | GenerateBootstrapMakefileOp — ignores inputs, calls full makegen | `fn` → `extern func`, delete scaffold body |
+| tools.bootstrap | render_bootstrap_gitignore | partial DSL scaffold | GenerateBootstrapGitignoreOp — ignores inputs, calls full gitignore | `fn` → `extern func`, delete scaffold body |
+
+### Pragma dual-truth resolved (3 fns)
+
+These DSL `fn` items have *real* working bodies AND Rust extern impls registered
+in extern_impls.rs. The Rust impl silently overrides the DSL body at resolve time
+(Step 4 wins over Step 5). Both implementations exist, one runs, the other is dead
+code that looks alive.
+
+| Module | fn name | DSL body | Rust impl | What changes |
+|--------|---------|----------|-----------|--------------|
+| tools.pragma | render_clippy_toml | real: `render_document(render_clippy_toml_document(...))` | RenderClippyTomlOp | Delete Rust impl (DSL body is correct), OR convert to `extern func` |
+| tools.pragma | render_disallowed_methods_allowlist | real: `render_document(render_disallowed_methods_allowlist_document(...))` | RenderAllowlistOp | Same choice |
+| tools.pragma | render_pragma_lint_policy | real: `render_document(render_pragma_lint_policy_document(...))` | RenderLintPolicyOp | Same choice |
+
+For pragma: the ideal outcome is to **delete the Rust impls** and let the DSL bodies
+execute. NF-7 makes this possible because the DSL bodies call helper fns in the same
+module — those calls need correct same-module wiring to work.
+
+### Resolver simplification
+
+Once all shadow bridges are converted, resolve_domain() Step 4 (`extern_impls::
+lookup_extern_impl()` for `Callable` nodes) becomes dead code:
+
+```
+Before NF-7:
+  resolve_op(Callable) → resolve_domain() → Step 4: extern_impls lookup → Step 5: passthrough
+  resolve_op(ExternCall) → resolve_extern_call() → hard fail
+
+After NF-7:
+  resolve_op(Callable) → resolve_domain() → Step 5: passthrough (only DSL-body callables)
+  resolve_op(ExternCall) → resolve_extern_call() → hard fail (all extern resolution)
+```
+
+Deletable after NF-7 cleanup:
+- `resolve_domain()` Step 4 (extern_impls lookup for Callable nodes)
+- Shadow bridge detection (`#[cfg(debug_assertions)]` eprintln)
+- The `kind: CallableKind` parameter added to resolve_domain (no longer needed
+  for shadow bridge detection)
+
+### classify_handler() TODO(NF-5) closed
+
+The obligation-gated passthrough in `classify_handler()` has TODO(NF-5) markers on
+`PureRender` and `PureDataLoad` obligations. Once NF-7 converts these callables:
+- PureRender/PureDataLoad callables become `ExternCall` nodes → skip classify_handler
+  entirely (line 334: `LoweredOp::ExternCall => return None`)
+- OR become pure DSL with SubDag bodies → skip classify_handler entirely
+  (line 227: `NodeBody::SubDag(_) => continue`)
+
+Either way, the PureRender/PureDataLoad passthrough arms become unreachable and can
+be deleted, tightening classify_handler to only structural passthroughs (None,
+PureGeneric, resource/service obligations).
+
+### Deletion summary
+
+| What | ~Lines deleted | Condition |
+|------|---------------|-----------|
+| 3 shadow fn placeholder bodies in DSL | 30 | Immediate after NF-7 |
+| 3 pragma extern impls (or 3 pragma DSL bodies, one or the other) | 60-80 | Immediate after NF-7 |
+| resolve_domain() Step 4 + shadow bridge detection | 15 | After all shadow→extern conversions |
+| classify_handler PureRender/PureDataLoad arms + TODO comments | 10 | After all conversions |
+| **Total resolver/emit cleanup** | **~120** | |
+
+This is in addition to the ~1,850 lines from FC-P6/P7/P8 that NF-7 gates.
+
+### Risk without NF-7
+
+Every day shadow bridges exist:
+- **Silent override**: Rust impl runs, DSL body is dead code that looks alive.
+  Changes to the DSL body have zero effect. No test catches this.
+- **Pragma dual-truth**: Two implementations, only one executes. If someone
+  fixes a bug in the DSL render_clippy_toml, the fix doesn't ship.
+- **Fail-open resolution**: Callable resolution falls through to passthrough
+  (Step 5) for any callable without an extern impl, including typos and
+  deleted callables. ExternCall resolution is fail-closed. Converting to
+  extern func moves callables to the fail-closed path.
+- **Audit opacity**: `extern_impls.rs` has 9 entries. Without NF-7, you can't
+  tell which are honest externs vs shadow bridges without reading both the
+  DSL and Rust code for each.
+
 ## Rollout
 
 1. Land typed-signature + lowerer endpoint changes and tests.
