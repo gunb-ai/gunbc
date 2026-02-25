@@ -7789,6 +7789,7 @@ func run() -> { body: String } {
     }
 
     #[test]
+    /// IS-3: Compilation without --profile now succeeds with stub interfaces.
     fn interface_bound_service_call_requires_active_profile() {
         let typed = typed_project_from_sources(&[(
             "dsl/profiles/interface_binding.dag",
@@ -7815,17 +7816,13 @@ func run() -> { ok: Bool } uses issues: IssueProvider {
 }"#,
         )]);
 
-        let error = lower_typed_project(&typed).expect_err("lowering should require --profile");
-        assert!(matches!(
-            error,
-            LowerError::ProfileRequiredForBoundServiceCall {
-                caller,
-                binding,
-                interface_type,
-            } if caller == "sample.profile::run"
-                && binding == "issues"
-                && interface_type == "IssueProvider"
-        ));
+        // IS-3: No-profile compilation succeeds with stub transport.
+        let dag = lower_typed_project(&typed)
+            .expect("lowering without profile should succeed with stub interfaces (IS-3)");
+        assert!(
+            !dag.nodes.is_empty(),
+            "lowered DAG should contain nodes with stub transport"
+        );
     }
 
     #[test]
@@ -8092,6 +8089,7 @@ func caller(id: String) -> { ok: Bool }
     }
 
     #[test]
+    /// IS-3: Pipeline compilation without --profile now succeeds with stub interfaces.
     fn pipeline_stage_bound_service_call_requires_active_profile() {
         let typed = typed_project_from_sources(&[(
             "dsl/profiles/pipeline_interface_binding.dag",
@@ -8119,17 +8117,13 @@ pipeline sdlc uses issues: IssueProvider {
 }"#,
         )]);
 
-        let error = lower_typed_project(&typed).expect_err("lowering should require --profile");
-        assert!(matches!(
-            error,
-            LowerError::ProfileRequiredForBoundServiceCall {
-                caller,
-                binding,
-                interface_type,
-            } if caller == "sample.profile::sdlc"
-                && binding == "issues"
-                && interface_type == "IssueProvider"
-        ));
+        // IS-3: No-profile compilation succeeds with stub transport.
+        let dag = lower_typed_project(&typed)
+            .expect("pipeline lowering without profile should succeed with stubs (IS-3)");
+        assert!(
+            !dag.nodes.is_empty(),
+            "lowered DAG should contain pipeline nodes with stub transport"
+        );
     }
 
     #[test]
@@ -8331,18 +8325,13 @@ func run() -> {
 }"#,
         )]);
 
-        let missing_profile = lower_typed_project(&typed)
-            .expect_err("lowering should require profile for bound core interfaces");
-        assert!(matches!(
-            missing_profile,
-            LowerError::ProfileRequiredForBoundServiceCall {
-                caller,
-                binding,
-                interface_type,
-            } if caller == "sample.bindings::run"
-                && binding == "issues"
-                && interface_type == "IssueProvider"
-        ));
+        // IS-3: No-profile compilation succeeds with stub transport.
+        let stub_dag = lower_typed_project(&typed)
+            .expect("lowering without profile should succeed with stubs (IS-3)");
+        assert!(
+            !stub_dag.nodes.is_empty(),
+            "lowered DAG should contain nodes with stub transport"
+        );
 
         let dag = lower_typed_project_with_profile(&typed, Some("unit_test"))
             .expect("lowering should resolve all core interface bindings via profile");
