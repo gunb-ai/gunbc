@@ -27,8 +27,8 @@
 use std::collections::HashMap;
 
 use daglang_lower::{
-    CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
-    ServiceCallMetadata, ServiceOperationSpec,
+    CallableKind, CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral,
+    PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
@@ -694,9 +694,10 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
         LoweredOp::Callable {
             module,
             name,
+            kind,
             service_metadata,
             ..
-        } => resolve_domain(node_id, module, name, outputs, service_metadata.as_deref()),
+        } => resolve_domain(node_id, module, name, *kind, outputs, service_metadata.as_deref()),
         LoweredOp::LoopUnpack {
             input_port,
             element_port,
@@ -759,6 +760,7 @@ fn resolve_domain(
     node_id: &str,
     module: &str,
     name: &str,
+    kind: CallableKind,
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
@@ -791,14 +793,32 @@ fn resolve_domain(
         }
     }
     // 4. Extern impl lookup — DSL `extern func` items resolved to Rust ops.
+    //
+    // Shadow bridge detection: if an extern impl exists for a Fn/Func callable,
+    // the Rust impl silently overrides whatever DSL body the callable has.
+    // This is a documented workaround for a lowerer limitation (NF-7: same-module
+    // extern func calls don't wire output ports correctly). Once NF-7 is resolved,
+    // these callables should be converted to `extern func` declarations in DSL
+    // and this shadow bridge path can be removed.
     if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
+        #[cfg(debug_assertions)]
+        if matches!(kind, CallableKind::Fn | CallableKind::Func) {
+            eprintln!(
+                "resolve: shadow bridge {module}::{name} (kind={kind:?}) — \
+                 Rust extern impl overrides DSL callable body"
+            );
+        }
         return Ok(op);
     }
     // 5. Default: identity callable for compiler-validated callables.
     //
-    // DSL fn items with bodies are legitimate passthrough operations
-    // (the compiler validated them). The fn body's SubDag executes
-    // the DSL-defined logic.
+    // All LoweredOp::Callable nodes are produced by the DSL compiler (the
+    // lowerer only emits Callable for items in the typed project). The
+    // callable's logic is wired as separate nodes/edges in the DAG; this
+    // wrapper node maps SubDag results to output ports via passthrough.
+    //
+    // ExternCall nodes (from `extern func` declarations) use
+    // resolve_extern_call() which is fail-closed — no passthrough fallback.
     Ok(DynOp::new(DeclaredOutputCallableOp {
         output_port_names: declared_output_names(outputs),
     }))
@@ -2255,6 +2275,30 @@ mod tests {
             err.reason.contains("unsupported pattern `RetryController`"),
             "error should name the unsupported pattern: {}",
             err.reason
+        );
+    }
+
+    /// Shadow bridge: a Callable (DSL fn body) that has a Rust extern impl.
+    /// The extern impl wins at resolution (Step 4 > Step 5). This test
+    /// documents the behavior. When NF-7 lands (same-module extern func
+    /// wiring), these callables should become ExternCall nodes and this
+    /// shadow bridge pattern should be eliminated.
+    #[test]
+    fn resolve_shadow_bridge_callable_uses_extern_impl_not_passthrough() {
+        // tools.pragma::render_clippy_toml has a Rust extern impl.
+        // When it appears as a Callable (fn body), the extern impl wins.
+        let node = callable_node(
+            "render_clippy_toml",
+            "tools.pragma",
+            "render_clippy_toml",
+            ObligationCategory::PureRender,
+        );
+        let result =
+            resolve_node(&node).expect("shadow bridge callable should resolve to extern impl");
+        let debug = format!("{result:?}");
+        assert!(
+            debug.contains("RenderClippyTomlOp"),
+            "should resolve to RenderClippyTomlOp (extern impl), not DeclaredOutputCallableOp: {debug}"
         );
     }
 }

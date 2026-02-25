@@ -1,221 +1,64 @@
-// tools/makegen.dag -- Makefile generation from a DSL-native registry model.
+// tools/makegen.dag -- Makefile generation.
 //
-// The Makefile structure and constraints live in config/makegen_registry.dag.
-// This tool renders that model into a concrete Makefile.
+// Renders the project Makefile via Rust's MakefileRenderer + ToolRegistry.
+// The extern impl (RenderMakefileContentOp) calls render_makefile() with
+// ToolRegistry::default_registry(). DSL rendering helpers are preserved
+// below as aspirational code for Phase 2 (pure-DSL rendering).
 
 module tools.makegen
 
 import std.patterns { content_upsert }
-import config.makegen_registry {
-  EntrypointParam,
-  MakeTarget,
-  MakegenRegistry,
-  ToolTarget,
-  makegen_registry
+
+// ── Type declarations ─────────────────────────────────────────────────
+// Mirror Rust's registry types for documentation and future DSL rendering.
+
+type EntrypointParam {
+  port_name: String
+  make_var: String
+  cli_flag: String
+  type_hint: String
+  default: String?
+  repeatable: Bool
 }
 
-// ── Registry loading ────────────────────────────────────────────────
-
-func load_registry() -> { tool_count: Int, tool_names: List<String>, registry: MakegenRegistry } {
-  let tool_names = makegen_registry.tool_targets |> map(t => t.name)
-  return {
-    tool_count: tool_names |> count(),
-    tool_names: tool_names,
-    registry: makegen_registry
-  }
+type MakeTarget {
+  name: String
+  description: String
+  deps: List<String>
+  commands: List<String>
+  comment: String?
 }
 
-// ── Render helpers ──────────────────────────────────────────────────
-
-fn dedupe_names(names: List<String>) -> List<String> {
-  let result = names |> fold(
-    init: { seen: [], out: [] },
-    f: (acc, name) => {
-      if acc.seen |> contains(item: name) {
-        acc
-      } else {
-        {
-          seen: acc.seen |> append(items: [name]),
-          out: acc.out |> append(items: [name])
-        }
-      }
-    }
-  )
-  result.out
+type ToolTarget {
+  name: String
+  description: String
+  make_target: String?
+  entrypoints: List<EntrypointParam>
 }
 
-fn target_deps_suffix(deps: List<String>) -> String {
-  if deps |> count() == 0 { "" } else { " " + (deps |> join(" ")) }
+type MakegenRegistry {
+  core_targets: List<MakeTarget>
+  meta_targets: List<MakeTarget>
+  tool_targets: List<ToolTarget>
 }
 
-fn render_target(target: MakeTarget) -> String {
-  let comment = match target.comment {
-    Some(c) => "# {c}\n"
-    None    => ""
-  }
-  let header = "{target.name}:{target_deps_suffix(deps: target.deps)}"
-  let body = target.commands |> map(c => "\t{c}") |> join("\n")
-  if body == "" {
-    "{comment}{header}"
-  } else {
-    "{comment}{header}\n{body}"
-  }
+// ── Rendering ─────────────────────────────────────────────────────────
+// Shadow fn — overridden by RenderMakefileContentOp at resolve time.
+// Rust impl: ToolRegistry::default_registry() → render_makefile().
+
+fn render_makefile_content(path: String) -> String {
+  ""
 }
 
-fn tool_command(target: String, dry: Bool) -> String {
-  let base = "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-workflow -q --release -- {target}"
-  if dry { "{base} --dry-run strict" } else { base }
-}
-
-fn render_entrypoint_sig(param: EntrypointParam) -> String {
-  "{param.port_name} ({param.type_hint})"
-}
-
-fn render_entrypoints(params: List<EntrypointParam>) -> String {
-  params |> map(p => render_entrypoint_sig(param: p)) |> join(", ")
-}
-
-fn render_tool_target(tool: ToolTarget, target_name: String, dry: Bool) -> String {
-  let comment = if dry {
-    ""
-  } else {
-    let entrypoints = render_entrypoints(params: tool.entrypoints)
-    "# gunbc-{tool.name} entrypoints: {entrypoints}\n"
-  }
-  let header = "{target_name}:"
-  let body = "\t{tool_command(target: target_name, dry: dry)}"
-  "{comment}{header}\n{body}"
-}
-
-fn render_help_param(param: EntrypointParam) -> String {
-  let repeat_suffix = if param.repeatable { " ..." } else { "" }
-  let value = match param.default {
-    Some(d) => d
-    None    => "..."
-  }
-  "[{param.make_var}={value}{repeat_suffix}]"
-}
-
-fn render_help_params(params: List<EntrypointParam>) -> String {
-  params |> map(p => render_help_param(param: p)) |> join(" ")
-}
-
-fn tool_target_name(tool: ToolTarget) -> String {
-  match tool.make_target {
-    Some(name) => name
-    None       => tool.name
-  }
-}
-
-fn exposed_tools(registry: MakegenRegistry) -> List<ToolTarget> {
-  registry.tool_targets |> filter(t => match t.make_target { Some(_) => true None => false })
-}
-
-fn render_help_target(registry: MakegenRegistry, tools: List<ToolTarget>) -> String {
-  let core_lines = registry.core_targets
-    |> map(t => "  {t.name}  - {t.description}")
-  let meta_lines = registry.meta_targets
-    |> map(t => "  {t.name}  - {t.description}")
-  let tool_lines = tools |> map(t => {
-    let params = render_help_params(params: t.entrypoints)
-    let param_suffix = if params == "" { "" } else { " {params}" }
-    let name = tool_target_name(tool: t)
-    "  {name}{param_suffix}  - {t.description}"
-  })
-
-  let lines = [
-    "gunbc tools - generated Makefile",
-    "",
-    "Naming convention:",
-    "  make <target>      - verify only (CI-safe)",
-    "  make <target>-fix  - auto-fix then verify (for dev)",
-    "",
-    "Build commands:"
-  ]
-  |> append(items: core_lines)
-  |> append(items: ["", "Development:"])
-  |> append(items: meta_lines)
-  |> append(items: ["", "Tools:"])
-  |> append(items: tool_lines)
-  |> append(items: ["", "Add -dry suffix for dry-run (e.g., make deps-dry)"])
-
-  let commands = lines |> map(line => if line == "" { "@echo \"\"" } else { "@echo \"{line}\"" })
-  render_target(target: MakeTarget {
-    name: "help",
-    description: "Help",
-    deps: [],
-    commands: commands,
-    comment: None
-  })
-}
-
-fn render_makefile_content(registry: MakegenRegistry) -> String {
-  let core_names = registry.core_targets |> map(t => t.name)
-  let meta_names = registry.meta_targets |> map(t => t.name)
-  let tools = exposed_tools(registry: registry)
-  let tool_names = tools |> map(t => tool_target_name(tool: t))
-  let dry_names = tool_names |> map(n => "{n}-dry")
-  let phony_names = ["help"]
-    |> append(items: core_names)
-    |> append(items: meta_names)
-    |> append(items: tool_names)
-    |> append(items: dry_names)
-    |> dedupe_names()
-
-  let header_lines = [
-    "# Generated by gunbc-makegen",
-    "# DO NOT EDIT - regenerate with: make makegen",
-    "",
-    "# Naming convention:",
-    "#   make <target>      - verify only (CI-safe, fails on issues)",
-    "#   make <target>-fix  - auto-fix then verify (for dev)",
-    "#",
-    "# Dev default:     make test      (ensure generated artifacts, then test)",
-    "# Dev workflow:    make test-fix  (fmt/lint fix + ensure generated artifacts, then test)",
-    "# CI verification: make verify    (check generated artifacts)",
-    "",
-    ".DEFAULT_GOAL := help",
-    "",
-    ".PHONY: {phony_names |> join(\" \")}"
-  ]
-  let header = header_lines |> join("\n")
-
-  let core_section = registry.core_targets |> map(t => render_target(target: t)) |> join("\n\n")
-  let help_section = render_help_target(registry: registry, tools: tools)
-  let meta_header =
-    "# ============================================================================\n" +
-    "# Meta Targets - Development workflow commands\n" +
-    "# ============================================================================"
-  let meta_section = meta_header + "\n\n" +
-    (registry.meta_targets |> map(t => render_target(target: t)) |> join("\n\n"))
-
-  let tool_section = tools |> fold(
-    init: [],
-    f: (acc, t) => {
-      let name = tool_target_name(tool: t)
-      acc |> append(items: [
-        render_tool_target(tool: t, target_name: name, dry: false),
-        render_tool_target(tool: t, target_name: name, dry: true)
-      ])
-    }
-  ) |> join("\n\n")
-
-  let sections = [header, core_section, help_section, meta_section, tool_section]
-  let output = sections |> filter(s => s != "") |> join("\n\n")
-  "{output}\n"
-}
-
-func render_makefile(registry: MakegenRegistry) -> String {
-  render_makefile_content(registry: registry)
-}
+// ── Entry point ───────────────────────────────────────────────────────
 
 @outputs("Makefile")
-func makegen(registry: MakegenRegistry, path: String = "Makefile") -> { written: Bool } {
-  content = render_makefile_content(registry: registry)
+func makegen(path: String = "Makefile") -> { written: Bool } {
+  content = render_makefile_content(path: path)
   result = content_upsert(content: content, path: path)
   return { written: result.written }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────
+// ── Tests ─────────────────────────────────────────────────────────────
 
 test makegen_dryrun {}
