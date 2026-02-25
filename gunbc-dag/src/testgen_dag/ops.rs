@@ -28,6 +28,8 @@ pub enum TestgenOp {
         dsl_path: String,
         module_name: String,
         output_path: String,
+        /// PT-6: Per-profile live test configurations for this module.
+        live_profile_tests: Vec<gunbc_codegen::registry::LiveProfileTestConfig>,
     },
 }
 
@@ -83,6 +85,7 @@ impl Executable for TestgenOp {
                 dsl_path,
                 module_name,
                 output_path,
+                live_profile_tests,
             } => {
                 // 1. Compile .dag → Dag<DynOp> + DSL type registry
                 let result = match crate::dsl_builder::build_dsl_graph_with_types(dsl_path) {
@@ -137,7 +140,7 @@ impl Executable for TestgenOp {
                     live_required: None,
                     live_required_any_of: None,
                     tool_name: None,
-                    live_profile_tests: Vec::new(),
+                    live_profile_tests: live_profile_tests.clone(),
                 };
 
                 // 4. Generate test code with DSL type awareness

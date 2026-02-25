@@ -206,6 +206,8 @@ pub fn generate_target_with_types<T: Executable + Clone>(
         live_requires,
         live_required,
         live_required_any_of,
+        live_profile_tests: config.live_profile_tests.clone(),
+        target_name: config.name.to_string(),
         ..TestConfig::default()
     };
     let mut registry = TypeRegistry::with_core_types();

@@ -186,6 +186,10 @@ pub struct TestConfig {
     pub live_required: Vec<String>,
     /// Live test required any-of env var groups
     pub live_required_any_of: Vec<Vec<String>>,
+    /// Per-profile live test configurations (PT-5).
+    pub live_profile_tests: Vec<crate::registry::LiveProfileTestConfig>,
+    /// Target name for generating test function names.
+    pub target_name: String,
 }
 
 impl Default for TestConfig {
@@ -213,6 +217,8 @@ impl Default for TestConfig {
             live_requires: Vec::new(),
             live_required: Vec::new(),
             live_required_any_of: Vec::new(),
+            live_profile_tests: Vec::new(),
+            target_name: String::new(),
         }
     }
 }
@@ -1220,6 +1226,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if let Some(section) = self.build_live_flow_section(graph_builder_fn) {
                 file.sections.push(section);
             }
+        }
+
+        // PT-5: Per-profile live flow test sections.
+        for section in self.build_per_profile_live_flow_sections() {
+            file.sections.push(section);
         }
 
         if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
@@ -3889,6 +3900,105 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 body,
             }],
         })
+    }
+
+    /// PT-5: Generate per-profile live flow test sections.
+    ///
+    /// One test function per `LiveProfileTestConfig` entry, named
+    /// `test_live_flow_{module}_{profile}()`, gated by the profile's
+    /// env requirements.
+    fn build_per_profile_live_flow_sections(&self) -> Vec<TestSection> {
+        self.config
+            .live_profile_tests
+            .iter()
+            .filter_map(|profile_test| {
+                let test_name = format!(
+                    "test_live_flow_{}_{}_profile",
+                    NamingCase::SnakeCase.apply(&self.config.target_name),
+                    NamingCase::SnakeCase.apply(&profile_test.profile_name),
+                );
+
+                let class_variant = Self::class_variant(profile_test.test_class);
+                let cost_variant = Self::cost_variant(profile_test.fermi_cost);
+                let class_expr = Expr::path(&["TestClass", class_variant]);
+                let cost_expr = Expr::path(&["FermiCost", cost_variant]);
+                let required_expr = Self::slice_expr(&profile_test.required_env);
+                let required_any_of_expr =
+                    Self::slice_2d_expr(&profile_test.required_any_of);
+
+                let guard_call = Expr::call(
+                    "guard_test_with_env",
+                    vec![
+                        Expr::Str(test_name.clone()),
+                        class_expr,
+                        cost_expr,
+                        Expr::Array(vec![]), // requires (external tools)
+                        required_expr,
+                        required_any_of_expr,
+                    ],
+                );
+                let guard_stmt = Stmt::Expr(Expr::If {
+                    cond: Box::new(guard_call.logical_not()),
+                    then_body: vec![Stmt::Return(Expr::raw("()"))],
+                    else_body: None,
+                });
+
+                let body = vec![
+                    guard_stmt,
+                    Stmt::Comment(format!(
+                        "Compile with profile '{}' and execute in Real mode",
+                        profile_test.profile_name
+                    )),
+                    Stmt::let_bind("dag", Expr::raw(&profile_test.dag_builder_call)),
+                    Stmt::let_bind(
+                        "log",
+                        Expr::call(
+                            "execute_with_mode",
+                            vec![
+                                Expr::var("dag").ref_of(),
+                                Expr::Path(vec![
+                                    "ExecutionMode".to_string(),
+                                    "Real".to_string(),
+                                ]),
+                            ],
+                        )
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!(
+                                "Real execution with profile '{}' should succeed",
+                                profile_test.profile_name,
+                            ))],
+                        ),
+                    ),
+                    Stmt::Assert(Assert::True {
+                        expr: Expr::var("log")
+                            .field("entries")
+                            .method("is_empty", vec![])
+                            .logical_not(),
+                        message: "execution should produce log entries".to_string(),
+                    }),
+                ];
+
+                Some(TestSection {
+                    title: format!(
+                        "Per-profile live flow: {} (profile: {})",
+                        self.config.target_name, profile_test.profile_name
+                    ),
+                    notes: vec![format!(
+                        "Compiles with --profile {}, executes in Real mode.",
+                        profile_test.profile_name
+                    )],
+                    tests: vec![TestFn {
+                        name: test_name,
+                        doc: vec![format!(
+                            "Live flow test for profile '{}'.",
+                            profile_test.profile_name
+                        )],
+                        body,
+                    }],
+                })
+            })
+            .collect()
     }
 
     fn build_window_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
