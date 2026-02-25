@@ -118,11 +118,11 @@ pub static STANDARD_SYMBOLS: &[SymbolEntry] = &[
     SymbolEntry { id: SymbolId::ConnectorCornerTopLeft, emoji: "┌", unicode: "┌", ascii: "+", color: SemanticColor::Dim }
 ];
 
-pub fn resolve_symbol(id: SymbolId, tier: Tier) -> String {
+pub fn resolve_symbol(id: SymbolId, tier: Tier) -> &'static str {
     match tier {
-        Tier::Emoji => id.emoji().to_string(),
-        Tier::Unicode => id.unicode().to_string(),
-        Tier::Ascii => id.ascii().to_string(),
+        Tier::Emoji => id.emoji(),
+        Tier::Unicode => id.unicode(),
+        Tier::Ascii => id.ascii(),
     }
 }
 
@@ -147,8 +147,8 @@ pub static ANSI_MAPPINGS: &[AnsiMapping] = &[
     AnsiMapping { color: SemanticColor::Accent, code: "\x1b[38;5;75m" }
 ];
 
-pub fn ansi_code(c: SemanticColor) -> String {
-    c.code().to_string()
+pub fn ansi_code(c: SemanticColor) -> &'static str {
+    c.code()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]

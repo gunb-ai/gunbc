@@ -88,10 +88,6 @@ name = "gunbc-infra"
 path = "src/bin/infra.rs"
 
 [[bin]]
-name = "gunbc-review"
-path = "../target/codegen/bin/review/main.rs"
-
-[[bin]]
 name = "gunbc-pipeline"
 path = "src/bin/pipeline.rs"
 
