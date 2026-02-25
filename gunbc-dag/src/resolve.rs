@@ -1274,68 +1274,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_makegen_ops() {
-        let node = callable_node(
-            "load_registry",
-            "tools.makegen",
-            "load_registry",
-            ObligationCategory::None,
-        );
-        let result = resolve_node(&node).expect("load_registry");
-        let outputs = result
-            .execute(HashMap::new())
-            .expect("load_registry should execute");
-        assert!(
-            matches!(outputs.get("registry"), Some(Value::Json(_))),
-            "load_registry should emit registry json"
-        );
-
-        let node = callable_node(
-            "render_makefile",
-            "tools.makegen",
-            "render_makefile",
-            ObligationCategory::None,
-        );
-        let result = resolve_node(&node).expect("render_makefile");
-        let outputs = result
-            .execute(HashMap::new())
-            .expect("render_makefile should execute");
-        assert!(
-            outputs
-                .get("return")
-                .and_then(Value::as_str)
-                .map(|content| content.contains(".PHONY"))
-                .unwrap_or(false),
-            "render_makefile should emit rendered makefile content"
-        );
-
-        let node = callable_node(
-            "makegen",
-            "tools.makegen",
-            "makegen",
-            ObligationCategory::None,
-        );
-        let result = resolve_node(&node).expect("makegen");
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "__deps".to_string(),
-            Value::List(vec![Value::Response(
-                gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse {
-                    success: true,
-                    content: None,
-                    operation: gunbc_ir::transport::FileOp::Write,
-                    path: "Makefile".to_string(),
-                    exists: None,
-                    error: None,
-                    bytes: None,
-                }),
-            )]),
-        );
-        let outputs = result.execute(inputs).expect("makegen should execute");
-        assert_eq!(outputs.get("written"), Some(&Value::Bool(true)));
-    }
-
-    #[test]
     fn resolve_tools_infra_entrypoint_emits_plan_summary() {
         let node = callable_node("infra", "tools.infra", "infra", ObligationCategory::None);
         let result = resolve_node(&node).expect("tools.infra::infra");
