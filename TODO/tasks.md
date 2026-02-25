@@ -1,4 +1,4 @@
-# Task Sheet — Active Lanes Only
+# Task Sheet — Active Mega Lane
 
 **Last updated**: 2026-02-25
 **Verification**: `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings`
@@ -9,22 +9,28 @@
 
 **Sizing**: S (<1 day), M (1-3 days), L (3-5 days), XL (5+ days)
 
-**Scheduling policy (2026-02-25)**: Only **Lane 7** and **Lane 8** are active.
+**Scheduling policy (2026-02-25)**: Only **Lane 1** is active.
 
 ## Delivery Lane Summary
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| 7: Compile+link no-fallback hardening | Planned | NF-1..NF-6 |
-| 8: Interface stub transport + fail-closed cleanup | Planned | IS-1..IS-8, PT-1..PT-6, FC-1..FC-9 |
+| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | Planned | NF-1..NF-6, IS-1..IS-8, PT-1..PT-6, FC-1..FC-9 |
 
 ---
 
-## Lane 7: Compile+Link No-Fallback Hardening
+## Lane 1: Mega Lane (Compiler Contract + Testgen Unblocking + Cleanup)
 
-**Goal**: Eliminate string-coupled/runtime fallback behavior by adopting compile+link semantics: extern symbol resolution, hard missing-symbol errors, and deterministic receipts.
+**Goal**: Deliver one coherent hardening wave that combines:
+1. Compile+link no-fallback contract for extern funcs/assets.
+2. Interface stub transport + per-profile live test generation.
+3. Removal of known fail-open/codegen workaround paths.
 
-**Design reference (source of truth)**: `docs/design/v4/domain-hard-error-no-fallback-plan.md`
+**Design references (source of truth)**:
+- `docs/design/v4/domain-hard-error-no-fallback-plan.md`
+- `docs/design/interface-stub-transport.md`
+
+### Track A: Compile+Link No-Fallback Hardening
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
@@ -35,22 +41,7 @@
 | **NF-5** | **Delete fallback surfaces**: Remove passthrough controls/handlers, stub asset fallbacks, and module-name dispatch heuristics. | NF-4 | M | Planned |
 | **NF-6** | **Determinism contract hardening**: Add compile receipt digests linked to emit-manifest and CI determinism gates (single-file, CI pipeline, directory compile) with deterministic diagnostic ordering. | NF-5 | M | Planned |
 
-### Lane 7 exit criteria
-
-1. No CLI/emitter/runtime fallback path remains for unresolved extern funcs/assets.
-2. Runtime and embedded assets resolve through link-time extern symbol contracts.
-3. Missing symbol failures are deterministic in both set and order.
-4. Determinism receipts and emit manifests are stable across repeated runs.
-
----
-
-## Lane 8: Interface Stub Transport + Per-Profile Live Tests + Fail-Closed Cleanup
-
-**Goal**: Unblock testgen for interface-using modules (Part 1/2) and retire remaining fail-open/codegen workaround paths called out in 2026-02-24 cleanup feedback (Part 3).
-
-**Design reference (source of truth)**: `docs/design/interface-stub-transport.md`
-
-### Part 1: Interface Stub Transport
+### Track B: Interface Stub Transport
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
@@ -63,16 +54,7 @@
 | **IS-7** | **Verify auto-mock compatibility**: Confirm stub execute nodes carry `ServiceTransportExecute` obligation for auto-mock. | IS-4 | S | Planned |
 | **IS-8** | **Tests**: Lowerer test (no profile -> stub triplets), resolver test (Real mode error), integration (`make test-all`). | IS-4, IS-6, IS-7 | M | Planned |
 
-### Part 1 dependency graph
-
-```
-IS-1 ──┬──> IS-2 ──> IS-4 ──> IS-7 ──> IS-8
-       │              ^
-IS-3 ──┘──> IS-5 ────/
-IS-6 (parallel with IS-2..IS-5)
-```
-
-### Part 2: Per-Profile Live Tests
+### Track C: Per-Profile Live Tests
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
@@ -83,16 +65,7 @@ IS-6 (parallel with IS-2..IS-5)
 | **PT-5** | **Generate per-profile test sections in codegen**: `build_per_profile_live_flow_sections()` — one `test_live_flow_{module}_{profile}()` per config, gated by env requirements. | PT-3, PT-4 | M | Planned |
 | **PT-6** | **Wire profile discovery into auto-testgen pipeline**: `discover_profiles()` in graph build, `profiles_for_module()` per module, populate `live_profile_tests`. | PT-1, PT-2, PT-5 | M | Planned |
 
-### Part 2 dependency graph
-
-```
-PT-1 ──> PT-6
-PT-2 ──> PT-6
-PT-3 ──> PT-5 ──> PT-6
-PT-4 ──> PT-5
-```
-
-### Part 3: Fail-Closed Cleanup + Workaround Removal
+### Track D: Fail-Closed Cleanup + Workaround Removal
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
@@ -106,37 +79,41 @@ PT-4 ──> PT-5
 | **FC-8** | **Fail-closed content extraction + test restoration**: Make `extract_file_contents` schema handling fail-closed (or explicit warning mode) and restore non-empty gist dry-run tests with real assertions. | FC-7 | M | Planned |
 | **FC-9** | **Define and enforce `\\xHH` string semantics**: Align lexer + emitter behavior for hex-escape handling and add deterministic contract tests. | FC-1 | S | Planned |
 
-### Part 3 dependency graph
+### Mega-lane dependency guide
 
-```
-FC-1 ──> FC-2
-   └──> FC-3
-   └──> FC-9
-FC-5 ──> FC-6
-NF-2 ──> FC-7 ──> FC-8
-FC-4 (parallel)
-```
+1. `NF-1 -> NF-2 -> NF-3 -> NF-4 -> NF-5 -> NF-6`
+2. `IS-1 -> (IS-2, IS-3) -> IS-4 -> IS-7 -> IS-8`, with `IS-6` in parallel.
+3. `IS-8 -> (PT-1, PT-2, PT-3, PT-4) -> PT-5 -> PT-6`
+4. `FC-1 -> (FC-2, FC-3, FC-9)`
+5. `FC-5 -> FC-6`
+6. `NF-2 -> FC-7 -> FC-8`
+7. `FC-4` parallel.
 
-### Lane 8 exit criteria
+### Lane 1 exit criteria
 
-1. All interface-using modules compile without `--profile` and produce valid DryRun-testable DAGs.
-2. Testgen coverage increases from 21/30 to ~30/30 compilable modules.
-3. Per-profile live tests appear in generated test files, gated by env requirements.
-4. No comment/raw-code fallback paths remain in expression codegen for unsupported constructs.
-5. Known fail-open hacks from 2026-02-24 cleanup feedback are resolved or replaced by explicit errors.
-6. `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings` clean.
+1. No CLI/emitter/runtime fallback path remains for unresolved extern funcs/assets.
+2. Runtime and embedded assets resolve through link-time extern symbol contracts.
+3. All interface-using modules compile without `--profile` and are DryRun-testable.
+4. Per-profile live tests are generated and gated by env requirements.
+5. No comment/raw-code fallback paths remain in expression codegen for unsupported constructs.
+6. Known fail-open hacks from 2026-02-24 cleanup feedback are resolved or replaced by explicit errors.
+7. Determinism receipts and emit manifests are stable across repeated runs.
+8. `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings` clean.
 
-### Lane 8 files touched
+### Lane 1 files touched (aggregate)
 
 | File | Changes |
 |------|---------|
-| `core/daglang/daglang-lower/src/lib.rs` | `InterfaceStub` variant, stub transport triplets, relaxed validation (IS-1..IS-5) |
-| `gunbc-dag/src/resolve.rs` | Stub ops in DynOp resolver (IS-6) |
-| `gunbc-dag/src/mock_defaults.rs` | Auto-mock verification (IS-7) |
-| `gunbc-dag/src/testgen_dag/profile_discovery.rs` | New — profile scanning (PT-1) |
-| `gunbc-dag/src/testgen_dag/dag_test_discovery.rs` | Interface imports on `CompilableModule` (PT-2) |
-| `core/codegen/src/registry.rs` | `LiveProfileTestConfig` (PT-3) |
-| `gunbc-dag/src/dsl_builder.rs` | Profile-aware compilation (PT-4) |
-| `core/codegen/src/testgen/codegen.rs` | Per-profile test generation (PT-5) |
-| `gunbc-dag/src/testgen_dag/{graph.rs, ops.rs}` | Pipeline wiring (PT-6) |
+| `core/daglang/daglang-lower/src/lib.rs` | Extern/lowering hardening + `InterfaceStub` + stub triplets |
+| `core/daglang/daglang-cli/src/*` | Link-stage/compile-mode contract wiring and diagnostics surfaces |
+| `core/daglang/daglang-driver/src/*` | Compile+link orchestration + deterministic receipt plumbing |
+| `core/daglang/daglang-emit/src/*` | Remove fallback paths, link-time extern handling, determinism integration |
+| `gunbc-dag/src/resolve.rs` | `InterfaceStub` ops + no-fallback resolution cleanup |
+| `gunbc-dag/src/mock_defaults.rs` | Auto-mock compatibility checks for stub transports |
+| `gunbc-dag/src/testgen_dag/profile_discovery.rs` | Profile scanning |
+| `gunbc-dag/src/testgen_dag/dag_test_discovery.rs` | Interface imports on `CompilableModule` |
+| `core/codegen/src/registry.rs` | `LiveProfileTestConfig` |
+| `gunbc-dag/src/dsl_builder.rs` | Profile-aware compilation |
+| `core/codegen/src/testgen/codegen.rs` | Per-profile test generation + fail-closed behavior changes |
+| `gunbc-dag/src/testgen_dag/{graph.rs, ops.rs}` | Pipeline wiring for profile-aware testgen |
 | `core/codegen/src/*`, `core/daglang/daglang-*/src/*`, `gunbc-dag/src/*` | Fail-closed cleanup, fallback removal, and diagnostics hardening (FC-1..FC-9) |
