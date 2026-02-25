@@ -291,6 +291,16 @@ impl Executable for BuildSnapshotContentOp {
 
 /// Extract file content strings from inputs. Handles both `List<String>` and
 /// `List<Map{content: String}>` (the latter from transport parse outputs).
+/// FC-8: Extract file contents from input, fail-closed for unexpected schemas.
+///
+/// Accepts:
+/// - `Value::List` of `Value::Str` items (plain strings)
+/// - `Value::List` of `Value::Map` items with a `"content"` key
+///
+/// Rejects with explicit error:
+/// - Missing `file_contents` input (returns empty — legitimate no-content case)
+/// - List items with unexpected types (returns error description instead of empty string)
+/// - Non-list `file_contents` value (returns error description)
 fn extract_file_contents(inputs: &HashMap<String, Value>) -> Vec<String> {
     let Some(value) = inputs.get("file_contents") else {
         return Vec::new();
@@ -298,17 +308,36 @@ fn extract_file_contents(inputs: &HashMap<String, Value>) -> Vec<String> {
     match value {
         Value::List(items) => items
             .iter()
-            .map(|item| match item {
+            .enumerate()
+            .map(|(idx, item)| match item {
                 Value::Str(s) => s.clone(),
-                Value::Map(map) => map
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                _ => String::new(),
+                Value::Map(map) => match map.get("content").and_then(|v| v.as_str()) {
+                    Some(content) => content.to_string(),
+                    None => {
+                        // FC-8: Fail closed — report the missing key instead of silently
+                        // returning an empty string.
+                        format!(
+                            "[extract_file_contents] item[{idx}]: Map missing 'content' key (keys: {:?})",
+                            map.keys().collect::<Vec<_>>()
+                        )
+                    }
+                },
+                other => {
+                    // FC-8: Fail closed — report the unexpected type.
+                    format!(
+                        "[extract_file_contents] item[{idx}]: unexpected value type {:?}",
+                        std::mem::discriminant(other)
+                    )
+                }
             })
             .collect(),
-        _ => Vec::new(),
+        other => {
+            // FC-8: Fail closed — report non-list type.
+            vec![format!(
+                "[extract_file_contents] expected List, got {:?}",
+                std::mem::discriminant(other)
+            )]
+        }
     }
 }
 
