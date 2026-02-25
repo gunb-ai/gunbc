@@ -226,7 +226,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let parsed = parse_compile_command_args(
                 "compile",
                 args,
-                "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]",
+                "compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>] [--receipt]",
                 false,
             )
             .unwrap_or_else(|usage| exit_usage(&usage));
@@ -337,6 +337,26 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             } else {
                 for file in &output.emitted.files {
                     println!("  - {}", file.path);
+                }
+            }
+            // NF-6: Write compile receipt JSON when --receipt is passed.
+            if parsed.receipt {
+                if let Some(receipt) = &output.receipt {
+                    let receipt_json = serde_json::to_string_pretty(receipt)
+                        .expect("compile receipt should serialize");
+                    if let Some(out_dir) = normalized_out_dir.as_ref() {
+                        let receipt_path = out_dir.join("compile_receipt.json");
+                        #[allow(clippy::disallowed_methods)]
+                        if let Err(error) = std::fs::write(&receipt_path, &receipt_json) {
+                            eprintln!("failed to write receipt: {error}");
+                            std::process::exit(1);
+                        }
+                        println!("Receipt: {}", receipt_path.display());
+                    } else {
+                        println!("{receipt_json}");
+                    }
+                } else {
+                    eprintln!("warning: receipt computation failed");
                 }
             }
         }

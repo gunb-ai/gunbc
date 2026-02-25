@@ -58,6 +58,25 @@ pub struct CompileOutput {
     /// `None` if the link step was not performed (e.g., no backend provided).
     /// Contains resolved extern funcs/assets and diagnostics.
     pub link_result: Option<gunbc_ir::LinkResult>,
+    /// Compile receipt with deterministic digests (NF-6).
+    ///
+    /// `None` if receipt computation was not requested.
+    pub receipt: Option<CompileReceipt>,
+}
+
+/// Deterministic compilation receipt (NF-6).
+///
+/// Contains content-addressable digests for each stage of the compilation
+/// pipeline. Two compilations of the same input must produce identical
+/// receipts — this is the determinism contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CompileReceipt {
+    /// SHA-256 of sorted source file content hashes.
+    pub source_digest: String,
+    /// SHA-256 of the canonical IR JSON representation.
+    pub program_ir_digest: String,
+    /// SHA-256 of the sorted emit manifest JSON.
+    pub emit_manifest_digest: String,
 }
 
 /// A pipeline-level parameter declaration from `param name: Type = default`.
@@ -194,6 +213,12 @@ pub fn compile_from_module_graph_with_options(
         Some((scope, entry)) => (Some(scope), Some(entry)),
         None => (None, None),
     };
+    // Save source file paths before typechecking consumes the module graph.
+    let source_paths: Vec<PathBuf> = module_graph
+        .modules
+        .iter()
+        .map(|m| m.path.clone())
+        .collect();
     validate_module_path_consistency(
         &module_graph,
         &context.roots,
@@ -266,6 +291,8 @@ pub fn compile_from_module_graph_with_options(
     let inferred_entrypoints = daglang_lower::infer_entrypoints(&lowered);
     let dsl_type_registry = extract_dsl_type_registry(&typed);
 
+    let receipt = compute_receipt(&lowered, &emitted, &emit_manifest_path, &source_paths);
+
     Ok(CompileOutput {
         lowered_dag: lowered,
         derived,
@@ -276,6 +303,7 @@ pub fn compile_from_module_graph_with_options(
         inferred_entrypoints,
         dsl_type_registry,
         link_result: None,
+        receipt,
     })
 }
 
@@ -853,6 +881,52 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     hex::encode(hasher.finalize())
+}
+
+/// Compute a deterministic compilation receipt from the compilation artifacts.
+///
+/// The receipt contains content-addressable digests for source files, the
+/// canonical IR, and the emit manifest. Two compilations of the same input
+/// MUST produce identical receipts — this is the determinism contract (NF-6).
+fn compute_receipt(
+    dag: &Dag<LoweredOp>,
+    emitted: &EmissionBundle,
+    emit_manifest_path: &str,
+    source_paths: &[PathBuf],
+) -> Option<CompileReceipt> {
+    // Source digest: sha256 of sorted per-file content hashes.
+    let mut source_hashes: Vec<String> = Vec::with_capacity(source_paths.len());
+    for path in source_paths {
+        #[allow(clippy::disallowed_methods)]
+        let content = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(_) => return None,
+        };
+        source_hashes.push(sha256_hex(&content));
+    }
+    source_hashes.sort();
+    let source_digest = sha256_hex(source_hashes.join("\n").as_bytes());
+
+    // Program IR digest: sha256 of canonical IR JSON.
+    let canonical_json = match daglang_lower::canonical_ir_json(dag) {
+        Ok(json) => json,
+        Err(_) => return None,
+    };
+    let program_ir_digest = sha256_hex(canonical_json.as_bytes());
+
+    // Emit manifest digest: sha256 of the manifest file content.
+    let emit_manifest_digest = emitted
+        .files
+        .iter()
+        .find(|f| f.path == emit_manifest_path)
+        .map(|f| sha256_hex(f.content.as_bytes()))
+        .unwrap_or_default();
+
+    Some(CompileReceipt {
+        source_digest,
+        program_ir_digest,
+        emit_manifest_digest,
+    })
 }
 
 fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGraph, CompileError> {
@@ -2353,5 +2427,123 @@ fn run() -> Bool {
             cargo_toml.contains(r#"name = "tools-pragma""#),
             "Cargo.toml should have sanitized crate name"
         );
+    }
+
+    // ---- NF-6: Determinism contract tests ----
+
+    /// Helper: compile a target and return the receipt, panicking on failure.
+    fn compile_with_receipt(root: &Path, target_file: Option<&Path>) -> CompileReceipt {
+        let context = DriverContext {
+            roots: vec![root.to_path_buf()],
+            target_file: target_file.map(|p| p.to_path_buf()),
+        };
+        let output = compile_from_context(&context)
+            .expect("compile should succeed for determinism test");
+        output
+            .receipt
+            .expect("receipt should be computed for determinism test")
+    }
+
+    #[test]
+    fn determinism_single_file_compile_produces_identical_receipts() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let root = workspace.join("dsl");
+        let file = root.join("tools/makegen.dag");
+
+        let receipt_a = compile_with_receipt(&root, Some(&file));
+        let receipt_b = compile_with_receipt(&root, Some(&file));
+
+        assert_eq!(
+            receipt_a, receipt_b,
+            "two compilations of the same single file must produce identical receipts"
+        );
+        assert!(
+            !receipt_a.source_digest.is_empty(),
+            "source_digest should be non-empty"
+        );
+        assert!(
+            !receipt_a.program_ir_digest.is_empty(),
+            "program_ir_digest should be non-empty"
+        );
+        assert!(
+            !receipt_a.emit_manifest_digest.is_empty(),
+            "emit_manifest_digest should be non-empty"
+        );
+    }
+
+    #[test]
+    fn determinism_directory_compile_produces_identical_receipts() {
+        let root = unique_temp_dir("determinism_dir");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        std::fs::write(
+            root.join("alpha.dag"),
+            "module alpha\nfn run() -> Unit {}\n",
+        )
+        .expect("failed to write alpha");
+        std::fs::write(
+            root.join("beta.dag"),
+            "module beta\nimport alpha\nfn process(input: String) -> String { input }\n",
+        )
+        .expect("failed to write beta");
+
+        let receipt_a = compile_with_receipt(&root, None);
+        let receipt_b = compile_with_receipt(&root, None);
+
+        assert_eq!(
+            receipt_a, receipt_b,
+            "two compilations of the same directory must produce identical receipts"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn determinism_ci_pipeline_compile_produces_identical_receipts() {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let root = workspace.join("dsl");
+        let file = root.join("pipelines/ci.dag");
+
+        let receipt_a = compile_with_receipt(&root, Some(&file));
+        let receipt_b = compile_with_receipt(&root, Some(&file));
+
+        assert_eq!(
+            receipt_a, receipt_b,
+            "two compilations of the CI pipeline must produce identical receipts"
+        );
+    }
+
+    #[test]
+    fn determinism_diagnostic_ordering_is_stable() {
+        let root = unique_temp_dir("determinism_diag");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        // Create a file with multiple intentional errors.
+        std::fs::write(
+            root.join("bad.dag"),
+            concat!(
+                "module bad\n",
+                "import nonexistent.alpha\n",
+                "import nonexistent.beta\n",
+                "import nonexistent.gamma\n",
+            ),
+        )
+        .expect("failed to write source with errors");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(root.join("bad.dag")),
+        };
+        let error_a = compile_from_context(&context)
+            .expect_err("compile should fail for bad source")
+            .to_string();
+        let error_b = compile_from_context(&context)
+            .expect_err("compile should fail for bad source")
+            .to_string();
+
+        assert_eq!(
+            error_a, error_b,
+            "diagnostic output must be byte-identical across compilations"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
     }
 }

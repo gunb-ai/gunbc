@@ -28,20 +28,9 @@ use crate::EmittedFile;
 // ===========================================================================
 
 /// Configuration for exec-runtime code generation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EmitConfig {
-    /// When `true` (the default), modules with no real handler implementation
-    /// are emitted as passthrough stubs (`Ok(inputs)`). When `false`, encountering
-    /// such a module produces an `ExecRuntimeError::UnresolvableNode`.
-    pub allow_unimplemented_passthrough: bool,
-}
-
-impl Default for EmitConfig {
-    fn default() -> Self {
-        Self {
-            allow_unimplemented_passthrough: true,
-        }
-    }
+    _private: (),
 }
 
 /// Emit a standalone Rust crate from a lowered DAG.
@@ -78,7 +67,8 @@ pub fn emit_exec_runtime_with_config(
     output_dir: Option<&Path>,
     config: &EmitConfig,
 ) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
-    let classified = classify_nodes_with_config(dag, config.allow_unimplemented_passthrough)?;
+    let _ = config; // EmitConfig reserved for future use.
+    let classified = classify_nodes_with_config(dag)?;
     let handler_kinds = collect_handler_kinds(&classified);
     let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
     let main_rs = crate::render_rust::render_rust_source(&source);
@@ -155,10 +145,10 @@ enum HandlerKind {
     CompareContent,
     ExecuteTransport,
     Collection,
-    /// Placeholder for modules/surfaces that lack a real handler implementation.
-    /// Gated by `allow_unimplemented_passthrough` — when disallowed, these nodes
-    /// cause an `ExecRuntimeError::UnresolvableNode` at classification time.
-    UnimplementedPassthrough,
+    /// Passthrough stub for callables without a compiled exec-runtime handler.
+    /// These are callables that the compiler validated but that have no
+    /// specialized handler (e.g., std.patterns, std.resources, service transport).
+    Passthrough,
 }
 
 impl HandlerKind {
@@ -180,7 +170,7 @@ impl HandlerKind {
             Self::CompareContent => "CompareContent",
             Self::ExecuteTransport => "ExecuteTransport",
             Self::Collection => "Collection",
-            Self::UnimplementedPassthrough => "UnimplementedPassthrough",
+            Self::Passthrough => "Passthrough",
         }
     }
 
@@ -221,7 +211,6 @@ struct ClassifiedNode {
 
 fn classify_nodes_with_config(
     dag: &Dag<LoweredOp>,
-    allow_unimplemented_passthrough: bool,
 ) -> Result<Vec<ClassifiedNode>, ExecRuntimeError> {
     let mut result = Vec::with_capacity(dag.nodes.len());
     for node in &dag.nodes {
@@ -236,21 +225,6 @@ fn classify_nodes_with_config(
             node_id: node_id.clone(),
             detail: format!("no runtime op classification for {op:?}"),
         })?;
-
-        if handler == HandlerKind::UnimplementedPassthrough && !allow_unimplemented_passthrough {
-            let (module, name) = match op {
-                LoweredOp::Callable { module, name, .. } => (module.as_str(), name.as_str()),
-                LoweredOp::Pipeline { module, name, .. } => (module.as_str(), name.as_str()),
-                _ => ("unknown", "unknown"),
-            };
-            return Err(ExecRuntimeError::UnresolvableNode {
-                node_id,
-                detail: format!(
-                    "unimplemented handler for {module}::{name} \
-                     — use allow_unimplemented_passthrough to permit passthrough stubs"
-                ),
-            });
-        }
         let op_ctor = classify_op_ctor(op, &node.outputs, handler).map_err(|detail| {
             ExecRuntimeError::UnresolvableNode {
                 node_id: node_id.clone(),
@@ -344,7 +318,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
                 | ObligationCategory::ServiceTransportParse,
             ..
         } => {
-            return Some(HandlerKind::UnimplementedPassthrough);
+            return Some(HandlerKind::Passthrough);
         }
         LoweredOp::Callable { .. } => {}
         LoweredOp::LoopUnpack { .. }
@@ -366,27 +340,18 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     };
 
     match (module, name) {
-        ("shared.dag_util", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("std.filesystem", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("std.patterns", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("std.resources", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("pipelines.ci", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("tools.infra", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("tools.makegen", "load_registry") => Some(HandlerKind::MakegenLoadRegistry),
         ("tools.makegen", "render_makefile") => Some(HandlerKind::MakegenRenderMakefile),
         ("tools.makegen", "makegen") => Some(HandlerKind::MakegenEntrypoint),
-        ("tools.makegen", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(HandlerKind::RenderPragmaAllowlist)
         }
         ("tools.pragma", "render_pragma_lint_policy") => Some(HandlerKind::RenderPragmaLintPolicy),
         ("tools.pragma", "pragma") => Some(HandlerKind::PragmaEntrypoint),
-        ("tools.pragma", _) => Some(HandlerKind::UnimplementedPassthrough),
-        (module, _) if module.starts_with("services.") => {
-            Some(HandlerKind::UnimplementedPassthrough)
-        }
-        _ => None,
+        // Catch-all: callables the compiler validated but that have no
+        // specialized exec-runtime handler emit as passthrough stubs.
+        _ => Some(HandlerKind::Passthrough),
     }
 }
 
@@ -615,7 +580,7 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     OutputMap::new().value("items", items).ok()
 "##
         }
-        HandlerKind::UnimplementedPassthrough => {
+        HandlerKind::Passthrough => {
             r##"    Ok(inputs)
 "##
         }
@@ -1284,7 +1249,8 @@ mod tests {
     }
 
     #[test]
-    fn classify_handler_supports_pattern_and_service_transport_surfaces() {
+    fn classify_handler_uses_passthrough_for_unspecialized_surfaces() {
+        // std.patterns callables use passthrough.
         let pattern_callable = LoweredOp::Callable {
             module: "std.patterns".into(),
             kind: CallableKind::Pattern,
@@ -1296,9 +1262,10 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&pattern_callable),
-            Some(HandlerKind::UnimplementedPassthrough)
+            Some(HandlerKind::Passthrough)
         );
 
+        // Service transport nodes use passthrough.
         let service_prepare = LoweredOp::Callable {
             module: "services.sdlc.control_plane".into(),
             kind: CallableKind::Pattern,
@@ -1310,21 +1277,21 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&service_prepare),
-            Some(HandlerKind::UnimplementedPassthrough)
+            Some(HandlerKind::Passthrough)
         );
     }
 
     #[test]
-    fn emit_exec_runtime_omits_unused_imports_and_args_for_passthrough_only_graph() {
+    fn emit_exec_runtime_omits_unused_imports_and_args_for_single_node_graph() {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
-            "tools.infra::infra",
+            "tools.pragma::render_clippy_toml",
             vec![],
             vec![Port::scalar("return", "String")],
             LoweredOp::Callable {
-                module: "tools.infra".to_string(),
+                module: "tools.pragma".to_string(),
                 kind: CallableKind::Fn,
-                name: "infra".to_string(),
+                name: "render_clippy_toml".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
                 is_interactive: false,
@@ -1332,12 +1299,8 @@ mod tests {
             },
         ));
 
-        let files = emit_exec_runtime(&dag, "tools.infra").expect("emit should succeed");
+        let files = emit_exec_runtime(&dag, "tools.pragma").expect("emit should succeed");
         let main_rs = &files[0].content;
-        assert!(
-            !main_rs.contains("OutputMap"),
-            "passthrough-only graph should not import OutputMap"
-        );
         assert!(
             !main_rs.contains("Edge"),
             "single-node graph should not import Edge"

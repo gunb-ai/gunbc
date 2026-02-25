@@ -407,10 +407,10 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
         },
     ));
 
-    // Unknown callables resolve to DeclaredOutputCallableOp (the compiler validated
-    // the callable exists; if it compiled, it's resolvable without a registry entry).
+    // Unknown Callable nodes still resolve via passthrough (the compiler validated them).
+    // ExternCall nodes are the hard-error path (see resolve_extern_call).
     let resolved =
-        resolve_lowered_dag(&dag).expect("unknown callables should resolve to declared output callable");
+        resolve_lowered_dag(&dag).expect("unknown callables should resolve via passthrough");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
     assert!(

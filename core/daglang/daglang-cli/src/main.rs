@@ -277,6 +277,7 @@ struct CompileCommandArgs {
     layer: Option<CodegenLayer>,
     format: CompileOutputFormat,
     out_dir: Option<String>,
+    receipt: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,9 +313,18 @@ pub(crate) fn parse_compile_command_args(
     let mut format = CompileOutputFormat::Summary;
     let mut saw_format = false;
     let mut out_dir: Option<String> = None;
+    let mut receipt = false;
     let mut i = 2usize;
     while i < args.len() {
         let token = &args[i];
+        if token == "--receipt" {
+            if command != "compile" || receipt {
+                return Err(usage.to_string());
+            }
+            receipt = true;
+            i += 1;
+            continue;
+        }
         if token == "--emit-collection-nodes" {
             if emit_collection_nodes {
                 return Err(usage.to_string());
@@ -463,6 +473,7 @@ pub(crate) fn parse_compile_command_args(
         layer,
         format,
         out_dir,
+        receipt,
     })
 }
 
