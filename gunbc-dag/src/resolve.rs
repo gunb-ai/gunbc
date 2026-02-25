@@ -694,6 +694,33 @@ fn resolve_op(
 // Infrastructure resolution (cross-module patterns)
 // ============================================================================
 
+/// Convert a `serde_json::Value` to a proper `Value` with native types.
+///
+/// Unlike `Value::Json(v)` which wraps JSON opaquely, this produces
+/// `Value::Map`, `Value::List`, `Value::Str`, etc. so the evaluator
+/// can perform field access, iteration, and pattern matching natively.
+fn json_to_value(json: &serde_json::Value) -> Value {
+    match json {
+        serde_json::Value::Null => Value::Unit,
+        serde_json::Value::Bool(b) => Value::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::Float(f)
+            } else {
+                Value::Str(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Value::Str(s.clone()),
+        serde_json::Value::Array(arr) => Value::List(arr.iter().map(json_to_value).collect()),
+        serde_json::Value::Object(obj) => {
+            let map = obj.iter().map(|(k, v)| (k.clone(), json_to_value(v))).collect();
+            Value::Map(map)
+        }
+    }
+}
+
 /// Resolve typed lowered primitive nodes shared across all modules.
 fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match kind {
@@ -708,7 +735,7 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
                 PrimitiveLiteral::String(value) => Value::Str(value.clone()),
                 PrimitiveLiteral::Int(value) => Value::Int(*value),
                 PrimitiveLiteral::Bool(value) => Value::Bool(*value),
-                PrimitiveLiteral::Json(value) => Value::Json(value.clone()),
+                PrimitiveLiteral::Json(value) => json_to_value(value),
                 PrimitiveLiteral::Unit => Value::Unit,
             };
             Ok(DynOp::new(LiteralSourceOp { output_port, value }))

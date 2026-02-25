@@ -5,14 +5,8 @@
 //!
 //! To update the snapshot: `UPDATE_GOLDEN=1 cargo test -p gunbc-dag --test makefile_parity`
 
-use std::collections::HashMap;
-
-use daglang_lower::{CallableKind, LoweredFnBody, LoweredOp};
 use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;
 use gunbc_dag::makegen::{render_makefile, ToolRegistry};
-use gunbc_exec::Executable;
-use gunbc_ir::node::NodeBody;
-use gunbc_ir::Value;
 
 /// Golden snapshot embedded at compile time.
 const GOLDEN: &str = include_str!("fixtures/makefile_golden.txt");

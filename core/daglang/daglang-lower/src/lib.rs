@@ -1911,6 +1911,7 @@ fn lower_typed_project_with_callable_scope(
     // IS-4: Register stub transport triplets so resolve_service_call_source can find them.
     add_interface_stub_transport_triplets(&mut builder, project, &stub_interfaces, &mut service_registry);
     let known_interface_types = collect_interface_type_names(project);
+    let data_values = build_data_values(project);
     add_service_call_edges(
         &mut builder,
         project,
@@ -1920,6 +1921,7 @@ fn lower_typed_project_with_callable_scope(
         active_profile_bindings.as_ref(),
         &profile_bound_interfaces,
         &known_interface_types,
+        &data_values,
     )?;
     let auth_provider_names = collect_auth_provider_names(project);
     wire_auth_credential_edges(
@@ -5127,6 +5129,7 @@ fn add_service_call_edges(
     active_profile_bindings: Option<&ActiveProfileBindings>,
     profile_bound_interfaces: &HashSet<String>,
     known_interface_types: &HashSet<String>,
+    data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -5364,6 +5367,7 @@ fn add_service_call_edges(
                 &bound_service_sources,
                 module_name.as_str(),
                 item_name,
+                data_values,
             );
             // Wire for-loop iterable expressions to loop node "items" ports.
             wire_for_loop_iterables(
@@ -6721,8 +6725,35 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
             }
             Some(serde_json::Value::Object(out))
         }
+        Expr::Record(_type_name, fields) => {
+            let mut out = serde_json::Map::new();
+            for (key, value) in fields {
+                out.insert(key.clone(), expr_to_json_literal(value)?);
+            }
+            Some(serde_json::Value::Object(out))
+        }
         _ => None,
     }
+}
+
+/// Evaluate all module-level `data` declarations to JSON values.
+///
+/// Used to wire data declaration references as literal source nodes in fn call
+/// arguments. Only handles constant expressions (literals, lists, records).
+fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::Value> {
+    let mut values = HashMap::new();
+    for module in &project.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            if let Item::DataDef(def) = &item.node {
+                if let Some(json) = expr_to_json_literal(&def.value) {
+                    values.insert(format!("{module_name}.{}", def.name), json.clone());
+                    values.insert(def.name.clone(), json);
+                }
+            }
+        }
+    }
+    values
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -6735,6 +6766,7 @@ fn wire_fn_call_arguments(
     bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
     module_name: &str,
     item_name: &str,
+    data_values: &HashMap<String, serde_json::Value>,
 ) {
     let mut fn_calls = Vec::new();
     collect_fn_calls_with_args(stmts, &mut fn_calls);
@@ -6799,6 +6831,26 @@ fn wire_fn_call_arguments(
                     builder.add_edge(
                         source.parse.node_id.as_str(),
                         source.parse.primary_output.as_str(),
+                        fn_endpoint.node_id.as_str(),
+                        param_name,
+                    );
+                    continue;
+                }
+                // Wire data declaration references as JSON literal source nodes.
+                if let Some(json_val) = data_values.get(arg_ident) {
+                    let literal = ServiceCallArgLiteral::Json(json_val.clone());
+                    let src = ensure_literal_source_node(
+                        builder,
+                        module_name,
+                        item_name,
+                        param_name,
+                        "Any",
+                        &literal,
+                        &format!("data_{index}"),
+                    );
+                    builder.add_edge(
+                        src.as_str(),
+                        param_name,
                         fn_endpoint.node_id.as_str(),
                         param_name,
                     );
