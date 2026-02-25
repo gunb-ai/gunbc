@@ -231,7 +231,7 @@ pub(crate) fn core_workflow_body(
         "preflight-fix" => {
             vec!["@cargo fix --workspace --all-targets --allow-dirty --allow-staged".into()]
         }
-        "ensure-codegen" => vec![config.ensure_codegen_shell().into()],
+        "ensure-codegen" => vec![config.ensure_codegen.shell().into()],
         "build-release-bins" => {
             vec!["@RUSTFLAGS=\"-D warnings\" cargo build --workspace --release --bins".into()]
         }
@@ -239,13 +239,13 @@ pub(crate) fn core_workflow_body(
             let lint_cmd = config.lint.to_shell();
             let lint_fix_cmd = config.lint_fix.to_shell();
             let lint_upsert = format!("@{} || ({} && {})", lint_cmd, lint_fix_cmd, lint_cmd);
-            vec![config.pragma_shell().into(), lint_upsert.into()]
+            vec![config.pragma.shell().into(), lint_upsert.into()]
         }
-        "codegen" => vec![config.codegen_shell().into()],
-        "build" => vec![config.build_shell().into()],
+        "codegen" => vec![config.codegen.shell().into()],
+        "build" => vec![config.build.shell().into()],
         "clean" => vec!["@cargo clean".into()],
-        "testgen" => vec![config.testgen_shell().into()],
-        "testgen-check" => vec![config.testgen_check_shell().into()],
+        "testgen" => vec![config.testgen.shell().into()],
+        "testgen-check" => vec![config.testgen.with_mode(ExecMode::Verify).shell().into()],
         "deps-config" => vec![format!(
             "@target/release/{} --mode=ensure",
             WorkspaceBinary::DepsConfig.invocation().binary
@@ -256,9 +256,9 @@ pub(crate) fn core_workflow_body(
             WorkspaceBinary::DepsConfig.invocation().binary
         )
         .into()],
-        "makegen-check" => vec![config.makegen_check_shell().into()],
-        "bootstrap-check" => vec![config.bootstrap_check_shell().into()],
-        "pragma-check" => vec![config.pragma_check_shell().into()],
+        "makegen-check" => vec![config.makegen.with_mode(ExecMode::Verify).shell().into()],
+        "bootstrap-check" => vec![config.bootstrap.with_mode(ExecMode::Verify).shell().into()],
+        "pragma-check" => vec![config.pragma.with_mode(ExecMode::Verify).shell().into()],
         "verify" => vec![
             "@$(MAKE) deps-config-check".into(),
             "@$(MAKE) makegen-check".into(),
@@ -268,13 +268,13 @@ pub(crate) fn core_workflow_body(
         ],
         "verify-fix" => vec![
             "@$(MAKE) deps-config".into(),
-            config.makegen_ensure_shell().into(),
-            config.bootstrap_ensure_shell().into(),
-            config.testgen_ensure_shell().into(),
-            config.pragma_ensure_shell().into(),
+            config.makegen.with_mode(ExecMode::Ensure).shell().into(),
+            config.bootstrap.with_mode(ExecMode::Ensure).shell().into(),
+            config.testgen.with_mode(ExecMode::Ensure).shell().into(),
+            config.pragma.with_mode(ExecMode::Ensure).shell().into(),
         ],
-        "fmt-fix" => vec![config.fmt_shell().into()],
-        "lint-fix" => vec![config.lint_fix_shell().into()],
+        "fmt-fix" => vec![config.fmt.shell().into()],
+        "lint-fix" => vec![config.lint_fix.shell().into()],
         // WF8: CI and test-all are thin wrappers over workflow planner execution.
         "ci" => vec![workflow_planner_command("ci", config).into()],
         "test-all" => {

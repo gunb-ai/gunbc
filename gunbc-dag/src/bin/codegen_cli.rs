@@ -16,9 +16,9 @@
 //!
 //! # Architecture Note
 //!
-//! This binary lives in gunbc-dag (not gunbc-codegen) and discovers
-//! `#[tool_target(...)]` registrations directly from workspace source files.
-//! The codegen library remains in core/codegen as a leaf crate.
+//! This binary lives in gunbc-dag (not gunbc-codegen) and discovers tools
+//! from DSL `@binary` annotations. The codegen library remains in core/codegen
+//! as a leaf crate.
 
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
@@ -36,10 +36,9 @@ use gunbc_ir::transport::ci::{
 };
 use gunbc_ir::WorkspaceLayout;
 use gunbc_lib_transport::TransportIo;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::Write;
-use std::fs;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
@@ -681,491 +680,13 @@ fn ensure_bin_entry(doc: &mut DocumentMut, bin_name: &str, bin_path: &str) -> Re
     bins.push(table);
     Ok(true)
 }
-
-#[derive(Default)]
-struct ParsedToolTarget {
-    name: Option<String>,
-    crate_name: Option<String>,
-    description: Option<String>,
-    builder: Option<String>,
-    builder_args: Option<String>,
-    custom_import: Option<String>,
-    success_port: Option<String>,
-    mock_spec: Option<String>,
-    entrypoints_json: Option<String>,
-    package: Option<String>,
-    binary: Option<String>,
-    has_invocation: bool,
-    returns_result: bool,
-    enable_step_mode: bool,
-    skip: bool,
-}
-
-fn extract_attr_value(line: &str, key: &str) -> Option<String> {
-    let trimmed = line.trim().trim_end_matches(',');
-    let needle = format!("{key} = \"");
-    if let Some(after) = trimmed.strip_prefix(&needle) {
-        let end = after.find('"')?;
-        return Some(after[..end].to_string());
+/// Discovers tools from DSL `@binary` annotations — the DSL file IS the
+/// registration. No inventory, no regex source parsing, no allowlists.
+fn discover_codegen_tools(_workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
+    let tools = gunbc_dag::dsl_registry::discover_tool_defs_from_dsl();
+    if tools.is_empty() {
+        return Err("no @binary-annotated DSL tools discovered".to_string());
     }
-    let raw_needle = format!("{key} = r#\"");
-    if let Some(after) = trimmed.strip_prefix(&raw_needle) {
-        let end = after.find("\"#")?;
-        return Some(after[..end].to_string());
-    }
-    None
-}
-
-fn parse_tool_target_block(
-    path: &Path,
-    start_line: usize,
-    lines: &[&str],
-) -> Result<Option<ToolDef>, String> {
-    let mut parsed = ParsedToolTarget::default();
-
-    for line in lines {
-        let trimmed = line.trim();
-
-        if let Some(v) = extract_attr_value(trimmed, "name") {
-            parsed.name = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "crate_name") {
-            parsed.crate_name = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "description") {
-            parsed.description = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "builder") {
-            parsed.builder = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "args") {
-            parsed.builder_args = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "import") {
-            parsed.custom_import = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "success_port") {
-            parsed.success_port = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "mock_spec") {
-            parsed.mock_spec = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "entrypoints") {
-            parsed.entrypoints_json = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "package") {
-            parsed.package = Some(v);
-        }
-        if let Some(v) = extract_attr_value(trimmed, "binary") {
-            parsed.binary = Some(v);
-        }
-        if trimmed.contains("has_invocation") && !trimmed.contains("has_invocation =") {
-            parsed.has_invocation = true;
-        }
-        if trimmed.contains("returns_result") && !trimmed.contains("returns_result =") {
-            parsed.returns_result = true;
-        }
-        if trimmed.contains("enable_step_mode") && !trimmed.contains("enable_step_mode =") {
-            parsed.enable_step_mode = true;
-        }
-        if trimmed.contains("skip") && !trimmed.contains("skip =") {
-            parsed.skip = true;
-        }
-    }
-
-    if parsed.skip {
-        return Ok(None);
-    }
-
-    let name = parsed.name.ok_or_else(|| {
-        format!(
-            "{}:{}: tool_target missing required field `name`",
-            path.display(),
-            start_line
-        )
-    })?;
-    let crate_name = parsed.crate_name.ok_or_else(|| {
-        format!(
-            "{}:{}: tool_target missing required field `crate_name`",
-            path.display(),
-            start_line
-        )
-    })?;
-    let description = parsed.description.ok_or_else(|| {
-        format!(
-            "{}:{}: tool_target missing required field `description`",
-            path.display(),
-            start_line
-        )
-    })?;
-    let builder = parsed.builder.ok_or_else(|| {
-        format!(
-            "{}:{}: tool_target missing required field `builder`",
-            path.display(),
-            start_line
-        )
-    })?;
-
-    let mut tool = ToolDef::new(
-        crate_name.clone(),
-        name.clone(),
-        description.clone(),
-        builder.clone(),
-        parsed.builder_args.clone().unwrap_or_default(),
-    );
-
-    if parsed.returns_result {
-        tool = tool.returns_result();
-    }
-    if let Some(port) = parsed.success_port {
-        tool = tool.check_success(port);
-    }
-    if parsed.enable_step_mode {
-        tool = tool.enable_step_mode();
-    }
-    if let Some(import) = parsed.custom_import {
-        tool = tool.import(import);
-    }
-    if let Some(mock_spec) = parsed.mock_spec {
-        tool = tool.mock_spec_call(mock_spec);
-    }
-    if let Some(entrypoints) = parsed.entrypoints_json {
-        if !entrypoints.is_empty() {
-            tool = tool.entrypoints_json(&entrypoints);
-        }
-    }
-    if parsed.has_invocation {
-        let binary_component = parsed.binary.as_deref().unwrap_or(name.as_str());
-        let invocation = match parsed.package.as_deref() {
-            Some(pkg) if parsed.binary.is_some() || pkg != name => {
-                gunbc_ir::cargo::CargoInvocation::composed(binary_component, pkg)
-            }
-            _ => gunbc_ir::cargo::CargoInvocation::standalone(binary_component),
-        };
-        tool = tool.invocation(invocation);
-    }
-
-    Ok(Some(tool))
-}
-
-fn parse_tool_defs_from_file(path: &Path, content: &str) -> Result<Vec<ToolDef>, String> {
-    let mut in_tool_target = false;
-    let mut attr_start_line = 0usize;
-    let mut block_lines: Vec<&str> = Vec::new();
-    let mut tool_defs = Vec::new();
-
-    for (idx, line) in content.lines().enumerate() {
-        let trimmed = line.trim();
-        if !in_tool_target && trimmed.starts_with("#[") && trimmed.contains("tool_target(") {
-            in_tool_target = true;
-            attr_start_line = idx + 1;
-            block_lines.clear();
-        }
-        if in_tool_target {
-            block_lines.push(line);
-            if trimmed.contains(")]") {
-                if let Some(tool) = parse_tool_target_block(path, attr_start_line, &block_lines)? {
-                    tool_defs.push(tool);
-                }
-                in_tool_target = false;
-                block_lines.clear();
-            }
-        }
-    }
-
-    if in_tool_target {
-        return Err(format!(
-            "{}:{}: unterminated tool_target attribute block",
-            path.display(),
-            attr_start_line
-        ));
-    }
-
-    Ok(tool_defs)
-}
-
-#[allow(clippy::disallowed_methods)] // Build-time source discovery for generator tooling.
-fn collect_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut files = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let entries = fs::read_dir(&dir)
-            .map_err(|e| format!("failed to read source discovery dir {}: {e}", dir.display()))?;
-        for entry in entries {
-            let entry = entry.map_err(|e| {
-                format!(
-                    "failed to read source discovery entry in {}: {e}",
-                    dir.display()
-                )
-            })?;
-            let path = entry.path();
-            if path.is_dir() {
-                let name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or_default();
-                if matches!(name, "target" | "buck-out" | ".git") {
-                    continue;
-                }
-                stack.push(path);
-                continue;
-            }
-            if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
-                files.push(path);
-            }
-        }
-    }
-    Ok(files)
-}
-
-#[allow(clippy::disallowed_methods)] // Build-time source discovery for generator tooling.
-fn discover_tool_defs_from_workspace_sources(
-    workspace_root: &Path,
-) -> Result<Vec<ToolDef>, String> {
-    let mut by_name: BTreeMap<String, ToolDef> = BTreeMap::new();
-    for path in collect_rust_files(workspace_root)? {
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        for tool in parse_tool_defs_from_file(&path, &content)? {
-            let name = tool.meta.tool_name.to_string();
-            if let Some(prev) = by_name.insert(name.clone(), tool) {
-                return Err(format!(
-                    "duplicate tool_target name `{}` discovered (existing crate `{}`, new file `{}`)",
-                    name,
-                    prev.meta.crate_name,
-                    path.display()
-                ));
-            }
-        }
-    }
-    if by_name.is_empty() {
-        return Err("no #[tool_target] registrations discovered from source".to_string());
-    }
-    Ok(by_name.into_values().collect())
-}
-
-#[allow(clippy::disallowed_methods)] // Build-time DSL module discovery (not runtime I/O)
-fn discover_dsl_module_names(root: &Path, module_kind: &str) -> Result<BTreeSet<String>, String> {
-    let entries = fs::read_dir(root).map_err(|e| {
-        format!(
-            "failed to read DSL {module_kind} discovery root {}: {e}",
-            root.display()
-        )
-    })?;
-    let mut modules = BTreeSet::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| {
-            format!(
-                "failed to read DSL {module_kind} entry in {}: {e}",
-                root.display()
-            )
-        })?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if path.extension().and_then(|ext| ext.to_str()) != Some("dag") {
-            continue;
-        }
-        let stem = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .ok_or_else(|| {
-                format!(
-                    "failed to parse UTF-8 module stem for DSL {module_kind} file {}",
-                    path.display()
-                )
-            })?;
-        modules.insert(stem.to_string());
-    }
-    Ok(modules)
-}
-
-fn validate_required_dsl_modules_for_codegen(
-    tool_modules: &BTreeSet<String>,
-    pipeline_modules: &BTreeSet<String>,
-) -> Result<(), String> {
-    // Derive required tool modules from the tool registry (dsl_module field)
-    // and WorkspaceBinary (which covers manual/internal tools without registrations).
-    let registry_modules: BTreeSet<&str> = gunbc_tool_registry::dsl_module_to_targets()
-        .keys()
-        .copied()
-        .collect();
-    let binary_tool_modules: BTreeSet<&str> = WorkspaceBinary::all()
-        .iter()
-        .copied()
-        .filter(|binary| binary.is_dsl_tool_module())
-        .map(WorkspaceBinary::tool_name)
-        .collect();
-
-    // Required tools = union of registry dsl_module names and workspace binary tool modules.
-    let required_tools: BTreeSet<&str> = registry_modules
-        .union(&binary_tool_modules)
-        .copied()
-        .collect();
-
-    // Required pipelines: workspace binaries that map to DSL pipeline modules.
-    let required_pipelines: BTreeSet<&str> = WorkspaceBinary::all()
-        .iter()
-        .copied()
-        .filter(|binary| binary.is_dsl_pipeline_module())
-        .map(WorkspaceBinary::tool_name)
-        .collect();
-
-    let missing_tools: Vec<&str> = required_tools
-        .iter()
-        .copied()
-        .filter(|name| !tool_modules.contains(*name))
-        .collect();
-    let missing_pipelines: Vec<&str> = required_pipelines
-        .iter()
-        .copied()
-        .filter(|name| !pipeline_modules.contains(*name))
-        .collect();
-
-    if missing_tools.is_empty() && missing_pipelines.is_empty() {
-        return Ok(());
-    }
-
-    let mut parts = Vec::new();
-    if !missing_tools.is_empty() {
-        parts.push(format!("tools: {}", missing_tools.join(", ")));
-    }
-    if !missing_pipelines.is_empty() {
-        parts.push(format!("pipelines: {}", missing_pipelines.join(", ")));
-    }
-    Err(format!(
-        "missing required DSL modules for codegen discovery: {}",
-        parts.join("; ")
-    ))
-}
-
-fn validate_codegen_dsl_coverage(
-    tools: &[ToolDef],
-    tool_modules: &BTreeSet<String>,
-    pipeline_modules: &BTreeSet<String>,
-) -> Result<(), String> {
-    // Derive module→targets mapping from the tool registry's dsl_module field.
-    // Modules not in this map must be explicitly known as workspace-binary
-    // modules; otherwise they are unmapped and should fail closed.
-    let module_to_targets = gunbc_tool_registry::dsl_module_to_targets();
-    let known_tool_modules: BTreeSet<&str> = module_to_targets
-        .keys()
-        .copied()
-        .chain(
-            WorkspaceBinary::all()
-                .iter()
-                .copied()
-                .filter(|binary| binary.is_dsl_tool_module())
-                .map(WorkspaceBinary::tool_name),
-        )
-        .collect();
-    let known_pipeline_modules: BTreeSet<&str> = WorkspaceBinary::all()
-        .iter()
-        .copied()
-        .filter(|binary| binary.is_dsl_pipeline_module())
-        .map(WorkspaceBinary::tool_name)
-        .collect();
-    let intentionally_unmapped_tool_modules = intentionally_unmapped_dsl_tool_modules();
-    let intentionally_unmapped_pipeline_modules = intentionally_unmapped_dsl_pipeline_modules();
-
-    let unknown_tools: Vec<String> = tool_modules
-        .iter()
-        .filter(|module| {
-            let module = module.as_str();
-            !known_tool_modules.contains(module)
-                && !intentionally_unmapped_tool_modules.contains(module)
-        })
-        .cloned()
-        .collect();
-    let unknown_pipelines: Vec<String> = pipeline_modules
-        .iter()
-        .filter(|module| {
-            let module = module.as_str();
-            !known_pipeline_modules.contains(module)
-                && !intentionally_unmapped_pipeline_modules.contains(module)
-        })
-        .cloned()
-        .collect();
-    if !unknown_tools.is_empty() || !unknown_pipelines.is_empty() {
-        let mut parts = Vec::new();
-        if !unknown_tools.is_empty() {
-            parts.push(format!(
-                "unmapped DSL tool modules: {}",
-                unknown_tools.join(", ")
-            ));
-        }
-        if !unknown_pipelines.is_empty() {
-            parts.push(format!(
-                "unmapped DSL pipeline modules: {}",
-                unknown_pipelines.join(", ")
-            ));
-        }
-        return Err(format!(
-            "codegen DSL coverage validation failed: {}",
-            parts.join("; ")
-        ));
-    }
-
-    let tool_name_set: BTreeSet<&str> = tools
-        .iter()
-        .map(|tool| tool.meta.tool_name.as_ref())
-        .collect();
-
-    let mut missing_targets = Vec::new();
-    for module in tool_modules {
-        if let Some(targets) = module_to_targets.get(module.as_str()) {
-            for target in targets {
-                if !tool_name_set.contains(target) {
-                    missing_targets.push(format!("{module}->{target}"));
-                }
-            }
-        }
-    }
-
-    if missing_targets.is_empty() {
-        return Ok(());
-    }
-
-    Err(format!(
-        "codegen DSL coverage validation failed: missing generated targets for mapped DSL modules: {}",
-        missing_targets.join(", ")
-    ))
-}
-
-fn intentionally_unmapped_dsl_tool_modules() -> BTreeSet<&'static str> {
-    let mut set = BTreeSet::new();
-    // Workflow-internal build orchestration module. Executed via planner/workflow
-    // paths, not exposed as a standalone generated CLI target.
-    set.insert("build");
-    // Canonical SDLC design transforms are consumed by pipeline/runtime flows,
-    // not by a standalone codegen-generated CLI binary.
-    set.insert("design");
-    // Documentation assembly module consumed by higher-level workflow surfaces;
-    // currently no standalone generated CLI target.
-    set.insert("docgen");
-    // Legacy composite gist module retained for DSL corpus/docs.
-    // Runtime gist binaries are backed by gist_diff/gist_recent modules.
-    set.insert("gist");
-    set
-}
-
-fn intentionally_unmapped_dsl_pipeline_modules() -> BTreeSet<&'static str> {
-    let mut set = BTreeSet::new();
-    // SDLC control-loop pipelines are modeled in DSL but currently executed via
-    // planner/runtime orchestration, not as workspace binary entrypoints.
-    set.insert("reconciler");
-    set.insert("sdlc");
-    set
-}
-
-fn discover_codegen_tools(workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
-    let tools = discover_tool_defs_from_workspace_sources(workspace_root)?;
-    let tool_modules = discover_dsl_module_names(&workspace_root.join("dsl/tools"), "tool")?;
-    let pipeline_modules =
-        discover_dsl_module_names(&workspace_root.join("dsl/pipelines"), "pipeline")?;
-    validate_required_dsl_modules_for_codegen(&tool_modules, &pipeline_modules)?;
-    validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)?;
     Ok(tools)
 }
 
@@ -1588,14 +1109,13 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_codegen_tools, discover_dsl_module_names, generate_github_actions_template,
-        generate_gitlab_ci_template, parse_command_arg, parse_tool_defs_from_file,
-        validate_codegen_dsl_coverage,
+        discover_codegen_tools, generate_github_actions_template,
+        generate_gitlab_ci_template, parse_command_arg,
         validate_generated_ci_template, CiTemplateKind, WorkspaceBinary,
     };
     use gunbc_ir::transport::ci::{CacheConfig, RenderConfig};
     use std::collections::BTreeSet;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
@@ -1667,126 +1187,31 @@ mod tests {
             .expect_err("malformed GitLab template should fail validation");
         assert!(err.contains("missing required section"));
     }
-
     #[test]
-    fn parse_tool_target_block_supports_raw_entrypoints_and_flags() {
-        let attr = "tool_target";
-        let src_template = r##"
-#[gunbc_tool_registry_macros::__ATTR__(
-    name = "sample",
-    crate_name = "gunbc-sample",
-    description = "Sample tool",
-    builder = "build_sample_graph",
-    args = "Mode::Default",
-    import = "use gunbc_sample::build_sample_graph;",
-    success_port = "ok",
-    mock_spec = "gunbc_sample::graph_mock::sample_mock_spec()",
-    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"}]"#,
-    package = "sample",
-    binary = "sample",
-    has_invocation,
-    returns_result,
-    enable_step_mode
-)]
-pub fn sample_tool() {}
-"##;
-        let src = src_template.replace("__ATTR__", attr);
-        let defs = parse_tool_defs_from_file(Path::new("sample.rs"), &src)
-            .expect("tool_target parser should succeed");
-        assert_eq!(defs.len(), 1);
-        let tool = &defs[0];
-        assert_eq!(tool.meta.tool_name, "sample");
-        assert!(tool.meta.returns_result);
-        assert!(tool.meta.enable_step_mode);
-        assert_eq!(tool.meta.success_port.as_deref(), Some("ok"));
-        assert_eq!(tool.entrypoints.len(), 1);
-        assert_eq!(tool.entrypoints[0].port_name, "repo_path");
-        assert!(tool.invocation.is_some());
-    }
-
-    #[test]
-    fn codegen_source_discovery_finds_expected_tools() {
+    fn codegen_discovery_finds_expected_tools() {
         let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("workspace root should exist")
             .to_path_buf();
         let tools = discover_codegen_tools(&workspace_root)
-            .expect("source discovery should return tool defs");
+            .expect("DSL discovery should return tool defs");
         let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.to_string()).collect();
 
         for required in [
             "bootstrap",
-            "clippy",
             "deps",
+            "gist",
+            "gist-diff",
+            "gist-recent",
             "makegen",
-            "review",
+            "pragma",
+            "testgen",
         ] {
             assert!(
                 names.contains(required),
-                "missing tool target from source discovery: {}",
+                "missing tool from DSL discovery: {}",
                 required
             );
         }
-    }
-
-    #[test]
-    fn codegen_dsl_coverage_rejects_unknown_tool_module() {
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("workspace root should exist")
-            .to_path_buf();
-        let tools = discover_codegen_tools(&workspace_root)
-            .expect("source discovery should return tool defs");
-
-        let mut tool_modules: BTreeSet<String> = [
-            "build",
-            "bootstrap",
-            "clippy",
-            "codegen",
-            "deps",
-            "docgen",
-            "makegen",
-            "pragma",
-            "review",
-            "testgen",
-            "unknown_new_tool",
-        ]
-        .into_iter()
-        .map(|name| name.to_string())
-        .collect();
-        // Ensure deterministic assertion error path.
-        tool_modules.insert("unknown_new_tool".to_string());
-        let pipeline_modules: BTreeSet<String> = WorkspaceBinary::all()
-            .iter()
-            .copied()
-            .filter(|binary| binary.is_dsl_pipeline_module())
-            .map(|binary| binary.tool_name().to_string())
-            .collect();
-
-        let err = validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
-            .expect_err("unknown tool module must fail coverage validation");
-        assert!(err.contains("unmapped DSL tool modules"));
-        assert!(err.contains("unknown_new_tool"));
-    }
-
-    #[test]
-    fn codegen_dsl_coverage_rejects_unknown_pipeline_module() {
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("workspace root should exist")
-            .to_path_buf();
-        let tools = discover_codegen_tools(&workspace_root)
-            .expect("source discovery should return tool defs");
-        let tool_modules = discover_dsl_module_names(&workspace_root.join("dsl/tools"), "tool")
-            .expect("tool module discovery should succeed");
-        let mut pipeline_modules =
-            discover_dsl_module_names(&workspace_root.join("dsl/pipelines"), "pipeline")
-                .expect("pipeline module discovery should succeed");
-        pipeline_modules.insert("unknown_new_pipeline".to_string());
-
-        let err = validate_codegen_dsl_coverage(&tools, &tool_modules, &pipeline_modules)
-            .expect_err("unknown pipeline module must fail coverage validation");
-        assert!(err.contains("unmapped DSL pipeline modules"));
-        assert!(err.contains("unknown_new_pipeline"));
     }
 }

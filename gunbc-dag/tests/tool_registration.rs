@@ -613,16 +613,13 @@ fn inventory_is_single_authority() {
 
     // Manual tools must be an auditable, small set. If this grows,
     // it means tools are bypassing the single authority.
-    // Currently: "build-all" is the only non-registry manual target.
-    let known_manual: BTreeSet<&str> = ["build-all"].into_iter().collect();
-    let manual_str: BTreeSet<&str> = manual_makegen.iter().map(|s| s.as_str()).collect();
-    assert_eq!(
-        manual_str, known_manual,
+    // Currently: all tools are either inventory-derived or DSL-derived.
+    assert!(
+        manual_makegen.is_empty(),
         "unexpected manual makegen tools outside inventory — \
-         any new tool should use #[tool_target] registration, not manual wiring. \
-         extra: {:?}, missing: {:?}",
-        manual_str.difference(&known_manual).collect::<Vec<_>>(),
-        known_manual.difference(&manual_str).collect::<Vec<_>>(),
+         any new tool should use #[tool_target] registration or @binary annotation. \
+         extra: {:?}",
+        manual_makegen,
     );
 
     // Non-vacuity: the inventory is non-empty.

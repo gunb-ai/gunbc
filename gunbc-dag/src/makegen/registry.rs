@@ -54,6 +54,28 @@ pub enum BuildCommand {
 }
 
 impl BuildCommand {
+    /// Render as a prefixed `@` shell command string (for Makefile/Justfile recipes).
+    pub fn shell(&self) -> String {
+        format!("@{}", self.to_shell())
+    }
+
+    /// Derive a new command with a `--mode` argument appended.
+    ///
+    /// For `Cargo` variants, adds `BinaryArgs::with_mode(mode)`.
+    /// For `Shell` variants, appends `--mode=<mode>` to the command parts.
+    pub fn with_mode(&self, mode: ExecMode) -> Self {
+        match self {
+            BuildCommand::Cargo(cmd) => {
+                BuildCommand::Cargo(cmd.clone().args(BinaryArgs::with_mode(mode)))
+            }
+            BuildCommand::Shell(parts) => {
+                let mut p = parts.clone();
+                p.push(format!("--mode={mode}"));
+                BuildCommand::Shell(p)
+            }
+        }
+    }
+
     /// Render as a shell command string.
     pub fn to_shell(&self) -> String {
         match self {
@@ -122,22 +144,8 @@ pub struct BuildConfig {
     pub bootstrap: BuildCommand,
     /// Command to generate pragma artifacts (clippy.toml + allowlists)
     pub pragma: BuildCommand,
-    /// Command to check if generated tests are stale (`--mode=verify`)
-    pub testgen_check: BuildCommand,
-    /// Command to check if generated Makefile is stale (`--mode=verify`)
-    pub makegen_check: BuildCommand,
-    /// Command to check if generated bootstrap files are stale (`--mode=verify`)
-    pub bootstrap_check: BuildCommand,
-    /// Command to check if generated pragma/clippy config is stale (`--mode=verify`)
-    pub pragma_check: BuildCommand,
-    /// Command to ensure generated tests are up to date (`--mode=ensure`)
-    pub testgen_ensure: BuildCommand,
-    /// Command to ensure generated Makefile is up to date (`--mode=ensure`)
-    pub makegen_ensure: BuildCommand,
-    /// Command to ensure generated bootstrap files are up to date (`--mode=ensure`)
-    pub bootstrap_ensure: BuildCommand,
-    /// Command to ensure generated pragma/clippy config is up to date (`--mode=ensure`)
-    pub pragma_ensure: BuildCommand,
+    /// Command to generate Makefile
+    pub makegen: BuildCommand,
 }
 
 impl BuildConfig {
@@ -204,267 +212,29 @@ impl BuildConfig {
                 CargoCommand::new(Subcommand::Run(WorkspaceBinary::Pragma.invocation()))
                     .warnings(w),
             ),
-            testgen_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Testgen.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            makegen_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Makegen.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            bootstrap_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Bootstrap.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            pragma_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Pragma.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            testgen_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Testgen.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            makegen_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Makegen.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            bootstrap_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Bootstrap.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            pragma_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Pragma.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
+            makegen: c(
+                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Makegen.invocation()))
+                    .warnings(w),
+            ),
         }
     }
 
     /// Buck2-based build config (for future use).
     ///
-    /// Uses `BuildCommand::Shell` for buck2-native commands (build, test, lint, check)
-    /// and `BuildCommand::Cargo` for commands that still use cargo (codegen, fmt).
+    /// Built as a delta from `cargo()` — only the buck2-native commands
+    /// (build, test, lint, check) differ.
     pub fn buck2() -> Self {
-        let w = Warnings::Deny;
-        let codegen_inv = WorkspaceBinary::Codegen.invocation();
-        let codegen_dag_inv = WorkspaceBinary::CodegenDag.invocation();
-        let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
         let sh =
             |parts: &[&str]| BuildCommand::Shell(parts.iter().map(|s| s.to_string()).collect());
-        Self {
-            build_system: BuildSystem::Buck2,
-            use_dag_entrypoints: false,
-            warnings: w,
-            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
-                .args(BinaryArgs::with_mode(ExecMode::Ensure))
-                .warnings(w)),
-            codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone())).warnings(w)),
-            daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .args(BinaryArgs::codegen(CodegenSubcommand::Daggen))
-                .warnings(w)),
-            // Buck2-native commands
-            build: sh(&["buck2", "build", "//..."]),
-            test: sh(&["buck2", "test", "//..."]),
-            lint: sh(&["buck2", "run", "//tools:clippy"]),
-            // lint-fix still uses cargo (buck2 doesn't have an equivalent)
-            lint_fix: c(CargoCommand::new(Subcommand::Clippy)
-                .fix()
-                .workspace()
-                .allow_dirty()
-                .allow_staged()
-                .warnings(w)),
-            // fmt stays cargo (buck2 delegates to cargo fmt)
-            fmt: c(CargoCommand::new(Subcommand::Fmt)),
-            fmt_check: c(CargoCommand::new(Subcommand::Fmt).check()),
-            check: sh(&["buck2", "build", "//..."]),
-            ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
-                .args(BinaryArgs::codegen(CodegenSubcommand::Cigen))
-                .warnings(w)),
-            // testgen uses cargo (no buck2 equivalent yet)
-            testgen: c(
-                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
-                    .warnings(w),
-            ),
-            deps_config_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::DepsConfig.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            deps_config_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::DepsConfig.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            bootstrap: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Bootstrap.invocation(),
-            ))
-            .warnings(w)),
-            pragma: c(
-                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Pragma.invocation()))
-                    .warnings(w),
-            ),
-            testgen_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Testgen.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            makegen_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Makegen.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            bootstrap_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Bootstrap.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            pragma_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Pragma.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Verify))
-            .warnings(w)),
-            testgen_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Testgen.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            makegen_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Makegen.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            bootstrap_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Bootstrap.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-            pragma_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Pragma.invocation(),
-            ))
-            .args(BinaryArgs::with_mode(ExecMode::Ensure))
-            .warnings(w)),
-        }
+        let mut config = Self::cargo();
+        config.build_system = BuildSystem::Buck2;
+        config.build = sh(&["buck2", "build", "//..."]);
+        config.test = sh(&["buck2", "test", "//..."]);
+        config.lint = sh(&["buck2", "run", "//tools:clippy"]);
+        config.check = sh(&["buck2", "build", "//..."]);
+        config
     }
 
-    /// Get the codegen command as a shell string (for Makefile generation).
-    pub fn codegen_shell(&self) -> String {
-        format!("@{}", self.codegen.to_shell())
-    }
-
-    /// Get the ensure-codegen command as a shell string.
-    ///
-    /// Uses the bootstrap-safe DAG wrapper (`gunbc-codegen-dag --mode=ensure`)
-    /// so freshness checks and upsert behavior stay centralized.
-    pub fn ensure_codegen_shell(&self) -> String {
-        format!("@{}", self.ensure_codegen.to_shell())
-    }
-
-    /// Get the build command as a shell string.
-    pub fn build_shell(&self) -> String {
-        format!("@{}", self.build.to_shell())
-    }
-
-    /// Get the test command as a shell string.
-    pub fn test_shell(&self) -> String {
-        format!("@{}", self.test.to_shell())
-    }
-
-    /// Get the lint command as a shell string.
-    pub fn lint_shell(&self) -> String {
-        format!("@{}", self.lint.to_shell())
-    }
-
-    /// Get the lint-fix command as a shell string.
-    pub fn lint_fix_shell(&self) -> String {
-        format!("@{}", self.lint_fix.to_shell())
-    }
-
-    /// Get the fmt command as a shell string.
-    pub fn fmt_shell(&self) -> String {
-        format!("@{}", self.fmt.to_shell())
-    }
-
-    /// Get the fmt-check command as a shell string.
-    pub fn fmt_check_shell(&self) -> String {
-        format!("@{}", self.fmt_check.to_shell())
-    }
-
-    /// Get the check command as a shell string.
-    pub fn check_shell(&self) -> String {
-        format!("@{}", self.check.to_shell())
-    }
-
-    /// Get the CI YAML generation command as a shell string.
-    pub fn ci_yaml_shell(&self) -> String {
-        format!("@{}", self.ci_yaml.to_shell())
-    }
-
-    /// Get the testgen command as a shell string.
-    pub fn testgen_shell(&self) -> String {
-        format!("@{}", self.testgen.to_shell())
-    }
-
-    /// Get the pragma command as a shell string.
-    pub fn pragma_shell(&self) -> String {
-        format!("@{}", self.pragma.to_shell())
-    }
-
-    /// Get the deps-config-check command as a shell string.
-    pub fn deps_config_check_shell(&self) -> String {
-        format!("@{}", self.deps_config_check.to_shell())
-    }
-
-    /// Get the deps-config-ensure command as a shell string.
-    pub fn deps_config_ensure_shell(&self) -> String {
-        format!("@{}", self.deps_config_ensure.to_shell())
-    }
-
-    /// Get the testgen-check command as a shell string.
-    pub fn testgen_check_shell(&self) -> String {
-        format!("@{}", self.testgen_check.to_shell())
-    }
-
-    /// Get the makegen-check command as a shell string.
-    pub fn makegen_check_shell(&self) -> String {
-        format!("@{}", self.makegen_check.to_shell())
-    }
-
-    /// Get the bootstrap-check command as a shell string.
-    pub fn bootstrap_check_shell(&self) -> String {
-        format!("@{}", self.bootstrap_check.to_shell())
-    }
-
-    /// Get the pragma-check command as a shell string.
-    pub fn pragma_check_shell(&self) -> String {
-        format!("@{}", self.pragma_check.to_shell())
-    }
-
-    /// Get the testgen-ensure command as a shell string.
-    pub fn testgen_ensure_shell(&self) -> String {
-        format!("@{}", self.testgen_ensure.to_shell())
-    }
-
-    /// Get the makegen-ensure command as a shell string.
-    pub fn makegen_ensure_shell(&self) -> String {
-        format!("@{}", self.makegen_ensure.to_shell())
-    }
-
-    /// Get the bootstrap-ensure command as a shell string.
-    pub fn bootstrap_ensure_shell(&self) -> String {
-        format!("@{}", self.bootstrap_ensure.to_shell())
-    }
-
-    /// Get the pragma-ensure command as a shell string.
-    pub fn pragma_ensure_shell(&self) -> String {
-        format!("@{}", self.pragma_ensure.to_shell())
-    }
 }
 
 /// Get the default build config (cargo-based).
@@ -980,23 +750,23 @@ impl ConfigField {
     /// Get the command from BuildConfig for this field.
     pub fn get_command(&self, config: &BuildConfig) -> String {
         match self {
-            ConfigField::Test => config.test_shell(),
+            ConfigField::Test => config.test.shell(),
             ConfigField::TestIntegration => {
-                Self::with_test_filter(config.test_shell(), "integration")
+                Self::with_test_filter(config.test.shell(), "integration")
             }
-            ConfigField::TestExternal => Self::with_test_filter(config.test_shell(), "live_flow"),
-            ConfigField::Lint => config.lint_shell(),
-            ConfigField::Fmt => config.fmt_shell(),
-            ConfigField::Check => config.check_shell(),
-            ConfigField::Build => config.build_shell(),
-            ConfigField::CiYaml => config.ci_yaml_shell(),
+            ConfigField::TestExternal => Self::with_test_filter(config.test.shell(), "live_flow"),
+            ConfigField::Lint => config.lint.shell(),
+            ConfigField::Fmt => config.fmt.shell(),
+            ConfigField::Check => config.check.shell(),
+            ConfigField::Build => config.build.shell(),
+            ConfigField::CiYaml => config.ci_yaml.shell(),
         }
     }
 
     /// Get the check variant command if applicable.
     pub fn get_check_command(&self, config: &BuildConfig) -> Option<String> {
         match self {
-            ConfigField::Fmt => Some(config.fmt_check_shell()),
+            ConfigField::Fmt => Some(config.fmt_check.shell()),
             _ => None,
         }
     }
@@ -1005,9 +775,9 @@ impl ConfigField {
     /// Currently only Lint has a dedicated fix command (clippy --fix).
     pub fn get_fix_command(&self, config: &BuildConfig) -> Option<String> {
         match self {
-            ConfigField::Lint => Some(config.lint_fix_shell()),
+            ConfigField::Lint => Some(config.lint_fix.shell()),
             // For Fmt, the "fix" is just the regular fmt command
-            ConfigField::Fmt => Some(config.fmt_shell()),
+            ConfigField::Fmt => Some(config.fmt.shell()),
             _ => None,
         }
     }
@@ -1774,9 +1544,9 @@ mod tests {
     #[test]
     fn test_build_config_shell_methods() {
         let config = BuildConfig::cargo();
-        assert!(config.build_shell().starts_with("@"));
-        assert!(config.test_shell().contains("cargo test"));
-        assert!(config.lint_shell().contains("clippy"));
+        assert!(config.build.shell().starts_with("@"));
+        assert!(config.test.shell().contains("cargo test"));
+        assert!(config.lint.shell().contains("clippy"));
     }
 
     // ========================================================================
@@ -2086,8 +1856,8 @@ mod tests {
     #[test]
     fn test_lint_fix_command() {
         let config = BuildConfig::cargo();
-        assert!(config.lint_fix_shell().contains("--fix"));
-        assert!(config.lint_fix_shell().contains("--allow-dirty"));
+        assert!(config.lint_fix.shell().contains("--fix"));
+        assert!(config.lint_fix.shell().contains("--allow-dirty"));
     }
 
     // ========================================================================
