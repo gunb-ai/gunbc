@@ -71,6 +71,11 @@ pub fn build_testgen_graph_auto() -> Result<Dag<TestgenGraphOp>, BuilderError> {
     let fs_env = add_fs_env_root_node(&mut builder, dyn_op)?;
 
     for module in &modules {
+        // Skip modules that require a --profile flag (bound interface imports).
+        if module.requires_profile {
+            continue;
+        }
+
         let safe_name = module.module_name.replace('.', "-");
         let output_path = format!(
             "{}/generated_tests_{}.rs",

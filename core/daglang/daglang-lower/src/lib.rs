@@ -231,6 +231,7 @@ pub enum ServiceTransportClass {
     ShellLocal,
     RestNetwork,
     FileBoundary,
+    LocalDirect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]

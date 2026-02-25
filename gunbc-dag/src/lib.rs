@@ -124,9 +124,13 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
 // ============================================================================
 // These tests require inventory symbols from gcp-ops, aws-ops, and transport
 // to be linked. gunbc-dag depends on all three, so they run here.
+// gcp-ops is transitively linked through cloud-ops; aws-ops needs an explicit
+// `use ... as _` to force the linker to include its inventory registrations.
 
 #[cfg(test)]
 mod system_model_integration {
+    use gunbc_lib_aws_ops as _;
+
     use gunbc_ir::system_model::{
         default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
         validate_store_behavior_mapping, Property, UpsertPhase,

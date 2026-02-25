@@ -42,6 +42,8 @@ pub struct CompilableModule {
     pub func_count: usize,
     /// Whether the module has inline `test` blocks.
     pub has_test_blocks: bool,
+    /// Whether the module imports from `interfaces.*` (requires `--profile` to compile).
+    pub requires_profile: bool,
 }
 
 /// Result of attempting auto-testgen on a module.
@@ -114,6 +116,17 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             .iter()
             .any(|item| matches!(item.node, daglang_syntax::ast::Item::TestDef(_)));
 
+        // Modules that import from `interfaces.*` use profile-bound service
+        // interfaces and cannot be compiled without `--profile <name>`.
+        let requires_profile = ast.imports.iter().any(|import| {
+            import
+                .node
+                .path
+                .segments
+                .first()
+                .is_some_and(|s| s == "interfaces")
+        });
+
         // Build relative path from dsl root
         let rel_path = path
             .strip_prefix(base)
@@ -131,6 +144,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             module_name,
             func_count,
             has_test_blocks,
+            requires_profile,
         });
     }
 }
@@ -629,6 +643,7 @@ mod tests {
             module_name: "tools.makegen".to_string(),
             func_count: 1,
             has_test_blocks: true,
+            requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
         let result = auto_testgen_for_module(&module, output_dir);
@@ -656,6 +671,7 @@ mod tests {
             module_name: "nonexistent.fake".to_string(),
             func_count: 1,
             has_test_blocks: false,
+            requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
         let result = auto_testgen_for_module(&module, output_dir);
