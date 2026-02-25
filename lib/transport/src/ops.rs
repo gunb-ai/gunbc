@@ -115,6 +115,28 @@ impl Executable for TransportOps {
                         .bool("success", shell_resp.success());
                 }
 
+                // Extract extra info for local responses
+                if let TransportResponse::Local(local_resp) = &response {
+                    if let Some(obj) = local_resp.outputs.as_object() {
+                        for (key, val) in obj {
+                            match val {
+                                serde_json::Value::String(s) => {
+                                    out = out.str(key, s.clone());
+                                }
+                                serde_json::Value::Bool(b) => {
+                                    out = out.bool(key, *b);
+                                }
+                                serde_json::Value::Number(n) => {
+                                    if let Some(i) = n.as_i64() {
+                                        out = out.int(key, i);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
                 out.response("response", response).bool("skip", false).ok()
             }
         }

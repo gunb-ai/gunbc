@@ -13,7 +13,8 @@ use daglang_lower::{
 };
 use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::transport::{
-    FileRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
+    FileRequest, LocalRequest, LocalResponse, RestRequest, ShellRequest, TransportRequest,
+    TransportResponse,
 };
 use gunbc_ir::{SecretString, Value};
 
@@ -906,7 +907,6 @@ impl Executable for GenericLocalPrepareOp {
                 .bool("skip", true)
                 .ok();
         }
-        // Package inputs as JSON in a shell request (carrier for local ops).
         let mut body = serde_json::Map::new();
         for field in &self.spec.input_fields {
             if let Some(val) = inputs.get(&field.name) {
@@ -915,10 +915,11 @@ impl Executable for GenericLocalPrepareOp {
                 }
             }
         }
-        let json_str = serde_json::Value::Object(body).to_string();
-        let request = ShellRequest::new("echo").args(vec![json_str]);
+        let request = LocalRequest {
+            inputs: serde_json::Value::Object(body),
+        };
         OutputMap::new()
-            .request("request", TransportRequest::Shell(request))
+            .request("request", TransportRequest::Local(request))
             .bool("skip", false)
             .ok()
     }
@@ -933,8 +934,22 @@ pub struct GenericLocalParseOp {
 impl Executable for GenericLocalParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match inputs.get("response") {
+            Some(Value::Response(TransportResponse::Local(local_resp))) => {
+                let parsed = &local_resp.outputs;
+                let mut out = OutputMap::new();
+                for field in &self.spec.output_fields {
+                    let val = parsed.get(&field.name);
+                    out = match val {
+                        Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
+                        Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
+                        Some(other) => out.str(&field.name, other.to_string()),
+                        None => out.str(&field.name, String::new()),
+                    };
+                }
+                out.ok()
+            }
+            // Backward compat: accept Shell responses from the old echo-based carrier.
             Some(Value::Response(TransportResponse::Shell(shell))) => {
-                // Parse stdout as JSON and extract named output fields.
                 let parsed: serde_json::Value =
                     serde_json::from_str(shell.stdout.trim()).unwrap_or_default();
                 let mut out = OutputMap::new();
@@ -957,7 +972,7 @@ impl Executable for GenericLocalParseOp {
                 out.ok()
             }
             Some(other) => Err(ExecError::new(format!(
-                "GenericLocalParse: expected Shell response, got {:?}",
+                "GenericLocalParse: expected Local or Shell response, got {:?}",
                 std::mem::discriminant(other)
             ))),
         }

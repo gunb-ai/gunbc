@@ -15,6 +15,7 @@ pub enum TransportKind {
     Rest,
     File,
     Shell,
+    LocalDirect,
 }
 
 /// Field-routing invariant within a transport behavior.
@@ -99,6 +100,7 @@ impl TransportBehavior {
             TransportKind::Rest => InvocationContract::protocol("rest", docs),
             TransportKind::File => InvocationContract::protocol("file", docs),
             TransportKind::Shell => InvocationContract::protocol("shell", docs),
+            TransportKind::LocalDirect => InvocationContract::protocol("local", docs),
         }
     }
 }
@@ -164,6 +166,14 @@ pub fn default_transport_behaviors() -> Vec<TransportBehavior> {
         .with_required_fields(&["command"])
         .with_optional_fields(&["args", "cwd", "env", "stdin", "timeout_ms", "passthrough"])
         .with_response_fields(&["exit_code", "stdout", "stderr", "success", "error"]),
+        TransportBehavior::new(
+            "transport.local",
+            TransportKind::LocalDirect,
+            "LocalRequest",
+            "LocalResponse",
+        )
+        .with_required_fields(&["inputs"])
+        .with_response_fields(&["outputs"]),
     ]
 }
 
@@ -174,12 +184,15 @@ mod tests {
     #[test]
     fn default_behaviors_cover_all_core_transport_families() {
         let specs = default_transport_behaviors();
-        assert_eq!(specs.len(), 5);
+        assert_eq!(specs.len(), 6);
         assert!(specs.iter().any(|s| s.transport == TransportKind::Tcp));
         assert!(specs.iter().any(|s| s.transport == TransportKind::Http));
         assert!(specs.iter().any(|s| s.transport == TransportKind::Rest));
         assert!(specs.iter().any(|s| s.transport == TransportKind::File));
         assert!(specs.iter().any(|s| s.transport == TransportKind::Shell));
+        assert!(specs
+            .iter()
+            .any(|s| s.transport == TransportKind::LocalDirect));
     }
 
     #[test]

@@ -369,6 +369,11 @@ impl TransportBackend for VirtualTransportBackend {
         match request {
             TransportRequest::File(req) => Ok(TransportResponse::File(self.execute_file(req))),
             TransportRequest::Shell(req) => self.execute_shell(req).map(TransportResponse::Shell),
+            TransportRequest::Local(req) => Ok(TransportResponse::Local(
+                gunbc_ir::transport::LocalResponse {
+                    outputs: req.inputs.clone(),
+                },
+            )),
             TransportRequest::Rest(_) => Err(TransportError::new(
                 "virtual backend: REST transport unsupported",
             )),

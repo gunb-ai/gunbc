@@ -28,8 +28,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use gunbc_ir::transport::{
-    FileResponse, HttpResponse, RestResponse, ShellResponse, TcpResponse, TransportRequest,
-    TransportResponse,
+    FileResponse, HttpResponse, LocalResponse, RestResponse, ShellResponse, TcpResponse,
+    TransportRequest, TransportResponse,
 };
 use gunbc_ir::value::SecretString;
 use gunbc_ir::Value;
@@ -656,6 +656,8 @@ pub trait TransportResponseExt {
     fn require_http(&self) -> Result<&HttpResponse, ExecError>;
     /// Require a TCP response, returning an error if the variant doesn't match.
     fn require_tcp(&self) -> Result<&TcpResponse, ExecError>;
+    /// Require a Local response, returning an error if the variant doesn't match.
+    fn require_local(&self) -> Result<&LocalResponse, ExecError>;
 }
 
 impl TransportResponseExt for TransportResponse {
@@ -704,6 +706,16 @@ impl TransportResponseExt for TransportResponse {
             TransportResponse::Tcp(t) => Ok(t),
             other => Err(ExecError::new(format!(
                 "expected Tcp response, got {:?}",
+                std::mem::discriminant(other)
+            ))),
+        }
+    }
+
+    fn require_local(&self) -> Result<&LocalResponse, ExecError> {
+        match self {
+            TransportResponse::Local(l) => Ok(l),
+            other => Err(ExecError::new(format!(
+                "expected Local response, got {:?}",
                 std::mem::discriminant(other)
             ))),
         }

@@ -1297,6 +1297,13 @@ impl ProtocolStack {
                         .with_properties(vec!["WritesWorld".into()]),
                 );
             }
+            TransportKind::LocalDirect => {
+                layers.push(
+                    ProtocolLayer::new("local", ProtocolLayerKind::Socket)
+                        .with_description("Local in-process computation (no I/O)")
+                        .with_properties(vec!["Deterministic".into()]),
+                );
+            }
         }
 
         Self { layers }

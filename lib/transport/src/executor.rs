@@ -1,8 +1,9 @@
 //! Transport request executors.
 
 use gunbc_ir::transport::{
-    FileOp, FileRequest, FileResponse, HttpRequest, HttpResponse, RestRequest, RestResponse,
-    ShellRequest, ShellResponse, TcpRequest, TcpResponse, TransportRequest, TransportResponse,
+    FileOp, FileRequest, FileResponse, HttpRequest, HttpResponse, LocalRequest, LocalResponse,
+    RestRequest, RestResponse, ShellRequest, ShellResponse, TcpRequest, TcpResponse,
+    TransportRequest, TransportResponse,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -41,6 +42,7 @@ pub fn execute_transport(request: &TransportRequest) -> Result<TransportResponse
         TransportRequest::File(r) => execute_file(r).map(TransportResponse::File),
         TransportRequest::Tcp(r) => execute_tcp(r).map(TransportResponse::Tcp),
         TransportRequest::Shell(r) => execute_shell(r).map(TransportResponse::Shell),
+        TransportRequest::Local(r) => Ok(execute_local(r)),
     }
 }
 
@@ -534,6 +536,17 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
     }
+}
+
+/// Execute a local (pure computation) request.
+///
+/// Local requests carry inputs through without any I/O. The executor
+/// echoes the inputs back as outputs, making the transport layer a
+/// pass-through for in-process computations.
+fn execute_local(request: &LocalRequest) -> TransportResponse {
+    TransportResponse::Local(LocalResponse {
+        outputs: request.inputs.clone(),
+    })
 }
 
 #[cfg(test)]
