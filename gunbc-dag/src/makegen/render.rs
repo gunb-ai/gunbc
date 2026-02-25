@@ -245,7 +245,7 @@ pub(crate) fn core_workflow_body(
         "build" => vec![config.build.shell().into()],
         "clean" => vec!["@cargo clean".into()],
         "testgen" => vec![config.testgen.shell().into()],
-        "testgen-check" => vec![config.testgen.with_mode(ExecMode::Verify).shell().into()],
+        "testgen-check" => vec![config.testgen.shell().into()],
         "deps-config" => vec![format!(
             "@target/release/{} --mode=ensure",
             WorkspaceBinary::DepsConfig.invocation().binary
@@ -256,9 +256,9 @@ pub(crate) fn core_workflow_body(
             WorkspaceBinary::DepsConfig.invocation().binary
         )
         .into()],
-        "makegen-check" => vec![config.makegen.with_mode(ExecMode::Verify).shell().into()],
-        "bootstrap-check" => vec![config.bootstrap.with_mode(ExecMode::Verify).shell().into()],
-        "pragma-check" => vec![config.pragma.with_mode(ExecMode::Verify).shell().into()],
+        "makegen-check" => vec![config.makegen.shell().into()],
+        "bootstrap-check" => vec![config.bootstrap.shell().into()],
+        "pragma-check" => vec![config.pragma.shell().into()],
         "verify" => vec![
             "@$(MAKE) deps-config-check".into(),
             "@$(MAKE) makegen-check".into(),
@@ -268,10 +268,10 @@ pub(crate) fn core_workflow_body(
         ],
         "verify-fix" => vec![
             "@$(MAKE) deps-config".into(),
-            config.makegen.with_mode(ExecMode::Ensure).shell().into(),
-            config.bootstrap.with_mode(ExecMode::Ensure).shell().into(),
-            config.testgen.with_mode(ExecMode::Ensure).shell().into(),
-            config.pragma.with_mode(ExecMode::Ensure).shell().into(),
+            config.makegen.shell().into(),
+            config.bootstrap.shell().into(),
+            config.testgen.shell().into(),
+            config.pragma.shell().into(),
         ],
         "fmt-fix" => vec![config.fmt.shell().into()],
         "lint-fix" => vec![config.lint_fix.shell().into()],
@@ -705,7 +705,10 @@ mod tests {
         assert!(makefile.contains("makegen-check: lint-upsert"));
         assert!(makefile.contains("bootstrap-check: lint-upsert"));
         assert!(makefile.contains("pragma-check: lint-upsert"));
-        assert!(makefile.contains("gunbc-pragma -- --mode=verify"));
+        assert!(
+            !makefile.contains("-- --mode="),
+            "generated binaries should not receive --mode"
+        );
         assert!(makefile.contains("clean:"));
     }
 

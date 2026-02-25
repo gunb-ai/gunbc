@@ -391,3 +391,59 @@ fn scalar_to_json(param_type: ParamType, raw: &str) -> serde_json::Value {
         ParamType::Bool => serde_json::Value::Bool(raw == "true"),
     }
 }
+
+/// Binaries that are hand-written and actually support `--mode=`.
+const MODE_CAPABLE_BINARIES: &[&str] = &["gunbc-deps-config", "gunbc-ci"];
+
+/// Detect if any Makefile line passes `--mode=` to a binary that doesn't support it.
+///
+/// Generated DSL binaries only accept `--dry-run`, `--help`, `--print-inputs`,
+/// and DSL function params. Passing `--mode` to them causes an "unknown flag" error.
+#[test]
+fn test_makefile_mode_args_only_target_mode_capable_binaries() {
+    let registry = ToolRegistry::default_registry();
+    let makefile = render_makefile(&registry);
+
+    let mut violations = Vec::new();
+
+    for line in makefile.lines() {
+        let trimmed = line.trim();
+        // Skip comments and echo lines
+        if trimmed.starts_with('#') || trimmed.starts_with("@echo") {
+            continue;
+        }
+        if !trimmed.contains("--mode=") {
+            continue;
+        }
+
+        // Extract binary name from `--bin <name>` or `target/release/<name>`
+        let binary = extract_binary_name(trimmed);
+        if let Some(bin) = binary {
+            if !MODE_CAPABLE_BINARIES.contains(&bin.as_str()) {
+                violations.push(format!("binary '{}' receives --mode but is not mode-capable: {}", bin, trimmed));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Makefile passes --mode to binaries that don't support it:\n{}",
+        violations.join("\n")
+    );
+}
+
+fn extract_binary_name(line: &str) -> Option<String> {
+    // Match `--bin <name>` pattern
+    if let Some(pos) = line.find("--bin ") {
+        let rest = &line[pos + 6..];
+        let name = rest.split_whitespace().next()?;
+        return Some(name.to_string());
+    }
+    // Match `target/release/<name>` pattern
+    if let Some(pos) = line.find("target/release/") {
+        let rest = &line[pos + 15..];
+        let name = rest.split_whitespace().next()?;
+        return Some(name.to_string());
+    }
+    None
+}

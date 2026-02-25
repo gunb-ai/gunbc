@@ -488,6 +488,9 @@ fn is_passthrough_callable(module: &str, name: &str, has_service_metadata: bool)
 }
 
 const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
+    "config.clippy_policy::derive_clippy_toml",
+    "config.clippy_policy::derive_disallowed_methods_allowlist",
+    "config.clippy_policy::derive_pragma_lint_policy",
     "shared.dag_util::aggregate_results",
     "shared.dag_util::all_succeeded",
     "shared.dag_util::blank_line",
@@ -579,7 +582,9 @@ const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
     "tools.makegen::resolve_resource_target",
     "tools.pragma::pragma",
     "tools.pragma::render_clippy_toml_document",
+    "tools.pragma::render_disallowed_methods_allowlist",
     "tools.pragma::render_disallowed_methods_allowlist_document",
+    "tools.pragma::render_pragma_lint_policy",
     "tools.pragma::render_pragma_lint_policy_document",
     "tools.testgen::generate_tests",
     "tools.testgen::testgen",

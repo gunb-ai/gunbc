@@ -91,7 +91,7 @@ data core_workflows: List<CoreWorkflow> = [
     name: "testgen-check",
     description: "Check if generated tests are stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen -- --mode=verify"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen"],
     comment: None
   },
   {
@@ -112,21 +112,21 @@ data core_workflows: List<CoreWorkflow> = [
     name: "makegen-check",
     description: "Check if generated Makefile is stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen -- --mode=verify"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen"],
     comment: None
   },
   {
     name: "bootstrap-check",
     description: "Check if generated bootstrap artifacts are stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap -- --mode=verify"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap"],
     comment: None
   },
   {
     name: "pragma-check",
     description: "Check if pragma artifacts are stale",
     deps: ["lint-upsert"],
-    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma -- --mode=verify"],
+    body: ["@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma"],
     comment: None
   },
   {
@@ -148,10 +148,10 @@ data core_workflows: List<CoreWorkflow> = [
     deps: ["lint-upsert"],
     body: [
       "@$(MAKE) deps-config",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen -- --mode=ensure",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap -- --mode=ensure",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen -- --mode=ensure",
-      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma -- --mode=ensure"
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-makegen",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-bootstrap",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-testgen",
+      "@RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-dag --bin gunbc-pragma"
     ],
     comment: None
   },

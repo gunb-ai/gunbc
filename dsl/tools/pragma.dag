@@ -17,6 +17,9 @@ module tools.pragma
 import std.patterns { content_upsert }
 import std.types { Document, PragmaDirective }
 import shared.dag_util { doc_with_header, generated_header, render_document, section, text_line }
+import config.clippy_policy { derive_clippy_toml, derive_disallowed_methods_allowlist, derive_pragma_lint_policy }
+import config.arch_rules { allowlist_patterns, dead_code_allowances, exemptions, large_error_threshold, pragma_allow_lints }
+import config.clippy_disallowed { disallowed_method_groups, disallowed_type_groups }
 
 fn render_clippy_toml_document(directives: List<PragmaDirective>) -> Document {
   let entries = directives
@@ -65,17 +68,17 @@ fn render_pragma_lint_policy(directives: List<PragmaDirective>) -> String {
 
 func pragma(directives: List<PragmaDirective>) -> { success: Bool, clippy_written: Bool, allowlist_written: Bool, policy_written: Bool } {
   clippy = content_upsert(
-    content: render_clippy_toml(directives: directives),
+    content: derive_clippy_toml(threshold: large_error_threshold, crate_exemptions: exemptions, method_groups: disallowed_method_groups, type_groups: disallowed_type_groups),
     path: "clippy.toml"
   )
 
   allowlist = content_upsert(
-    content: render_disallowed_methods_allowlist(directives: directives),
+    content: derive_disallowed_methods_allowlist(patterns: allowlist_patterns),
     path: "tools/disallowed-methods-allowlist.txt"
   )
 
   policy = content_upsert(
-    content: render_pragma_lint_policy(directives: directives),
+    content: derive_pragma_lint_policy(dead_code: dead_code_allowances, allow_lints: pragma_allow_lints),
     path: "tools/pragma-lint-policy.txt"
   )
 

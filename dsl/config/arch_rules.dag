@@ -149,6 +149,38 @@ data exemptions: List<Exemption> = [
   }
 ]
 
+// ── Allowlist patterns ────────────────────────────────────────────────
+// Resolved path prefixes for #[allow(clippy::disallowed_methods)].
+// These are the concrete repo-relative paths that the pragma linter checks.
+// When a new crate or exemption is added, update this list.
+
+type AllowlistPattern {
+  pattern: String
+  rationale: String
+}
+
+data allowlist_patterns: List<AllowlistPattern> = [
+  { pattern: "lib/transport/", rationale: "transport boundary" },
+  { pattern: "core/exec/src/freshness.rs", rationale: "freshness steps run external tooling as child processes" },
+  { pattern: "core/exec/src/display.rs", rationale: "CI secret masking at transport boundary" },
+  { pattern: "core/exec/src/execute.rs", rationale: "CI secret masking at transport boundary" },
+  { pattern: "core/daglang/daglang-cli/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-contract/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-derive/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-driver/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-emit/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-lower/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-resolve/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-syntax/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-typecheck/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "gunbc-dag/src/", rationale: "build-time DSL module discovery and workspace graph construction" },
+  { pattern: "core/ir/src/workspace_layout.rs", rationale: "workspace layout discovery uses cargo metadata subprocess" },
+  { pattern: "core/ir/src/transport/credential.rs", rationale: "transport boundary: credential applied to outbound requests" },
+  { pattern: "core/ir/src/resource/", rationale: "capability-marker validation for resource handles" },
+  { pattern: "lib/cloud-ops/", rationale: "cloud ops: file-backed config, credential policy, secret cache" },
+  { pattern: "lib/gcp-ops/", rationale: "GCP ops: secret extraction for GCP service requests" }
+]
+
 // ── Dead code allowances ──────────────────────────────────────────────
 // Files permitted to use #[allow(dead_code)].
 
@@ -178,7 +210,7 @@ data pragma_allow_lints: List<String> = [
   "clippy::large_enum_variant",
   "clippy::too_many_arguments",
   "clippy::vec_init_then_push",
-  "rustc::unused_variables"
+  "unused_variables"
 ]
 
 // ── Thresholds ────────────────────────────────────────────────────────

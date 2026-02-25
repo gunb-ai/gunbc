@@ -162,8 +162,8 @@ impl BuildConfig {
             build_system: BuildSystem::Cargo,
             use_dag_entrypoints: false,
             warnings: w,
-            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
-                .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
                 .warnings(w)),
             codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone())).warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
