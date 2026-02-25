@@ -45,11 +45,6 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
         Value::from(data_values["resource_targets"].clone()),
     );
 
-    // Debug: show available fn names
-    let mut fn_names: Vec<&String> = fns.keys().collect();
-    fn_names.sort();
-    eprintln!("available fns ({}): {:?}", fn_names.len(), fn_names);
-
     let body = fns
         .get("render_makefile_content")
         .expect("render_makefile_content fn body should exist in makegen.dag");

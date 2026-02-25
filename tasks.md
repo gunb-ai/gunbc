@@ -13,16 +13,16 @@ SDLC activation (pipeline runs e2e). Model first, delete along the way.
 ```
               Foundation                           SDLC
         ┌─────────────────┐               ┌──────────────────┐
-Wk 1-2  │ FC-CL (cleanup) │               │ SDLC-1 (catalog) │
-        │ FC-NF7 (lowerer)│───────────────▶│ SDLC-5 (signal)  │
-        │        │        │               │ SDLC-6 (artifact)│
-Wk 2-4  │ FC-P6 (policy)  │               │        │         │
-        │ FC-P7 (registry)│               │ SDLC-2 (dispatch)│
-        │        │        │               │ SDLC-3 (validate)│
-Wk 4-7  │ FC-CF (compiler)│               │ SDLC-4 (testing) │
-        │        │        │               │        │         │
-Wk 7-9  │ FC-P8 (anemic)  │               │ SDLC-7 (verify)  │
-        │        │        │               │ SDLC-8 (local e2e)│
+  DONE  │ FC-CL ✓  FC-NF7✓│               │ SDLC-1 (catalog) │
+        ├─────────────────┤───────────────▶│ SDLC-5 (signal)  │
+  NOW   │ FC-EG (gates)   │               │ SDLC-6 (artifact)│
+        │ FC-WM (minimal) │               │        │         │
+        │ FC-P6 (policy)  │               │ SDLC-2 (dispatch)│
+        │ FC-P7 (registry)│               │ SDLC-3 (validate)│
+        │        │        │               │ SDLC-4 (testing) │
+        │ FC-CF (compiler)│               │        │         │
+        │        │        │               │ SDLC-7 (verify)  │
+  LAST  │ FC-P8 (anemic)  │               │ SDLC-8 (local e2e)│
         └─────────────────┘               │        │         │
                                           │ SDLC-CD (cloud)  │
                                           └──────────────────┘
@@ -30,23 +30,12 @@ Wk 7-9  │ FC-P8 (anemic)  │               │ SDLC-7 (verify)  │
 
 SDLC-1:6 can start immediately (no foundation dependency).
 FC-EG (enforcement gates) can start immediately — no deps, prevents regression.
-FC-NF7 is in progress (fn-level evaluation plan, Phases 0-5).
-FC-P6 and FC-P7 run in parallel after FC-NF7-3 (eval logic).
+FC-NF7 DONE — fn-level evaluation landed, render.rs deleted (~1200 lines).
+FC-CL DONE — dead code cleanup (tool-registry crates, orphaned spec builders, stale rules).
+FC-P6 and FC-P7 are UNBLOCKED — fn eval works, can convert remaining extern bridges.
+FC-WM (workflow minimality) can start immediately — no foundation dependency.
 FC-CF runs in parallel with P6/P7.
 FC-P8 requires FC-P6 + FC-P7 + FC-CF (split, zip, recursion at minimum).
-
----
-
-## Foundation: Dead Code Cleanup (FC-CL)
-
-Delete crates and code with zero dependents. Start now.
-
-| ID | Task | Size | Status |
-|----|------|------|--------|
-| FC-CL1 | Delete `core/tool-registry` + `core/tool-registry-macros`. Remove from workspace Cargo.toml. | S | Done |
-| FC-CL2 | Delete orphaned SDLC Rust: `sdlc_workflow_spec()` + `build_all_workflow_spec()` + all 12 `*_with_registry()` variants from `spec_builders.rs` (zero callers). Remove re-exports from `workflow/mod.rs` and `lib.rs`. | S | Done |
-| FC-CL3 | Remove stale `languages.rs` dead_code rule from `policy/pragma.rs` (file doesn't exist). | S | Done |
-| FC-CL4 | Remove stale `DeferredCallableOp` references from `mock_defaults.rs` comments (lines 449, 478). DeferredCallableOp deleted in P6. | S | Done |
 
 ---
 
@@ -62,34 +51,6 @@ Automated ratchets that prevent modeling regression. Cheap to add, high leverage
 
 ---
 
-## Foundation: Fn-Level Evaluation (FC-NF7)
-
-Enable DSL fn bodies to execute at runtime. Currently fn items resolve to
-PassthroughOp (identity forwarding) — string interpolation, let bindings, pipe
-chains are compiled but never evaluated. Two gaps: (1) NF-7 same-module fn call
-output wiring, (2) fn body computation discarded by lowerer.
-
-**Status**: In progress. Phase 0 scaffolding done (untracked). Phases 1-5 pending.
-
-**Implementation note**: Phase 2 (FnComputation DAG nodes) may be unnecessary —
-`fn_body` is already carried on Callable nodes from Phase 0. Phase 3's
-`FnBodyDelegate` evaluates the whole body as a unit, making per-statement DAG
-nodes redundant. Consider skipping Phase 2 and going Phase 0 → 1 → 3 → 4 → 5.
-
-| ID | Task | Size | Status | Deps |
-|----|------|------|--------|------|
-| FC-NF7-0 | Parity snapshot + fn body IR: `expr.rs` (LoweredFnBody/LoweredExpr IR + `lower_fn_body()` translation), `fn_body` field on Callable, golden `makefile_parity.rs` test. | S | Done (untracked) | — |
-| FC-NF7-1 | Fix NF-7: `wire_fn_call_outputs()` — wire same-module fn call return values back to caller. | M | Pending | — |
-| FC-NF7-1b | Shadow→extern quick win: convert 3 active shadow bridges (`gist::build_snapshot_content`, `bootstrap::render_bootstrap_makefile`, `bootstrap::render_bootstrap_gitignore`) from `fn` to `extern func`. Delete placeholder DSL bodies. Moves from fail-open to fail-closed resolution. No fn-body eval needed. | S | Pending | FC-NF7-1 |
-| FC-NF7-2 | Lower fn body computation: `FnComputation` LoweredOp variant + new pass `add_fn_body_computation_edges()`. **May skip** — see note above. | L | Pending | FC-NF7-1 |
-| FC-NF7-3 | Pure eval functions in `daglang-lower/src/eval.rs` + thin `FnBodyDelegate`/`CollectionDelegate` in resolve.rs. Expressions needed: string interp, let bindings, pipe (join/map/filter/first/append), field access, if/else, fn calls to siblings, string concat, list literals, ==/!=. | L | Pending | FC-NF7-1 |
-| FC-NF7-4 | Prove makegen parity: delete `RenderMakefileContentOp` from extern_impls.rs, verify golden test. | M | Pending | FC-NF7-3 |
-| FC-NF7-5 | Delete `makegen/render.rs` (1137 lines), extract justfile helpers to `makegen/shared.rs`. | M | Pending | FC-NF7-4 |
-
-Unblocks shadow fn → pure DSL conversion in P6 and P7.
-
----
-
 ## Foundation: Policy Migration (FC-P6)
 
 Move policy data from Rust const arrays to DSL. Eliminate 3 extern bridges
@@ -100,7 +61,7 @@ No new compiler features needed. Detail: `docs/design/v4/extern-bridge-gap-analy
 groups + 8 disallowed types), `dsl/config/clippy_policy.dag` (rendering helpers +
 derive_clippy_toml/derive_disallowed_methods_allowlist/derive_pragma_lint_policy fns),
 `dsl/config/arch_rules.dag` (AllowlistPattern type + 19 allowlist_patterns entries).
-These are compiled but not executed until FC-NF7-3 lands.
+FC-NF7 is done — these fns can now execute at runtime via FnBodyDelegate.
 
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
@@ -108,14 +69,15 @@ These are compiled but not executed until FC-NF7-3 lands.
 | FC-P6-a | `dsl/config/workspace.dag`: CrateSpec type + workspace_crates data + CI drift test. | M | Pending | — |
 | FC-P6-b | `dsl/config/pragma_policy.dag`: AllowlistRule, DeadCodeRule types + data from pragma.rs. Partial: clippy_disallowed.dag + arch_rules.dag AllowlistPattern data already exist. | M | Pending | FC-P6-a |
 | FC-P6-c | DSL policy rendering fns using Document types. Partial: clippy_policy.dag rendering helpers already exist. | M | Pending | FC-P6-a, FC-P6-b, FC-P6-0 |
-| FC-P6-d | Delete 3 pragma extern impls. Wire pragma.dag to call derive_* fns from clippy_policy.dag. Add parity golden tests for clippy.toml, allowlist, lint policy. | S | Pending | FC-P6-c, FC-NF7-3 |
+| FC-P6-d | Delete 3 pragma extern impls. Wire pragma.dag to call derive_* fns from clippy_policy.dag. Add parity golden tests for clippy.toml, allowlist, lint policy. | S | Pending | FC-P6-c |
 
 ---
 
 ## Foundation: Registry Migration (FC-P7)
 
-Move workflow/target constants and tool discovery to DSL. Eliminate 5 extern
-bridges. Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 7.
+Move workflow/target constants and tool discovery to DSL. Eliminate 3 extern
+bridges (render_bootstrap_makefile, render_bootstrap_gitignore, discover_tools).
+Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 7.
 
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
@@ -123,7 +85,7 @@ bridges. Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 7.
 | FC-P7-b | Compiler artifact emitter: emit `generated/tool_registry.dag` from CompileOutput. | L | Pending | — |
 | FC-P7-c1 | DSL Makefile types + rendering: MakefileTarget, GitignoreCategory, render fns. | M | Pending | FC-P7-a |
 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | FC-P7-a, FC-P7-b, FC-P7-c1 |
-| FC-P7-d | Delete 2 bootstrap extern impls (render_bootstrap_makefile, render_bootstrap_gitignore). Makefile: delegate to makegen DSL rendering. Gitignore: DSL categories + tool output data. Add parity golden tests. Note: makegen render_makefile_content already deleted by FC-NF7-4. | M | Pending | FC-P7-c2, FC-NF7-3 |
+| FC-P7-d | Delete 2 bootstrap extern impls (render_bootstrap_makefile, render_bootstrap_gitignore). Makefile: delegate to makegen DSL rendering. Gitignore: DSL categories + tool output data. Add parity golden tests. | M | Pending | FC-P7-c2 |
 
 ---
 
@@ -158,8 +120,9 @@ Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 5.
 | FC-P8-b | Snapshot content as MarkdownDoc. Delete BuildSnapshotContentOp. | M | Pending | FC-CF7, FC-P8-a |
 | FC-P8-c | Delete extern_impls.rs, resolve_extern_call(), all_extern_symbols(), lookup_extern_impl(). Zero `extern func` in any .dag file. | S | Pending | FC-P8-a, FC-P8-b |
 
-**Foundation endstate**: ~1,850 lines of Rust deleted. Zero extern bridges.
-All domain logic in DSL.
+**Foundation endstate**: Zero extern bridges. `extern_impls.rs` (610 lines) +
+policy const arrays in `pragma.rs` (~300 lines) deleted. All domain logic in DSL.
+(~1,350 lines already deleted by FC-NF7 + FC-CL.)
 
 ---
 
@@ -215,3 +178,5 @@ Not scheduled. Promote to active sections when capacity opens.
 ## Archive
 
 NF-1 through NF-6 (compile+link hardening): complete 2026-02-25. Detail: `TODO/TODONE/tasks-completed.md`.
+FC-NF7 (fn-level evaluation): complete 2026-02-25. `expr.rs` IR + `eval.rs` evaluator + `FnBodyDelegate`. `makegen/render.rs` deleted (~1200 lines). Makegen rendering is pure DSL.
+FC-CL (dead code cleanup): complete 2026-02-25. Deleted `core/tool-registry` + `core/tool-registry-macros`, 14 orphaned spec builder fns, stale rules/comments.

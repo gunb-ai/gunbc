@@ -169,10 +169,14 @@ fn eval_expr(
     match expr {
         LoweredExpr::Literal(lit) => Ok(eval_literal(lit)),
 
-        LoweredExpr::Ident(name) => env
-            .get(name)
-            .cloned()
-            .ok_or_else(|| EvalError::new(format!("unbound variable: {name}"))),
+        LoweredExpr::Ident(name) => {
+            if name == "None" || name == "null" {
+                return Ok(Value::Unit);
+            }
+            env.get(name)
+                .cloned()
+                .ok_or_else(|| EvalError::new(format!("unbound variable: {name}")))
+        }
 
         LoweredExpr::FieldAccess { expr, field } => {
             let base = eval_expr(expr, env, sibling_fns)?;
