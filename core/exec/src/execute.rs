@@ -712,6 +712,9 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
 
         if let Some(edges) = edges_by_to_node.get(node_id) {
             for &edge in edges {
+                if !edge.kind.carries_data() {
+                    continue;
+                }
                 if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                     if let Some(val) = upstream.get(&edge.from_port.0) {
                         if let Some(&to_cardinality) = list_ports.get(edge.to_port.0.as_str()) {
@@ -1282,6 +1285,9 @@ fn build_node_inputs<T>(
 
     if let Some(edges) = edges_by_to_node.get(node_id) {
         for &edge in edges {
+            if !edge.kind.carries_data() {
+                continue;
+            }
             if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                 if let Some(val) = upstream.get(&edge.from_port.0) {
                     if let Some(&to_cardinality) = list_ports.get(edge.to_port.0.as_str()) {

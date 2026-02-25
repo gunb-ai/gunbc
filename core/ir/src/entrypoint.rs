@@ -81,6 +81,7 @@ pub fn detect_entrypoints<T>(dag: &Dag<T>) -> EntrypointInfo {
     let connected: HashSet<(NodeId, PortName)> = dag
         .edges
         .iter()
+        .filter(|e| e.kind.carries_data())
         .map(|e| (e.to_node.clone(), e.to_port.clone()))
         .collect();
 

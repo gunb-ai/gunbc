@@ -69,6 +69,7 @@ pub fn detect_boundaries<T>(dag: &Dag<T>) -> BoundaryInfo {
     let connected: HashSet<(NodeId, PortName)> = dag
         .edges
         .iter()
+        .filter(|e| e.kind.carries_data())
         .map(|e| (e.from_node.clone(), e.from_port.clone()))
         .collect();
 

@@ -185,12 +185,13 @@ pub fn build_emit_plan(
     let connected_inputs: HashSet<(String, String)> = dag
         .edges
         .iter()
+        .filter(|e| e.kind.carries_data())
         .map(|e| (e.to_node.0.clone(), e.to_port.0.clone()))
         .collect();
 
     // Build an edge lookup: (to_node, to_port) → (from_node, from_port).
     let mut edge_source: HashMap<(String, String), (String, String)> = HashMap::new();
-    for edge in &dag.edges {
+    for edge in dag.edges.iter().filter(|e| e.kind.carries_data()) {
         edge_source.insert(
             (edge.to_node.0.clone(), edge.to_port.0.clone()),
             (edge.from_node.0.clone(), edge.from_port.0.clone()),
@@ -222,7 +223,7 @@ pub fn build_emit_plan(
         let input_sources: Vec<InputBinding> = node
             .inputs
             .iter()
-            .filter(|p| !p.name.0.starts_with("res:"))
+            .filter(|p| is_user_input_port(&p.name.0))
             .map(|port| {
                 let key = (node_id_str.clone(), port.name.0.clone());
                 if let Some((from_node, from_port)) = edge_source.get(&key) {
@@ -265,7 +266,7 @@ pub fn build_emit_plan(
     }
 
     // 4. Pass 2: fill in output binding consumers.
-    for edge in &dag.edges {
+    for edge in dag.edges.iter().filter(|e| e.kind.carries_data()) {
         let from_id = &edge.from_node.0;
         let to_id = &edge.to_node.0;
 
@@ -291,7 +292,7 @@ pub fn build_emit_plan(
     for (step_idx, step) in steps.iter().enumerate() {
         let node = dag.get_node(&step.node_id.clone().into()).unwrap();
         for port in &node.inputs {
-            if port.name.0.starts_with("res:") {
+            if !is_user_input_port(&port.name.0) {
                 continue;
             }
             let key = (step.node_id.clone(), port.name.0.clone());
@@ -315,6 +316,10 @@ pub fn build_emit_plan(
         entrypoints,
         transport_nodes,
     })
+}
+
+fn is_user_input_port(name: &str) -> bool {
+    name != "__deps" && !name.starts_with("res:") && !name.starts_with("tool:")
 }
 
 /// Kahn's algorithm topo sort over a `Dag<LoweredOp>`.

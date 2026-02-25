@@ -31,7 +31,7 @@ use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, Guard, Node, Port, Value};
+use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, Port, PortName, Value};
 use serde::Serialize;
 
 /// Lowered operation payload for daglang graph nodes.
@@ -1174,7 +1174,7 @@ fn is_known_uses_type(set: &HashSet<String>, name: &str) -> bool {
 struct DagBuilder {
     dag: Dag<LoweredOp>,
     seen_nodes: HashSet<String>,
-    seen_edges: HashSet<(String, String, String, String)>,
+    seen_edges: HashSet<(String, String, String, String, EdgeKind)>,
 }
 
 impl DagBuilder {
@@ -1194,14 +1194,42 @@ impl DagBuilder {
     }
 
     fn add_edge(&mut self, from: &str, from_port: &str, to: &str, to_port: &str) {
+        let kind = if to_port == "__deps" {
+            EdgeKind::Control
+        } else {
+            EdgeKind::DataFlow
+        };
+        self.add_edge_kind(from, from_port, to, to_port, kind);
+    }
+
+    fn add_control_edge(&mut self, from: &str, from_port: &str, to: &str, to_port: &str) {
+        self.add_edge_kind(from, from_port, to, to_port, EdgeKind::Control);
+    }
+
+    fn add_edge_kind(
+        &mut self,
+        from: &str,
+        from_port: &str,
+        to: &str,
+        to_port: &str,
+        kind: EdgeKind,
+    ) {
         let key = (
             from.to_string(),
             from_port.to_string(),
             to.to_string(),
             to_port.to_string(),
+            kind,
         );
         if self.seen_edges.insert(key) {
-            self.dag.add_edge(Edge::new(from, from_port, to, to_port));
+            self.dag.add_edge(Edge {
+                from_node: NodeId::new(from.to_string()),
+                from_port: PortName::new(from_port.to_string()),
+                to_node: NodeId::new(to.to_string()),
+                to_port: PortName::new(to_port.to_string()),
+                index: 0,
+                kind,
+            });
         }
     }
 
@@ -5596,7 +5624,7 @@ fn add_used_resource_edges(
                     );
                 }
                 if let Some(release_node) = endpoint.release_node {
-                    builder.add_edge(
+                    builder.add_control_edge(
                         target.node_id.as_str(),
                         target.primary_output.as_str(),
                         release_node.as_str(),
@@ -5678,7 +5706,7 @@ fn add_provided_resource_nodes(
                         resource_target: Some(provided.binding.clone()),
                     },
                 ));
-                builder.add_edge(
+                builder.add_control_edge(
                     target.node_id.as_str(),
                     target.primary_output.as_str(),
                     provider_node_id.as_str(),
@@ -6996,6 +7024,25 @@ fn run(values: List<String>) -> { out: String } {
                 CollectionOpKind::Map,
             ]
         );
+    }
+
+    #[test]
+    fn collect_collection_ops_detects_pipe_flat_map_chain() {
+        let stmts = callable_stmts_from_source(
+            r#"
+module sample.collections
+fn run(values: List<String>) -> { out: String } {
+  rendered = values
+    |> flat_map(v => [v])
+    |> join(",")
+  return { out: rendered }
+}
+"#,
+        );
+        let mut sites = Vec::new();
+        collect_collection_ops_from_stmts(&stmts, &mut sites);
+        let kinds = sites.iter().map(|site| site.kind).collect::<Vec<_>>();
+        assert_eq!(kinds, vec![CollectionOpKind::Join, CollectionOpKind::FlatMap]);
     }
 
     #[test]
