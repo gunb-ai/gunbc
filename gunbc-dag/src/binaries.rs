@@ -53,18 +53,20 @@ macro_rules! workspace_binaries {
 }
 
 workspace_binaries! {
-    Bootstrap   => "bootstrap",
-    Ci          => "ci",
-    Codegen     => "codegen",
-    CodegenDag  => "codegen-dag",
-    DepsConfig  => "deps-config",
-    Gist        => "gist",
-    GistDiff    => "gist-diff",
-    GistRecent  => "gist-recent",
-    Infra       => "infra",
-    Makegen     => "makegen",
-    Pragma      => "pragma",
-    Testgen     => "testgen",
+    Bootstrap      => "bootstrap",
+    Ci             => "ci",
+    Codegen        => "codegen",
+    CodegenDag     => "codegen-dag",
+    DepsConfig     => "deps-config",
+    GenerateDesign => "generate-design",
+    Gist           => "gist",
+    GistDiff       => "gist-diff",
+    GistRecent     => "gist-recent",
+    Infra          => "infra",
+    Makegen        => "makegen",
+    Pragma         => "pragma",
+    ReviewDesign   => "review-design",
+    Testgen        => "testgen",
 }
 
 impl WorkspaceBinary {
@@ -140,6 +142,7 @@ mod tests {
         let non_workspace_dispatch_bins: BTreeSet<&str> = BTreeSet::from([
             // Dedicated executors that are not `WorkspaceBinary` tool modules.
             "deps",
+            "docgen",
             "review",
             "pipeline",
             "workflow",

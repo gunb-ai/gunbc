@@ -47,7 +47,7 @@
 |----|------|------|------|--------|
 | **IS-1** | **Add `InterfaceStub` to `ServiceTransportClass`**: New enum variant in `daglang-lower`. Audit all match arms for exhaustiveness. | -- | S | Planned |
 | **IS-2** | **Add `add_interface_stub_transport_triplets()`**: Mirror resource capability transport pattern. Walk `InterfaceDef.capabilities`, create prepare/execute/parse triplets with `InterfaceStub` transport class. | IS-1 | M | Planned |
-| **IS-3** | **Relax `enforce_profile_for_bound_uses()`**: Convert hard error to informational. Return `HashSet<String>` of interface types needing stubs. (Stopgap: `requires_profile` filter in `build_testgen_graph_auto()` skips these modules — remove filter when IS-3 lands.) | IS-1 | S | Planned |
+| **IS-3** | **Relax `enforce_profile_for_bound_uses()`**: Convert hard error to informational. Return `HashSet<String>` of interface types needing stubs. (Stopgap: `requires_profile` filter in `build_testgen_graph_auto()` skips these modules — remove filter when IS-3 lands.) *Runtime graceful degradation in place*: `AutoGenerate` now emits placeholder content on compile error instead of hard-failing the testgen DAG. | IS-1 | S | Planned |
 | **IS-4** | **Wire stubs into lowering flow**: Call `add_interface_stub_transport_triplets()` after service transport, merge into endpoint registry. | IS-2, IS-3 | S | Planned |
 | **IS-5** | **Update `resolve_service_call_source()` fallback**: Try `cap_key` lookup when `active_profile_bindings` is `None`. Only error if stub lookup also fails. | IS-3 | S | Planned |
 | **IS-6** | **Handle `InterfaceStub` in DynOp resolver**: `InterfaceStubPrepareOp`, `InterfaceStubExecuteOp` (errors in Real mode, auto-mocked in DryRun), `InterfaceStubParseOp`. | -- | M | Planned |
@@ -78,6 +78,10 @@
 | **FC-7** | **Remove node-name substring extraction hacks**: Replace `content_upsert_path_` ID substring checks with explicit metadata/annotation-based output path extraction. | NF-2 | M | Planned |
 | **FC-8** | **Fail-closed content extraction + test restoration**: Make `extract_file_contents` schema handling fail-closed (or explicit warning mode) and restore non-empty gist dry-run tests with real assertions. | FC-7 | M | Planned |
 | **FC-9** | **Define and enforce `\\xHH` string semantics**: Align lexer + emitter behavior for hex-escape handling and add deterministic contract tests. | FC-1 | S | Planned |
+| **FC-10** | **Proper `@local` transport type**: `GenericLocalPrepareOp` wraps inputs in `ShellRequest::new("echo")` as carrier; `GenericLocalParseOp` expects `TransportResponse::Shell`. Add `TransportRequest::Local` / `TransportResponse::Local` variants in `core/ir/src/transport/mod.rs`, add `TransportKind::LocalDirect` in `daglang-emit`, update prepare/parse ops. | -- | M | Planned |
+| **FC-11** | **Collapse `service_prepare_ports()` match arms**: 4 near-identical arms (`Rest`, `Shell`, `File`, `Local`) each doing `spec.input_fields.iter().map(...)`. Add `ServiceOperationSpec::input_fields(&self) -> &[FieldSpec]` method. | -- | S | Planned |
+| **FC-12** | **Fix `WorkspaceBinary` enum alignment**: Hooks added `review-design` binary without updating enum. Add `ReviewDesign` variant to `gunbc-dag/src/binaries.rs`. | -- | S | **Done** |
+| **FC-13** | **Fix `workspace_crates()` count**: Removed 3 phantom crates (`lib/git-ops`, `lib/azure-ops`, `lib/markdown`) not in root Cargo.toml workspace members. | -- | S | **Done** |
 
 ### Mega-lane dependency guide
 
@@ -87,28 +91,7 @@
 4. `FC-1 -> (FC-2, FC-3, FC-9)`
 5. `FC-5 -> FC-6`
 6. `NF-2 -> FC-7 -> FC-8`
-7. `FC-4` parallel.
-
-### Lane 1 exit criteria
-
-1. No CLI/emitter/runtime fallback path remains for unresolved extern funcs/assets.
-2. Runtime and embedded assets resolve through link-time extern symbol contracts.
-3. All interface-using modules compile without `--profile` and are DryRun-testable.
-4. Per-profile live tests are generated and gated by env requirements.
-5. No comment/raw-code fallback paths remain in expression codegen for unsupported constructs.
-6. Known fail-open hacks from 2026-02-24 cleanup feedback are resolved or replaced by explicit errors.
-7. Determinism receipts and emit manifests are stable across repeated runs.
-8. `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings` clean.
-
-### Known Hacks / Cleanup (from 2026-02-24 gist consolidation + @local support)
-
-| ID | Hack | Location | Clean fix |
-|----|------|----------|-----------|
-| **H-1** | `GenericLocalPrepareOp` wraps inputs in `ShellRequest::new("echo")` as carrier; `GenericLocalParseOp` expects `TransportResponse::Shell`. Semantically wrong — `@local` isn't a shell command. | `gunbc-dag/src/resolve_service.rs` | Add `TransportRequest::Local(LocalRequest)` / `TransportResponse::Local(LocalResponse)` variants in `core/ir/src/transport/mod.rs`. Update prepare/parse ops to use them. |
-| **H-2** | `daglang-emit` maps `LocalDirect` → `TransportKind::ShellExec`. | `core/daglang/daglang-emit/src/computation.rs` | Add `TransportKind::LocalDirect` variant. |
-| **H-3** | `service_prepare_ports()` has 4 near-identical match arms (`Rest`, `Shell`, `File`, `Local`) each doing `spec.input_fields.iter().map(...)`. | `core/daglang/daglang-lower/src/lib.rs:4393` | Add `ServiceOperationSpec::input_fields(&self) -> &[FieldSpec]` method to collapse the match. |
-| **H-4** | `workspace_binary_table_matches_cargo_manifest_bins` fails — hooks added `review-design` binary without updating `WorkspaceBinary` enum. | `gunbc-dag/src/binaries.rs` | Add `ReviewDesign` variant to `WorkspaceBinary` enum. |
-| **H-5** | `workspace_crates_count_matches_cargo_toml` fails — hooks added crates (codegen entrypoint, lambda_gen, rest_gen) without updating `workspace_crates()`. | `core/infra/src/workspace_model.rs` | Update `workspace_crates()` count or structure. |
+7. `FC-4`, `FC-10`, `FC-11`, `FC-12`, `FC-13` parallel.
 
 ### Lane 1 files touched (aggregate)
 

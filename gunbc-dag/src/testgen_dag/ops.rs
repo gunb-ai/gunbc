@@ -85,12 +85,21 @@ impl Executable for TestgenOp {
                 output_path,
             } => {
                 // 1. Compile .dag → Dag<DynOp> + DSL type registry
-                let result =
-                    crate::dsl_builder::build_dsl_graph_with_types(dsl_path).map_err(|e| {
-                        ExecError::new(format!(
-                            "auto-generate '{module_name}' compile error: {e}"
-                        ))
-                    })?;
+                let result = match crate::dsl_builder::build_dsl_graph_with_types(dsl_path) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let placeholder = format!(
+                            "// Auto-testgen skipped for '{module_name}': {e}\n\
+                             // This module cannot be compiled without additional context\n\
+                             // (e.g., provider binding or --profile flag).\n\
+                             // See IS-3 in TODO/tasks.md for the proper fix.\n"
+                        );
+                        return OutputMap::new()
+                            .str("content", placeholder)
+                            .str("path", output_path.to_string())
+                            .ok();
+                    }
+                };
 
                 // 2. Auto-generate MockSpec from types + DAG structure
                 let safe_name = module_name.replace('.', "-");

@@ -221,14 +221,7 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             depends_on: &["core/infra"],
             is_producer: false,
         },
-        // ── Application (15) ──────────────────────────────────────────
-        CrateSpec {
-            name: "lib/git-ops",
-            tier: CrateTier::Application,
-            description: "Git operation library",
-            depends_on: &["core/ir"],
-            is_producer: false,
-        },
+        // ── Application (10) ──────────────────────────────────────────
         CrateSpec {
             name: "lib/cloud-ops",
             tier: CrateTier::Application,
@@ -240,13 +233,6 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             name: "lib/aws-ops",
             tier: CrateTier::Application,
             description: "AWS provider operations",
-            depends_on: &["core/ir", "lib/cloud-ops"],
-            is_producer: false,
-        },
-        CrateSpec {
-            name: "lib/azure-ops",
-            tier: CrateTier::Application,
-            description: "Azure provider operations",
             depends_on: &["core/ir", "lib/cloud-ops"],
             is_producer: false,
         },
@@ -268,13 +254,6 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             name: "lib/design-ops",
             tier: CrateTier::Application,
             description: "Design operations",
-            depends_on: &["core/ir"],
-            is_producer: false,
-        },
-        CrateSpec {
-            name: "lib/markdown",
-            tier: CrateTier::Application,
-            description: "Markdown processing",
             depends_on: &["core/ir"],
             is_producer: false,
         },

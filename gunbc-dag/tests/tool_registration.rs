@@ -327,9 +327,7 @@ fn workspace_binary_enum_covers_dsl_tools() {
         "deps",
         "deps-generate",
         "docgen",
-        "generate-design",
         "review",
-        "review-design",
     ]);
 
     let enum_binaries: BTreeSet<&str> = WorkspaceBinary::ALL.iter().map(|b| b.tool_name()).collect();
