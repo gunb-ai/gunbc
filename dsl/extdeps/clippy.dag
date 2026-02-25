@@ -1,0 +1,69 @@
+// extdeps/clippy.dag -- "What is clippy?"
+//
+// Stable domain model of clippy as a lint tool. Facts about clippy's
+// spec, categories, and configuration surface. No policy decisions.
+//
+// Consumers:
+//   tools/clippy.dag     — invocation (ensure/install/lint)
+//   config/clippy_policy.dag — enforcement config (disallowed methods)
+//   config/arch_rules.dag    — invariant definitions reference lint actions
+
+module extdeps.clippy
+
+// ── Identity ────────────────────────────────────────────────────────
+
+type ClippySpec {
+  id: String
+  config_file: String
+  integration: String
+}
+
+data spec: ClippySpec = {
+  id: "clippy",
+  config_file: "clippy.toml",
+  integration: "cargo clippy"
+}
+
+// ── Lint categories ─────────────────────────────────────────────────
+// Facts from clippy documentation. These are properties of clippy
+// itself, not our choices about which to enable.
+
+type LintLevel = Deny | Warn | Allow
+
+type ClippyCategory {
+  name: String
+  default_level: LintLevel
+  description: String
+}
+
+data categories: List<ClippyCategory> = [
+  { name: "correctness",  default_level: Deny,  description: "Code that is outright wrong or useless" },
+  { name: "suspicious",   default_level: Warn,  description: "Code that is most likely wrong or useless" },
+  { name: "style",        default_level: Warn,  description: "Code that should be written in a more idiomatic way" },
+  { name: "complexity",   default_level: Warn,  description: "Code that does something simple but in a complex way" },
+  { name: "perf",         default_level: Warn,  description: "Code that can be written to run faster" },
+  { name: "pedantic",     default_level: Allow, description: "Lints which are rather strict or have occasional false positives" },
+  { name: "restriction",  default_level: Allow, description: "Lints which prevent the use of language and library features" },
+  { name: "nursery",      default_level: Allow, description: "New lints that are still under development" },
+  { name: "cargo",        default_level: Allow, description: "Lints for the cargo manifest" }
+]
+
+// ── Configuration surface ───────────────────────────────────────────
+// What clippy.toml can configure.
+
+type DisallowedMethodEntry {
+  path: String
+  reason: String
+}
+
+type DisallowedTypeEntry {
+  path: String
+  reason: String
+}
+
+// clippy.toml structure.
+type ClippyTomlConfig {
+  disallowed_methods: List<DisallowedMethodEntry>
+  disallowed_types: List<DisallowedTypeEntry>
+  large_error_threshold: Int
+}

@@ -8,33 +8,11 @@
 module tools.makegen
 
 import std.patterns { content_upsert }
+import extdeps.make { MakeTarget, ToolTarget, EntrypointParam }
 
-// ── Type declarations ─────────────────────────────────────────────────
-// Mirror Rust's registry types for documentation and future DSL rendering.
-
-type EntrypointParam {
-  port_name: String
-  make_var: String
-  cli_flag: String
-  type_hint: String
-  default: String?
-  repeatable: Bool
-}
-
-type MakeTarget {
-  name: String
-  description: String
-  deps: List<String>
-  commands: List<String>
-  comment: String?
-}
-
-type ToolTarget {
-  name: String
-  description: String
-  make_target: String?
-  entrypoints: List<EntrypointParam>
-}
+// ── Registry ────────────────────────────────────────────────────────
+// Aggregates Make targets from the tool registry.
+// Uses shared types from extdeps.make.
 
 type MakegenRegistry {
   core_targets: List<MakeTarget>
