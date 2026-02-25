@@ -53,8 +53,8 @@ fn makegen_contains_fn_and_func_items() {
     let source = parse_dsl("tools/makegen.dag");
     assert_eq!(
         source.items.len(),
-        7,
-        "makegen should contain 7 top-level items (4 types, fn, func, test)"
+        4,
+        "makegen should contain 4 top-level items (1 type, fn, func, test)"
     );
     assert_eq!(
         source
