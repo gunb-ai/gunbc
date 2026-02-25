@@ -53,8 +53,8 @@ fn makegen_contains_fn_and_func_items() {
     let source = parse_dsl("tools/makegen.dag");
     assert_eq!(
         source.items.len(),
-        4,
-        "makegen should contain 4 top-level items (1 type, fn, func, test)"
+        29,
+        "makegen should contain 29 top-level items (25 fn, 1 extern func, 1 func, 1 test)"
     );
     assert_eq!(
         source
@@ -71,18 +71,22 @@ fn makegen_contains_fn_and_func_items() {
         .items
         .iter()
         .any(|item| matches!(item.node, Item::FuncDef(_))));
+    assert!(source
+        .items
+        .iter()
+        .any(|item| matches!(item.node, Item::ExternFuncDecl(_))));
 
     let render_fn = source
         .items
         .iter()
         .find_map(|item| match &item.node {
-            Item::FnDef(def) if def.name == "render_makefile_content" => Some(def),
+            Item::FnDef(def) if def.name == "render_target" => Some(def),
             _ => None,
         })
-        .expect("render_makefile_content fn should exist");
+        .expect("render_target fn should exist");
     assert!(
         !render_fn.body.stmts.is_empty(),
-        "render_makefile_content body should retain parsed statements"
+        "render_target body should retain parsed statements"
     );
 
     let makegen_func = source
@@ -100,8 +104,33 @@ fn makegen_contains_fn_and_func_items() {
     assert_eq!(
         item_signatures(&source),
         vec![
-            "type MakegenRegistry",
-            "fn render_makefile_content",
+            "fn render_target",
+            "fn render_section_header",
+            "fn render_phony_line",
+            "fn resolve_resource_target",
+            "fn resolve_meta_deps",
+            "fn resolve_meta_fix_deps",
+            "fn apply_prefix",
+            "fn render_core_targets",
+            "fn render_meta_base",
+            "fn render_meta_fix_variant",
+            "fn render_meta_check_variant",
+            "fn render_meta_target",
+            "fn render_meta_targets",
+            "fn render_help_params",
+            "fn render_tool_target",
+            "fn render_tool_targets",
+            "fn render_help_core_lines",
+            "fn render_help_meta_lines",
+            "fn render_help_tool_lines",
+            "fn render_help_target",
+            "fn collect_core_phony_str",
+            "fn collect_meta_phony_str",
+            "fn collect_tool_phony_str",
+            "fn render_naming_convention",
+            "fn render_makefile_body",
+            "extern func discover_tools",
+            "fn render_header",
             "func makegen",
             "test makegen_dryrun",
         ]
