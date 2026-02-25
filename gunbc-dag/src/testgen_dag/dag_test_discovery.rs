@@ -682,6 +682,7 @@ mod tests {
         assert!(call.contains("build_dsl_graph"));
         assert!(call.contains("unknown.dag"));
     }
+}
 
     #[test]
     fn comprehensive_auto_testgen_pipeline_validation() {
@@ -717,7 +718,7 @@ mod tests {
         for module in &modules {
             let result = auto_testgen_for_module(module, output_dir);
             match result {
-                AutoTestgenResult::Generated { test_code, target_def } => {
+                AutoTestgenResult::Generated { test_code, target_def: _ } => {
                     let test_fn_count = test_code.matches("#[test]").count();
                     generated.push((module.module_name.clone(), test_fn_count, test_code.len()));
                 }
@@ -778,4 +779,3 @@ mod tests {
             );
         }
     }
-}
