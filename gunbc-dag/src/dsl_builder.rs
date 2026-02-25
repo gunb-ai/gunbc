@@ -213,20 +213,8 @@ mod tests {
     }
 
     #[test]
-    fn builds_build_dsl_graph() {
-        let dag = build_build_graph_dsl().expect("build DSL graph should resolve");
-        assert!(!dag.nodes.is_empty());
-    }
-
-    #[test]
     fn builds_codegen_dsl_graph() {
         let dag = build_codegen_graph_dsl().expect("codegen DSL graph should resolve");
-        assert!(!dag.nodes.is_empty());
-    }
-
-    #[test]
-    fn builds_docgen_dsl_graph() {
-        let dag = build_docgen_graph_dsl().expect("docgen DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 

@@ -6575,8 +6575,8 @@ mod tests {
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
     use gunbc_dag::{
-        build_bootstrap_graph, build_build_graph, build_ci_graph, build_codegen_graph,
-        build_docgen_graph, build_pragma_graph,
+        build_bootstrap_graph, build_codegen_graph,
+        build_pragma_graph,
     };
     use gunbc_dag::deps_tool::build_deps_graph;
     use gunbc_ir::node::NodeBody;

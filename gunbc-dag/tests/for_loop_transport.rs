@@ -9,7 +9,7 @@
 #![allow(clippy::disallowed_methods)]
 
 use gunbc_dag::{build_gist_snapshot_graph_dsl, mock_defaults::auto_mock_spec};
-use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_with_mode_and_inputs, lower, ExecutionMode};
 use gunbc_ir::transport::{FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 
@@ -117,13 +117,47 @@ fn for_loop_fs_read_returns_file_content_not_path() {
         ))),
     );
 
-    // Extract input mocks from the spec (entrypoint values like `public: false`).
-    let all_mocks = spec.to_boundary_mocks();
+    // The outer Filesystem.read transport triplet is dead code (the actual call
+    // happens inside the for-loop body). Intercept it so GenericFilePrepareOp
+    // doesn't run without inputs.
+    dry_run_mocks.set_value(
+        "prepare_transport_std_resources_Filesystem_read",
+        "request",
+        Value::Skipped,
+    );
+
+    // Build input mocks for entrypoints from the auto-mock spec.
+    let input_mocks = {
+        let lowered = lower(&dag).expect("lower for entrypoint detection");
+        let entrypoints = gunbc_ir::detect_entrypoints(&lowered.dag);
+        let boundary = spec.to_boundary_mocks();
+        let mut mocks = gunbc_exec::BoundaryMocks::new();
+        for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
+            if let Some(val) = boundary.get_input(&node_id.0, &port_name.0) {
+                mocks.set_input(node_id.0.clone(), port_name.0.clone(), val.clone());
+            }
+        }
+        mocks
+    };
+
+    // Use execute_with_mode_and_inputs_and_detail to get partial logs on failure.
+    // But since it stops on error, let's first mock EVERYTHING to be safe.
+    // Also mock the outer Filesystem.read execute/parse so they don't interfere.
+    dry_run_mocks.set_value(
+        "execute_transport_std_resources_Filesystem_read",
+        "response",
+        Value::Response(TransportResponse::File(FileResponse::read_ok("", ""))),
+    );
+    dry_run_mocks.set_value(
+        "parse_transport_std_resources_Filesystem_read",
+        "content",
+        Value::Str("".to_string()),
+    );
 
     let log = execute_with_mode_and_inputs(
         &dag,
         ExecutionMode::DryRun(dry_run_mocks),
-        Some(&all_mocks),
+        Some(&input_mocks),
     )
     .expect("dry run execution should succeed");
 

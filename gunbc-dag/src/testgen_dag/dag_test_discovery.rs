@@ -46,6 +46,7 @@ pub struct CompilableModule {
 
 /// Result of attempting auto-testgen on a module.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum AutoTestgenResult {
     /// Successfully generated test code.
     Generated {
@@ -101,7 +102,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
         let func_count = ast
             .items
             .iter()
-            .filter(|item| matches!(item, daglang_syntax::ast::Item::FuncDef(_)))
+            .filter(|item| matches!(item.node, daglang_syntax::ast::Item::FuncDef(_)))
             .count();
 
         if func_count == 0 {
@@ -111,7 +112,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
         let has_test_blocks = ast
             .items
             .iter()
-            .any(|item| matches!(item, daglang_syntax::ast::Item::TestDef(_)));
+            .any(|item| matches!(item.node, daglang_syntax::ast::Item::TestDef(_)));
 
         // Build relative path from dsl root
         let rel_path = path
@@ -196,9 +197,8 @@ pub fn auto_testgen_for_module(
         tool_name: None,
     };
 
-    // 4. Generate test code
-    let target = gunbc_codegen::registry::to_testgen_target(&target_def);
-    let test_code = (target.generate)(&target_def);
+    // 4. Generate test code via the shared codegen path
+    let test_code = gunbc_testgen_registry::generate_target(&target_def, dag, spec);
 
     AutoTestgenResult::Generated {
         target_def,
@@ -583,6 +583,91 @@ fn expr_to_string(expr: &Expr) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discover_compilable_modules_finds_tools() {
+        let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+            .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+            .expect("workspace layout");
+        let dsl_root = layout.workspace_root.join("dsl");
+        let modules = discover_compilable_modules(&dsl_root);
+
+        // Should find at least all 14 tools + workflows + pipelines
+        assert!(
+            modules.len() > 14,
+            "expected >14 compilable modules, found {}",
+            modules.len()
+        );
+
+        // All tools should be discovered
+        let names: Vec<&str> = modules.iter().map(|m| m.module_name.as_str()).collect();
+        assert!(names.contains(&"tools.bootstrap"), "missing tools.bootstrap");
+        assert!(names.contains(&"tools.makegen"), "missing tools.makegen");
+        assert!(names.contains(&"tools.pragma"), "missing tools.pragma");
+
+        // Non-tool compilable modules should be discovered (e.g., cloud credentials, funcs)
+        let has_non_tools = names.iter().any(|n| !n.starts_with("tools."));
+        assert!(has_non_tools, "only tool modules discovered — should include cloud/funcs/etc");
+
+        // Pure library modules (std.types, std.symbols, etc.) should be excluded
+        // because they have no func items
+        assert!(
+            !names.contains(&"std.types"),
+            "std.types should be excluded (no func items)"
+        );
+
+        // Every module should have func_count > 0
+        for module in &modules {
+            assert!(
+                module.func_count > 0,
+                "{} has func_count=0",
+                module.module_name
+            );
+        }
+    }
+
+    #[test]
+    fn auto_testgen_for_makegen_produces_tests() {
+        let module = CompilableModule {
+            dsl_path: "tools/makegen.dag".to_string(),
+            module_name: "tools.makegen".to_string(),
+            func_count: 1,
+            has_test_blocks: true,
+        };
+        let output_dir = std::path::Path::new("gunbc-dag/src");
+        let result = auto_testgen_for_module(&module, output_dir);
+        match result {
+            AutoTestgenResult::Generated { test_code, .. } => {
+                assert!(
+                    test_code.contains("#[test]"),
+                    "generated code should contain test functions"
+                );
+                assert!(
+                    test_code.contains("test_dryrun_completion"),
+                    "generated code should contain DryRun completion test"
+                );
+            }
+            AutoTestgenResult::Skipped { reason } => {
+                panic!("makegen should compile, but got: {reason}");
+            }
+        }
+    }
+
+    #[test]
+    fn auto_testgen_skips_uncompilable_module() {
+        let module = CompilableModule {
+            dsl_path: "nonexistent/fake.dag".to_string(),
+            module_name: "nonexistent.fake".to_string(),
+            func_count: 1,
+            has_test_blocks: false,
+        };
+        let output_dir = std::path::Path::new("gunbc-dag/src");
+        let result = auto_testgen_for_module(&module, output_dir);
+        assert!(
+            matches!(result, AutoTestgenResult::Skipped { .. }),
+            "nonexistent module should be skipped"
+        );
+    }
 
     #[test]
     fn dag_builder_call_known_modules() {
