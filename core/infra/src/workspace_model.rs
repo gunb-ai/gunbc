@@ -536,6 +536,11 @@ pub fn baseline_commit_policies() -> Vec<CommitPolicy> {
             reason: CommitReason::BootstrapSeed,
             producer: Some("deps-config"),
         },
+        CommitPolicy {
+            pattern: "docs/ab-writing-workflows.md",
+            reason: CommitReason::BootstrapSeed,
+            producer: Some("docgen"),
+        },
     ]
 }
 

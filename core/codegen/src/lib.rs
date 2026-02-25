@@ -27,9 +27,7 @@ pub mod testgen;
 
 pub use cli_gen::{generate_cli, generate_cli_with_import, CliEntrypoint, ToolMeta};
 pub use file_writer::{FileWriter, WriteResult};
-pub use registry::{
-    all_cleanable_outputs, core_outputs, derive_tool_defs, TestgenTargetDef, ToolDef,
-};
+pub use registry::{core_outputs, TestgenTargetDef, ToolDef};
 pub use template::Template;
 
 use gunbc_ir::{detect_boundaries, detect_entrypoints, BoundaryInfo, Dag, EntrypointInfo};

@@ -3,6 +3,7 @@ use daglang_lower::LoweredOp;
 use gunbc_dag::extern_impls::lookup_extern_impl;
 use gunbc_dag::dsl_registry::discover_tool_defs_from_dsl;
 use gunbc_dag::makegen::{BuildConfig, ToolInfo, ToolRegistry};
+use gunbc_infra::workspace_model::{baseline_commit_policies, CommitReason};
 use gunbc_ir::cargo::Warnings;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::resource::ResourceIo;
@@ -59,13 +60,33 @@ fn dsl_discovery_finds_expected_tools() {
 
 #[test]
 fn makegen_default_registry_matches_dsl_tools_plus_manual_targets() {
+    let registry = ToolRegistry::default_registry();
+
+    // Core workflow names that filter out DSL tool collisions.
+    let core_names: HashSet<String> = registry
+        .core_workflows
+        .iter()
+        .map(|w| w.name.clone())
+        .collect();
+
+    // Manual tools overridden to needs_generated_cli = false.
+    let manual_names: HashSet<&str> = registry
+        .tools
+        .iter()
+        .filter(|tool| !tool.needs_generated_cli)
+        .map(|tool| tool.short_name.as_str())
+        .collect();
+
+    // DSL-derived tools with invocations, minus core workflow collisions
+    // and manual overrides.
     let derived_with_invocation: HashSet<String> = dsl_tools()
         .into_iter()
         .filter(|tool| tool.invocation.is_some())
+        .filter(|tool| !core_names.contains(tool.meta.tool_name.as_ref()))
+        .filter(|tool| !manual_names.contains(tool.meta.tool_name.as_ref()))
         .map(|tool| tool.meta.tool_name.to_string())
         .collect();
 
-    let registry = ToolRegistry::default_registry();
     let makegen_generated: HashSet<String> = registry
         .tools
         .iter()
@@ -75,18 +96,14 @@ fn makegen_default_registry_matches_dsl_tools_plus_manual_targets() {
 
     assert_eq!(
         makegen_generated, derived_with_invocation,
-        "makegen generated-cli tools must stay in lockstep with DSL-derived tools"
+        "makegen generated-cli tools must stay in lockstep with DSL-derived tools \
+         (excluding core workflow collisions and manual overrides)"
     );
 
-    let manual_targets: HashSet<&str> = registry
-        .tools
-        .iter()
-        .filter(|tool| !tool.needs_generated_cli)
-        .map(|tool| tool.short_name.as_str())
-        .collect();
-    let expected_manual: HashSet<&str> = HashSet::new();
+    // Manual targets: tools with hand-written binaries (no generated CLI).
+    let expected_manual: HashSet<&str> = HashSet::from(["pragma"]);
     assert_eq!(
-        manual_targets, expected_manual,
+        manual_names, expected_manual,
         "makegen manual targets must stay explicit and auditable"
     );
 }
@@ -200,12 +217,15 @@ fn tool_declared_outputs_match_dsl_compilation() {
     }
 }
 
-const COMMITTED_SEED_FILES: &[&str] = &[
-    ".gitignore",
-    "clippy.toml",
-    "deps.toml",
-    "docs/ab-writing-workflows.md",
-];
+/// Bootstrap seed files: generated but committed. Derived from the single
+/// source of truth in `baseline_commit_policies()` (workspace_model).
+fn committed_seed_files() -> Vec<&'static str> {
+    baseline_commit_policies()
+        .into_iter()
+        .filter(|p| p.reason == CommitReason::BootstrapSeed)
+        .map(|p| p.pattern)
+        .collect()
+}
 
 #[test]
 #[allow(clippy::disallowed_methods)]
@@ -216,7 +236,7 @@ fn no_generated_files_committed() {
 
     for tool in &tools {
         for pattern in &tool.outputs {
-            if COMMITTED_SEED_FILES.contains(&pattern.as_str()) {
+            if committed_seed_files().contains(&pattern.as_str()) {
                 continue;
             }
             let output = std::process::Command::new("git")
@@ -248,7 +268,7 @@ fn all_tool_outputs_gitignored() {
     for tool in &tools {
         for pattern in &tool.outputs {
             if pattern.contains('*') || pattern.contains('?') { continue; }
-            if COMMITTED_SEED_FILES.contains(&pattern.as_str()) { continue; }
+            if committed_seed_files().contains(&pattern.as_str()) { continue; }
             let status = std::process::Command::new("git")
                 .args(["check-ignore", "-q", pattern])
                 .current_dir(&workspace_root)

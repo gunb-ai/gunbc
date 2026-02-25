@@ -210,3 +210,22 @@ data require_handler_obligations: List<String> = [
   "PureRender",
   "PureDataLoad"
 ]
+
+// ── Commit policy ───────────────────────────────────────────────────
+// Files that are generated BUT committed (bootstrap seeds).
+// Generated outputs not listed here must be .gitignored.
+
+type CommitReason = Generated | BuildOutput | BootstrapSeed | Secret
+
+type CommitPolicy {
+  pattern: String
+  reason: CommitReason
+  producer: String?
+}
+
+data bootstrap_seed_files: List<String> = [
+  ".gitignore",
+  "clippy.toml",
+  "deps.toml",
+  "docs/ab-writing-workflows.md"
+]

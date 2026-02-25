@@ -7,7 +7,6 @@ use crate::cli_gen::{CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;
 use gunbc_test::{FermiCost, TestClass};
 use std::borrow::Cow;
-use std::collections::BTreeSet;
 
 // ============================================================================
 // Tool Definition
@@ -71,7 +70,7 @@ pub struct TestgenTargetDef {
     /// Live test required any-of env var groups
     pub live_required_any_of: Option<Vec<Vec<String>>>,
     /// Tool name for CLI contract test generation. When set, entrypoints
-    /// are looked up from `derive_tool_defs()` and a CLI contract test is emitted
+    /// are looked up from DSL-driven `discover_tool_defs_from_dsl()` and a CLI contract test is emitted
     /// alongside the DAG tests.
     pub tool_name: Option<Cow<'static, str>>,
     /// Per-profile live test configurations (PT-3).
@@ -254,34 +253,10 @@ impl ToolDef {
     }
 }
 
-// ============================================================================
-// Derive ToolDefs
-// ============================================================================
-
-/// Derive `Vec<ToolDef>` from tool registrations.
-///
-/// **Deprecated**: Previously read from `#[tool_target]` inventory registrations.
-/// Now returns an empty vec. Callers in `gunbc-dag` should use
-/// `discover_tool_defs_from_dsl()` from `dsl_registry` instead.
-pub fn derive_tool_defs() -> Vec<ToolDef> {
-    Vec::new()
-}
-
 /// Core build system artifacts (not tool-specific).
 pub fn core_outputs() -> Vec<&'static str> {
     vec![
         "target/", // cargo build output
         "bin",     // symlink to target/release
     ]
-}
-
-/// Get all cleanable artifacts from tools and core.
-pub fn all_cleanable_outputs() -> Vec<String> {
-    let mut outputs: BTreeSet<String> = core_outputs().into_iter().map(|s| s.to_string()).collect();
-
-    for tool in derive_tool_defs() {
-        outputs.extend(tool.outputs);
-    }
-
-    outputs.into_iter().collect()
 }

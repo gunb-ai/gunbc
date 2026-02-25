@@ -24,7 +24,8 @@ pub struct DagSpecMeta {
     pub output_path: &'static str,
     pub module_name: &'static str,
     /// Tool name for CLI contract test generation. When set, entrypoints
-    /// are looked up from `derive_tool_defs()` and a CLI contract test is emitted.
+    /// are looked up from DSL-driven `discover_tool_defs_from_dsl()` and a
+    /// CLI contract test is emitted.
     pub tool_name: Option<&'static str>,
 }
 
@@ -223,19 +224,9 @@ pub fn generate_target_with_types<T: Executable + Clone>(
         generator = generator.with_signature_fn(signature_fn.as_ref());
     }
 
-    // Look up CLI entrypoints for contract test generation.
-    if let Some(tool_name) = &config.tool_name {
-        let tools = gunbc_codegen::derive_tool_defs();
-        if let Some(tool) = tools
-            .iter()
-            .find(|t| t.meta.tool_name.as_ref() == tool_name.as_ref())
-        {
-            if !tool.entrypoints.is_empty() {
-                generator =
-                    generator.with_cli_entrypoints(tool_name.to_string(), tool.entrypoints.clone());
-            }
-        }
-    }
+    // CLI contract test generation: tool_name lookup is now DSL-driven via
+    // discover_tool_defs_from_dsl() in gunbc-dag/src/dsl_registry.rs.
+    // All current testgen targets set tool_name: None, so this path is unused.
 
     generator.generate_test_module(&config.module_name, &config.dag_builder_call)
 }

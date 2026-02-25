@@ -1212,38 +1212,6 @@ fn emitted_dag_has_edges(dag: &Dag<LoweredOp>, classified: &[ClassifiedNode]) ->
 }
 
 // ===========================================================================
-// Obligation classification policy (Phase 1 mirror of arch_rules.dag)
-// ===========================================================================
-
-/// Obligations that are safe to emit as passthrough stubs in generated
-/// exec-runtime code. Mirrors `passthrough_safe_obligations` in
-/// `dsl/config/arch_rules.dag`.
-fn passthrough_safe_obligations() -> &'static [ObligationCategory] {
-    &[
-        ObligationCategory::None,
-        ObligationCategory::PureGeneric,
-        ObligationCategory::ServiceTransportPrepare,
-        ObligationCategory::ServiceTransportExecute,
-        ObligationCategory::ServiceTransportParse,
-        ObligationCategory::ServiceParamSource,
-        ObligationCategory::ResourceProvide,
-        ObligationCategory::ResourceAcquire,
-        ObligationCategory::ResourceRelease,
-        ObligationCategory::InterfaceContractVerification,
-    ]
-}
-
-/// Obligations that require real handlers. Currently passthrough during
-/// migration (NF-5). Mirrors `require_handler_obligations` in
-/// `dsl/config/arch_rules.dag`.
-fn require_handler_obligations() -> &'static [ObligationCategory] {
-    &[
-        ObligationCategory::PureRender,
-        ObligationCategory::PureDataLoad,
-    ]
-}
-
-// ===========================================================================
 // Tests
 // ===========================================================================
 
@@ -1254,6 +1222,34 @@ mod tests {
         CallableKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
     };
     use gunbc_ir::{Node, Port};
+
+    // ── Obligation classification policy (Phase 1 mirror of arch_rules.dag) ──
+
+    /// Obligations safe to emit as passthrough stubs in generated exec-runtime
+    /// code. Mirrors `passthrough_safe_obligations` in `dsl/config/arch_rules.dag`.
+    fn passthrough_safe_obligations() -> &'static [ObligationCategory] {
+        &[
+            ObligationCategory::None,
+            ObligationCategory::PureGeneric,
+            ObligationCategory::ServiceTransportPrepare,
+            ObligationCategory::ServiceTransportExecute,
+            ObligationCategory::ServiceTransportParse,
+            ObligationCategory::ServiceParamSource,
+            ObligationCategory::ResourceProvide,
+            ObligationCategory::ResourceAcquire,
+            ObligationCategory::ResourceRelease,
+            ObligationCategory::InterfaceContractVerification,
+        ]
+    }
+
+    /// Obligations that require real handlers. Mirrors `require_handler_obligations`
+    /// in `dsl/config/arch_rules.dag`.
+    fn require_handler_obligations() -> &'static [ObligationCategory] {
+        &[
+            ObligationCategory::PureRender,
+            ObligationCategory::PureDataLoad,
+        ]
+    }
 
     /// Unknown-module callables with known obligations emit as passthrough
     /// because all LoweredOp::Callable nodes come from the DSL compiler

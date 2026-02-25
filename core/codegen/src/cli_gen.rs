@@ -558,7 +558,7 @@ fn generate_mock_setup(mock_spec_call: &Option<Cow<'static, str>>) -> String {
             "let _spec = {};\nExecutionMode::DryRun(_spec.to_dry_run_mocks())",
             call
         ),
-        None => "ExecutionMode::DryRun(Default::default())".to_string(),
+        None => r#"compile_error!("tool has no mock_spec_call — dry-run requires a MockSpec. See dsl/config/build_policy.dag")"#.to_string(),
     }
 }
 

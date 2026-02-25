@@ -1,7 +1,7 @@
 //! Tool registry for makegen.
 //!
-//! Tool targets are derived from the codegen registry (`derive_tool_defs()`) — adding
-//! a tool with `.invocation()` there automatically gives it a Makefile target.
+//! Tool targets are derived from DSL entrypoint inference (`discover_tool_defs_from_dsl()`)
+//! — adding a tool with `.invocation()` automatically gives it a Makefile target.
 //! Only tools that can't be in codegen (like `ci`, which is the bootstrap tool)
 //! are registered manually here.
 //!
@@ -1252,7 +1252,7 @@ impl ToolRegistry {
 
     /// Build the default registry with all known gunbc tools.
     ///
-    /// Tool targets are derived from the codegen registry's `derive_tool_defs()`.
+    /// Tool targets are derived from DSL entrypoint inference (`discover_tool_defs_from_dsl()`).
     /// Tools with a `CargoInvocation` set automatically get Makefile targets.
     /// Entrypoints with `make_var` set become Make variables.
     ///
