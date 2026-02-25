@@ -128,7 +128,7 @@ pub use contract::{
 };
 pub use dag::{
     build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
-    Edge, EdgeKind, Guard, Port,
+    Edge, EdgeKind, Guard, Port, ReachableDag,
 };
 pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
