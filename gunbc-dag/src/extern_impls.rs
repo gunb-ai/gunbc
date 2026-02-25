@@ -351,7 +351,7 @@ impl Executable for GenerateBootstrapMakefileOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         use gunbc_exec::optional_str_list_strict;
         let _ = optional_str_list_strict(&inputs, "crate_names")?;
-        use crate::makegen::{registry::ToolRegistry, render::render_makefile};
+        use crate::makegen::{registry::ToolRegistry, shared::render_makefile};
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
         OutputMap::new()

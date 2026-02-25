@@ -446,7 +446,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
         // implementation details and should not have matchers.
         //
         // Fallback: if no reliable port matches a declared output port name
-        // (typical for IdentityCallableOp / DeferredCallableOp passthroughs),
+        // (typical for IdentityCallableOp passthroughs),
         // add NonEmpty matchers for all declared output ports. These nodes
         // forward inputs as outputs, so the passthrough inputs added in Step 4
         // below will produce the outputs. This ensures the observability invariant
@@ -475,7 +475,7 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
         }
 
         // Step 4: Add passthrough inputs so the test_example test works.
-        // Passthrough ops (IdentityCallableOp, DeferredCallableOp) forward
+        // Passthrough ops (IdentityCallableOp) forward
         // inputs as outputs, so providing these makes test_example succeed.
         for output in &node.outputs {
             let passthrough_value = if output.name.0 == "skip" && output.type_id.0 == "Bool" {

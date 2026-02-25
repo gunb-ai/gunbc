@@ -68,20 +68,6 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             is_producer: false,
         },
         CrateSpec {
-            name: "core/tool-registry",
-            tier: CrateTier::Foundation,
-            description: "Tool auto-discovery (inventory)",
-            depends_on: &[],
-            is_producer: false,
-        },
-        CrateSpec {
-            name: "core/tool-registry-macros",
-            tier: CrateTier::Foundation,
-            description: "Proc-macros for tool-registry",
-            depends_on: &[],
-            is_producer: false,
-        },
-        CrateSpec {
             name: "core/testgen-registry",
             tier: CrateTier::Foundation,
             description: "Testgen target registry",

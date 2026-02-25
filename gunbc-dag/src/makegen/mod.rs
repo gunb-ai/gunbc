@@ -6,7 +6,7 @@ pub mod ci_render;
 pub mod gitignore;
 pub mod justfile;
 pub mod registry;
-pub mod render;
+pub mod shared;
 
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
@@ -22,7 +22,7 @@ pub use registry::{
     ConfigField, EntrypointParam, FixAlias, MetaTarget, ResourceNeed, ResourceTargetMap, ToolInfo,
     ToolRegistry, WorkflowKind, WorkflowSpec,
 };
-pub use render::{render_makefile, render_makefile_with_config};
+pub use shared::render_makefile;
 
 /// Runtime op type for makegen graphs.
 pub type MakegenGraphOp = DynOp;

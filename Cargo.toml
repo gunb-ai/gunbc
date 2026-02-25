@@ -11,9 +11,6 @@ members = [
     "core/testgen-registry",
     "core/testgen-registry-macros",
     "core/delegate-macros",
-    "core/tool-registry",
-    "core/tool-registry-macros",
-    
     # DSL compiler (daglang)
     "core/daglang/daglang-syntax",
     "core/daglang/daglang-contract",

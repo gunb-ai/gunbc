@@ -182,11 +182,6 @@ pub(crate) fn default_dead_code_rules() -> Vec<DeadCodeAllowRule> {
             fallback_path: "gunbc-dag/src/makegen/registry.rs",
         },
         DeadCodeAllowRule {
-            crate_name: "gunbc-dag",
-            relative_path: "src/workspace/subdags/languages.rs",
-            fallback_path: "gunbc-dag/src/workspace/subdags/languages.rs",
-        },
-        DeadCodeAllowRule {
             crate_name: "gunbc-lib-gcp-ops",
             relative_path: "src/graph.rs",
             fallback_path: "lib/gcp-ops/src/graph.rs",

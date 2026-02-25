@@ -6707,6 +6707,7 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
         Expr::Literal(Literal::Int(value)) => Some(serde_json::Value::Number((*value).into())),
         Expr::Literal(Literal::Bool(value)) => Some(serde_json::Value::Bool(*value)),
         Expr::Literal(Literal::None) => Some(serde_json::Value::Null),
+        Expr::Ident(name) if name == "None" || name == "null" => Some(serde_json::Value::Null),
         Expr::List(values) => {
             let mut out = Vec::with_capacity(values.len());
             for value in values {
@@ -6740,7 +6741,7 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
 ///
 /// Used to wire data declaration references as literal source nodes in fn call
 /// arguments. Only handles constant expressions (literals, lists, records).
-fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::Value> {
+pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::Value> {
     let mut values = HashMap::new();
     for module in &project.modules {
         let module_name = module.module_path.join(".");

@@ -43,10 +43,10 @@ Delete crates and code with zero dependents. Start now.
 
 | ID | Task | Size | Status |
 |----|------|------|--------|
-| FC-CL1 | Delete `core/tool-registry` + `core/tool-registry-macros`. Remove from workspace Cargo.toml. | S | Pending |
-| FC-CL2 | Delete orphaned SDLC Rust: `sdlc_workflow_spec()` + `build_all_workflow_spec()` + all 12 `*_with_registry()` variants from `spec_builders.rs` (zero callers). Remove re-exports from `workflow/mod.rs` and `lib.rs`. | S | Pending |
-| FC-CL3 | Remove stale `languages.rs` dead_code rule from `policy/pragma.rs` (file doesn't exist). | S | Pending |
-| FC-CL4 | Remove stale `DeferredCallableOp` references from `mock_defaults.rs` comments (lines 449, 478). DeferredCallableOp deleted in P6. | S | Pending |
+| FC-CL1 | Delete `core/tool-registry` + `core/tool-registry-macros`. Remove from workspace Cargo.toml. | S | Done |
+| FC-CL2 | Delete orphaned SDLC Rust: `sdlc_workflow_spec()` + `build_all_workflow_spec()` + all 12 `*_with_registry()` variants from `spec_builders.rs` (zero callers). Remove re-exports from `workflow/mod.rs` and `lib.rs`. | S | Done |
+| FC-CL3 | Remove stale `languages.rs` dead_code rule from `policy/pragma.rs` (file doesn't exist). | S | Done |
+| FC-CL4 | Remove stale `DeferredCallableOp` references from `mock_defaults.rs` comments (lines 449, 478). DeferredCallableOp deleted in P6. | S | Done |
 
 ---
 

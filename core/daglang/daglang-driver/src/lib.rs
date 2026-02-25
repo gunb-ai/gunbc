@@ -57,6 +57,11 @@ pub struct CompileOutput {
     ///
     /// `None` if receipt computation was not requested.
     pub receipt: Option<CompileReceipt>,
+    /// Data declaration values evaluated at compile time.
+    ///
+    /// Keys are both qualified (`module.name`) and unqualified (`name`).
+    /// Values are the constant expressions from `data` items.
+    pub data_values: HashMap<String, serde_json::Value>,
 }
 
 /// Deterministic compilation receipt.
@@ -291,6 +296,7 @@ pub fn compile_from_module_graph_with_options(
     let pipeline_params = collect_pipeline_params(&typed);
     let inferred_entrypoints = daglang_lower::infer_entrypoints(&lowered);
     let dsl_type_registry = extract_dsl_type_registry(&typed);
+    let data_values = daglang_lower::build_data_values(&typed);
 
     let receipt = compute_receipt(&lowered, &emitted, &emit_manifest_path, &source_paths);
 
@@ -304,6 +310,7 @@ pub fn compile_from_module_graph_with_options(
         inferred_entrypoints,
         dsl_type_registry,
         receipt,
+        data_values,
     })
 }
 

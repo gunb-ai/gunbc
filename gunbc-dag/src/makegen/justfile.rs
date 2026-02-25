@@ -15,7 +15,7 @@ use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::render_ir::FileHeader;
 use gunbc_ir::resource::ExecMode;
 
-use super::render::{
+use super::shared::{
     core_workflow_body, core_workflow_comment, meta_target_deps, tool_target_deps,
 };
 
@@ -337,7 +337,7 @@ fn escape_just_string(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::makegen::render::render_makefile;
+    use crate::makegen::shared::render_makefile;
     use std::collections::BTreeSet;
 
     #[test]
