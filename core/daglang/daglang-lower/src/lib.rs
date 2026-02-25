@@ -4407,6 +4407,11 @@ fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadat
             .iter()
             .map(|field| (field.name.clone(), field.type_id.clone()))
             .collect::<Vec<_>>(),
+        Some(ServiceOperationSpec::Local(spec)) => spec
+            .input_fields
+            .iter()
+            .map(|field| (field.name.clone(), field.type_id.clone()))
+            .collect::<Vec<_>>(),
         None => operation
             .inputs
             .iter()

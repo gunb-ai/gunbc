@@ -667,6 +667,9 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
             ObligationCategory::ServiceTransportExecute => {
                 counts.service_transport_execute_targets += 1;
                 match classify_service_transport(op) {
+                    Some(ServiceTransportClass::LocalDirect) => {
+                        counts.service_transport_hermetic_targets += 1;
+                    }
                     Some(ServiceTransportClass::ShellLocal)
                         if op
                             .service_call_metadata()

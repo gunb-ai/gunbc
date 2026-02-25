@@ -615,6 +615,7 @@ fn infer_transport_kind(
             }
             ServiceTransportClass::ShellLocal => TransportKind::ShellExec,
             ServiceTransportClass::RestNetwork => TransportKind::HttpRequest,
+            ServiceTransportClass::LocalDirect => TransportKind::ShellExec,
             ServiceTransportClass::Unknown => TransportKind::ShellExec,
         };
     }
