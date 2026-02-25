@@ -428,9 +428,9 @@ Nodes:
       * path: String (1)
   - std.patterns::classify_files::cf_for_0 [subdag]
     inputs:
-      * items: Any (0..*)
+      * items: Any (1)
     outputs:
-      * result: Any (0..*)
+      * result: Any (1)
   - std.patterns::acquire_subject_token::cf_match_0 [subdag]
     inputs:
       * condition: Bool (1)
