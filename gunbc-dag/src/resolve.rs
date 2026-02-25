@@ -887,8 +887,24 @@ fn resolve_service_transport(
     _outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
-    // Execute nodes are always the same transport executor.
+    // Execute nodes: for InterfaceStub specs, use the stub execute op
+    // (errors in Real mode, auto-mocked in DryRun). All others use the
+    // standard transport executor.
     if name.starts_with("service_transport::execute::") {
+        if let Some(metadata) = service_metadata {
+            if let Some(ServiceOperationSpec::InterfaceStub {
+                interface,
+                capability,
+            }) = &metadata.spec
+            {
+                return Ok(DynOp::new(
+                    crate::resolve_service::InterfaceStubExecuteOp {
+                        interface: interface.clone(),
+                        capability: capability.clone(),
+                    },
+                ));
+            }
+        }
         return Ok(DynOp::new(TransportOps::Execute));
     }
 
@@ -938,6 +954,37 @@ fn resolve_service_transport(
                     return Ok(DynOp::new(GenericLocalParseOp {
                         spec: local_spec.clone(),
                     }));
+                }
+                // IS-6: InterfaceStub ops for interface capabilities without profile.
+                (
+                    ServiceOperationSpec::InterfaceStub {
+                        interface,
+                        capability,
+                    },
+                    true,
+                    _,
+                ) => {
+                    return Ok(DynOp::new(
+                        crate::resolve_service::InterfaceStubPrepareOp {
+                            interface: interface.clone(),
+                            capability: capability.clone(),
+                        },
+                    ));
+                }
+                (
+                    ServiceOperationSpec::InterfaceStub {
+                        interface,
+                        capability,
+                    },
+                    _,
+                    true,
+                ) => {
+                    return Ok(DynOp::new(
+                        crate::resolve_service::InterfaceStubParseOp {
+                            interface: interface.clone(),
+                            capability: capability.clone(),
+                        },
+                    ));
                 }
                 _ => {}
             }

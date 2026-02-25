@@ -978,6 +978,79 @@ impl Executable for GenericLocalParseOp {
     }
 }
 
+// ============================================================================
+// InterfaceStub (IS-6): stub ops for interface capabilities without profile
+// ============================================================================
+
+/// Interface stub prepare: packages inputs into a `TransportRequest` for
+/// structural transport detection (DryRun boundary interception).
+#[derive(Debug, Clone)]
+pub struct InterfaceStubPrepareOp {
+    pub interface: String,
+    pub capability: String,
+}
+
+impl Executable for InterfaceStubPrepareOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
+        // Package inputs as a Local request for structural transport detection.
+        let mut body = serde_json::Map::new();
+        for (key, val) in &inputs {
+            if let Some(json_val) = value_to_json(val) {
+                body.insert(key.clone(), json_val);
+            }
+        }
+        let request = gunbc_ir::transport::LocalRequest {
+            inputs: serde_json::Value::Object(body),
+        };
+        OutputMap::new()
+            .request("request", TransportRequest::Local(request))
+            .bool("skip", false)
+            .ok()
+    }
+}
+
+/// Interface stub execute: errors in Real mode ("requires --profile"),
+/// auto-mocked in DryRun (boundary mocks supply typed outputs).
+#[derive(Debug, Clone)]
+pub struct InterfaceStubExecuteOp {
+    pub interface: String,
+    pub capability: String,
+}
+
+impl Executable for InterfaceStubExecuteOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        Err(ExecError::new(format!(
+            "interface stub `{}.{}` requires --profile: no active profile bindings \
+             (this call would be auto-mocked in DryRun mode)",
+            self.interface, self.capability
+        )))
+    }
+}
+
+/// Interface stub parse: identity passthrough. Forwards typed capability
+/// outputs from execute (or from DryRun mocks) unchanged.
+#[derive(Debug, Clone)]
+pub struct InterfaceStubParseOp {
+    pub interface: String,
+    pub capability: String,
+}
+
+impl Executable for InterfaceStubParseOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // Identity passthrough: forward all inputs as outputs.
+        Ok(inputs)
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)] // Tests: secret inspection is inherent to testing service resolution
 mod tests {
@@ -1630,5 +1703,75 @@ mod tests {
 
         let outputs = op.execute(inputs).unwrap();
         assert_eq!(outputs.get("content"), Some(&Value::Skipped));
+    }
+
+    // ── InterfaceStub ops (IS-6 / IS-8) ──────────────────────────────
+
+    #[test]
+    fn interface_stub_prepare_packages_inputs_as_local_request() {
+        let op = InterfaceStubPrepareOp {
+            interface: "IssueProvider".to_string(),
+            capability: "list_issues".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("project".to_string(), Value::Str("my-project".to_string()));
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(false)));
+        match outputs.get("request") {
+            Some(Value::Request(TransportRequest::Local(local))) => {
+                assert!(local.inputs.get("project").is_some());
+            }
+            other => panic!("expected Local request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interface_stub_prepare_propagates_skip() {
+        let op = InterfaceStubPrepareOp {
+            interface: "IssueProvider".to_string(),
+            capability: "list_issues".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("project".to_string(), Value::Skipped);
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("request"), Some(&Value::Skipped));
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn interface_stub_execute_errors_in_real_mode() {
+        let op = InterfaceStubExecuteOp {
+            interface: "IssueProvider".to_string(),
+            capability: "list_issues".to_string(),
+        };
+        let error = op
+            .execute(HashMap::new())
+            .expect_err("stub execute should error in Real mode");
+        let msg = error.to_string();
+        assert!(
+            msg.contains("IssueProvider.list_issues"),
+            "error should name the interface.capability: {msg}"
+        );
+        assert!(
+            msg.contains("--profile"),
+            "error should mention --profile: {msg}"
+        );
+    }
+
+    #[test]
+    fn interface_stub_parse_is_identity_passthrough() {
+        let op = InterfaceStubParseOp {
+            interface: "IssueProvider".to_string(),
+            capability: "list_issues".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("issues".to_string(), Value::Str("issue-1".to_string()));
+        inputs.insert("count".to_string(), Value::Int(1));
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(
+            outputs.get("issues"),
+            Some(&Value::Str("issue-1".to_string()))
+        );
+        assert_eq!(outputs.get("count"), Some(&Value::Int(1)));
     }
 }

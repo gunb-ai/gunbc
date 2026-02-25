@@ -239,6 +239,9 @@ pub enum ServiceTransportClass {
     RestNetwork,
     FileBoundary,
     LocalDirect,
+    /// Stub transport for interface capabilities compiled without a profile.
+    /// DryRun-compatible; errors in Real mode with "requires --profile".
+    InterfaceStub,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -270,6 +273,14 @@ pub enum ServiceOperationSpec {
     Shell(ShellOperationSpec),
     File(FileOperationSpec),
     Local(LocalOperationSpec),
+    /// Stub spec for interface capabilities compiled without a profile binding.
+    /// Carries the interface and capability names for diagnostic messages.
+    /// `spec.is_some()` is true, so resolver routing treats stubs as concrete
+    /// endpoints (design decision D2 from interface-stub-transport.md).
+    InterfaceStub {
+        interface: String,
+        capability: String,
+    },
 }
 
 impl ServiceOperationSpec {
@@ -283,6 +294,7 @@ impl ServiceOperationSpec {
             Self::Shell(spec) => &spec.input_fields,
             Self::File(spec) => &spec.input_fields,
             Self::Local(spec) => &spec.input_fields,
+            Self::InterfaceStub { .. } => &[],
         }
     }
 
@@ -293,6 +305,7 @@ impl ServiceOperationSpec {
             Self::Shell(spec) => &spec.output_fields,
             Self::File(spec) => &spec.output_fields,
             Self::Local(spec) => &spec.output_fields,
+            Self::InterfaceStub { .. } => &[],
         }
     }
 }
@@ -1097,40 +1110,37 @@ fn is_bound_interface_type_name(names: &HashSet<String>, interface_type: &str) -
     names.contains(short)
 }
 
-fn enforce_profile_for_bound_uses(
+/// Identify interface types that need stub transport (IS-3).
+///
+/// When compiling without a profile, instead of hard-erroring, this function
+/// returns the set of interface type names that need stub transport triplets.
+/// With an active profile, returns an empty set (all interfaces are resolved).
+fn interfaces_needing_stubs(
     project: &TypedProject,
     active_profile: Option<&str>,
     profile_bound_interfaces: &HashSet<String>,
-) -> Result<(), LowerError> {
+) -> HashSet<String> {
     if active_profile.is_some() || profile_bound_interfaces.is_empty() {
-        return Ok(());
+        return HashSet::new();
     }
+    let mut stub_interfaces = HashSet::new();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
         for item in &module.ast.items {
-            let (caller, uses) = match &item.node {
-                Item::FuncDef(def) => (format!("{module_name}::{}", def.name), def.uses.as_slice()),
-                Item::PatternDef(def) => {
-                    (format!("{module_name}::{}", def.name), def.uses.as_slice())
-                }
-                Item::PipelineDef(def) => {
-                    (format!("{module_name}::{}", def.name), def.uses.as_slice())
-                }
+            let uses = match &item.node {
+                Item::FuncDef(def) => def.uses.as_slice(),
+                Item::PatternDef(def) => def.uses.as_slice(),
+                Item::PipelineDef(def) => def.uses.as_slice(),
                 _ => continue,
             };
             for usage in uses {
                 let interface_type = resource_type_name(&usage.resource_type);
                 if is_bound_interface_type_name(profile_bound_interfaces, interface_type.as_str()) {
-                    return Err(LowerError::ProfileRequiredForBoundServiceCall {
-                        caller: caller.clone(),
-                        binding: usage.binding.clone(),
-                        interface_type,
-                    });
+                    insert_canonical_names(&mut stub_interfaces, &interface_type);
                 }
             }
         }
     }
-    Ok(())
+    stub_interfaces
 }
 
 fn insert_canonical_names(set: &mut HashSet<String>, name: &str) {
@@ -1656,7 +1666,8 @@ fn lower_typed_project_with_callable_scope(
     let active_profile_bindings =
         resolve_active_profile_bindings(&profile_registry, active_profile)?;
     let profile_bound_interfaces = collect_profile_bound_interface_names(&profile_registry);
-    enforce_profile_for_bound_uses(project, active_profile, &profile_bound_interfaces)?;
+    // IS-3: Instead of hard-erroring, collect interfaces needing stub transport.
+    let _stub_interfaces = interfaces_needing_stubs(project, active_profile, &profile_bound_interfaces);
     let known_interface_types = collect_interface_type_names(project);
     add_service_call_edges(
         &mut builder,
@@ -5187,11 +5198,24 @@ fn resolve_service_call_source(
         return Ok(None);
     }
     let Some(active_profile_bindings) = active_profile_bindings else {
-        return Err(LowerError::ProfileRequiredForBoundServiceCall {
-            caller: caller.to_string(),
-            binding: binding.clone(),
-            interface_type: interface_type.clone(),
-        });
+        // IS-5: No profile → interface capabilities are resolved via stub
+        // transport triplets registered by IS-2/IS-4. Try endpoint registry
+        // lookup (stubs are registered there). If not found, return None
+        // to let the caller skip this call (stubs handle it).
+        if call_path.len() >= 2 {
+            let capability = call_path.last().cloned().unwrap_or_default();
+            let cap_key = format!("{interface_type}.{capability}");
+            if let Some(endpoint) = resolve_service_endpoint(
+                &cap_key.split('.').map(String::from).collect::<Vec<_>>(),
+                service_registry,
+            ) {
+                return Ok(Some(ServiceCallResolvedSource {
+                    endpoint,
+                    binding_config: None,
+                }));
+            }
+        }
+        return Ok(None);
     };
     let Some(interface_key) = resolve_profile_interface_key(
         &active_profile_bindings.by_interface,

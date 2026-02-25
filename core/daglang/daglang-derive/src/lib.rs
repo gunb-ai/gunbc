@@ -688,6 +688,11 @@ fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
                     | None => {
                         counts.service_transport_external_targets += 1;
                     }
+                    // InterfaceStub: hermetic in DryRun (auto-mocked), but
+                    // counts as external for live test classification.
+                    Some(ServiceTransportClass::InterfaceStub) => {
+                        counts.service_transport_external_targets += 1;
+                    }
                 }
                 if op
                     .service_call_metadata()
