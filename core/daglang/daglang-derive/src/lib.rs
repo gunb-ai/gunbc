@@ -492,6 +492,9 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::UnsupportedPattern { name }) => {
                     format!("unsupported_pattern:{name}")
                 }
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
+                    format!("extern_call:{symbol}")
+                }
                 gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
             };
             (node.id.0.clone(), label)
@@ -601,7 +604,8 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
             LoweredOp::LoopUnpack { .. }
             | LoweredOp::LoopPack { .. }
             | LoweredOp::BranchMerge { .. }
-            | LoweredOp::UnsupportedPattern { .. } => continue,
+            | LoweredOp::UnsupportedPattern { .. }
+            | LoweredOp::ExternCall { .. } => continue,
         };
         let entry = by_module
             .entry(module.clone())

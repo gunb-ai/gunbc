@@ -57,6 +57,9 @@ pub fn render_expand(dag: &Dag<LoweredOp>) -> String {
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::UnsupportedPattern { name }) => {
                 format!("unsupported_pattern::{name}")
             }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
+                format!("extern_call::{symbol}")
+            }
             gunbc_ir::node::NodeBody::SubDag(_) => "subdag".to_string(),
         };
 

@@ -312,7 +312,8 @@ pub fn emit_rust_bundle(
             LoweredOp::LoopUnpack { .. }
             | LoweredOp::LoopPack { .. }
             | LoweredOp::BranchMerge { .. }
-            | LoweredOp::UnsupportedPattern { .. } => {}
+            | LoweredOp::UnsupportedPattern { .. }
+            | LoweredOp::ExternCall { .. } => {}
         }
     }
 
@@ -687,7 +688,8 @@ fn collect_symbols_with_metadata(
             LoweredOp::LoopUnpack { .. }
             | LoweredOp::LoopPack { .. }
             | LoweredOp::BranchMerge { .. }
-            | LoweredOp::UnsupportedPattern { .. } => {}
+            | LoweredOp::UnsupportedPattern { .. }
+            | LoweredOp::ExternCall { .. } => {}
         }
     }
 

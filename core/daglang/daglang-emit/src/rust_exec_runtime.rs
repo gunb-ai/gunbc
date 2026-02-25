@@ -350,7 +350,8 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
         LoweredOp::LoopUnpack { .. }
         | LoweredOp::LoopPack { .. }
         | LoweredOp::BranchMerge { .. }
-        | LoweredOp::UnsupportedPattern { .. } => return None,
+        | LoweredOp::UnsupportedPattern { .. }
+        | LoweredOp::ExternCall { .. } => return None,
     }
 
     let (module, name) = match op {

@@ -23,6 +23,7 @@ pub enum TokenKind {
     Pattern,
     Service,
     Resource,
+    Extern,
     Interface,
     Pipeline,
     Profile,
@@ -129,6 +130,7 @@ impl TokenKind {
             Self::Pattern => "pattern",
             Self::Service => "service",
             Self::Resource => "resource",
+            Self::Extern => "extern",
             Self::Interface => "interface",
             Self::Pipeline => "pipeline",
             Self::Profile => "profile",
@@ -585,6 +587,7 @@ impl<'a> Lexer<'a> {
             "pattern" => TokenKind::Pattern,
             "service" => TokenKind::Service,
             "resource" => TokenKind::Resource,
+            "extern" => TokenKind::Extern,
             "interface" => TokenKind::Interface,
             "pipeline" => TokenKind::Pipeline,
             "profile" => TokenKind::Profile,
@@ -1003,6 +1006,20 @@ mod tests {
             other => panic!("expected string token, got {other:?}"),
         };
         assert_eq!(s, "A", "\\x41 should produce 'A'");
+    }
+
+    #[test]
+    fn extern_keyword() {
+        assert_eq!(
+            kinds("extern func extern asset"),
+            vec![
+                TokenKind::Extern,
+                TokenKind::Func,
+                TokenKind::Extern,
+                TokenKind::Ident("asset".into()),
+                TokenKind::Eof,
+            ]
+        );
     }
 
     #[test]

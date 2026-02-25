@@ -42,6 +42,8 @@ fn item_signatures(source: &SourceFile) -> Vec<String> {
             Item::EnvironmentDef(def) => format!("environment {}", def.name),
             Item::ParamDecl(decl) => format!("param {}", decl.name),
             Item::DataDef(def) => format!("data {}", def.name),
+            Item::ExternFuncDecl(def) => format!("extern func {}", def.name),
+            Item::ExternAssetDecl(def) => format!("extern asset {}", def.name),
         })
         .collect()
 }

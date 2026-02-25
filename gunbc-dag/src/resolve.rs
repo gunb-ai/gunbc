@@ -706,6 +706,10 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             node_id: node_id.to_string(),
             reason: format!("unsupported pattern `{name}` — not yet implemented in daglang lowering"),
         }),
+        LoweredOp::ExternCall { symbol } => Err(ResolveError {
+            node_id: node_id.to_string(),
+            reason: format!("extern symbol `{symbol}` not yet linked — link step required (NF-3)"),
+        }),
     }
 }
 
@@ -2235,6 +2239,29 @@ mod tests {
         assert!(
             matches!(wrapper.body, NodeBody::SubDag(_)),
             "production resolver should preserve SubDag structure, not flatten it"
+        );
+    }
+
+    #[test]
+    fn resolve_extern_call_returns_link_error() {
+        let node = Node::opaque(
+            "extern_fetch",
+            vec![],
+            vec![],
+            LoweredOp::ExternCall {
+                symbol: "fetch_data".to_string(),
+            },
+        );
+        let err = resolve_node(&node).expect_err("extern call should return error");
+        assert!(
+            err.reason.contains("extern symbol `fetch_data`"),
+            "error should name the extern symbol: {}",
+            err.reason
+        );
+        assert!(
+            err.reason.contains("not yet linked"),
+            "error should indicate link step needed: {}",
+            err.reason
         );
     }
 

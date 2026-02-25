@@ -902,6 +902,42 @@ fn collect_signatures(
             | Item::ProfileDef(_)
             | Item::ParamDecl(_)
             | Item::DataDef(_) => {}
+            Item::ExternFuncDecl(def) => {
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
+                for field in &def.inputs {
+                    errors.extend(validate_type_expr(
+                        &field.ty,
+                        &module_known_types,
+                        context.generic_arity_registry,
+                        &format!("{}.{}", def.name, field.name),
+                    ));
+                }
+                for field in &def.outputs {
+                    errors.extend(validate_type_expr(
+                        &field.ty,
+                        &module_known_types,
+                        context.generic_arity_registry,
+                        &format!("{}.{}", def.name, field.name),
+                    ));
+                }
+            }
+            Item::ExternAssetDecl(def) => {
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
+                errors.extend(validate_type_expr(
+                    &def.ty,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    &def.name,
+                ));
+            }
         }
     }
 

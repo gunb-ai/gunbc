@@ -93,6 +93,8 @@ pub mod ast {
         EnvironmentDef(EnvironmentDef),
         ParamDecl(ParamDecl),
         DataDef(DataDef),
+        ExternFuncDecl(ExternFuncDecl),
+        ExternAssetDecl(ExternAssetDecl),
     }
 
     /// Module-level parameter: `param name: Type` or `param name: Type = default`
@@ -109,6 +111,23 @@ pub mod ast {
         pub name: String,
         pub ty: TypeExpr,
         pub value: Expr,
+    }
+
+    /// `extern func name(input1: Type1, input2: Type2) -> { output1: Type1, output2: Type2 }`
+    #[derive(Debug)]
+    pub struct ExternFuncDecl {
+        pub name: String,
+        pub inputs: Vec<Field>,
+        pub outputs: Vec<Field>,
+        pub annotations: Vec<Annotation>,
+    }
+
+    /// `extern asset name: Type`
+    #[derive(Debug)]
+    pub struct ExternAssetDecl {
+        pub name: String,
+        pub ty: TypeExpr,
+        pub annotations: Vec<Annotation>,
     }
 
     // ── Types ───────────────────────────────────────────────────────

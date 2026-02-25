@@ -216,6 +216,7 @@ impl Parser {
             TokenKind::Pattern => "pattern",
             TokenKind::Service => "service",
             TokenKind::Resource => "resource",
+            TokenKind::Extern => "extern",
             TokenKind::Interface => "interface",
             TokenKind::Pipeline => "pipeline",
             TokenKind::Profile => "profile",
@@ -293,7 +294,8 @@ impl Parser {
                 | TokenKind::Task
                 | TokenKind::Design
                 | TokenKind::Component
-                | TokenKind::Environment => return,
+                | TokenKind::Environment
+                | TokenKind::Extern => return,
                 _ => {
                     self.advance();
                 }
@@ -516,6 +518,7 @@ impl Parser {
             TokenKind::Environment => Item::EnvironmentDef(self.parse_environment_def()?),
             TokenKind::ParamKw => Item::ParamDecl(self.parse_param_decl()?),
             TokenKind::DataKw => Item::DataDef(self.parse_data_def()?),
+            TokenKind::Extern => self.parse_extern_decl(leading_anns)?,
             _ => {
                 return Err(self.err(format!(
                     "expected item declaration, found {}",
@@ -554,6 +557,53 @@ impl Parser {
         self.expect(&TokenKind::Eq)?;
         let value = self.parse_expr(0)?;
         Ok(DataDef { name, ty, value })
+    }
+
+    // ── extern declarations ────────────────────────────────────────
+
+    fn parse_extern_decl(&mut self, leading: Vec<Annotation>) -> Result<Item, ParseError> {
+        self.expect(&TokenKind::Extern)?;
+        match &self.peek().kind {
+            TokenKind::Func => Ok(Item::ExternFuncDecl(self.parse_extern_func_decl(leading)?)),
+            TokenKind::Ident(s) if s == "asset" => {
+                Ok(Item::ExternAssetDecl(self.parse_extern_asset_decl(leading)?))
+            }
+            _ => Err(self.err("expected `func` or `asset` after `extern`".to_string())),
+        }
+    }
+
+    fn parse_extern_func_decl(
+        &mut self,
+        annotations: Vec<Annotation>,
+    ) -> Result<ExternFuncDecl, ParseError> {
+        self.expect(&TokenKind::Func)?;
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::LParen)?;
+        let inputs = self.parse_field_list_until_rparen()?;
+        self.expect(&TokenKind::RParen)?;
+        self.expect(&TokenKind::Arrow)?;
+        let outputs = self.parse_output_fields()?;
+        Ok(ExternFuncDecl {
+            name,
+            inputs,
+            outputs,
+            annotations,
+        })
+    }
+
+    fn parse_extern_asset_decl(
+        &mut self,
+        annotations: Vec<Annotation>,
+    ) -> Result<ExternAssetDecl, ParseError> {
+        self.advance(); // consume "asset" identifier
+        let name = self.expect_ident()?;
+        self.expect(&TokenKind::Colon)?;
+        let ty = self.parse_type_expr()?;
+        Ok(ExternAssetDecl {
+            name,
+            ty,
+            annotations,
+        })
     }
 
     // ── type definitions ───────────────────────────────────────────
@@ -3079,5 +3129,63 @@ pipeline ci {
     fn question_in_expression_is_targeted_error() {
         let err = parse_expr_only_err("a ? b : c");
         assert!(err.message.contains("ternary operator is not supported"));
+    }
+
+    #[test]
+    fn parse_extern_func_decl() {
+        let source = r#"
+            module test.extern_mod
+            extern func fetch_data(url: String, timeout: Int) -> { body: String, status: Int }
+        "#;
+        let ast = parse_or_panic(source);
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0].node {
+            Item::ExternFuncDecl(def) => {
+                assert_eq!(def.name, "fetch_data");
+                assert_eq!(def.inputs.len(), 2);
+                assert_eq!(def.inputs[0].name, "url");
+                assert_eq!(def.inputs[1].name, "timeout");
+                assert_eq!(def.outputs.len(), 2);
+                assert_eq!(def.outputs[0].name, "body");
+                assert_eq!(def.outputs[1].name, "status");
+            }
+            other => panic!("expected ExternFuncDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_extern_asset_decl() {
+        let source = r#"
+            module test.extern_mod
+            extern asset config: Config
+        "#;
+        let ast = parse_or_panic(source);
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0].node {
+            Item::ExternAssetDecl(def) => {
+                assert_eq!(def.name, "config");
+                assert!(matches!(def.ty, TypeExpr::Named(ref n) if n == "Config"));
+            }
+            other => panic!("expected ExternAssetDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_extern_func_with_annotations() {
+        let source = r#"
+            module test.extern_mod
+            @timeout(30)
+            extern func call_api(endpoint: String) -> { result: String }
+        "#;
+        let ast = parse_or_panic(source);
+        assert_eq!(ast.items.len(), 1);
+        match &ast.items[0].node {
+            Item::ExternFuncDecl(def) => {
+                assert_eq!(def.name, "call_api");
+                assert_eq!(def.annotations.len(), 1);
+                assert_eq!(def.annotations[0].name, "timeout");
+            }
+            other => panic!("expected ExternFuncDecl, got {other:?}"),
+        }
     }
 }

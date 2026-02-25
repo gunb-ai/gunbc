@@ -77,6 +77,10 @@ pub enum LoweredOp {
     UnsupportedPattern {
         name: String,
     },
+    /// An extern function call referencing a symbol that must be linked externally.
+    ExternCall {
+        symbol: String,
+    },
 }
 
 impl From<PatternOp> for LoweredOp {
@@ -2029,6 +2033,9 @@ mod parity {
             }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::UnsupportedPattern { name }) => {
                 format!("unsupported_pattern:{name}")
+            }
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
+                format!("extern_call:{symbol}")
             }
         }
     }
