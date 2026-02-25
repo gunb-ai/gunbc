@@ -179,7 +179,7 @@ func store_value<T: Serializable>(key: String, value: T) -> { ok: Bool }
   uses store: ObjectStorage
 {
   bytes = serialize(value: value) |> to_bytes()
-  result = store.Put(key: key, value: bytes)
+  result = store.write(key: key, content: bytes)
   return { ok: result.ok }
 }
 
@@ -187,7 +187,7 @@ func store_value<T: Serializable>(key: String, value: T) -> { ok: Bool }
 func load_value<T: Serializable>(key: String) -> { value: Result<T, String> }
   uses store: ObjectStorage
 {
-  raw = store.Get(key: key)
+  raw = store.read(key: key)
   result = match raw.found {
     true  => Err(error: "Deserialization example omitted in this corpus")
     false => Err(error: "Key not found: {key}")
