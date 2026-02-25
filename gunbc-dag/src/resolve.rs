@@ -239,6 +239,19 @@ impl Executable for IdentityCallableOp {
     }
 }
 
+/// Test-only SubDag execution adapter.
+///
+/// **Production path**: `resolve_node_body` handles `NodeBody::SubDag` via
+/// recursive `resolve_lowered_dag(inner)`, which preserves the SubDag structure
+/// in the resolved `Dag<DynOp>`. The execution engine then handles SubDag
+/// expansion at runtime.
+///
+/// **Test path**: `SubDagDispatchOp` flattens and executes the inner DAG
+/// immediately, which is convenient for unit tests that need to verify SubDag
+/// node behavior without a full engine setup.
+///
+/// This is intentionally `#[cfg(test)]`-gated because it is NOT the production
+/// dispatch path. The production resolver preserves SubDag structure.
 #[cfg(test)]
 #[derive(Debug, Clone)]
 struct SubDagDispatchOp {
@@ -2065,6 +2078,37 @@ mod tests {
             handle_port.cardinality,
             Cardinality::ZERO_OR_MORE,
             "release resource_handle input should accept fan-in without scalar conflicts"
+        );
+    }
+
+    /// FC-5 guardrail: verify that `resolve_lowered_dag` preserves SubDag
+    /// structure in the resolved output (production path), rather than flattening
+    /// it via `SubDagDispatchOp` (test-only path).
+    #[test]
+    fn resolve_lowered_dag_preserves_subdag_structure() {
+        let mut inner = Dag::new();
+        inner.add_node(Node::opaque(
+            "inner_literal",
+            vec![],
+            vec![Port::new("out", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "literal".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("ok".to_string()),
+                },
+            },
+        ));
+        let mut dag = Dag::new();
+        dag.add_node(Node::subdag("wrapper", inner));
+
+        let resolved = resolve_lowered_dag(&dag).expect("resolve dag with SubDag");
+        let wrapper = resolved
+            .get_node(&"wrapper".into())
+            .expect("wrapper node should exist");
+        assert!(
+            matches!(wrapper.body, NodeBody::SubDag(_)),
+            "production resolver should preserve SubDag structure, not flatten it"
         );
     }
 
