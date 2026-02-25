@@ -100,6 +100,16 @@
 7. Determinism receipts and emit manifests are stable across repeated runs.
 8. `cargo test --workspace` + `cargo clippy --all-targets -- -D warnings` clean.
 
+### Known Hacks / Cleanup (from 2026-02-24 gist consolidation + @local support)
+
+| ID | Hack | Location | Clean fix |
+|----|------|----------|-----------|
+| **H-1** | `GenericLocalPrepareOp` wraps inputs in `ShellRequest::new("echo")` as carrier; `GenericLocalParseOp` expects `TransportResponse::Shell`. Semantically wrong — `@local` isn't a shell command. | `gunbc-dag/src/resolve_service.rs` | Add `TransportRequest::Local(LocalRequest)` / `TransportResponse::Local(LocalResponse)` variants in `core/ir/src/transport/mod.rs`. Update prepare/parse ops to use them. |
+| **H-2** | `daglang-emit` maps `LocalDirect` → `TransportKind::ShellExec`. | `core/daglang/daglang-emit/src/computation.rs` | Add `TransportKind::LocalDirect` variant. |
+| **H-3** | `service_prepare_ports()` has 4 near-identical match arms (`Rest`, `Shell`, `File`, `Local`) each doing `spec.input_fields.iter().map(...)`. | `core/daglang/daglang-lower/src/lib.rs:4393` | Add `ServiceOperationSpec::input_fields(&self) -> &[FieldSpec]` method to collapse the match. |
+| **H-4** | `workspace_binary_table_matches_cargo_manifest_bins` fails — hooks added `review-design` binary without updating `WorkspaceBinary` enum. | `gunbc-dag/src/binaries.rs` | Add `ReviewDesign` variant to `WorkspaceBinary` enum. |
+| **H-5** | `workspace_crates_count_matches_cargo_toml` fails — hooks added crates (codegen entrypoint, lambda_gen, rest_gen) without updating `workspace_crates()`. | `core/infra/src/workspace_model.rs` | Update `workspace_crates()` count or structure. |
+
 ### Lane 1 files touched (aggregate)
 
 | File | Changes |
