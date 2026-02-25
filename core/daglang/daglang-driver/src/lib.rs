@@ -1741,10 +1741,13 @@ func run() -> { ok: Bool } uses issues: IssueProvider {
             roots: vec![root.clone()],
             target_file: Some(file),
         };
-        let error = compile_from_context(&context).expect_err("compile should require profile");
+        // IS-3: Compilation without --profile now succeeds with stub interfaces
+        // instead of hard-erroring. The resulting DAG is valid for DryRun testing.
+        let output = compile_from_context(&context)
+            .expect("compile should succeed with stub interfaces (IS-3)");
         assert!(
-            error.as_str().contains("compile with --profile <name>"),
-            "expected profile-required error, got: {error}"
+            !output.lowered_dag.nodes.is_empty(),
+            "compilation without profile should produce a non-empty DAG with stub transport"
         );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
