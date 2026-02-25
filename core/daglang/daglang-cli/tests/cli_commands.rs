@@ -13721,9 +13721,17 @@ fn gen_types_emits_standard_symbols_static() {
         stdout.contains("SemanticColor::Dim"),
         "color variants should be fully qualified:\n{stdout}"
     );
+    // Static data arrays (STANDARD_SYMBOLS, ANSI_MAPPINGS) use &'static str
+    // fields directly — no .to_string() in the data declarations. Builtin
+    // function bodies (resolve_symbol, ansi_code) may use .to_string() to
+    // bridge from &'static str accessors to the declared String return type.
+    let data_section = stdout
+        .split("pub fn ")
+        .next()
+        .unwrap_or(&stdout);
     assert!(
-        !stdout.contains(".to_string()"),
-        "static data should use &str, not .to_string():\n{stdout}"
+        !data_section.contains(".to_string()"),
+        "static data declarations should use &str, not .to_string():\n{data_section}"
     );
 }
 
