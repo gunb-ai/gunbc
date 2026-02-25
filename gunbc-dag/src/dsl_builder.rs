@@ -151,143 +151,84 @@ pub fn build_dsl_graph_for_entry(
     })
 }
 
-pub(crate) fn build_bootstrap_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/bootstrap.dag")
-}
-
-pub(crate) fn build_build_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/build.dag")
-}
-
-pub(crate) fn build_ci_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("pipelines/ci.dag")
-}
-
-pub(crate) fn build_codegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/codegen.dag")
-}
-
-pub(crate) fn build_docgen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/docgen.dag")
-}
-
-pub(crate) fn build_infra_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/infra.dag")
-}
-
-pub(crate) fn build_makegen_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph_for_entry("tools/makegen.dag", "tools.makegen::makegen")
-}
-
-pub(crate) fn build_pragma_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph_for_entry("tools/pragma.dag", "tools.pragma::pragma")
-}
-
-pub(crate) fn build_deps_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/deps.dag")
-}
-
-pub fn build_clippy_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/clippy.dag")
-}
-
-pub fn build_aws_credential_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("cloud/aws/credential.dag")
-}
-
-pub fn build_azure_credential_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("cloud/azure/credential.dag")
-}
-
-pub fn build_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/review.dag")
-}
-
-pub fn build_dimension_review_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("funcs/review_pipeline.dag")
-}
-
-pub fn build_gist_snapshot_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph("tools/gist_snapshot.dag")
-}
-
-pub fn build_gist_diff_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph_for_entry("tools/gist_diff.dag", "tools.gist_diff::gist_diff")
-}
-
-pub fn build_gist_recent_graph_dsl() -> Result<Dag<DynOp>, BuilderError> {
-    build_dsl_graph_for_entry("tools/gist_recent.dag", "tools.gist_recent::gist_recent")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn builds_makegen_dsl_graph() {
-        let dag = build_makegen_graph_dsl().expect("makegen DSL graph should resolve");
+        let dag = build_dsl_graph_for_entry("tools/makegen.dag", "tools.makegen::makegen")
+            .expect("makegen DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_pragma_dsl_graph() {
-        let dag = build_pragma_graph_dsl().expect("pragma DSL graph should resolve");
+        let dag = build_dsl_graph_for_entry("tools/pragma.dag", "tools.pragma::pragma")
+            .expect("pragma DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_bootstrap_dsl_graph() {
-        let dag = build_bootstrap_graph_dsl().expect("bootstrap DSL graph should resolve");
+        let dag = build_dsl_graph("tools/bootstrap.dag")
+            .expect("bootstrap DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_codegen_dsl_graph() {
-        let dag = build_codegen_graph_dsl().expect("codegen DSL graph should resolve");
+        let dag = build_dsl_graph("tools/codegen.dag")
+            .expect("codegen DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_infra_dsl_graph() {
-        let dag = build_infra_graph_dsl().expect("infra DSL graph should resolve");
+        let dag = build_dsl_graph("tools/infra.dag")
+            .expect("infra DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_clippy_dsl_graph() {
-        let dag = build_dsl_graph("tools/clippy.dag").expect("clippy DSL graph should resolve");
+        let dag = build_dsl_graph("tools/clippy.dag")
+            .expect("clippy DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_deps_dsl_graph() {
-        let dag = build_deps_graph_dsl().expect("deps DSL graph should resolve");
+        let dag = build_dsl_graph("tools/deps.dag")
+            .expect("deps DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_review_dsl_graph() {
-        let dag = build_dsl_graph("tools/review.dag").expect("review DSL graph should resolve");
+        let dag = build_dsl_graph("tools/review.dag")
+            .expect("review DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_dimension_review_dsl_graph() {
-        let dag = build_dimension_review_graph_dsl()
+        let dag = build_dsl_graph("funcs/review_pipeline.dag")
             .expect("dimension review DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_gist_dsl_graph() {
-        let dag = build_gist_snapshot_graph_dsl().expect("gist DSL graph should resolve");
+        let dag = build_dsl_graph("tools/gist_snapshot.dag")
+            .expect("gist DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
-
     #[test]
     fn builds_ci_dsl_graph() {
-        let dag = build_ci_graph_dsl().expect("ci DSL graph should resolve");
+        let dag = build_dsl_graph("pipelines/ci.dag")
+            .expect("ci DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
         assert!(
             !dag.nodes.iter().any(|node| node.id.0 == "pipelines.ci::ci"),

@@ -534,7 +534,7 @@ mod tests {
     // -- A2.3: makegen DAG → EmitPlan in topo order --
 
     use daglang_derive::derive_artifacts;
-    use daglang_lower::{CallableKind, LoweredOp, ObligationCategory};
+    use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, PrimitiveOpKind};
     use gunbc_ir::{Dag, Edge, Node, Port};
 
     /// Build a realistic makegen DAG matching the content_upsert pattern.
@@ -869,28 +869,20 @@ mod tests {
                 prep_read_id.as_str(),
                 vec![Port::scalar("path", "String")],
                 vec![Port::scalar("request", "TransportRequest")],
-                LoweredOp::Callable {
+                LoweredOp::Primitive {
                     module: "pragma".into(),
-                    kind: CallableKind::Pattern,
                     name: format!("content_upsert::{prep_read_id}"),
-                    obligation: ObligationCategory::None,
-                    service_metadata: None,
-                    is_interactive: false,
-                    resource_target: None,
+                    kind: PrimitiveOpKind::IoPrepareFileRead,
                 },
             ));
             dag.add_node(Node::opaque(
                 exec_read_id.as_str(),
                 vec![Port::scalar("request", "TransportRequest")],
                 vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Callable {
+                LoweredOp::Primitive {
                     module: "pragma".into(),
-                    kind: CallableKind::Pattern,
                     name: format!("content_upsert::{exec_read_id}"),
-                    obligation: ObligationCategory::None,
-                    service_metadata: None,
-                    is_interactive: false,
-                    resource_target: None,
+                    kind: PrimitiveOpKind::IoExecuteFileRead,
                 },
             ));
             dag.add_node(Node::opaque(
@@ -900,14 +892,10 @@ mod tests {
                     Port::scalar("response", "TransportResponse"),
                 ],
                 vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
-                LoweredOp::Callable {
+                LoweredOp::Primitive {
                     module: "pragma".into(),
-                    kind: CallableKind::Pattern,
                     name: format!("content_upsert::{compare_id}"),
-                    obligation: ObligationCategory::None,
-                    service_metadata: None,
-                    is_interactive: false,
-                    resource_target: None,
+                    kind: PrimitiveOpKind::CompareEquality,
                 },
             ));
             dag.add_node(Node::opaque(
@@ -917,14 +905,10 @@ mod tests {
                     Port::scalar("path", "String"),
                 ],
                 vec![Port::scalar("request", "TransportRequest")],
-                LoweredOp::Callable {
+                LoweredOp::Primitive {
                     module: "pragma".into(),
-                    kind: CallableKind::Pattern,
                     name: format!("content_upsert::{prep_write_id}"),
-                    obligation: ObligationCategory::None,
-                    service_metadata: None,
-                    is_interactive: false,
-                    resource_target: None,
+                    kind: PrimitiveOpKind::IoPrepareFileWrite,
                 },
             ));
             dag.add_node(Node::opaque(
@@ -934,14 +918,10 @@ mod tests {
                     Port::scalar("skip", "Bool"),
                 ],
                 vec![Port::scalar("response", "TransportResponse")],
-                LoweredOp::Callable {
+                LoweredOp::Primitive {
                     module: "pragma".into(),
-                    kind: CallableKind::Pattern,
                     name: format!("content_upsert::{exec_transport_id}"),
-                    obligation: ObligationCategory::None,
-                    service_metadata: None,
-                    is_interactive: false,
-                    resource_target: None,
+                    kind: PrimitiveOpKind::IoExecuteFileWrite,
                 },
             ));
 

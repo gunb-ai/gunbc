@@ -1314,23 +1314,6 @@ Please fix these issues."#;
 }
 
 // ============================================================================
-// Tool Target Registrations
-// ============================================================================
-
-#[gunbc_tool_registry_macros::tool_target(
-    name = "review",
-    crate_name = "gunbc-lib-review",
-    description = "Review code changes using LLM analysis",
-    builder = "build_review_graph_dsl",
-    import = "use gunbc_dag::build_review_graph_dsl;",
-    package = "dag",
-    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","help":"Repository path to diff","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff (default: main)"}]"#,
-    dsl_module = "review",
-    returns_result
-)]
-pub fn review_tool() {}
-
-// ============================================================================
 // DagSpec Registry Helpers
 // ============================================================================
 

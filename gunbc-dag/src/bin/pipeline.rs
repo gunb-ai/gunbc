@@ -19,7 +19,7 @@
 
 #![deny(dead_code)]
 use gunbc_cli::BinaryArgs;
-use gunbc_dag::{build_dimension_review_graph_dsl, print_tool_header, run_tool, RunToolOptions};
+use gunbc_dag::{dsl_builder::build_dsl_graph, print_tool_header, run_tool, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_review::dimension::FermiDepth;

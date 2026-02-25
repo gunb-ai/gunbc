@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use gunbc_dag::build_gist_recent_graph_dsl;
+use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;
 use gunbc_exec::{execute_with_mode_and_inputs, lower, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{
     HttpMethod, RestResponse, ShellResponse, TransportRequest, TransportResponse,

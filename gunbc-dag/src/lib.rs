@@ -29,11 +29,6 @@ pub mod docgen;
 pub mod dry_run;
 pub mod dsl_builder;
 pub mod dsl_registry;
-pub use dsl_builder::{
-    build_aws_credential_graph_dsl, build_azure_credential_graph_dsl, build_clippy_graph_dsl,
-    build_dimension_review_graph_dsl, build_gist_diff_graph_dsl, build_gist_recent_graph_dsl,
-    build_gist_snapshot_graph_dsl, build_review_graph_dsl,
-};
 pub mod fs_env;
 pub mod gist;
 pub mod infra;
@@ -124,18 +119,6 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
         .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
         .collect()
 }
-
-// ============================================================================
-// Test linker hints
-// ============================================================================
-// Force the linker to include inventory submissions from dependency crates
-// in the lib test binary. Without these, tool_target registrations from
-// external crates are dead-stripped and derive_tool_defs() returns an
-// incomplete set.
-#[cfg(test)]
-extern crate gunbc_clippy;
-#[cfg(test)]
-extern crate gunbc_lib_review;
 
 // ============================================================================
 // Cross-crate system model integration tests
