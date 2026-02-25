@@ -319,7 +319,10 @@ pub fn build_emit_plan(
 }
 
 fn is_user_input_port(name: &str) -> bool {
-    name != "__deps" && !name.starts_with("res:") && !name.starts_with("tool:")
+    name != "__deps"
+        && !name.starts_with("res:")
+        && !name.starts_with("tool:")
+        && !name.starts_with("__out:")
 }
 
 /// Kahn's algorithm topo sort over a `Dag<LoweredOp>`.

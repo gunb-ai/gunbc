@@ -4916,12 +4916,13 @@ fn add_service_call_edges(
         // edges to the original.
         let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
         for item in &module.ast.items {
-            let (item_name, params, stmts, uses_binding_types) = match &item.node {
+            let (item_name, params, stmts, uses_binding_types, body_lossy) = match &item.node {
                 Item::FnDef(def) => (
                     &def.name,
                     &def.params,
                     def.body.stmts.as_slice(),
                     HashMap::new(),
+                    def.body.lossy,
                 ),
                 Item::FuncDef(def) => (
                     &def.name,
@@ -4936,6 +4937,7 @@ fn add_service_call_edges(
                             )
                         })
                         .collect::<HashMap<_, _>>(),
+                    def.body.lossy,
                 ),
                 Item::PatternDef(def) => (
                     &def.name,
@@ -4950,6 +4952,7 @@ fn add_service_call_edges(
                             )
                         })
                         .collect::<HashMap<_, _>>(),
+                    def.body.lossy,
                 ),
                 _ => continue,
             };
@@ -5150,6 +5153,18 @@ fn add_service_call_edges(
                 &param_types,
                 &bound_callable_sources,
                 &bound_service_sources,
+                module_name.as_str(),
+                item_name,
+            );
+            wire_callable_return_outputs(
+                builder,
+                stmts,
+                target,
+                body_lossy,
+                &param_types,
+                &augmented_callable_sources,
+                &bound_service_sources,
+                endpoints_by_name,
                 module_name.as_str(),
                 item_name,
             );
@@ -6579,6 +6594,231 @@ fn wire_fn_call_arguments(
                 builder.add_edge(src.as_str(), param_name, fn_endpoint.node_id.as_str(), param_name);
             }
         }
+    }
+}
+
+fn collect_return_bindings(
+    stmts: &[Stmt],
+    output_ports: &[Port],
+    body_lossy: bool,
+) -> Vec<(String, Expr)> {
+    if output_ports.is_empty() {
+        return Vec::new();
+    }
+
+    let output_names = output_ports
+        .iter()
+        .map(|port| port.name.0.clone())
+        .collect::<Vec<_>>();
+
+    let mut explicit_return = None;
+    for stmt in stmts {
+        if let Stmt::Return(fields) = stmt {
+            explicit_return = Some(fields);
+        }
+    }
+
+    if let Some(fields) = explicit_return {
+        if output_names.len() == 1 {
+            return fields
+                .first()
+                .map(|(_, expr)| vec![(output_names[0].clone(), expr.clone())])
+                .unwrap_or_default();
+        }
+        let output_set = output_names
+            .iter()
+            .map(|name| name.as_str())
+            .collect::<HashSet<_>>();
+        return fields
+            .iter()
+            .filter_map(|(name, expr)| {
+                output_set
+                    .contains(name.as_str())
+                    .then(|| (name.clone(), expr.clone()))
+            })
+            .collect();
+    }
+
+    if output_names.len() == 1 && !body_lossy {
+        let mut trailing_expr = None;
+        for stmt in stmts {
+            match stmt {
+                Stmt::Expr(expr) => trailing_expr = Some(expr),
+                Stmt::Let(..) | Stmt::Assign(..) | Stmt::Annotation(_) | Stmt::Return(_) => {
+                    trailing_expr = None;
+                }
+            }
+        }
+        if let Some(expr) = trailing_expr {
+            return vec![(output_names[0].clone(), expr.clone())];
+        }
+    }
+
+    Vec::new()
+}
+
+fn unwrap_return_expr<'a>(expr: &'a Expr) -> &'a Expr {
+    match expr {
+        Expr::After(inner, _) | Expr::Guarded(inner, _) => unwrap_return_expr(inner),
+        Expr::Call(name, args)
+            if matches!(name.as_str(), "as" | "with" | "<expr>" | "fn") =>
+        {
+            args.first()
+                .map(|(_, inner)| unwrap_return_expr(inner))
+                .unwrap_or(expr)
+        }
+        _ => expr,
+    }
+}
+
+fn return_literal_arg(expr: &Expr) -> Option<ServiceCallArgLiteral> {
+    match expr {
+        Expr::Literal(Literal::Float(value)) => serde_json::Number::from_f64(*value)
+            .map(|num| ServiceCallArgLiteral::Json(serde_json::Value::Number(num))),
+        _ => service_call_literal_arg(expr),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_return_expr_source(
+    builder: &mut DagBuilder,
+    expr: &Expr,
+    output_port: &Port,
+    output_name: &str,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    module_name: &str,
+    item_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let expr = unwrap_return_expr(expr);
+    match expr {
+        Expr::Ident(name) => {
+            if let Some(param_ty) = param_types.get(name) {
+                let src = ensure_param_source_node(
+                    builder,
+                    module_name,
+                    item_name,
+                    name,
+                    param_ty.as_str(),
+                );
+                return Some((src, name.clone()));
+            }
+            if let Some(source) = bound_callable_sources.get(name) {
+                return Some((source.node_id.clone(), source.primary_output.clone()));
+            }
+            if let Some(source) = bound_service_sources.get(name) {
+                return Some((
+                    source.parse.node_id.clone(),
+                    source.parse.primary_output.clone(),
+                ));
+            }
+            if let Some(Some(source)) = endpoints_by_name.get(name) {
+                return Some((source.node_id.clone(), source.primary_output.clone()));
+            }
+            None
+        }
+        Expr::FieldAccess(base, field) => {
+            if let Expr::Ident(base_ident) = base.as_ref() {
+                if let Some(source) = bound_callable_sources.get(base_ident) {
+                    return Some((source.node_id.clone(), field.clone()));
+                }
+                if let Some(source) = bound_service_sources.get(base_ident) {
+                    return Some((source.parse.node_id.clone(), field.clone()));
+                }
+                if let Some(Some(source)) = endpoints_by_name.get(base_ident) {
+                    return Some((source.node_id.clone(), field.clone()));
+                }
+            }
+            None
+        }
+        Expr::Call(name, _) => endpoints_by_name
+            .get(name)
+            .and_then(|entry| entry.clone())
+            .map(|source| (source.node_id, source.primary_output)),
+        Expr::Literal(_)
+        | Expr::StringInterp(_)
+        | Expr::List(_)
+        | Expr::Map(_) => {
+            let literal = return_literal_arg(expr)?;
+            let src = ensure_literal_source_node(
+                builder,
+                module_name,
+                item_name,
+                output_name,
+                output_port.type_id.0.as_str(),
+                &literal,
+                disambiguator,
+            );
+            Some((src, output_name.to_string()))
+        }
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn wire_callable_return_outputs(
+    builder: &mut DagBuilder,
+    stmts: &[Stmt],
+    target: &LoweredEndpoint,
+    body_lossy: bool,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    module_name: &str,
+    item_name: &str,
+) {
+    let outputs = match builder
+        .dag
+        .get_node(&NodeId::new(target.node_id.clone()))
+    {
+        Some(node) => node.outputs.clone(),
+        None => return,
+    };
+    let output_bindings = collect_return_bindings(stmts, &outputs, body_lossy);
+    if output_bindings.is_empty() {
+        return;
+    }
+
+    for (index, (output_name, expr)) in output_bindings.into_iter().enumerate() {
+        let Some(output_port) = outputs
+            .iter()
+            .find(|port| port.name.0 == output_name)
+            .cloned()
+        else {
+            continue;
+        };
+        let dest_port = output_passthrough_input_name(output_name.as_str());
+        if builder.has_edge_to_port(target.node_id.as_str(), dest_port.as_str()) {
+            continue;
+        }
+        let Some((source_node, source_port)) = resolve_return_expr_source(
+            builder,
+            &expr,
+            &output_port,
+            output_name.as_str(),
+            param_types,
+            bound_callable_sources,
+            bound_service_sources,
+            endpoints_by_name,
+            module_name,
+            item_name,
+            &format!("return_{index}"),
+        ) else {
+            continue;
+        };
+        if source_node == target.node_id {
+            continue;
+        }
+        builder.add_edge(
+            source_node.as_str(),
+            source_port.as_str(),
+            target.node_id.as_str(),
+            dest_port.as_str(),
+        );
     }
 }
 

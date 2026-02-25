@@ -170,6 +170,17 @@ fn gist_recent_end_to_end_emits_gist_url() {
         "gist parse output should expose html_url"
     );
 
+    let gist_recent = log
+        .entries
+        .iter()
+        .find(|entry| entry.node_id == "tools.gist::gist_recent")
+        .expect("gist_recent callable should be present");
+    assert!(
+        matches!(gist_recent.outputs.get("url"), Some(Value::Str(url)) if url.contains("gist.github.com")),
+        "gist_recent should expose a url output: {:?}",
+        gist_recent.outputs
+    );
+
     let seen_diff_request = requests.lock().expect("capture lock").iter().any(|request| {
         matches!(
             request,

@@ -74,9 +74,17 @@ fn execute_with_declared_output_passthrough(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
     for (key, value) in &inputs {
+        if key.starts_with("__out:") {
+            continue;
+        }
         outputs.insert(key.clone(), value.clone());
     }
     for port_name in output_port_names {
+        let passthrough_key = format!("__out:{port_name}");
+        if let Some(value) = inputs.get(&passthrough_key) {
+            outputs.insert(port_name.clone(), value.clone());
+            continue;
+        }
         outputs.entry(port_name.clone()).or_insert_with(|| {
             passthrough_fallback_value(port_name, &inputs).unwrap_or(Value::Skipped)
         });
