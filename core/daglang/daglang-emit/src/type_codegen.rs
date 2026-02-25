@@ -900,6 +900,25 @@ fn replace_builtin_stubs(items: &mut [code_ir::Item]) {
             }
         }
     }
+    // Functions that accept String but only iterate chars can accept &str
+    // instead. This is needed because resolve_symbol/ansi_code were patched
+    // to return &'static str above, and callers pass their results directly.
+    relax_string_params_to_str(items);
+}
+
+/// Relax `String` parameters to `&str` for generated functions whose bodies
+/// only iterate characters (no ownership needed). This keeps call sites
+/// type-correct when upstream functions return `&'static str`.
+fn relax_string_params_to_str(items: &mut [code_ir::Item]) {
+    for item in items.iter_mut() {
+        if let code_ir::Item::Fn(f) = item {
+            for (_name, ty) in &mut f.params {
+                if ty == "String" {
+                    *ty = "&str".to_string();
+                }
+            }
+        }
+    }
 }
 
 fn is_todo_stub(body: &[code_ir::Stmt]) -> bool {
