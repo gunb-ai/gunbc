@@ -29,6 +29,8 @@
 **Design references (source of truth)**:
 - `docs/design/v4/domain-hard-error-no-fallback-plan.md`
 - `docs/design/interface-stub-transport.md`
+- `docs/design/v4/externcall-same-module-port-wiring.md` (NF-7)
+- `docs/design/v4/extern-bridge-gap-analysis.md` (Phases 5-8: full extern elimination, extends NF-7)
 
 ### Track A: Compile+Link No-Fallback Hardening
 

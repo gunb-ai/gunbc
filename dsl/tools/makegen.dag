@@ -39,7 +39,7 @@ fn render_makefile(registry: ToolRegistry) -> String {
 }
 
 @outputs("Makefile")
-func makegen(registry: ToolRegistry, path: String) -> { written: Bool } {
+func makegen(registry: ToolRegistry, path: String = "Makefile") -> { written: Bool } {
   content = render_makefile(registry: registry)
   result = content_upsert(content: content, path: path)
   return { written: result.written }

@@ -227,6 +227,12 @@ DSL features required: conditional list (if/else in list context), zip.
 
 ### Phase 6: Workspace Model + Policy Migration (entries 3-5)
 
+**No missing compiler features.** All required DSL features are proven in
+existing .dag files (filter with field access + equality, starts_with, match on
+sum types, data declarations with nested structs). One risk: flat_map has lowerer
+infrastructure (CollectionOpKind::FlatMap) but zero DSL usage — validate with a
+simple test case before 6c.
+
 Move policy data and workspace knowledge from Rust const arrays to DSL data
 declarations. This is Lane A work — establishing DSL as the single source of
 truth for workspace self-understanding.
@@ -337,6 +343,11 @@ declarations and all shadow fn bodies from pragma.dag.
 
 ### Phase 7: Registry Migration (entries 6-10)
 
+**7a and 7c need no new compiler features.** Data declarations, map, join,
+match on null, `??` are all proven. flat_map (for tool target expansion) needs
+validation (same as Phase 6). Only 7b requires compiler-side work (artifact
+emitter).
+
 Move registry constants from Rust to DSL. Establish compiler artifact
 feedback loop for tool discovery.
 
@@ -427,7 +438,7 @@ Rendering is trivial DSL (the Rust renderers are join-with-delimiters):
 
 ```
 fn render_target(t: MakefileTarget) -> String {
-  let comment_line = match t.comment { Some { value } => "# {value}\n", None => "" }
+  let comment_line = match t.comment { null => "", c => "# {c}\n" }
   let deps_str = t.deps |> join(" ")
   let body_str = t.body |> map(line => "\t{line}") |> join("\n")
   "{comment_line}{t.name}: {deps_str}\n{body_str}\n"
@@ -436,7 +447,7 @@ fn render_target(t: MakefileTarget) -> String {
 fn render_category(c: GitignoreCategory) -> String {
   let source = c.source ?? "unknown"
   let header = "# --- {c.name} (from {source}) ---"
-  let rationale = match c.rationale { Some { value } => "# {value}\n", None => "" }
+  let rationale = match c.rationale { null => "", r => "# {r}\n" }
   let items = c.items |> join("\n")
   "{header}\n{rationale}{items}\n"
 }
@@ -489,6 +500,8 @@ After all 10 entries are pure DSL:
 | match on sum types | Proven in box_draw.dag, markdown_render.dag | All phases |
 | if/else expressions | Proven in box_draw.dag repeat_char | Phase 5a, 5b |
 | data declarations | Proven in languages.dag (complex nested structs) | Phase 6, 7 |
+| ?? (null coalesce) | Proven in markdown_render.dag (`language ?? ""`) | Phase 7c optional fields |
+| match on null | Proven in box_draw.dag (`match x { null => ..., c => ... }`) | Phase 7c optional fields |
 
 ### Compiler features needed
 
@@ -504,14 +517,14 @@ Ordered by how many entries they unblock:
 | skip(n) | MISSING | 5 | render_tree (path subpath) | Subsequence ops |
 | zip() | MISSING | 5 | build_snapshot_content | Parallel iteration |
 | Conditional list | MISSING | 5 | build_snapshot_content, pragma | Conditional assembly |
-| filter / get on Map | MISSING | 6 | pragma crate resolution | Map lookup |
 | Compiler registry artifact | MISSING | 7 | load_registry elimination | Build system |
 
 ### Feature dependency chain
 
 Phase 5a (tree rendering) is the critical path — it requires 6 missing features.
 Phase 5b (snapshot content) adds 2 more (zip, conditional list).
-Phase 6 adds 1 more (Map filter). Phase 7 is a compiler-side artifact emitter.
+Phase 6 needs zero new features (List filter + starts_with are proven; flat_map
+needs validation only). Phase 7 needs a compiler-side artifact emitter (7b).
 
 Recommended build order for compiler features:
 1. split, skip (string/list primitives — small, testable independently; first already exists)
