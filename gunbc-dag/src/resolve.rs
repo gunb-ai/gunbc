@@ -1263,6 +1263,28 @@ mod tests {
     }
 
     #[test]
+    fn resolve_pragma_render_ops_emit_content() {
+        let cases = [
+            "render_clippy_toml",
+            "render_disallowed_methods_allowlist",
+            "render_pragma_lint_policy",
+        ];
+        for name in cases {
+            let node = callable_node(name, "tools.pragma", name, ObligationCategory::None);
+            let result = resolve_node(&node).expect(name);
+            let outputs = result.execute(HashMap::new()).expect(name);
+            assert!(
+                outputs
+                    .get("return")
+                    .and_then(Value::as_str)
+                    .map(|content| !content.is_empty())
+                    .unwrap_or(false),
+                "resolver should execute pragma renderer `{name}` and emit non-empty return"
+            );
+        }
+    }
+
+    #[test]
     fn resolve_bootstrap_render_ops_emit_content() {
         let cases = ["render_bootstrap_makefile", "render_bootstrap_gitignore"];
         for name in cases {
@@ -2264,20 +2286,20 @@ mod tests {
     /// shadow bridge pattern should be eliminated.
     #[test]
     fn resolve_shadow_bridge_callable_uses_extern_impl_not_passthrough() {
-        // tools.bootstrap::render_bootstrap_makefile has a Rust extern impl.
+        // tools.pragma::render_clippy_toml has a Rust extern impl.
         // When it appears as a Callable (fn body), the extern impl wins.
         let node = callable_node(
-            "render_bootstrap_makefile",
-            "tools.bootstrap",
-            "render_bootstrap_makefile",
+            "render_clippy_toml",
+            "tools.pragma",
+            "render_clippy_toml",
             ObligationCategory::PureRender,
         );
         let result =
             resolve_node(&node).expect("shadow bridge callable should resolve to extern impl");
         let debug = format!("{result:?}");
         assert!(
-            debug.contains("GenerateBootstrapMakefileOp"),
-            "should resolve to GenerateBootstrapMakefileOp (extern impl), not DeclaredOutputCallableOp: {debug}"
+            debug.contains("RenderClippyTomlOp"),
+            "should resolve to RenderClippyTomlOp (extern impl), not DeclaredOutputCallableOp: {debug}"
         );
     }
 }

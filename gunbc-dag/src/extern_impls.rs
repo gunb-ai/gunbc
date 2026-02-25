@@ -25,11 +25,15 @@ use gunbc_ir::Value;
 /// Used by tests to snapshot the full key set and prevent silent additions.
 pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
     &[
-        ("config.tool_discovery", "discover_tools"),
         ("std.markdown", "render_tree"),
         ("tools.bootstrap", "render_bootstrap_gitignore"),
         ("tools.bootstrap", "render_bootstrap_makefile"),
         ("tools.gist", "build_snapshot_content"),
+        ("tools.makegen", "discover_tools"),
+        ("tools.makegen", "render_makefile_content"),
+        ("tools.pragma", "render_clippy_toml"),
+        ("tools.pragma", "render_disallowed_methods_allowlist"),
+        ("tools.pragma", "render_pragma_lint_policy"),
     ]
 }
 
@@ -43,7 +47,16 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
 
         ("tools.gist", "build_snapshot_content") => Some(DynOp::new(BuildSnapshotContentOp)),
 
-        ("config.tool_discovery", "discover_tools") => Some(DynOp::new(DiscoverToolsOp)),
+        ("tools.makegen", "discover_tools") => Some(DynOp::new(DiscoverToolsOp)),
+        ("tools.makegen", "render_makefile_content") => {
+            Some(DynOp::new(RenderMakefileContentOp))
+        }
+
+        ("tools.pragma", "render_clippy_toml") => Some(DynOp::new(RenderClippyTomlOp)),
+        ("tools.pragma", "render_disallowed_methods_allowlist") => {
+            Some(DynOp::new(RenderAllowlistOp))
+        }
+        ("tools.pragma", "render_pragma_lint_policy") => Some(DynOp::new(RenderLintPolicyOp)),
 
         ("tools.bootstrap", "render_bootstrap_makefile") => {
             Some(DynOp::new(GenerateBootstrapMakefileOp))
@@ -285,6 +298,73 @@ impl Executable for DiscoverToolsOp {
     }
 }
 
+/// `render_makefile_content() -> String`
+///
+/// Renders the complete Makefile using Rust's ToolRegistry + MakefileRenderer.
+/// Bridge: DSL rendering fns exist in `tools/makegen.dag` but can't execute at
+/// runtime yet (fn items resolve to PassthroughOp). This extern func provides
+/// the actual computation until the compiler supports fn-level evaluation.
+#[derive(Debug, Clone)]
+struct RenderMakefileContentOp;
+
+impl Executable for RenderMakefileContentOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::makegen::{registry::ToolRegistry, render::render_makefile};
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+        OutputMap::new()
+            .str("content", makefile.clone())
+            .str("return", makefile)
+            .ok()
+    }
+}
+
+// ============================================================================
+// tools.pragma extern impls
+// ============================================================================
+
+#[derive(Debug, Clone)]
+struct RenderClippyTomlOp;
+
+impl Executable for RenderClippyTomlOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::policy::pragma::clippy_renderer;
+        let content = clippy_renderer().render();
+        OutputMap::new()
+            .str("content", content.clone())
+            .str("return", content)
+            .ok()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RenderAllowlistOp;
+
+impl Executable for RenderAllowlistOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::policy::pragma::render_disallowed_methods_allowlist;
+        let content = render_disallowed_methods_allowlist();
+        OutputMap::new()
+            .str("content", content.clone())
+            .str("return", content)
+            .ok()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RenderLintPolicyOp;
+
+impl Executable for RenderLintPolicyOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::policy::pragma::render_pragma_lint_policy;
+        let content = render_pragma_lint_policy();
+        OutputMap::new()
+            .str("content", content.clone())
+            .str("return", content)
+            .ok()
+    }
+}
+
 // ============================================================================
 // tools.bootstrap extern impls
 // ============================================================================
@@ -496,6 +576,27 @@ mod tests {
     }
 
     #[test]
+    fn test_render_clippy_toml() {
+        let result = RenderClippyTomlOp.execute(HashMap::new()).unwrap();
+        let content = result.get("content").and_then(Value::as_str).expect("expected clippy content");
+        assert!(content.contains("disallowed-methods"));
+    }
+
+    #[test]
+    fn test_render_allowlist() {
+        let result = RenderAllowlistOp.execute(HashMap::new()).unwrap();
+        let content = result.get("content").and_then(Value::as_str).expect("expected allowlist content");
+        assert!(content.contains("Generated by gunbc-pragma"));
+    }
+
+    #[test]
+    fn test_render_lint_policy() {
+        let result = RenderLintPolicyOp.execute(HashMap::new()).unwrap();
+        let content = result.get("content").and_then(Value::as_str).expect("expected lint policy content");
+        assert!(content.contains("Generated by gunbc-pragma"));
+    }
+
+    #[test]
     fn test_discover_tools_returns_list() {
         let result = DiscoverToolsOp.execute(HashMap::new()).unwrap();
         let tools = result.get("return").expect("expected return key");
@@ -513,6 +614,14 @@ mod tests {
             }
             _ => panic!("expected List, got {:?}", std::mem::discriminant(tools)),
         }
+    }
+
+    #[test]
+    fn test_render_makefile_content() {
+        let result = RenderMakefileContentOp.execute(HashMap::new()).unwrap();
+        let content = result.get("content").and_then(Value::as_str).expect("expected makefile content");
+        assert!(content.contains("Generated by gunbc-makegen"));
+        assert!(content.contains("build:"));
     }
 
     #[test]

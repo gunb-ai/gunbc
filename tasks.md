@@ -92,17 +92,21 @@ bridges. Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 7.
 
 ## Foundation: Compiler Features (FC-CF)
 
-7 language features for structural modeling. Each independently testable.
+Language features needed for extern bridge elimination. Evaluated against concrete
+business cases — features expressible via existing `fold` are deprioritized.
 
-| ID | Feature | Size | Status | Deps | Unblocks |
-|----|---------|------|--------|------|----------|
-| FC-CF1 | `split(delim)`: String → List\<String\> | M | Pending | — | FC-P8-a |
-| FC-CF2 | `skip(n)`: List\<T\> → List\<T\> | S | Pending | — | FC-P8-a |
-| FC-CF3 | `enumerate()`: List\<T\> → List\<(Int, T)\> | M | Pending | — | FC-P8-a |
-| FC-CF4 | `group_by(key_fn)`: List\<T\> → Map\<K, List\<T\>\> | L | Pending | — | FC-P8-a |
-| FC-CF5 | Recursive types (self-referential type defs) | L | Pending | — | FC-CF6 |
-| FC-CF6 | Recursive functions (self-calls in fn bodies) | L | Pending | FC-CF5 | FC-P8-a |
-| FC-CF7 | `zip()`: List\<A\> × List\<B\> → List\<(A, B)\> | M | Pending | — | FC-P8-b |
+| ID | Feature | Size | Status | Deps | Unblocks | Notes |
+|----|---------|------|--------|------|----------|-------|
+| FC-CF1 | `split(delim)`: String → List\<String\> | M | Pending | — | FC-P8-a | Irreducible. Path parsing for tree rendering. |
+| FC-CF7 | `zip()`: List\<A\> × List\<B\> → List\<(A, B)\> | M | Pending | — | FC-P8-b | Irreducible. Parallel list assembly in snapshot. |
+| FC-CF5 | Recursive types (self-referential type defs) | L | Pending | — | FC-CF6 | DirEntry { children: List\<DirEntry\> }. |
+| FC-CF6 | Recursive functions (self-calls in fn bodies) | L | Pending | FC-CF5 | FC-P8-a | Tree traversal (flatten, render). |
+| FC-CF2 | `skip(n)`: List\<T\> → List\<T\> | S | Pending | — | FC-P8-a | Low priority — expressible via fold+index. |
+| FC-CF3 | `enumerate()`: List\<T\> → List\<(Int, T)\> | M | Pending | — | FC-P8-a | Low priority — expressible via fold+counter. |
+
+**Dropped**: FC-CF4 (`group_by`) — no current extern bridge needs it. `render_tree`
+uses BTreeMap trie insertion (split + recursive insert), not group_by. Re-evaluate if
+a concrete business case emerges.
 
 ---
 
