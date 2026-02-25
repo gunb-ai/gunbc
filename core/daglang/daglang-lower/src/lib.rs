@@ -1240,7 +1240,7 @@ impl DagBuilder {
     fn has_edge_to_port(&self, to_node: &str, to_port: &str) -> bool {
         self.seen_edges
             .iter()
-            .any(|(_, _, tn, tp)| tn == to_node && tp == to_port)
+            .any(|(_, _, tn, tp, _)| tn == to_node && tp == to_port)
     }
 
     fn clone_transport_triplet(
@@ -2587,6 +2587,16 @@ fn infer_fn_obligation(
     ObligationCategory::PureGeneric
 }
 
+const OUTPUT_PASSTHROUGH_PREFIX: &str = "__out:";
+
+fn output_passthrough_input_name(output_name: &str) -> String {
+    format!("{OUTPUT_PASSTHROUGH_PREFIX}{output_name}")
+}
+
+fn is_output_passthrough_input(port_name: &str) -> bool {
+    port_name.starts_with(OUTPUT_PASSTHROUGH_PREFIX)
+}
+
 fn lower_callable(
     callable: &TypedCallableSignature,
     module_name: &str,
@@ -2594,18 +2604,6 @@ fn lower_callable(
     is_interactive: bool,
 ) -> (Node<LoweredOp>, LoweredEndpoint) {
     let node_id = lowered_node_id(module_name, &callable.name);
-    let mut inputs = callable
-        .params
-        .iter()
-        .map(|binding| {
-            Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
-        })
-        .collect::<Vec<_>>();
-    inputs.push(Port::with_cardinality(
-        "__deps",
-        "Any",
-        Cardinality::ZERO_OR_MORE,
-    ));
     let outputs = if callable.outputs.is_empty() {
         vec![Port::with_cardinality("return", "Unit", Cardinality::ONE)]
     } else {
@@ -2617,6 +2615,25 @@ fn lower_callable(
             })
             .collect()
     };
+    let mut inputs = callable
+        .params
+        .iter()
+        .map(|binding| {
+            Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
+        })
+        .collect::<Vec<_>>();
+    for output in &outputs {
+        inputs.push(Port::with_cardinality(
+            output_passthrough_input_name(output.name.0.as_str()),
+            output.type_id.0.as_str(),
+            Cardinality::ONE,
+        ));
+    }
+    inputs.push(Port::with_cardinality(
+        "__deps",
+        "Any",
+        Cardinality::ZERO_OR_MORE,
+    ));
     let obligation = infer_fn_obligation(&callable.name, kind, &outputs);
     let primary_output = outputs
         .first()
@@ -6778,7 +6795,10 @@ pub struct InferredEntrypoint {
 /// Use this filter consistently in entrypoint inference, CLI parameter
 /// extraction, and any future exposure mapping (REST, Lambda, etc.).
 pub fn is_user_param_port(port_name: &str) -> bool {
-    port_name != "__deps" && !port_name.starts_with("tool:") && !port_name.starts_with("res:")
+    port_name != "__deps"
+        && !port_name.starts_with("tool:")
+        && !port_name.starts_with("res:")
+        && !is_output_passthrough_input(port_name)
 }
 
 /// Infer entrypoints from graph structure.
