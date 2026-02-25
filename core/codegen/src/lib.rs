@@ -17,8 +17,11 @@
 #![deny(dead_code)]
 
 pub mod cli_gen;
+pub mod entrypoint;
 pub mod file_writer;
+pub mod lambda_gen;
 pub mod registry;
+pub mod rest_gen;
 pub mod template;
 pub mod testgen;
 

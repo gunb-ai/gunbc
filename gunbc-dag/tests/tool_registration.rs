@@ -200,7 +200,12 @@ fn tool_declared_outputs_match_dsl_compilation() {
     }
 }
 
-const COMMITTED_SEED_FILES: &[&str] = &[".gitignore", "clippy.toml", "deps.toml"];
+const COMMITTED_SEED_FILES: &[&str] = &[
+    ".gitignore",
+    "clippy.toml",
+    "deps.toml",
+    "docs/ab-writing-workflows.md",
+];
 
 #[test]
 #[allow(clippy::disallowed_methods)]
@@ -312,9 +317,20 @@ fn workspace_binary_invocations_are_consistent() {
 fn workspace_binary_enum_covers_dsl_tools() {
     use gunbc_dag::WorkspaceBinary;
 
-    // Dedicated executor binaries that exist in Cargo.toml [[bin]] but are
-    // intentionally NOT in the WorkspaceBinary dispatch enum.
-    let non_workspace_dispatch: BTreeSet<&str> = BTreeSet::from(["deps", "review"]);
+    // Tools that exist as DSL entrypoints but are intentionally NOT in
+    // the WorkspaceBinary dispatch enum. Includes newly-inferred entrypoints
+    // that haven't been promoted to standalone CLI binaries yet.
+    let non_workspace_dispatch: BTreeSet<&str> = BTreeSet::from([
+        "build-all",
+        "clippy-lint",
+        "codegen-ensure",
+        "deps",
+        "deps-generate",
+        "docgen",
+        "generate-design",
+        "review",
+        "review-design",
+    ]);
 
     let enum_binaries: BTreeSet<&str> = WorkspaceBinary::ALL.iter().map(|b| b.tool_name()).collect();
     let dsl_invocable: BTreeSet<String> = dsl_tools()
@@ -512,7 +528,6 @@ const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
     "tools.docgen::docgen",
     "tools.docgen::render_ab_workflows_doc",
     "tools.docgen::render_ab_workflows_document",
-    "tools.gist::build_snapshot_content",
     "tools.gist::gist_diff",
     "tools.gist::gist_recent",
     "tools.gist::gist",

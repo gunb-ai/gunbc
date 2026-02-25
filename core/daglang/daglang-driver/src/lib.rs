@@ -9,6 +9,7 @@ use daglang_emit::{
     EmissionSummary,
 };
 pub use daglang_lower::InferredEntrypoint;
+pub use daglang_lower::is_user_param_port;
 use daglang_lower::{
     lower_typed_project_for_modules_with_entry,
     lower_typed_project_for_modules_with_entry_and_collection_nodes,

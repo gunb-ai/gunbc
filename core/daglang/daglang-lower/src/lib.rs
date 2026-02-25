@@ -6609,20 +6609,27 @@ pub struct InferredEntrypoint {
     pub node_id: String,
 }
 
+/// Returns `true` if the port name represents a user-facing parameter.
+///
+/// Framework-injected ports (`__deps`, `tool:*`, `res:*`) are not user
+/// parameters — they're wired by the runtime, not provided by the caller.
+///
+/// Use this filter consistently in entrypoint inference, CLI parameter
+/// extraction, and any future exposure mapping (REST, Lambda, etc.).
+pub fn is_user_param_port(port_name: &str) -> bool {
+    port_name != "__deps" && !port_name.starts_with("tool:") && !port_name.starts_with("res:")
+}
+
 /// Infer entrypoints from graph structure.
 ///
 /// A `func` (not `fn`) node is an entrypoint if:
 /// - It has zero user-facing input ports (zero-arg tool), or
-/// - Any of its user-facing input ports (excluding `__deps`, `tool:*`,
-///   `res:*`) has no incoming edge in the top-level DAG.
+/// - Any of its user-facing input ports has no incoming edge (detected
+///   via `gunbc_ir::detect_entrypoints`).
 ///
 /// Results are sorted by `(module, func_name)` for deterministic output.
 pub fn infer_entrypoints(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<InferredEntrypoint> {
-    let connected: std::collections::HashSet<(&str, &str)> = dag
-        .edges
-        .iter()
-        .map(|e| (e.to_node.0.as_str(), e.to_port.0.as_str()))
-        .collect();
+    let ep_info = gunbc_ir::detect_entrypoints(dag);
 
     let mut entrypoints = Vec::new();
 
@@ -6642,17 +6649,15 @@ pub fn infer_entrypoints(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<InferredEntrypoi
             .inputs
             .iter()
             .map(|p| p.name.0.as_str())
-            .filter(|pn| {
-                *pn != "__deps" && !pn.starts_with("tool:") && !pn.starts_with("res:")
-            })
+            .filter(|pn| is_user_param_port(pn))
             .collect();
 
         // Zero-arg funcs are entrypoints (no input needed = standalone tool).
-        // Funcs with untapped user-facing ports are entrypoints.
+        // Funcs with any untapped user-facing port are entrypoints.
         let is_entrypoint = user_ports.is_empty()
-            || user_ports
-                .iter()
-                .any(|pn| !connected.contains(&(node.id.0.as_str(), *pn)));
+            || user_ports.iter().any(|pn| {
+                ep_info.is_entrypoint_port(&node.id, &gunbc_ir::types::PortName(pn.to_string()))
+            });
 
         if is_entrypoint {
             entrypoints.push(InferredEntrypoint {

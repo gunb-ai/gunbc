@@ -96,7 +96,7 @@ mod tests {
     use super::*;
     use crate::workflow::process_registry::default_process_unit_registry;
     use crate::workflow::spec_builders::{
-        ci_workflow_spec, gist_snapshot_workflow_spec, test_all_workflow_spec,
+        ci_workflow_spec, gist_workflow_spec, test_all_workflow_spec,
     };
 
     fn temp_root() -> std::path::PathBuf {
@@ -146,7 +146,7 @@ mod tests {
         let root = temp_root();
         let specs = vec![
             ci_workflow_spec().expect("ci spec"),
-            gist_snapshot_workflow_spec().expect("gist-snapshot spec"),
+            gist_workflow_spec().expect("gist spec"),
         ];
         let registry = default_process_unit_registry();
         let global =
@@ -163,8 +163,8 @@ mod tests {
             compilation
                 .node_refs
                 .iter()
-                .any(|r| r.workflow_id == WorkflowId::new("gist-snapshot")),
-            "compilation_ensure should reference gist-snapshot workflow"
+                .any(|r| r.workflow_id == WorkflowId::new("gist")),
+            "compilation_ensure should reference gist workflow"
         );
 
         // codegen_ensure should appear as a shared vertex.
@@ -177,8 +177,8 @@ mod tests {
             codegen_ensure
                 .node_refs
                 .iter()
-                .any(|r| r.workflow_id == WorkflowId::new("gist-snapshot")),
-            "codegen_ensure should reference gist-snapshot workflow"
+                .any(|r| r.workflow_id == WorkflowId::new("gist")),
+            "codegen_ensure should reference gist workflow"
         );
 
         let _ = std::fs::remove_dir_all(root);

@@ -130,6 +130,28 @@ impl CliEntrypoint {
         self
     }
 
+    /// Construct from a generic [`EntrypointParam`] with CLI-specific defaults.
+    ///
+    /// Derives help text from the port name. Short flag and make_var are not
+    /// set — use the builder methods to add them.
+    pub fn from_param(param: &crate::entrypoint::EntrypointParam) -> Self {
+        let help = format!("Value for {} port", param.port_name);
+        let mut ep = Self {
+            port_name: param.port_name.clone(),
+            type_id: param.type_id,
+            cardinality: param.cardinality,
+            short_flag: None,
+            default_value: param.default.clone(),
+            help,
+            make_var: None,
+        };
+        // Bool params don't get make_var (they're flags, not Makefile variables)
+        if param.type_id != ParamType::Bool {
+            ep.make_var = Some(param.port_name.to_uppercase());
+        }
+        ep
+    }
+
     /// Convert port name to CLI flag name (snake_case to kebab-case).
     ///
     /// Uses the language module's `NamingCase::KebabCase` for consistent conversion.

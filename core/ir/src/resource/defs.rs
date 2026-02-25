@@ -8,10 +8,18 @@ use crate::{ResourceId, WorkspaceLayout};
 use std::sync::OnceLock;
 
 /// Fallback input globs used when workspace layout discovery is unavailable.
-pub const CODEGEN_INPUT_GLOBS: &[&str] = &["core/codegen/src/**/*.rs", "core/ir/src/**/*.rs"];
+pub const CODEGEN_INPUT_GLOBS: &[&str] = &[
+    "core/codegen/src/**/*.rs",
+    "core/ir/src/**/*.rs",
+    "gunbc-dag/src/**/*.rs",
+];
 
 /// Fallback individual files used when workspace layout discovery is unavailable.
-pub const CODEGEN_INPUT_FILES: &[&str] = &["core/codegen/Cargo.toml", "core/ir/Cargo.toml"];
+pub const CODEGEN_INPUT_FILES: &[&str] = &[
+    "core/codegen/Cargo.toml",
+    "core/ir/Cargo.toml",
+    "gunbc-dag/Cargo.toml",
+];
 
 static DERIVED_CODEGEN_INPUTS: OnceLock<(Vec<String>, Vec<String>)> = OnceLock::new();
 
@@ -35,7 +43,7 @@ fn derive_codegen_input_patterns() -> (Vec<String>, Vec<String>) {
     let mut globs = Vec::new();
     let mut files = Vec::new();
 
-    for crate_name in ["gunbc-codegen", "gunbc-ir"] {
+    for crate_name in ["gunbc-codegen", "gunbc-ir", "gunbc-dag"] {
         let Some(crate_dir) = layout.crate_dir(crate_name) else {
             continue;
         };
@@ -73,6 +81,9 @@ pub fn codegen_resource_def() -> ResourceDef {
         def = def.with_input(InputPattern::file(path));
     }
 
+    // DSL tool definitions drive what CLIs get generated at runtime.
+    def = def.with_input(InputPattern::glob("dsl/**/*.dag".to_string()));
+
     // Hash rustc version directly via command output instead of relying on
     // a RUSTC_VERSION env var that defaults to empty when unset.
     def = def.with_input(InputPattern::command_output("rustc", &["--version"]));
@@ -85,7 +96,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn derived_codegen_input_patterns_include_core_codegen_and_ir() {
+    fn derived_codegen_input_patterns_include_core_codegen_ir_and_dag() {
         let (globs, files) = codegen_input_patterns();
         assert!(
             globs.iter().any(|g| g == "core/codegen/src/**/*.rs"),
@@ -96,12 +107,20 @@ mod tests {
             "expected ir source glob, got {globs:?}"
         );
         assert!(
+            globs.iter().any(|g| g == "gunbc-dag/src/**/*.rs"),
+            "expected gunbc-dag source glob, got {globs:?}"
+        );
+        assert!(
             files.iter().any(|f| f == "core/codegen/Cargo.toml"),
             "expected codegen manifest path, got {files:?}"
         );
         assert!(
             files.iter().any(|f| f == "core/ir/Cargo.toml"),
             "expected ir manifest path, got {files:?}"
+        );
+        assert!(
+            files.iter().any(|f| f == "gunbc-dag/Cargo.toml"),
+            "expected gunbc-dag manifest path, got {files:?}"
         );
     }
 }
