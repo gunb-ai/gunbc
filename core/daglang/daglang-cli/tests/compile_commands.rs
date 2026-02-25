@@ -1659,6 +1659,62 @@ fn compile_command_canonical_json_is_deterministic_for_single_file() {
 }
 
 #[test]
+fn compile_command_canonical_json_is_deterministic_for_ci_pipeline() {
+    let first = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(ci_pipeline_file())
+        .arg("--format")
+        .arg("canonical-json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first canonical-json compile for ci pipeline");
+    let second = Command::new(daglang_bin())
+        .arg("compile")
+        .arg(ci_pipeline_file())
+        .arg("--format")
+        .arg("canonical-json")
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second canonical-json compile for ci pipeline");
+
+    assert!(
+        first.status.success(),
+        "first canonical-json ci compile failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        second.status.success(),
+        "second canonical-json ci compile failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_no_stage_failures(&String::from_utf8_lossy(&first.stderr));
+    assert_no_stage_failures(&String::from_utf8_lossy(&second.stderr));
+    assert_eq!(
+        first.stdout, second.stdout,
+        "canonical-json ci compile output must be deterministic across repeated runs"
+    );
+
+    let parsed: Value =
+        serde_json::from_slice(&first.stdout).expect("canonical-json output should be valid JSON");
+    let nodes = parsed
+        .get("nodes")
+        .and_then(Value::as_array)
+        .expect("canonical-json should include nodes array");
+    let edges = parsed
+        .get("edges")
+        .and_then(Value::as_array)
+        .expect("canonical-json should include edges array");
+    assert!(
+        nodes.len() > 20,
+        "ci canonical-json should include substantial node topology"
+    );
+    assert!(
+        edges.len() > 20,
+        "ci canonical-json should include substantial edge topology"
+    );
+}
+
+#[test]
 fn compile_command_canonical_json_rejects_out_flag() {
     let output = Command::new(daglang_bin())
         .arg("compile")
@@ -7611,6 +7667,89 @@ fn obligations_command_json_output_is_deterministic_for_same_input() {
         first.stderr, second.stderr,
         "obligations json stderr should be deterministic"
     );
+}
+
+#[test]
+fn report_coverage_command_succeeds_when_all_stages_are_referenced() {
+    let fixture = unique_temp_file("report_coverage_ok");
+    std::fs::write(
+        &fixture,
+        r#"module sample.report_coverage_ok
+fn report_entry(name: String, success: Bool) -> Bool { success }
+pipeline ci {
+  stage codegen { codegen_ok = true }
+  stage test [after codegen] { test_ok = true }
+  stage report [after test] {
+    entries = [
+      report_entry(name: "codegen", success: codegen_ok),
+      report_entry(name: "test", success: test_ok)
+    ]
+  }
+}
+"#,
+    )
+    .expect("failed to write report coverage fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("report-coverage")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang report-coverage");
+    assert!(
+        output.status.success(),
+        "report-coverage should succeed when coverage is complete: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("OK: report coverage complete"),
+        "report-coverage should report success: {stdout}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
+}
+
+#[test]
+fn report_coverage_command_fails_when_stage_is_missing() {
+    let fixture = unique_temp_file("report_coverage_missing");
+    std::fs::write(
+        &fixture,
+        r#"module sample.report_coverage_missing
+fn report_entry(name: String, success: Bool) -> Bool { success }
+pipeline ci {
+  stage codegen { codegen_ok = true }
+  stage test [after codegen] { test_ok = true }
+  stage report [after test] {
+    entries = [report_entry(name: "codegen", success: codegen_ok)]
+  }
+}
+"#,
+    )
+    .expect("failed to write report coverage fixture");
+
+    let output = Command::new(daglang_bin())
+        .arg("report-coverage")
+        .arg(&fixture)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run daglang report-coverage");
+    assert!(
+        !output.status.success(),
+        "report-coverage should fail when coverage is incomplete"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "report-coverage should use exit code 2 on coverage lint failures"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("missing report coverage for stages: test"),
+        "report-coverage should report missing stage names: {stdout}"
+    );
+
+    std::fs::remove_file(fixture).expect("failed to cleanup fixture");
 }
 
 #[test]

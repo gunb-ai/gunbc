@@ -219,7 +219,7 @@ fn main() {
     // Phase 3: Build and execute review DAG (DSL-compiled, D-1)
     // ========================================================================
 
-    let dag = match build_dimension_review_graph_dsl() {
+    let dag = match build_dsl_graph("funcs/review_pipeline.dag") {
         Ok(d) => d,
         Err(e) => {
             print_attention(

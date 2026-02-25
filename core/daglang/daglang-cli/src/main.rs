@@ -12,6 +12,7 @@
 //! - `daglang topology <file.dag> [--format text|json]`: Show graph topology
 //! - `daglang obligations <file.dag> [--format text|json]`: Show derived test obligations summary
 //! - `daglang show-triplets <file.dag> [--format text|json]`: Show transport triplet expansions
+//! - `daglang report-coverage <file.dag|dir> [--format text|json]`: Lint report-stage coverage across pipeline stages
 //! - `daglang modules [dir] [--format text|json]`: Show the discovered module graph
 //! - `daglang check <file.dag|dir>` -- Parse + typecheck modules (no lowering)
 //! - `daglang compile <file.dag|dir> [--emit-collection-nodes] [--trace-stages] [--profile <name>] [--target rust|go|c|mips] [--layer 1|2] [--format summary|canonical-json] [--out <dir>|--out=<dir>]`: Full compilation pipeline
@@ -68,6 +69,8 @@ fn main() {
         eprintln!("                      Show derived test obligations summary");
         eprintln!("  show-triplets <file.dag> [--format text|json]");
         eprintln!("                      Show transport triplet expansions");
+        eprintln!("  report-coverage <file.dag|dir> [--format text|json]");
+        eprintln!("                      Lint report-stage coverage across pipeline stages");
         eprintln!("  modules [dir] [--format text|json]");
         eprintln!("                      Show discovered module graph");
         eprintln!("  check <file.dag|dir> Parse + typecheck modules (no lowering)");

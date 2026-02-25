@@ -13128,6 +13128,62 @@ fn compile_with_out_writes_native_emitted_files() {
 }
 
 #[test]
+fn compile_with_out_emits_deterministic_manifest_for_same_input() {
+    let out_first = unique_temp_dir("compile_out_manifest_det_first");
+    let out_second = unique_temp_dir("compile_out_manifest_det_second");
+
+    let first = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--target")
+        .arg("go")
+        .arg("--out")
+        .arg(&out_first)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run first daglang compile --target go --out");
+    let second = Command::new(daglang_bin())
+        .arg("compile")
+        .arg("dsl/tools/makegen.dag")
+        .arg("--target")
+        .arg("go")
+        .arg("--out")
+        .arg(&out_second)
+        .current_dir(workspace_root())
+        .output()
+        .expect("failed to run second daglang compile --target go --out");
+
+    assert!(
+        first.status.success(),
+        "first compile --target go --out should succeed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(
+        second.status.success(),
+        "second compile --target go --out should succeed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    let manifest_first_path = out_first.join("target/generated/go/emit_manifest.json");
+    let manifest_second_path = out_second.join("target/generated/go/emit_manifest.json");
+    let manifest_first = std::fs::read_to_string(&manifest_first_path)
+        .expect("first emit manifest should exist and be readable");
+    let manifest_second = std::fs::read_to_string(&manifest_second_path)
+        .expect("second emit manifest should exist and be readable");
+    let parsed_first: Value =
+        serde_json::from_str(&manifest_first).expect("first emit manifest should be valid JSON");
+    let parsed_second: Value = serde_json::from_str(&manifest_second)
+        .expect("second emit manifest should be valid JSON");
+    assert_eq!(
+        parsed_first, parsed_second,
+        "emit manifest should be deterministic across repeated compile runs"
+    );
+
+    std::fs::remove_dir_all(&out_first).expect("failed to cleanup first compile output");
+    std::fs::remove_dir_all(&out_second).expect("failed to cleanup second compile output");
+}
+
+#[test]
 fn compile_with_trace_stages_prints_canonical_stage_flow() {
     let output = Command::new(daglang_bin())
         .arg("compile")

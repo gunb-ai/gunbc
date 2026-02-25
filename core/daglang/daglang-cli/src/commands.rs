@@ -81,6 +81,40 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             let output = compile_target_or_exit(cwd, args.get(2));
             println!("{}", render_triplets(&output.derived, format));
         }
+        "report-coverage" => {
+            if args.len() != 3 && args.len() != 5 {
+                exit_usage("report-coverage <file.dag|dir> [--format text|json]");
+            }
+            let format = parse_output_format("report-coverage", args)
+                .unwrap_or_else(|usage| exit_usage(&usage));
+            let context = match build_context(cwd, args.get(2)) {
+                Ok(context) => context,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                }
+            };
+            let driver_context = daglang_driver::DriverContext {
+                roots: context.roots,
+                target_file: context.target_file,
+            };
+            let issues = daglang_driver::lint_report_coverage_from_context(&driver_context)
+                .unwrap_or_else(|error| {
+                    eprintln!("{error}");
+                    std::process::exit(1);
+                });
+            match format {
+                OutputFormat::Text => {
+                    println!("{}", render_report_coverage_text(&issues));
+                }
+                OutputFormat::Json => {
+                    println!("{}", render_report_coverage_json(&issues));
+                }
+            }
+            if !issues.is_empty() {
+                std::process::exit(2);
+            }
+        }
         "modules" => {
             let (root_arg, format) =
                 parse_modules_args(args).unwrap_or_else(|usage| exit_usage(&usage));
@@ -468,4 +502,39 @@ fn embed_layer1_handler_data(options: &CompileOptions, output: &mut CompileOutpu
 fn compute_makegen_content() -> String {
     let registry = gunbc_dag::makegen::registry::ToolRegistry::default_registry();
     gunbc_dag::render_makefile(&registry)
+}
+
+fn render_report_coverage_text(issues: &[daglang_driver::ReportCoverageIssue]) -> String {
+    if issues.is_empty() {
+        return "OK: report coverage complete".to_string();
+    }
+    let mut out = String::new();
+    for issue in issues {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&format!(
+            "pipeline {}.{} missing report coverage for stages: {}",
+            issue.module,
+            issue.pipeline,
+            issue.missing_stages.join(", ")
+        ));
+    }
+    out
+}
+
+fn render_report_coverage_json(issues: &[daglang_driver::ReportCoverageIssue]) -> String {
+    let payload = json!({
+        "status": if issues.is_empty() { "ok" } else { "error" },
+        "issues": issues.iter().map(|issue| {
+            json!({
+                "module": issue.module,
+                "pipeline": issue.pipeline,
+                "declared_stages": issue.declared_stages,
+                "covered_stages": issue.covered_stages,
+                "missing_stages": issue.missing_stages,
+            })
+        }).collect::<Vec<_>>(),
+    });
+    serde_json::to_string_pretty(&payload).expect("report coverage json should serialize")
 }

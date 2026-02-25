@@ -16,7 +16,7 @@ use daglang_lower::{
     LoweredOp,
 };
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
-use daglang_syntax::ast::{Expr, Item, Literal, TypeBody};
+use daglang_syntax::ast::{Expr, Item, Literal, PipelineDef, StageDef, Stmt, TypeBody};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
@@ -403,6 +403,310 @@ pub fn generate_types_from_context(
         &typed,
         module_filter,
     ))
+}
+
+/// Report-stage coverage lint finding for a single pipeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReportCoverageIssue {
+    pub module: String,
+    pub pipeline: String,
+    pub declared_stages: Vec<String>,
+    pub covered_stages: Vec<String>,
+    pub missing_stages: Vec<String>,
+}
+
+/// Lint pipeline report stages and verify they reference all declared stages.
+///
+/// Coverage is inferred structurally from `report` stage expressions by
+/// tracking status arguments (`success`/`skipped`) in stage-entry constructor
+/// calls and mapping referenced variables back to the stage that produced them.
+pub fn lint_report_coverage_from_context(
+    context: &DriverContext,
+) -> Result<Vec<ReportCoverageIssue>, CompileError> {
+    let module_graph = discover_module_graph_for_context(context)?;
+    let typed = typecheck_module_graph_with_options(
+        module_graph,
+        TypecheckOptions {
+            allow_unresolved_imports: false,
+        },
+    )
+    .map_err(format_typecheck_errors)?;
+    Ok(lint_report_coverage(&typed))
+}
+
+fn lint_report_coverage(typed: &TypedProject) -> Vec<ReportCoverageIssue> {
+    let mut issues = Vec::new();
+
+    for module in &typed.modules {
+        let module_name = module.module_path.join(".");
+        for item in &module.ast.items {
+            let Item::PipelineDef(def) = &item.node else {
+                continue;
+            };
+            let Some(report_stage) = def.stages.iter().find(|stage| stage.name == "report") else {
+                continue;
+            };
+            let declared_stages = def
+                .stages
+                .iter()
+                .map(|stage| stage.name.clone())
+                .filter(|name| name != "report")
+                .collect::<Vec<_>>();
+            if declared_stages.is_empty() {
+                continue;
+            }
+            let producer_by_binding = collect_stage_binding_producers(def);
+            let covered_set = collect_covered_stages(report_stage, &producer_by_binding);
+            if covered_set.is_empty() {
+                continue;
+            }
+            let covered_stages = declared_stages
+                .iter()
+                .filter(|name| covered_set.contains(name.as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            let missing_stages = declared_stages
+                .iter()
+                .filter(|name| !covered_set.contains(name.as_str()))
+                .cloned()
+                .collect::<Vec<_>>();
+            if missing_stages.is_empty() {
+                continue;
+            }
+            issues.push(ReportCoverageIssue {
+                module: module_name.clone(),
+                pipeline: def.name.clone(),
+                declared_stages,
+                covered_stages,
+                missing_stages,
+            });
+        }
+    }
+
+    issues
+}
+
+fn collect_stage_binding_producers(def: &PipelineDef) -> HashMap<String, String> {
+    let mut by_binding = HashMap::new();
+    for stage in &def.stages {
+        for stmt in &stage.body.stmts {
+            match stmt {
+                Stmt::Let(name, _) | Stmt::Assign(name, _) => {
+                    by_binding.insert(name.clone(), stage.name.clone());
+                }
+                Stmt::Annotation(_) | Stmt::Expr(_) | Stmt::Return(_) => {}
+            }
+        }
+    }
+    by_binding
+}
+
+fn collect_covered_stages(
+    report_stage: &StageDef,
+    producer_by_binding: &HashMap<String, String>,
+) -> std::collections::BTreeSet<String> {
+    let mut covered = std::collections::BTreeSet::new();
+    for stmt in &report_stage.body.stmts {
+        collect_covered_stages_from_stmt(stmt, producer_by_binding, &mut covered);
+    }
+    covered
+}
+
+fn collect_covered_stages_from_stmt(
+    stmt: &Stmt,
+    producer_by_binding: &HashMap<String, String>,
+    covered: &mut std::collections::BTreeSet<String>,
+) {
+    match stmt {
+        Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
+            collect_covered_stages_from_expr(expr, producer_by_binding, covered);
+        }
+        Stmt::Return(fields) => {
+            for (_name, expr) in fields {
+                collect_covered_stages_from_expr(expr, producer_by_binding, covered);
+            }
+        }
+        Stmt::Annotation(_) => {}
+    }
+}
+
+fn collect_covered_stages_from_expr(
+    expr: &Expr,
+    producer_by_binding: &HashMap<String, String>,
+    covered: &mut std::collections::BTreeSet<String>,
+) {
+    match expr {
+        Expr::Literal(_) | Expr::Ident(_) => {}
+        Expr::FieldAccess(base, _) => {
+            collect_covered_stages_from_expr(base, producer_by_binding, covered);
+        }
+        Expr::Call(_, args) => {
+            for (name, arg_expr) in args {
+                if matches!(name.as_deref(), Some("success") | Some("skipped")) {
+                    let mut roots = std::collections::BTreeSet::new();
+                    collect_root_identifiers(arg_expr, &mut roots);
+                    for root in roots {
+                        if let Some(stage) = producer_by_binding.get(&root) {
+                            covered.insert(stage.clone());
+                        }
+                    }
+                }
+                collect_covered_stages_from_expr(arg_expr, producer_by_binding, covered);
+            }
+        }
+        Expr::ServiceCall(_, args) => {
+            for (_name, arg_expr) in args {
+                collect_covered_stages_from_expr(arg_expr, producer_by_binding, covered);
+            }
+        }
+        Expr::BinOp(lhs, _, rhs) => {
+            collect_covered_stages_from_expr(lhs, producer_by_binding, covered);
+            collect_covered_stages_from_expr(rhs, producer_by_binding, covered);
+        }
+        Expr::UnaryOp(_, inner) => {
+            collect_covered_stages_from_expr(inner, producer_by_binding, covered);
+        }
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
+                    collect_covered_stages_from_expr(inner, producer_by_binding, covered);
+                }
+            }
+        }
+        Expr::Record(_, fields) => {
+            for (_name, value) in fields {
+                collect_covered_stages_from_expr(value, producer_by_binding, covered);
+            }
+        }
+        Expr::Match(target, arms) => {
+            collect_covered_stages_from_expr(target, producer_by_binding, covered);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_covered_stages_from_expr(guard, producer_by_binding, covered);
+                }
+                collect_covered_stages_from_expr(&arm.body, producer_by_binding, covered);
+            }
+        }
+        Expr::If(condition, then_expr, else_expr) => {
+            collect_covered_stages_from_expr(condition, producer_by_binding, covered);
+            collect_covered_stages_from_expr(then_expr, producer_by_binding, covered);
+            if let Some(else_expr) = else_expr {
+                collect_covered_stages_from_expr(else_expr, producer_by_binding, covered);
+            }
+        }
+        Expr::For(_element, iterable, _passthrough, body) => {
+            collect_covered_stages_from_expr(iterable, producer_by_binding, covered);
+            collect_covered_stages_from_expr(body, producer_by_binding, covered);
+        }
+        Expr::Pipe(lhs, rhs) => {
+            collect_covered_stages_from_expr(lhs, producer_by_binding, covered);
+            collect_covered_stages_from_expr(rhs, producer_by_binding, covered);
+        }
+        Expr::Lambda(_, body) => {
+            collect_covered_stages_from_expr(body, producer_by_binding, covered);
+        }
+        Expr::List(items) => {
+            for item in items {
+                collect_covered_stages_from_expr(item, producer_by_binding, covered);
+            }
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                collect_covered_stages_from_expr(key, producer_by_binding, covered);
+                collect_covered_stages_from_expr(value, producer_by_binding, covered);
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_covered_stages_from_expr(inner, producer_by_binding, covered);
+            collect_covered_stages_from_expr(guard, producer_by_binding, covered);
+        }
+        Expr::After(inner, _) => {
+            collect_covered_stages_from_expr(inner, producer_by_binding, covered);
+        }
+        Expr::Return(fields) => {
+            for (_name, value) in fields {
+                collect_covered_stages_from_expr(value, producer_by_binding, covered);
+            }
+        }
+    }
+}
+
+fn collect_root_identifiers(expr: &Expr, roots: &mut std::collections::BTreeSet<String>) {
+    match expr {
+        Expr::Ident(name) => {
+            roots.insert(name.clone());
+        }
+        Expr::FieldAccess(base, _) => match base.as_ref() {
+            Expr::Ident(name) => {
+                roots.insert(name.clone());
+            }
+            other => collect_root_identifiers(other, roots),
+        },
+        Expr::Call(_, args) | Expr::ServiceCall(_, args) => {
+            for (_name, arg_expr) in args {
+                collect_root_identifiers(arg_expr, roots);
+            }
+        }
+        Expr::BinOp(lhs, _, rhs) => {
+            collect_root_identifiers(lhs, roots);
+            collect_root_identifiers(rhs, roots);
+        }
+        Expr::UnaryOp(_, inner) => collect_root_identifiers(inner, roots),
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
+                    collect_root_identifiers(inner, roots);
+                }
+            }
+        }
+        Expr::Record(_, fields) | Expr::Return(fields) => {
+            for (_name, value) in fields {
+                collect_root_identifiers(value, roots);
+            }
+        }
+        Expr::Match(target, arms) => {
+            collect_root_identifiers(target, roots);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_root_identifiers(guard, roots);
+                }
+                collect_root_identifiers(&arm.body, roots);
+            }
+        }
+        Expr::If(condition, then_expr, else_expr) => {
+            collect_root_identifiers(condition, roots);
+            collect_root_identifiers(then_expr, roots);
+            if let Some(else_expr) = else_expr {
+                collect_root_identifiers(else_expr, roots);
+            }
+        }
+        Expr::For(_element, iterable, _passthrough, body) => {
+            collect_root_identifiers(iterable, roots);
+            collect_root_identifiers(body, roots);
+        }
+        Expr::Pipe(lhs, rhs) => {
+            collect_root_identifiers(lhs, roots);
+            collect_root_identifiers(rhs, roots);
+        }
+        Expr::Lambda(_, body) => collect_root_identifiers(body, roots),
+        Expr::List(items) => {
+            for item in items {
+                collect_root_identifiers(item, roots);
+            }
+        }
+        Expr::Map(entries) => {
+            for (key, value) in entries {
+                collect_root_identifiers(key, roots);
+                collect_root_identifiers(value, roots);
+            }
+        }
+        Expr::Guarded(inner, guard) => {
+            collect_root_identifiers(inner, roots);
+            collect_root_identifiers(guard, roots);
+        }
+        Expr::After(inner, _) => collect_root_identifiers(inner, roots),
+        Expr::Literal(_) => {}
+    }
 }
 
 fn format_typecheck_errors<E: std::fmt::Display>(errors: Vec<E>) -> CompileError {
@@ -1226,6 +1530,84 @@ mod tests {
         assert!(
             error.as_str().contains("unresolved call target"),
             "expected unresolved call target error, got: {error}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_coverage_lint_passes_when_report_references_all_stages() {
+        let root = unique_temp_dir("report_coverage_pass");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(
+            &file,
+            r#"module sample
+fn report_entry(name: String, success: Bool) -> Bool { success }
+pipeline ci {
+  stage codegen { codegen_ok = true }
+  stage test [after codegen] { test_ok = true }
+  stage report [after test] {
+    entries = [
+      report_entry(name: "codegen", success: codegen_ok),
+      report_entry(name: "test", success: test_ok)
+    ]
+  }
+}
+"#,
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let issues = lint_report_coverage_from_context(&context)
+            .expect("report coverage lint should compile and run");
+        assert!(
+            issues.is_empty(),
+            "all stages were referenced in report; issues: {issues:?}"
+        );
+
+        std::fs::remove_dir_all(root).expect("failed to cleanup temp root");
+    }
+
+    #[test]
+    fn report_coverage_lint_reports_missing_stage_references() {
+        let root = unique_temp_dir("report_coverage_fail");
+        std::fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = root.join("sample.dag");
+        std::fs::write(
+            &file,
+            r#"module sample
+fn report_entry(name: String, success: Bool) -> Bool { success }
+pipeline ci {
+  stage codegen { codegen_ok = true }
+  stage test [after codegen] { test_ok = true }
+  stage report [after test] {
+    entries = [report_entry(name: "codegen", success: codegen_ok)]
+  }
+}
+"#,
+        )
+        .expect("failed to write source");
+
+        let context = DriverContext {
+            roots: vec![root.clone()],
+            target_file: Some(file),
+        };
+        let issues = lint_report_coverage_from_context(&context)
+            .expect("report coverage lint should compile and run");
+        assert_eq!(issues.len(), 1, "expected one missing-stage issue");
+        let issue = &issues[0];
+        assert_eq!(issue.pipeline, "ci");
+        assert!(
+            issue.missing_stages.contains(&"test".to_string()),
+            "expected `test` stage to be reported missing: {issue:?}"
+        );
+        assert!(
+            issue.covered_stages.contains(&"codegen".to_string()),
+            "expected `codegen` stage to be covered: {issue:?}"
         );
 
         std::fs::remove_dir_all(root).expect("failed to cleanup temp root");

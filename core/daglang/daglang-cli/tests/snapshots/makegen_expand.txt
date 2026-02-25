@@ -24,22 +24,22 @@ Nodes:
       * paths: List<FilePath> (1)
       * __deps: Any (0..*)
     outputs:
-      * text: List<TextFilePath> (1)
-      * binary: List<BinaryFilePath> (1)
+      * readable: List<FilePath> (1)
+      * skipped: List<FilePath> (1)
   - std.patterns::read_text_files [callable::Pattern std.patterns.read_text_files]
     inputs:
       * paths: List<FilePath> (1)
       * __deps: Any (0..*)
     outputs:
       * files: List<Record> (1)
-      * skipped: List<BinaryFilePath> (1)
+      * skipped: List<FilePath> (1)
   - std.patterns::read_binary_files [callable::Pattern std.patterns.read_binary_files]
     inputs:
       * paths: List<FilePath> (1)
       * __deps: Any (0..*)
     outputs:
       * files: List<Record> (1)
-      * skipped: List<TextFilePath> (1)
+      * skipped: List<FilePath> (1)
   - std.patterns::acquire_subject_token [callable::Pattern std.patterns.acquire_subject_token]
     inputs:
       * runtime: CloudRuntime (1)
@@ -253,6 +253,25 @@ Nodes:
   - shared.dag_util::render_document [callable::Fn shared.dag_util.render_document]
     inputs:
       * document: Document (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: String (1)
+  - std.filesystem::is_text_readable [callable::Fn std.filesystem.is_text_readable]
+    inputs:
+      * entry: FileEntry (1)
+      * __deps: Any (0..*)
+    outputs:
+      * return: Bool (1)
+  - std.filesystem::partition_entries [callable::Fn std.filesystem.partition_entries]
+    inputs:
+      * entries: List<FileEntry> (1)
+      * __deps: Any (0..*)
+    outputs:
+      * readable: List<FileEntry> (1)
+      * skipped: List<FileEntry> (1)
+  - std.filesystem::skip_reason [callable::Fn std.filesystem.skip_reason]
+    inputs:
+      * entry: FileEntry (1)
       * __deps: Any (0..*)
     outputs:
       * return: String (1)
@@ -501,6 +520,20 @@ Nodes:
     outputs:
       * branch_taken: String (1)
       * result: Any (1)
+  - std.filesystem::skip_reason::cf_match_0 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
+  - std.filesystem::skip_reason::cf_match_1 [subdag]
+    inputs:
+      * condition: Bool (1)
+      * input: Any (1)
+    outputs:
+      * branch_taken: String (1)
+      * result: Any (1)
   - literal_source_tools_makegen_render_makefile_text_fn_0 [primitive::CallLiteralSource { literal: String("{t.name}:\n\t{t.command}") } tools.makegen.call_literal_source::strhex:7b742e6e616d657d3a0a097b742e636f6d6d616e647d]
     outputs:
       * text: Any (1)
@@ -677,6 +710,7 @@ Edges:
   - tools.makegen::render_makefile.return -> prepare_write_makegen.content
   - param_source_tools_makegen_makegen_path.path -> prepare_read_makegen.path
   - param_source_tools_makegen_makegen_path.path -> prepare_write_makegen.path
+  - std.filesystem::partition_entries.readable -> std.patterns::classify_files.__deps
   - std.patterns::classify_files::cf_for_0.result -> std.patterns::classify_files.__deps
   - std.patterns::github_oidc.token -> std.patterns::acquire_subject_token.__deps
   - std.patterns::local_auth.token -> std.patterns::acquire_subject_token.__deps
@@ -702,6 +736,9 @@ Edges:
   - shared.dag_util::render_document_section.return -> shared.dag_util::render_document.__deps
   - shared.dag_util::render_document::cf_if_0.result -> shared.dag_util::render_document.__deps
   - shared.dag_util::render_document::cf_if_1.result -> shared.dag_util::render_document.__deps
+  - std.filesystem::is_text_readable.return -> std.filesystem::partition_entries.__deps
+  - std.filesystem::skip_reason::cf_match_0.result -> std.filesystem::skip_reason.__deps
+  - std.filesystem::skip_reason::cf_match_1.result -> std.filesystem::skip_reason.__deps
   - literal_source_tools_makegen_render_makefile_text_fn_0.text -> shared.dag_util::text_line.text
   - literal_source_tools_makegen_render_makefile_comment_prefix_fn_1.comment_prefix -> shared.dag_util::doc_with_header.comment_prefix
   - literal_source_tools_makegen_render_makefile_tool_fn_0.tool -> shared.dag_util::generated_header.tool
@@ -710,6 +747,7 @@ Edges:
   - param_source_tools_makegen_makegen_path.path -> std.patterns::content_upsert.path
   - parse_transport_std_resources_Filesystem_read.content -> std.patterns::file_content_matches.__deps
   - param_source_std_patterns_file_content_matches_path.path -> prepare_transport_std_resources_Filesystem_read.path
+  - std.patterns::classify_files::cf_for_0.result -> std.filesystem::partition_entries.entries
   - param_source_std_patterns_classify_files_paths.paths -> std.patterns::classify_files::cf_for_0.items
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::github_oidc.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::metadata_oidc.audience
@@ -750,7 +788,7 @@ Edges:
   - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::file_content_matches.__deps
   - std.patterns::file_content_matches.matches -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::classify_files.__deps
-  - std.patterns::classify_files.text -> release_resource_std_resources_Filesystem.resource_handle
+  - std.patterns::classify_files.readable -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::read_text_files.__deps
   - std.patterns::read_text_files.files -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Filesystem.resource_handle -> std.patterns::read_binary_files.__deps
@@ -769,4 +807,3 @@ Edges:
   - std.patterns::iam_preflight_check.ok -> release_resource_std_resources_Network.resource_handle
   - std.patterns::credential_chain.token -> provide_resource_std_patterns_credential_chain_auth.trigger
   - provide_resource_std_patterns_credential_chain_auth.auth -> release_resource_std_resources_AuthContext.resource_handle
-

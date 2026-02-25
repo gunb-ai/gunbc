@@ -75,7 +75,7 @@ impl TransportBackend for GistRecentBackend {
 
 #[test]
 fn gist_recent_graph_wires_diff_base_input() {
-    let dag = build_gist_recent_graph_dsl().expect("gist-recent graph should build");
+    let dag = build_dsl_graph_for_entry("tools/gist_recent.dag", "tools.gist_recent::gist_recent").expect("gist-recent graph should build");
     let lowered = lower(&dag).expect("lowered gist-recent");
 
     let has_base_edge = lowered.dag.edges.iter().any(|edge| {
@@ -89,7 +89,7 @@ fn gist_recent_graph_wires_diff_base_input() {
 
 #[test]
 fn gist_recent_end_to_end_emits_gist_url() {
-    let dag = build_gist_recent_graph_dsl().expect("gist-recent graph should build");
+    let dag = build_dsl_graph_for_entry("tools/gist_recent.dag", "tools.gist_recent::gist_recent").expect("gist-recent graph should build");
 
     let requests = Arc::new(Mutex::new(Vec::new()));
     let backend = Arc::new(GistRecentBackend {

@@ -403,17 +403,6 @@ pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
         .unwrap_or(dsl_module);
 
     match stem {
-        "bootstrap" => "crate::dsl_builder::build_bootstrap_graph_dsl().expect(\"graph should build\")".to_string(),
-        "clippy" => "crate::build_clippy_graph_dsl().expect(\"graph should build\")".to_string(),
-        "codegen" => "crate::dsl_builder::build_codegen_graph_dsl().expect(\"graph should build\")".to_string(),
-        "deps" => "crate::dsl_builder::build_deps_graph_dsl().expect(\"graph should build\")".to_string(),
-        "gist_snapshot" => "crate::build_gist_snapshot_graph_dsl().expect(\"graph should build\")".to_string(),
-        "gist" => "crate::build_gist_diff_graph_dsl().expect(\"graph should build\")".to_string(),
-        "gist_diff" => "crate::build_gist_diff_graph_dsl().expect(\"graph should build\")".to_string(),
-        "gist_recent" => "crate::build_gist_recent_graph_dsl().expect(\"graph should build\")".to_string(),
-        "makegen" => "crate::dsl_builder::build_makegen_graph_dsl().expect(\"graph should build\")".to_string(),
-        "pragma" => "crate::dsl_builder::build_pragma_graph_dsl().expect(\"graph should build\")".to_string(),
-        "review" => "crate::build_review_graph_dsl().expect(\"graph should build\")".to_string(),
         "testgen" => "crate::testgen_dag::graph::build_testgen_graph_auto().expect(\"graph should build\")".to_string(),
         _ => format!("crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")"),
     }
@@ -679,7 +668,7 @@ mod tests {
     #[test]
     fn dag_builder_call_known_modules() {
         let call = dag_builder_call_for_module("tools/bootstrap.dag");
-        assert!(call.contains("build_bootstrap_graph_dsl"));
+        assert!(call.contains("build_dsl_graph"));
         assert!(call.contains("expect"));
     }
 
