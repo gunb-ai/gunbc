@@ -736,8 +736,17 @@ fn resolve_domain(
     }
     // 3. Service transport nodes from non-service modules (e.g., loop body
     //    transport nodes which inherit the tool module name, not the service module).
-    if name.starts_with("service_transport::") && service_metadata.is_some() {
-        return resolve_service_transport(node_id, module, name, outputs, service_metadata);
+    //    Only route when the metadata has a concrete operation spec; nodes without
+    //    specs (e.g., not-yet-implemented service operations) fall through to the
+    //    passthrough default.
+    if name.starts_with("service_transport::") {
+        let has_spec = service_metadata
+            .as_ref()
+            .is_some_and(|m| m.spec.is_some());
+        let is_execute = name.starts_with("service_transport::execute::");
+        if has_spec || is_execute {
+            return resolve_service_transport(node_id, module, name, outputs, service_metadata);
+        }
     }
     // 4. Compiled fn bridge — DSL fn items with real Executable implementations.
     if let Some(op) = crate::compiled_fns::lookup_compiled_fn(module, name) {

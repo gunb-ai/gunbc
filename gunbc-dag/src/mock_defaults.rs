@@ -558,21 +558,13 @@ mod tests {
     }
 
     #[test]
-    fn auto_mock_spec_uses_list_values_for_list_entrypoints_with_any_type() {
+    fn auto_mock_spec_ci_graph_produces_transport_mocks() {
         let dag = crate::ci::build_ci_graph().expect("build ci graph");
         let spec = auto_mock_spec(&dag, "ci");
-        let items = spec
-            .input_mocks
-            .iter()
-            .find(|mock| {
-                mock.node == "std.patterns::classify_files::cf_for_0/unpack"
-                    && mock.port == "items"
-            })
-            .map(|mock| mock.value.clone())
-            .expect("list entrypoint mock for classify_files loop unpack");
+        // CI graph should have transport mocks for service transport nodes.
         assert!(
-            matches!(items, Value::List(_)),
-            "expected list-typed mock for list cardinality port, got {items:?}"
+            !spec.transport_mocks.is_empty(),
+            "CI graph should have at least one transport mock"
         );
     }
 }

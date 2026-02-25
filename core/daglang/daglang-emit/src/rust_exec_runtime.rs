@@ -1002,6 +1002,22 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
 
     let mut entrypoints: Vec<(String, String, String)> = Vec::new();
     for node in &dag.nodes {
+        // Only String-typed CallParamSource nodes are meaningful CLI entrypoints.
+        // Callable nodes have dead-weight parameter inputs (handlers ignore them).
+        // Non-String param_source types (e.g. ToolRegistry) can't come from CLI.
+        let NodeBody::Opaque(op) = &node.body else {
+            continue;
+        };
+        let is_string_param_source = matches!(
+            op,
+            LoweredOp::Primitive {
+                kind: PrimitiveOpKind::CallParamSource { .. },
+                ..
+            }
+        ) && node.inputs.iter().any(|p| p.type_id.0 == "String");
+        if !is_string_param_source {
+            continue;
+        }
         for port in &node.inputs {
             if port.name.0.starts_with("res:") || port.name.0.starts_with("__") {
                 continue;

@@ -180,22 +180,6 @@ fn for_loop_fs_read_returns_file_content_not_path() {
             .collect::<Vec<_>>()
     );
 
-    // Dump all body iteration entries for diagnostics.
-    let body_entries: Vec<_> = log
-        .entries
-        .iter()
-        .filter(|e| e.node_id.contains("/body_0/"))
-        .collect();
-    for entry in &body_entries {
-        eprintln!(
-            "  {} intercepted={} outputs={:?}",
-            entry.node_id, entry.was_intercepted, entry.outputs
-        );
-        if let Some(inputs) = &entry.inputs {
-            eprintln!("    inputs: {:?}", inputs);
-        }
-    }
-
     // Each body_op should output "SENTINEL_CONTENT" (file read result),
     // NOT a path string like "a.txt".
     for entry in &body_op_entries {
