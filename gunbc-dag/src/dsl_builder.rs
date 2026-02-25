@@ -1,6 +1,6 @@
 //! Shared helpers for DSL-backed graph builders (T3).
 
-use daglang_driver::{compile_from_context, BinaryAnnotation, DriverContext, InferredEntrypoint};
+use daglang_driver::{compile_from_context, DriverContext, InferredEntrypoint};
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
 use std::collections::HashSet;
@@ -20,7 +20,6 @@ fn workspace_layout() -> Result<WorkspaceLayout, BuilderError> {
 struct CompileLoweredResult {
     dag: Dag<daglang_lower::LoweredOp>,
     dsl_type_registry: gunbc_ir::TypeRegistry,
-    binary_annotations: Vec<BinaryAnnotation>,
     inferred_entrypoints: Vec<InferredEntrypoint>,
 }
 
@@ -42,7 +41,6 @@ fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, Builde
     Ok(CompileLoweredResult {
         dag: output.lowered_dag,
         dsl_type_registry: output.dsl_type_registry,
-        binary_annotations: output.binary_annotations,
         inferred_entrypoints: output.inferred_entrypoints,
     })
 }
@@ -222,30 +220,6 @@ pub fn build_dsl_graph_for_entrypoint(
     })
 }
 
-/// Compile a DSL module with `@binary` entrypoint and resolve to `Dag<DynOp>`.
-///
-/// Derives the entry node ID from the first `@binary` annotation in the module:
-/// `"{module_name}::{func_name}"`. Errors if no `@binary` annotation is found.
-///
-/// Deprecated: use `build_dsl_graph_for_entrypoint` which uses structural inference.
-pub fn build_dsl_graph_for_binary(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
-    let result = compile_lowered(relative_module)?;
-    let annotation = result.binary_annotations.first().ok_or_else(|| {
-        BuilderError::InternalInvariant(format!(
-            "no @binary annotation found in `{relative_module}`"
-        ))
-    })?;
-    let module_name = module_name_from_path(relative_module);
-    let entry_node_id = format!("{module_name}::{}", annotation.func_name);
-    let lowered = strip_pipeline_nodes(result.dag);
-    let lowered = slice_dag_from_entry(lowered, &entry_node_id)?;
-    resolve_lowered_dag(&lowered).map_err(|error| {
-        BuilderError::InternalInvariant(format!(
-            "failed to resolve lowered DAG for `{relative_module}` entry `{entry_node_id}`: {error}"
-        ))
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,7 +289,7 @@ mod tests {
 
     #[test]
     fn builds_gist_dsl_graph() {
-        let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_snapshot")
+        let dag = build_dsl_graph_for_entrypoint("tools/gist.dag", Some("gist"))
             .expect("gist DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }

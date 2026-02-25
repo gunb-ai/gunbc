@@ -63,14 +63,16 @@ pub fn gist_workflow_spec_with_registry(
     workflow_spec_with_registry("gist", registry)
 }
 
+/// Deprecated: gist_snapshot was renamed to gist.
 pub fn gist_snapshot_workflow_spec() -> Result<WorkflowSpec, String> {
-    workflow_spec("gist-snapshot")
+    workflow_spec("gist")
 }
 
+/// Deprecated: gist_snapshot was renamed to gist.
 pub fn gist_snapshot_workflow_spec_with_registry(
     registry: &ProcessUnitRegistry,
 ) -> Result<WorkflowSpec, String> {
-    workflow_spec_with_registry("gist-snapshot", registry)
+    workflow_spec_with_registry("gist", registry)
 }
 
 pub fn gist_diff_workflow_spec() -> Result<WorkflowSpec, String> {

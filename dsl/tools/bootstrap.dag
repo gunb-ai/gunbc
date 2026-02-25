@@ -29,7 +29,6 @@ fn render_bootstrap_gitignore(crate_names: List<String>) -> String {
   "{header}{entries}\n"
 }
 
-@binary
 func bootstrap(check_mode: Bool?) -> { success: Bool, crate_count: Int, makefile_written: Bool, gitignore_written: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {

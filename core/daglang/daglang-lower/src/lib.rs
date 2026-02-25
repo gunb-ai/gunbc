@@ -6611,9 +6611,12 @@ pub struct InferredEntrypoint {
 
 /// Infer entrypoints from graph structure.
 ///
-/// A `func` (not `fn`) node is an entrypoint if any of its user-facing
-/// input ports (excluding `__deps`, `tool:*`, `res:*`) has no incoming
-/// edge in the top-level DAG.
+/// A `func` (not `fn`) node is an entrypoint if:
+/// - It has zero user-facing input ports (zero-arg tool), or
+/// - Any of its user-facing input ports (excluding `__deps`, `tool:*`,
+///   `res:*`) has no incoming edge in the top-level DAG.
+///
+/// Results are sorted by `(module, func_name)` for deterministic output.
 pub fn infer_entrypoints(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<InferredEntrypoint> {
     let connected: std::collections::HashSet<(&str, &str)> = dag
         .edges
@@ -6634,18 +6637,24 @@ pub fn infer_entrypoints(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<InferredEntrypoi
             continue;
         };
 
-        let has_untapped = node.inputs.iter().any(|port| {
-            let port_name = port.name.0.as_str();
-            if port_name == "__deps"
-                || port_name.starts_with("tool:")
-                || port_name.starts_with("res:")
-            {
-                return false;
-            }
-            !connected.contains(&(node.id.0.as_str(), port_name))
-        });
+        // Collect user-facing input ports (exclude framework ports)
+        let user_ports: Vec<&str> = node
+            .inputs
+            .iter()
+            .map(|p| p.name.0.as_str())
+            .filter(|pn| {
+                *pn != "__deps" && !pn.starts_with("tool:") && !pn.starts_with("res:")
+            })
+            .collect();
 
-        if has_untapped {
+        // Zero-arg funcs are entrypoints (no input needed = standalone tool).
+        // Funcs with untapped user-facing ports are entrypoints.
+        let is_entrypoint = user_ports.is_empty()
+            || user_ports
+                .iter()
+                .any(|pn| !connected.contains(&(node.id.0.as_str(), *pn)));
+
+        if is_entrypoint {
             entrypoints.push(InferredEntrypoint {
                 func_name: name.clone(),
                 module: module.clone(),
@@ -6654,48 +6663,8 @@ pub fn infer_entrypoints(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<InferredEntrypoi
         }
     }
 
+    entrypoints.sort_by(|a, b| (&a.module, &a.func_name).cmp(&(&b.module, &b.func_name)));
     entrypoints
-}
-
-/// A `@binary` annotation on a `func` item, declaring it as a CLI binary entrypoint.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BinaryAnnotation {
-    /// The func name this annotation appears on.
-    pub func_name: String,
-    /// Optional binary name override (from `@binary("name")`).
-    /// When absent, the binary name is derived from the module leaf
-    /// with underscores replaced by hyphens.
-    pub name_override: Option<String>,
-}
-
-/// Extract `@binary` annotations from `func` items in the typed project.
-///
-/// A bare `@binary` on a func means "generate a CLI binary with a
-/// convention-derived name." `@binary("custom-name")` overrides the name.
-pub fn extract_binary_annotations(project: &TypedProject) -> Vec<BinaryAnnotation> {
-    let mut annotations = Vec::new();
-    for module in &project.modules {
-        for item in &module.ast.items {
-            if let Item::FuncDef(def) = &item.node {
-                for ann in &def.annotations {
-                    if ann.name == "binary" {
-                        let name_override = ann.args.first().and_then(|arg| {
-                            if let Expr::Literal(Literal::String(s)) = arg {
-                                Some(s.clone())
-                            } else {
-                                None
-                            }
-                        });
-                        annotations.push(BinaryAnnotation {
-                            func_name: def.name.clone(),
-                            name_override,
-                        });
-                    }
-                }
-            }
-        }
-    }
-    annotations
 }
 
 /// Extract output path declarations from `@outputs` annotations on `func` items.

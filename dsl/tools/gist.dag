@@ -1,6 +1,6 @@
 // tools/gist.dag -- Gist creation tool (snapshot/diff/recent modes).
 //
-// Three entrypoints: gist_snapshot (@binary "gist"), gist_diff, gist_recent.
+// Three entrypoints: gist, gist_diff, gist_recent (structurally inferred).
 // Each func directly calls its service operations; the lowerer's cross-
 // callable transport dedup handles cloning shared triplets automatically.
 //

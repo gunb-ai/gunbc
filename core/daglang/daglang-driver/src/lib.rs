@@ -8,7 +8,6 @@ use daglang_emit::{
     emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle, EmittedFile,
     EmissionSummary,
 };
-pub use daglang_lower::BinaryAnnotation;
 pub use daglang_lower::InferredEntrypoint;
 use daglang_lower::{
     lower_typed_project_for_modules_with_entry,
@@ -45,8 +44,6 @@ pub struct CompileOutput {
     /// Pipeline-level `param` declarations extracted from the DSL source.
     /// Each entry includes the param name, type, and optional default value.
     pub pipeline_params: Vec<PipelineParam>,
-    /// `@binary` annotations on `func` items, declaring CLI binary entrypoints.
-    pub binary_annotations: Vec<BinaryAnnotation>,
     /// Entrypoints inferred from graph structure: `func` items with untapped inputs.
     pub inferred_entrypoints: Vec<InferredEntrypoint>,
     /// Type registry extracted from DSL-defined sum and product types.
@@ -260,7 +257,6 @@ pub fn compile_from_module_graph_with_options(
     let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
     let pipeline_params = collect_pipeline_params(&typed);
-    let binary_annotations = daglang_lower::extract_binary_annotations(&typed);
     let inferred_entrypoints = daglang_lower::infer_entrypoints(&lowered);
     let dsl_type_registry = extract_dsl_type_registry(&typed);
 
@@ -271,7 +267,6 @@ pub fn compile_from_module_graph_with_options(
         emit_manifest_path,
         output_paths,
         pipeline_params,
-        binary_annotations,
         inferred_entrypoints,
         dsl_type_registry,
     })

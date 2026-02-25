@@ -54,19 +54,10 @@ const WORKFLOW_VARIANTS: &[WorkflowVariantDef] = &[
     // Tool workflow variants
     WorkflowVariantDef {
         canonical_name: "gist",
-        aliases: &[],
+        aliases: &["gist_snapshot", "gist-snapshot"],
         file: "gist.dag",
         pipeline: "gist",
         mode: Some("gist"),
-        namespace: "gist",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "gist-snapshot",
-        aliases: &["gist_snapshot"],
-        file: "gist.dag",
-        pipeline: "gist",
-        mode: Some("gist-snapshot"),
         namespace: "gist",
         is_tool: true,
     },
