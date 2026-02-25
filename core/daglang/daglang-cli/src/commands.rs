@@ -420,13 +420,13 @@ const EMBED_REGISTRY: &[EmbedRegistration] = &[EmbedRegistration {
 }];
 
 /// Build the full embedded data map from the registry.
-fn build_embedded_data() -> std::collections::HashMap<String, daglang_driver::EmbeddedData> {
+fn build_embedded_data() -> std::collections::HashMap<String, daglang_emit::EmbeddedData> {
     EMBED_REGISTRY
         .iter()
         .map(|entry| {
             (
                 entry.embed_key.to_string(),
-                daglang_driver::EmbeddedData {
+                daglang_emit::EmbeddedData {
                     module: entry.module.to_string(),
                     layer1_file_path: entry.layer1_file_path.to_string(),
                     layer2_ident: entry.layer2_ident.to_string(),
@@ -445,25 +445,23 @@ fn embed_layer1_handler_data(options: &CompileOptions, output: &mut CompileOutpu
     if options.layer != CodegenLayer::ExecRuntime {
         return;
     }
-    let active_modules: Vec<&str> = output
-        .derived
-        .tool_metadata
-        .modules
-        .iter()
-        .map(|m| m.module.as_str())
-        .collect();
-    for entry in EMBED_REGISTRY {
-        if active_modules.contains(&entry.module) {
-            let content = options
-                .embedded_data
-                .get(entry.embed_key)
-                .map(|data| data.content.clone())
-                .unwrap_or_else(|| (entry.compute)());
-            output.emitted.files.push(daglang_emit::EmittedFile {
-                path: entry.layer1_file_path.to_string(),
-                content,
+    let assets = daglang_emit::rust_exec_runtime::required_embedded_assets(&output.lowered_dag);
+    for asset in assets {
+        let path = asset.path();
+        let content = options
+            .embedded_data
+            .values()
+            .find(|data| data.layer1_file_path == path)
+            .map(|data| data.content.clone())
+            .unwrap_or_else(|| match asset {
+                daglang_emit::rust_exec_runtime::EmbeddedAsset::MakegenMakefile => {
+                    compute_makegen_content()
+                }
             });
-        }
+        output.emitted.files.push(daglang_emit::EmittedFile {
+            path: path.to_string(),
+            content,
+        });
     }
 }
 

@@ -73,6 +73,22 @@ pub use daglang_lower::{extract_output_paths, extract_outputs_annotation};
 use gunbc_ir::Dag;
 use std::fmt::Write as _;
 
+/// Pre-computed data to embed into generated artifacts.
+///
+/// Each entry associates a module + semantic key with file content that
+/// backends embed as string literals or Layer 1 writes as additional files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddedData {
+    /// DSL module this data belongs to, e.g. `"tools.makegen"`.
+    pub module: String,
+    /// Layer 1 output file path relative to the crate root, e.g. `"src/embedded_makefile.txt"`.
+    pub layer1_file_path: String,
+    /// Identifier used in Layer 2 backends, e.g. `"makegen_content"`.
+    pub layer2_ident: String,
+    /// The actual content to embed.
+    pub content: String,
+}
+
 /// The codegen backend trait. Each target language implements this.
 pub trait CodegenBackend {
     /// Emit a type definition (record, enum, alias).
@@ -287,7 +303,7 @@ pub fn emit_rust_bundle(
 pub fn emit_go_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
-    embedded_data: &std::collections::HashMap<String, daglang_driver::EmbeddedData>,
+    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
@@ -386,7 +402,7 @@ pub fn emit_go_bundle(
 pub fn emit_c_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
-    embedded_data: &std::collections::HashMap<String, daglang_driver::EmbeddedData>,
+    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
@@ -472,7 +488,7 @@ pub fn emit_c_bundle(
 pub fn emit_mips_bundle(
     dag: &Dag<LoweredOp>,
     artifacts: &DerivedArtifacts,
-    embedded_data: &std::collections::HashMap<String, daglang_driver::EmbeddedData>,
+    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
@@ -635,7 +651,7 @@ fn is_makegen_module(artifacts: &DerivedArtifacts) -> bool {
 
 /// Look up the makegen embedded data from the map, falling back to a stub.
 fn resolve_embedded_makegen(
-    embedded_data: &std::collections::HashMap<String, daglang_driver::EmbeddedData>,
+    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> &str {
     embedded_data
         .get("tools.makegen::makefile")
@@ -847,7 +863,7 @@ mod tests {
     fn emit_go_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, None).expect("emit should succeed");
+        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
 
         assert_eq!(bundle.backend, "go");
         assert_eq!(bundle.files.len(), 3);
@@ -873,7 +889,7 @@ mod tests {
     fn emit_c_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_c_bundle(&dag, &artifacts, None).expect("emit should succeed");
+        let bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
 
         assert_eq!(bundle.backend, "c");
         assert_eq!(bundle.files.len(), 3);
@@ -896,7 +912,7 @@ mod tests {
     fn emit_mips_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_mips_bundle(&dag, &artifacts, None).expect("emit should succeed");
+        let bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
 
         assert_eq!(bundle.backend, "mips");
         assert_eq!(bundle.files.len(), 3);
@@ -1130,7 +1146,7 @@ mod tests {
     fn go_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, None).expect("emit should succeed");
+        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
 
         let main_go = bundle
             .files
@@ -1184,7 +1200,7 @@ mod tests {
     fn go_bundle_imports_transport_packages() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, None).expect("emit should succeed");
+        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
 
         let main_go = bundle
             .files
@@ -1212,7 +1228,7 @@ mod tests {
     fn c_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_c_bundle(&dag, &artifacts, None).expect("emit should succeed");
+        let bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
 
         let main_c = bundle
             .files
@@ -1256,7 +1272,7 @@ mod tests {
     fn mips_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_mips_bundle(&dag, &artifacts, None).expect("emit should succeed");
+        let bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
 
         let main_s = bundle
             .files
@@ -1300,9 +1316,9 @@ mod tests {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
 
-        let go_bundle = emit_go_bundle(&dag, &artifacts, None).expect("go emit");
-        let c_bundle = emit_c_bundle(&dag, &artifacts, None).expect("c emit");
-        let mips_bundle = emit_mips_bundle(&dag, &artifacts, None).expect("mips emit");
+        let go_bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("go emit");
+        let c_bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("c emit");
+        let mips_bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("mips emit");
 
         // All should report the same callable count.
         assert_eq!(go_bundle.summary.callable_count, 5, "Go callable count");

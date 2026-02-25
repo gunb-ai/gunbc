@@ -2,7 +2,6 @@
 //!
 //! Generates documentation with live code excerpts and test indices.
 
-use crate::dsl_builder::build_docgen_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
 
@@ -91,5 +90,5 @@ pub const DOCGEN_READ_TARGETS: &[DocgenReadTarget] = &[
     builder = "build_docgen_graph().unwrap()"
 )]
 pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
-    build_docgen_graph_dsl()
+    crate::dsl_builder::build_dsl_graph("tools/docgen.dag")
 }

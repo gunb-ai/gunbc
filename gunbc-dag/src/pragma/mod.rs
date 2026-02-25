@@ -2,7 +2,6 @@
 //!
 //! Pragma tool for generating clippy.toml and pragma allowlists.
 
-use crate::dsl_builder::build_pragma_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 
@@ -22,25 +21,5 @@ pub fn pragma_signature() -> WorkflowSignature {
 
 /// Build pragma graph from the DSL source.
 pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
-    build_pragma_graph_dsl()
+    crate::dsl_builder::build_dsl_graph_for_entry("tools/pragma.dag", "tools.pragma::pragma")
 }
-
-// ============================================================================
-// Tool Target Registration
-// ============================================================================
-
-#[gunbc_tool_registry_macros::tool_target(
-    name = "pragma",
-    crate_name = "gunbc-dag",
-    description = "Generate clippy pragmas and lint policy",
-    builder = "build_pragma_graph",
-    import = "use gunbc_dag::build_pragma_graph;",
-    package = "dag",
-    mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "pragma")"#,
-    dsl_module = "pragma",
-    outputs = "clippy.toml,tools/disallowed-methods-allowlist.txt,tools/pragma-lint-policy.txt",
-    provides = "clippy.toml,tools/disallowed-methods-allowlist.txt,tools/pragma-lint-policy.txt",
-    has_invocation,
-    returns_result
-)]
-pub fn pragma_tool() {}

@@ -5,7 +5,6 @@
 pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use gunbc_primitives::EmbeddedFileExistsOp;
 
-use crate::dsl_builder::build_ci_graph_dsl;
 use crate::WorkspaceBinary;
 use gunbc_exec::DynOp;
 use gunbc_ir::transport::github_actions::{
@@ -96,5 +95,5 @@ fn is_github_actions_runtime_env(name: &str) -> bool {
 
 /// Build the CI graph from the DSL source.
 pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
-    build_ci_graph_dsl()
+    crate::dsl_builder::build_dsl_graph("pipelines/ci.dag")
 }

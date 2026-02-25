@@ -27,18 +27,3 @@ pub use lint::{LintId, LintSource};
 pub use ops::{CliToolOp, Clippy};
 pub use policy::{CratePolicy, CrateRole};
 
-// ============================================================================
-// Tool Target Registrations
-// ============================================================================
-
-#[gunbc_tool_registry_macros::tool_target(
-    name = "clippy",
-    crate_name = "gunbc-clippy",
-    description = "Run clippy via upsert (check → install → run)",
-    builder = "build_clippy_graph_dsl",
-    import = "use gunbc_dag::build_clippy_graph_dsl;",
-    dsl_module = "clippy",
-    consumes = "clippy.toml",
-    returns_result
-)]
-pub fn clippy_tool() {}

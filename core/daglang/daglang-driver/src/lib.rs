@@ -102,22 +102,6 @@ pub struct CheckOutput {
     pub parsed_files: usize,
 }
 
-/// Pre-computed data to embed into generated artifacts.
-///
-/// Each entry associates a module + semantic key with file content that
-/// backends embed as string literals or Layer 1 writes as additional files.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EmbeddedData {
-    /// DSL module this data belongs to, e.g. `"tools.makegen"`.
-    pub module: String,
-    /// Layer 1 output file path relative to the crate root, e.g. `"src/embedded_makefile.txt"`.
-    pub layer1_file_path: String,
-    /// Identifier used in Layer 2 backends, e.g. `"makegen_content"`.
-    pub layer2_ident: String,
-    /// The actual content to embed.
-    pub content: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CompileOptions {
     pub emit_collection_nodes: bool,
@@ -132,7 +116,7 @@ pub struct CompileOptions {
     /// Pre-computed embedded data keyed by `"module::semantic_key"`.
     /// Go/C/MIPS backends embed these as string literals; Rust Layer 1
     /// writes them as additional files in the generated crate.
-    pub embedded_data: std::collections::HashMap<String, EmbeddedData>,
+    pub embedded_data: std::collections::HashMap<String, daglang_emit::EmbeddedData>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

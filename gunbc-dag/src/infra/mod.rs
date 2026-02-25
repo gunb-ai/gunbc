@@ -1,6 +1,5 @@
 //! DSL-backed infra orchestration graph.
 
-use crate::dsl_builder::build_infra_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 
@@ -18,5 +17,5 @@ pub fn build_signature() -> Result<WorkflowSignature, BuilderError> {
     builder = "crate::infra::build_infra_graph().unwrap()"
 )]
 pub fn build_infra_graph() -> Result<Dag<InfraGraphOp>, BuilderError> {
-    build_infra_graph_dsl()
+    crate::dsl_builder::build_dsl_graph("tools/infra.dag")
 }
