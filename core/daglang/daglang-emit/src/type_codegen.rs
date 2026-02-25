@@ -221,7 +221,7 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                     .map(|e| render_data_record(e, &elem_type, &field_types))
                     .collect::<Vec<_>>()
                     .join(",\n    "),
-                _ => "/* unsupported data value */".to_string(),
+                _ => "compile_error!(\"unsupported data value in type_codegen\")".to_string(),
             };
             (
                 format!("&[{elem_type}]"),
@@ -367,7 +367,13 @@ fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> Str
                 format!("\"{s}\".to_string()")
             }
         }
-        _ => format!("/* unsupported expr: {expr:?} */"),
+        _ => format!(
+            "compile_error!(\"unsupported expr in type_codegen: {}\")",
+            format!("{:?}", expr)
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+        ),
     }
 }
 
@@ -1264,6 +1270,56 @@ mod tests {
                 assert!(s.contains("Self::Blue => \"blue_code\""), "should have match arm: {s}");
             }
             _ => panic!("expected Raw"),
+        }
+    }
+
+    #[test]
+    fn unsupported_data_value_produces_compile_error() {
+        // DataDef with List type but non-List value hits unsupported data value path.
+        let dd = DataDef {
+            name: "bad".to_string(),
+            ty: TypeExpr::Generic("List".into(), vec![TypeExpr::Named("Int".into())]),
+            value: Expr::Literal(Literal::Int(42)), // not Expr::List
+        };
+        let items = datadef_to_code_ir(&dd);
+        assert_eq!(items.len(), 1);
+        match &items[0] {
+            code_ir::Item::Raw(s) => {
+                assert!(
+                    s.contains("compile_error!"),
+                    "expected compile_error! marker, got: {s}"
+                );
+                assert!(
+                    !s.contains("/* unsupported"),
+                    "should not produce silent comment"
+                );
+            }
+            _ => panic!("expected Raw item"),
+        }
+    }
+
+    #[test]
+    fn unsupported_expr_in_render_produces_compile_error() {
+        // Scalar DataDef with unsupported expr (e.g. Call) hits the catch-all.
+        let dd = DataDef {
+            name: "bad".to_string(),
+            ty: TypeExpr::Named("Int".into()),
+            value: Expr::Call("foo".into(), vec![]), // unsupported in render_expr_to_rust
+        };
+        let items = datadef_to_code_ir(&dd);
+        assert_eq!(items.len(), 1);
+        match &items[0] {
+            code_ir::Item::Raw(s) => {
+                assert!(
+                    s.contains("compile_error!"),
+                    "expected compile_error! marker, got: {s}"
+                );
+                assert!(
+                    !s.contains("/* unsupported"),
+                    "should not produce silent comment"
+                );
+            }
+            _ => panic!("expected Raw item"),
         }
     }
 

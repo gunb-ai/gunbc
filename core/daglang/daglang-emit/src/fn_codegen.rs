@@ -239,7 +239,10 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
         ast::Expr::Return(fields) => compile_return_fields(fields, ctx),
         ast::Expr::Guarded(inner, _) | ast::Expr::After(inner, _) => compile_expr(inner, ctx),
         ast::Expr::ServiceCall(_, _) | ast::Expr::Map(_) => {
-            code_ir::Expr::RawCode("/* unsupported DSL construct */".to_string())
+            code_ir::Expr::RawCode(
+                "compile_error!(\"unsupported DSL construct: ServiceCall/Map not yet supported in fn codegen\");"
+                    .to_string(),
+            )
         }
     }
 }
@@ -1506,6 +1509,50 @@ mod tests {
                 );
             }
             other => panic!("expected Struct, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unsupported_service_call_map_produces_compile_error() {
+        reset_tmp_counter();
+        let body = FnBody {
+            stmts: vec![Stmt::Expr(Expr::ServiceCall(
+                vec!["svc".into()],
+                vec![],
+            ))],
+            lossy: false,
+        };
+        let ir = compile_fn_body(&body, &empty_ctx());
+        match &ir[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(s))
+            | code_ir::Stmt::Expr(code_ir::Expr::RawCode(s)) => {
+                assert!(
+                    s.contains("compile_error!"),
+                    "expected compile_error! marker, got: {s}"
+                );
+                assert!(
+                    !s.contains("/* unsupported"),
+                    "should not produce silent comment"
+                );
+            }
+            other => panic!("expected RawCode in stmt, got: {other:?}"),
+        }
+
+        reset_tmp_counter();
+        let body_map = FnBody {
+            stmts: vec![Stmt::Expr(Expr::Map(vec![]))],
+            lossy: false,
+        };
+        let ir_map = compile_fn_body(&body_map, &empty_ctx());
+        match &ir_map[0] {
+            code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(s))
+            | code_ir::Stmt::Expr(code_ir::Expr::RawCode(s)) => {
+                assert!(
+                    s.contains("compile_error!"),
+                    "Map: expected compile_error! marker, got: {s}"
+                );
+            }
+            other => panic!("Map: expected RawCode, got: {other:?}"),
         }
     }
 

@@ -349,7 +349,7 @@ fn render_stmt_inline(stmt: &CStmt) -> String {
             format!("{} = {}", render_expr(lhs), render_expr(rhs))
         }
         CStmt::Expr(expr) => render_expr(expr),
-        _ => "/* unsupported inline stmt */".to_string(),
+        _ => "#error \"unsupported inline stmt in C codegen\"".to_string(),
     }
 }
 
@@ -952,6 +952,28 @@ mod tests {
         assert!(rendered.contains("if ((rc != 0)) {"));
         assert!(rendered.contains("return -1;"));
         assert!(rendered.contains("return 0;"));
+    }
+
+    // -- Unsupported inline stmt produces #error (FC-1) --
+
+    #[test]
+    fn unsupported_inline_stmt_produces_error_marker() {
+        // For-loop with Return as init hits the unsupported inline stmt path.
+        let stmt = CStmt::For {
+            init: Box::new(CStmt::Return(None)),
+            cond: CExpr::BoolLit(true),
+            step: Box::new(CStmt::Expr(CExpr::IntLit(0))),
+            body: vec![],
+        };
+        let rendered = render_stmt(&stmt, 0);
+        assert!(
+            rendered.contains("#error"),
+            "expected #error marker for unsupported inline stmt, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("/* unsupported"),
+            "should not produce silent comment"
+        );
     }
 
     // -- Label and goto --
