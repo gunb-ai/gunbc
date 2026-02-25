@@ -100,9 +100,6 @@ fn makegen_contains_fn_and_func_items() {
     assert_eq!(
         item_signatures(&source),
         vec![
-            "type EntrypointParam",
-            "type MakeTarget",
-            "type ToolTarget",
             "type MakegenRegistry",
             "fn render_makefile_content",
             "func makegen",
