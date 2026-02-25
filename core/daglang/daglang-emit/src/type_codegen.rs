@@ -905,16 +905,16 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
     match name {
         "resolve_symbol" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "match tier {\n        \
-             Tier::Emoji => id.emoji(),\n        \
-             Tier::Unicode => id.unicode(),\n        \
-             Tier::Ascii => id.ascii(),\n    \
+             Tier::Emoji => id.emoji().to_string(),\n        \
+             Tier::Unicode => id.unicode().to_string(),\n        \
+             Tier::Ascii => id.ascii().to_string(),\n    \
              }".to_string(),
         ))]),
         "symbol_color" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "id.color()".to_string(),
         ))]),
         "ansi_code" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
-            "c.code()".to_string(),
+            "c.code().to_string()".to_string(),
         ))]),
         "truncate_text" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "{\n        \
