@@ -383,3 +383,14 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | FC-9 | Define and enforce `\xHH` string semantics: added proper hex escape parsing to lexer (`\xHH` → byte value), malformed escapes preserved literally, 3 contract tests. | Done 2026-02-25 |
 | FC-10 | Proper `@local` transport type: added `TransportRequest::Local` / `TransportResponse::Local`, `TransportKind::LocalDirect`, replaced `ShellRequest::new("echo")` hack. | Done 2026-02-25 |
 | FC-11 | Collapse `service_prepare_ports()` match arms: added `ServiceOperationSpec::input_fields()` and `output_fields()` methods, collapsed 4 match arms to 1. | Done 2026-02-25 |
+
+## Mega Lane — Track C: Per-Profile Live Tests (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| PT-1 | Profile discovery module: `discover_profiles()` scans `dsl/profiles/*.dag`, extracts profile name, bound interfaces, inferred test class (Hermetic/Integration). `profiles_for_module()` cross-references module interface imports. | Done 2026-02-25 |
+| PT-2 | Augment `CompilableModule` with `interface_imports: HashSet<String>`: populated from `import interfaces.*` in AST. `requires_profile` derived as `!interface_imports.is_empty()`. | Done 2026-02-25 |
+| PT-3 | Add `LiveProfileTestConfig` to `TestgenTargetDef`: struct with `profile_name`, `test_class`, `fermi_cost`, `required_env`, `required_any_of`, `dag_builder_call`. | Done 2026-02-25 |
+| PT-4 | Add `build_dsl_graph_with_profile()`: compilation path threading profile through `CompileOptions`, resolving interface bindings via profile bind declarations. | Done 2026-02-25 |
+| PT-5 | Generate per-profile test sections: `build_per_profile_live_flow_sections()` generates `test_live_flow_{module}_{profile}_profile()` functions, gated by env requirements. | Done 2026-02-25 |
+| PT-6 | Wire profile discovery into auto-testgen: `build_testgen_graph_auto()` calls `discover_profiles()`, `profiles_for_module()` per module, populates `live_profile_tests` in `AutoGenerate`. Removed `requires_profile` skip filter. | Done 2026-02-25 |

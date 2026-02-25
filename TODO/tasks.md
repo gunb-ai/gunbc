@@ -15,7 +15,7 @@
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-1..NF-6, PT-1..PT-6, FC-7..FC-8, FC-14..FC-15 |
+| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-1..NF-6, FC-7..FC-8, FC-14..FC-15 |
 
 ---
 
@@ -58,12 +58,12 @@
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **PT-1** | **Profile discovery module**: Scan `dsl/profiles/*.dag`, extract profile name, bound interfaces, env/secret requirements, inferred test class. | IS-8 | M | Planned |
-| **PT-2** | **Augment `CompilableModule` with interface imports**: Upgrade `requires_profile: bool` to `interface_imports: HashSet<String>` populated from `import interfaces.*` in AST. | IS-8 | S | Planned |
-| **PT-3** | **Add `LiveProfileTestConfig` to `TestgenTargetDef`**: `profile_name`, `test_class`, `fermi_cost`, `required`, `required_any_of`, `dag_builder_call`. | IS-8 | S | Planned |
-| **PT-4** | **Add `build_dsl_graph_with_profile()`**: New compilation path threading `profile` through `CompileOptions` with `allow_placeholder_env`. | IS-8 | M | Planned |
-| **PT-5** | **Generate per-profile test sections in codegen**: `build_per_profile_live_flow_sections()` — one `test_live_flow_{module}_{profile}()` per config, gated by env requirements. | PT-3, PT-4 | M | Planned |
-| **PT-6** | **Wire profile discovery into auto-testgen pipeline**: `discover_profiles()` in graph build, `profiles_for_module()` per module, populate `live_profile_tests`. | PT-1, PT-2, PT-5 | M | Planned |
+| **PT-1** | **Profile discovery module**: Scan `dsl/profiles/*.dag`, extract profile name, bound interfaces, env/secret requirements, inferred test class. | IS-8 | M | **Done** |
+| **PT-2** | **Augment `CompilableModule` with interface imports**: Upgrade `requires_profile: bool` to `interface_imports: HashSet<String>` populated from `import interfaces.*` in AST. | IS-8 | S | **Done** |
+| **PT-3** | **Add `LiveProfileTestConfig` to `TestgenTargetDef`**: `profile_name`, `test_class`, `fermi_cost`, `required`, `required_any_of`, `dag_builder_call`. | IS-8 | S | **Done** |
+| **PT-4** | **Add `build_dsl_graph_with_profile()`**: New compilation path threading `profile` through `CompileOptions` with `allow_placeholder_env`. | IS-8 | M | **Done** |
+| **PT-5** | **Generate per-profile test sections in codegen**: `build_per_profile_live_flow_sections()` — one `test_live_flow_{module}_{profile}()` per config, gated by env requirements. | PT-3, PT-4 | M | **Done** |
+| **PT-6** | **Wire profile discovery into auto-testgen pipeline**: `discover_profiles()` in graph build, `profiles_for_module()` per module, populate `live_profile_tests`. | PT-1, PT-2, PT-5 | M | **Done** |
 
 ### Track D: Fail-Closed Cleanup + Workaround Removal
 
