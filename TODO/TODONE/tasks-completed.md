@@ -394,3 +394,16 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | PT-4 | Add `build_dsl_graph_with_profile()`: compilation path threading profile through `CompileOptions`, resolving interface bindings via profile bind declarations. | Done 2026-02-25 |
 | PT-5 | Generate per-profile test sections: `build_per_profile_live_flow_sections()` generates `test_live_flow_{module}_{profile}_profile()` functions, gated by env requirements. | Done 2026-02-25 |
 | PT-6 | Wire profile discovery into auto-testgen: `build_testgen_graph_auto()` calls `discover_profiles()`, `profiles_for_module()` per module, populates `live_profile_tests` in `AutoGenerate`. Removed `requires_profile` skip filter. | Done 2026-02-25 |
+
+## Mega Lane — Track D: FC-14/FC-15 (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| FC-14 | Dead-path pruning emit variant: added `compute_reachable_node_ids()` BFS from entrypoints, wired into `emit_rust_bundle()` and `collect_symbols_with_metadata()` to skip unreachable nodes. 2 reachability tests. | Done 2026-02-25 |
+| FC-15 | By-construction reachability: design doc at `docs/design/v4/by-construction-reachability.md` (invariant spec, failure modes, proof obligations, migration plan). Vertical slice: `ReachableDag<T>` wrapper type in `core/ir/src/dag.rs` with 4 contract tests. | Done 2026-02-25 |
+
+## Mega Lane — Track A: NF-1 Extern DSL Surface (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| NF-1 | Extern DSL surface: `Extern` keyword in lexer, `ExternFuncDecl` and `ExternAssetDecl` AST nodes, parser support for `extern func name(inputs) -> { outputs };` and `extern asset name: Type;`, typecheck validation, `LoweredOp::ExternCall` in lowerer, resolver error for unlinked externs. 5 tests (lexer, parser ×3, resolver). | Done 2026-02-25 |

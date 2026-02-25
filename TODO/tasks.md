@@ -15,7 +15,7 @@
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-1..NF-6, FC-7..FC-8, FC-14..FC-15 |
+| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-2..NF-6, FC-7..FC-8 |
 
 ---
 
@@ -34,7 +34,7 @@
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **NF-1** | **Extern DSL surface**: Add `extern func` and `extern asset` syntax/typechecking/lowering so runtime-provided behavior is explicit in DSL. | -- | L | Planned |
+| **NF-1** | **Extern DSL surface**: Add `extern func` and `extern asset` syntax/typechecking/lowering so runtime-provided behavior is explicit in DSL. | -- | L | **Done** |
 | **NF-2** | **Minimal symbol model**: Introduce canonical `SymbolId` + `NodeId` model and lower ops to `Intrinsic`/`Call`/`Extern`. | NF-1 | L | Planned |
 | **NF-3** | **Link step + backend resolver contract**: Add linker stage that resolves extern funcs/assets through backend interfaces and emits hard missing-symbol errors. | NF-2 | L | Planned |
 | **NF-4** | **Runtime/asset migration to extern symbols**: Convert existing runtime handler + embedded asset flows to extern symbol resolution. Remove hidden authority from CLI/emitter registries. | NF-3 | L | Planned |
@@ -82,8 +82,8 @@
 | **FC-11** | **Collapse `service_prepare_ports()` match arms**: 4 near-identical arms (`Rest`, `Shell`, `File`, `Local`) each doing `spec.input_fields.iter().map(...)`. Add `ServiceOperationSpec::input_fields(&self) -> &[FieldSpec]` method. | -- | S | **Done** |
 | **FC-12** | **Fix `WorkspaceBinary` enum alignment**: Hooks added `review-design` binary without updating enum. Add `ReviewDesign` variant to `gunbc-dag/src/binaries.rs`. | -- | S | **Done** |
 | **FC-13** | **Fix `workspace_crates()` count**: Removed 3 phantom crates (`lib/git-ops`, `lib/azure-ops`, `lib/markdown`) not in root Cargo.toml workspace members. | -- | S | **Done** |
-| **FC-14** | **Tonight note: compiler-wide no-dead-path emit variant (hardening pass)**: Add a compile/codegen variant that prunes unused code paths and imports across generated outputs (Rust/Go/C) so strict `-D warnings` builds do not fail on dead emit branches. Include parity tests proving behavior is unchanged for live paths. | FC-1 | M | Planned |
-| **FC-15** | **Next-night follow-up: make unused-path emission structurally impossible (design-first, hard requirement)**: Write and approve a design doc that makes “emit only reachable code” a compiler invariant. End state must be by-construction reachability in IR/backend contracts, not cleanup/pruning passes. Include: invariant spec, failure modes, proof obligations, migration plan, and contract tests. Then ship one flag-gated vertical slice that enforces the invariant for one target end-to-end. | FC-14 | L | Planned |
+| **FC-14** | **Tonight note: compiler-wide no-dead-path emit variant (hardening pass)**: Add a compile/codegen variant that prunes unused code paths and imports across generated outputs (Rust/Go/C) so strict `-D warnings` builds do not fail on dead emit branches. Include parity tests proving behavior is unchanged for live paths. | FC-1 | M | **Done** |
+| **FC-15** | **Next-night follow-up: make unused-path emission structurally impossible (design-first, hard requirement)**: Write and approve a design doc that makes “emit only reachable code” a compiler invariant. End state must be by-construction reachability in IR/backend contracts, not cleanup/pruning passes. Include: invariant spec, failure modes, proof obligations, migration plan, and contract tests. Then ship one flag-gated vertical slice that enforces the invariant for one target end-to-end. | FC-14 | L | **Done** |
 
 ### Mega-lane dependency guide
 
