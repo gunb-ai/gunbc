@@ -1263,7 +1263,7 @@ impl ToolRegistry {
             meta_targets: default_meta_targets(),
         };
 
-        // Derive tool targets from DSL @binary annotations (single source of truth).
+        // Derive tool targets from DSL entrypoint inference (single source of truth).
         for tool_def in crate::dsl_registry::discover_tool_defs_from_dsl() {
             if let Some(tool_info) = ToolInfo::from_tool_def(&tool_def) {
                 registry.register(tool_info);

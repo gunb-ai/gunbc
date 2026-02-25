@@ -17,7 +17,7 @@
 //! # Architecture Note
 //!
 //! This binary lives in gunbc-dag (not gunbc-codegen) and discovers tools
-//! from DSL `@binary` annotations. The codegen library remains in core/codegen
+//! via structural entrypoint inference. The codegen library remains in core/codegen
 //! as a leaf crate.
 
 #![deny(dead_code)]
@@ -678,12 +678,12 @@ fn ensure_bin_entry(doc: &mut DocumentMut, bin_name: &str, bin_path: &str) -> Re
     bins.push(table);
     Ok(true)
 }
-/// Discovers tools from DSL `@binary` annotations — the DSL file IS the
+/// Discovers tools from DSL structural entrypoint inference — the DSL file IS the
 /// registration. No inventory, no regex source parsing, no allowlists.
 fn discover_codegen_tools(_workspace_root: &Path) -> Result<Vec<ToolDef>, String> {
     let tools = gunbc_dag::dsl_registry::discover_tool_defs_from_dsl();
     if tools.is_empty() {
-        return Err("no @binary-annotated DSL tools discovered".to_string());
+        return Err("no DSL tool entrypoints discovered".to_string());
     }
     Ok(tools)
 }
