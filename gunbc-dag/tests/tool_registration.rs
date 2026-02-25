@@ -571,6 +571,7 @@ const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
     "tools.makegen::render_help_target",
     "tools.makegen::render_help_tool_lines",
     "tools.makegen::render_makefile_body",
+    "tools.makegen::render_makefile_content",
     "tools.makegen::render_meta_base",
     "tools.makegen::render_meta_check_variant",
     "tools.makegen::render_meta_fix_variant",
