@@ -32,7 +32,7 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
     public: public,
     auth_token: secret.secret_value
   )
-  return { url: result.url as Url }
+  return { url: result.html_url as Url }
 }
 
 test gist_diff_dryrun {}

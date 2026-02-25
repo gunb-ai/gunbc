@@ -29,7 +29,7 @@ fn gist_upload(markdown: String, branch: String, public: Bool = false) -> { url:
     public: public,
     auth_token: secret.secret_value
   )
-  return { url: result.url as Url }
+  return { url: result.html_url as Url }
 }
 
 func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
@@ -46,10 +46,13 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
   uses fs: Filesystem(mode: Read)
 {
   current = git.Core.CurrentBranch()
-  commits = git.Core.RevList(since: since)
-  base_ref = (commits.commits |> last()) as CommitSha
-  changes = git.Core.Diff(base: base_ref)
-  markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
+  base = git.Core.RevListBase(since: since)
+  changes = git.Core.Diff(base: base.base_ref)
+  markdown = render_diff_markdown(
+    diff: changes.diff,
+    branch: current.branch,
+    base_ref: base.base_ref
+  )
   result = gist_upload(markdown: markdown, branch: current.branch, public: public)
   return { url: result.url as Url }
 }

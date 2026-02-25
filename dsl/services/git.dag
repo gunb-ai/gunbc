@@ -46,6 +46,17 @@ service git.Core {
     @hermetic @readonly
   }
 
+  operation RevListBase {
+    input { since: String }
+    output { base_ref: CommitSha }
+    @shell([
+      "bash",
+      "-lc",
+      "base=$(git rev-list --since='{since}' HEAD | tail -n 1); if [ -z \"$base\" ]; then echo HEAD~1; else echo \"$base\"; fi"
+    ])
+    @hermetic @readonly
+  }
+
   operation Show {
     input { ref: GitRef, path: FilePath }
     output { content: String }

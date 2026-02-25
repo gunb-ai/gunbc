@@ -20,10 +20,13 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
   uses net: Network
 {
   current = git.Core.CurrentBranch()
-  commits = git.Core.RevList(since: since)
-  base_ref = (commits.commits |> last()) as CommitSha
-  changes = git.Core.Diff(base: base_ref)
-  markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
+  base = git.Core.RevListBase(since: since)
+  changes = git.Core.Diff(base: base.base_ref)
+  markdown = render_diff_markdown(
+    diff: changes.diff,
+    branch: current.branch,
+    base_ref: base.base_ref
+  )
   secret = shell.GCloud.SecretManagerAccessVersion(
     project_id: "gunbai-secrets",
     secret_name: "github-token"
@@ -34,7 +37,7 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
     public: public,
     auth_token: secret.secret_value
   )
-  return { url: result.url as Url }
+  return { url: result.html_url as Url }
 }
 
 test gist_recent_dryrun {}

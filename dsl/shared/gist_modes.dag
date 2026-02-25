@@ -32,11 +32,10 @@ func branch_context() -> { branch: String } {
 // Resolve the base ref for "recent" mode.
 func resolve_recent_base(since: String = "3.days.ago") -> { base_ref: CommitSha, branch: String } {
   ctx = branch_context()
-  commits = git.Core.RevList(since: since)
-  base_ref = (commits.commits |> last()) as CommitSha
+  base = git.Core.RevListBase(since: since)
 
   return {
-    base_ref: base_ref,
+    base_ref: base.base_ref,
     branch: ctx.branch
   }
 }
@@ -57,7 +56,7 @@ func gist_upload(markdown: String, branch: String, base_ref: CommitSha?, public:
     auth_token: secret.secret_value
   )
 
-  return { url: result.url as Url }
+  return { url: result.html_url as Url }
 }
 
 // Share any markdown content as a gist.
