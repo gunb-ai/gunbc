@@ -344,8 +344,6 @@ name = "gunbc-clippy"
 version = "0.1.0"
 dependencies = [
  "gunbc-ir",
- "gunbc-tool-registry",
- "gunbc-tool-registry-macros",
 ]
 
 [[package]]
@@ -357,7 +355,6 @@ dependencies = [
  "gunbc-infra",
  "gunbc-ir",
  "gunbc-test",
- "gunbc-tool-registry",
  "serde_json",
 ]
 
@@ -390,8 +387,6 @@ dependencies = [
  "gunbc-test",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
- "gunbc-tool-registry",
- "gunbc-tool-registry-macros",
  "ron",
  "serde",
  "serde_json",
@@ -424,8 +419,6 @@ dependencies = [
  "gunbc-test",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
- "gunbc-tool-registry",
- "gunbc-tool-registry-macros",
  "serde",
  "serde_json",
  "toml",
@@ -546,8 +539,6 @@ dependencies = [
  "gunbc-test",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
- "gunbc-tool-registry",
- "gunbc-tool-registry-macros",
  "serde",
  "serde_json",
 ]
@@ -609,18 +600,10 @@ dependencies = [
 [[package]]
 name = "gunbc-tool-registry"
 version = "0.1.0"
-dependencies = [
- "inventory",
-]
 
 [[package]]
 name = "gunbc-tool-registry-macros"
 version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
 
 [[package]]
 name = "hashbrown"

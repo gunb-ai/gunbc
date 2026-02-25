@@ -134,7 +134,7 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
         .ok()?
         .to_string_lossy()
         .to_string();
-    let module_name = rel_path
+    let _module_name = rel_path
         .strip_suffix(".dag")?
         .replace('/', ".");
 
@@ -153,12 +153,7 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
             .map(|s| s.to_string())
             .unwrap_or_else(|| bf.func_name.replace('_', "-"));
 
-        // Entry-point slicing: {module_name}::{func_name}
-        let entry_node = format!("{}::{}", module_name, bf.func_name);
-        let graph_builder_call = format!(
-            "build_dsl_graph_for_entry(\"{}\", \"{}\")",
-            rel_path, entry_node,
-        );
+        let graph_builder_args = format!("\"{}\"", rel_path);
 
         let description = humanize_tool_name(&tool_name);
         let mock_spec = format!(
@@ -172,12 +167,12 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
             String::from("gunbc-dag"),
             tool_name.clone(),
             description,
-            graph_builder_call,
-            String::new(),
+            String::from("build_dsl_graph_for_binary"),
+            graph_builder_args,
         )
         .returns_result()
         .mock_spec_call(mock_spec)
-        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;")
+        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_binary;")
         .invocation(cargo::CargoInvocation::composed(&tool_name, "dag"));
 
         // Add outputs from compilation
@@ -434,76 +429,4 @@ mod tests {
         assert_eq!(names, sorted, "tools should be sorted by name");
     }
 
-    /// Contract test: compare DSL-derived tools against inventory-derived tools.
-    ///
-    /// Checks structural equivalence on key fields: tool_name, outputs, invocation.
-    /// Entrypoints are expected to diverge (DSL derives from func params; inventory
-    /// uses handcrafted JSON with service-level boundary params).
-    #[test]
-    fn dsl_derived_matches_inventory_derived() {
-        let old = gunbc_codegen::registry::derive_tool_defs();
-        let new = discover_tool_defs_from_dsl();
-
-        // Collect names for comparison
-        let old_names: HashSet<&str> = old.iter().map(|t| t.meta.tool_name.as_ref()).collect();
-        let new_names: HashSet<&str> = new.iter().map(|t| t.meta.tool_name.as_ref()).collect();
-
-        // The new system discovers @binary tools + testgen.
-        // The old system also has non-binary tools (clippy, review, codegen).
-        // Check that all NEW tools exist in the old system.
-        for name in &new_names {
-            assert!(
-                old_names.contains(name),
-                "DSL-derived tool '{}' not in inventory. New tools should be a subset.",
-                name,
-            );
-        }
-
-        // For tools in both systems, compare key fields
-        for new_tool in &new {
-            let name = new_tool.meta.tool_name.as_ref();
-            let Some(old_tool) = old.iter().find(|t| t.meta.tool_name == name) else {
-                continue;
-            };
-
-            // Outputs should match (from CompileOutput.output_paths vs ToolRegistration.outputs)
-            let mut old_outputs = old_tool.outputs.clone();
-            old_outputs.sort();
-            let mut new_outputs = new_tool.outputs.clone();
-            new_outputs.sort();
-            assert_eq!(
-                old_outputs, new_outputs,
-                "{}: outputs diverge. old={:?}, new={:?}",
-                name, old_outputs, new_outputs,
-            );
-
-            // Invocation presence should match
-            assert_eq!(
-                old_tool.invocation.is_some(),
-                new_tool.invocation.is_some(),
-                "{}: invocation presence diverges",
-                name,
-            );
-
-            // If both have invocations, binary name should match
-            if let (Some(old_inv), Some(new_inv)) =
-                (&old_tool.invocation, &new_tool.invocation)
-            {
-                assert_eq!(
-                    old_inv.binary, new_inv.binary,
-                    "{}: binary name diverges",
-                    name,
-                );
-            }
-        }
-
-        // Report tools only in old system (expected: clippy, review, codegen)
-        let only_old: Vec<&&str> = old_names.difference(&new_names).collect();
-        if !only_old.is_empty() {
-            eprintln!(
-                "Tools in inventory but not DSL-derived (expected): {:?}",
-                only_old,
-            );
-        }
-    }
 }

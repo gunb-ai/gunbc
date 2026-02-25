@@ -40,5 +40,5 @@ pub fn makegen_signature() -> WorkflowSignature {
 
 /// Build makegen graph from the DSL source.
 pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entry("tools/makegen.dag", "tools.makegen::makegen")
+    crate::dsl_builder::build_dsl_graph_for_binary("tools/makegen.dag")
 }

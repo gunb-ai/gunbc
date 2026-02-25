@@ -11,5 +11,4 @@ gunbc-ir = { path = "../ir" }
 gunbc-test = { path = "../test" }
 gunbc-exec = { path = "../exec" }
 gunbc-cli = { path = "../cli" }
-gunbc-tool-registry = { path = "../tool-registry" }
 serde_json = { workspace = true }

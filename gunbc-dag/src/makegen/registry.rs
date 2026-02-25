@@ -1263,8 +1263,8 @@ impl ToolRegistry {
             meta_targets: default_meta_targets(),
         };
 
-        // Derive tool targets from the codegen registry (single source of truth).
-        for tool_def in gunbc_codegen::registry::derive_tool_defs() {
+        // Derive tool targets from DSL @binary annotations (single source of truth).
+        for tool_def in crate::dsl_registry::discover_tool_defs_from_dsl() {
             if let Some(tool_info) = ToolInfo::from_tool_def(&tool_def) {
                 registry.register(tool_info);
             }
@@ -1601,7 +1601,8 @@ mod tests {
             .iter()
             .find(|p| p.port_name == "manifest_path");
         assert!(manifest_param.is_some());
-        assert_eq!(manifest_param.unwrap().make_var, "MANIFEST");
+        // DSL convention: make_var = UPPER_SNAKE(param_name)
+        assert_eq!(manifest_param.unwrap().make_var, "MANIFEST_PATH");
     }
 
     #[test]
@@ -1950,12 +1951,12 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_registry_derived_from_codegen() {
+    fn test_registry_derived_from_dsl() {
         let registry = ToolRegistry::default_registry();
-        let codegen_tools = gunbc_codegen::registry::derive_tool_defs();
+        let dsl_tools = crate::dsl_registry::discover_tool_defs_from_dsl();
 
-        // Every codegen tool with an invocation must appear in the makegen registry
-        for tool_def in &codegen_tools {
+        // Every DSL tool with an invocation must appear in the makegen registry
+        for tool_def in &dsl_tools {
             if tool_def.invocation.is_some() {
                 let found = registry
                     .tools
@@ -1963,7 +1964,7 @@ mod tests {
                     .any(|t| t.short_name == tool_def.meta.tool_name);
                 assert!(
                     found,
-                    "Tool '{}' has invocation in codegen but missing from makegen registry",
+                    "Tool '{}' has invocation in DSL but missing from makegen registry",
                     tool_def.meta.tool_name
                 );
             }
@@ -1971,11 +1972,11 @@ mod tests {
     }
 
     #[test]
-    fn test_registry_entrypoints_match_codegen() {
+    fn test_registry_entrypoints_match_dsl() {
         let registry = ToolRegistry::default_registry();
-        let codegen_tools = gunbc_codegen::registry::derive_tool_defs();
+        let dsl_tools = crate::dsl_registry::discover_tool_defs_from_dsl();
 
-        for tool_def in &codegen_tools {
+        for tool_def in &dsl_tools {
             if tool_def.invocation.is_none() {
                 continue;
             }
@@ -1985,8 +1986,8 @@ mod tests {
                 .find(|t| t.short_name == tool_def.meta.tool_name)
                 .unwrap();
 
-            // Count entrypoints with make_var in codegen
-            let codegen_make_params: Vec<_> = tool_def
+            // Count entrypoints with make_var in DSL
+            let dsl_make_params: Vec<_> = tool_def
                 .entrypoints
                 .iter()
                 .filter(|ep| ep.make_var.is_some())
@@ -1994,20 +1995,20 @@ mod tests {
 
             assert_eq!(
                 tool_info.entrypoints.len(),
-                codegen_make_params.len(),
-                "Tool '{}': makegen has {} params, codegen has {} with make_var",
+                dsl_make_params.len(),
+                "Tool '{}': makegen has {} params, DSL has {} with make_var",
                 tool_def.meta.tool_name,
                 tool_info.entrypoints.len(),
-                codegen_make_params.len()
+                dsl_make_params.len()
             );
 
             // Verify CLI flags match generated CLI flag names
-            for (info_param, codegen_ep) in
-                tool_info.entrypoints.iter().zip(codegen_make_params.iter())
+            for (info_param, dsl_ep) in
+                tool_info.entrypoints.iter().zip(dsl_make_params.iter())
             {
                 assert_eq!(
                     info_param.cli_flag,
-                    format!("--{}", codegen_ep.flag_name()),
+                    format!("--{}", dsl_ep.flag_name()),
                     "Tool '{}' param '{}': Makefile flag doesn't match generated CLI flag",
                     tool_def.meta.tool_name,
                     info_param.port_name
@@ -2019,11 +2020,10 @@ mod tests {
     #[test]
     fn test_tools_without_invocation_excluded() {
         let registry = ToolRegistry::default_registry();
-        let codegen_tools = gunbc_codegen::registry::derive_tool_defs();
+        let dsl_tools = crate::dsl_registry::discover_tool_defs_from_dsl();
 
         // Tools without invocation should NOT appear unless manually registered
-        // (e.g., pragma is registered via ManualToolDef with needs_generated_cli=false)
-        for tool_def in &codegen_tools {
+        for tool_def in &dsl_tools {
             if tool_def.invocation.is_none() {
                 let found = registry
                     .tools

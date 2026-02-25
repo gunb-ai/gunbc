@@ -3,12 +3,9 @@ name = "gunbc-tool-registry-macros"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Proc macros for auto-registered tool targets"
+description = "Proc macros for auto-registered tool targets (deprecated — see gunbc-dag/src/dsl_registry.rs)"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "1.0", features = ["full"] }

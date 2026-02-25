@@ -21,5 +21,5 @@ pub fn pragma_signature() -> WorkflowSignature {
 
 /// Build pragma graph from the DSL source.
 pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
-    crate::dsl_builder::build_dsl_graph_for_entry("tools/pragma.dag", "tools.pragma::pragma")
+    crate::dsl_builder::build_dsl_graph_for_binary("tools/pragma.dag")
 }

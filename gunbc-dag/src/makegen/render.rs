@@ -658,9 +658,10 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("[MANIFEST="));
+        // DSL convention: make_var = UPPER_SNAKE(param_name), so manifest_path → MANIFEST_PATH
+        assert!(makefile.contains("[MANIFEST_PATH="));
         assert!(
-            !makefile.contains("$(if $(MANIFEST)"),
+            !makefile.contains("$(if $(MANIFEST_PATH)"),
             "tool entrypoint args should not be threaded through workflow wrapper commands"
         );
     }

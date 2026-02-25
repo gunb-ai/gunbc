@@ -73,14 +73,17 @@ fn main() {
         }
     };
 
-    if let Some(steps) = gunbc_lib_transport::check_and_plan_freshness() {
-        if let Err(e) = run_freshness_steps(&steps) {
-            print_attention(
-                AttentionLevel::Error,
-                "Freshness check failed",
-                &e.to_string(),
-            );
-            std::process::exit(1);
+    // Skip freshness check for codegen-only (no side effects beyond writing main.rs files)
+    if command != "codegen" {
+        if let Some(steps) = gunbc_lib_transport::check_and_plan_freshness() {
+            if let Err(e) = run_freshness_steps(&steps) {
+                print_attention(
+                    AttentionLevel::Error,
+                    "Freshness check failed",
+                    &e.to_string(),
+                );
+                std::process::exit(1);
+            }
         }
     }
 

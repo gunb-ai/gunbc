@@ -1,7 +1,7 @@
 //! Tool registry for CLI generation.
 //!
-//! Tool metadata is derived from `#[tool_target]` inventory registrations
-//! via [`derive_tool_defs()`]. No manual tool list is needed.
+//! Tool metadata is derived from DSL `@binary` annotations via
+//! `discover_tool_defs_from_dsl()` in `gunbc-dag/src/dsl_registry.rs`.
 
 use crate::cli_gen::{CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;
@@ -230,66 +230,16 @@ impl ToolDef {
 }
 
 // ============================================================================
-// Derive ToolDefs from inventory
+// Derive ToolDefs
 // ============================================================================
 
-/// Derive `Vec<ToolDef>` from `#[tool_target]` inventory registrations.
+/// Derive `Vec<ToolDef>` from tool registrations.
 ///
-/// This is the single source of truth for tool metadata. Each
-/// `ToolRegistration` is mechanically converted to a `ToolDef`.
+/// **Deprecated**: Previously read from `#[tool_target]` inventory registrations.
+/// Now returns an empty vec. Callers in `gunbc-dag` should use
+/// `discover_tool_defs_from_dsl()` from `dsl_registry` instead.
 pub fn derive_tool_defs() -> Vec<ToolDef> {
-    let mut tools: Vec<ToolDef> = gunbc_tool_registry::iter_tool_targets()
-        .map(|reg| {
-            let mut tool = ToolDef::new(
-                reg.crate_name,
-                reg.tool_name,
-                reg.description,
-                reg.graph_builder_call,
-                reg.graph_builder_args,
-            );
-
-            if reg.returns_result {
-                tool = tool.returns_result();
-            }
-            if let Some(port) = reg.success_port {
-                tool = tool.check_success(port);
-            }
-            if reg.enable_step_mode {
-                tool = tool.enable_step_mode();
-            }
-            if let Some(import) = reg.custom_import {
-                tool = tool.import(import);
-            }
-            if let Some(spec) = reg.mock_spec_call {
-                tool = tool.mock_spec_call(spec);
-            }
-            if !reg.entrypoints_json.is_empty() {
-                tool = tool.entrypoints_json(reg.entrypoints_json);
-            }
-
-            // Map outputs from ToolRegistration
-            for path in reg.outputs {
-                tool = tool.output(*path);
-            }
-
-            // Derive CargoInvocation from has_invocation + package + binary
-            if reg.has_invocation {
-                let binary_component = reg.binary.unwrap_or(reg.tool_name);
-                let invocation = match reg.package {
-                    Some(pkg) if reg.binary.is_some() || pkg != reg.tool_name => {
-                        cargo::CargoInvocation::composed(binary_component, pkg)
-                    }
-                    _ => cargo::CargoInvocation::standalone(binary_component),
-                };
-                tool = tool.invocation(invocation);
-            }
-
-            tool
-        })
-        .collect();
-
-    tools.sort_by(|a, b| a.meta.tool_name.cmp(&b.meta.tool_name));
-    tools
+    Vec::new()
 }
 
 /// Core build system artifacts (not tool-specific).

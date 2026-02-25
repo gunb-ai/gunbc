@@ -7,5 +7,3 @@ description = "Clippy tool configuration and lint policy"
 
 [dependencies]
 gunbc-ir = { path = "../../../core/ir" }
-gunbc-tool-registry = { path = "../../../core/tool-registry" }
-gunbc-tool-registry-macros = { path = "../../../core/tool-registry-macros" }

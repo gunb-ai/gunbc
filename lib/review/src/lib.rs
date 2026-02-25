@@ -782,6 +782,17 @@ fn parse_location(loc: Option<&serde_json::Value>) -> Result<Location, String> {
 }
 
 // ============================================================================
+// DagSpec Registry Helpers
+// ============================================================================
+
+/// Return DagSpec registrations originating from this crate.
+pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
+    gunbc_testgen_registry::iter_dag_specs()
+        .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
+        .collect()
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1311,15 +1322,4 @@ Please fix these issues."#;
         let artifact = result.get("artifact").unwrap().as_str().unwrap();
         assert_eq!(artifact, "(no changes)");
     }
-}
-
-// ============================================================================
-// DagSpec Registry Helpers
-// ============================================================================
-
-/// Return DagSpec registrations originating from this crate.
-pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
-    gunbc_testgen_registry::iter_dag_specs()
-        .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
-        .collect()
 }
