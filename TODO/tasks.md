@@ -15,7 +15,7 @@
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | Planned | NF-1..NF-6, IS-1..IS-8, PT-1..PT-6, FC-1..FC-9 |
+| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-1..NF-6, PT-1..PT-6, FC-7..FC-8, FC-14..FC-15 |
 
 ---
 
@@ -45,14 +45,14 @@
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **IS-1** | **Add `InterfaceStub` to `ServiceTransportClass`**: New enum variant in `daglang-lower`. Audit all match arms for exhaustiveness. | -- | S | Planned |
-| **IS-2** | **Add `add_interface_stub_transport_triplets()`**: Mirror resource capability transport pattern. Walk `InterfaceDef.capabilities`, create prepare/execute/parse triplets with `InterfaceStub` transport class. | IS-1 | M | Planned |
-| **IS-3** | **Relax `enforce_profile_for_bound_uses()`**: Convert hard error to informational. Return `HashSet<String>` of interface types needing stubs. (Stopgap: `requires_profile` filter in `build_testgen_graph_auto()` skips these modules — remove filter when IS-3 lands.) *Runtime graceful degradation in place*: `AutoGenerate` now emits placeholder content on compile error instead of hard-failing the testgen DAG. | IS-1 | S | Planned |
-| **IS-4** | **Wire stubs into lowering flow**: Call `add_interface_stub_transport_triplets()` after service transport, merge into endpoint registry. | IS-2, IS-3 | S | Planned |
-| **IS-5** | **Update `resolve_service_call_source()` fallback**: Try `cap_key` lookup when `active_profile_bindings` is `None`. Only error if stub lookup also fails. | IS-3 | S | Planned |
-| **IS-6** | **Handle `InterfaceStub` in DynOp resolver**: `InterfaceStubPrepareOp`, `InterfaceStubExecuteOp` (errors in Real mode, auto-mocked in DryRun), `InterfaceStubParseOp`. | -- | M | Planned |
-| **IS-7** | **Verify auto-mock compatibility**: Confirm stub execute nodes carry `ServiceTransportExecute` obligation for auto-mock. | IS-4 | S | Planned |
-| **IS-8** | **Tests**: Lowerer test (no profile -> stub triplets), resolver test (Real mode error), integration (`make test-all`). | IS-4, IS-6, IS-7 | M | Planned |
+| **IS-1** | **Add `InterfaceStub` to `ServiceTransportClass`**: New enum variant in `daglang-lower`. Audit all match arms for exhaustiveness. | -- | S | **Done** |
+| **IS-2** | **Add `add_interface_stub_transport_triplets()`**: Mirror resource capability transport pattern. Walk `InterfaceDef.capabilities`, create prepare/execute/parse triplets with `InterfaceStub` transport class. | IS-1 | M | **Done** |
+| **IS-3** | **Relax `enforce_profile_for_bound_uses()`**: Convert hard error to informational. Return `HashSet<String>` of interface types needing stubs. (Stopgap: `requires_profile` filter in `build_testgen_graph_auto()` skips these modules — remove filter when IS-3 lands.) *Runtime graceful degradation in place*: `AutoGenerate` now emits placeholder content on compile error instead of hard-failing the testgen DAG. | IS-1 | S | **Done** |
+| **IS-4** | **Wire stubs into lowering flow**: Call `add_interface_stub_transport_triplets()` after service transport, merge into endpoint registry. | IS-2, IS-3 | S | **Done** |
+| **IS-5** | **Update `resolve_service_call_source()` fallback**: Try `cap_key` lookup when `active_profile_bindings` is `None`. Only error if stub lookup also fails. | IS-3 | S | **Done** |
+| **IS-6** | **Handle `InterfaceStub` in DynOp resolver**: `InterfaceStubPrepareOp`, `InterfaceStubExecuteOp` (errors in Real mode, auto-mocked in DryRun), `InterfaceStubParseOp`. | -- | M | **Done** |
+| **IS-7** | **Verify auto-mock compatibility**: Confirm stub execute nodes carry `ServiceTransportExecute` obligation for auto-mock. | IS-4 | S | **Done** |
+| **IS-8** | **Tests**: Lowerer test (no profile -> stub triplets), resolver test (Real mode error), integration (`make test-all`). | IS-4, IS-6, IS-7 | M | **Done** |
 
 ### Track C: Per-Profile Live Tests
 
@@ -69,17 +69,17 @@
 
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
-| **FC-1** | **Fail closed for unsupported DSL expression codegen**: Replace comment/raw-code fallbacks (`/* unsupported ... */`) with typed errors in expression compilation/rendering paths. | -- | M | Planned |
-| **FC-2** | **String interpolation correctness**: Implement `StringInterp` generation correctly or hard-error until fully supported. Remove `"{}"` placeholder-only emission. | FC-1 | M | Planned |
-| **FC-3** | **Record/variant context typing fix**: Remove field-name-as-type-context behavior in record rendering; plumb real type context or make variants fully-qualified. | FC-1 | M | Planned |
-| **FC-4** | **No panic in lowering for unsupported patterns**: Replace panic-based unsupported `PatternOp` paths with structured lowering errors. | -- | S | Planned |
-| **FC-5** | **SubDag runtime op cfg hygiene**: Verify SubDag dispatch runtime op is not `#[cfg(test)]`-gated in production and add release-build guardrail coverage. | -- | S | Planned |
-| **FC-6** | **Pipeline dispatch contract hardening**: Make stage progression contract explicit for resume/current-stage behavior; validate expected fields and improve diagnostics. | FC-5 | S | Planned |
+| **FC-1** | **Fail closed for unsupported DSL expression codegen**: Replace comment/raw-code fallbacks (`/* unsupported ... */`) with typed errors in expression compilation/rendering paths. | -- | M | **Done** |
+| **FC-2** | **String interpolation correctness**: Implement `StringInterp` generation correctly or hard-error until fully supported. Remove `"{}"` placeholder-only emission. | FC-1 | M | **Done** |
+| **FC-3** | **Record/variant context typing fix**: Remove field-name-as-type-context behavior in record rendering; plumb real type context or make variants fully-qualified. | FC-1 | M | **Done** |
+| **FC-4** | **No panic in lowering for unsupported patterns**: Replace panic-based unsupported `PatternOp` paths with structured lowering errors. | -- | S | **Done** |
+| **FC-5** | **SubDag runtime op cfg hygiene**: Verify SubDag dispatch runtime op is not `#[cfg(test)]`-gated in production and add release-build guardrail coverage. | -- | S | **Done** |
+| **FC-6** | **Pipeline dispatch contract hardening**: Make stage progression contract explicit for resume/current-stage behavior; validate expected fields and improve diagnostics. | FC-5 | S | **Done** |
 | **FC-7** | **Remove node-name substring extraction hacks**: Replace `content_upsert_path_` ID substring checks with explicit metadata/annotation-based output path extraction. | NF-2 | M | Planned |
 | **FC-8** | **Fail-closed content extraction + test restoration**: Make `extract_file_contents` schema handling fail-closed (or explicit warning mode) and restore non-empty gist dry-run tests with real assertions. | FC-7 | M | Planned |
-| **FC-9** | **Define and enforce `\\xHH` string semantics**: Align lexer + emitter behavior for hex-escape handling and add deterministic contract tests. | FC-1 | S | Planned |
-| **FC-10** | **Proper `@local` transport type**: `GenericLocalPrepareOp` wraps inputs in `ShellRequest::new("echo")` as carrier; `GenericLocalParseOp` expects `TransportResponse::Shell`. Add `TransportRequest::Local` / `TransportResponse::Local` variants in `core/ir/src/transport/mod.rs`, add `TransportKind::LocalDirect` in `daglang-emit`, update prepare/parse ops. | -- | M | Planned |
-| **FC-11** | **Collapse `service_prepare_ports()` match arms**: 4 near-identical arms (`Rest`, `Shell`, `File`, `Local`) each doing `spec.input_fields.iter().map(...)`. Add `ServiceOperationSpec::input_fields(&self) -> &[FieldSpec]` method. | -- | S | Planned |
+| **FC-9** | **Define and enforce `\\xHH` string semantics**: Align lexer + emitter behavior for hex-escape handling and add deterministic contract tests. | FC-1 | S | **Done** |
+| **FC-10** | **Proper `@local` transport type**: `GenericLocalPrepareOp` wraps inputs in `ShellRequest::new("echo")` as carrier; `GenericLocalParseOp` expects `TransportResponse::Shell`. Add `TransportRequest::Local` / `TransportResponse::Local` variants in `core/ir/src/transport/mod.rs`, add `TransportKind::LocalDirect` in `daglang-emit`, update prepare/parse ops. | -- | M | **Done** |
+| **FC-11** | **Collapse `service_prepare_ports()` match arms**: 4 near-identical arms (`Rest`, `Shell`, `File`, `Local`) each doing `spec.input_fields.iter().map(...)`. Add `ServiceOperationSpec::input_fields(&self) -> &[FieldSpec]` method. | -- | S | **Done** |
 | **FC-12** | **Fix `WorkspaceBinary` enum alignment**: Hooks added `review-design` binary without updating enum. Add `ReviewDesign` variant to `gunbc-dag/src/binaries.rs`. | -- | S | **Done** |
 | **FC-13** | **Fix `workspace_crates()` count**: Removed 3 phantom crates (`lib/git-ops`, `lib/azure-ops`, `lib/markdown`) not in root Cargo.toml workspace members. | -- | S | **Done** |
 | **FC-14** | **Tonight note: compiler-wide no-dead-path emit variant (hardening pass)**: Add a compile/codegen variant that prunes unused code paths and imports across generated outputs (Rust/Go/C) so strict `-D warnings` builds do not fail on dead emit branches. Include parity tests proving behavior is unchanged for live paths. | FC-1 | M | Planned |

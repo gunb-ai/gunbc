@@ -354,3 +354,32 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | EX-5 | Lower control flow in function bodies: control-flow pattern lowering for `for`/`if`/`match` plus parser fixes so `if`/`match` expressions parse non-lossy in function bodies. | Done 2026-02-22 |
 | EX-6 | Lower string interpolation and formatting: ensured interpolation template extraction/lowering paths are preserved and test-covered for identifier interpolation. | Done 2026-02-22 |
 | EX-7 | Structured document rendering: added `Document`/`TextFile` DSL types and shared render helpers, migrated pragma/makegen/docgen/build rendering through structured document construction + rendering pipeline. | Done 2026-02-22 |
+
+---
+
+## Mega Lane — Track B: Interface Stub Transport (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| IS-1 | Add `InterfaceStub` to `ServiceTransportClass` + `ServiceOperationSpec`: new enum variants, all match arms audited for exhaustiveness. | Done 2026-02-25 |
+| IS-2 | Add `add_interface_stub_transport_triplets()`: mirrors resource capability transport pattern for interface stubs. | Done 2026-02-25 |
+| IS-3 | Relax `enforce_profile_for_bound_uses()`: converts hard error to informational return of `HashSet<String>` of interfaces needing stubs. | Done 2026-02-25 |
+| IS-4 | Wire stubs into lowering flow: stubs registered in endpoint registry after real endpoints (stubs fill gaps). | Done 2026-02-25 |
+| IS-5 | Simplify `resolve_service_call_source()`: single lookup path for real and stub endpoints; no special-case error for missing profile. | Done 2026-02-25 |
+| IS-6 | Handle `InterfaceStub` in DynOp resolver: `InterfaceStubPrepareOp` (LocalRequest), `InterfaceStubExecuteOp` (errors in Real, auto-mocked in DryRun), `InterfaceStubParseOp` (identity passthrough). | Done 2026-02-25 |
+| IS-7 | Verify auto-mock compatibility: stub execute nodes carry `ServiceTransportExecute` obligation and `TransportRequest` input port. | Done 2026-02-25 |
+| IS-8 | Tests: 4 InterfaceStub op tests (prepare, skip propagation, execute Real-mode error, parse passthrough). Full workspace test suite green. | Done 2026-02-25 |
+
+## Mega Lane — Track D: Fail-Closed Cleanup (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| FC-1 | Fail closed for unsupported DSL expression codegen: replaced `/* unsupported ... */` comments with `compile_error!()` / `#error` markers in fn_codegen, render_c, type_codegen. | Done 2026-02-25 |
+| FC-2 | String interpolation correctness: converted Rust-style `{}` placeholders to Go `%v` and C `%s` in backend lowerers. | Done 2026-02-25 |
+| FC-3 | Record/variant context typing fix: replaced raw field-name-as-type-context with capitalize_first() heuristic for enum variant qualification. | Done 2026-02-25 |
+| FC-4 | No panic in lowering for unsupported patterns: replaced 6 `panic!()` calls with `LoweredOp::UnsupportedPattern` + `ResolveError`. | Done 2026-02-25 |
+| FC-5 | SubDag runtime op cfg hygiene: documented and added guardrail test verifying production resolver preserves SubDag structure. | Done 2026-02-25 |
+| FC-6 | Pipeline dispatch contract hardening: explicit progression contract, empty `current_stage` validation, stage-name diagnostics, terminal self-loop. | Done 2026-02-25 |
+| FC-9 | Define and enforce `\xHH` string semantics: added proper hex escape parsing to lexer (`\xHH` → byte value), malformed escapes preserved literally, 3 contract tests. | Done 2026-02-25 |
+| FC-10 | Proper `@local` transport type: added `TransportRequest::Local` / `TransportResponse::Local`, `TransportKind::LocalDirect`, replaced `ShellRequest::new("echo")` hack. | Done 2026-02-25 |
+| FC-11 | Collapse `service_prepare_ports()` match arms: added `ServiceOperationSpec::input_fields()` and `output_fields()` methods, collapsed 4 match arms to 1. | Done 2026-02-25 |
