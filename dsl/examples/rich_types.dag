@@ -28,9 +28,9 @@
 //   - Refinement types + generics enable powerful automatic test generation
 //   - Types flow through deploy boundaries (serialization format selection)
 
-import infra.core { ObjectStorage }
-
 module examples.rich_types
+
+import infra.core { ObjectStorage }
 
 
 // =========================================================================

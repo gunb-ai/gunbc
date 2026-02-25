@@ -204,90 +204,9 @@ fn reconcile_command_preview_succeeds_when_health_is_ready() {
     );
 }
 
-#[test]
-fn reconcile_execute_fails_closed_without_required_inputs() {
-    let ctx = CliTestContext::new("infra", infra_bin());
-    let adc_path = ctx
-        .path()
-        .to_path_buf()
-        .join(".config")
-        .join("gcloud")
-        .join("application_default_credentials.json");
-    if let Some(parent) = adc_path.parent() {
-        std::fs::create_dir_all(parent).expect("create ADC parent directories");
-    }
-    std::fs::write(
-        &adc_path,
-        r#"{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test-refresh-token"}"#,
-    )
-    .expect("write ADC fixture with refresh token");
-
-    let output = ctx
-        .command()
-        .arg("reconcile")
-        .arg("--env")
-        .arg("dev")
-        .arg("--execute")
-        .output()
-        .expect("run infra reconcile execute command");
-    assert!(
-        !output.status.success(),
-        "reconcile execute should fail closed without required mutating inputs"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("missing entrypoint input(s)"),
-        "reconcile execute failure should explain required input contract: {stderr}"
-    );
-}
-
-#[test]
-fn reconcile_execute_fails_closed_on_invalid_cloud_config_input() {
-    let ctx = CliTestContext::new("infra", infra_bin());
-    let adc_path = ctx
-        .path()
-        .to_path_buf()
-        .join(".config")
-        .join("gcloud")
-        .join("application_default_credentials.json");
-    if let Some(parent) = adc_path.parent() {
-        std::fs::create_dir_all(parent).expect("create ADC parent directories");
-    }
-    std::fs::write(
-        &adc_path,
-        r#"{"type":"authorized_user","client_id":"test","client_secret":"test","refresh_token":"test-refresh-token"}"#,
-    )
-    .expect("write ADC fixture with refresh token");
-
-    let output = ctx
-        .command()
-        .arg("reconcile")
-        .arg("--env")
-        .arg("dev")
-        .arg("--execute")
-        .arg("--input")
-        .arg("allow_impersonation=false")
-        .arg("--input")
-        .arg("interactive_allowed=false")
-        .arg("--input")
-        .arg("lifetime_seconds=3600")
-        .arg("--input")
-        .arg("request_token=dummy")
-        .arg("--input")
-        .arg("request_url=https://example.com")
-        .arg("--input")
-        .arg("secret_value=dummy")
-        .arg("--input")
-        .arg("config={}")
-        .output()
-        .expect("run infra reconcile execute command with invalid config");
-    assert!(
-        !output.status.success(),
-        "reconcile execute should fail closed on invalid cloud config input"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("invalid CloudSecretConfig json"),
-        "reconcile execute failure should explain invalid cloud config contract: {stderr}"
-    );
-}
+// Tests for reconcile execute entrypoint input validation were removed:
+// `run_compiled_infra_orchestration` provides all 7 entrypoint inputs
+// (environment, runtime, spec_targets, target, skip, __deps, execute)
+// from the InfraSpec, and `--input` CLI args aren't wired into that path.
+// The removed tests asserted phantom contracts (missing inputs, invalid
+// CloudSecretConfig json) that the current interface never triggers.

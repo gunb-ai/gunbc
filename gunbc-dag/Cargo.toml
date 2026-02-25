@@ -126,3 +126,11 @@ path = "../target/codegen/bin/generate-design/main.rs"
 [[bin]]
 name = "gunbc-docgen"
 path = "../target/codegen/bin/docgen/main.rs"
+
+[[bin]]
+name = "gunbc-deps-generate"
+path = "../target/codegen/bin/deps-generate/main.rs"
+
+[[bin]]
+name = "gunbc-codegen-ensure"
+path = "../target/codegen/bin/codegen-ensure/main.rs"
