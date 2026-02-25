@@ -705,6 +705,37 @@ impl fmt::Display for Value {
     }
 }
 
+impl From<serde_json::Value> for Value {
+    /// Convert a `serde_json::Value` to a native `Value` with proper types.
+    ///
+    /// Unlike `Value::Json(v)` which wraps JSON opaquely, this produces
+    /// `Value::Map`, `Value::List`, `Value::Str`, etc. so field access,
+    /// iteration, and pattern matching work natively.
+    fn from(json: serde_json::Value) -> Self {
+        match json {
+            serde_json::Value::Null => Value::Unit,
+            serde_json::Value::Bool(b) => Value::Bool(b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Int(i)
+                } else if let Some(f) = n.as_f64() {
+                    Value::Float(f)
+                } else {
+                    Value::Str(n.to_string())
+                }
+            }
+            serde_json::Value::String(s) => Value::Str(s),
+            serde_json::Value::Array(arr) => {
+                Value::List(arr.into_iter().map(Value::from).collect())
+            }
+            serde_json::Value::Object(obj) => {
+                let map = obj.into_iter().map(|(k, v)| (k, Value::from(v))).collect();
+                Value::Map(map)
+            }
+        }
+    }
+}
+
 impl From<TransportRequest> for Value {
     fn from(r: TransportRequest) -> Self {
         Value::Request(r)
