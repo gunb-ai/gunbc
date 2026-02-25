@@ -402,6 +402,14 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | FC-14 | Dead-path pruning emit variant: added `compute_reachable_node_ids()` BFS from entrypoints, wired into `emit_rust_bundle()` and `collect_symbols_with_metadata()` to skip unreachable nodes. 2 reachability tests. | Done 2026-02-25 |
 | FC-15 | By-construction reachability: design doc at `docs/design/v4/by-construction-reachability.md` (invariant spec, failure modes, proof obligations, migration plan). Vertical slice: `ReachableDag<T>` wrapper type in `core/ir/src/dag.rs` with 4 contract tests. | Done 2026-02-25 |
 
+## Mega Lane — Track A: NF-4..NF-6 Compile+Link Completion (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| NF-4 | Collapse link phase into compile-time resolution: `SymbolTable`, `OpRef`, `IntrinsicOp`, `link()` already deleted. Resolution happens at compile time in `resolve.rs` via `resolve_lowered_dag()`. `CodegenBackend` is for codegen, not linking. `extern` keyword + `ExternCall` + `resolve_extern_call()` remain as the fail-closed contract. | Done 2026-02-25 |
+| NF-5 | Delete fallback surfaces: Policy mirror (`passthrough_safe_obligations` / `require_handler_obligations`) in `dsl/config/arch_rules.dag` and pinning test in `rust_exec_runtime.rs`. No stub asset fallbacks exist. No module-name dispatch heuristics — all routing explicit. `PureRender`/`PureDataLoad` flagged with debug assertions; final removal gated on NF-7 (extern func wiring). | Done 2026-02-25 |
+| NF-6 | Determinism contract hardening: `CompileReceipt` with 3-part digest (source, IR, emit-manifest). `--receipt` CLI flag. `normalize_diagnostics()` for deterministic ordering. 4 determinism tests (single-file, directory, CI pipeline, diagnostic ordering) all passing. | Done 2026-02-25 |
+
 ## Mega Lane — Track A: NF-1 Extern DSL Surface (Done 2026-02-25)
 
 | ID | Task | Status |

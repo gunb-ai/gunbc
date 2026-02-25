@@ -556,6 +556,212 @@ exempt, or how workflows are ordered. That's the model's job.
 
 ---
 
+## Recurring process mistakes
+
+These are meta-level patterns that keep costing time. They're drawn from the last week
+of development (Feb 18-25, 2026): 484 commits, 93 files in the current diff, and
+108 files that were created *and* deleted in the same week.
+
+### Mistake 1: Building before modeling
+
+The single largest waste was the SDLC subsystem: 100+ commits across a runtime,
+7 Rust modules, 7 DSL interface files, 8 DSL service providers, a binary, and a test
+suite. All deleted within 3 days. Net contribution: zero.
+
+The pattern: start implementing features (types, binaries, tests), discover the model
+doesn't hold, delete everything. Repeat with `dsl/understanding/` → `dsl/extdeps/`
+(renamed 11 minutes after creation), `dsl/config/clippy_policy.dag` (deleted 14 minutes
+after creation), `dsl/config/makegen_registry.dag` (deleted 25 minutes after creation).
+
+**The fix**: Write types and data declarations first. If the types don't compose cleanly,
+the feature isn't ready. A `.dag` file with only `type` and `data` items costs nothing
+to create and nothing to delete. A Rust binary with tests costs days.
+
+**Litmus test**: Can you write the Layer 1/2 `.dag` file (types + data) without any
+`func` items or Rust code? If not, you don't understand the domain well enough to build.
+
+### Mistake 2: Fail-open placeholders that survive
+
+15 FC (Fail-Closed) tasks were completed this week, each fixing a placeholder that
+should never have shipped:
+
+| Placeholder | What it hid | FC task |
+|-------------|-------------|---------|
+| `/* unsupported DSL construct */` | Generated code compiles but does nothing | FC-1 |
+| `"{}"` format string | Rust-style placeholder emitted into Go/C backends | FC-2 |
+| Field name used as type context | `color::Variant` instead of `Color::Variant` | FC-3 |
+| `panic!()` on 6 pattern variants | Unrecoverable crash at lowering time | FC-4 |
+| `_ => "Value::Str(\"<MOCK>\")"` | Tests pass vacuously | FC-8 |
+| `node.id.contains("content_upsert_path_")` | Substring hack for output extraction | FC-7 |
+
+These share one root cause: **"make it work for the happy path" shortcuts that become
+latent defects.** A comment fallback, a panic, a catch-all match arm — each one is
+invisible until it matters.
+
+**The fix**: When the compiler encounters something it cannot handle, it must fail
+loudly. No `/* unsupported */` comments. No `_ =>` catch-all arms. No empty-string
+returns. If you add a new enum variant and 6 match sites need updating, update all 6
+in the same commit.
+
+### Mistake 3: Workaround accumulation instead of root-cause fix
+
+Three separate testgen hacks (Satisfies matcher emitting comments, NonEmpty vacuously
+passing, value_to_rust_literal catch-all) were individually worked around. All three
+shared one root cause: `value_to_rust_literal()` didn't handle all `Value` variants.
+Three workarounds where one fix was needed.
+
+Same pattern with extern bridges: shadow `fn` bodies kept as workarounds for a lowerer
+limitation (NF-7). Passthrough fallbacks, stub content, and embed registries all
+compensating for missing link-time resolution (NF-1 through NF-3).
+
+**The fix**: When you find yourself writing a second workaround for the same subsystem,
+stop. The root cause is now worth fixing. Two workarounds cost more than one fix.
+
+### Mistake 4: Good patterns not propagated
+
+`inventory` auto-discovery works perfectly for testgen targets — one `#[testgen_target]`
+annotation and the target is automatically registered. But tool registration, graph
+builder registration, and resource registration still use manual lists. The good pattern
+exists; it just wasn't applied everywhere.
+
+Same with rendering: `TestRenderer` is a proper trait with structured IR. But CLI gen,
+DAG codegen, pragma text, CI YAML, and makegen all use raw `format!()` / `push_str()`.
+13 rendering systems, 5 different traits, 8 with no trait at all.
+
+**The fix**: When a pattern works in one subsystem, apply it to structurally identical
+peers before building new features. Propagating `inventory` to tools would have
+prevented the `all_tools()` 360-line manual vec that the consolidation plan had to fix.
+
+### Mistake 5: Erasing semantic information at boundaries
+
+`ShellRequest` erases hermeticity — once lowered, `git ls-files` (local) and
+`gh gist create` (network) are structurally identical. Recovering the distinction
+requires string heuristics on command text.
+
+Same pattern with `TransportRequest::Shell` erasing producer intent, `Map` type
+erasing key/value types, `String` port names erasing capability identity.
+
+**The fix**: Preserve structure at the boundary where it's known. If the producer knows
+the call is hermetic, tag it. If the type system knows the map has string keys, carry
+that. Reconstructing erased information from unstructured data is always more expensive
+than preserving it.
+
+### Mistake 6: Convention-based invariants instead of structural ones
+
+FC-14 added `compute_reachable_node_ids()` as a cleanup pass — every emitter had to
+remember to call it. FC-15 then replaced it with `ReachableDag<T>`, a wrapper type
+that makes it *structurally impossible* to access unreachable nodes.
+
+Pattern: invariant enforced by "remember to call X" → someone forgets → bug → fix by
+making the type system enforce it.
+
+**The fix**: If an invariant matters, enforce it through types, not convention. A
+cleanup pass means the invariant can be silently violated. A wrapper type means it can't.
+
+### Mistake 7: Deferred migrations create a ratchet
+
+Resource trait migration (H7) has been at P3 priority because "wide blast radius."
+But while it's deferred, more code gets written against the old `res:*` string ports.
+Which makes the blast radius wider. Which makes it harder to justify starting. This is
+a ratchet — deferral makes the problem worse, which justifies more deferral.
+
+Same with extern bridge elimination: Phase 5 blocked on 6 missing compiler features.
+Meanwhile, new shadow fn bodies get added, increasing the number of bridges to eliminate.
+
+**The fix**: Either commit to the migration with a deadline, or accept the current
+state as permanent and stop planning for the migration. The worst outcome is planning
+a migration that never starts, because the dual representation accumulates new code on
+both sides.
+
+---
+
+## Pre-flight checklist
+
+Before writing any new `.dag` file or Rust module, answer these:
+
+- [ ] **Do the types compose?** Can you write Layer 1/2 declarations (types + data)
+  without any `func` items? If not, you don't understand the domain yet.
+- [ ] **Is there only one source of truth?** Search for the same data in Rust const
+  arrays. If it exists in both places, add a drift test or delete the Rust copy.
+- [ ] **Does every match arm fail loudly?** No `_ =>` catch-alls, no `/* unsupported */`
+  comments, no empty-string returns. Unhandled cases are compile errors.
+- [ ] **Are you preserving structure?** If your function returns `String` and a
+  structural type exists for that domain, return the structural type instead.
+- [ ] **Is this pattern already solved elsewhere?** Check if testgen, makegen, or
+  pragma already solved the same structural problem. Propagate the existing pattern.
+- [ ] **Will this survive a rename?** If renaming a function or variant would silently
+  break the system at runtime (not compile time), the coupling is too loose. Use typed
+  IDs, not strings.
+
+---
+
+## Design doc index
+
+Quick reference for where decisions live. If you're about to make a choice in one of
+these areas, read the relevant doc first.
+
+### Architecture and modeling
+
+| Doc | Decides | Key principle |
+|-----|---------|---------------|
+| **`docs/modeling.md`** (this file) | DAG modeling patterns, layer taxonomy | Types + data first; one representation; structure until the boundary |
+| **`docs/handbook.md`** | Compositional modeling philosophy, transport boundary pattern, content upsert pattern, registration pattern | Every external system = layered concerns; workflow author names only the top layer |
+| **`docs/design/modeling/protocol-stack-layering.md`** | How to model protocol stacks (TCP→TLS→HTTP→REST→provider→op) | Each layer adds constraints; compiler composes all layers |
+| **`docs/design/modeling/repo-self-understanding.md`** | Workspace-as-external-system, generator graph, commit policy | The repo is an extdep from the compiler's perspective |
+| **`docs/design/modeling/m15-typed-package-manager-modeling.md`** | Replacing string PackageManagerId with closed enum | String IDs → typed enums for exhaustive matching |
+
+### Compiler and DSL
+
+| Doc | Decides | Key principle |
+|-----|---------|---------------|
+| **`docs/design/v4/extern-bridge-gap-analysis.md`** | Why 10 extern bridges exist, elimination plan (Phases 5-8) | Anemic modeling + scattered data ownership are the two root causes |
+| **`docs/design/v4/externcall-same-module-port-wiring.md`** | NF-7: lowerer limitation for same-module extern func calls | New declaration forms must participate in ALL pipeline stages |
+| **`docs/design/v4/domain-hard-error-no-fallback-plan.md`** | NF-1 through NF-6: compile+link no-fallback contract | Missing required semantics = hard error, never silent degradation |
+| **`docs/design/v4/by-construction-reachability.md`** | ReachableDag<T> wrapper type | If invariant matters, enforce via types, not cleanup passes |
+| **`docs/design/v4/dsl-design.md`** | DSL syntax, type system, expression semantics | Language reference |
+| **`docs/design/v4/dsl-codegen-roadmap.md`** | Multi-target codegen (Rust/Go/C) | Emit pipeline architecture |
+
+### Code generation and emission
+
+| Doc | Decides | Key principle |
+|-----|---------|---------------|
+| **`docs/design/unified-emission.md`** | Unify 13 rendering systems under layered IR | Content → Code/Markup/Structured → OutputMedium; structure until the last moment |
+| **`docs/design/unified-registration.md`** | Single inventory-based registration for all subsystems | Auto-discovery via `#[attr]` + `inventory`, not manual lists |
+| **`docs/design/consolidation-plan.md`** | 6-stream consolidation addressing registration, emission, dispatch, docs, CI, CLI alignment | Good patterns must be propagated, not left as islands |
+| **`docs/design/modeling/m13-registry-cli-make-contracts.md`** | Registry → CLI → Make target contracts | Single derivation chain from DSL to Make |
+| **`docs/design/modeling/structural-primitives-codegen.md`** | Structural codegen primitives | Code IR types for generated output |
+
+### Transport, resources, and execution
+
+| Doc | Decides | Key principle |
+|-----|---------|---------------|
+| **`docs/design/shell-hermeticity-annotation.md`** | Tag hermeticity at producer boundary, not via string heuristics | Preserve semantic intent where it's known |
+| **`docs/design/interface-stub-transport.md`** | InterfaceStub transport for unbound interfaces in DryRun | Graceful degradation for missing profiles |
+| **`docs/design/modeling/m7-secret-redaction-by-default.md`** | Secret type = redacted by default, explicit opt-in for plaintext | Transport boundary is the only approved extraction point |
+| **`docs/design/modeling/m10-resource-declarations.md`** | Resource access modes (Read/Write/Exclusive), conflict detection | Resources wired through ports, not ambient state |
+| **`docs/design/modeling/m11-strict-dry-run.md`** | DryRun mode intercepts all transport; no silent skips | Every transport node either has a mock or is an error |
+| **`docs/design/resource-input-derivation.md`** | How resource inputs are derived from port declarations | `Port::resource()` auto-inference |
+
+### Testing and CI
+
+| Doc | Decides | Key principle |
+|-----|---------|---------------|
+| **`docs/design/testgen.md`** | Test generation architecture | Boundary → chain → flow → live test levels |
+| **`docs/design/integration-testgen.md`** | Integration test generation | Profile-aware test generation |
+| **`docs/design/modeling/m14-single-inventory-authority.md`** | `#[testgen_target]` as single authority for testgen | No manual test lists; annotation = auto-registered |
+
+### Horizon (future direction)
+
+| Doc | Decides | Status |
+|-----|---------|--------|
+| **`docs/design/horizon/h1-display-reactive-dsl.md`** | Reactive DSL for terminal display | Long-term |
+| **`docs/design/horizon/h8-workflow-rendering-justfile.md`** | Justfile as Make alternative | Exploration |
+| **`docs/design/horizon/h9-workflow-rendering-github-actions.md`** | GitHub Actions YAML generation | Planned |
+| **`docs/design/horizon/h10-compute-stack-services.md`** | Cloud compute service modeling | Planned |
+| **`docs/design/horizon/h11-dag-typing-hardening.md`** | Stronger DAG type system | Planned |
+
+---
+
 ## References
 
 - `docs/handbook.md` — Compositional modeling philosophy, layered concerns
