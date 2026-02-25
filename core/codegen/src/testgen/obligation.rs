@@ -208,6 +208,19 @@ pub enum Obligation {
         port_name: PortName,
     },
 
+    /// Variant coverage: test that a boundary port handles ALL shapes a coproduct
+    /// type can emit. One test per variant.
+    ///
+    /// For `EntryKind = RegularFile | Directory | Symlink | Missing | Other`,
+    /// this generates 5 tests, each injecting one variant as a bare string.
+    VariantCoverage {
+        node_id: NodeId,
+        port_name: PortName,
+        type_id: TypeId,
+        /// Variant names from the coproduct (e.g., ["RegularFile", "Directory", ...])
+        variants: Vec<String>,
+    },
+
     /// CLI contract round-trip: generated CLI harness must verify argument
     /// parsing and `--print-inputs json` behavior for this tool.
     CliContractRoundTrip { tool_name: String },
@@ -376,6 +389,14 @@ impl ObligationSet {
         self.bucket_b()
             .into_iter()
             .filter(|o| matches!(&o.kind, Obligation::CoercionCoverage { .. }))
+            .collect()
+    }
+
+    /// Get only variant coverage obligations from Bucket B.
+    pub fn variant_coverage_obligations(&self) -> Vec<&ProofObligation> {
+        self.bucket_b()
+            .into_iter()
+            .filter(|o| matches!(&o.kind, Obligation::VariantCoverage { .. }))
             .collect()
     }
 

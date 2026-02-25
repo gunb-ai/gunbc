@@ -2,13 +2,9 @@
 //!
 //! Bootstrap tool for initializing gunbc projects.
 
-pub mod ops;
-
 use crate::dsl_builder::build_bootstrap_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
-
-pub use ops::BootstrapOp;
 
 /// Runtime op type for bootstrap graphs.
 pub type BootstrapGraphOp = DynOp;

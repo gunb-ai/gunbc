@@ -30,6 +30,7 @@ fn build_snapshot_content(
   "{branch}"
 }
 
+@binary("gist")
 func gist_snapshot(public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network
@@ -55,7 +56,7 @@ func gist_snapshot(public: Bool = false) -> { url: Url }
     public: public,
     auth_token: secret.secret_value
   )
-  return { url: gist_result.url as Url }
+  return { url: gist_result.html_url as Url }
 }
 
 test gist_snapshot_dryrun {}

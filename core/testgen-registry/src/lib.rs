@@ -15,7 +15,7 @@ use gunbc_codegen::testgen::analyze::analyze_dag;
 use gunbc_codegen::testgen::{TestConfig, TestGenerator};
 pub use gunbc_codegen::TestgenTargetDef;
 use gunbc_exec::Executable;
-use gunbc_ir::Dag;
+use gunbc_ir::{Dag, TypeRegistry};
 use gunbc_test::{FermiCost, MockSpec, TestClass};
 
 /// Metadata for a DAG spec (output and ownership details).
@@ -156,6 +156,18 @@ pub fn generate_target<T: Executable + Clone>(
     dag: Dag<T>,
     spec: MockSpec,
 ) -> String {
+    generate_target_with_types(config, dag, spec, None)
+}
+
+/// Like [`generate_target`] but merges a DSL-extracted type registry into the
+/// core type registry, making DSL-defined sum/product types visible to testgen
+/// for variant coverage obligations.
+pub fn generate_target_with_types<T: Executable + Clone>(
+    config: &TestgenTargetDef,
+    dag: Dag<T>,
+    spec: MockSpec,
+    dsl_type_registry: Option<&TypeRegistry>,
+) -> String {
     let analysis = analyze_dag(&dag);
     let inferred_class = infer_test_class(&analysis);
     let inferred_requires = infer_requires(&spec);
@@ -196,8 +208,13 @@ pub fn generate_target<T: Executable + Clone>(
         live_required_any_of,
         ..TestConfig::default()
     };
+    let mut registry = TypeRegistry::with_core_types();
+    if let Some(dsl_types) = dsl_type_registry {
+        registry.merge(dsl_types);
+    }
     let mut generator = TestGenerator::new(&dag)
         .with_config(test_config)
+        .with_type_registry(registry)
         .with_mock_spec(spec)
         .with_mock_spec_fn(config.mock_spec_path.as_ref());
     if let Some(signature_fn) = &config.signature_path {

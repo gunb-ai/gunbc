@@ -14,7 +14,7 @@
 //!
 //! - `std.markdown` — Markdown rendering functions
 //! - `tools.gist_snapshot` — Gist snapshot content building
-//! - `tools.gist` — Gist diff/recent content rendering
+//! - `tools.gist`, `tools.gist_diff`, `tools.gist_recent` — Gist diff/recent content rendering
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -44,8 +44,34 @@ pub fn lookup_compiled_fn(module: &str, name: &str) -> Option<DynOp> {
             Some(DynOp::new(BuildSnapshotContentOp))
         }
 
-        // tools.gist compiled fns
+        // tools.gist* compiled fns
         ("tools.gist", "render_diff_markdown") => Some(DynOp::new(RenderDiffMarkdownOp)),
+        ("tools.gist_diff", "render_diff_markdown") => Some(DynOp::new(RenderDiffMarkdownOp)),
+        ("tools.gist_recent", "render_diff_markdown") => Some(DynOp::new(RenderDiffMarkdownOp)),
+
+        // tools.pragma compiled fns
+        ("tools.pragma", "render_clippy_toml") => Some(DynOp::new(RenderClippyTomlOp)),
+        ("tools.pragma", "render_disallowed_methods_allowlist") => {
+            Some(DynOp::new(RenderAllowlistOp))
+        }
+        ("tools.pragma", "render_pragma_lint_policy") => Some(DynOp::new(RenderLintPolicyOp)),
+
+        // tools.bootstrap compiled fns
+        ("tools.bootstrap", "prepare_scan_workspace") => {
+            Some(DynOp::new(PrepareScanWorkspaceOp))
+        }
+        ("tools.bootstrap", "parse_scan_result") => Some(DynOp::new(ParseScanResultOp)),
+        ("tools.bootstrap", "render_bootstrap_makefile") => {
+            Some(DynOp::new(GenerateBootstrapMakefileOp))
+        }
+        ("tools.bootstrap", "render_bootstrap_gitignore") => {
+            Some(DynOp::new(GenerateBootstrapGitignoreOp))
+        }
+
+        // tools.makegen compiled fns
+        ("tools.makegen", "load_registry") => Some(DynOp::new(LoadRegistryOp)),
+        ("tools.makegen", "render_makefile") => Some(DynOp::new(RenderMakefileCompiledOp)),
+        ("tools.makegen", "makegen") => Some(DynOp::new(MakegenEntrypointOp)),
 
         _ => None,
     }
@@ -317,6 +343,263 @@ impl Executable for RenderDiffMarkdownOp {
 
         let result = format!("# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n");
         OutputMap::new().str("return", result).ok()
+    }
+}
+
+// ============================================================================
+// tools.pragma compiled fns
+// ============================================================================
+
+/// `render_clippy_toml() -> { content: String, return: String }`
+#[derive(Debug, Clone)]
+struct RenderClippyTomlOp;
+
+impl Executable for RenderClippyTomlOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::policy::pragma::clippy_renderer;
+        let content = clippy_renderer().render();
+        OutputMap::new()
+            .str("content", content.clone())
+            .str("return", content)
+            .ok()
+    }
+}
+
+/// `render_disallowed_methods_allowlist() -> { content: String, return: String }`
+#[derive(Debug, Clone)]
+struct RenderAllowlistOp;
+
+impl Executable for RenderAllowlistOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::policy::pragma::render_disallowed_methods_allowlist;
+        let content = render_disallowed_methods_allowlist();
+        OutputMap::new()
+            .str("content", content.clone())
+            .str("return", content)
+            .ok()
+    }
+}
+
+/// `render_pragma_lint_policy() -> { content: String, return: String }`
+#[derive(Debug, Clone)]
+struct RenderLintPolicyOp;
+
+impl Executable for RenderLintPolicyOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::policy::pragma::render_pragma_lint_policy;
+        let content = render_pragma_lint_policy();
+        OutputMap::new()
+            .str("content", content.clone())
+            .str("return", content)
+            .ok()
+    }
+}
+
+// ============================================================================
+// tools.bootstrap compiled fns
+// ============================================================================
+
+/// `prepare_scan_workspace() -> { request: TransportRequest, skip: Bool }`
+#[derive(Debug, Clone)]
+struct PrepareScanWorkspaceOp;
+
+impl Executable for PrepareScanWorkspaceOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        use gunbc_ir::transport::ShellRequest;
+        let request = ShellRequest::new("find")
+            .args(["crates", "-maxdepth", "1", "-mindepth", "1", "-type", "d"])
+            .into_transport_request();
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
+    }
+}
+
+/// `parse_scan_result(response: TransportResponse) -> { crate_count: Int, crate_names: List<String> }`
+#[derive(Debug, Clone)]
+struct ParseScanResultOp;
+
+impl Executable for ParseScanResultOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use gunbc_exec::{propagate_skipped, require_response};
+        use gunbc_ir::transport::TransportResponse;
+
+        if let Some(result) =
+            propagate_skipped(&inputs, "response", &["crate_count", "crate_names"])
+        {
+            return result;
+        }
+
+        let response = require_response(&inputs, "response")?;
+        let mut crate_names = Vec::new();
+
+        if let TransportResponse::Shell(shell) = response {
+            if shell.success() {
+                for line in shell.stdout.lines() {
+                    let line = line.trim();
+                    if !line.is_empty() {
+                        if let Some(name) = line.strip_prefix("crates/") {
+                            if !name.is_empty() && !name.contains('/') {
+                                crate_names.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        crate_names.sort();
+
+        OutputMap::new()
+            .int("crate_count", crate_names.len() as i64)
+            .str_list("crate_names", crate_names)
+            .ok()
+    }
+}
+
+/// `render_bootstrap_makefile(crate_names: List<String>?) -> { makefile_content: String, return: String }`
+#[derive(Debug, Clone)]
+struct GenerateBootstrapMakefileOp;
+
+impl Executable for GenerateBootstrapMakefileOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use gunbc_exec::optional_str_list_strict;
+        let _ = optional_str_list_strict(&inputs, "crate_names")?;
+        use crate::makegen::{registry::ToolRegistry, render::render_makefile};
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+        OutputMap::new()
+            .str("makefile_content", makefile.clone())
+            .str("return", makefile)
+            .ok()
+    }
+}
+
+/// `render_bootstrap_gitignore(crate_names: List<String>?) -> { gitignore_content: String, return: String }`
+#[derive(Debug, Clone)]
+struct GenerateBootstrapGitignoreOp;
+
+impl Executable for GenerateBootstrapGitignoreOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use gunbc_exec::optional_str_list_strict;
+        let _ = optional_str_list_strict(&inputs, "crate_names")?;
+        use crate::makegen::{gitignore::render_gitignore, registry::default_build_config};
+        let config = default_build_config();
+        let gitignore = render_gitignore(&config);
+        OutputMap::new()
+            .str("gitignore_content", gitignore.clone())
+            .str("return", gitignore)
+            .ok()
+    }
+}
+
+// ============================================================================
+// tools.makegen compiled fns
+// ============================================================================
+
+/// `load_registry() -> { tool_count: Int, tool_names: List<String>, registry: Json }`
+#[derive(Debug, Clone)]
+struct LoadRegistryOp;
+
+impl Executable for LoadRegistryOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::makegen::registry::ToolRegistry;
+        use gunbc_testgen_registry::iter_dag_specs;
+
+        let registry = ToolRegistry::default_registry();
+        let tool_names: Vec<String> = registry
+            .tools
+            .iter()
+            .map(|t| t.short_name.clone())
+            .collect();
+
+        let testgen_targets: Vec<serde_json::Value> = iter_dag_specs()
+            .map(|spec| {
+                serde_json::json!({
+                    "name": spec.name,
+                    "origin_crate": spec.origin_crate,
+                    "output_path": spec.meta.output_path,
+                    "module_name": spec.meta.module_name,
+                    "tool_name": spec.meta.tool_name,
+                })
+            })
+            .collect();
+
+        let registry_json = serde_json::json!({
+            "tools": registry.tools.iter().map(|t| {
+                serde_json::json!({
+                    "binary_name": t.binary_name(),
+                    "short_name": t.short_name,
+                    "description": t.description,
+                    "entrypoints": t.entrypoints.iter().map(|e| {
+                        serde_json::json!({
+                            "port_name": e.port_name,
+                            "make_var": e.make_var,
+                            "cli_flag": e.cli_flag,
+                            "type_hint": e.type_hint,
+                            "default": e.default,
+                            "repeatable": e.repeatable,
+                        })
+                    }).collect::<Vec<_>>()
+                })
+            }).collect::<Vec<_>>(),
+            "testgen_targets": testgen_targets,
+            "testgen_target_count": testgen_targets.len(),
+        });
+
+        OutputMap::new()
+            .int("tool_count", registry.tools.len() as i64)
+            .str_list("tool_names", tool_names)
+            .json("registry", registry_json)
+            .ok()
+    }
+}
+
+/// `render_makefile() -> { return: String }`
+#[derive(Debug, Clone)]
+struct RenderMakefileCompiledOp;
+
+impl Executable for RenderMakefileCompiledOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::makegen::registry::ToolRegistry;
+        use crate::makegen::render::render_makefile;
+        let registry = ToolRegistry::default_registry();
+        let content = render_makefile(&registry);
+        OutputMap::new().str("return", content).ok()
+    }
+}
+
+/// `makegen(__deps: List<TransportResponse>) -> { written: Bool }`
+#[derive(Debug, Clone)]
+struct MakegenEntrypointOp;
+
+impl Executable for MakegenEntrypointOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        use gunbc_ir::transport::{FileOp, TransportResponse};
+        let written = inputs
+            .get("__deps")
+            .and_then(Value::as_list)
+            .map(|deps| {
+                deps.iter().any(|value| {
+                    matches!(
+                        value,
+                        Value::Response(TransportResponse::File(response))
+                            if response.operation == FileOp::Write && response.success
+                    )
+                })
+            })
+            .unwrap_or(false);
+        OutputMap::new().bool("written", written).ok()
     }
 }
 

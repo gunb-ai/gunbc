@@ -84,14 +84,17 @@ impl Executable for TestgenOp {
                 module_name,
                 output_path,
             } => {
-                // 1. Compile .dag → Dag<DynOp>
-                let dag = crate::dsl_builder::build_dsl_graph(dsl_path).map_err(|e| {
-                    ExecError::new(format!("auto-generate '{module_name}' compile error: {e}"))
-                })?;
+                // 1. Compile .dag → Dag<DynOp> + DSL type registry
+                let result =
+                    crate::dsl_builder::build_dsl_graph_with_types(dsl_path).map_err(|e| {
+                        ExecError::new(format!(
+                            "auto-generate '{module_name}' compile error: {e}"
+                        ))
+                    })?;
 
                 // 2. Auto-generate MockSpec from types + DAG structure
                 let safe_name = module_name.replace('.', "-");
-                let spec = crate::mock_defaults::auto_mock_spec(&dag, &safe_name);
+                let spec = crate::mock_defaults::auto_mock_spec(&result.dag, &safe_name);
 
                 // 3. Build TestgenTargetDef
                 let module_test_name =
@@ -127,9 +130,13 @@ impl Executable for TestgenOp {
                     tool_name: None,
                 };
 
-                // 4. Generate test code
-                let content =
-                    gunbc_testgen_registry::generate_target(&target_def, dag, spec);
+                // 4. Generate test code with DSL type awareness
+                let content = gunbc_testgen_registry::generate_target_with_types(
+                    &target_def,
+                    result.dag,
+                    spec,
+                    Some(&result.dsl_type_registry),
+                );
 
                 OutputMap::new()
                     .str("content", content)

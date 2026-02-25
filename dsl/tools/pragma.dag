@@ -63,6 +63,7 @@ fn render_pragma_lint_policy(directives: List<PragmaDirective>) -> String {
   render_document(document: render_pragma_lint_policy_document(directives: directives))
 }
 
+@binary
 func pragma(directives: List<PragmaDirective>) -> { clippy_written: Bool, allowlist_written: Bool, policy_written: Bool } {
   clippy = content_upsert(
     content: render_clippy_toml(directives: directives),

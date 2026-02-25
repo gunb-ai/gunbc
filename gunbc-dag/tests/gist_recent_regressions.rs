@@ -28,11 +28,6 @@ impl TransportBackend for GistRecentBackend {
                 if args == ["rev-parse", "--abbrev-ref", "HEAD"] {
                     return Ok(TransportResponse::Shell(ShellResponse::ok("feature/mock\n")));
                 }
-                if args == ["rev-list", "--since=3.days.ago", "HEAD"] {
-                    return Ok(TransportResponse::Shell(ShellResponse::ok(
-                        "newest-commit\noldest-commit\n",
-                    )));
-                }
                 if args == ["diff", "oldest-commit...HEAD"] {
                     return Ok(TransportResponse::Shell(ShellResponse::ok(
                         "diff --git a/a b/a\n+line\n",
@@ -41,6 +36,16 @@ impl TransportBackend for GistRecentBackend {
                 Err(TransportError::new(format!(
                     "unexpected git invocation: {:?}",
                     shell.args
+                )))
+            }
+            TransportRequest::Shell(shell)
+                if shell.command == "bash"
+                    && shell.args.len() >= 2
+                    && shell.args[0] == "-lc"
+                    && shell.args[1].contains("git rev-list") =>
+            {
+                Ok(TransportResponse::Shell(ShellResponse::ok(
+                    "oldest-commit\n",
                 )))
             }
             TransportRequest::Shell(shell) if shell.command == "gcloud" => Ok(
@@ -110,8 +115,55 @@ fn gist_recent_end_to_end_emits_gist_url() {
         .iter()
         .find(|entry| entry.node_id == "parse_transport_services_github_gist_github_Gist_Create")
         .expect("gist parse node should be present");
+    let gist_prepare = log
+        .entries
+        .iter()
+        .find(|entry| entry.node_id == "prepare_transport_services_github_gist_github_Gist_Create")
+        .expect("gist prepare node should be present");
+    let gist_execute = log
+        .entries
+        .iter()
+        .find(|entry| entry.node_id == "execute_transport_services_github_gist_github_Gist_Create")
+        .expect("gist execute node should be present");
+    let diff_parse = log
+        .entries
+        .iter()
+        .find(|entry| entry.node_id == "parse_transport_services_git_git_Core_Diff")
+        .expect("diff parse node should be present");
+    let render = log
+        .entries
+        .iter()
+        .find(|entry| entry.node_id == "tools.gist_recent::render_diff_markdown")
+        .expect("render node should be present");
+
+    assert!(
+        matches!(diff_parse.outputs.get("diff"), Some(Value::Str(_))),
+        "diff parse should produce a diff string: {:?}",
+        diff_parse.outputs
+    );
+    assert!(
+        matches!(render.outputs.get("return"), Some(Value::Str(_))),
+        "render node should produce markdown content: {:?}",
+        render.outputs
+    );
+
+    assert!(
+        matches!(gist_prepare.outputs.get("request"), Some(Value::Request(_))),
+        "gist prepare must produce a concrete request: inputs={:?} outputs={:?}",
+        gist_prepare.inputs,
+        gist_prepare.outputs
+    );
+    assert!(
+        matches!(
+            gist_execute.outputs.get("response"),
+            Some(Value::Response(TransportResponse::Rest(_)))
+        ),
+        "gist execute must produce a REST response: {:?}",
+        gist_execute.outputs
+    );
+
     assert_eq!(
-        gist_parse.outputs.get("url").and_then(Value::as_str),
+        gist_parse.outputs.get("html_url").and_then(Value::as_str),
         Some("https://gist.github.com/mock-gist-id"),
         "gist parse output should expose html_url"
     );

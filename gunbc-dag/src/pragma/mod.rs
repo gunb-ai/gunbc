@@ -2,13 +2,9 @@
 //!
 //! Pragma tool for generating clippy.toml and pragma allowlists.
 
-pub mod ops;
-
 use crate::dsl_builder::build_pragma_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
-
-pub use ops::PragmaOp;
 
 /// Runtime op type for pragma graphs.
 pub type PragmaGraphOp = DynOp;

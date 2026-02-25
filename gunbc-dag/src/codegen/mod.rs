@@ -2,10 +2,7 @@
 //!
 //! Upsert-style workflow for generating CLI entrypoints.
 
-pub mod ops;
-
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
-pub use ops::CodegenOp;
 
 use crate::dsl_builder::build_codegen_graph_dsl;
 use gunbc_exec::DynOp;

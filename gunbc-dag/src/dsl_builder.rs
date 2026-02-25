@@ -17,7 +17,12 @@ fn workspace_layout() -> Result<WorkspaceLayout, BuilderError> {
         })
 }
 
-fn compile_lowered(relative_module: &str) -> Result<Dag<daglang_lower::LoweredOp>, BuilderError> {
+struct CompileLoweredResult {
+    dag: Dag<daglang_lower::LoweredOp>,
+    dsl_type_registry: gunbc_ir::TypeRegistry,
+}
+
+fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, BuilderError> {
     let layout = workspace_layout()?;
     let dsl_root = layout.workspace_root.join("dsl");
     let target_file = dsl_root.join(relative_module);
@@ -32,7 +37,10 @@ fn compile_lowered(relative_module: &str) -> Result<Dag<daglang_lower::LoweredOp
             "failed to compile DSL module `{relative_module}`: {error}"
         ))
     })?;
-    Ok(output.lowered_dag)
+    Ok(CompileLoweredResult {
+        dag: output.lowered_dag,
+        dsl_type_registry: output.dsl_type_registry,
+    })
 }
 
 fn strip_pipeline_nodes(mut dag: Dag<daglang_lower::LoweredOp>) -> Dag<daglang_lower::LoweredOp> {
@@ -99,13 +107,33 @@ fn slice_dag_from_entry<T>(mut dag: Dag<T>, entry_node_id: &str) -> Result<Dag<T
     Ok(dag)
 }
 
+/// Result of compiling and resolving a DSL module.
+pub struct DslGraphResult {
+    /// The resolved DAG.
+    pub dag: Dag<DynOp>,
+    /// Type registry extracted from DSL-defined sum/product types.
+    pub dsl_type_registry: gunbc_ir::TypeRegistry,
+}
+
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
 pub(crate) fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError> {
-    let lowered = strip_pipeline_nodes(compile_lowered(relative_module)?);
-    resolve_lowered_dag(&lowered).map_err(|error| {
+    Ok(build_dsl_graph_with_types(relative_module)?.dag)
+}
+
+/// Compile a DSL module and resolve lowered ops, also returning DSL type registry.
+pub(crate) fn build_dsl_graph_with_types(
+    relative_module: &str,
+) -> Result<DslGraphResult, BuilderError> {
+    let result = compile_lowered(relative_module)?;
+    let lowered = strip_pipeline_nodes(result.dag);
+    let dag = resolve_lowered_dag(&lowered).map_err(|error| {
         BuilderError::InternalInvariant(format!(
             "failed to resolve lowered DAG for `{relative_module}`: {error}"
         ))
+    })?;
+    Ok(DslGraphResult {
+        dag,
+        dsl_type_registry: result.dsl_type_registry,
     })
 }
 
@@ -113,7 +141,8 @@ fn build_dsl_graph_for_entry(
     relative_module: &str,
     entry_node_id: &str,
 ) -> Result<Dag<DynOp>, BuilderError> {
-    let lowered = strip_pipeline_nodes(compile_lowered(relative_module)?);
+    let result = compile_lowered(relative_module)?;
+    let lowered = strip_pipeline_nodes(result.dag);
     let lowered = slice_dag_from_entry(lowered, entry_node_id)?;
     resolve_lowered_dag(&lowered).map_err(|error| {
         BuilderError::InternalInvariant(format!(

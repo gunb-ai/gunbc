@@ -28,6 +28,7 @@ pub mod deps_tool;
 pub mod docgen;
 pub mod dry_run;
 pub(crate) mod dsl_builder;
+pub mod dsl_registry;
 pub use dsl_builder::{
     build_aws_credential_graph_dsl, build_azure_credential_graph_dsl, build_clippy_graph_dsl,
     build_dimension_review_graph_dsl, build_gist_diff_graph_dsl, build_gist_recent_graph_dsl,
@@ -49,18 +50,16 @@ pub mod tool_runner;
 pub mod workflow;
 // Re-exports for convenience
 pub use binaries::WorkspaceBinary;
-pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp, BootstrapOp};
-pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
-pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp, CIOp};
+pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp};
+pub use build::{build_build_graph, build_signature, BuildGraphOp};
+pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp};
 pub use gunbc_lib_cloud_ops::env_requirements::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
     gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
     CLOUD_ENV_COMMON_OPTIONAL,
 };
-pub use codegen::{build_codegen_graph, codegen_signature, CodegenGraphOp, CodegenOp};
-pub use docgen::{
-    build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS,
-};
+pub use codegen::{build_codegen_graph, codegen_signature, CodegenGraphOp};
+pub use docgen::{build_docgen_graph, DocgenGraphOp, DocgenReadTarget, DOCGEN_READ_TARGETS};
 pub use dry_run::wire_fs_env_write_mock;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
@@ -68,9 +67,9 @@ pub use makegen::{
     build_makegen_graph, default_build_config, default_core_workflows, makegen_signature,
     render_github_actions_from_workflow_specs, render_gitignore,
     render_gitlab_ci_from_workflow_specs, render_justfile, render_makefile, workflow_specs_to_dag,
-    BuildConfig, MakegenGraphOp, MakegenOp, WorkflowKind, WorkflowSpec,
+    BuildConfig, MakegenGraphOp, WorkflowKind, WorkflowSpec,
 };
-pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
+pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp};
 pub use resolve::{resolve_lowered_dag, ResolveError};
 pub use resources::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,

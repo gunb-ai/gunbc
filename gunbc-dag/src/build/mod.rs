@@ -3,13 +3,9 @@
 //! Local development build pipeline with DAG progress visualization.
 //! Wraps cargo build, test, and clippy in a progress-tracked DAG.
 
-pub mod ops;
-
 use crate::dsl_builder::build_build_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
-
-pub use ops::BuildOp;
 
 /// Runtime op type for build graphs.
 pub type BuildGraphOp = DynOp;

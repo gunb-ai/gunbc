@@ -30,6 +30,7 @@ fn render_makefile(registry: ToolRegistry) -> String {
   render_document(document: document)
 }
 
+@binary
 @outputs("Makefile")
 func makegen(registry: ToolRegistry, path: String) -> { written: Bool } {
   content = render_makefile(registry: registry)

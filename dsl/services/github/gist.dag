@@ -16,7 +16,7 @@ service github.Gist {
     }
     output {
       id: GistId
-      url: Url @json("html_url")
+      html_url: Url
     }
     @rest(POST, "/gists")
     @body_template({

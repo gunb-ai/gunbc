@@ -8,6 +8,7 @@ use daglang_emit::{
     emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
     EmissionSummary,
 };
+pub use daglang_lower::BinaryAnnotation;
 use daglang_lower::{
     lower_typed_project_for_modules_with_entry,
     lower_typed_project_for_modules_with_entry_and_collection_nodes,
@@ -15,12 +16,12 @@ use daglang_lower::{
     LoweredOp,
 };
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
-use daglang_syntax::ast::{Expr, Item, Literal};
+use daglang_syntax::ast::{Expr, Item, Literal, TypeBody};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
 use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions, TypedProject};
-use gunbc_ir::Dag;
+use gunbc_ir::{Dag, TypeRegistry};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DriverContext {
@@ -39,6 +40,14 @@ pub struct CompileOutput {
     /// Pipeline-level `param` declarations extracted from the DSL source.
     /// Each entry includes the param name, type, and optional default value.
     pub pipeline_params: Vec<PipelineParam>,
+    /// `@binary` annotations on `func` items, declaring CLI binary entrypoints.
+    pub binary_annotations: Vec<BinaryAnnotation>,
+    /// Type registry extracted from DSL-defined sum and product types.
+    ///
+    /// Contains coproduct/product registrations for all `type` definitions in
+    /// the compiled modules. Merge into `TypeRegistry::with_core_types()` to
+    /// make DSL-defined types visible to testgen.
+    pub dsl_type_registry: TypeRegistry,
 }
 
 /// A pipeline-level parameter declaration from `param name: Type = default`.
@@ -240,6 +249,8 @@ pub fn compile_from_module_graph_with_options(
         .map_err(|error| format!("emit error: {error}"))?;
 
     let pipeline_params = collect_pipeline_params(&typed);
+    let binary_annotations = daglang_lower::extract_binary_annotations(&typed);
+    let dsl_type_registry = extract_dsl_type_registry(&typed);
 
     Ok(CompileOutput {
         lowered_dag: lowered,
@@ -247,6 +258,8 @@ pub fn compile_from_module_graph_with_options(
         emitted,
         output_paths,
         pipeline_params,
+        binary_annotations,
+        dsl_type_registry,
     })
 }
 
@@ -267,6 +280,52 @@ fn collect_pipeline_params(typed: &TypedProject) -> Vec<PipelineParam> {
         }
     }
     params
+}
+
+/// Extract a `TypeRegistry` from DSL-defined sum and product types.
+///
+/// Walks all modules in the `TypedProject` and registers:
+/// - `TypeBody::Sum(variants)` → `type_lib::coproduct(name, variants)`
+/// - `TypeBody::Record(fields)` → `type_lib::product(name, fields)`
+///
+/// This makes DSL-defined types (e.g., `EntryKind`, `AuthScheme`) visible
+/// to testgen for variant coverage obligations.
+fn extract_dsl_type_registry(typed: &TypedProject) -> TypeRegistry {
+    let mut registry = TypeRegistry::new();
+    for module in &typed.modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(def) = &item.node {
+                match &def.body {
+                    TypeBody::Sum(variants) => {
+                        let variant_pairs: Vec<(&str, &str)> = variants
+                            .iter()
+                            .map(|v| (v.name.as_str(), "String"))
+                            .collect();
+                        registry.register(
+                            def.name.as_str(),
+                            gunbc_ir::type_lib::coproduct(def.name.as_str(), variant_pairs),
+                        );
+                    }
+                    TypeBody::Record(fields) => {
+                        let field_type_strings: Vec<(String, String)> = fields
+                            .iter()
+                            .map(|f| (f.name.clone(), type_expr_to_string(&f.ty)))
+                            .collect();
+                        let field_pairs: Vec<(&str, &str)> = field_type_strings
+                            .iter()
+                            .map(|(n, t)| (n.as_str(), t.as_str()))
+                            .collect();
+                        registry.register(
+                            def.name.as_str(),
+                            gunbc_ir::type_lib::product(def.name.as_str(), field_pairs),
+                        );
+                    }
+                    TypeBody::Alias(_) => {}
+                }
+            }
+        }
+    }
+    registry
 }
 
 /// Convert a literal default expression to its string representation.

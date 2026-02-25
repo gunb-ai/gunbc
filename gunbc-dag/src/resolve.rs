@@ -40,9 +40,6 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
-use crate::makegen::MakegenOp;
-use crate::pragma::PragmaOp;
-use crate::bootstrap::BootstrapOp;
 use crate::resolve_service::{
     GenericFileParseOp, GenericFilePrepareOp, GenericRestParseOp, GenericRestPrepareOp,
     GenericShellParseOp, GenericShellPrepareOp,
@@ -721,10 +718,7 @@ fn resolve_domain(
     //    None for unknown (which falls through to passthrough).
     let custom = match module {
         "std.resources" => Some(resolve_std_resources(name)),
-        "tools.bootstrap" => resolve_tools_bootstrap(name),
-        "tools.makegen" => resolve_tools_makegen(name),
         "tools.infra" => resolve_tools_infra(name),
-        "tools.pragma" => resolve_tools_pragma(name),
         _ => None,
     };
     if let Some(op) = custom {
@@ -775,37 +769,6 @@ fn resolve_std_resources(name: &str) -> DynOp {
     }
     // Other std.resources callables pass through as identity.
     DynOp::new(IdentityCallableOp)
-}
-
-fn resolve_tools_makegen(name: &str) -> Option<DynOp> {
-    let op = match name {
-        "load_registry" => MakegenOp::LoadRegistry,
-        "render_makefile" => MakegenOp::RenderMakefile,
-        "makegen" => MakegenOp::Entrypoint,
-        _ => return None,
-    };
-    Some(DynOp::new(op))
-}
-
-fn resolve_tools_bootstrap(name: &str) -> Option<DynOp> {
-    let op = match name {
-        "prepare_scan_workspace" => BootstrapOp::PrepareScanWorkspace,
-        "parse_scan_result" => BootstrapOp::ParseScanResult,
-        "render_bootstrap_makefile" => BootstrapOp::GenerateMakefile,
-        "render_bootstrap_gitignore" => BootstrapOp::GenerateGitignore,
-        _ => return None,
-    };
-    Some(DynOp::new(op))
-}
-
-fn resolve_tools_pragma(name: &str) -> Option<DynOp> {
-    let op = match name {
-        "render_clippy_toml" => PragmaOp::RenderClippy,
-        "render_disallowed_methods_allowlist" => PragmaOp::RenderAllowlist,
-        "render_pragma_lint_policy" => PragmaOp::RenderLintPolicy,
-        _ => return None,
-    };
-    Some(DynOp::new(op))
 }
 
 fn resolve_tools_infra(name: &str) -> Option<DynOp> {

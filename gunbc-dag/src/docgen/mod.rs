@@ -2,20 +2,23 @@
 //!
 //! Generates documentation with live code excerpts and test indices.
 
-pub mod ops;
-
-pub use ops::DocgenOp;
-
-use ops::{
-    AB_DOC_PATH, CLIPPY_CONFIG_PATH, CLIPPY_GENERATED_TESTS_PATH, CLIPPY_GRAPH_MOCK_PATH,
-    CLIPPY_GRAPH_PATH, CLIPPY_LIB_PATH, CLIPPY_LINT_PATH, CLIPPY_OPS_PATH, CLIPPY_POLICY_PATH,
-};
 use crate::dsl_builder::build_docgen_graph_dsl;
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
 
 /// Runtime op type for docgen graphs.
 pub type DocgenGraphOp = DynOp;
+
+// Path constants (previously in ops.rs)
+pub const AB_DOC_PATH: &str = "docs/ab-writing-workflows.md";
+pub const CLIPPY_GRAPH_MOCK_PATH: &str = "lib/tools/clippy/src/graph_mock.rs";
+pub const CLIPPY_GENERATED_TESTS_PATH: &str = "lib/tools/clippy/src/generated_tests.rs";
+pub const CLIPPY_CONFIG_PATH: &str = "lib/tools/clippy/src/config.rs";
+pub const CLIPPY_GRAPH_PATH: &str = "lib/tools/clippy/src/graph.rs";
+pub const CLIPPY_LIB_PATH: &str = "lib/tools/clippy/src/lib.rs";
+pub const CLIPPY_LINT_PATH: &str = "lib/tools/clippy/src/lint.rs";
+pub const CLIPPY_OPS_PATH: &str = "lib/tools/clippy/src/ops.rs";
+pub const CLIPPY_POLICY_PATH: &str = "lib/tools/clippy/src/policy.rs";
 
 #[derive(Debug, Clone)]
 pub struct DocgenReadTarget {

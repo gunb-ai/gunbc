@@ -13,7 +13,7 @@
 //! Tier, hermetic, and fermi metadata are inferred from DAG topology by
 //! `generate_target()`, not declared statically in annotations.
 
-use crate::dsl_builder::build_dsl_graph;
+use crate::dsl_builder::{build_dsl_graph, build_dsl_graph_with_types};
 use crate::mock_defaults::auto_mock_spec;
 use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
 use daglang_syntax::ast::{Annotation, ExpectStmt, Expr, FixtureDef, Literal, TestDef};
@@ -143,9 +143,9 @@ pub fn auto_testgen_for_module(
     module: &CompilableModule,
     output_dir: &Path,
 ) -> AutoTestgenResult {
-    // 1. Compile to Dag<DynOp>
-    let dag = match build_dsl_graph(&module.dsl_path) {
-        Ok(dag) => dag,
+    // 1. Compile to Dag<DynOp> + DSL type registry
+    let result = match build_dsl_graph_with_types(&module.dsl_path) {
+        Ok(result) => result,
         Err(e) => {
             return AutoTestgenResult::Skipped {
                 reason: format!("compile error: {e}"),
@@ -155,7 +155,7 @@ pub fn auto_testgen_for_module(
 
     // 2. Auto-generate MockSpec from types + DAG structure
     let safe_name = module.module_name.replace('.', "-");
-    let spec = auto_mock_spec(&dag, &safe_name);
+    let spec = auto_mock_spec(&result.dag, &safe_name);
 
     // 3. Build TestgenTargetDef
     let output_path = format!(
@@ -197,8 +197,13 @@ pub fn auto_testgen_for_module(
         tool_name: None,
     };
 
-    // 4. Generate test code via the shared codegen path
-    let test_code = gunbc_testgen_registry::generate_target(&target_def, dag, spec);
+    // 4. Generate test code via the shared codegen path with DSL type awareness
+    let test_code = gunbc_testgen_registry::generate_target_with_types(
+        &target_def,
+        result.dag,
+        spec,
+        Some(&result.dsl_type_registry),
+    );
 
     AutoTestgenResult::Generated {
         target_def,

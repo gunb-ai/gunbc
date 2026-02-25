@@ -5,7 +5,6 @@
 pub mod ci_render;
 pub mod gitignore;
 pub mod justfile;
-pub mod ops;
 pub mod registry;
 pub mod render;
 
@@ -19,7 +18,6 @@ pub use ci_render::{
 };
 pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer};
 pub use justfile::{render_justfile, render_justfile_with_config, JustfileRenderer};
-pub use ops::MakegenOp;
 pub use registry::{
     default_build_config, default_core_workflows, default_meta_targets, BuildConfig, BuildSystem,
     ConfigField, EntrypointParam, FixAlias, MetaTarget, ResourceNeed, ResourceTargetMap, ToolInfo,

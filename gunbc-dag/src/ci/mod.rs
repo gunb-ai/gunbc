@@ -2,11 +2,8 @@
 //!
 //! CI orchestration for the gunbc repo.
 
-pub mod ops;
-
 pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use gunbc_primitives::EmbeddedFileExistsOp;
-pub use ops::CIOp;
 
 use crate::dsl_builder::build_ci_graph_dsl;
 use crate::WorkspaceBinary;

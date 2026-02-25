@@ -6542,6 +6542,47 @@ fn collect_output_paths_recursive(
     }
 }
 
+/// A `@binary` annotation on a `func` item, declaring it as a CLI binary entrypoint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BinaryAnnotation {
+    /// The func name this annotation appears on.
+    pub func_name: String,
+    /// Optional binary name override (from `@binary("name")`).
+    /// When absent, the binary name is derived from the module leaf
+    /// with underscores replaced by hyphens.
+    pub name_override: Option<String>,
+}
+
+/// Extract `@binary` annotations from `func` items in the typed project.
+///
+/// A bare `@binary` on a func means "generate a CLI binary with a
+/// convention-derived name." `@binary("custom-name")` overrides the name.
+pub fn extract_binary_annotations(project: &TypedProject) -> Vec<BinaryAnnotation> {
+    let mut annotations = Vec::new();
+    for module in &project.modules {
+        for item in &module.ast.items {
+            if let Item::FuncDef(def) = &item.node {
+                for ann in &def.annotations {
+                    if ann.name == "binary" {
+                        let name_override = ann.args.first().and_then(|arg| {
+                            if let Expr::Literal(Literal::String(s)) = arg {
+                                Some(s.clone())
+                            } else {
+                                None
+                            }
+                        });
+                        annotations.push(BinaryAnnotation {
+                            func_name: def.name.clone(),
+                            name_override,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    annotations
+}
+
 /// Extract output path declarations from `@outputs` annotations on `func` items.
 ///
 /// Walks the typed project looking for `func` definitions annotated with

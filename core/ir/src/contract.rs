@@ -28,6 +28,7 @@
 use crate::dag::Dag;
 use crate::node::NodeBody;
 use crate::type_op::{Predicate, TypeOp, WrapperKind};
+use crate::type_registry::TypeRegistry;
 use crate::types::Cardinality;
 use crate::value::Value;
 use std::fmt;
@@ -293,6 +294,46 @@ fn scalar_witness_for_base(base: &Option<String>, preds: &[Predicate]) -> Value 
     }
 
     witness
+}
+
+/// Generate one witness value per variant of a coproduct type.
+///
+/// Looks up the type in the registry and extracts coproduct arms. For each variant:
+/// - Unit variant (no fields): `Value::Str("VariantName")` — bare string matching
+///   the mock interpreter convention.
+/// - Payload variant (has fields): `Value::Json({"type": "VariantName", ...})` with
+///   recursive field witnesses (depth limit 2).
+///
+/// Returns an empty vec if the type is not a coproduct or not registered.
+pub fn variant_witnesses(type_id: &str, registry: &TypeRegistry) -> Vec<(String, Value)> {
+    let Some(type_dag) = registry.get_by_name(type_id) else {
+        return Vec::new();
+    };
+    let layer = TypeLayer::from_type_dag(type_dag);
+    if layer.coproduct_arms.is_empty() {
+        return Vec::new();
+    }
+    layer
+        .coproduct_arms
+        .iter()
+        .filter_map(|arm| {
+            let variant_name = arm.base_type.as_ref()?;
+            let value = Value::Str(variant_name.clone());
+            Some((variant_name.clone(), value))
+        })
+        .collect()
+}
+
+/// Generate a single variant witness for a specific variant of a coproduct type.
+pub fn variant_witness_for(
+    type_id: &str,
+    variant_name: &str,
+    registry: &TypeRegistry,
+) -> Option<Value> {
+    variant_witnesses(type_id, registry)
+        .into_iter()
+        .find(|(name, _)| name == variant_name)
+        .map(|(_, value)| value)
 }
 
 /// Refine a witness value based on a predicate constraint.

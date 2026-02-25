@@ -15,6 +15,7 @@ fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> St
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
 }
 
+@binary
 func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: Url }
   uses fs: Filesystem(mode: Read)
   uses net: Network

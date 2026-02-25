@@ -423,6 +423,15 @@ impl TypeRegistry {
         self.coercion_edges.entry(from).or_default().push(edge);
     }
 
+    /// Merge another registry into this one without overwriting existing types.
+    ///
+    /// Core types take precedence: only types not already present are inserted.
+    pub fn merge(&mut self, other: &TypeRegistry) {
+        for (k, v) in &other.types {
+            self.types.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+    }
+
     /// Resolve a type DAG, honoring wrapper expressions like `Optional<T>`.
     ///
     /// Returns `None` if the type is not registered and no wrapper expression is present.
