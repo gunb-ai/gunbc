@@ -1,7 +1,10 @@
 use daglang_driver::{compile_from_context, DriverContext};
+use daglang_lower::LoweredOp;
 use gunbc_codegen::derive_tool_defs;
+use gunbc_dag::compiled_fns::lookup_compiled_fn;
 use gunbc_dag::makegen::{BuildConfig, ToolInfo, ToolRegistry};
 use gunbc_ir::cargo::Warnings;
+use gunbc_ir::node::NodeBody;
 use gunbc_ir::resource::ResourceIo;
 use gunbc_lib_transport::TransportIo;
 use gunbc_tool_registry::iter_tool_targets;
@@ -140,24 +143,24 @@ fn codegen_cli_discovery_avoids_tool_registry_inventory() {
     );
 }
 
-/// For each tool with a `dsl_module`, compile the `.dag` file and verify that
-/// the DSL-derived `output_paths` match the tool's `ToolRegistration.outputs`.
-///
-/// This catches drift: if someone adds a `content_upsert(path: "new-file")`
-/// or `@outputs("pattern")` but forgets to update the registry `outputs`,
-/// the test fails. If someone removes a `content_upsert` but leaves a stale
-/// `outputs` entry, it also fails.
-#[test]
-fn tool_declared_outputs_match_dsl() {
+/// Shared helper: returns (workspace_root, dsl_root) for DSL compilation tests.
+fn dsl_compile_context() -> (PathBuf, PathBuf) {
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let dsl_root = workspace_root.join("dsl");
+    (workspace_root, dsl_root)
+}
 
-    // Force linker to include inventory symbols.
-    let _: fn() = clippy_tool;
-    let _: fn() = deps_tool;
-    let _: fn() = review_tool;
-    let _: fn() = makegen_tool;
-    let _: fn() = bootstrap_tool;
+/// Strict compilation check: every tool with a `dsl_module` and a corresponding
+/// `.dag` file must compile without errors. Compile failures are hard test failures.
+///
+/// This is the foundation for `tool_declared_outputs_match_dsl` — if compilation
+/// works, output drift checks can safely `.expect()` instead of `continue`-ing.
+#[test]
+fn dsl_tool_modules_compile() {
+    let (_workspace_root, dsl_root) = dsl_compile_context();
+    force_linker_include();
+
+    let mut compile_errors = Vec::new();
 
     for reg in iter_tool_targets() {
         let Some(dsl_module) = reg.dsl_module else {
@@ -172,19 +175,56 @@ fn tool_declared_outputs_match_dsl() {
 
         let context = DriverContext {
             roots: vec![dsl_root.clone()],
-            target_file: Some(dag_file.clone()),
+            target_file: Some(dag_file),
         };
-        let output = match compile_from_context(&context) {
-            Ok(output) => output,
-            Err(error) => {
-                // Some tools may fail to compile in isolation (missing profiles, etc.)
-                // — skip those rather than failing the invariant test.
-                eprintln!(
-                    "skipping drift check for {dsl_module} (compile error): {error}"
-                );
-                continue;
-            }
+        if let Err(error) = compile_from_context(&context) {
+            compile_errors.push(format!(
+                "tool '{}' (dsl_module={dsl_module}): {error}",
+                reg.tool_name,
+            ));
+        }
+    }
+
+    assert!(
+        compile_errors.is_empty(),
+        "DSL tool modules failed to compile:\n{}",
+        compile_errors.join("\n"),
+    );
+}
+
+/// For each tool with a `dsl_module`, compile the `.dag` file and verify that
+/// the DSL-derived `output_paths` match the tool's `ToolRegistration.outputs`.
+///
+/// This catches drift: if someone adds a `content_upsert(path: "new-file")`
+/// or `@outputs("pattern")` but forgets to update the registry `outputs`,
+/// the test fails. If someone removes a `content_upsert` but leaves a stale
+/// `outputs` entry, it also fails.
+#[test]
+fn tool_declared_outputs_match_dsl() {
+    let (_workspace_root, dsl_root) = dsl_compile_context();
+    force_linker_include();
+
+    for reg in iter_tool_targets() {
+        let Some(dsl_module) = reg.dsl_module else {
+            continue;
         };
+
+        let dag_file = dsl_root.join(format!("tools/{dsl_module}.dag"));
+        if !dag_file.exists() {
+            // Some dsl_module values may reference pipelines instead of tools.
+            continue;
+        }
+
+        let context = DriverContext {
+            roots: vec![dsl_root.clone()],
+            target_file: Some(dag_file),
+        };
+        // dsl_tool_modules_compile guarantees compilation succeeds.
+        let output = compile_from_context(&context).expect(&format!(
+            "tool '{}' (dsl_module={dsl_module}) should compile — \
+             see dsl_tool_modules_compile test",
+            reg.tool_name,
+        ));
 
         let dsl_paths: BTreeSet<&str> = output
             .output_paths
@@ -968,5 +1008,114 @@ fn dsl_warning_policy_matches_build_config() {
         config.warnings,
         Warnings::Deny,
         "BuildConfig.warnings must match dsl/config/build_policy.dag warning_policy=DenyAll"
+    );
+}
+
+// ============================================================================
+// DSL Passthrough Callable Visibility
+// ============================================================================
+
+/// Check whether a callable would resolve to `DeclaredOutputCallableOp` (identity passthrough)
+/// in `resolve_domain()`. Mirrors the resolution logic in `gunbc-dag/src/resolve.rs`.
+fn is_passthrough_callable(module: &str, name: &str, has_service_metadata: bool) -> bool {
+    // 1. Custom resolvers
+    if module == "std.resources" || module == "tools.infra" {
+        return false;
+    }
+    // 2. Service/workspace modules use transport dispatch
+    if module.starts_with("services.") || module.starts_with("workspace.") {
+        return false;
+    }
+    // 3. Service transport nodes with metadata or execute
+    if name.starts_with("service_transport::") {
+        if has_service_metadata || name.starts_with("service_transport::execute::") {
+            return false;
+        }
+    }
+    // 4. Compiled fn bridge
+    if lookup_compiled_fn(module, name).is_some() {
+        return false;
+    }
+    // 5. Falls through to DeclaredOutputCallableOp
+    true
+}
+
+/// Callables that are known to resolve to `DeclaredOutputCallableOp` (identity passthrough).
+///
+/// Adding a new entry here is a conscious decision: it means the callable has no
+/// compiled fn bridge implementation and relies on passthrough forwarding at runtime.
+/// Removing a stale entry is also enforced — the test fails if an allowlisted callable
+/// no longer appears in any compiled tool DAG.
+const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
+    // Placeholder: populated after initial test run.
+];
+
+/// Verify that every callable resolving to `DeclaredOutputCallableOp` (identity passthrough)
+/// is explicitly allowlisted. New passthrough callables require a conscious decision to add
+/// to the allowlist. Stale entries (in the allowlist but not found in any DAG) also fail.
+#[test]
+fn passthrough_callables_are_allowlisted() {
+    let (_workspace_root, dsl_root) = dsl_compile_context();
+    force_linker_include();
+
+    let mut found_passthrough: BTreeSet<String> = BTreeSet::new();
+
+    for reg in iter_tool_targets() {
+        let Some(dsl_module) = reg.dsl_module else {
+            continue;
+        };
+
+        let dag_file = dsl_root.join(format!("tools/{dsl_module}.dag"));
+        if !dag_file.exists() {
+            continue;
+        }
+
+        let context = DriverContext {
+            roots: vec![dsl_root.clone()],
+            target_file: Some(dag_file),
+        };
+        let output = match compile_from_context(&context) {
+            Ok(output) => output,
+            Err(_) => continue, // dsl_tool_modules_compile catches compile errors
+        };
+
+        for node in &output.lowered_dag.nodes {
+            if let NodeBody::Opaque(LoweredOp::Callable {
+                module,
+                name,
+                service_metadata,
+                ..
+            }) = &node.body
+            {
+                if is_passthrough_callable(module, name, service_metadata.is_some()) {
+                    found_passthrough.insert(format!("{module}::{name}"));
+                }
+            }
+        }
+    }
+
+    let allowlist: BTreeSet<&str> = ALLOWED_PASSTHROUGH_CALLABLES.iter().copied().collect();
+
+    // Check for unallowlisted passthrough callables.
+    let unexpected: BTreeSet<&String> = found_passthrough
+        .iter()
+        .filter(|key| !allowlist.contains(key.as_str()))
+        .collect();
+    assert!(
+        unexpected.is_empty(),
+        "passthrough callables not in allowlist (add to ALLOWED_PASSTHROUGH_CALLABLES \
+         or implement a compiled fn):\n  {:?}",
+        unexpected,
+    );
+
+    // Check for stale allowlist entries.
+    let stale: BTreeSet<&&str> = allowlist
+        .iter()
+        .filter(|key| !found_passthrough.contains(**key))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "stale ALLOWED_PASSTHROUGH_CALLABLES entries (no matching callable in any DAG):\n  {:?}",
+        stale,
     );
 }
