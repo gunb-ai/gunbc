@@ -496,6 +496,47 @@ impl LoweredOp {
     }
     }
 
+    /// NF-2: Classify this lowered op into the minimal IR model (Intrinsic/Call/Extern).
+    pub fn classify_op_ref(&self) -> gunbc_ir::OpRef {
+        use gunbc_ir::{IntrinsicOp, OpRef, ProgramSymbolId};
+        match self {
+            Self::Callable { module, name, .. } => {
+                OpRef::Call(ProgramSymbolId::from_parts(module, name))
+            }
+            Self::Pipeline { module, name, .. } => {
+                OpRef::Call(ProgramSymbolId::from_parts(module, name))
+            }
+            Self::Primitive { kind, .. } => {
+                let intrinsic = match kind {
+                    PrimitiveOpKind::FsEnv => IntrinsicOp::FsEnv,
+                    PrimitiveOpKind::CallParamSource { callable, param } => {
+                        IntrinsicOp::ParamSource {
+                            callable: callable.clone(),
+                            param: param.clone(),
+                        }
+                    }
+                    PrimitiveOpKind::CallLiteralSource { .. } => IntrinsicOp::LiteralSource,
+                    PrimitiveOpKind::IoPrepareFileRead => IntrinsicOp::PrepareFileRead,
+                    PrimitiveOpKind::IoExecuteFileRead => IntrinsicOp::ExecuteFileRead,
+                    PrimitiveOpKind::CompareEquality => IntrinsicOp::CompareEquality,
+                    PrimitiveOpKind::IoPrepareFileWrite => IntrinsicOp::PrepareFileWrite,
+                    PrimitiveOpKind::IoExecuteFileWrite => IntrinsicOp::ExecuteFileWrite,
+                };
+                OpRef::Intrinsic(intrinsic)
+            }
+            Self::Collection { kind, .. } => OpRef::Intrinsic(IntrinsicOp::Collection {
+                kind: format!("{kind:?}"),
+            }),
+            Self::LoopUnpack { .. } => OpRef::Intrinsic(IntrinsicOp::LoopUnpack),
+            Self::LoopPack { .. } => OpRef::Intrinsic(IntrinsicOp::LoopPack),
+            Self::BranchMerge { .. } => OpRef::Intrinsic(IntrinsicOp::BranchMerge),
+            Self::ExternCall { symbol } => OpRef::Extern(ProgramSymbolId::new(symbol.clone())),
+            Self::UnsupportedPattern { name } => OpRef::Unresolved {
+                detail: format!("unsupported pattern: {name}"),
+            },
+        }
+    }
+
     pub fn service_call_metadata(&self) -> Option<&ServiceCallMetadata> {
         match self {
             Self::Callable {
@@ -6662,6 +6703,29 @@ fn collect_bound_callable_sources(
 // Output path extraction
 // ============================================================================
 
+/// NF-2: Build a symbol table from a lowered DAG.
+///
+/// Walks all nodes and classifies each operation into the symbol model
+/// (Intrinsic/Call/Extern). The resulting `SymbolTable` is consumed by
+/// the link step (NF-3) to verify all extern symbols are resolved.
+pub fn build_symbol_table(dag: &gunbc_ir::Dag<LoweredOp>) -> gunbc_ir::SymbolTable {
+    let mut table = gunbc_ir::SymbolTable::new();
+    for node in &dag.nodes {
+        let op = match &node.body {
+            gunbc_ir::node::NodeBody::Opaque(op) => op,
+            gunbc_ir::node::NodeBody::SubDag(_) => continue,
+        };
+        let op_ref = op.classify_op_ref();
+        match &op_ref {
+            gunbc_ir::OpRef::Call(sym) => table.add_defined(sym.clone()),
+            gunbc_ir::OpRef::Extern(sym) => table.add_extern(sym.clone()),
+            _ => {}
+        }
+        table.add_op(node.id.0.clone(), op_ref);
+    }
+    table
+}
+
 /// Extract output file paths from a lowered DAG.
 ///
 /// Walks the DAG looking for `CallLiteralSource` nodes whose ID contains
@@ -9564,5 +9628,87 @@ func dual(msg: String) -> { reply: String } {
                 .map(|n| &n.id.0)
                 .collect::<Vec<_>>()
         );
+    }
+
+    // ── NF-2: Symbol model tests ──────────────────────────────────────
+
+    #[test]
+    fn classify_op_ref_callable_is_call() {
+        let op = LoweredOp::Callable {
+            module: "tools.makegen".to_string(),
+            kind: CallableKind::Func,
+            name: "render_makefile".to_string(),
+            obligation: ObligationCategory::None,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+        };
+        let op_ref = op.classify_op_ref();
+        assert!(
+            matches!(&op_ref, gunbc_ir::OpRef::Call(sym) if sym.as_str() == "tools.makegen::render_makefile"),
+            "Callable should classify as Call, got: {op_ref}"
+        );
+    }
+
+    #[test]
+    fn classify_op_ref_extern_is_extern() {
+        let op = LoweredOp::ExternCall {
+            symbol: "runtime::handler".to_string(),
+        };
+        let op_ref = op.classify_op_ref();
+        assert!(
+            matches!(&op_ref, gunbc_ir::OpRef::Extern(sym) if sym.as_str() == "runtime::handler"),
+            "ExternCall should classify as Extern, got: {op_ref}"
+        );
+    }
+
+    #[test]
+    fn classify_op_ref_primitive_is_intrinsic() {
+        let op = LoweredOp::Primitive {
+            module: "test".to_string(),
+            name: "fs_env".to_string(),
+            kind: PrimitiveOpKind::FsEnv,
+        };
+        let op_ref = op.classify_op_ref();
+        assert!(
+            matches!(&op_ref, gunbc_ir::OpRef::Intrinsic(gunbc_ir::IntrinsicOp::FsEnv)),
+            "FsEnv primitive should classify as Intrinsic(FsEnv), got: {op_ref}"
+        );
+    }
+
+    #[test]
+    fn build_symbol_table_collects_defined_and_extern_symbols() {
+        let mut dag = gunbc_ir::Dag::new();
+        dag.add_node(gunbc_ir::Node::opaque(
+            "tools.makegen::render",
+            vec![],
+            vec![],
+            LoweredOp::Callable {
+                module: "tools.makegen".to_string(),
+                kind: CallableKind::Func,
+                name: "render".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        dag.add_node(gunbc_ir::Node::opaque(
+            "extern::handler",
+            vec![],
+            vec![],
+            LoweredOp::ExternCall {
+                symbol: "runtime::handler".to_string(),
+            },
+        ));
+
+        let table = build_symbol_table(&dag);
+        assert_eq!(table.defined.len(), 1);
+        assert_eq!(table.externs.len(), 1);
+        assert_eq!(table.defined[0].as_str(), "tools.makegen::render");
+        assert_eq!(table.externs[0].as_str(), "runtime::handler");
+
+        let unresolved = table.unresolved_externs();
+        assert_eq!(unresolved.len(), 1, "extern should be unresolved");
     }
 }

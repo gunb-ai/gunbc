@@ -79,6 +79,7 @@ pub mod platform;
 pub mod render_ir;
 pub mod resource;
 pub mod signature;
+pub mod symbol;
 pub mod symbols;
 pub mod system_model;
 pub mod transport;
@@ -139,6 +140,7 @@ pub use layout::{
     NodeLayout, OverflowState, OverflowStrategy, Viewport, ViewportUnit,
 };
 pub use log_detail::LogDetailLevel;
+pub use symbol::{IntrinsicOp, OpRef, ProgramSymbolId, SymbolTable};
 pub use makefile_render::MakefileStructuredRenderer;
 pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
