@@ -441,10 +441,12 @@ fn lower_expr(expr: &Expr, config: &CConfig) -> CExpr {
         },
         Expr::FormatStr { template, args } => {
             // B4.3: snprintf into a buffer.
+            // FC-2: Convert Rust-style `{}` placeholders to C-style `%s` format specifiers.
+            let c_template = template.replace("{}", "%s");
             let mut call_args = vec![
                 CExpr::Var("buf".to_string()),
                 CExpr::Var("sizeof(buf)".to_string()),
-                CExpr::StrLit(template.clone()),
+                CExpr::StrLit(c_template),
             ];
             call_args.extend(args.iter().map(|a| lower_expr(a, config)));
             CExpr::Call {

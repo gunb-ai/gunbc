@@ -321,6 +321,15 @@ const STATIC_OPTS: RenderOpts = RenderOpts { static_context: true };
 ///
 /// `context_type` is the Rust type name for the surrounding context,
 /// used to qualify bare identifiers as enum variants.
+/// Capitalize the first character of a string (PascalCase heuristic for type names).
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
 fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> String {
     match expr {
         Expr::Literal(lit) => render_literal(lit, opts),
@@ -336,7 +345,14 @@ fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> Str
             let field_strs: Vec<String> = fields
                 .iter()
                 .map(|(name, val)| {
-                    let field_val = render_expr_to_rust(val, name, opts);
+                    // FC-3: Use field name as context type only as a last resort.
+                    // In most cases, the correct context type would come from type
+                    // information. Since we don't have full type context here, we
+                    // use the field name capitalized as a heuristic for enum type names
+                    // (e.g., field "color" → context type "Color" for variant resolution).
+                    // This is imperfect but better than raw field names as types.
+                    let field_context = capitalize_first(name);
+                    let field_val = render_expr_to_rust(val, &field_context, opts);
                     format!("{name}: {field_val}")
                 })
                 .collect();

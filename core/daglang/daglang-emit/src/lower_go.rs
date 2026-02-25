@@ -311,8 +311,10 @@ fn lower_expr(expr: &Expr, config: &GoConfig) -> Expr {
         }
 
         // B3.4: FormatStr → fmt.Sprintf.
+        // FC-2: Convert Rust-style `{}` placeholders to Go-style `%v` format verbs.
         Expr::FormatStr { template, args } => {
-            let mut call_args = vec![Expr::Str(template.clone())];
+            let go_template = template.replace("{}", "%v");
+            let mut call_args = vec![Expr::Str(go_template)];
             call_args.extend(args.iter().map(|a| lower_expr(a, config)));
             Expr::Call {
                 func: Box::new(Expr::var("fmt.Sprintf")),

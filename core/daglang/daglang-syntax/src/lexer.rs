@@ -231,6 +231,20 @@ pub struct Lexer<'a> {
     errors: Vec<LexError>,
 }
 
+// FC-9: Hex escape helpers for \xHH sequences.
+fn is_hex_digit(b: u8) -> bool {
+    b.is_ascii_hexdigit()
+}
+
+fn hex_val(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'a'..=b'f' => b - b'a' + 10,
+        b'A'..=b'F' => b - b'A' + 10,
+        _ => 0,
+    }
+}
+
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
@@ -661,6 +675,21 @@ impl<'a> Lexer<'a> {
                 buf.push('}');
                 self.pos += 1;
             }
+            // FC-9: \xHH hex escape — interpret as the byte value.
+            b'x' => {
+                self.pos += 1; // consume 'x'
+                let hi = self.peek();
+                let lo = self.peek_at(1);
+                if is_hex_digit(hi) && is_hex_digit(lo) {
+                    let byte = (hex_val(hi) << 4) | hex_val(lo);
+                    buf.push(byte as char);
+                    self.pos += 2;
+                } else {
+                    // Malformed \x escape — preserve literally for fail-closed diagnostics.
+                    buf.push('\\');
+                    buf.push('x');
+                }
+            }
             other if other >= 0x80 => {
                 buf.push('\\');
                 let (ch, len) = self.decode_utf8_char();
@@ -947,5 +976,42 @@ mod tests {
         assert!(matches!(tokens[2].kind, TokenKind::Unknown('&')));
         assert_eq!(errors.len(), 1);
         assert!(errors[0].message.contains("unexpected character '&'"));
+    }
+
+    // ── FC-9: \xHH hex escape contract tests ──────────────────────────
+
+    #[test]
+    fn hex_escape_produces_byte_value() {
+        let tokens = Lexer::tokenize(r#""hello \x1b[0m""#);
+        let s = match &tokens[0].kind {
+            TokenKind::Str(s) => s.clone(),
+            other => panic!("expected string token, got {other:?}"),
+        };
+        // \x1b should be interpreted as the ESC character (byte 0x1b)
+        assert!(
+            s.contains('\x1b'),
+            "\\x1b should produce ESC byte, got: {:?}",
+            s
+        );
+    }
+
+    #[test]
+    fn hex_escape_uppercase_produces_byte_value() {
+        let tokens = Lexer::tokenize(r#""\x41""#);
+        let s = match &tokens[0].kind {
+            TokenKind::Str(s) => s.clone(),
+            other => panic!("expected string token, got {other:?}"),
+        };
+        assert_eq!(s, "A", "\\x41 should produce 'A'");
+    }
+
+    #[test]
+    fn malformed_hex_escape_preserved_literally() {
+        let tokens = Lexer::tokenize(r#""\xZZ""#);
+        let s = match &tokens[0].kind {
+            TokenKind::Str(s) => s.clone(),
+            other => panic!("expected string token, got {other:?}"),
+        };
+        assert_eq!(s, "\\xZZ", "malformed \\xHH should preserve literally");
     }
 }
