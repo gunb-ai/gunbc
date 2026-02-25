@@ -1316,13 +1316,23 @@ impl Parser {
         self.expect(&TokenKind::Stage)?;
         let name = self.expect_ident()?;
         let mut after = Vec::new();
+        let mut when = None;
         if self.eat(&TokenKind::LBracket) {
             while !self.check(&TokenKind::RBracket) && !self.at_eof() {
                 if self.eat(&TokenKind::After) {
                     after.push(self.expect_ident()?);
                 } else if self.check(&TokenKind::When) {
                     self.advance();
-                    let _ = self.parse_expr(0);
+                    if let Ok(expr) = self.parse_expr(0) {
+                        when = match when.take() {
+                            None => Some(expr),
+                            Some(existing) => Some(Expr::BinOp(
+                                Box::new(existing),
+                                crate::ast::BinOp::And,
+                                Box::new(expr),
+                            )),
+                        };
+                    }
                 } else if self.eat(&TokenKind::Comma) {
                     continue;
                 } else {
@@ -1333,7 +1343,12 @@ impl Parser {
         }
         self.expect(&TokenKind::LBrace)?;
         let body = self.parse_func_body_lossy()?;
-        Ok(StageDef { name, body, after })
+        Ok(StageDef {
+            name,
+            body,
+            after,
+            when,
+        })
     }
     // ── SDLC & Infra Blocks ─────────────────────────────────────────
 
@@ -1878,8 +1893,8 @@ impl Parser {
 
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
         if self.check(&TokenKind::At) {
-            let _ = self.parse_annotation()?;
-            return Ok(Stmt::Expr(Expr::Ident("<annotation>".into())));
+            let annotation = self.parse_annotation()?;
+            return Ok(Stmt::Annotation(annotation));
         }
         if self.check(&TokenKind::Return) {
             return self.parse_return_stmt();

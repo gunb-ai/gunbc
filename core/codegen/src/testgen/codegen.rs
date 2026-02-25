@@ -1942,6 +1942,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             graph_builder_fn,
         ));
         tests.extend(self.build_coercion_coverage_tests(analysis, obligations, graph_builder_fn));
+        tests.extend(self.build_variant_coverage_tests(analysis, obligations, graph_builder_fn));
         let (optional_tests, optional_notes) =
             self.build_optional_input_tests(analysis, obligations, graph_builder_fn);
         tests.extend(optional_tests);
@@ -2156,6 +2157,88 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         })),
                     ],
                 });
+            }
+        }
+
+        tests
+    }
+
+    fn build_variant_coverage_tests(
+        &self,
+        analysis: &DagAnalysis,
+        obligations: &ObligationSet,
+        graph_builder_fn: &str,
+    ) -> Vec<TestFn> {
+        let variant_obligations = obligations.variant_coverage_obligations();
+        if variant_obligations.is_empty() {
+            return Vec::new();
+        }
+
+        let mut tests = Vec::new();
+        for obligation in &variant_obligations {
+            if let Obligation::VariantCoverage {
+                node_id,
+                port_name,
+                type_id,
+                variants,
+            } = &obligation.kind
+            {
+                for variant_name in variants {
+                    let test_name = format!(
+                        "test_variant_{}_{}_{}",
+                        NamingCase::SnakeCase.apply(&node_id.0),
+                        NamingCase::SnakeCase.apply(&port_name.0),
+                        NamingCase::SnakeCase.apply(variant_name),
+                    );
+
+                    let mock_value =
+                        ValueExpr::Str(variant_name.clone());
+                    let mocks_expr =
+                        self.dryrun_mocks_expr(analysis, "variant coverage tests");
+
+                    let exec = Expr::call(
+                        "execute_with_mode",
+                        vec![
+                            Expr::var("dag").ref_of(),
+                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str(format!(
+                            "variant {} for {}.{} should not crash",
+                            variant_name, node_id.0, port_name.0
+                        ))],
+                    );
+
+                    tests.push(TestFn {
+                        name: test_name,
+                        doc: vec![
+                            format!(
+                                "Variant coverage: {}.{} with variant '{}' of type {}.",
+                                node_id.0, port_name.0, variant_name, type_id.0
+                            ),
+                            String::new(),
+                            format!(
+                                "Proves: DAG handles variant '{}' at boundary port {}.{}.",
+                                variant_name, node_id.0, port_name.0
+                            ),
+                        ],
+                        body: vec![
+                            Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                            Stmt::let_mut("mocks", mocks_expr),
+                            Stmt::Expr(Expr::var("mocks").method(
+                                "set_value",
+                                vec![
+                                    Expr::Str(node_id.0.clone()),
+                                    Expr::Str(port_name.0.clone()),
+                                    Expr::Value(mock_value),
+                                ],
+                            )),
+                            Stmt::let_bind("_log", exec),
+                        ],
+                    });
+                }
             }
         }
 
@@ -5346,10 +5429,19 @@ fn witness_value_for_count(
             return Some(Value::List(vec![]));
         }
         let elem = nonzero?;
-        let mut elements = Vec::new();
-        for _ in 0..count {
-            elements.push(elem.clone());
-        }
+        // For coproduct element types, use variant-diverse elements
+        let variant_values = contract::variant_witnesses(type_id, registry);
+        let elements = if variant_values.len() > 1 {
+            (0..count as usize)
+                .map(|i| {
+                    variant_values[i % variant_values.len()]
+                        .1
+                        .clone()
+                })
+                .collect()
+        } else {
+            vec![elem; count as usize]
+        };
         return Some(Value::List(elements));
     }
 

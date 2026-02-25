@@ -732,6 +732,37 @@ fn collect_contract_obligations<T>(
         }
     }
 
+    // B.3b: Variant coverage — for each boundary output port whose type is a
+    // registered coproduct with 2+ variants, emit a VariantCoverage obligation.
+    // Per-port, not per-pair: avoids combinatorial explosion.
+    for (node_id, port_name) in &boundaries.boundary_ports {
+        let Some(port) = dag.resolve_output_port(node_id, port_name) else {
+            continue;
+        };
+        let variants = contract::variant_witnesses(port.type_id().0.as_str(), registry);
+        if variants.len() > 1 {
+            let variant_names: Vec<String> =
+                variants.iter().map(|(name, _)| name.clone()).collect();
+            obligations.push(ProofObligation::runtime(
+                Obligation::VariantCoverage {
+                    node_id: node_id.clone(),
+                    port_name: port_name.clone(),
+                    type_id: port.type_id().clone(),
+                    variants: variant_names.clone(),
+                },
+                format!(
+                    "Boundary port {}.{} has coproduct type {} with {} variants: {:?}",
+                    node_id.0,
+                    port_name.0,
+                    port.type_id().0,
+                    variant_names.len(),
+                    variant_names,
+                ),
+                ObligationSource::Contract,
+            ));
+        }
+    }
+
     // B.4: Coercion compatibility + coverage — validate edge contracts with
     // contract-aware coercion. Emit invalid obligations for incompatibilities,
     // and coverage obligations for implicit cardinality coercions.

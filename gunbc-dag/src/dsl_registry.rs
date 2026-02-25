@@ -11,7 +11,6 @@
 //! Special case: testgen has a custom builder (no DSL module) and is
 //! hardcoded as the sole exception.
 
-#[allow(clippy::disallowed_methods)] // Needs fs access for .dag file discovery
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -170,14 +169,14 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
         let entrypoints = derive_entrypoints(&bf.params);
 
         let mut tool = ToolDef::new(
-            "gunbc-dag",
-            &*tool_name,
-            &*description,
-            &*graph_builder_call,
-            "",
+            String::from("gunbc-dag"),
+            tool_name.clone(),
+            description,
+            graph_builder_call,
+            String::new(),
         )
         .returns_result()
-        .mock_spec_call(&*mock_spec)
+        .mock_spec_call(mock_spec)
         .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entry;")
         .invocation(cargo::CargoInvocation::composed(&tool_name, "dag"));
 

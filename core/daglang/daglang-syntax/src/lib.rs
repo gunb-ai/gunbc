@@ -274,6 +274,7 @@ pub mod ast {
         pub name: String,
         pub body: FuncBody,
         pub after: Vec<String>,
+        pub when: Option<Expr>,
     }
 
     // ── Profiles ────────────────────────────────────────────────────
@@ -552,6 +553,7 @@ pub mod ast {
     pub enum Stmt {
         Let(String, Expr),
         Assign(String, Expr),
+        Annotation(Annotation),
         Expr(Expr),
         Return(Vec<(String, Expr)>),
     }

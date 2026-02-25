@@ -71,6 +71,7 @@ pub fn walk_stmts(stmts: &[Stmt], visitor: &mut impl FnMut(&Expr)) {
             Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
                 walk_expr(expr, visitor);
             }
+            Stmt::Annotation(_) => {}
             Stmt::Return(fields) => {
                 for (_, expr) in fields {
                     walk_expr(expr, visitor);
