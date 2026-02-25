@@ -15,7 +15,7 @@
 
 | Lane | Status | Remaining |
 |------|--------|-----------|
-| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-2..NF-6, FC-7..FC-8 |
+| 1: Mega lane — compile+link hardening + interface stubs + fail-closed cleanup | In Progress | NF-4..NF-6 |
 
 ---
 
@@ -35,8 +35,8 @@
 | ID | Task | Deps | Size | Status |
 |----|------|------|------|--------|
 | **NF-1** | **Extern DSL surface**: Add `extern func` and `extern asset` syntax/typechecking/lowering so runtime-provided behavior is explicit in DSL. | -- | L | **Done** |
-| **NF-2** | **Minimal symbol model**: Introduce canonical `SymbolId` + `NodeId` model and lower ops to `Intrinsic`/`Call`/`Extern`. | NF-1 | L | Planned |
-| **NF-3** | **Link step + backend resolver contract**: Add linker stage that resolves extern funcs/assets through backend interfaces and emits hard missing-symbol errors. | NF-2 | L | Planned |
+| **NF-2** | **Minimal symbol model**: Introduce canonical `SymbolId` + `NodeId` model and lower ops to `Intrinsic`/`Call`/`Extern`. | NF-1 | L | **Done** |
+| **NF-3** | **Link step + backend resolver contract**: Add linker stage that resolves extern funcs/assets through backend interfaces and emits hard missing-symbol errors. | NF-2 | L | **Done** |
 | **NF-4** | **Runtime/asset migration to extern symbols**: Convert existing runtime handler + embedded asset flows to extern symbol resolution. Remove hidden authority from CLI/emitter registries. | NF-3 | L | Planned |
 | **NF-5** | **Delete fallback surfaces**: Remove passthrough controls/handlers, stub asset fallbacks, and module-name dispatch heuristics. | NF-4 | M | Planned |
 | **NF-6** | **Determinism contract hardening**: Add compile receipt digests linked to emit-manifest and CI determinism gates (single-file, CI pipeline, directory compile) with deterministic diagnostic ordering. | NF-5 | M | Planned |
@@ -75,8 +75,8 @@
 | **FC-4** | **No panic in lowering for unsupported patterns**: Replace panic-based unsupported `PatternOp` paths with structured lowering errors. | -- | S | **Done** |
 | **FC-5** | **SubDag runtime op cfg hygiene**: Verify SubDag dispatch runtime op is not `#[cfg(test)]`-gated in production and add release-build guardrail coverage. | -- | S | **Done** |
 | **FC-6** | **Pipeline dispatch contract hardening**: Make stage progression contract explicit for resume/current-stage behavior; validate expected fields and improve diagnostics. | FC-5 | S | **Done** |
-| **FC-7** | **Remove node-name substring extraction hacks**: Replace `content_upsert_path_` ID substring checks with explicit metadata/annotation-based output path extraction. | NF-2 | M | Planned |
-| **FC-8** | **Fail-closed content extraction + test restoration**: Make `extract_file_contents` schema handling fail-closed (or explicit warning mode) and restore non-empty gist dry-run tests with real assertions. | FC-7 | M | Planned |
+| **FC-7** | **Remove node-name substring extraction hacks**: Replace `content_upsert_path_` ID substring checks with explicit metadata/annotation-based output path extraction. | NF-2 | M | **Done** |
+| **FC-8** | **Fail-closed content extraction + test restoration**: Make `extract_file_contents` schema handling fail-closed (or explicit warning mode) and restore non-empty gist dry-run tests with real assertions. | FC-7 | M | **Done** |
 | **FC-9** | **Define and enforce `\\xHH` string semantics**: Align lexer + emitter behavior for hex-escape handling and add deterministic contract tests. | FC-1 | S | **Done** |
 | **FC-10** | **Proper `@local` transport type**: `GenericLocalPrepareOp` wraps inputs in `ShellRequest::new("echo")` as carrier; `GenericLocalParseOp` expects `TransportResponse::Shell`. Add `TransportRequest::Local` / `TransportResponse::Local` variants in `core/ir/src/transport/mod.rs`, add `TransportKind::LocalDirect` in `daglang-emit`, update prepare/parse ops. | -- | M | **Done** |
 | **FC-11** | **Collapse `service_prepare_ports()` match arms**: 4 near-identical arms (`Rest`, `Shell`, `File`, `Local`) each doing `spec.input_fields.iter().map(...)`. Add `ServiceOperationSpec::input_fields(&self) -> &[FieldSpec]` method. | -- | S | **Done** |

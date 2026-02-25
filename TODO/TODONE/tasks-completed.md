@@ -407,3 +407,12 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | ID | Task | Status |
 |----|------|--------|
 | NF-1 | Extern DSL surface: `Extern` keyword in lexer, `ExternFuncDecl` and `ExternAssetDecl` AST nodes, parser support for `extern func name(inputs) -> { outputs };` and `extern asset name: Type;`, typecheck validation, `LoweredOp::ExternCall` in lowerer, resolver error for unlinked externs. 5 tests (lexer, parser ×3, resolver). | Done 2026-02-25 |
+| NF-2 | Minimal symbol model: `ProgramSymbolId` (canonical identity), `IntrinsicOp` (compiler primitives), `OpRef` (Intrinsic/Call/Extern classification), `SymbolTable` (collected symbols), `LoweredOp::classify_op_ref()`, `build_symbol_table()`. 8 tests. | Done 2026-02-25 |
+| NF-3 | Link step + backend resolver contract: `Backend` trait with `resolve_extern_func()`/`resolve_extern_asset()`, `link()` function, `LinkError` with deterministic ordering, `EmptyBackend`, `LinkResult`. 4 tests. | Done 2026-02-25 |
+
+## Mega Lane — Track D: FC-7/FC-8 (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| FC-7 | Replace `content_upsert_path_` substring hack with explicit `PrimitiveOpKind::ContentUpsertOutputPath` annotation. `extract_output_paths()` checks annotation first, legacy fallback for backward compat. | Done 2026-02-25 |
+| FC-8 | Fail-closed content extraction: `extract_file_contents()` returns error descriptions for unexpected schemas (missing keys, wrong types, non-list values) instead of silent empty strings. | Done 2026-02-25 |
