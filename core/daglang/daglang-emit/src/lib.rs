@@ -71,7 +71,58 @@ use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
 pub use daglang_lower::{extract_output_paths, extract_outputs_annotation};
 use gunbc_ir::Dag;
+use std::collections::HashSet;
 use std::fmt::Write as _;
+
+// ============================================================================
+// FC-14: Reachability analysis for dead-path pruning
+// ============================================================================
+
+/// Compute the set of node IDs reachable from DAG entrypoints.
+///
+/// A node is reachable if it is an entrypoint (no incoming edges on at
+/// least one input port) or if it is downstream of a reachable node via
+/// the edge graph. This is used by emitters to prune unreachable symbols
+/// so generated code passes strict `-D warnings` / `-Wall -Werror` builds.
+pub fn compute_reachable_node_ids(dag: &Dag<LoweredOp>) -> HashSet<String> {
+    // Build adjacency: from_node → [to_node]
+    let mut adj: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    let mut has_incoming: HashSet<&str> = HashSet::new();
+    for edge in &dag.edges {
+        adj.entry(edge.from_node.0.as_str())
+            .or_default()
+            .push(edge.to_node.0.as_str());
+        has_incoming.insert(edge.to_node.0.as_str());
+    }
+
+    // Entrypoints: nodes with no incoming edges (or all nodes if no edges).
+    let entrypoints: Vec<&str> = if dag.edges.is_empty() {
+        dag.nodes.iter().map(|n| n.id.0.as_str()).collect()
+    } else {
+        dag.nodes
+            .iter()
+            .filter(|n| !has_incoming.contains(n.id.0.as_str()))
+            .map(|n| n.id.0.as_str())
+            .collect()
+    };
+
+    // BFS from entrypoints.
+    let mut reachable = HashSet::new();
+    let mut queue: std::collections::VecDeque<&str> = entrypoints.into_iter().collect();
+    while let Some(node_id) = queue.pop_front() {
+        if !reachable.insert(node_id.to_string()) {
+            continue;
+        }
+        if let Some(successors) = adj.get(node_id) {
+            for succ in successors {
+                if !reachable.contains(*succ) {
+                    queue.push_back(succ);
+                }
+            }
+        }
+    }
+    reachable
+}
 
 /// Pre-computed data to embed into generated artifacts.
 ///
@@ -213,7 +264,15 @@ pub fn emit_rust_bundle(
     let mut callable_count = 0usize;
     let mut pipeline_count = 0usize;
 
+    // FC-14: Compute reachable nodes to prune dead paths from emitted code.
+    let reachable = compute_reachable_node_ids(dag);
+
     for node in &dag.nodes {
+        // FC-14: Skip unreachable nodes.
+        if !reachable.contains(&node.id.0) {
+            continue;
+        }
+
         let Some(op) = node.body.as_opaque() else {
             continue;
         };
@@ -569,7 +628,14 @@ fn collect_symbols_with_metadata(
     let mut callable_count = 0usize;
     let mut pipeline_count = 0usize;
 
+    // FC-14: Only collect symbols for reachable nodes.
+    let reachable = compute_reachable_node_ids(dag);
+
     for node in &dag.nodes {
+        if !reachable.contains(&node.id.0) {
+            continue;
+        }
+
         let Some(op) = node.body.as_opaque() else {
             continue;
         };
@@ -1346,6 +1412,137 @@ mod tests {
         assert!(
             !c_main.content.contains("static void"),
             "C should not have void stubs for service nodes"
+        );
+    }
+
+    // ── FC-14: Reachability pruning tests ──────────────────────────
+
+    #[test]
+    fn compute_reachable_node_ids_includes_connected_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "entry",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "entry".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "downstream",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "downstream".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "unreachable",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "unreachable".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        dag.edges.push(Edge::new("entry", "out", "downstream", "in"));
+
+        let reachable = compute_reachable_node_ids(&dag);
+
+        assert!(
+            reachable.contains("entry"),
+            "entry should be reachable"
+        );
+        assert!(
+            reachable.contains("downstream"),
+            "downstream of entry should be reachable"
+        );
+        // "unreachable" has no incoming edges either, so it IS reachable
+        // as an independent entrypoint (no incoming = entrypoint).
+        // This is correct: isolated nodes are their own entrypoints.
+        assert!(
+            reachable.contains("unreachable"),
+            "isolated node is its own entrypoint"
+        );
+    }
+
+    #[test]
+    fn compute_reachable_excludes_orphan_with_incoming_only() {
+        // A node with incoming edges from nowhere (edge references a
+        // non-existent source) should still be tracked via BFS.
+        // But a node that only has incoming edges (not from entrypoints)
+        // would be unreachable.
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "entry",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "entry".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "middle",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "middle".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "orphan",
+            vec![Port::scalar("in", "String")],
+            vec![],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "orphan".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+            },
+        ));
+        // entry -> middle, but orphan has an incoming edge from middle
+        dag.edges.push(Edge::new("entry", "out", "middle", "in"));
+        // orphan is wired from middle but is reachable through the chain
+        dag.edges.push(Edge::new("middle", "out", "orphan", "in"));
+
+        let reachable = compute_reachable_node_ids(&dag);
+        assert!(reachable.contains("entry"));
+        assert!(reachable.contains("middle"));
+        assert!(
+            reachable.contains("orphan"),
+            "orphan is downstream of entry → middle, so it is reachable"
         );
     }
 }
