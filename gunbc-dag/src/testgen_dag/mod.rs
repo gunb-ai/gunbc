@@ -13,7 +13,7 @@ pub use dag_test_discovery::{
     compile_dag_for_test, dag_builder_call_for_module, discover_compilable_modules,
     discover_dag_tests, AutoTestgenResult, CompilableModule, DagTestTarget,
 };
-pub use graph::{build_testgen_graph, build_testgen_graph_for_test, TestgenGraphOp};
+pub use graph::{build_testgen_graph, build_testgen_graph_auto, build_testgen_graph_for_test, TestgenGraphOp};
 pub use ops::TestgenOp;
 
 // ============================================================================
@@ -24,8 +24,8 @@ pub use ops::TestgenOp;
     name = "testgen",
     crate_name = "gunbc-dag",
     description = "Generate tests from DAG mock specifications",
-    builder = "build_testgen_graph_for_test",
-    import = "use gunbc_dag::testgen_dag::build_testgen_graph_for_test;",
+    builder = "build_testgen_graph_auto",
+    import = "use gunbc_dag::testgen_dag::build_testgen_graph_auto;",
     mock_spec = r#"gunbc_dag::mock_defaults::auto_mock_spec(&dag, "testgen")"#,
     outputs = "**/generated_tests*.rs",
     provides = "**/generated_tests*.rs",

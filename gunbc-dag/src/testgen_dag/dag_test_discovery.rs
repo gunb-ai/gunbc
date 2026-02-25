@@ -407,7 +407,7 @@ pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
         "makegen" => "crate::dsl_builder::build_makegen_graph_dsl().expect(\"graph should build\")".to_string(),
         "pragma" => "crate::dsl_builder::build_pragma_graph_dsl().expect(\"graph should build\")".to_string(),
         "review" => "crate::build_review_graph_dsl().expect(\"graph should build\")".to_string(),
-        "testgen" => "crate::testgen_dag::graph::build_testgen_graph_for_test().expect(\"graph should build\")".to_string(),
+        "testgen" => "crate::testgen_dag::graph::build_testgen_graph_auto().expect(\"graph should build\")".to_string(),
         _ => format!("crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")"),
     }
 }

@@ -2,6 +2,7 @@
 //!
 //! Builds a dynamic DAG with N parallel upsert chains, one per testgen target.
 
+use crate::testgen_dag::dag_test_discovery::discover_compilable_modules;
 use crate::testgen_dag::ops::TestgenOp;
 use crate::{add_fs_env_root_node, wire_fs_env_write_edges};
 use gunbc_exec::{DynOp, Executable};
@@ -48,6 +49,46 @@ pub fn build_testgen_graph(
     }
 
     let _ = output_dir;
+
+    Ok(builder.build())
+}
+
+/// Build a testgen graph from auto-discovered compilable .dag modules.
+///
+/// Scans `dsl/` for all .dag files with `func` items and creates a content
+/// upsert chain for each. Each chain auto-generates tests from DAG types +
+/// structure (zero manual input).
+pub fn build_testgen_graph_auto() -> Result<Dag<TestgenGraphOp>, BuilderError> {
+    let layout = gunbc_ir::WorkspaceLayout::from_env_manifest_dir()
+        .or_else(|_| gunbc_ir::WorkspaceLayout::from_cargo_metadata())
+        .map_err(|e| BuilderError::InternalInvariant(format!("workspace layout: {e}")))?;
+
+    let dsl_root = layout.workspace_root.join("dsl");
+    let output_dir = layout.workspace_root.join("gunbc-dag").join("src");
+    let modules = discover_compilable_modules(&dsl_root);
+
+    let mut builder = DagBuilder::new();
+    let fs_env = add_fs_env_root_node(&mut builder, dyn_op)?;
+
+    for module in &modules {
+        let safe_name = module.module_name.replace('.', "-");
+        let output_path = format!(
+            "{}/generated_tests_{}.rs",
+            output_dir.display(),
+            module.module_name.replace('.', "_"),
+        );
+
+        add_upsert_chain(
+            &mut builder,
+            &fs_env,
+            &safe_name,
+            dyn_op(TestgenOp::AutoGenerate {
+                dsl_path: module.dsl_path.clone(),
+                module_name: module.module_name.clone(),
+                output_path,
+            }),
+        )?;
+    }
 
     Ok(builder.build())
 }
@@ -187,5 +228,39 @@ mod tests {
         assert!(!boundaries.is_boundary_node(&"generate_mock-alpha".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_read_mock-alpha".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_write_mock-alpha".into()));
+    }
+
+    #[test]
+    fn test_auto_graph_discovers_modules() {
+        let dag = build_testgen_graph_auto().expect("auto graph should build");
+
+        // Should have nodes for multiple modules (all compilable .dag files)
+        let generate_nodes: Vec<_> = dag
+            .nodes
+            .iter()
+            .filter(|n| n.id.0.starts_with("generate_"))
+            .collect();
+
+        // At least the 14 tools should produce generate nodes
+        assert!(
+            generate_nodes.len() >= 14,
+            "expected >= 14 generate nodes, found {}",
+            generate_nodes.len()
+        );
+
+        // Spot-check: makegen should have a generate + upsert chain
+        assert!(
+            dag.get_node(&"generate_tools-makegen".into()).is_some(),
+            "missing generate node for tools-makegen"
+        );
+        assert!(
+            dag.get_node(&"execute_read_tools-makegen".into()).is_some(),
+            "missing read transport for tools-makegen"
+        );
+        assert!(
+            dag.get_node(&"execute_tools-makegen_transport".into())
+                .is_some(),
+            "missing write transport for tools-makegen"
+        );
     }
 }
