@@ -15,7 +15,7 @@
 //!
 //! **For runtime tool acquisition, use `CliToolDef` via resource ports:**
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::cli;
 //! // Declare the tool as a resource input on the node's port:
 //! Port::resource("clippy", TypeId::Tool, AccessMode::Read)
@@ -37,7 +37,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::tool::*;
 //!
 //! // Define a tool

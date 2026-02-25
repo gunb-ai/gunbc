@@ -34,7 +34,7 @@ use crate::value::Value;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let upsert = UpsertBuilder::new("install_tool")
 ///     .with_check(DepsOp::CheckInstalled)
 ///     .with_create(DepsOp::Install)

@@ -13,7 +13,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::ci::{CiProvider, WorkflowCommand, detect_provider};
 //! use std::collections::HashMap;
 //!
@@ -75,7 +75,7 @@ pub trait CiProvider: Send + Sync {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let env: HashMap<String, String> = std::env::vars().collect();
 /// let provider = detect_provider(&env);
 /// println!("Running on: {}", provider.name());

@@ -25,7 +25,7 @@
 //!
 //! Generates:
 //!
-//! ```rust,ignore
+//! ```text
 //! fn apply_cloud_env(spec: MockSpec) -> MockSpec {
 //!     spec.boundary("cloud_env", "config", Value::Str(r#"{"project":"mock-project"}"#.into()))
 //! }

@@ -27,7 +27,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::ci::{detect_provider, WorkflowCommand};
 //! use std::collections::HashMap;
 //!

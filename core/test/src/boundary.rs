@@ -55,7 +55,7 @@ fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let dag = build_gist_graph();
 /// let result = assert_boundary_mockable(&dag, default_mocks());
 /// assert!(result.is_ok());

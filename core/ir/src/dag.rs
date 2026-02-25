@@ -99,7 +99,7 @@ impl<T> Dag<T> {
     ///
     /// # Example
     ///
-    /// ```ignore
+    /// ```text
     /// let dag = build_workspace_dag();
     /// println!("{}", dag.to_mermaid("workspace"));
     /// ```

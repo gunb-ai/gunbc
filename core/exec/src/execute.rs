@@ -338,7 +338,7 @@ pub fn execute_with_mode_and_inputs_and_detail<T: Executable + Clone + Send>(
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// use gunbc_exec::{execute_with_progress, progress::DagProgress};
 ///
 /// let mut progress = None; // Will be initialized from snapshot
@@ -439,7 +439,7 @@ pub fn execute_with_progress_and_mode_and_inputs_and_detail<T: Executable + Clon
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// use gunbc_exec::{execute_single_node, ExecutionMode};
 /// use std::collections::HashMap;
 /// use gunbc_ir::Value;

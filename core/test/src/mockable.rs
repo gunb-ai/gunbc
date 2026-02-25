@@ -18,7 +18,7 @@ use std::collections::HashMap;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// impl Mockable for GistOp {
 ///     fn mock_outputs(&self) -> HashMap<String, Value> {
 ///         match self {
@@ -171,7 +171,7 @@ impl ErrorTestCase {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let outputs = mock_hashmap! {
 ///     "files" => Value::str_list(vec!["test.rs".into()]),
 ///     "count" => Value::Int(1)

@@ -5,7 +5,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::{TypeRegistry, type_lib};
 //!
 //! let mut registry = TypeRegistry::new();

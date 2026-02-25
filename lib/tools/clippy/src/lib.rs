@@ -6,7 +6,7 @@
 //!
 //! # Configuration Generation
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_clippy::config::{ClippyConfig, generate_clippy_toml};
 //!
 //! // Use transport pattern preset

@@ -39,7 +39,7 @@ use crate::value::Value;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let branch_node = BranchBuilder::new("check_and_process")
 ///     .with_condition("is_valid", "Bool")
 ///     .with_true_branch(valid_dag)

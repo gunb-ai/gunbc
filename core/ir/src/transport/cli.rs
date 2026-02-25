@@ -15,7 +15,7 @@
 //! the upsert pattern. This integrates with the codebase's fractal DAG
 //! approach where DAGs can contain sub-DAGs.
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::cli::{build_cli_upsert, CLIPPY};
 //!
 //! // Build a sub-DAG node for clippy upsert
@@ -104,7 +104,7 @@ pub struct ToolResource;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// // In operation implementation - receives handle from inputs
 /// fn execute_lint(inputs: HashMap<String, Value>) -> Result<...> {
 ///     let clippy: ToolHandle = inputs.get("tool:clippy").unwrap();
@@ -354,7 +354,7 @@ pub trait ToolPathResolver {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let resolver = MockResolver::new()
 ///     .with_path("cargo", "/usr/bin/cargo")
 ///     .with_path("clippy", "/usr/bin/clippy");
@@ -618,7 +618,7 @@ use crate::value::Value;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// use gunbc_ir::transport::cli::{build_cli_upsert, CLIPPY};
 ///
 /// // Build upsert sub-DAG for clippy

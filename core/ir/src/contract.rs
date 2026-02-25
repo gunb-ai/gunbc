@@ -14,7 +14,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::{contract, type_lib};
 //!
 //! let url_type = type_lib::url();
@@ -971,7 +971,7 @@ impl fmt::Display for ProtocolLayerKind {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let tcp = ProtocolLayer::new("tcp", ProtocolLayerKind::Socket);
 /// let http = ProtocolLayer::new("http", ProtocolLayerKind::Session)
 ///     .with_properties(vec!["ReadOnly".into(), "Retryable".into()]);

@@ -34,7 +34,7 @@ use crate::value::Value;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let txn = TransactionBuilder::new("database_update")
 ///     .with_begin(DbOp::BeginTransaction)
 ///     .with_body(update_dag)

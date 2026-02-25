@@ -21,7 +21,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_exec::CiContext;
 //!
 //! let mut ci = CiContext::detect();

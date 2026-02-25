@@ -42,7 +42,7 @@ pub enum VariableStyle {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let var_node = build_variable_syntax_subdag();
 /// // Execute with template = "$(CC) -o $@ $<", variables = {"CC": "gcc"}
 /// // → expanded = "gcc -o $@ $<" (automatic vars need context)

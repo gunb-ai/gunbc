@@ -6,7 +6,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::github::api::*;
 //!
 //! // Create a request to the gists endpoint
@@ -72,7 +72,7 @@ pub fn github_enterprise_api(base_url: &'static str) -> GitHubApi {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// // GET /user
 /// let req = github_rest_request("/user");
 ///

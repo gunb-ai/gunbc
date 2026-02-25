@@ -131,7 +131,7 @@ impl<T> Node<T> {
     /// Examples are used by testgen to generate per-node unit tests.
     /// Each example specifies concrete input values and expected output values.
     ///
-    /// ```ignore
+    /// ```text
     /// Node::opaque("prepare", inputs, outputs, MyOp::Prepare)
     ///     .with_example(
     ///         [("input".into(), Value::Str("hello".into()))].into(),

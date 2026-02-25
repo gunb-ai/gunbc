@@ -65,7 +65,7 @@ pub const JS_COMMENTS: CommentSyntax = CommentSyntax {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let comment_node = build_comment_prefix_subdag();
 /// // Execute with content = "hello", prefix = "#"
 /// // → commented = "# hello"

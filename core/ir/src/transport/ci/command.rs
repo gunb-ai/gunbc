@@ -14,7 +14,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::transport::ci::{WorkflowCommand, AnnotationLevel};
 //!
 //! let cmd = WorkflowCommand::Annotation {

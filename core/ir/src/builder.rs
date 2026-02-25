@@ -5,7 +5,7 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
+//! ```text
 //! use gunbc_ir::builder::DagBuilder;
 //! use gunbc_ir::{Node, Port};
 
@@ -383,7 +383,7 @@ impl<T> InputRef<T> {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```text
 /// let mut builder = DagBuilder::new();
 /// let a = builder.add_root_node(node_a)?;
 /// let b = builder.add_node_after(node_b, &a)?;

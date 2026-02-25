@@ -16,7 +16,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::patterns::UpsertBuilder;
 //!
 //! let upsert_node = UpsertBuilder::new("install_tool")

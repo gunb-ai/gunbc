@@ -33,7 +33,7 @@
 //!
 //! # Usage
 //!
-//! ```ignore
+//! ```text
 //! use gunbc_ir::codegen_bridge::{BridgeModule, BridgeField, BridgeStruct};
 //!
 //! let module = BridgeModule {
@@ -243,7 +243,7 @@ impl BridgeModule {
     ///
     /// This is the F2.2 pipeline: `BridgeModule → SourceFile → CodeRenderer → text`.
     ///
-    /// ```ignore
+    /// ```text
     /// use gunbc_codegen::testgen::render_rust::RustCodeRenderer;
     /// use gunbc_ir::render_ir::PlainText;
     ///

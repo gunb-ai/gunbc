@@ -330,7 +330,7 @@ impl ToolInfo {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```text
     /// ToolInfo::standalone("gist", "Create a GitHub gist")
     /// // binary: "gunbc-gist", short_name: "gist"
     /// ```
@@ -370,7 +370,7 @@ impl ToolInfo {
     ///
     /// # Examples
     ///
-    /// ```ignore
+    /// ```text
     /// ToolInfo::composed("ci", "dag", "Run CI pipeline")
     /// // binary: "gunbc-ci", package: "gunbc-dag", short_name: "ci"
     /// ```

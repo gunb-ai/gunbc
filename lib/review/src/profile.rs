@@ -118,7 +118,7 @@ pub struct ProjectContext {
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// let ctx = ProjectContext {
 ///     agent_md: Some(agent_md_content),
 ///     clippy_toml: Some(clippy_toml_content),

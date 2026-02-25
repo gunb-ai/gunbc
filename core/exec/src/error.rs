@@ -13,7 +13,7 @@ impl ExecError {
 
     /// Add context to this error, producing a new error with the context prepended.
     ///
-    /// ```ignore
+    /// ```text
     /// let err = ExecError::new("file not found");
     /// let with_ctx = err.context("reading config");
     /// assert_eq!(with_ctx.to_string(), "reading config: file not found");
@@ -45,7 +45,7 @@ impl From<&str> for ExecError {
 
 /// Extension trait for adding context to `Result<T, ExecError>`.
 ///
-/// ```ignore
+/// ```text
 /// use gunbc_exec::{ExecError, ResultExt};
 ///
 /// fn load_config() -> Result<String, ExecError> {
@@ -79,7 +79,7 @@ impl<T> ResultExt<T> for Result<T, ExecError> {
 /// `Display` into an `ExecError` with a context message. This eliminates the common
 /// boilerplate pattern:
 ///
-/// ```ignore
+/// ```text
 /// // Before:
 /// serde_json::from_str(&text)
 ///     .map_err(|e| ExecError::new(format!("JSON parse error: {}", e)))?;
