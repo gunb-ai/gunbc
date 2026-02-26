@@ -126,8 +126,8 @@ fn annotation_ratchet() {
     }
 
     assert!(
-        total <= ANNOTATION_BASELINE,
-        "Annotation count {total} exceeds baseline {ANNOTATION_BASELINE}. \
+        total == ANNOTATION_BASELINE,
+        "Annotation count {total} differs from baseline {ANNOTATION_BASELINE}. \
          Migrate to typed syntax (where clauses, transport blocks, behavioral keywords) \
          instead of adding annotations."
     );

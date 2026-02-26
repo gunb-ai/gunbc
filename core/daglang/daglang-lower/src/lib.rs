@@ -3947,6 +3947,13 @@ fn expand_non_generic_pattern_calls(
             _ => continue,
         };
 
+        // Skip content_upsert — already expanded by the specialized
+        // expand_single_content_upsert path which correctly wires the
+        // content_upsert → ensure → file_content_matches → eq chain.
+        if call_name == "content_upsert" {
+            continue;
+        }
+
         let Some(pattern_def) = pattern_defs.get(call_name) else {
             continue;
         };
@@ -4273,10 +4280,6 @@ fn extract_lambda_field_access(expr: &Expr) -> Option<String> {
     }
 }
 
-/// Expand a single node statement from a pattern body.
-///
-/// Dispatches based on the expression type:
-/// - `Expr::ServiceCall` → clone transport triplet from service registry
 /// Recursively resolve all `Ident` expressions through an argument map.
 ///
 /// When expanding nested pattern calls (e.g., `ensure(check: file_content_matches(path: path, expected: content))`),
@@ -4308,6 +4311,10 @@ fn resolve_expr_idents(expr: &Expr, arg_map: &HashMap<String, &Expr>) -> Expr {
     }
 }
 
+/// Expand a single node statement from a pattern body.
+///
+/// Dispatches based on the expression type:
+/// - `Expr::ServiceCall` → clone transport triplet from service registry
 /// - `Expr::Call("eq", ...)` → create CompareEquality primitive
 /// - `Expr::Call(pattern_name, ...)` → recursive pattern expansion
 #[allow(clippy::too_many_arguments)]
