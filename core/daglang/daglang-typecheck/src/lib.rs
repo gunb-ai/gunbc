@@ -4932,12 +4932,12 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
     }
 
     #[test]
-    fn strict_mode_accepts_annotated_provides_resource_type_reference() {
+    fn strict_mode_accepts_provides_resource_type_reference() {
         let graph = module_graph_from_sources(&[(
             "sample/main.dag",
             r#"module sample.main
 resource ArtifactStore {}
-func run() -> { ok: Bool } provides out: ArtifactStore @test_integration {
+func run() -> { ok: Bool } provides out: ArtifactStore {
   return { ok: true }
 }"#,
         )]);
@@ -4947,7 +4947,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore @test_integration {
                 allow_unresolved_imports: false,
             },
         )
-        .expect("annotated provided resource type should resolve in strict mode");
+        .expect("provided resource type should resolve in strict mode");
         assert_eq!(typed.modules.len(), 1);
     }
 
@@ -5214,7 +5214,7 @@ fn run(input: Payload) -> String { input.missing }"#,
         let graph = module_graph_from_sources(&[(
             "unsat_refinement.dag",
             r#"module sample.refinement
-fn run(value: Int @range(min: 5, max: 1)) -> Int { value }"#,
+fn run(value: Int where range(min: 5, max: 1)) -> Int { value }"#,
         )]);
         let errors = typecheck_module_graph(graph).expect_err("unsatisfiable range should fail");
         assert!(errors.iter().any(|error| matches!(

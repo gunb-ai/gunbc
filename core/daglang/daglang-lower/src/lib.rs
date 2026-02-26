@@ -7391,7 +7391,7 @@ fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
         Expr::Literal(Literal::Bool(value)) => Some(ServiceCallArgLiteral::Bool(*value)),
         Expr::Literal(Literal::None) => Some(ServiceCallArgLiteral::None),
         Expr::StringInterp(_) => expr_to_template_string(arg).map(ServiceCallArgLiteral::String),
-        Expr::List(_) | Expr::Map(_) => expr_to_json_literal(arg).map(ServiceCallArgLiteral::Json),
+        Expr::List(_) | Expr::Map(_) => expr_to_json_literal(arg, &HashSet::new()).map(ServiceCallArgLiteral::Json),
         _ => None,
     }
 }
@@ -7406,7 +7406,7 @@ fn expr_to_json_literal(expr: &Expr, variant_names: &HashSet<String>) -> Option<
         Expr::List(values) => {
             let mut out = Vec::with_capacity(values.len());
             for value in values {
-                out.push(expr_to_json_literal(value)?);
+                out.push(expr_to_json_literal(value, variant_names)?);
             }
             Some(serde_json::Value::Array(out))
         }
@@ -7417,8 +7417,14 @@ fn expr_to_json_literal(expr: &Expr, variant_names: &HashSet<String>) -> Option<
                     Expr::Literal(Literal::String(raw)) => raw.clone(),
                     _ => return None,
                 };
-                out.insert(key, expr_to_json_literal(value)?);
+                out.insert(key, expr_to_json_literal(value, variant_names)?);
             }
+            Some(serde_json::Value::Object(out))
+        }
+        // Unit variant ident in data declarations (e.g., `data x = Closed`)
+        Expr::Ident(name) if variant_names.contains(name.as_str()) => {
+            let mut out = serde_json::Map::new();
+            out.insert("_variant".to_string(), serde_json::Value::String(name.clone()));
             Some(serde_json::Value::Object(out))
         }
         Expr::Record(type_name, fields) => {
@@ -7430,12 +7436,12 @@ fn expr_to_json_literal(expr: &Expr, variant_names: &HashSet<String>) -> Option<
                 );
             }
             for (key, value) in fields {
-                out.insert(key.clone(), expr_to_json_literal(value)?);
+                out.insert(key.clone(), expr_to_json_literal(value, variant_names)?);
             }
             Some(serde_json::Value::Object(out))
         }
         Expr::UnaryOp(daglang_syntax::ast::UnaryOp::Neg, inner) => {
-            match expr_to_json_literal(inner)? {
+            match expr_to_json_literal(inner, variant_names)? {
                 serde_json::Value::Number(n) => {
                     if let Some(i) = n.as_i64() {
                         Some(serde_json::Value::Number((-i).into()))
@@ -7464,7 +7470,7 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
             if let Item::DataDef(def) = &item.node {
-                if let Some(json) = expr_to_json_literal(&def.value) {
+                if let Some(json) = expr_to_json_literal(&def.value, &variant_names) {
                     values.insert(format!("{module_name}.{}", def.name), json.clone());
 
                     let count = unqualified_counts.entry(def.name.clone()).or_insert(0);

@@ -93,6 +93,11 @@ pub enum LoweredExpr {
     },
     /// Return: `return { field: value }`
     Return(Vec<(String, LoweredExpr)>),
+    /// Sum-type variant construction: `Closed` or `Ok { value: x }`
+    VariantConstruct {
+        tag: String,
+        fields: Vec<(String, LoweredExpr)>,
+    },
 }
 
 /// Literal value (no Float — LoweredOp requires Eq; add via ordered-float if needed).
