@@ -30,7 +30,6 @@ use daglang_syntax::ast_utils::{
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
-use gunbc_ir::resource::AccessMode;
 use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, Port, PortName, Value};
 use serde::Serialize;
 
@@ -2978,16 +2977,7 @@ fn add_dependency_edges(
             }
 
             if entry_module.is_none_or(|em| module_name == em) {
-                expand_content_upsert_patterns(
-                    builder,
-                    &module_name,
-                    item_name,
-                    stmts,
-                    target,
-                    endpoints_by_name,
-                    &param_types,
-                    data_values,
-                );
+                let item_uses = item_uses_binding_types(&item.node);
                 expand_non_generic_pattern_calls(
                     builder,
                     project,
@@ -2999,6 +2989,7 @@ fn add_dependency_edges(
                     &param_types,
                     service_registry,
                     data_values,
+                    &item_uses,
                 );
             }
             if emit_collection_nodes {
@@ -3447,393 +3438,6 @@ fn add_control_flow_pattern_nodes(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn expand_content_upsert_patterns(
-    builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
-    stmts: &[Stmt],
-    target: &LoweredEndpoint,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    param_types: &HashMap<String, String>,
-    data_values: &HashMap<String, serde_json::Value>,
-) {
-    let mut bound_callables = HashMap::<String, String>::new();
-    let mut expansion_count = 0usize;
-
-    for stmt in stmts {
-        let maybe_binding = match stmt {
-            Stmt::Let(name, expr) | Stmt::Assign(name, expr) => Some((name, expr)),
-            Stmt::Node(ns) => Some((&ns.name, &ns.expr)),
-            Stmt::Expr(expr) => {
-                if let Expr::Call(name, args) = expr {
-                    if name == "content_upsert" {
-                        expansion_count += 1;
-                        expand_single_content_upsert(
-                            builder,
-                            module_name,
-                            item_name,
-                            expansion_count,
-                            args,
-                            target,
-                            &bound_callables,
-                            endpoints_by_name,
-                            param_types,
-                            data_values,
-                        );
-                    }
-                }
-                None
-            }
-            Stmt::Annotation(_) => None,
-            Stmt::Return(_) => None,
-        };
-
-        let Some((binding, expr)) = maybe_binding else {
-            continue;
-        };
-        match expr {
-            Expr::Call(name, args) => {
-                if should_track_call(name) {
-                    bound_callables.insert(binding.clone(), name.clone());
-                }
-                if name == "content_upsert" {
-                    expansion_count += 1;
-                    expand_single_content_upsert(
-                        builder,
-                        module_name,
-                        item_name,
-                        expansion_count,
-                        args,
-                        target,
-                        &bound_callables,
-                        endpoints_by_name,
-                        param_types,
-                        data_values,
-                    );
-                }
-            }
-            Expr::Ident(source) => {
-                if let Some(origin) = bound_callables.get(source) {
-                    bound_callables.insert(binding.clone(), origin.clone());
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn expand_single_content_upsert(
-    builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
-    expansion_count: usize,
-    args: &[(Option<String>, Expr)],
-    target: &LoweredEndpoint,
-    bound_callables: &HashMap<String, String>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    param_types: &HashMap<String, String>,
-    data_values: &HashMap<String, serde_json::Value>,
-) {
-    let suffix = expansion_suffix(item_name, expansion_count);
-    let prepare_read_id = format!("prepare_read_{suffix}");
-    let execute_read_id = format!("execute_read_{suffix}");
-    let compare_id = format!("compare_{suffix}_content");
-    let prepare_write_id = format!("prepare_write_{suffix}");
-    let execute_transport_id = format!("execute_{suffix}_transport");
-    let is_makegen_expansion = suffix == "makegen";
-
-    let mut prepare_read_inputs = vec![Port::scalar("path", "String")];
-    if is_makegen_expansion {
-        prepare_read_inputs.push(Port::resource(
-            "file:Makefile",
-            "FilesystemHandle",
-            AccessMode::Read,
-        ));
-    }
-    builder.add_node(Node::opaque(
-        prepare_read_id.clone(),
-        prepare_read_inputs,
-        vec![
-            Port::scalar("request", "TransportRequest"),
-            Port::scalar("skip", "Bool"),
-        ],
-        LoweredOp::Primitive {
-            module: module_name.to_string(),
-            name: format!("content_upsert::{prepare_read_id}"),
-            kind: PrimitiveOpKind::IoPrepareFileRead,
-        },
-    ));
-    builder.add_node(Node::opaque(
-        execute_read_id.clone(),
-        vec![
-            Port::scalar("request", "TransportRequest"),
-            Port::scalar("skip", "Bool"),
-        ],
-        vec![Port::scalar("response", "TransportResponse")],
-        LoweredOp::Primitive {
-            module: module_name.to_string(),
-            name: format!("content_upsert::{execute_read_id}"),
-            kind: PrimitiveOpKind::IoExecuteFileRead,
-        },
-    ));
-    builder.add_node(Node::opaque(
-        compare_id.clone(),
-        vec![
-            Port::scalar("expected_content", "String"),
-            Port::scalar("response", "TransportResponse"),
-        ],
-        vec![Port::scalar("fresh", "Bool"), Port::scalar("skip", "Bool")],
-        LoweredOp::Primitive {
-            module: module_name.to_string(),
-            name: format!("content_upsert::{compare_id}"),
-            kind: PrimitiveOpKind::CompareEquality,
-        },
-    ));
-    builder.add_node(Node::opaque(
-        prepare_write_id.clone(),
-        vec![
-            Port::scalar("content", "String"),
-            Port::scalar("path", "String"),
-        ],
-        vec![Port::scalar("request", "TransportRequest")],
-        LoweredOp::Primitive {
-            module: module_name.to_string(),
-            name: format!("content_upsert::{prepare_write_id}"),
-            kind: PrimitiveOpKind::IoPrepareFileWrite,
-        },
-    ));
-    let mut execute_transport_inputs = vec![
-        Port::scalar("request", "TransportRequest"),
-        Port::scalar("skip", "Bool"),
-    ];
-    if is_makegen_expansion {
-        execute_transport_inputs.push(Port::resource(
-            "file",
-            "FilesystemHandle",
-            AccessMode::Write,
-        ));
-    }
-    builder.add_node(Node::opaque(
-        execute_transport_id.clone(),
-        execute_transport_inputs,
-        vec![Port::scalar("response", "TransportResponse")],
-        LoweredOp::Primitive {
-            module: module_name.to_string(),
-            name: format!("content_upsert::{execute_transport_id}"),
-            kind: PrimitiveOpKind::IoExecuteFileWrite,
-        },
-    ));
-
-    builder.add_edge(&prepare_read_id, "request", &execute_read_id, "request");
-    builder.add_edge(&prepare_read_id, "skip", &execute_read_id, "skip");
-    builder.add_edge(&execute_read_id, "response", &compare_id, "response");
-    builder.add_edge(
-        &prepare_write_id,
-        "request",
-        &execute_transport_id,
-        "request",
-    );
-    builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
-    builder.add_edge(&execute_transport_id, "response", &target.node_id, "__deps");
-
-    let content_destinations = [
-        (compare_id.as_str(), "expected_content"),
-        (prepare_write_id.as_str(), "content"),
-    ];
-    let wired_content = wire_resolved_or_param_source(
-        builder,
-        module_name,
-        item_name,
-        param_types,
-        resolve_content_source(args, bound_callables, endpoints_by_name),
-        resolve_named_ident_arg(args, "content"),
-        &content_destinations,
-    );
-    // Fallback: if the content arg is a data declaration ident, create a
-    // literal source node with the data value — mirrors wire_fn_call_arguments.
-    if !wired_content {
-        if let Some(ident) = resolve_named_ident_arg(args, "content") {
-            if let Some(json_val) = data_values.get(ident) {
-                let literal = ServiceCallArgLiteral::Json(json_val.clone());
-                let src = ensure_literal_source_node(
-                    builder,
-                    module_name,
-                    item_name,
-                    "content",
-                    "String",
-                    &literal,
-                    "content_upsert",
-                );
-                wire_output_to_destinations(builder, &src, "content", &content_destinations);
-            }
-        }
-    }
-
-    let wired_path = wire_resolved_or_param_source(
-        builder,
-        module_name,
-        item_name,
-        param_types,
-        resolve_path_source(args, bound_callables, endpoints_by_name),
-        resolve_named_ident_arg(args, "path"),
-        &[
-            (prepare_read_id.as_str(), "path"),
-            (prepare_write_id.as_str(), "path"),
-        ],
-    );
-    if !wired_path {
-        if let Some(literal) = resolve_path_literal(args) {
-            let literal_source = ensure_literal_source_node(
-                builder,
-                module_name,
-                item_name,
-                "path",
-                "String",
-                &literal,
-                format!("content_upsert_path_{suffix}").as_str(),
-            );
-            // FC-7: Also add an explicit output path annotation node so
-            // extract_output_paths() doesn't need the ID substring hack.
-            if let ServiceCallArgLiteral::String(path_str) = &literal {
-                let path_annotation_id = format!("output_path_annotation_{suffix}");
-                builder.add_node(Node::opaque(
-                    path_annotation_id.clone(),
-                    vec![],
-                    vec![Port::scalar("path", "String")],
-                    LoweredOp::Primitive {
-                        module: module_name.to_string(),
-                        name: format!("content_upsert::output_path_annotation_{suffix}"),
-                        kind: PrimitiveOpKind::ContentUpsertOutputPath {
-                            path: path_str.clone(),
-                        },
-                    },
-                ));
-            }
-            builder.add_edge(literal_source.as_str(), "path", &prepare_read_id, "path");
-            builder.add_edge(literal_source.as_str(), "path", &prepare_write_id, "path");
-        }
-    }
-}
-
-fn wire_resolved_or_param_source(
-    builder: &mut DagBuilder,
-    module_name: &str,
-    item_name: &str,
-    param_types: &HashMap<String, String>,
-    resolved_source: Option<LoweredEndpoint>,
-    param_ident: Option<&str>,
-    destinations: &[(&str, &str)],
-) -> bool {
-    if let Some(source) = resolved_source {
-        wire_endpoint_output_to_destinations(builder, &source, destinations);
-        return true;
-    }
-
-    if let Some(ident) = param_ident {
-        if let Some(param_ty) = param_types.get(ident) {
-            let param_source =
-                ensure_param_source_node(builder, module_name, item_name, ident, param_ty.as_str());
-            wire_output_to_destinations(builder, param_source.as_str(), ident, destinations);
-            return true;
-        }
-    }
-
-    false
-}
-
-fn wire_endpoint_output_to_destinations(
-    builder: &mut DagBuilder,
-    source: &LoweredEndpoint,
-    destinations: &[(&str, &str)],
-) {
-    wire_output_to_destinations(
-        builder,
-        source.node_id.as_str(),
-        source.primary_output.as_str(),
-        destinations,
-    );
-}
-
-fn wire_output_to_destinations(
-    builder: &mut DagBuilder,
-    source_node: &str,
-    source_port: &str,
-    destinations: &[(&str, &str)],
-) {
-    for (dest_node, dest_port) in destinations {
-        builder.add_edge(source_node, source_port, dest_node, dest_port);
-    }
-}
-
-fn resolve_content_source(
-    args: &[(Option<String>, Expr)],
-    bound_callables: &HashMap<String, String>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-) -> Option<LoweredEndpoint> {
-    let (_, content_expr) = args
-        .iter()
-        .find(|(name, _)| matches!(name.as_deref(), Some("content")))?;
-    resolve_source_expr(content_expr, bound_callables, endpoints_by_name)
-}
-
-fn resolve_path_source(
-    args: &[(Option<String>, Expr)],
-    bound_callables: &HashMap<String, String>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-) -> Option<LoweredEndpoint> {
-    let (_, path_expr) = args
-        .iter()
-        .find(|(name, _)| matches!(name.as_deref(), Some("path")))?;
-    resolve_source_expr(path_expr, bound_callables, endpoints_by_name)
-}
-
-fn resolve_path_literal(args: &[(Option<String>, Expr)]) -> Option<ServiceCallArgLiteral> {
-    let (_, path_expr) = args
-        .iter()
-        .find(|(name, _)| matches!(name.as_deref(), Some("path")))?;
-    service_call_literal_arg(path_expr)
-}
-
-fn resolve_named_ident_arg<'a>(args: &'a [(Option<String>, Expr)], name: &str) -> Option<&'a str> {
-    let (_, expr) = args
-        .iter()
-        .find(|(arg_name, _)| arg_name.as_deref() == Some(name))?;
-    match expr {
-        Expr::Ident(ident) => Some(ident.as_str()),
-        _ => None,
-    }
-}
-
-fn resolve_source_expr(
-    expr: &Expr,
-    bound_callables: &HashMap<String, String>,
-    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-) -> Option<LoweredEndpoint> {
-    match expr {
-        Expr::FieldAccess(base, field) => {
-            let base_endpoint = resolve_source_expr(base, bound_callables, endpoints_by_name)?;
-            Some(LoweredEndpoint {
-                node_id: base_endpoint.node_id,
-                primary_output: field.clone(),
-            })
-        }
-        _ => {
-            let source_name = match expr {
-                Expr::Ident(name) => bound_callables
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| name.clone()),
-                Expr::Call(name, _) => name.clone(),
-                _ => return None,
-            };
-            endpoints_by_name
-                .get(&source_name)
-                .and_then(|entry| entry.clone())
-        }
-    }
-}
 
 fn expansion_suffix(item_name: &str, expansion_count: usize) -> String {
     let base = item_name
@@ -3926,6 +3530,7 @@ fn expand_non_generic_pattern_calls(
     param_types: &HashMap<String, String>,
     service_registry: &ServiceEndpointRegistry,
     data_values: &HashMap<String, serde_json::Value>,
+    caller_uses: &HashMap<String, String>,
 ) {
     let pattern_defs = collect_expandable_pattern_defs(project);
     let mut expansion_count = 0usize;
@@ -3967,6 +3572,7 @@ fn expand_non_generic_pattern_calls(
             &expanded_results,
             &pattern_defs,
             0, // recursion depth
+            caller_uses,
         );
         if let Some(result) = result {
             // Wire a dep edge from the last expanded node to the target callable.
@@ -4005,6 +3611,7 @@ fn expand_single_pattern(
     expanded_results: &HashMap<String, PatternExpansionResult>,
     all_patterns: &HashMap<String, ExpandablePattern<'_>>,
     depth: usize,
+    caller_uses: &HashMap<String, String>,
 ) -> Option<PatternExpansionResult> {
     if depth >= PATTERN_EXPANSION_MAX_DEPTH {
         return None;
@@ -4041,30 +3648,12 @@ fn expand_single_pattern(
         }
     }
 
-    // Merge the parent pattern's uses_binding_types with the caller's context
+    // Merge the pattern's own `uses` bindings with the caller's `uses` bindings
     // so that service calls in substituted expressions can be resolved.
     // For content_upsert → ensure: the caller's `fs: Filesystem` binding must
     // be available when expanding `fs.write(...)` substituted for `Action`.
-    let caller_uses_binding_types: HashMap<String, String> = call_args
-        .iter()
-        .filter_map(|(_, expr)| {
-            if let Expr::ServiceCall(path, _) = expr {
-                let binding = path.first()?;
-                // The binding type comes from the CALLER's scope, not the pattern's.
-                // For now, we check if it's in uses_binding_types (from the pattern itself).
-                None::<(String, String)>.or_else(|| {
-                    // Caller-level uses bindings are in the grandparent scope;
-                    // we don't have direct access. The service_registry lookup
-                    // will handle it.
-                    Some((binding.clone(), binding.clone()))
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
     let mut combined_uses = uses_binding_types.clone();
-    combined_uses.extend(caller_uses_binding_types);
+    combined_uses.extend(caller_uses.iter().map(|(k, v)| (k.clone(), v.clone())));
 
     // Track nodes created in the expansion for after-edge wiring.
     // Maps pattern body binding name → (last_node_id, output_port_name).
@@ -4170,9 +3759,9 @@ fn expand_single_pattern(
 /// If the expression is `Expr::Ident("Check")` and the type_param_map has
 /// `"Check" → Expr::Call("file_content_matches", ...)`, returns
 /// `Some(Expr::Call("file_content_matches", ...))`.
-fn substitute_type_param<'a>(
+fn substitute_type_param(
     expr: &Expr,
-    type_param_map: &HashMap<String, &'a Expr>,
+    type_param_map: &HashMap<String, &Expr>,
 ) -> Option<Expr> {
     match expr {
         Expr::Ident(name) => type_param_map.get(name).map(|e| (*e).clone()),
@@ -4380,6 +3969,7 @@ fn expand_pattern_body_node(
                 expanded_results,
                 all_patterns,
                 depth + 1,
+                uses_binding_types, // propagate uses bindings through recursive expansion
             );
 
             // Wire after-dependency edges.
@@ -8314,12 +7904,13 @@ fn collect_bound_callable_sources(
 /// this change.
 pub fn extract_output_paths(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<String> {
     let mut paths = std::collections::BTreeSet::new();
-    collect_output_paths_recursive(&dag.nodes, &mut paths);
+    collect_output_paths_recursive(&dag.nodes, &dag.edges, &mut paths);
     paths.into_iter().collect()
 }
 
 fn collect_output_paths_recursive(
     nodes: &[gunbc_ir::node::Node<LoweredOp>],
+    edges: &[gunbc_ir::Edge],
     paths: &mut std::collections::BTreeSet<String>,
 ) {
     for node in nodes {
@@ -8344,8 +7935,59 @@ fn collect_output_paths_recursive(
                 paths.insert(path.clone());
             }
         }
+
+        // Structural extraction from content_upsert callable nodes.
+        // Trace path input edges back to literal source nodes.
+        if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable { name, .. }) = &node.body {
+            if name.contains("content_upsert") {
+                for edge in edges {
+                    if edge.to_node.0 == node.id.0 && edge.to_port.0 == "path" {
+                        if let Some(source_node) = nodes.iter().find(|n| n.id.0 == edge.from_node.0)
+                        {
+                            if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                                kind: PrimitiveOpKind::CallLiteralSource {
+                                    literal: PrimitiveLiteral::String(path),
+                                },
+                                ..
+                            }) = &source_node.body
+                            {
+                                paths.insert(path.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Structural extraction from write prepare transport nodes.
+        if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Callable {
+            obligation: ObligationCategory::ServiceTransportPrepare,
+            name,
+            ..
+        }) = &node.body
+        {
+            if name.contains("write") {
+                for edge in edges {
+                    if edge.to_node.0 == node.id.0 && edge.to_port.0 == "path" {
+                        if let Some(source_node) = nodes.iter().find(|n| n.id.0 == edge.from_node.0)
+                        {
+                            if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
+                                kind: PrimitiveOpKind::CallLiteralSource {
+                                    literal: PrimitiveLiteral::String(path),
+                                },
+                                ..
+                            }) = &source_node.body
+                            {
+                                paths.insert(path.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if let gunbc_ir::node::NodeBody::SubDag(sub) = &node.body {
-            collect_output_paths_recursive(&sub.nodes, paths);
+            collect_output_paths_recursive(&sub.nodes, &sub.edges, paths);
         }
     }
 }

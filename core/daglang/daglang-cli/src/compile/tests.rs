@@ -576,23 +576,24 @@ fn render_triplets_json_includes_makegen_transport_nodes() {
         .get("triplets")
         .and_then(Value::as_array)
         .expect("triplets should be an array");
+    // After generic pattern expansion, transport triplet node names
+    // follow the pattern expansion naming convention (no longer the
+    // hardcoded prepare_read_makegen / prepare_write_makegen names).
+    let prepare_names: Vec<&str> = triplets
+        .iter()
+        .filter_map(|t| t.get("prepare_node").and_then(Value::as_str))
+        .collect();
     assert!(
-        triplets.iter().any(|triplet| {
-            triplet
-                .get("prepare_node")
-                .and_then(Value::as_str)
-                .is_some_and(|prepare| prepare == "prepare_read_makegen")
-        }),
-        "expected read transport triplet"
+        prepare_names
+            .iter()
+            .any(|p| p.contains("read") || p.contains("Read")),
+        "expected read transport triplet, found: {prepare_names:?}"
     );
     assert!(
-        triplets.iter().any(|triplet| {
-            triplet
-                .get("prepare_node")
-                .and_then(Value::as_str)
-                .is_some_and(|prepare| prepare == "prepare_write_makegen")
-        }),
-        "expected write transport triplet"
+        prepare_names
+            .iter()
+            .any(|p| p.contains("write") || p.contains("Write")),
+        "expected write transport triplet, found: {prepare_names:?}"
     );
 }
 
