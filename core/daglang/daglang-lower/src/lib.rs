@@ -275,11 +275,11 @@ pub struct ServiceCallMetadata {
     pub idempotent: bool,
     pub readonly: bool,
     pub permissions: Vec<String>,
-    /// Full protocol spec extracted from DSL annotations.
+    /// Full protocol spec extracted from DSL service/operation declarations.
     /// Used by generic protocol interpreters to replace per-service adapters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<ServiceOperationSpec>,
-    /// M22 Phase 3: Retry policy from `@retry` annotations.
+    /// Retry policy (not yet implemented — will use DSL `retry` block syntax).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_policy: Option<RetryPolicy>,
 }
@@ -288,7 +288,7 @@ pub struct ServiceCallMetadata {
 // Service Operation Spec — protocol interface parameterization
 // ============================================================================
 
-/// Complete specification for a service operation, extracted from `.dag` annotations.
+/// Complete specification for a service operation, extracted from `.dag` declarations.
 /// Each variant parameterizes a generic protocol interpreter (REST, Shell, File).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum ServiceOperationSpec {
@@ -336,9 +336,9 @@ impl ServiceOperationSpec {
 /// File protocol specification: operation type + path template.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct FileOperationSpec {
-    /// File operation kind from `@file(OP, ...)` — e.g. "READ", "WRITE", "READ_BYTES".
+    /// File operation kind from `transport file { op: OP }` — e.g. "READ", "WRITE", "READ_BYTES".
     pub operation: String,
-    /// Path template from `@file(..., "{path}")`.
+    /// Path template from `transport file { path: "{path}" }`.
     pub path_template: String,
     /// Input fields from `input { ... }`.
     pub input_fields: Vec<FieldSpec>,
@@ -347,7 +347,7 @@ pub struct FileOperationSpec {
 }
 
 /// Local operation specification: pure computation, no I/O transport.
-/// Used for `@local` services whose operations are domain-specific functions.
+/// Used for local services whose operations are domain-specific functions.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct LocalOperationSpec {
     pub input_fields: Vec<FieldSpec>,
@@ -357,40 +357,40 @@ pub struct LocalOperationSpec {
 /// REST protocol specification: endpoint + method + path + body + response.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct RestOperationSpec {
-    /// Base URL from `@endpoint("https://...")` on the service.
+    /// Base URL from `config { endpoint: "https://..." }` on the service.
     pub endpoint: String,
-    /// HTTP method from `@rest(METHOD, ...)`.
+    /// HTTP method from `transport rest { method: METHOD }`.
     pub method: String,
-    /// URL path template from `@rest(..., "/path/{param}")`.
+    /// URL path template from `transport rest { path: "/path/{param}" }`.
     pub path_template: String,
     /// Input fields from `input { ... }`.
     pub input_fields: Vec<FieldSpec>,
-    /// Output fields from `output { ... @json("key") }`.
+    /// Output fields from `output { ... }` with optional `from "json_key"` renames.
     pub output_fields: Vec<OutputFieldSpec>,
-    /// Explicit body template from `@body_template({...})`, if present.
+    /// Explicit body template, if present.
     /// When None, body is built from all non-path input fields.
     pub body_template: Option<Vec<BodyEntry>>,
-    /// Extra HTTP headers from `@headers({...})`.
+    /// Extra HTTP headers.
     pub headers: Vec<(String, String)>,
-    /// Auth scheme from `@auth(...)`. Desugars to a `res:credential` input
-    /// on the execute node; `Credential::apply()` uses this scheme to set
+    /// Auth scheme from `config { auth: BearerToken }`. Desugars to a `res:credential`
+    /// input on the execute node; `Credential::apply()` uses this scheme to set
     /// the correct HTTP header at transport execution time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_scheme: Option<String>,
-    /// M22 Phase 2: Error classification from `@error_map` annotations.
+    /// Error classification (not yet implemented — will use DSL `error_map` block).
     /// Maps HTTP status codes to semantic error categories.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub error_mappings: Vec<ErrorMapping>,
 }
 
 // ============================================================================
-// M22 Phase 2: Error classification from @error_map annotations
+// Error classification (not yet implemented)
 // ============================================================================
 
-/// A single error classification entry from `@error_map`.
+/// A single error classification entry.
 ///
 /// Maps an HTTP status code to a semantic error category. These compose
-/// with protocol-stack defaults (M16): service-specific mappings override
+/// with protocol-stack defaults: service-specific mappings override
 /// the default HTTP status classification.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ErrorMapping {
@@ -402,10 +402,10 @@ pub struct ErrorMapping {
 }
 
 // ============================================================================
-// M22 Phase 3: Retry policy from @retry annotations
+// Retry policy (not yet implemented)
 // ============================================================================
 
-/// Retry policy extracted from `@retry` annotations.
+/// Retry policy for service operations.
 ///
 /// Composes with the protocol stack's error classification to determine
 /// which errors are retryable.
@@ -431,7 +431,7 @@ pub enum BackoffStrategy {
 /// Shell protocol specification: argv template + output parsing.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ShellOperationSpec {
-    /// Command + args template from `@shell(["cmd", "arg", "{param}"])`.
+    /// Command + args template from `transport shell { argv: ["cmd", "arg", "{param}"] }`.
     pub argv_template: Vec<ArgvSegment>,
     /// Input fields from `input { ... }`.
     pub input_fields: Vec<FieldSpec>,
@@ -4973,7 +4973,7 @@ fn derive_service_call_metadata(
         readonly: operation.readonly,
         permissions,
         spec,
-        retry_policy: None, // M22 Phase 3: populated when @retry extraction is wired
+        retry_policy: None, // TODO: extract from DSL retry block when implemented
     }
 }
 
@@ -5143,7 +5143,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         body_template,
         headers,
         auth_scheme,
-        error_mappings: vec![], // M22 Phase 2: populated when @error_map extraction is wired
+        error_mappings: vec![], // TODO: extract from DSL error_map block when implemented
     })
 }
 

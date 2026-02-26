@@ -7,7 +7,7 @@
 //! - **ProgressManifest**: topology, waves, SubDag boundaries, parallel
 //!   groups, scatter points, stage groups — used by all progress renderers
 //! - **TestObligations**: 4-bucket test obligations derived from DAG structure
-//!   and `@mock_response` / `@contract` annotations
+//!   and `mock_response` / `contract` declarations
 //! - **TransportTriplets**: prepare→execute→parse transport chains with metadata
 //! - **ToolMetadata**: CLI entrypoints, Makefile targets, tool descriptions
 //!

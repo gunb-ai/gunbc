@@ -14,7 +14,7 @@
 //! - `pattern` -- reusable DAG templates (compile-time expansion)
 //! - `service` -- external service declarations with operations
 //! - `resource` -- resource declarations with acquire/release/capability
-//! - `interface` -- abstract capability contracts with @contract annotations
+//! - `interface` -- abstract capability contracts with `contract` declarations
 //! - `pipeline` -- multi-stage pipeline declarations
 //! - `profile` -- deployment profile interface bindings
 //!

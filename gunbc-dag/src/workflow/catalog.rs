@@ -7,13 +7,13 @@ use daglang_syntax::{
     ast::{Expr, Item, Literal, Stmt},
     parser,
 };
-use gunbc_ir::{AccessMode, Dag, Edge, Node, Port};
+use gunbc_ir::{Dag, Edge, Node, Port};
 
 use super::capabilities::{
     CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID,
 };
 use super::process_registry::{
-    claim_handle_type_id, ClaimId, ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, UnitClaim,
+    claim_handle_type_id, ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, UnitClaim,
 };
 use super::schema::{
     required_input_contract, required_output_contract, ReportSpec, WorkflowOp, WorkflowSpec,

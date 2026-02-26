@@ -821,10 +821,10 @@ fn collection_length(value: &Value) -> Option<usize> {
 }
 
 // ============================================================================
-// M22 Phase 1: Contract proof obligations from @contract annotations
+// Contract proof obligations
 // ============================================================================
 
-/// A proof obligation derived from a `@contract` annotation on an interface
+/// A proof obligation derived from a `contract` declaration on an interface
 /// capability. Every implementation must satisfy this obligation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContractObligation {
@@ -877,17 +877,17 @@ impl fmt::Display for ContractObligation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "@contract on {}.{}: {}",
+            "contract on {}.{}: {}",
             self.interface_name, self.capability_name, self.contract_text
         )
     }
 }
 
 // ============================================================================
-// M22 Phase 4: Resource requirements from @requires annotations
+// Resource requirements (not yet implemented)
 // ============================================================================
 
-/// A resource requirement declared via `@requires` annotation.
+/// A resource requirement declared via `uses` declarations.
 ///
 /// These map to resource edges in the DAG and feed into M10's
 /// `validate_resource_completeness()` for admission checking.
@@ -2306,7 +2306,7 @@ mod tests {
         assert!(contract.check(&Value::Bool(true)).is_err());
     }
 
-    // ============ M22 Phase 1: ContractObligation tests ============
+    // ============ ContractObligation tests ============
 
     #[test]
     fn test_contract_obligation_id() {
@@ -2332,7 +2332,7 @@ mod tests {
         assert_eq!(obligation.shape.unwrap().expected_kind, ValueKind::String);
     }
 
-    // ============ M22 Phase 4: ResourceRequirement tests ============
+    // ============ ResourceRequirement tests ============
 
     #[test]
     fn test_resource_requirement_display() {

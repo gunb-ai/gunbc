@@ -17,7 +17,7 @@
 //! - Generic type instantiation (`List<T>`, `Map<K,V>`, `Queue<T>`)
 //! - Interface conformance (`resource X implements Y` — all capabilities present)
 //! - `CloudConfig` sum type → provider resolution at compile time
-//! - `@contract` annotation validation (behavioral specs are well-typed)
+//! - `contract` declaration validation (behavioral specs are well-typed)
 //! - Subtyping via the bounded lattice (§4.1.4 of dsl-design.md)
 
 use std::collections::{HashMap, HashSet};

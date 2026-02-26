@@ -2485,7 +2485,7 @@ fn compile_single_file_unsatisfiable_refinement_fails_in_typecheck_stage() {
     std::fs::write(
         &fixture,
         r#"module sample.types
-fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
+fn run(value: Int where range(min: 5, max: 1)) -> Int { value }
 "#,
     )
     .expect("failed to write unsatisfiable-refinement fixture");
@@ -2647,7 +2647,7 @@ fn compile_directory_unsatisfiable_refinement_fails_in_typecheck_stage() {
     let (context, root) = temp_dag_context(
         "unsatisfiable_refinement_dir",
         r#"module sample.main
-fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
+fn run(value: Int where range(min: 5, max: 1)) -> Int { value }
 "#,
     );
 

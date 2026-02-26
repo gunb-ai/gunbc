@@ -55,7 +55,7 @@ pub struct RestErrorLayer {
 /// to the types themselves.
 ///
 /// `required_permissions` surfaces the scopes/permissions the operation
-/// requires (from `@permissions` or typed `permissions` fields). Empty when
+/// requires (from `permissions` declarations on operations). Empty when
 /// the operation declares no permission requirements.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcquisitionErrorLayer {
