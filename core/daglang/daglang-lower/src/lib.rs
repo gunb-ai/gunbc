@@ -5108,7 +5108,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers);
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = match &operation.transport {
-        Some(TransportBinding::Rest { body: Some(b), .. }) => Some(expr_to_default_string(b)),
+        Some(TransportBinding::Rest { body: Some(b), .. }) => body_template_entries_from_expr(b),
         _ => None,
     };
     let auth_scheme = service.config.auth.as_ref().map(|a| match a.as_str() {
@@ -5130,15 +5130,53 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     })
 }
 
+/// Convert a list of argv expressions from `shell(["cmd", "{param}"])` to ArgvSegments.
+fn resolve_argv_exprs(exprs: &[Expr]) -> Vec<ArgvSegment> {
+    let mut segments = Vec::new();
+    for item in exprs {
+        match item {
+            Expr::Literal(Literal::String(s)) => {
+                let maybe_single_ref = s
+                    .strip_prefix('{')
+                    .and_then(|inner| inner.strip_suffix('}'))
+                    .filter(|inner| {
+                        !inner.is_empty()
+                            && !inner.contains('{')
+                            && !inner.contains('}')
+                            && !inner.contains(' ')
+                    });
+                if let Some(param) = maybe_single_ref {
+                    segments.push(ArgvSegment::InputRef(param.to_string()));
+                } else {
+                    segments.push(ArgvSegment::Literal(s.clone()));
+                }
+            }
+            Expr::StringInterp(parts) => {
+                use daglang_syntax::ast::StringPart;
+                if parts.len() == 1 {
+                    if let StringPart::Expr(Expr::Ident(name)) = &parts[0] {
+                        segments.push(ArgvSegment::InputRef(name.clone()));
+                        continue;
+                    }
+                }
+                let template = expr_to_template_string(item).unwrap_or_default();
+                if !template.is_empty() {
+                    segments.push(ArgvSegment::Literal(template));
+                }
+            }
+            _ => {}
+        }
+    }
+    segments
+}
+
 fn derive_shell_spec(
     service: &ServiceDef,
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
 ) -> Option<ShellOperationSpec> {
     let argv_template = match &operation.transport {
-        Some(TransportBinding::Shell { argv }) => {
-            argv.iter().map(expr_to_default_string).collect::<Vec<_>>()
-        }
+        Some(TransportBinding::Shell { argv }) => resolve_argv_exprs(argv),
         _ => return None,
     };
 
@@ -5187,33 +5225,6 @@ fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
     })
 }
 
-/// Also derive a file spec from a `CapabilityDef` (same shape as `OperationDef`).
-fn derive_file_spec_from_capability(capability: &CapabilityDef) -> Option<FileOperationSpec> {
-    let (file_op, path_template) = annotation_file_details(&capability.annotations)?;
-    let input_fields = capability
-        .inputs
-        .iter()
-        .map(|field| {
-            let type_id = type_expr_to_string(&field.ty);
-            let is_path_param = path_template.contains(&format!("{{{}}}", field.name));
-            FieldSpec {
-                name: field.name.clone(),
-                type_id: type_id.clone(),
-                default: field.default.as_ref().map(expr_to_default_string),
-                is_secret: type_id == "Secret",
-                is_path_param,
-            }
-        })
-        .collect();
-    let output_fields = derive_output_fields(&capability.outputs);
-    Some(FileOperationSpec {
-        operation: file_op,
-        path_template,
-        input_fields,
-        output_fields,
-    })
-}
-
 fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
     let input_fields = operation
         .inputs
@@ -5236,12 +5247,6 @@ fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
     }
 }
 
-/// Extract `@file(OP, "template")` → `(operation, path_template)`.
-
-/// Extract a string argument from a named annotation: `@name("value")`.
-
-/// Extract `(method, path_template)` from `@rest(METHOD, "/path/{param}")`.
-///
 /// The path may be a plain string literal or a string interpolation. Interpolated
 /// expressions like `{project}` are converted back to template placeholders `{project}`.
 
@@ -5421,10 +5426,6 @@ fn derive_input_fields_for_shell(
 }
 
 /// Derive output field specs from operation outputs.
-///
-/// Annotations like `@json("html_url")` may appear on either the field
-/// or on the type (`url: Url @json("html_url")`).  The parser places
-/// `@json` on the type as `TypeExpr::Annotated`, so we check both.
 fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFieldSpec> {
     outputs
         .iter()
@@ -5807,161 +5808,6 @@ fn add_service_transport_triplets(
                     format!("{}.{}.{}", module_name, service.name, operation.name),
                     endpoint,
                 );
-            }
-        }
-    }
-    // Also register resource capabilities with transport annotations (@file, @shell).
-    for module in &project.modules {
-        let module_name = module.module_path.join(".");
-        for item in &module.ast.items {
-            let Item::ResourceDef(resource) = &item.node else {
-                continue;
-            };
-            for capability in &resource.capabilities {
-                let transport = annotation_transport_class(&capability.annotations);
-                let Some(transport) = transport else {
-                    continue;
-                };
-                if transport == ServiceTransportClass::Unknown {
-                    continue;
-                }
-                let cap_key = format!("{}.{}", resource.name, capability.name);
-                if let Some(required_calls) = required_calls {
-                    if !required_calls.contains(&cap_key) {
-                        continue;
-                    }
-                }
-                let spec = match transport {
-                    ServiceTransportClass::FileBoundary => {
-                        derive_file_spec_from_capability(capability).map(ServiceOperationSpec::File)
-                    }
-                    _ => None,
-                };
-                let metadata = ServiceCallMetadata {
-                    service: resource.name.clone(),
-                    operation: capability.name.clone(),
-                    transport,
-                    idempotent: false,
-                    readonly: matches!(transport, ServiceTransportClass::FileBoundary),
-                    permissions: vec![],
-                    spec,
-                    retry_policy: None,
-                };
-                let suffix = sanitize_identifier(&format!(
-                    "{module_name}_{}_{}",
-                    resource.name, capability.name
-                ));
-                let prepare_id = format!("prepare_transport_{suffix}");
-                let execute_id = format!("execute_transport_{suffix}");
-                let parse_id = format!("parse_transport_{suffix}");
-                let prepare_ports = capability_prepare_ports(capability, &metadata);
-                let prepare_inputs = prepare_ports
-                    .iter()
-                    .map(|port| port.name.0.clone())
-                    .collect::<Vec<_>>();
-                builder.add_node(Node::opaque(
-                    prepare_id.clone(),
-                    prepare_ports,
-                    vec![Port::scalar("request", "TransportRequest")],
-                    LoweredOp::Callable {
-                        module: module_name.clone(),
-                        kind: CallableKind::Pattern,
-                        name: format!(
-                            "service_transport::prepare::{}::{}",
-                            resource.name, capability.name
-                        ),
-                        obligation: ObligationCategory::ServiceTransportPrepare,
-                        service_metadata: Some(Box::new(metadata.clone())),
-                        is_interactive: false,
-                        resource_target: None,
-                        fn_body: None,
-                    },
-                ));
-                let execute_inputs = vec![Port::scalar("request", "TransportRequest")];
-                let execute_node = Node::opaque(
-                    execute_id.clone(),
-                    execute_inputs,
-                    vec![Port::scalar("response", "TransportResponse")],
-                    LoweredOp::Callable {
-                        module: module_name.clone(),
-                        kind: CallableKind::Pattern,
-                        name: format!(
-                            "service_transport::execute::{}::{}",
-                            resource.name, capability.name
-                        ),
-                        obligation: ObligationCategory::ServiceTransportExecute,
-                        service_metadata: Some(Box::new(metadata.clone())),
-                        is_interactive: false,
-                        resource_target: None,
-                        fn_body: None,
-                    },
-                )
-                .with_input_guard("request", Guard::NotEq(Value::Skipped));
-                builder.add_node(execute_node);
-                let parse_outputs = if capability.outputs.is_empty() {
-                    vec![Port::scalar("result", "Unit")]
-                } else {
-                    capability
-                        .outputs
-                        .iter()
-                        .map(|field| {
-                            let ty = type_expr_to_string(&field.ty);
-                            Port::with_cardinality(
-                                field.name.as_str(),
-                                ty.as_str(),
-                                Cardinality::ONE,
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                };
-                builder.add_node(Node::opaque(
-                    parse_id.clone(),
-                    vec![Port::scalar("response", "TransportResponse")],
-                    parse_outputs,
-                    LoweredOp::Callable {
-                        module: module_name.clone(),
-                        kind: CallableKind::Pattern,
-                        name: format!(
-                            "service_transport::parse::{}::{}",
-                            resource.name, capability.name
-                        ),
-                        obligation: ObligationCategory::ServiceTransportParse,
-                        service_metadata: Some(Box::new(metadata.clone())),
-                        is_interactive: false,
-                        resource_target: None,
-                        fn_body: None,
-                    },
-                ));
-                builder.add_edge(
-                    prepare_id.as_str(),
-                    "request",
-                    execute_id.as_str(),
-                    "request",
-                );
-                builder.add_edge(
-                    execute_id.as_str(),
-                    "response",
-                    parse_id.as_str(),
-                    "response",
-                );
-                let parse_output = capability
-                    .outputs
-                    .first()
-                    .map(|field| field.name.clone())
-                    .unwrap_or_else(|| "result".to_string());
-                let endpoint = ServiceTransportEndpoint {
-                    parse: LoweredEndpoint {
-                        node_id: parse_id,
-                        primary_output: parse_output,
-                    },
-                    prepare_node_id: prepare_id,
-                    execute_node_id: execute_id,
-                    prepare_inputs,
-                    has_auth: false,
-                    metadata: Some(metadata),
-                };
-                registry.register(cap_key.clone(), endpoint.clone());
-                registry.register(format!("{module_name}.{}", cap_key), endpoint);
             }
         }
     }
@@ -8291,13 +8137,11 @@ pub fn infer_entrypoints(dag: &gunbc_ir::Dag<LoweredOp>) -> Vec<InferredEntrypoi
     entrypoints
 }
 
-/// Extract output path declarations from `@outputs` annotations on `func` items.
+/// Extract declared output path patterns from `func` items.
 ///
-/// Walks the typed project looking for `func` definitions annotated with
-/// `@outputs("pattern")`. Each string argument is collected as a declared
-/// output path (typically a glob for dynamic outputs like testgen).
+/// Walks the typed project collecting `declared_outputs` from `func` definitions.
 /// Returns a sorted, deduplicated list.
-pub fn extract_outputs_annotation(project: &TypedProject) -> Vec<String> {
+pub fn extract_declared_outputs(project: &TypedProject) -> Vec<String> {
     let mut paths = std::collections::BTreeSet::new();
     for module in &project.modules {
         for item in &module.ast.items {
