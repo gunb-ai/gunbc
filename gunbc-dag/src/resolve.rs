@@ -531,6 +531,7 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
             body: resolve_node_body(node)?,
             examples: node.examples.clone(),
             log_detail: node.log_detail,
+            kind: node.kind,
         };
         normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
@@ -1034,11 +1035,7 @@ fn needs_transport_resource(
             kind: PrimitiveOpKind::IoExecuteFileRead,
             ..
         }) => AccessMode::Read,
-        NodeBody::Opaque(LoweredOp::Callable {
-            name, obligation, ..
-        }) if matches!(obligation, ObligationCategory::ServiceTransportExecute)
-            || name.starts_with("service_transport::execute::") =>
-        {
+        _ if lowered.kind == Some(gunbc_ir::NodeKind::TransportExecute) => {
             // Service transport execute nodes need filesystem access.
             AccessMode::Read
         }
@@ -1088,12 +1085,15 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
             .map(|port| port.name.0.clone())
             .unwrap_or_else(|| "FilesystemHandle".to_string())
     } else {
-        dag.add_node(Node::opaque(
-            fs_node_id.as_str(),
-            vec![],
-            vec![Port::new("FilesystemHandle", "FilesystemHandle")],
-            DynOp::new(DslFsEnvOp),
-        ));
+        dag.add_node(
+            Node::opaque(
+                fs_node_id.as_str(),
+                vec![],
+                vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+                DynOp::new(DslFsEnvOp),
+            )
+            .with_kind(gunbc_ir::NodeKind::ResourceEnvironment),
+        );
         "FilesystemHandle".to_string()
     };
 

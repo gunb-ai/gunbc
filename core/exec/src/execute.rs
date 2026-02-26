@@ -38,7 +38,7 @@ use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, classify_coercion, detect_boundaries, detect_entrypoints,
     normalize_resource_id, AccessMode, AppliedCoercion, BoundaryInfo, Cardinality, Dag,
-    LogDetailLevel, Node, NodeBody, NodeId, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    LogDetailLevel, Node, NodeBody, NodeId, NodeKind, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -464,22 +464,8 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
         .find(|n| n.id.0 == node_id)
         .ok_or_else(|| ExecError::new(format!("node '{}' not found in DAG", node_id)))?;
 
-    // Check if this is a transport execution node for interception
-    let is_transport_executor = is_transport_execution_node(node);
-    let is_tool_env = is_tool_env_node(node);
-    let is_resource_env = is_resource_env_node(node);
-    let is_tool_consumer = consumes_tool_handle(node);
-    let has_full_mock = match &mode {
-        ExecutionMode::DryRun(m) => has_full_mock_for_node(node, m),
-        ExecutionMode::Simulate(config) => has_full_mock_for_node(node, &config.boundary_mocks),
-        _ => false,
-    };
-    let should_intercept = (is_transport_executor
-        || is_tool_env
-        || is_resource_env
-        || is_tool_consumer
-        || has_full_mock)
-        && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+    // Check if this node should be intercepted in DryRun/Simulate mode
+    let should_intercept = should_intercept_for_mode(node, &mode);
 
     if should_intercept {
         // Intercept: use mock values for boundary outputs
@@ -1235,17 +1221,13 @@ fn enforce_runtime_file_guard<T>(
 }
 
 fn should_intercept_for_mode<T>(node: &Node<T>, mode: &ExecutionMode) -> bool {
-    let is_transport_executor = is_transport_execution_node(node);
-    let is_tool_env = is_tool_env_node(node);
-    let is_resource_env = is_resource_env_node(node);
-    let is_tool_consumer = consumes_tool_handle(node);
     let has_full_mock = match mode {
         ExecutionMode::DryRun(mocks) => has_full_mock_for_node(node, mocks),
         ExecutionMode::Simulate(config) => has_full_mock_for_node(node, &config.boundary_mocks),
         ExecutionMode::Real => false,
     };
 
-    (is_transport_executor || is_tool_env || is_resource_env || is_tool_consumer || has_full_mock)
+    (should_intercept_by_kind(node) || has_full_mock)
         && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
 }
 
@@ -1881,7 +1863,7 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
 
     let mut augmented = existing.clone();
     for node in &body_dag.nodes {
-        if is_transport_execution_node(node) {
+        if node.kind == Some(NodeKind::TransportExecute) {
             // Only add default mocks for outputs that don't already have one
             for port in &node.outputs {
                 if !existing.has_mock(&node.id, &port.name) {
@@ -2052,71 +2034,35 @@ fn has_full_mock_for_node<T>(node: &Node<T>, mocks: &BoundaryMocks) -> bool {
         .all(|port| mocks.has_mock(&node.id, &port.name))
 }
 
-/// Check if a node is a transport execution node.
+/// Check whether a node should be intercepted in DryRun/Simulate mode.
 ///
-/// A transport execution node is one that consumes `TransportRequest` values.
-/// These are the only nodes where actual I/O happens, and therefore the only
-/// nodes that should be intercepted in DryRun mode.
-///
-/// This is a structural check based on port types, aligning with the design
-/// principle: "impossibility by structure" - if a node doesn't consume a
-/// TransportRequest, it can't perform transport I/O.
-fn is_transport_execution_node<T>(node: &Node<T>) -> bool {
-    node.inputs
-        .iter()
-        .any(|port| port.type_id.0 == "TransportRequest")
-}
-
-/// Check if a node is a tool environment boundary.
-///
-/// Tool environment nodes emit `ToolHandle` outputs and are intercepted in DryRun.
-fn is_tool_env_node<T>(node: &Node<T>) -> bool {
-    node.outputs
-        .iter()
-        .any(|port| port.type_id.0 == "ToolHandle")
-}
-
-/// Check if a node is a non-tool resource environment boundary.
-///
-/// These emit resource values like FilesystemHandle, Timestamp, Credential, Platform.
-fn is_resource_env_node<T>(node: &Node<T>) -> bool {
-    node.outputs.iter().any(|port| {
-        matches!(
-            port.type_id.0.as_str(),
-            "FilesystemHandle"
-                | "NetworkHandle"
-                | "Timestamp"
-                | "Credential"
-                | "Platform"
-                | "CloudSecretConfig"
+/// Check whether a node should be intercepted in DryRun/Simulate mode
+/// based on its structural kind.
+fn should_intercept_by_kind<T>(node: &Node<T>) -> bool {
+    matches!(
+        node.kind,
+        Some(
+            NodeKind::TransportExecute
+                | NodeKind::ToolEnvironment
+                | NodeKind::ToolConsumer
+                | NodeKind::ResourceEnvironment
+                | NodeKind::ResourceAcquire
         )
-    })
+    )
 }
 
-/// Check if a node consumes a ToolHandle input.
-///
-/// Nodes that consume ToolHandles (like CLI tool runners) should be intercepted
-/// in DryRun mode because they would otherwise try to execute with a mock path.
-fn consumes_tool_handle<T>(node: &Node<T>) -> bool {
-    node.inputs
-        .iter()
-        .any(|port| port.type_id.0 == "ToolHandle")
-}
-
-/// Classify a node's structural role from its port types.
-///
-/// This is the single function that maps port-type facts to [`NodeRole`].
-/// It uses the same structural checks as the DryRun interception logic,
-/// ensuring consistent classification everywhere.
+/// Classify a node's structural role for error reporting.
 fn classify_node_role<T>(node: &Node<T>) -> NodeRole {
-    if is_transport_execution_node(node) {
-        NodeRole::TransportExecutor
-    } else if consumes_tool_handle(node) {
-        NodeRole::ToolConsumer
-    } else if is_tool_env_node(node) || is_resource_env_node(node) {
-        NodeRole::ResourceProvider
-    } else {
-        NodeRole::Pure
+    match node.kind {
+        Some(NodeKind::TransportExecute) => NodeRole::TransportExecutor,
+        Some(NodeKind::ToolConsumer) => NodeRole::ToolConsumer,
+        Some(
+            NodeKind::ToolEnvironment
+            | NodeKind::ResourceEnvironment
+            | NodeKind::ResourceAcquire
+            | NodeKind::ResourceRelease,
+        ) => NodeRole::ResourceProvider,
+        _ => NodeRole::Pure,
     }
 }
 

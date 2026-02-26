@@ -83,7 +83,7 @@ pub use state::{ExecMode, ResourceState};
 // ============================================================================
 
 use crate::dag::Dag;
-use crate::node::{Node, NodeBody};
+use crate::node::{Node, NodeBody, NodeKind};
 use crate::types::NodeId;
 use crate::{SecretString, Value};
 use serde::{Deserialize, Serialize};
@@ -624,47 +624,32 @@ pub fn detect_resource_conflicts<T>(
 // M10: Mandatory Resource Declarations
 // ============================================================================
 
-/// The kind of side-effect a node performs.
-///
-/// Mirrors the effectfulness heuristics in the executor's `should_intercept_for_mode()`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EffectKind {
-    /// Node consumes a `TransportRequest` input (HTTP, shell, file transport).
-    TransportExecution,
-    /// Node emits a `ToolHandle` output (tool environment boundary).
-    ToolEnvironment,
-    /// Node emits resource-typed outputs (FilesystemHandle, Credential, etc.).
-    ResourceEnvironment,
-    /// Node consumes a `ToolHandle` input.
-    ToolConsumption,
-}
-
-impl std::fmt::Display for EffectKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EffectKind::TransportExecution => write!(f, "transport execution"),
-            EffectKind::ToolEnvironment => write!(f, "tool environment"),
-            EffectKind::ResourceEnvironment => write!(f, "resource environment"),
-            EffectKind::ToolConsumption => write!(f, "tool consumption"),
-        }
-    }
-}
-
 /// A node that performs side-effects but declares no `res:*` resource port.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MissingResourceDeclaration {
     /// The offending node.
     pub node_id: NodeId,
     /// What kind of effect the node performs.
-    pub effect_kind: EffectKind,
+    pub effect_kind: NodeKind,
 }
 
 impl std::fmt::Display for MissingResourceDeclaration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let label = match self.effect_kind {
+            NodeKind::TransportExecute => "transport execution",
+            NodeKind::ToolEnvironment => "tool environment",
+            NodeKind::ResourceEnvironment => "resource environment",
+            NodeKind::ToolConsumer => "tool consumption",
+            NodeKind::TransportPrepare => "transport prepare",
+            NodeKind::TransportParse => "transport parse",
+            NodeKind::ResourceAcquire => "resource acquire",
+            NodeKind::ResourceRelease => "resource release",
+            NodeKind::Pure => "pure",
+        };
         write!(
             f,
             "node '{}' performs {} but declares no resource port",
-            self.node_id.0, self.effect_kind
+            self.node_id.0, label
         )
     }
 }
@@ -680,48 +665,12 @@ pub enum ResourceValidationMode {
 
 /// Classify a node's effect kind, if any.
 ///
-/// Uses the same heuristics as the executor's `should_intercept_for_mode()`:
-/// - Transport execution: node has a `TransportRequest` input
-/// - Tool environment: node emits a `ToolHandle` output
-/// - Resource environment: node emits `FilesystemHandle`, `NetworkHandle`,
-///   `Timestamp`, `Credential`, `Platform`, or `CloudSecretConfig` outputs
-/// - Tool consumption: node has a `ToolHandle` input
-pub fn classify_effect<T>(node: &Node<T>) -> Option<EffectKind> {
-    // Transport execution: consumes TransportRequest
-    if node
-        .inputs
-        .iter()
-        .any(|p| p.type_id.0 == "TransportRequest")
-    {
-        return Some(EffectKind::TransportExecution);
+/// Returns `None` for pure nodes and nodes without a kind set.
+pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
+    match node.kind {
+        Some(NodeKind::Pure) | None => None,
+        Some(kind) => Some(kind),
     }
-
-    // Tool environment: emits ToolHandle
-    if node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle") {
-        return Some(EffectKind::ToolEnvironment);
-    }
-
-    // Resource environment: emits resource-typed outputs
-    if node.outputs.iter().any(|p| {
-        matches!(
-            p.type_id.0.as_str(),
-            "FilesystemHandle"
-                | "NetworkHandle"
-                | "Timestamp"
-                | "Credential"
-                | "Platform"
-                | "CloudSecretConfig"
-        )
-    }) {
-        return Some(EffectKind::ResourceEnvironment);
-    }
-
-    // Tool consumption: consumes ToolHandle
-    if node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle") {
-        return Some(EffectKind::ToolConsumption);
-    }
-
-    None
 }
 
 /// Check whether a node declares at least one `res:*` input port.
@@ -1370,8 +1319,9 @@ mod tests {
             vec![Port::scalar("request", "TransportRequest")],
             vec![Port::scalar("response", "TransportResponse")],
             "op".to_string(),
-        );
-        assert_eq!(classify_effect(&node), Some(EffectKind::TransportExecution));
+        )
+        .with_kind(NodeKind::TransportExecute);
+        assert_eq!(classify_effect(&node), Some(NodeKind::TransportExecute));
     }
 
     #[test]
@@ -1381,8 +1331,9 @@ mod tests {
             vec![],
             vec![Port::scalar("tool", "ToolHandle")],
             "op".to_string(),
-        );
-        assert_eq!(classify_effect(&node), Some(EffectKind::ToolEnvironment));
+        )
+        .with_kind(NodeKind::ToolEnvironment);
+        assert_eq!(classify_effect(&node), Some(NodeKind::ToolEnvironment));
     }
 
     #[test]
@@ -1400,10 +1351,11 @@ mod tests {
                 vec![],
                 vec![Port::scalar("handle", *type_id)],
                 "op".to_string(),
-            );
+            )
+            .with_kind(NodeKind::ResourceEnvironment);
             assert_eq!(
                 classify_effect(&node),
-                Some(EffectKind::ResourceEnvironment),
+                Some(NodeKind::ResourceEnvironment),
                 "{type_id} should be classified as ResourceEnvironment"
             );
         }
@@ -1416,10 +1368,9 @@ mod tests {
             vec![Port::scalar("tool", "ToolHandle")],
             vec![Port::scalar("result", "String")],
             "op".to_string(),
-        );
-        // ToolHandle input could be TransportExecution if it also has TransportRequest,
-        // but alone it's ToolConsumption.
-        assert_eq!(classify_effect(&node), Some(EffectKind::ToolConsumption));
+        )
+        .with_kind(NodeKind::ToolConsumer);
+        assert_eq!(classify_effect(&node), Some(NodeKind::ToolConsumer));
     }
 
     #[test]
@@ -1429,22 +1380,26 @@ mod tests {
             vec![Port::scalar("data", "String")],
             vec![Port::scalar("result", "String")],
             "op".to_string(),
-        );
+        )
+        .with_kind(NodeKind::Pure);
         assert_eq!(classify_effect(&node), None);
     }
 
     #[test]
     fn test_validate_resource_completeness_passes_for_declared() {
         let mut dag: Dag<String> = Dag::new();
-        dag.add_node(Node::opaque(
-            "transport",
-            vec![
-                Port::scalar("request", "TransportRequest"),
-                Port::resource("file", "FilesystemHandle", AccessMode::Write),
-            ],
-            vec![Port::scalar("response", "TransportResponse")],
-            "op".to_string(),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "transport",
+                vec![
+                    Port::scalar("request", "TransportRequest"),
+                    Port::resource("file", "FilesystemHandle", AccessMode::Write),
+                ],
+                vec![Port::scalar("response", "TransportResponse")],
+                "op".to_string(),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
 
         let violations = validate_resource_completeness(&dag);
         assert!(violations.is_empty(), "properly declared node should pass");
@@ -1453,28 +1408,37 @@ mod tests {
     #[test]
     fn test_validate_resource_completeness_fails_for_undeclared() {
         let mut dag: Dag<String> = Dag::new();
-        dag.add_node(Node::opaque(
-            "transport_no_res",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            "op".to_string(),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "transport_no_res",
+                vec![Port::scalar("request", "TransportRequest")],
+                vec![Port::scalar("response", "TransportResponse")],
+                "op".to_string(),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
 
         let violations = validate_resource_completeness(&dag);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].node_id.0, "transport_no_res");
-        assert_eq!(violations[0].effect_kind, EffectKind::TransportExecution);
+        assert_eq!(
+            violations[0].effect_kind,
+            NodeKind::TransportExecute
+        );
     }
 
     #[test]
     fn test_validate_resource_completeness_ignores_pure_nodes() {
         let mut dag: Dag<String> = Dag::new();
-        dag.add_node(Node::opaque(
-            "pure_transform",
-            vec![Port::scalar("data", "String")],
-            vec![Port::scalar("result", "String")],
-            "op".to_string(),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "pure_transform",
+                vec![Port::scalar("data", "String")],
+                vec![Port::scalar("result", "String")],
+                "op".to_string(),
+            )
+            .with_kind(NodeKind::Pure),
+        );
 
         let violations = validate_resource_completeness(&dag);
         assert!(
@@ -1487,12 +1451,15 @@ mod tests {
     fn test_validate_resource_completeness_recurses_into_subdags() {
         // Inner DAG has an effectful node without resource ports
         let mut inner: Dag<String> = Dag::new();
-        inner.add_node(Node::opaque(
-            "inner_transport",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            "op".to_string(),
-        ));
+        inner.add_node(
+            Node::opaque(
+                "inner_transport",
+                vec![Port::scalar("request", "TransportRequest")],
+                vec![Port::scalar("response", "TransportResponse")],
+                "op".to_string(),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
 
         let mut outer: Dag<String> = Dag::new();
         outer.add_node(Node::subdag("wrapper", inner));
@@ -1505,24 +1472,33 @@ mod tests {
     #[test]
     fn test_validate_resource_completeness_multiple_violations() {
         let mut dag: Dag<String> = Dag::new();
-        dag.add_node(Node::opaque(
-            "transport_no_res",
-            vec![Port::scalar("request", "TransportRequest")],
-            vec![Port::scalar("response", "TransportResponse")],
-            "op_a".to_string(),
-        ));
-        dag.add_node(Node::opaque(
-            "tool_env_no_res",
-            vec![],
-            vec![Port::scalar("tool", "ToolHandle")],
-            "op_b".to_string(),
-        ));
-        dag.add_node(Node::opaque(
-            "pure_ok",
-            vec![Port::scalar("x", "String")],
-            vec![Port::scalar("y", "String")],
-            "op_c".to_string(),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "transport_no_res",
+                vec![Port::scalar("request", "TransportRequest")],
+                vec![Port::scalar("response", "TransportResponse")],
+                "op_a".to_string(),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "tool_env_no_res",
+                vec![],
+                vec![Port::scalar("tool", "ToolHandle")],
+                "op_b".to_string(),
+            )
+            .with_kind(NodeKind::ToolEnvironment),
+        );
+        dag.add_node(
+            Node::opaque(
+                "pure_ok",
+                vec![Port::scalar("x", "String")],
+                vec![Port::scalar("y", "String")],
+                "op_c".to_string(),
+            )
+            .with_kind(NodeKind::Pure),
+        );
 
         let violations = validate_resource_completeness(&dag);
         assert_eq!(violations.len(), 2);
@@ -1532,34 +1508,44 @@ mod tests {
     }
 
     #[test]
-    fn test_effect_kind_display() {
-        assert_eq!(
-            EffectKind::TransportExecution.to_string(),
-            "transport execution"
-        );
-        assert_eq!(EffectKind::ToolEnvironment.to_string(), "tool environment");
-        assert_eq!(
-            EffectKind::ResourceEnvironment.to_string(),
-            "resource environment"
-        );
-        assert_eq!(EffectKind::ToolConsumption.to_string(), "tool consumption");
+    fn test_missing_resource_declaration_labels() {
+        let v = MissingResourceDeclaration {
+            node_id: NodeId::from("n"),
+            effect_kind: NodeKind::TransportExecute,
+        };
+        assert!(v.to_string().contains("transport execution"));
+        let v2 = MissingResourceDeclaration {
+            node_id: NodeId::from("n"),
+            effect_kind: NodeKind::ToolEnvironment,
+        };
+        assert!(v2.to_string().contains("tool environment"));
+        let v3 = MissingResourceDeclaration {
+            node_id: NodeId::from("n"),
+            effect_kind: NodeKind::ResourceEnvironment,
+        };
+        assert!(v3.to_string().contains("resource environment"));
+        let v4 = MissingResourceDeclaration {
+            node_id: NodeId::from("n"),
+            effect_kind: NodeKind::ToolConsumer,
+        };
+        assert!(v4.to_string().contains("tool consumption"));
     }
 
     #[test]
     fn test_missing_resource_declaration_display() {
         let violation = MissingResourceDeclaration {
             node_id: NodeId::from("bad_node"),
-            effect_kind: EffectKind::TransportExecution,
+            effect_kind: NodeKind::TransportExecute,
         };
         assert!(violation.to_string().contains("bad_node"));
         assert!(violation.to_string().contains("transport execution"));
     }
 
     #[test]
+    #[test]
     fn test_classify_effect_priority_transport_over_tool() {
         // A node that has both TransportRequest input AND ToolHandle input
-        // should classify as TransportExecution (first match wins, and it's
-        // the more specific classification).
+        // should classify as TransportExecution — NodeKind is the sole authority.
         let node = Node::opaque(
             "mixed",
             vec![
@@ -1568,7 +1554,8 @@ mod tests {
             ],
             vec![],
             "op".to_string(),
-        );
-        assert_eq!(classify_effect(&node), Some(EffectKind::TransportExecution));
+        )
+        .with_kind(NodeKind::TransportExecute);
+        assert_eq!(classify_effect(&node), Some(NodeKind::TransportExecute));
     }
 }

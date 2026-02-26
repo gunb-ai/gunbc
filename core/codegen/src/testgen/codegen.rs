@@ -40,8 +40,8 @@ use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
     contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_compatible_with_type_id,
-    value_kind_name, Cardinality, Dag, NodeId, Os, PortName, SecretString, SeedPlaceholderPolicy,
-    SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
+    value_kind_name, Cardinality, Dag, NodeId, NodeKind, Os, PortName, SecretString,
+    SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -706,46 +706,15 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     }
 
     fn lowered_intercept_kind(node: &gunbc_ir::Node<T>) -> Option<&'static str> {
-        let is_transport_executor = node
-            .inputs
-            .iter()
-            .any(|port| port.type_id.0 == "TransportRequest");
-        if is_transport_executor {
-            return Some("transport executor");
+        match node.kind {
+            Some(NodeKind::TransportExecute) => Some("transport executor"),
+            Some(NodeKind::ToolEnvironment) => Some("tool environment"),
+            Some(NodeKind::ResourceEnvironment | NodeKind::ResourceAcquire) => {
+                Some("resource environment")
+            }
+            Some(NodeKind::ToolConsumer) => Some("tool consumer"),
+            _ => None,
         }
-
-        let is_tool_env = node
-            .outputs
-            .iter()
-            .any(|port| port.type_id.0 == "ToolHandle");
-        if is_tool_env {
-            return Some("tool environment");
-        }
-
-        let is_resource_env = node.outputs.iter().any(|port| {
-            matches!(
-                port.type_id.0.as_str(),
-                "FilesystemHandle"
-                    | "NetworkHandle"
-                    | "Timestamp"
-                    | "Credential"
-                    | "Platform"
-                    | "CloudSecretConfig"
-            )
-        });
-        if is_resource_env {
-            return Some("resource environment");
-        }
-
-        let is_tool_consumer = node
-            .inputs
-            .iter()
-            .any(|port| port.type_id.0 == "ToolHandle");
-        if is_tool_consumer {
-            return Some("tool consumer");
-        }
-
-        None
     }
 
     /// Find mock values whose types don't match the port's declared TypeId.
@@ -6364,14 +6333,10 @@ fn collect_pure_nodes<T>(dag: &Dag<T>) -> HashSet<NodeId> {
 }
 
 fn is_pure_node<T>(node: &gunbc_ir::Node<T>) -> bool {
-    let is_transport_executor = node
-        .inputs
-        .iter()
-        .any(|p| p.type_id.0 == "TransportRequest");
-    let is_tool_env = node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle");
-    let is_tool_consumer = node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
-
-    !is_transport_executor && !is_tool_env && !is_tool_consumer
+    matches!(
+        node.kind,
+        Some(NodeKind::Pure | NodeKind::TransportPrepare | NodeKind::TransportParse) | None
+    )
 }
 
 #[cfg(test)]
@@ -6632,24 +6597,33 @@ mod tests {
     #[test]
     fn test_generate_with_transport_executor() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![],
-            vec![port("request", "TransportRequest")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "parse",
-            vec![port("response", "TransportResponse")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![],
+                vec![port("request", "TransportRequest")],
+                (),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "parse",
+                vec![port("response", "TransportResponse")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportParse),
+        );
         dag.add_edge(edge("prepare", "request", "execute", "request"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
 
@@ -6716,25 +6690,31 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
 
         // Transport executor that produces a condition
-        dag.add_node(Node::opaque(
-            "check",
-            vec![port("request", "TransportRequest")],
-            vec![
-                port("response", "TransportResponse"),
-                port("condition", "Bool"),
-            ],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "check",
+                vec![port("request", "TransportRequest")],
+                vec![
+                    port("response", "TransportResponse"),
+                    port("condition", "Bool"),
+                ],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
         // Guarded node: only executes when condition is true
-        dag.add_node(Node::opaque(
-            "process",
-            vec![
-                build::guarded("condition", "Bool", Value::Bool(true)),
-                port("data", "String"),
-            ],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "process",
+                vec![
+                    build::guarded("condition", "Bool", Value::Bool(true)),
+                    port("data", "String"),
+                ],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("check", "condition", "process", "condition"));
         dag.add_edge(edge("check", "response", "process", "data"));
 
@@ -6827,12 +6807,15 @@ mod tests {
     #[should_panic(expected = "I/O examples required")]
     fn test_examples_required_for_pure_nodes() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "transform",
-            vec![port("in", "String")],
-            vec![port("out", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "transform",
+                vec![port("in", "String")],
+                vec![port("out", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
 
         // MockSpec provided but no examples and no skip — should panic
         let spec = MockSpec::new("test").boundary("transform", "out", Value::Str("<MOCK>".into()));
@@ -6846,12 +6829,15 @@ mod tests {
     #[should_panic(expected = "MockSpec required")]
     fn test_mockspec_required_for_transport_dags() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
 
         // No MockSpec provided - should panic
         let config = TestConfig {
@@ -6874,24 +6860,33 @@ mod tests {
     #[should_panic(expected = "DryRun mock coverage incomplete")]
     fn test_transport_mock_coverage_required() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![],
-            vec![port("request", "TransportRequest")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse"), port("status", "Int")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "parse",
-            vec![port("response", "TransportResponse"), port("status", "Int")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![],
+                vec![port("request", "TransportRequest")],
+                (),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse"), port("status", "Int")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "parse",
+                vec![port("response", "TransportResponse"), port("status", "Int")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportParse),
+        );
         dag.add_edge(edge("prepare", "request", "execute", "request"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
         dag.add_edge(edge("execute", "status", "parse", "status"));
@@ -6923,18 +6918,24 @@ mod tests {
     #[test]
     fn test_transport_mock_coverage_passes_when_complete() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse"), port("status", "Int")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "parse",
-            vec![port("response", "TransportResponse"), port("status", "Int")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse"), port("status", "Int")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "parse",
+                vec![port("response", "TransportResponse"), port("status", "Int")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportParse),
+        );
         dag.add_edge(edge("execute", "response", "parse", "response"));
         dag.add_edge(edge("execute", "status", "parse", "status"));
 

@@ -21,7 +21,7 @@
 use crate::build::{optional, port};
 use crate::builder::{BuilderError, DagBuilder, NodeRef};
 use crate::dag::{Dag, Edge, Port};
-use crate::node::Node;
+use crate::node::{Node, NodeKind};
 
 /// Request/response type names used for transport triplet wiring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,28 +96,37 @@ pub fn add_transport_triplet_typed<T>(
     // Build internal DAG ---------------------------------------------------
     let mut inner = Dag::new();
 
-    inner.add_node(Node::opaque(
-        prepare_name.as_str(),
-        prepare_inputs,
-        vec![port("request", port_types.request), port("skip", "Bool")],
-        prepare_op,
-    ));
+    inner.add_node(
+        Node::opaque(
+            prepare_name.as_str(),
+            prepare_inputs,
+            vec![port("request", port_types.request), port("skip", "Bool")],
+            prepare_op,
+        )
+        .with_kind(NodeKind::TransportPrepare),
+    );
 
     let mut exec_inputs = vec![port("request", port_types.request), port("skip", "Bool")];
     exec_inputs.extend(execute_resource_inputs);
-    inner.add_node(Node::opaque(
-        execute_name.as_str(),
-        exec_inputs,
-        vec![port("response", port_types.response)],
-        transport_op,
-    ));
+    inner.add_node(
+        Node::opaque(
+            execute_name.as_str(),
+            exec_inputs,
+            vec![port("response", port_types.response)],
+            transport_op,
+        )
+        .with_kind(NodeKind::TransportExecute),
+    );
 
-    inner.add_node(Node::opaque(
-        parse_name.as_str(),
-        vec![port("response", port_types.response)],
-        parse_outputs,
-        parse_op,
-    ));
+    inner.add_node(
+        Node::opaque(
+            parse_name.as_str(),
+            vec![port("response", port_types.response)],
+            parse_outputs,
+            parse_op,
+        )
+        .with_kind(NodeKind::TransportParse),
+    );
 
     inner.add_edge(Edge::new(
         prepare_name.as_str(),
@@ -207,43 +216,52 @@ pub fn add_skippable_transport_triplet_typed<T>(
     // Build internal DAG ---------------------------------------------------
     let mut inner = Dag::new();
 
-    inner.add_node(Node::opaque(
-        prepare_name.as_str(),
-        prepare_inputs,
-        vec![
-            optional("request", port_types.request),
-            port("skip", "Bool"),
-            optional("skip_reason", "OptionalString"),
-        ],
-        prepare_op,
-    ));
+    inner.add_node(
+        Node::opaque(
+            prepare_name.as_str(),
+            prepare_inputs,
+            vec![
+                optional("request", port_types.request),
+                port("skip", "Bool"),
+                optional("skip_reason", "OptionalString"),
+            ],
+            prepare_op,
+        )
+        .with_kind(NodeKind::TransportPrepare),
+    );
 
     let mut exec_inputs = vec![
         optional("request", port_types.request),
         port("skip", "Bool"),
     ];
     exec_inputs.extend(execute_resource_inputs);
-    inner.add_node(Node::opaque(
-        execute_name.as_str(),
-        exec_inputs,
-        vec![
-            optional("response", port_types.response),
-            port("skip", "Bool"),
-            optional("skip_reason", "OptionalString"),
-        ],
-        transport_op,
-    ));
+    inner.add_node(
+        Node::opaque(
+            execute_name.as_str(),
+            exec_inputs,
+            vec![
+                optional("response", port_types.response),
+                port("skip", "Bool"),
+                optional("skip_reason", "OptionalString"),
+            ],
+            transport_op,
+        )
+        .with_kind(NodeKind::TransportExecute),
+    );
 
-    inner.add_node(Node::opaque(
-        parse_name.as_str(),
-        vec![
-            optional("response", port_types.response),
-            port("skip", "Bool"),
-            optional("skip_reason", "OptionalString"),
-        ],
-        parse_outputs,
-        parse_op,
-    ));
+    inner.add_node(
+        Node::opaque(
+            parse_name.as_str(),
+            vec![
+                optional("response", port_types.response),
+                port("skip", "Bool"),
+                optional("skip_reason", "OptionalString"),
+            ],
+            parse_outputs,
+            parse_op,
+        )
+        .with_kind(NodeKind::TransportParse),
+    );
 
     inner.add_edge(Edge::new(
         prepare_name.as_str(),
@@ -345,30 +363,29 @@ pub fn add_transport_triplet_named_with_passthrough_typed<T>(
 
     let mut prepare_outputs = vec![port("request", port_types.request), port("skip", "Bool")];
     prepare_outputs.extend(passthrough.clone());
-    inner.add_node(Node::opaque(
-        prepare_name,
-        prepare_inputs,
-        prepare_outputs,
-        prepare_op,
-    ));
+    inner.add_node(
+        Node::opaque(prepare_name, prepare_inputs, prepare_outputs, prepare_op)
+            .with_kind(NodeKind::TransportPrepare),
+    );
 
     let mut exec_inputs = vec![port("request", port_types.request), port("skip", "Bool")];
     exec_inputs.extend(execute_resource_inputs);
-    inner.add_node(Node::opaque(
-        execute_name,
-        exec_inputs,
-        vec![port("response", port_types.response)],
-        transport_op,
-    ));
+    inner.add_node(
+        Node::opaque(
+            execute_name,
+            exec_inputs,
+            vec![port("response", port_types.response)],
+            transport_op,
+        )
+        .with_kind(NodeKind::TransportExecute),
+    );
 
     let mut parse_inputs = vec![port("response", port_types.response)];
     parse_inputs.extend(passthrough.clone());
-    inner.add_node(Node::opaque(
-        parse_name,
-        parse_inputs,
-        parse_outputs,
-        parse_op,
-    ));
+    inner.add_node(
+        Node::opaque(parse_name, parse_inputs, parse_outputs, parse_op)
+            .with_kind(NodeKind::TransportParse),
+    );
 
     inner.add_edge(Edge::new(prepare_name, "request", execute_name, "request"));
     inner.add_edge(Edge::new(prepare_name, "skip", execute_name, "skip"));

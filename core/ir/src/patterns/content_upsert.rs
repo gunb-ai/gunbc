@@ -18,7 +18,7 @@
 
 use crate::build::{optional, port};
 use crate::builder::{BuilderError, DagBuilder, NodeRef};
-use crate::node::Node;
+use crate::node::{Node, NodeKind};
 
 /// References to the five nodes created by a content upsert chain
 /// (excludes the generate node, which the caller creates).
@@ -87,7 +87,8 @@ pub fn add_content_upsert_chain<T: Clone>(
             vec![port("path", "String")],
             vec![port("request", "TransportRequest"), port("skip", "Bool")],
             prepare_read_op,
-        ),
+        )
+        .with_kind(NodeKind::TransportPrepare),
         generate,
     )?;
 
@@ -102,7 +103,8 @@ pub fn add_content_upsert_chain<T: Clone>(
             },
             vec![port("response", "TransportResponse")],
             transport_op.clone(),
-        ),
+        )
+        .with_kind(NodeKind::TransportExecute),
         &prepare_read,
     )?;
 
@@ -121,7 +123,8 @@ pub fn add_content_upsert_chain<T: Clone>(
                 port("skip_reason", "String"),
             ],
             compare_op,
-        ),
+        )
+        .with_kind(NodeKind::Pure),
         &execute_read,
     )?;
 
@@ -132,7 +135,8 @@ pub fn add_content_upsert_chain<T: Clone>(
             vec![port("path", "String"), port("content", "String")],
             vec![port("request", "TransportRequest")],
             prepare_write_op,
-        ),
+        )
+        .with_kind(NodeKind::TransportPrepare),
         generate,
     )?;
 
@@ -157,7 +161,8 @@ pub fn add_content_upsert_chain<T: Clone>(
                 optional("skip_reason", "OptionalString"),
             ],
             transport_op,
-        ),
+        )
+        .with_kind(NodeKind::TransportExecute),
         &compare,
     )?;
 

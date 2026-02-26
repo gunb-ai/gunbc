@@ -29,7 +29,7 @@
 use gunbc_ir::coerce::validate_coercions_with_registry;
 use gunbc_ir::resource::{detect_conflicts, ResourceAccess, ResourceConflict};
 use gunbc_ir::types::{Cardinality, NodeId, PortName, TypeId};
-use gunbc_ir::{contract, detect_boundaries, Dag, TypeRegistry};
+use gunbc_ir::{contract, detect_boundaries, Dag, NodeKind, TypeRegistry};
 
 use crate::testgen::cardinality::fermi_test_cases;
 
@@ -548,11 +548,7 @@ fn collect_execution_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObl
 
     // A.2: Transport interception — one per transport executor
     for node in &dag.nodes {
-        let is_transport = node
-            .inputs
-            .iter()
-            .any(|p| p.type_id.0 == "TransportRequest");
-        if is_transport {
+        if node.kind == Some(NodeKind::TransportExecute) {
             obligations.push(ProofObligation::runtime(
                 Obligation::TransportInterceptable {
                     node_id: node.id.clone(),
@@ -568,14 +564,18 @@ fn collect_execution_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObl
 
     // A.3: Pure node determinism — one per pure node
     for node in &dag.nodes {
-        let is_transport = node
-            .inputs
-            .iter()
-            .any(|p| p.type_id.0 == "TransportRequest");
-        let is_tool_env = node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle");
-        let consumes_tool = node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+        let is_effectful = matches!(
+            node.kind,
+            Some(
+                NodeKind::TransportExecute
+                    | NodeKind::ToolEnvironment
+                    | NodeKind::ToolConsumer
+                    | NodeKind::ResourceEnvironment
+                    | NodeKind::ResourceAcquire
+            )
+        );
 
-        if !is_transport && !is_tool_env && !consumes_tool {
+        if !is_effectful {
             obligations.push(ProofObligation::runtime(
                 Obligation::PureNodeDeterminism {
                     node_id: node.id.clone(),
@@ -822,7 +822,7 @@ fn collect_scenario_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObli
     let transport_executors: Vec<&NodeId> = dag
         .nodes
         .iter()
-        .filter(|n| n.inputs.iter().any(|p| p.type_id.0 == "TransportRequest"))
+        .filter(|n| n.kind == Some(NodeKind::TransportExecute))
         .map(|n| &n.id)
         .collect();
 
@@ -920,11 +920,7 @@ fn collect_resource_obligations<T>(
 ) {
     // D.0: Transport nodes must declare at least one resource input
     for node in &dag.nodes {
-        let is_transport = node
-            .inputs
-            .iter()
-            .any(|p| p.type_id.0 == "TransportRequest");
-        if !is_transport {
+        if node.kind != Some(NodeKind::TransportExecute) {
             continue;
         }
 
@@ -1220,23 +1216,24 @@ fn check_predicate_entailment(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{build::*, Dag, Node, Port};
+    use gunbc_ir::{build::*, Dag, Node, NodeKind, Port};
 
     #[test]
     fn test_collect_basic_obligations() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "source",
-            vec![],
-            vec![Port::scalar("out", "String")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "sink",
-            vec![Port::scalar("in", "String")],
-            vec![Port::scalar("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque("source", vec![], vec![Port::scalar("out", "String")], ())
+                .with_kind(NodeKind::Pure),
+        );
+        dag.add_node(
+            Node::opaque(
+                "sink",
+                vec![Port::scalar("in", "String")],
+                vec![Port::scalar("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("source", "out", "sink", "in"));
 
         let registry = TypeRegistry::with_core_types();
@@ -1269,12 +1266,15 @@ mod tests {
     #[test]
     fn test_optional_input_obligations_collected() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "opt",
-            vec![Port::optional("maybe", "String")],
-            vec![Port::scalar("out", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "opt",
+                vec![Port::optional("maybe", "String")],
+                vec![Port::scalar("out", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
 
         let registry = TypeRegistry::with_core_types();
         let obligations = collect_obligations(&dag, &registry, None);
@@ -1289,33 +1289,45 @@ mod tests {
     #[test]
     fn test_transport_obligations() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "fs_env",
-            vec![],
-            vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![],
-            vec![Port::scalar("request", "TransportRequest")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![
-                Port::scalar("request", "TransportRequest"),
-                Port::resource("file", "FilesystemHandle", AccessMode::Read),
-            ],
-            vec![Port::scalar("response", "TransportResponse")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "parse",
-            vec![Port::scalar("response", "TransportResponse")],
-            vec![Port::scalar("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "fs_env",
+                vec![],
+                vec![Port::resource("file", "FilesystemHandle", AccessMode::Read)],
+                (),
+            )
+            .with_kind(NodeKind::ResourceEnvironment),
+        );
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![],
+                vec![Port::scalar("request", "TransportRequest")],
+                (),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![
+                    Port::scalar("request", "TransportRequest"),
+                    Port::resource("file", "FilesystemHandle", AccessMode::Read),
+                ],
+                vec![Port::scalar("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "parse",
+                vec![Port::scalar("response", "TransportResponse")],
+                vec![Port::scalar("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportParse),
+        );
         dag.add_edge(edge("prepare", "request", "execute", "request"));
         dag.add_edge(edge("fs_env", "res:file", "execute", "res:file"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
@@ -1349,18 +1361,24 @@ mod tests {
     #[test]
     fn test_resource_obligations() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "env",
-            vec![],
-            vec![Port::scalar("tool:clippy", "ToolHandle")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "lint",
-            vec![Port::scalar("tool:clippy", "ToolHandle")],
-            vec![Port::scalar("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "env",
+                vec![],
+                vec![Port::scalar("tool:clippy", "ToolHandle")],
+                (),
+            )
+            .with_kind(NodeKind::ToolEnvironment),
+        );
+        dag.add_node(
+            Node::opaque(
+                "lint",
+                vec![Port::scalar("tool:clippy", "ToolHandle")],
+                vec![Port::scalar("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::ToolConsumer),
+        );
         dag.add_edge(edge("env", "tool:clippy", "lint", "tool:clippy"));
 
         let registry = TypeRegistry::with_core_types();
@@ -1386,12 +1404,15 @@ mod tests {
     #[test]
     fn test_disconnected_resource_is_invalid() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "lint",
-            vec![Port::scalar("tool:clippy", "ToolHandle")],
-            vec![Port::scalar("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "lint",
+                vec![Port::scalar("tool:clippy", "ToolHandle")],
+                vec![Port::scalar("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::ToolConsumer),
+        );
         // No edge providing the tool!
 
         let registry = TypeRegistry::with_core_types();
@@ -1421,8 +1442,8 @@ mod tests {
     #[test]
     fn test_resource_conflict_is_invalid() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("a", vec![], vec![], ()));
-        dag.add_node(Node::opaque("b", vec![], vec![], ()));
+        dag.add_node(Node::opaque("a", vec![], vec![], ()).with_kind(NodeKind::Pure));
+        dag.add_node(Node::opaque("b", vec![], vec![], ()).with_kind(NodeKind::Pure));
         // No edge between a and b — they're parallel
 
         let accesses = vec![
@@ -1452,18 +1473,19 @@ mod tests {
     #[test]
     fn test_obligation_stats() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "a",
-            vec![],
-            vec![Port::scalar("out", "String")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "b",
-            vec![Port::scalar("in", "String")],
-            vec![],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque("a", vec![], vec![Port::scalar("out", "String")], ())
+                .with_kind(NodeKind::Pure),
+        );
+        dag.add_node(
+            Node::opaque(
+                "b",
+                vec![Port::scalar("in", "String")],
+                vec![],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("a", "out", "b", "in"));
 
         let registry = TypeRegistry::with_core_types();
@@ -1522,18 +1544,19 @@ mod tests {
     fn test_coercion_obligations_collected() {
         // DAG with scalar output → list input should produce coercion obligation
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "producer",
-            vec![],
-            vec![Port::scalar("out", "Json")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "consumer",
-            vec![Port::list("inputs", "JsonList")],
-            vec![Port::scalar("result", "Json")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque("producer", vec![], vec![Port::scalar("out", "Json")], ())
+                .with_kind(NodeKind::Pure),
+        );
+        dag.add_node(
+            Node::opaque(
+                "consumer",
+                vec![Port::list("inputs", "JsonList")],
+                vec![Port::scalar("result", "Json")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("producer", "out", "consumer", "inputs"));
 
         let registry = TypeRegistry::with_core_types();
@@ -1560,18 +1583,19 @@ mod tests {
     fn test_no_coercion_for_matching_cardinalities() {
         // DAG with matching cardinalities should produce no coercion obligations
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "a",
-            vec![],
-            vec![Port::scalar("out", "String")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "b",
-            vec![Port::scalar("in", "String")],
-            vec![],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque("a", vec![], vec![Port::scalar("out", "String")], ())
+                .with_kind(NodeKind::Pure),
+        );
+        dag.add_node(
+            Node::opaque(
+                "b",
+                vec![Port::scalar("in", "String")],
+                vec![],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("a", "out", "b", "in"));
 
         let registry = TypeRegistry::with_core_types();
@@ -1586,18 +1610,24 @@ mod tests {
     #[test]
     fn test_coercion_errors_surface_invalid_obligations() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "list_producer",
-            vec![],
-            vec![Port::list("out", "JsonList")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "scalar_consumer",
-            vec![Port::scalar("in", "Json")],
-            vec![],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "list_producer",
+                vec![],
+                vec![Port::list("out", "JsonList")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
+        dag.add_node(
+            Node::opaque(
+                "scalar_consumer",
+                vec![Port::scalar("in", "Json")],
+                vec![],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("list_producer", "out", "scalar_consumer", "in"));
 
         let registry = TypeRegistry::with_core_types();

@@ -23,7 +23,7 @@ use crate::mock_spec::{BoundaryMock, MockSpec, NodeExample, TransportMock};
 use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{
     value_compatible_with_type_id, value_kind_name as ir_value_kind_name, Cardinality, NodeId,
-    PortName, TypeId, Value,
+    NodeKind, PortName, TypeId, Value,
 };
 use std::collections::HashSet;
 use std::error::Error;
@@ -486,48 +486,39 @@ pub fn extract_mock_requirements<T: Clone>(dag: &gunbc_ir::Dag<T>, name: &str) -
 
     let boundaries = detect_boundaries(dag);
 
-    // Find transport executor nodes (consume TransportRequest)
+    // Find transport executor nodes
     let transport_nodes: HashSet<&str> = dag
         .nodes
         .iter()
-        .filter(|n| n.inputs.iter().any(|p| p.type_id.0 == "TransportRequest"))
+        .filter(|n| n.kind == Some(NodeKind::TransportExecute))
         .map(|n| n.id.0.as_str())
         .collect();
 
-    // Find resource/environment nodes (emit ToolHandle, Credential, etc.)
-    let resource_types = [
-        "ToolHandle",
-        "Credential",
-        "FilesystemHandle",
-        "NetworkHandle",
-        "Timestamp",
-        "Platform",
-        "CloudSecretConfig",
-    ];
+    // Find resource/environment nodes
     let resource_nodes: HashSet<&str> = dag
         .nodes
         .iter()
         .filter(|n| {
-            n.outputs
-                .iter()
-                .any(|p| resource_types.contains(&p.type_id.0.as_str()))
+            matches!(
+                n.kind,
+                Some(
+                    NodeKind::ToolEnvironment
+                        | NodeKind::ResourceEnvironment
+                        | NodeKind::ResourceAcquire
+                )
+            )
         })
         .map(|n| n.id.0.as_str())
         .collect();
 
     // Find CLI tool nodes (consume ToolHandle but are not resource providers)
-    // These nodes execute external tools and need mocks for their outputs during DryRun
     let cli_tool_nodes: HashSet<&str> = dag
         .nodes
         .iter()
         .filter(|n| {
-            // Has ToolHandle input
-            let has_tool_input = n.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
-            // Is not a resource node (doesn't emit resource types)
-            let is_not_resource = !resource_nodes.contains(n.id.0.as_str());
-            // Is not a transport node (doesn't consume TransportRequest)
-            let is_not_transport = !transport_nodes.contains(n.id.0.as_str());
-            has_tool_input && is_not_resource && is_not_transport
+            n.kind == Some(NodeKind::ToolConsumer)
+                && !resource_nodes.contains(n.id.0.as_str())
+                && !transport_nodes.contains(n.id.0.as_str())
         })
         .map(|n| n.id.0.as_str())
         .collect();
@@ -828,28 +819,37 @@ mod tests {
     #[test]
     fn test_extract_mock_requirements_from_dag() {
         use gunbc_ir::build::{edge, port};
-        use gunbc_ir::{Dag, Node};
+        use gunbc_ir::{Dag, Node, NodeKind};
 
         // Build a simple DAG with a transport node
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![],
-            vec![port("request", "TransportRequest")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "parse",
-            vec![port("response", "TransportResponse")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![],
+                vec![port("request", "TransportRequest")],
+                (),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "parse",
+                vec![port("response", "TransportResponse")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportParse),
+        );
         dag.add_edge(edge("prepare", "request", "execute", "request"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
 
@@ -884,15 +884,13 @@ mod tests {
     #[test]
     fn test_extract_and_build_complete_spec() {
         use gunbc_ir::build::port;
-        use gunbc_ir::{Dag, Node};
+        use gunbc_ir::{Dag, Node, NodeKind};
 
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "source",
-            vec![],
-            vec![port("output", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque("source", vec![], vec![port("output", "String")], ())
+                .with_kind(NodeKind::Pure),
+        );
 
         let reqs = extract_mock_requirements(&dag, "test");
 

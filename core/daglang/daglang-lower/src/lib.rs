@@ -31,7 +31,8 @@ use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::AccessMode;
 use gunbc_ir::{
-    Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, Port, PortName, Value,
+    Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, NodeKind, Port, PortName,
+    Value,
 };
 use serde::Serialize;
 
@@ -553,6 +554,58 @@ impl PrimitiveOpKind {
 
 pub fn classify_obligation(op: &LoweredOp) -> ObligationCategory {
     op.obligation_category()
+}
+
+/// Map a lowered node's obligation category (+ port types for tool distinction)
+/// to a [`NodeKind`].
+///
+/// `ResourceProvide` nodes that emit `ToolHandle` become `ToolEnvironment`;
+/// other `ResourceProvide` become `ResourceEnvironment`. Nodes with a
+/// `ToolHandle` input port become `ToolConsumer` regardless of their
+/// obligation category.
+pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
+    let cat = match &node.body {
+        gunbc_ir::NodeBody::Opaque(op) => op.obligation_category(),
+        gunbc_ir::NodeBody::SubDag(_) => ObligationCategory::None,
+    };
+
+    // ToolConsumer: any node that consumes a ToolHandle input, unless it's
+    // already a transport executor.
+    let has_tool_input = node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+    let has_tool_output = node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+
+    match cat {
+        ObligationCategory::ServiceTransportPrepare => NodeKind::TransportPrepare,
+        ObligationCategory::ServiceTransportExecute => NodeKind::TransportExecute,
+        ObligationCategory::ServiceTransportParse => NodeKind::TransportParse,
+        ObligationCategory::ResourceProvide => {
+            if has_tool_output {
+                NodeKind::ToolEnvironment
+            } else {
+                NodeKind::ResourceEnvironment
+            }
+        }
+        ObligationCategory::ResourceAcquire => NodeKind::ResourceAcquire,
+        ObligationCategory::ResourceRelease => NodeKind::ResourceRelease,
+        _ => {
+            if has_tool_input {
+                NodeKind::ToolConsumer
+            } else {
+                NodeKind::Pure
+            }
+        }
+    }
+}
+
+/// Walk all nodes in a lowered DAG (recursively into subdags) and set
+/// `node.kind` from `obligation_to_node_kind`.
+pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
+    for node in &mut dag.nodes {
+        node.kind = Some(obligation_to_node_kind(node));
+        if let gunbc_ir::NodeBody::SubDag(ref mut inner) = node.body {
+            stamp_node_kinds(inner);
+        }
+    }
 }
 
 /// Map lowered obligation categories to canonical parity-kind strings.
@@ -1998,7 +2051,9 @@ fn lower_typed_project_with_callable_scope(
         return Err(LowerError::NoLowerableItems);
     }
 
-    Ok(builder.into_dag())
+    let mut dag = builder.into_dag();
+    stamp_node_kinds(&mut dag);
+    Ok(dag)
 }
 
 pub use parity::{
