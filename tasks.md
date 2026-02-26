@@ -240,9 +240,9 @@ Queue ordered by dependency chain:
 
 | Order | ID | What | Size | Status | Deps |
 |-------|----|------|------|--------|------|
-| 1 | BB-2 | Per-node test generation (Level 1a/1b). Pure nodes real exec, effectful DryRun. | M | Pending | BB-1 |
-| 2 | BB-3 | Adjacent pair test generation (Level 2). Window tests for wiring bugs. | M | Pending | BB-2 |
-| 3 | BB-5 | Cross-workflow consistency tests (Level 4). Same node, multiple workflows. | S | Pending | BB-2 |
+| 1 | BB-2 | Per-node test generation (Level 1a/1b). Pure nodes real exec, effectful DryRun. | M | Complete | BB-1 |
+| 2 | BB-3 | Adjacent pair test generation (Level 2). Window tests for wiring bugs. | M | Complete | BB-2 |
+| 3 | BB-5 | Cross-workflow consistency tests (Level 4). Same node, multiple workflows. | S | Complete | BB-2 |
 | 4 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | — |
 | 5 | FC-P7-d | Delete 2 bootstrap extern impls. Parity golden tests. | M | Pending | FC-P7-c2 |
 | 6 | FC-CF5 | Recursive types (self-referential type defs). | L | Pending | — |
@@ -387,3 +387,6 @@ BB-0 (compositional type modeling): complete. All types in `core/test/src/corpus
 BB-1 (mock corpus builder): complete. `build_corpus()` in `core/codegen/src/testgen/mock_corpus.rs`. DryRun extraction + cross-workflow accumulation.
 BB-4 (type-derived boundary values): complete. `enrich_corpus_with_type_witnesses()` with anchored mutation. MAX_EXAMPLES_PER_NODE=50.
 BB-6 (transport fidelity ladders): complete. Canonical ladders for all 6 TransportKind variants. `node_max_fidelity()` transitive meet inference.
+BB-2 (per-node corpus test generation Level 1a/1b): complete 2026-02-26. `build_corpus_section()` in `core/codegen/src/testgen/codegen.rs`. Pure nodes → Real mode + exact match; effectful nodes → DryRun + type contract via `value_compatible_with_type_id`. `CorpusExampleCtx` struct. 5 meta-tests. MAX_EXAMPLES_PER_NODE cap enforced during codegen. Future: Level 2 (ExpectValidationError), corpus integration into real testgen.
+BB-3 (adjacent pair test generation Level 2): complete 2026-02-26. `build_adjacent_pair_section()` in `core/codegen/src/testgen/codegen.rs`. Executes source node → wires outputs through edge_port_map → executes target node → asserts type contract on target outputs. Pure/effectful mode per-node. 2 meta-tests.
+BB-5 (cross-workflow consistency tests Level 4): complete 2026-02-26. `build_cross_workflow_section()` in `core/codegen/src/testgen/codegen.rs`. For nodes in 2+ workflows, executes with one representative example per workflow, asserts identical output port sets. 2 meta-tests.
