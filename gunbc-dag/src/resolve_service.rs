@@ -194,7 +194,15 @@ impl Executable for GenericRestParseOp {
                             self.spec.method, self.spec.path_template, rest.status, body_excerpt
                         )
                     };
-                    return Err(ExecError::new(detail)
+                    // Determine auth scheme + credential ref.
+                    // Prefer explicit @auth scheme; fall back to inferring from
+                    // @headers Authorization pattern.
+                    let (scheme, cred_ref) = if !self.auth_scheme.is_empty() {
+                        (self.auth_scheme.clone(), None)
+                    } else {
+                        infer_auth_from_headers(&self.spec.headers)
+                    };
+                    let mut err = ExecError::new(detail)
                         .with_layer(ErrorLayer::Service(ServiceErrorLayer {
                             provider: self.service_name.clone(),
                             operation: self.operation_name.clone(),
@@ -210,11 +218,14 @@ impl Executable for GenericRestParseOp {
                         .with_layer(ErrorLayer::Rest(RestErrorLayer {
                             endpoint: self.spec.endpoint.clone(),
                             method: self.spec.method.clone(),
-                        }))
-                        .with_layer(ErrorLayer::Auth(AuthErrorLayer {
-                            scheme: self.auth_scheme.clone(),
-                            credential_ref: None,
-                        })));
+                        }));
+                    if !scheme.is_empty() {
+                        err = err.with_layer(ErrorLayer::Auth(AuthErrorLayer {
+                            scheme,
+                            credential_ref: cred_ref,
+                        }));
+                    }
+                    return Err(err);
                 }
 
                 let mut out = OutputMap::new();
@@ -551,6 +562,35 @@ impl Executable for GenericShellParseOp {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/// Infer auth scheme and credential reference from `@headers` annotation.
+///
+/// Looks for an `Authorization` header and extracts the scheme (Bearer, Basic)
+/// and the credential input name from template interpolation (`{auth_token}`).
+/// Returns `(scheme, Option<credential_ref>)`.
+fn infer_auth_from_headers(headers: &[(String, String)]) -> (String, Option<String>) {
+    for (key, value) in headers {
+        if key.eq_ignore_ascii_case("authorization") {
+            let scheme = if value.starts_with("Bearer ") {
+                "BearerToken"
+            } else if value.starts_with("Basic ") {
+                "BasicAuth"
+            } else {
+                "Header"
+            };
+            // Extract input name from template: "Bearer {auth_token}" → "auth_token"
+            let cred_ref = value
+                .find('{')
+                .and_then(|start| {
+                    value[start + 1..]
+                        .find('}')
+                        .map(|end| value[start + 1..start + 1 + end].to_string())
+                });
+            return (scheme.to_string(), cred_ref);
+        }
+    }
+    (String::new(), None)
+}
 
 /// Extract an input value as a string, handling Secret and defaults.
 #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret values marshalled into service requests

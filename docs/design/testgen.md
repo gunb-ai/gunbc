@@ -303,6 +303,77 @@ zero manual MockSpec.
 
 ---
 
+## Acceptance Criteria
+
+Formal criteria for evaluating testgen completeness. Each criterion has a
+status and evidence pointer.
+
+### Proven (met today)
+
+| # | Criterion | Evidence |
+|---|-----------|----------|
+| AC-1 | **Auto-discovery covers all compilable modules** — every `.dag` file with `func` items gets testgen treatment with zero manual input | 29 generated files from `discover_compilable_modules()`. Only 1 module skipped (`examples/deployment.dag` — ambiguous resource binding). |
+| AC-2 | **Obligation bucketing is complete** — all 4 buckets (A-D) produce tests | Generated file headers show `A=N, B=N, C=N, D=N` obligation counts per module. Example: `tools/testgen.dag` → `388 obligations (100 discharged, 5 INVALID, 283 testable: A=83, B=172, C=28, D=0)`. |
+| AC-3 | **Anti-tautology filtering** — only Unknown/RuntimeOnly obligations generate tests; statically-proven properties (L1 cardinality, L2 type equality) are discharged | `collect_obligations()` returns discharged count ≥ 25% of total obligations across all modules. |
+| AC-4 | **Scale** — testgen produces meaningful test volume from structure alone | 5,874 test functions across 157K lines of generated code, from 29 modules, with zero manual `MockSpec`. |
+| AC-5 | **DryRun smoke coverage** — every generated module has a DryRun completion test | Bucket A `DryRunCompletion` obligation emitted for every module with transport nodes. |
+| AC-6 | **Transport failure scenarios** — N+1 scenarios (all-succeed + per-boundary failure) | Bucket C `SingleTransportFailure` obligations per transport node, plus `AllTransportsSucceed`. |
+| AC-7 | **Skip-path propagation** — inject `Value::Skipped`, verify downstream nodes skip | Bucket C `SkipPathPropagation` tests generated for each transport with downstream dependents. |
+| AC-8 | **Guard branch coverage** — two-scenario tests for Bool guards | Bucket C `GuardBranchCoverage` per guarded input port. |
+| AC-9 | **Probe-observer integration** — structural integration chains from probes to terminal observers | Bucket B generates probe→observer chain tests. Example: `tools/testgen.dag` → 72 probes, 12 observers, 95 integration tests. |
+| AC-10 | **WrapScalar coercion coverage** — `__deps` fan-in coercion edges tested | Bucket B generates `coercion_wraps_*` tests for each `__deps` port with WrapScalar edges. |
+| AC-11 | **MockCorpus infrastructure** — DryRun-derived per-node I/O corpus builder works | `build_corpus()` extracts `NodeIdentity`→`CorpusExample` from `ExecutionLog`. Proven in `corpus_builder.rs` integration tests. |
+| AC-12 | **Fidelity ladder types** — cost-tiered transport resolution model complete | `FidelityLevel`, `FidelityLadder`, `canonical_ladders()`, `node_max_fidelity()` all pass 310 lines of tests. |
+| AC-13 | **Type witness enrichment** — corpus mutation via `contract::witnesses_checked()` | `enrich_corpus_with_type_witnesses()` implemented and tested. Max 50 examples per node, 3 base cases varied per port. |
+
+### Partial (infrastructure exists, not fully wired)
+
+| # | Criterion | Gap | Reconciliation |
+|---|-----------|-----|---------------|
+| AC-14 | **Per-node corpus execution** — execute each node against corpus examples, assert outputs | `build_corpus_section()` is a stub (asserts `!dag.nodes.is_empty()` only). `corpus_tests: false` in `TestConfig`. | Wire `execute_single_node` + corpus examples → assert. No design decision needed — straightforward implementation (BB-2). |
+| AC-15 | **Adjacent-pair window tests** — 2-node windows through real executor | `build_adjacent_pair_section()` is a stub. `adjacent_pair_tests: false`. | Wire `window_subdag` extraction + executor. Blocked on `__deps` MixedInput resolution for windows crossing fan-in nodes (BB-3). |
+| AC-16 | **Fidelity ladder variant generation** — same corpus, different transport resolution per tier | `build_fidelity_ladder_section()` emits TODO placeholders. Only PureMock (XS) is real. | S+ tiers blocked on virtual I/O infrastructure (in-memory FS, mock HTTP server). Not a testgen design issue — infrastructure dependency (BB-6). |
+
+### Not Started
+
+| # | Criterion | Dependency |
+|---|-----------|-----------|
+| AC-17 | **Cross-workflow consistency** — nodes appearing in 2+ workflows assert compatible outputs | BB-5. Needs corpus data from multiple workflows + output comparison logic. |
+| AC-18 | **L3/L4 contract witnesses** — boundary fuzzing from type-derived witnesses | Tier 3. Needs type registry with default witnesses + predicate generation. |
+| AC-19 | **Property-based simulation** — IoContract generators + validators exercised per-node | `Simulator` types exist but not integrated into testgen codegen pipeline. |
+
+---
+
+## Gap Reconciliation
+
+### Self-reconcilable (no design decisions needed)
+
+| Gap | What to do | Effort |
+|-----|-----------|--------|
+| **BB-2 (corpus execution)** | Set `corpus_tests: true`, implement `build_corpus_section()` body: iterate corpus examples, call `execute_single_node`, assert `Expectation` (ExactOutputs/TypeContractOnly). | M |
+| **BB-4 (enrichment wiring)** | Call `enrich_corpus_with_type_witnesses()` in the `AutoGenerate` path after `build_corpus()`, passing `result.dsl_type_registry`. | S |
+| **BB-5 (cross-workflow)** | Set `cross_workflow_tests: true`, implement body: group corpus by `NodeIdentity`, for nodes in 2+ workflows assert output types/shapes match. | S |
+| **Observability gaps** | Extend `auto_mock_spec()` fallback matchers to cover more terminal node types beyond `IdentityCallableOp`. | S |
+| **`examples/deployment.dag` skip** | Provide a default profile or relax `enforce_profile_for_bound_uses()` for auto-testgen compilation (IS-3 follow-up). | S |
+
+### Requires infrastructure work (no design decisions, but non-trivial)
+
+| Gap | What's needed | Effort |
+|-----|--------------|--------|
+| **BB-3 (`__deps` MixedInput)** | Teach `window_subdag` to handle fan-in ports: either (a) include all fan-in sources in the window, or (b) mock the external fan-in edges. Option (b) is more general — mock external inputs at the window boundary. | M |
+| **BB-6 S+ fidelity tiers** | Build virtual I/O backends: in-memory filesystem (S-tier File/Shell), in-memory HTTP mock server (S-tier Rest/Http). Then wire into fidelity ladder codegen. | L |
+| **ConditionalMock** | Add predicate-based response selection to `MockSequence`. Low priority — `MockSequence` (ordered) covers current needs. | S |
+| **Simulator integration** | Wire `IoContract` generators into testgen codegen: emit property-based test loops per node with contracts. | M |
+
+### Needs design decision
+
+None of the remaining gaps require a design decision from you. All gaps are
+implementation work following established patterns. The testgen model (obligation
+buckets, anti-tautology, auto-discovery, fidelity ladders) is architecturally
+complete — what remains is filling in stub bodies and wiring infrastructure.
+
+---
+
 ## Implementation Status
 
 ### Done
@@ -312,6 +383,7 @@ zero manual MockSpec.
 - [x] `collect_obligations()` — analyze DAG → produce obligations
 - [x] `check_predicate_entailment()` — L3 entailment checking (conservative)
 - [x] Bucket A codegen: DryRun completion, transport interception
+- [x] Bucket B codegen: probe-observer integration chains, WrapScalar coercion coverage
 - [x] Bucket C codegen: all-succeed, single-failure scenarios
 - [x] Bucket C codegen: skip-path propagation (inject `Value::Skipped`, verify downstream)
 - [x] Bucket C codegen: guard branch coverage (Bool guards: two-scenario test, non-Bool: structured comments)
@@ -320,14 +392,25 @@ zero manual MockSpec.
 - [x] Anti-tautology filtering (only Unknown/RuntimeOnly → tests)
 - [x] Guard obligations decoupled from transport presence (C.4 always emitted)
 - [x] `build::guarded()` helper for creating guarded ports in tests
+- [x] Auto-discovery pipeline (`discover_compilable_modules` → compile → `auto_mock_spec` → generate)
+- [x] MockCorpus builder (`build_corpus` from DryRun `ExecutionLog`)
+- [x] Type witness enrichment (`enrich_corpus_with_type_witnesses`)
+- [x] Fidelity ladder types and canonical ladders
+- [x] `NodeExample` / `OutputMatcher` per-node I/O specification
+- [x] `Simulator` / `IoContract` types for property-based testing
 
 ### Next Steps
 
-- [ ] Per-node execution harness using `execute_single_node` with baseline-derived inputs
+- [ ] BB-2: Per-node corpus execution via `execute_single_node` with corpus-derived inputs
+- [ ] BB-3: Adjacent-pair window tests (requires `__deps` MixedInput resolution)
+- [ ] BB-4: Wire `enrich_corpus_with_type_witnesses()` into auto-testgen pipeline
+- [ ] BB-5: Cross-workflow consistency tests (group by `NodeIdentity`, compare outputs)
+- [ ] BB-6: S+ fidelity tier variant generation (blocked on virtual I/O infrastructure)
 - [ ] Guard branch tests for non-Bool types (requires per-node isolation / Tier 1)
 - [ ] Tool/resource acquisition instrumentation + ordering fix (skip → no tool acquire)
 - [ ] Contract-tower witnesses for true boundary fuzzing (L3/L4)
 - [ ] Per-type boundary strategy registry for edge case generation
+- [ ] Simulator/IoContract integration into testgen codegen pipeline
 
 ### Known Issues / Follow-ups
 
@@ -350,6 +433,9 @@ zero manual MockSpec.
 - [ ] `T::default()` contract gap: pattern internals depend on `T::default()` for
       merge/unpack/controller ops with no trait-level contract. Needs `T: PatternInternalOps`
       or equivalent — not a testgen problem but affects test correctness.
+- [ ] `__deps` MixedInput: windows spanning fan-in ports (WrapScalar coercion) are
+      silently skipped by `window_has_mixed_inputs()`. Individual coercion edges are
+      tested (Bucket B), but integration chains through those nodes are not.
 
 ---
 
@@ -378,10 +464,10 @@ fixture-specific mocks and assertions on top of auto-generated defaults.
 `#[testgen_target]` inventory registrations are also optional; auto-discovery
 supersedes them for all compilable modules.
 
-**Coverage**: 21 of 30 compilable modules generate tests automatically. The
-remaining 9 are skipped due to pre-existing DSL resolver/lowerer gaps (missing
-operation specs, interface binding requiring profiles, typecheck errors). Once
-those gaps close, those modules will automatically get tests too.
+**Coverage**: 29 generated test files, 5,874 test functions, 157K lines of
+generated code. Only 1 module skipped (`examples/deployment.dag` — ambiguous
+resource binding requiring profile resolution). Coverage is automatic — as DSL
+gaps close, skipped modules will automatically get tests too.
 
 ### MockSpec Requirement (Safety Net)
 
