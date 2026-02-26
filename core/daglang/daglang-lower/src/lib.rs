@@ -7358,7 +7358,7 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
             if !matches_target {
                 continue;
             }
-            counts.push(interface.contracts.len());
+            counts.push(interface.contracts.len() + interface.typed_contracts.len());
         }
     }
     if counts.len() == 1 {

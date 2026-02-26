@@ -882,7 +882,112 @@ impl Parser {
             ty = TypeExpr::Annotated(Box::new(ty), anns);
         }
 
+        // Parse optional `where` clause for typed refinements
+        if self.check(&TokenKind::Where) {
+            self.advance();
+            let mut refinements = Vec::new();
+            refinements.push(self.parse_refinement()?);
+            while self.eat(&TokenKind::Comma) {
+                if self.check(&TokenKind::RBrace)
+                    || self.check(&TokenKind::RParen)
+                    || self.at_eof()
+                {
+                    break;
+                }
+                refinements.push(self.parse_refinement()?);
+            }
+            ty = TypeExpr::Refined(Box::new(ty), refinements);
+        }
+
         Ok(ty)
+    }
+
+    fn parse_refinement(&mut self) -> Result<Refinement, ParseError> {
+        let name = self.expect_ident()?;
+        match name.as_str() {
+            "pattern" => {
+                self.expect(&TokenKind::LParen)?;
+                let s = match &self.peek().kind {
+                    TokenKind::Str(v) => { let r = v.clone(); self.advance(); r }
+                    _ => return Err(self.err("expected string for pattern".into())),
+                };
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::Pattern(s))
+            }
+            "range" => {
+                self.expect(&TokenKind::LParen)?;
+                let mut min = None;
+                let mut max = None;
+                if !self.check(&TokenKind::RParen) {
+                    // Check for named args (min: N, max: M)
+                    if Self::token_kind_as_ident(&self.peek().kind).is_some()
+                        && self.peek2().kind == TokenKind::Colon
+                    {
+                        while !self.check(&TokenKind::RParen) && !self.at_eof() {
+                            let key = self.expect_ident()?;
+                            self.expect(&TokenKind::Colon)?;
+                            let val = self.parse_expr(0)?;
+                            match key.as_str() {
+                                "min" => min = Some(val),
+                                "max" => max = Some(val),
+                                _ => {}
+                            }
+                            if !self.eat(&TokenKind::Comma) { break; }
+                        }
+                    } else {
+                        // Positional: range(min, max)
+                        min = Some(self.parse_expr(0)?);
+                        if self.eat(&TokenKind::Comma) {
+                            max = Some(self.parse_expr(0)?);
+                        }
+                    }
+                }
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::Range { min, max })
+            }
+            "brand" => {
+                self.expect(&TokenKind::LParen)?;
+                let s = match &self.peek().kind {
+                    TokenKind::Str(v) => { let r = v.clone(); self.advance(); r }
+                    _ => return Err(self.err("expected string for brand".into())),
+                };
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::Brand(s))
+            }
+            "non_empty" => Ok(Refinement::NonEmpty),
+            "content" => {
+                self.expect(&TokenKind::LParen)?;
+                let enc = self.expect_ident()?;
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::Content(enc))
+            }
+            "format" => {
+                self.expect(&TokenKind::LParen)?;
+                let fmt = self.expect_ident()?;
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::Format(fmt))
+            }
+            "raw_body" => Ok(Refinement::RawBody),
+            other => {
+                // Generic predicate — consume optional parens
+                if self.check(&TokenKind::LParen) {
+                    self.advance();
+                    let mut depth = 1usize;
+                    while depth > 0 && !self.at_eof() {
+                        match self.peek().kind {
+                            TokenKind::LParen => { depth += 1; self.advance(); }
+                            TokenKind::RParen => {
+                                depth -= 1;
+                                if depth > 0 { self.advance(); }
+                            }
+                            _ => { self.advance(); }
+                        }
+                    }
+                    self.expect(&TokenKind::RParen)?;
+                }
+                Ok(Refinement::Predicate(other.to_string()))
+            }
+        }
     }
 
     fn consume_type_suffix(&mut self) -> String {
@@ -1331,6 +1436,7 @@ impl Parser {
         self.expect(&TokenKind::LBrace)?;
         let mut capabilities = Vec::new();
         let mut contracts = Vec::new();
+        let mut typed_contracts = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.check(&TokenKind::Operation) {
                 let op = self.parse_operation_def()?;
@@ -1349,6 +1455,26 @@ impl Parser {
                 capabilities.push(self.parse_interface_fn()?);
             } else if self.check(&TokenKind::Type) {
                 let _ = self.parse_type_def();
+            } else if self.check(&TokenKind::Contract) {
+                // Typed contract: `contract <text>`
+                self.advance();
+                // Consume the rest of the contract text up to the next keyword or annotation
+                let mut text_parts = Vec::new();
+                while !self.at_eof()
+                    && !self.check(&TokenKind::RBrace)
+                    && !self.check(&TokenKind::Capability)
+                    && !self.check(&TokenKind::Operation)
+                    && !self.check(&TokenKind::Fn)
+                    && !self.check(&TokenKind::Type)
+                    && !self.check(&TokenKind::At)
+                    && !self.check(&TokenKind::Contract)
+                {
+                    text_parts.push(format!("{:?}", self.peek().kind));
+                    self.advance();
+                }
+                typed_contracts.push(ContractDef {
+                    text: text_parts.join(" "),
+                });
             } else if self.check(&TokenKind::At) {
                 let ann = self.parse_annotation()?;
                 contracts.push(ann);
@@ -1362,7 +1488,7 @@ impl Parser {
             type_params,
             capabilities,
             contracts,
-            typed_contracts: Vec::new(),
+            typed_contracts,
         })
     }
 

@@ -25,8 +25,8 @@ use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Annotation, Expr, Field, Item, Literal, Param, ProvidesClause, SourceFile, Stmt, TypeBody,
-    TypeExpr, UsesClause, PipelineDef,
+    Annotation, Expr, Field, Item, Literal, Param, ProvidesClause, Refinement, SourceFile, Stmt,
+    TypeBody, TypeExpr, UsesClause, PipelineDef,
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys,
@@ -3370,13 +3370,60 @@ fn validate_type_expr(
                 }
             }
         }
-        TypeExpr::Refined(inner, _refinements) => {
+        TypeExpr::Refined(inner, refinements) => {
             errors.extend(validate_type_expr(
                 inner,
                 known_types,
                 generic_arity_registry,
                 context,
             ));
+            for refinement in refinements {
+                match refinement {
+                    Refinement::Range { min, max } => {
+                        let min_val = min.as_ref().and_then(extract_int_literal);
+                        let max_val = max.as_ref().and_then(extract_int_literal);
+                        if let (Some(mn), Some(mx)) = (min_val, max_val) {
+                            if mn > mx {
+                                errors.push(TypeError::UnsatisfiableRefinement {
+                                    ty: type_expr_to_string(inner),
+                                    constraint: format!("range min {mn} exceeds max {mx}"),
+                                });
+                            }
+                        }
+                    }
+                    Refinement::Content(enc) => {
+                        if canonical_content_encoding(enc).is_none() {
+                            errors.push(TypeError::UnsatisfiableRefinement {
+                                ty: type_expr_to_string(inner),
+                                constraint: format!(
+                                    "unknown content encoding `{enc}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
+                                ),
+                            });
+                        }
+                    }
+                    Refinement::Brand(name) => {
+                        if name.trim().is_empty() {
+                            errors.push(TypeError::UnsatisfiableRefinement {
+                                ty: type_expr_to_string(inner),
+                                constraint: "brand requires a non-empty name".to_string(),
+                            });
+                        }
+                    }
+                    Refinement::Pattern(regex) => {
+                        if regex.trim().is_empty() {
+                            errors.push(TypeError::UnsatisfiableRefinement {
+                                ty: type_expr_to_string(inner),
+                                constraint: "pattern requires a non-empty regex".to_string(),
+                            });
+                        }
+                    }
+                    Refinement::NonEmpty
+                    | Refinement::Format(_)
+                    | Refinement::Predicate(_)
+                    | Refinement::RawBody
+                    | Refinement::FileTypes(_) => {}
+                }
+            }
         }
         TypeExpr::Record(fields) => {
             for field in fields {
