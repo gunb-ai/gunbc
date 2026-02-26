@@ -217,6 +217,79 @@ Not scheduled. Promote to active sections when capacity opens.
 
 ---
 
+## Refactor Opportunities
+
+Accumulated patterns awaiting consolidation. Grouped by theme — look for
+larger patterns across groups before scheduling individual items.
+
+### Theme A: Typed Dispatch (strings → enums)
+
+Every sub-item is a variation of "strings where there should be types."
+NodeKind (A1) is the highest-value single item; A2–A6 are the long tail.
+
+| ID | Pattern | Scope | Key Files | Notes |
+|----|---------|-------|-----------|-------|
+| RF-A1 | **NodeKind on Node\<T\>**. 40+ `type_id.0 == "TransportRequest"` heuristics across 8 crates doing identical node classification. `classify_effect()` and `classify_node_role()` are parallel impls of the same enum. 4 `is_*` predicates in executor redundant with `EffectKind`. | ~30 call sites, 8 files | execute.rs, resource/mod.rs, testgen/{analyze,obligation,codegen}.rs, boundary.rs, daglang-derive | Plan: `floating-wibbling-boot.md`. Deletes `EffectKind`, `classify_effect()`, 4 `is_*` fns. |
+| RF-A2 | **Port namespace typing**. 18+ scattered `starts_with("res:")` / `"tool:"` / `"__out:"` / `"__"` checks. `is_user_param_port()` reimplemented 3× with slight variations. | 18+ sites, 6 files | builder.rs, validate.rs, signature.rs, plan.rs, obligation.rs, rust_exec_runtime.rs | Add methods to `PortName` (`is_resource()`, `is_tool()`, `is_internal()`, `is_user_facing()`). |
+| RF-A3 | **Module path representation**. 4 crates use `Vec<String>` while daglang-syntax has typed `ModulePath`. 5+ manual `.join(".")` calls in pipeline.rs. | 4 crates | pipeline.rs, resolve.rs, typecheck.rs, syntax/lib.rs | Unify on `ModulePath` from daglang-syntax; add `From<Vec<String>>` + `From<&str>`. |
+| RF-A4 | **Stringly-typed dispatch in resolve.rs**. 10+ string prefix matches for module/callable routing (`module.starts_with("services.")`, `name.starts_with("service_transport::")`). | 10+ sites, 1 file | gunbc-dag/src/resolve.rs | Create `CallableClass` enum parsed once, dispatched everywhere. |
+| RF-A5 | **Transport node classification**. String-based prepare/execute/parse detection via `name.starts_with("service_transport::execute::")` etc. | 3+ checks per node | gunbc-dag/src/resolve.rs | Define `TransportNodeKind { Prepare, Execute, Parse }` enum. |
+| RF-A6 | **String constants consolidation**. `"__deps"` (45×), `"__out:"` (6×), `"res:file"` (8×), `"tool:"` (15×) scattered as literals. | 74+ sites | scattered | Extract to central consts in `core/ir/src/signature.rs` or `core/ir/src/resource/mod.rs`. |
+
+### Theme B: Service Transport Completeness
+
+Mechanical migration — same pattern repeated across .dag files. Adding
+`transport rest/shell/local { ... }` + `config { endpoint, auth }` blocks.
+
+| ID | Scope | Ops Missing | Status | Notes |
+|----|-------|-------------|--------|-------|
+| RF-B1 | **Active services**: github/issues.dag (8), github/pull_request.dag (6), llm/openai.dag (2) | 16 | Blocks SDLC + design tools | REST transport; need `config { endpoint, auth }` |
+| RF-B2 | **SDLC providers**: file stores (6), GCS stores (6), github_issue_provider (7), codex_agent (4), credential providers (4) | 27 | Blocks SDLC pipeline activation | Mixed rest/shell/file/local |
+| RF-B3 | **Stub providers**: stub_providers.dag (26), stub_credential_provider.dag (2) | 28 | Intentional — unit_test profile stubs | No transport needed; consider `transport stub {}` marker |
+| RF-B4 | **Infrastructure stubs**: azure (43), aws (38), gcp-infra (59) | 140 | Dormant — not in active pipeline | Defer until infrastructure provisioning lane opens |
+
+### Theme C: Code Organization
+
+Ongoing hygiene. Not urgent but reduces cognitive load over time.
+
+| ID | Pattern | Scope | Notes |
+|----|---------|-------|-------|
+| RF-C1 | **Monolithic files**. daglang-lower/lib.rs (11K lines), execute.rs (4K), resolve.rs (2K), typecheck/lib.rs (5K). | 4 files | Lower and resolve are highest ROI splits. |
+| RF-C2 | **Passthrough op sprawl**. 3+ identity variants in resolve.rs (`IdentityCallableOp`, `DeclaredOutputCallableOp`, `DeclaredOutputPassthroughOp`) with 47 lines of hardcoded port alias lists. | resolve.rs | Unify to single `PassthroughOp` with data-driven alias map. |
+| RF-C3 | **Error type consolidation**. 6 error types across crates — `ResolveError`, `PipelineError`, `LowerError`, `TypeError`, `BuilderError`, `ExecError`. Most are string wrappers. | 6 files | `ExecError` is well-structured; others could adopt similar layering. |
+| RF-C4 | **Test helper extraction**. ~29K lines of test code with duplicated fixture creation, mock setup, assertion patterns across daglang-cli test files. | 4 files | Extract `CompileTestHelper` + `MockFactory` trait. |
+| RF-C5 | **Builder inconsistency**. Mix of `DagBuilder` fluent API, pattern builder functions, and raw struct construction (especially in tests/validate.rs). | core/ir | Low priority — working but inconsistent. |
+
+### Theme D: M22 Scaffolding
+
+Types defined for future features but never populated. Annotation-based
+extraction path is now impossible (annotations deleted). Decision needed:
+delete scaffolding or update extraction to use typed DSL syntax.
+
+| ID | What | Status | Notes |
+|----|------|--------|-------|
+| RF-D1 | `RetryPolicy` / `BackoffStrategy` — always `None`. | Scaffolding | Will need DSL `retry` block syntax. |
+| RF-D2 | `ErrorMapping` — always `vec![]`. | Scaffolding | Will need DSL `error_map` block syntax. |
+| RF-D3 | `ContractObligation` — defined, not integrated into compiler pipeline. | Scaffolding | Contracts now use `contract` declarations; wire through lowerer. |
+| RF-D4 | `ResourceRequirement` — defined, not integrated. | Scaffolding | `uses` declarations cover this; may be redundant. |
+
+### Theme E: Pre-existing Test Gaps
+
+| ID | Test | Root Cause | Notes |
+|----|------|-----------|-------|
+| RF-E1 | `registry_exposes_required_claims` | Process unit "ci.build_compile" doesn't have `file:target` Write claim. | Likely needs claim registration update in process_registry. |
+| RF-E2 | `makegen_exec_runtime_e2e` (ignored) | Exec-runtime emit missing `LoadRegistry` handler + PureRender fn classification. | NF-5 handler specialization work. |
+| RF-E3 | `pragma_exec_runtime_e2e` (ignored) | `ContentUpsertOutputPath` nodes unclassified for exec-runtime emit. | Depends on RF-E2 handler work. |
+
+### Theme F: Underused Abstractions
+
+| ID | What | Implementors | Notes |
+|----|------|-------------|-------|
+| RF-F1 | Algebra traits (`PartialOrder`, `JoinSemilattice`, `MeetSemilattice`, `Lattice`, `BoundedLattice`, `Semiring`) | Only `Cardinality` | No generic usage. Keep or delete by 2026-Q3. |
+| RF-F2 | Render traits (`OutputMedium`, `TextMedium`, `GraphicsMedium`, `CodeRenderer<M>`, `MarkupRenderer<M>`, etc.) — 8 traits. | 5 implementors | Under-amortized. Consider unifying. |
+
+---
+
 ## Archive
 
 NF-1 through NF-6 (compile+link hardening): complete 2026-02-25. Detail: `TODO/TODONE/tasks-completed.md`.
