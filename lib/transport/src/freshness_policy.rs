@@ -23,7 +23,7 @@ use gunbc_ir::resource::{load_manifest_default, save_manifest_default, ManagedRe
 /// - The repo is already fresh (manifest check passes)
 ///
 /// Returns `Some(steps)` if the repo needs freshening, where steps are
-/// the sequential chain: codegen-dag → testgen → pragma → codegen → clippy → test-compile → release-check.
+/// the sequential chain: codegen → codegen-dag → testgen → pragma → clippy → test-compile → release-check.
 pub fn check_and_plan_freshness() -> Option<Vec<FreshnessStep>> {
     // Recursion prevention: if we're already inside a freshness context, skip.
     if std::env::var(FRESHNESS_ACTIVE_ENV).is_ok() {
@@ -73,15 +73,35 @@ pub fn update_freshness_manifest() -> Result<(), String> {
 /// These are the same steps as the old `run_lint_upsert`, modeled as
 /// individual commands:
 ///
-/// 1. codegen-dag: generate code from DAG structures
-/// 2. testgen: generate tests
-/// 3. pragma: process pragma directives
-/// 4. codegen: generate CLI entry points into target/codegen/bin/
+/// 1. codegen: generate CLI entry points into target/codegen/bin/ (MUST be first —
+///    codegen-dag/testgen/pragma are generated binaries whose source lives in
+///    target/codegen/bin/; this step produces those files using the handwritten
+///    gunbc-codegen binary)
+/// 2. codegen-dag: generate code from DAG structures
+/// 3. testgen: generate tests
+/// 4. pragma: process pragma directives
 /// 5. clippy: lint check (with auto-fix)
 /// 6. test-compile: compile lib tests without running
 /// 7. release-check: compile-check release bins for the workspace
 fn freshness_steps() -> Vec<FreshnessStep> {
     vec![
+        // codegen MUST run first: it generates target/codegen/bin/*/main.rs
+        // that codegen-dag, testgen, and pragma need to compile.
+        // Uses the handwritten gunbc-codegen binary (src/bin/codegen_cli.rs),
+        // which skips freshness checks for the "codegen" subcommand.
+        FreshnessStep {
+            id: "codegen".into(),
+            command: vec![
+                "cargo".into(),
+                "run".into(),
+                "-p".into(),
+                "gunbc-dag".into(),
+                "--bin".into(),
+                "gunbc-codegen".into(),
+                "--".into(),
+                "codegen".into(),
+            ],
+        },
         FreshnessStep {
             id: "codegen-dag".into(),
             command: vec![
@@ -119,19 +139,6 @@ fn freshness_steps() -> Vec<FreshnessStep> {
                 "gunbc-pragma".into(),
                 "--".into(),
                 "dag".into(),
-            ],
-        },
-        FreshnessStep {
-            id: "codegen".into(),
-            command: vec![
-                "cargo".into(),
-                "run".into(),
-                "-p".into(),
-                "gunbc-dag".into(),
-                "--bin".into(),
-                "gunbc-codegen".into(),
-                "--".into(),
-                "codegen".into(),
             ],
         },
         FreshnessStep {
