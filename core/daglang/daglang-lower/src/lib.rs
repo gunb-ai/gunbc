@@ -19,8 +19,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
-    Annotation, CapabilityDef, DataDef, Expr, Item, Literal, NodeStmt, OperationDef, ServiceDef,
-    Stmt, TransportBinding, TypeExpr,
+    CapabilityDef, DataDef, Expr, Item, Literal, NodeStmt, OperationDef, ServiceDef,
+    Stmt, TransportBinding,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, resource_type_name,
@@ -1216,8 +1216,8 @@ fn add_interface_stub_transport_triplets(
                     service: interface.name.clone(),
                     operation: capability.name.clone(),
                     transport: ServiceTransportClass::InterfaceStub,
-                    idempotent: capability.idempotent || has_annotation(&capability.annotations, "idempotent"),
-                    readonly: capability.readonly || has_annotation(&capability.annotations, "readonly"),
+                    idempotent: capability.idempotent,
+                    readonly: capability.readonly,
                     permissions: vec![],
                     spec: Some(ServiceOperationSpec::InterfaceStub {
                         interface: interface.name.clone(),
@@ -3485,7 +3485,6 @@ fn expand_content_upsert_patterns(
                 }
                 None
             }
-            Stmt::Annotation(_) => None,
             Stmt::Return(_) => None,
         };
 
@@ -4891,51 +4890,8 @@ fn add_makegen_scaffolding(
     }
 }
 
-fn has_annotation(annotations: &[Annotation], target: &str) -> bool {
-    annotations
-        .iter()
-        .any(|annotation| annotation.name == target)
-}
 
-fn annotation_transport_class(annotations: &[Annotation]) -> Option<ServiceTransportClass> {
-    if has_annotation(annotations, "shell") {
-        return Some(ServiceTransportClass::ShellLocal);
-    }
-    if has_annotation(annotations, "rest") {
-        return Some(ServiceTransportClass::RestNetwork);
-    }
-    if has_annotation(annotations, "file") {
-        return Some(ServiceTransportClass::FileBoundary);
-    }
-    if has_annotation(annotations, "local") {
-        return Some(ServiceTransportClass::LocalDirect);
-    }
-    None
-}
 
-fn annotation_permissions(annotations: &[Annotation], typed_permissions: &[String]) -> Vec<String> {
-    let mut permissions = BTreeSet::new();
-    for p in typed_permissions {
-        permissions.insert(p.clone());
-    }
-    for annotation in annotations
-        .iter()
-        .filter(|annotation| annotation.name == "permissions")
-    {
-        for arg in &annotation.args {
-            match arg {
-                Expr::Literal(Literal::String(value)) => {
-                    permissions.insert(value.clone());
-                }
-                Expr::Ident(path) => {
-                    permissions.insert(path.clone());
-                }
-                _ => {}
-            }
-        }
-    }
-    permissions.into_iter().collect::<Vec<_>>()
-}
 
 fn derive_service_call_metadata(
     service: &ServiceDef,
@@ -4947,12 +4903,9 @@ fn derive_service_call_metadata(
         Some(TransportBinding::Shell { .. }) => ServiceTransportClass::ShellLocal,
         Some(TransportBinding::File { .. }) => ServiceTransportClass::FileBoundary,
         Some(TransportBinding::Local) => ServiceTransportClass::LocalDirect,
-        None => annotation_transport_class(&operation.annotations)
-            .or_else(|| annotation_transport_class(&service.annotations))
-            .unwrap_or(ServiceTransportClass::Unknown),
+        None => ServiceTransportClass::Unknown,
     };
-    let mut permissions = annotation_permissions(&service.annotations, &[]);
-    permissions.extend(annotation_permissions(&operation.annotations, &operation.permissions));
+    let mut permissions = operation.permissions.clone();
     permissions.sort();
     permissions.dedup();
 
@@ -4962,12 +4915,8 @@ fn derive_service_call_metadata(
         service: service.name.clone(),
         operation: operation.name.clone(),
         transport,
-        idempotent: operation.idempotent
-            || has_annotation(&operation.annotations, "idempotent")
-            || has_annotation(&service.annotations, "idempotent"),
-        readonly: operation.readonly
-            || has_annotation(&operation.annotations, "readonly")
-            || has_annotation(&service.annotations, "readonly"),
+        idempotent: operation.idempotent,
+        readonly: operation.readonly,
         permissions,
         spec,
         retry_policy: None, // M22 Phase 3: populated when @retry extraction is wired
@@ -5090,24 +5039,45 @@ fn derive_operation_spec(
     }
 }
 
+fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
+    match expr {
+        Expr::Record(_, fields) => fields.iter().filter_map(|(k, v)| {
+            if let Expr::Literal(daglang_syntax::ast::Literal::String(s)) = v {
+                Some((k.clone(), s.clone()))
+            } else {
+                Some((k.clone(), expr_to_default_string(v)))
+            }
+        }).collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
     let endpoint = service.config.endpoint.clone()
-        .or_else(|| annotation_string_arg(&service.annotations, "endpoint"))
+        
         .unwrap_or_default();
-    let (method, path_template) =
-        annotation_rest_details(&operation.annotations, &service.annotations)?;
+    let (method, path_template) = match &operation.transport {
+        Some(TransportBinding::Rest { method, path, .. }) => (method.clone(), path.clone()),
+        _ => return None,
+    };
 
-    let headers = annotation_headers(&operation.annotations, &service.annotations);
+    let headers = match &operation.transport {
+        Some(TransportBinding::Rest { headers: Some(h), .. }) => extract_headers_from_expr(h),
+        _ => Vec::new(),
+    };
     let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers);
     let output_fields = derive_output_fields(&operation.outputs);
-    let body_template = annotation_body_template(&operation.annotations);
+    let body_template = match &operation.transport {
+        Some(TransportBinding::Rest { body: Some(b), .. }) => Some(expr_to_default_string(b)),
+        _ => None,
+    };
     let auth_scheme = service.config.auth.as_ref().map(|a| {
         match a.as_str() {
             "BearerToken" => "BearerToken".to_string(),
             "Basic" => "Basic".to_string(),
             other => other.to_string(),
         }
-    }).or_else(|| annotation_auth_scheme(&operation.annotations, &service.annotations));
+    });
 
     Some(RestOperationSpec {
         endpoint,
@@ -5127,13 +5097,14 @@ fn derive_shell_spec(
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
 ) -> Option<ShellOperationSpec> {
-    let argv_template = annotation_shell_argv(&operation.annotations, &service.annotations)?;
+    let argv_template = match &operation.transport {
+        Some(TransportBinding::Shell { argv }) => argv.iter().map(expr_to_default_string).collect::<Vec<_>>(),
+        _ => return None,
+    };
 
     let input_fields = derive_input_fields_for_shell(&operation.inputs, &argv_template);
     let output_fields = derive_output_fields(&operation.outputs);
-    let output_parsing = annotation_shell_output_parsing(&operation.annotations)
-        .or_else(|| annotation_shell_output_parsing(&service.annotations))
-        .unwrap_or_else(|| infer_shell_output_parsing(&operation.outputs));
+    let output_parsing = infer_shell_output_parsing(&operation.outputs);
 
     // Extract env from `env: Map<String, String>` input default.
     let env = extract_env_from_inputs(&operation.inputs, data_registry);
@@ -5148,7 +5119,10 @@ fn derive_shell_spec(
 }
 
 fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
-    let (file_op, path_template) = annotation_file_details(&operation.annotations)?;
+    let (file_op, path_template) = match &operation.transport {
+        Some(TransportBinding::File { op, path }) => (op.clone(), path.clone()),
+        _ => return None,
+    };
     let input_fields = operation
         .inputs
         .iter()
@@ -5225,124 +5199,15 @@ fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
 }
 
 /// Extract `@file(OP, "template")` → `(operation, path_template)`.
-fn annotation_file_details(annotations: &[Annotation]) -> Option<(String, String)> {
-    let ann = annotations.iter().find(|a| a.name == "file")?;
-    if ann.args.len() < 2 {
-        return None;
-    }
-    let operation = match &ann.args[0] {
-        Expr::Ident(op) => op.clone(),
-        Expr::Literal(Literal::String(op)) => op.clone(),
-        _ => return None,
-    };
-    let path_template = expr_to_template_string(&ann.args[1])?;
-    Some((operation, path_template))
-}
 
 /// Extract a string argument from a named annotation: `@name("value")`.
-fn annotation_string_arg(annotations: &[Annotation], name: &str) -> Option<String> {
-    annotations.iter().find(|a| a.name == name).and_then(|a| {
-        a.args.first().and_then(|arg| match arg {
-            Expr::Literal(Literal::String(s)) => Some(s.clone()),
-            _ => None,
-        })
-    })
-}
 
 /// Extract `(method, path_template)` from `@rest(METHOD, "/path/{param}")`.
 ///
 /// The path may be a plain string literal or a string interpolation. Interpolated
 /// expressions like `{project}` are converted back to template placeholders `{project}`.
-fn annotation_rest_details(
-    op_annotations: &[Annotation],
-    service_annotations: &[Annotation],
-) -> Option<(String, String)> {
-    let rest_ann = op_annotations
-        .iter()
-        .chain(service_annotations.iter())
-        .find(|a| a.name == "rest")?;
-
-    if rest_ann.args.len() < 2 {
-        return None;
-    }
-
-    let method = match &rest_ann.args[0] {
-        Expr::Ident(m) => m.clone(),
-        Expr::Literal(Literal::String(m)) => m.clone(),
-        _ => return None,
-    };
-
-    let path = expr_to_template_string(&rest_ann.args[1])?;
-
-    Some((method, path))
-}
 
 /// Extract argv template from `@shell(["cmd", "arg", "{param}"])`.
-fn annotation_shell_argv(
-    op_annotations: &[Annotation],
-    service_annotations: &[Annotation],
-) -> Option<Vec<ArgvSegment>> {
-    for shell_ann in op_annotations
-        .iter()
-        .chain(service_annotations.iter())
-        .filter(|a| a.name == "shell")
-    {
-        // @shell(["cmd", "arg1", "{param}", ...])
-        let Some(list) = shell_ann.args.first() else {
-            continue;
-        };
-        let items = match list {
-            Expr::List(items) => items,
-            _ => continue,
-        };
-
-        let mut segments = Vec::new();
-        for item in items {
-            match item {
-                Expr::Literal(Literal::String(s)) => {
-                    let maybe_single_ref = s
-                        .strip_prefix('{')
-                        .and_then(|inner| inner.strip_suffix('}'))
-                        .filter(|inner| {
-                            !inner.is_empty()
-                                && !inner.contains('{')
-                                && !inner.contains('}')
-                                && !inner.contains(' ')
-                        });
-                    if let Some(param) = maybe_single_ref {
-                        segments.push(ArgvSegment::InputRef(param.to_string()));
-                    } else {
-                        // Complex interpolation like "{base}...{head}" remains a literal template.
-                        segments.push(ArgvSegment::Literal(s.clone()));
-                    }
-                }
-                Expr::StringInterp(parts) => {
-                    // Handle string interpolation: `"{param}"` or `"{base}...{head}"`.
-                    use daglang_syntax::ast::StringPart;
-                    // Single-expr interpolation like `"{param}"` -> InputRef.
-                    if parts.len() == 1 {
-                        if let StringPart::Expr(Expr::Ident(name)) = &parts[0] {
-                            segments.push(ArgvSegment::InputRef(name.clone()));
-                            continue;
-                        }
-                    }
-                    // Multi-part interpolation -> reconstruct as Literal with {param} markers.
-                    let template = expr_to_template_string(item).unwrap_or_default();
-                    if !template.is_empty() {
-                        segments.push(ArgvSegment::Literal(template));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        if !segments.is_empty() {
-            return Some(segments);
-        }
-    }
-
-    None
-}
 
 /// Extract shell parse mode from `@parse(mode)`.
 ///
@@ -5351,32 +5216,6 @@ fn annotation_shell_argv(
 /// - split_lines / lines / line_list -> SplitLines
 /// - exit_code_bool / bool / success_bool -> ExitCodeBool
 /// - success_stdout_stderr / triple / result -> SuccessStdoutStderr
-fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOutputParsing> {
-    for ann in annotations.iter().filter(|a| a.name == "parse") {
-        let Some(mode_expr) = ann.args.first() else {
-            continue;
-        };
-        let mode_raw = match mode_expr {
-            Expr::Ident(mode) => mode.as_str(),
-            Expr::Literal(Literal::String(mode)) => mode.as_str(),
-            _ => continue,
-        };
-        let mode = mode_raw.trim().to_ascii_lowercase().replace('-', "_");
-        let parsing = match mode.as_str() {
-            "trim" | "trim_stdout" | "string" => Some(ShellOutputParsing::TrimStdout),
-            "split_lines" | "lines" | "line_list" => Some(ShellOutputParsing::SplitLines),
-            "exit_code_bool" | "bool" | "success_bool" => Some(ShellOutputParsing::ExitCodeBool),
-            "success_stdout_stderr" | "triple" | "result" => {
-                Some(ShellOutputParsing::SuccessStdoutStderr)
-            }
-            _ => None,
-        };
-        if parsing.is_some() {
-            return parsing;
-        }
-    }
-    None
-}
 
 /// Extract body template from `@body_template({ "key": value, ... })`.
 ///
@@ -5388,11 +5227,6 @@ fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOu
 ///   public: public
 /// })
 /// ```
-fn annotation_body_template(annotations: &[Annotation]) -> Option<Vec<BodyEntry>> {
-    let ann = annotations.iter().find(|a| a.name == "body_template")?;
-    let record = ann.args.first()?;
-    body_template_entries_from_expr(record)
-}
 
 /// Recursively convert an expression (Record or Map) to body template entries.
 fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
@@ -5437,38 +5271,6 @@ fn body_template_entry(key: &str, value: &Expr) -> Option<BodyEntry> {
 /// Extract custom headers from `@headers({ "key": "value", ... })`.
 ///
 /// Handles both `Expr::Record` (unquoted keys) and `Expr::Map` (quoted keys).
-fn annotation_headers(
-    op_annotations: &[Annotation],
-    service_annotations: &[Annotation],
-) -> Vec<(String, String)> {
-    let mut headers = Vec::new();
-    for ann in op_annotations
-        .iter()
-        .chain(service_annotations.iter())
-        .filter(|a| a.name == "headers")
-    {
-        match ann.args.first() {
-            Some(Expr::Record(_, fields)) => {
-                for (key, value) in fields {
-                    if let Some(v) = expr_to_template_string(value) {
-                        headers.push((key.clone(), v));
-                    }
-                }
-            }
-            Some(Expr::Map(entries)) => {
-                for (key_expr, value) in entries {
-                    if let Expr::Literal(Literal::String(key)) = key_expr {
-                        if let Some(v) = expr_to_template_string(value) {
-                            headers.push((key.clone(), v));
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    headers
-}
 
 /// Extract the auth scheme string from `@auth(...)` annotations.
 ///
@@ -5480,30 +5282,6 @@ fn annotation_headers(
 /// The scheme is stored on `RestOperationSpec.auth_scheme` and drives
 /// `res:credential` wiring on the execute node. No `config.credential`
 /// header template is generated.
-fn annotation_auth_scheme(
-    op_annotations: &[Annotation],
-    service_annotations: &[Annotation],
-) -> Option<String> {
-    let auth = op_annotations
-        .iter()
-        .chain(service_annotations.iter())
-        .find(|annotation| annotation.name == "auth")?;
-    let scheme = auth.args.first()?;
-    match scheme {
-        Expr::Ident(value) if value == "BearerToken" => Some("BearerToken".to_string()),
-        Expr::Ident(value) if value == "Basic" => Some("Basic".to_string()),
-        Expr::Call(name, args) if name == "Header" => {
-            let header = match args.first() {
-                Some((None, Expr::Literal(Literal::String(value)))) if !value.is_empty() => {
-                    value.clone()
-                }
-                _ => return None,
-            };
-            Some(format!("Header:{header}"))
-        }
-        _ => None,
-    }
-}
 
 /// Derive input field specs from operation inputs.
 fn derive_input_fields(
@@ -5614,19 +5392,10 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
         .iter()
         .map(|field| {
             // Extract base type and type-level annotations from TypeExpr::Annotated.
-            let (base_type_id, type_annotations) = match &field.ty {
-                TypeExpr::Annotated(inner, annotations) => {
-                    (type_expr_to_string(inner), annotations.as_slice())
-                }
-                other => (type_expr_to_string(other), [].as_slice()),
-            };
+            let base_type_id = type_expr_to_string(&field.ty);
             // Check field annotations first, fall back to type annotations.
-            let json_path = field.from_path.clone()
-                .or_else(|| annotation_string_arg(&field.annotations, "json"))
-                .or_else(|| annotation_string_arg(type_annotations, "json"))
-                .unwrap_or_else(|| field.name.clone());
-            let is_raw_body = has_annotation(&field.annotations, "raw_body")
-                || has_annotation(type_annotations, "raw_body");
+            let json_path = field.from_path.clone().unwrap_or_else(|| field.name.clone());
+            let is_raw_body = false;
             OutputFieldSpec {
                 name: field.name.clone(),
                 type_id: base_type_id.clone(),
@@ -7358,7 +7127,7 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
             if !matches_target {
                 continue;
             }
-            counts.push(interface.contracts.len() + interface.typed_contracts.len());
+            counts.push(interface.contracts.len() + interface.contracts.len());
         }
     }
     if counts.len() == 1 {
@@ -7494,7 +7263,7 @@ fn item_callable_interactive_flag(item: &Item) -> Option<(&str, bool)> {
         Item::FnDef(def) => Some((def.name.as_str(), false)),
         Item::FuncDef(def) => Some((
             def.name.as_str(),
-            has_annotation(&def.annotations, "interactive"),
+            false,
         )),
         Item::PatternDef(def) => Some((def.name.as_str(), false)),
         _ => None,
@@ -7789,12 +7558,32 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
             }
             Some(serde_json::Value::Object(out))
         }
-        Expr::Record(_type_name, fields) => {
+        Expr::Record(type_name, fields) => {
             let mut out = serde_json::Map::new();
+            if let Some(variant) = type_name {
+                out.insert(
+                    "_variant".to_string(),
+                    serde_json::Value::String(variant.clone()),
+                );
+            }
             for (key, value) in fields {
                 out.insert(key.clone(), expr_to_json_literal(value)?);
             }
             Some(serde_json::Value::Object(out))
+        }
+        Expr::UnaryOp(daglang_syntax::ast::UnaryOp::Neg, inner) => {
+            match expr_to_json_literal(inner)? {
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        Some(serde_json::Value::Number((-i).into()))
+                    } else if let Some(f) = n.as_f64() {
+                        serde_json::Number::from_f64(-f).map(serde_json::Value::Number)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
         }
         _ => None,
     }
@@ -7806,13 +7595,22 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
 /// arguments. Only handles constant expressions (literals, lists, records).
 pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::Value> {
     let mut values = HashMap::new();
+    let mut unqualified_counts: HashMap<String, usize> = HashMap::new();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
             if let Item::DataDef(def) = &item.node {
                 if let Some(json) = expr_to_json_literal(&def.value) {
                     values.insert(format!("{module_name}.{}", def.name), json.clone());
-                    values.insert(def.name.clone(), json);
+
+                    let count = unqualified_counts.entry(def.name.clone()).or_insert(0);
+                    *count += 1;
+                    if *count == 1 {
+                        values.insert(def.name.clone(), json);
+                    } else {
+                        // Ambiguous — remove unqualified entry, keep only qualified
+                        values.remove(&def.name);
+                    }
                 }
             }
         }
@@ -7981,7 +7779,7 @@ fn collect_return_bindings(
         for stmt in stmts {
             match stmt {
                 Stmt::Expr(expr) => trailing_expr = Some(expr),
-                Stmt::Let(..) | Stmt::Assign(..) | Stmt::Node(..) | Stmt::Annotation(_) | Stmt::Return(_) => {
+                Stmt::Let(..) | Stmt::Assign(..) | Stmt::Node(..) | Stmt::Return(_) => {
                     trailing_expr = None;
                 }
             }
@@ -8463,15 +8261,6 @@ pub fn extract_outputs_annotation(project: &TypedProject) -> Vec<String> {
             if let Item::FuncDef(def) = &item.node {
                 for s in &def.declared_outputs {
                     paths.insert(s.clone());
-                }
-                for ann in &def.annotations {
-                    if ann.name == "outputs" {
-                        for arg in &ann.args {
-                            if let Expr::Literal(Literal::String(s)) = arg {
-                                paths.insert(s.clone());
-                            }
-                        }
-                    }
                 }
             }
         }

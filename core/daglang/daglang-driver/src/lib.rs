@@ -609,7 +609,7 @@ fn collect_stage_binding_producers(def: &PipelineDef) -> HashMap<String, String>
                 Stmt::Node(ns) => {
                     by_binding.insert(ns.name.clone(), stage.name.clone());
                 }
-                Stmt::Annotation(_) | Stmt::Expr(_) | Stmt::Return(_) => {}
+                Stmt::Expr(_) | Stmt::Return(_) => {}
             }
         }
     }

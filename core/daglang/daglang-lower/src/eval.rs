@@ -177,9 +177,15 @@ fn eval_expr(
             if name == "None" || name == "null" {
                 return Ok(Value::Unit);
             }
-            env.get(name)
-                .cloned()
-                .ok_or_else(|| EvalError::new(format!("unbound variable: {name}")))
+            // Check env first — if bound, use the bound value
+            if let Some(val) = env.get(name) {
+                return Ok(val.clone());
+            }
+            // Capitalized identifiers without arguments are unit variants (e.g. `Closed`)
+            if name.chars().next().unwrap_or('a').is_uppercase() {
+                return Ok(Value::Str(name.clone()));
+            }
+            Err(EvalError::new(format!("unbound variable: {name}")))
         }
 
         LoweredExpr::FieldAccess { expr, field } => {
@@ -471,6 +477,26 @@ fn eval_call(
                 Err(EvalError::new("'with' requires base and updates"))
             }
         }
+        // Option transparent wrapper: return the first argument directly
+        "Some" => {
+            if let Some((_, arg_expr)) = args.first() {
+                eval_expr(arg_expr, env, sibling_fns)
+            } else {
+                Ok(Value::Unit)
+            }
+        }
+        _ if name.chars().next().unwrap_or('a').is_uppercase() => {
+            // Generic variant constructor (e.g. `Ok { value: "x" }`, `Closed`)
+            let mut map = BTreeMap::new();
+            map.insert("_variant".to_string(), Value::Str(name.to_string()));
+            for (idx, (arg_name, arg_expr)) in args.iter().enumerate() {
+                let field_name = arg_name
+                    .clone()
+                    .unwrap_or_else(|| format!("_{idx}"));
+                map.insert(field_name, eval_expr(arg_expr, env, sibling_fns)?);
+            }
+            Ok(Value::Map(map))
+        }
         _ => Err(EvalError::new(format!("unknown function: {name}"))),
     }
 }
@@ -529,6 +555,13 @@ fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String,
             }
         }
         LoweredPattern::Variant(variant_name, fields) => {
+            // Option transparent matching: `Some(v)` matches anything except Unit/Skipped
+            if variant_name == "Some" && fields.len() == 1 {
+                if !matches!(value, Value::Unit | Value::Skipped) {
+                    return match_pattern(&fields[0].1, value);
+                }
+                return None;
+            }
             // Sum type variant matching: check if value is a Map with _variant field
             match value {
                 Value::Map(map) => {

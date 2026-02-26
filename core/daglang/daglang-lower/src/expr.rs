@@ -169,14 +169,20 @@ fn lower_stmt(stmt: &ast::Stmt) -> LoweredStmt {
     match stmt {
         ast::Stmt::Let(name, expr) => LoweredStmt::Let(name.clone(), lower_expr(expr)),
         ast::Stmt::Assign(name, expr) => LoweredStmt::Let(name.clone(), lower_expr(expr)),
-        ast::Stmt::Node(ns) => LoweredStmt::Let(ns.name.clone(), lower_expr(&ns.expr)),
+        ast::Stmt::Node(ns) => {
+            let mut expr = lower_expr(&ns.expr);
+            if let Some(guard) = &ns.when_guard {
+                expr = LoweredExpr::IfElse {
+                    cond: Box::new(lower_expr(guard)),
+                    then_: Box::new(expr),
+                    else_: Some(Box::new(LoweredExpr::Literal(LoweredLiteral::None))),
+                };
+            }
+            LoweredStmt::Let(ns.name.clone(), expr)
+        }
         ast::Stmt::Expr(expr) => LoweredStmt::Expr(lower_expr(expr)),
         ast::Stmt::Return(fields) => {
             LoweredStmt::Return(fields.iter().map(|(k, v)| (k.clone(), lower_expr(v))).collect())
-        }
-        ast::Stmt::Annotation(_) => {
-            // Annotations in fn bodies are metadata — no runtime effect
-            LoweredStmt::Expr(LoweredExpr::Literal(LoweredLiteral::None))
         }
     }
 }

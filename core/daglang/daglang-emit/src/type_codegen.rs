@@ -36,7 +36,6 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
         TypeExpr::Optional(inner) => {
             format!("Option<{}>", type_expr_to_rust(inner))
         }
-        TypeExpr::Annotated(inner, _annotations) => type_expr_to_rust(inner),
         TypeExpr::Refined(inner, _) => type_expr_to_rust(inner),
         TypeExpr::Record(fields) => {
             let field_strs: Vec<String> = fields
@@ -72,7 +71,6 @@ fn is_default_compatible(ty: &TypeExpr) -> bool {
     match ty {
         TypeExpr::Optional(_) => true,
         TypeExpr::Named(name) => name == "Bool",
-        TypeExpr::Annotated(inner, _) => is_default_compatible(inner),
         _ => false,
     }
 }
@@ -275,7 +273,6 @@ fn type_expr_to_rust_name(expr: &TypeExpr) -> String {
         TypeExpr::Named(name) => name.clone(),
         TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         TypeExpr::Generic(name, _) => name.clone(),
-        TypeExpr::Annotated(inner, _) => type_expr_to_rust_name(inner),
         TypeExpr::Refined(inner, _) => type_expr_to_rust_name(inner),
         TypeExpr::Record(_) => "Anonymous".to_string(),
     }
@@ -1018,14 +1015,12 @@ mod tests {
                     name: "color".into(),
                     ty: TypeExpr::Optional(Box::new(TypeExpr::Named("SemanticColor".into()))),
                     default: None,
-                    annotations: vec![],
                 from_path: None,
                 },
                 Field {
                     name: "bold".into(),
                     ty: TypeExpr::Named("Bool".into()),
                     default: None,
-                    annotations: vec![],
                 from_path: None,
                 },
             ]),
@@ -1054,14 +1049,12 @@ mod tests {
                     name: "spans".into(),
                     ty: TypeExpr::Generic("List".into(), vec![TypeExpr::Named("Span".into())]),
                     default: None,
-                    annotations: vec![],
                 from_path: None,
                 },
                 Field {
                     name: "indent".into(),
                     ty: TypeExpr::Named("Int".into()),
                     default: None,
-                    annotations: vec![],
                 from_path: None,
                 },
             ]),
@@ -1105,7 +1098,6 @@ mod tests {
                         name: "radius".into(),
                         ty: TypeExpr::Named("Float".into()),
                         default: None,
-                        annotations: vec![],
                     from_path: None,
                     }],
                 },
