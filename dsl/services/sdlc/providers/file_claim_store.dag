@@ -54,9 +54,6 @@ service file.ClaimStore : ClaimStore {
       generation: Int
     }
     output { accepted: Bool }
-      status: 0,
-      body: { "accepted": true }
-    )
   }
 
   operation release {
@@ -67,9 +64,6 @@ service file.ClaimStore : ClaimStore {
       generation: Int
     }
     output { released: Bool }
-      status: 0,
-      body: { "released": true }
-    )
   }
 }
 

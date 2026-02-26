@@ -236,7 +236,7 @@ type Seconds      = Int where brand("Seconds"), range(min: 0)
 
 type DateRange {
   start: String where pattern("^\\d{4}-\\d{2}-\\d{2}$")
-  end: String where pattern("^\\d{4}-\\d{2}-\\d{2}$")None
+  end: String where pattern("^\\d{4}-\\d{2}-\\d{2}$")
 }
 
 

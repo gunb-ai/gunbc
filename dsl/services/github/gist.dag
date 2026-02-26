@@ -17,16 +17,5 @@ service github.Gist {
       id: GistId
       html_url: Url
     }
-      description: description,
-      files: { "gunbc-snapshot.md": { content: content } },
-      public: public
-    })
-      "Authorization": "Bearer {auth_token}",
-      "Accept": "application/vnd.github+json",
-      "User-Agent": "gunbc/1.0"
-    })
-      status: 201,
-      body: { "html_url": "https://gist.github.com/mock/mock-id", "id": "mock-id" }
-    )
   }
 }

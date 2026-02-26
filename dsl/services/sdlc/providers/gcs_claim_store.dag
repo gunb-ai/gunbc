@@ -57,15 +57,6 @@ service gcs.ClaimStore : ClaimStore {
       conflict: Bool
       lease_generation: Int
     }
-    // Upload claim object. generation-match: 0 means "create-only" (first acquire).
-    // To re-acquire an expired lease, pass the observed generation.
-      status: 200,
-      body: {
-        "acquired": true,
-        "conflict": false,
-        "lease_generation": 1
-      }
-    )
   }
 
   operation heartbeat {
@@ -76,10 +67,6 @@ service gcs.ClaimStore : ClaimStore {
       generation: Int
     }
     output { accepted: Bool }
-    // Overwrite claim object with extended expiry, conditional on generation match.
-      status: 200,
-      body: { "accepted": true }
-    )
   }
 
   operation release {
@@ -90,10 +77,6 @@ service gcs.ClaimStore : ClaimStore {
       generation: Int
     }
     output { released: Bool }
-    // Delete claim object, conditional on generation match.
-      status: 204,
-      body: { "released": true }
-    )
   }
 }
 

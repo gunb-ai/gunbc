@@ -57,9 +57,6 @@ service file.OutcomeLedger : OutcomeLedger {
   operation list_by_issue {
     input { issue_id: NonEmptyStr }
     output { outcomes: List<StageOutcome> }
-      status: 0,
-      body: { "outcomes": [] }
-    )
   }
 }
 

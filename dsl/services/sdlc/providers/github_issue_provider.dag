@@ -84,9 +84,6 @@ service github.IssueProvider : IssueProvider {
       labels: List<String>
     }
     output { ok: Bool }
-      status: 200,
-      body: { "ok": true }
-    )
   }
 
   // --- Close (idempotent) ------------------------------------------------
@@ -94,9 +91,6 @@ service github.IssueProvider : IssueProvider {
   operation close {
     input { id: NonEmptyStr }
     output { ok: Bool }
-      status: 200,
-      body: { "ok": true }
-    )
   }
 
   // --- List events -------------------------------------------------------
@@ -107,9 +101,6 @@ service github.IssueProvider : IssueProvider {
       since: String?
     }
     output { events: List<IssueEvent> }
-      status: 200,
-      body: []
-    )
   }
 }
 

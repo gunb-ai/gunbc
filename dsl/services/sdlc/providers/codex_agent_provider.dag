@@ -37,61 +37,20 @@ service codex.AgentProvider : AgentProvider {
       status: AgentStatus
       started: Bool
     }
-            "--prompt", "{prompt}",
-            "--cwd", "{repo_path}",
-            "--branch", "{branch}",
-            "--model", "{model ?? \"o4-mini\"}",
-            "--timeout", "{timeout_seconds ?? 600}",
-            "--approval-mode", "{approval_mode ?? \"full-auto\"}",
-            "--output-format", "json"])
-      status: 0,
-      body: {
-        "run_id": "codex-run-001",
-        "status": "running",
-        "started": true
-      }
-    )
   }
 
   operation poll {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
-            "--run-id", "{run_id}",
-            "--output-format", "json"])
-      status: 0,
-      body: {
-        "status": "completed",
-        "finished": true,
-        "exit_code": 0,
-        "error": null
-      }
-    )
   }
 
   operation cancel {
     input { run_id: NonEmptyStr, reason: String? }
     output { cancelled: Bool, final_status: AgentStatus }
-            "--run-id", "{run_id}",
-            "--reason", "{reason ?? \"pipeline-cancelled\"}",
-            "--output-format", "json"])
-      status: 0,
-      body: { "cancelled": true, "final_status": "cancelled" }
-    )
   }
 
   operation get_result {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
-            "--run-id", "{run_id}",
-            "--output-format", "json"])
-      status: 0,
-      body: {
-        "status": "completed",
-        "exit_code": 0,
-        "stdout": "Implementation complete.",
-        "stderr": "",
-        "files_changed": ["src/main.rs"]
-      }
-    )
   }
 }
