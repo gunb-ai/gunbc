@@ -12,7 +12,7 @@ service github.Gist {
       description: String
       content: String
       public: Bool = false
-      auth_token: String
+      auth_token: Secret
     }
     output {
       id: GistId

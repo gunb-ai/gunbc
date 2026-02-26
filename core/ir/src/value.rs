@@ -105,21 +105,18 @@ impl fmt::Display for SecretString {
     }
 }
 
-/// Opt-in diagnostic display that reveals a suffix of the secret.
+/// Opt-in diagnostic display that distinguishes empty from non-empty secrets.
 ///
-/// Reveals `min(len/4, 4)` trailing characters — always <25%, capped at 4.
-/// Use this in error diagnostics to help identify *which* credential failed,
-/// without changing the default `Display` (which stays fully redacted).
+/// Empty secrets show `""` — immediately obvious something is wrong.
+/// Non-empty secrets show `"***"` — no partial character reveal.
 pub struct SecretHint<'a>(&'a SecretString);
 
 impl fmt::Display for SecretHint<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = &self.0.inner;
-        let reveal = (s.len() / 4).min(4);
-        if reveal == 0 {
-            write!(f, "***")
+        if self.0.inner.is_empty() {
+            write!(f, "\"\"")
         } else {
-            write!(f, "***{}", &s[s.len() - reveal..])
+            write!(f, "\"***\"")
         }
     }
 }
@@ -892,21 +889,21 @@ mod tests {
     }
 
     #[test]
-    fn secret_hint_short_secret() {
+    fn secret_hint_non_empty() {
         let s = SecretString::new("abc");
-        assert_eq!(format!("{}", s.hint()), "***");
+        assert_eq!(format!("{}", s.hint()), "\"***\"");
     }
 
     #[test]
-    fn secret_hint_medium_secret() {
-        let s = SecretString::new("abcdefgh");
-        assert_eq!(format!("{}", s.hint()), "***gh");
+    fn secret_hint_empty() {
+        let s = SecretString::new("");
+        assert_eq!(format!("{}", s.hint()), "\"\"");
     }
 
     #[test]
     fn secret_hint_long_secret() {
         let s = SecretString::new("abcdefghijklmnopqrstuvwxyz");
-        assert_eq!(format!("{}", s.hint()), "***wxyz");
+        assert_eq!(format!("{}", s.hint()), "\"***\"");
     }
 
     #[test]

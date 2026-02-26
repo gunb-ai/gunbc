@@ -13,9 +13,9 @@ One blue lane (scenario-driven), two red lanes, never blocking each other.
   BLUE TEAM — Advance                     RED TEAM — Harden
   ────────────────────────────            ────────────────────────
   SDLC Activation (single lane):         Lane R1: Structural Correctness
-    B-0 → B-1 → B-2 → B-3 →               RF-RG1 → RF-RG2 → RF-H4 →
-    B-TC → B-4 → B-5 → B-6 →              RF-H2 → RF-G-unblock → RF-A1 →
-    B-7 → B-8:13 → ...cloud                RF-A2a → RF-A4
+    B-0 → B-PW → B-1 → B-2 →              RF-RG1 → RF-RG2 → RF-H4 →
+    B-3 → B-TC → B-4 → B-5 →              RF-H2 → RF-G-unblock → RF-A1 →
+    B-6 → B-7 → B-8:13 → ...cloud          RF-A2a → RF-A4
 
                                           Lane R2: Testing + Foundation
                                             BB-2 → BB-3 → BB-5 →
@@ -80,39 +80,43 @@ A GitHub issue goes through the full lifecycle:
 
 ### Current State
 
-**DSL is comprehensive** (~3,600 lines across 20 .dag files):
-- Pipeline: 11 stages, complete with service calls and LLM integration (`pipelines/sdlc.dag`, 551 lines)
-- Stage handlers: 8/8 implemented with real logic (`funcs/sdlc_stages.dag`, 739 lines)
-- Worker dispatch: full discover→claim→dispatch→record→release (`funcs/sdlc_worker.dag`, 381 lines)
-- Dispatch policy: 6 stage transition fns (`funcs/sdlc_dispatch_runtime.dag`, 104 lines)
-- Validation policy: 3 gate fns (`funcs/sdlc_validation_runtime.dag`, 59 lines)
-- Interfaces: 7 with 24 capabilities (`interfaces/`)
-- Providers: 9 implementations — stubs, file-based, GCS-based (`services/sdlc/providers/`)
-- Profiles: 3 — unit_test (all stubs), local (GitHub + file), cloud_run (GCS + PubSub) (`profiles/sdlc.dag`)
+**DSL functions are real** (~3,600 lines across 20 .dag files):
+- Stage handlers: 8/8 with real service calls and logic (`funcs/sdlc_stages.dag`, 739 lines)
+- Worker dispatch: full discover→claim→dispatch→record→release with replay-skip and retry (`funcs/sdlc_worker.dag`, 381 lines)
+- Validation policy: 3 real gate fns with conditional logic (`funcs/sdlc_validation_runtime.dag`, 59 lines)
+- Interfaces: 7 with 24 capabilities, Providers: 9, Profiles: 3
 - DSL-level tests: 10+ test blocks defined in .dag files
 
-**What's missing** — Rust-side infrastructure to compile and execute:
-- resolve.rs doesn't handle SDLC module paths (generalization needed — Red RF-RG2)
-- Profile-aware compilation doesn't exist
-- Transport declarations missing on GitHub/LLM services (compositional modeling — Red RF-TC1)
-- No CLI entrypoint (catalog is manual — Red RF-RG1 eliminates, or Blue wires inline)
+**DSL gaps** (need authoring, not just Rust wiring):
+- **Pipeline wiring**: `workflows/sdlc.dag` has 3 empty stages — `intake`, `worker`, `report` have no body. `dispatch_sdlc()` is NOT connected to the pipeline.
+- **Dispatch runtime stubs**: `sdlc_dispatch_runtime.dag` has 6 fns that return hardcoded literals — zero conditional logic, zero service calls. Meanwhile `execute_stage()` in `sdlc_stages.dag` already routes correctly. Decision needed: delete dispatch_runtime (dead code?) or fill with real pre-check policy.
+- **Transport declarations**: GitHub services (14 ops), LLM (2 ops), file stores (6 ops), codex agent (4 ops) all lack `transport` blocks.
 
-**Key dependency**: L0–L3 use stubs and don't need transport declarations.
-L4+ needs transport on GitHub + LLM services — B-TC handles this in the Blue queue.
+**Rust infrastructure** — better than previously assessed:
+- Profile-aware compilation **works** — `build_dsl_graph_with_profile()` exists, generated tests pass with all 3 profiles for other modules.
+- SubDag/Pipeline execution **works** — `SubDagDispatchOp`, `PipelineDispatchOp` are real implementations.
+- Interface stub resolution **works** — unbound interfaces get stub transport, bound interfaces wire to providers.
+- resolve.rs may need minimal wiring for SDLC module paths (Red RF-RG2 generalizes this).
+- No file transport resolver exists in Rust (`@file` annotation has no backend).
+- No CLI entrypoint (catalog is manual — Red RF-RG1).
+
+**Key dependency**: L0–L3 use unit_test profile (all stubs, no transport needed).
+L4+ needs transport on all services the local profile touches — B-TC handles this.
 
 ### Queue
 
 | Order | ID | Task | Level | Size | Status | Deps |
 |-------|----|------|-------|------|--------|------|
-| 1 | B-0 | **Compile SDLC pipeline.** `build_dsl_graph_for_entry("pipelines/sdlc.dag", "...")` succeeds. May need minimal resolve.rs wiring for SDLC module paths. Profile-aware compilation for unit_test profile. | L0 | M | Pending | — |
-| 2 | B-1 | **Hermetic scenario test.** unit_test profile, DryRun, full idea→done with stubs. Assert: stage transitions correct, claims acquired/released, outcomes recorded, labels changed. | L1 | M | Pending | B-0 |
-| 3 | B-2 | **Per-stage handler tests.** Exercise all 8 handlers individually with mocked interfaces. Verify each handler's outputs, label transitions, service call arguments. | L2 | M | Pending | B-0 |
-| 4 | B-3 | **Worker dispatch loop test.** Full discover→claim→dispatch→record→release cycle. Test paths: happy path, replay-skip (prior SUCCESS), retry (prior FAILED), claim conflict (another worker holds it). | L3 | S | Pending | B-2 |
-| 5 | B-TC | **Transport declarations: GitHub + LLM services.** Add `transport rest { ... }` blocks to `github/issues.dag` (7 ops), `github/pull_request.dag` (7 ops), `llm/openai.dag` (2 ops). Compositional service-layer modeling — not SDLC logic, but on the critical path for real execution. | — | M | Pending | — |
-| 6 | B-4 | **Local integration: single stage.** local profile, real GitHub API + file stores. Create a test issue with `sdlc:idea`, run worker, verify design comment posted and labels transitioned. | L4 | M | Pending | B-3, B-TC |
-| 7 | B-5 | **Full local scenario.** Complete idea→done lifecycle on a test repo. Multiple worker invocations drive the issue through all stages. Verify: PR created, code review posted, tests run, PR merged, issue closed. | L5 | L | Pending | B-4 |
-| 8 | B-6 | **Testgen integration.** Auto-generate per-node and per-pair tests for SDLC DAG nodes. Verify testgen handles profile-bound modules (interface→provider resolution). | L6 | M | Pending | B-0 |
-| 9 | B-7 | **CLI entrypoint.** However entrypoints work by this point (generated binary or catalog), make `gunbc sdlc` run the pipeline with `--profile` and `--repo` args. | L7 | S | Pending | B-5 |
+| 1 | B-0 | **Compile SDLC pipeline.** `build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")` succeeds. Profile compilation infrastructure exists — this task verifies SDLC modules specifically resolve and lower. Fix any resolve.rs gaps inline. | L0 | S | Pending | — |
+| 2 | B-PW | **Pipeline wiring.** Fill the 3 empty stages in `workflows/sdlc.dag`: wire `intake` to issue discovery, `worker` to `dispatch_sdlc()`, `report` to result aggregation. Decide: delete `sdlc_dispatch_runtime.dag` (6 stub fns, all hardcoded returns — `execute_stage()` in `sdlc_stages.dag` already routes correctly) or fill with real pre-check policy. | L0 | M | Pending | B-0 |
+| 3 | B-1 | **Hermetic scenario test.** unit_test profile, DryRun, full idea→done with stubs. Assert: stage transitions correct, claims acquired/released, outcomes recorded, labels changed. | L1 | M | Pending | B-PW |
+| 4 | B-2 | **Per-stage handler tests.** Exercise all 8 handlers individually with mocked interfaces. Verify each handler's outputs, label transitions, service call arguments. | L2 | M | Pending | B-PW |
+| 5 | B-3 | **Worker dispatch loop test.** Full discover→claim→dispatch→record→release cycle. Test paths: happy path, replay-skip (prior SUCCESS), retry (prior FAILED), claim conflict (another worker holds it). | L3 | S | Pending | B-2 |
+| 6 | B-TC | **Transport declarations for local profile.** All services the local profile touches need `transport` blocks: `github/issues.dag` (7 ops, REST), `github/pull_request.dag` (7 ops, REST), `llm/openai.dag` (2 ops, REST), `file_claim_store.dag` (3 ops, file), `file_outcome_ledger.dag` (3 ops, file), `codex_agent_provider.dag` (4 ops, shell). 26 ops total. Also: Rust-side file transport resolver (`@file` annotation has no backend — needs `FileTransportOp` or equivalent). | — | L | Pending | — |
+| 7 | B-4 | **Local integration: single stage.** local profile, real GitHub API + file stores. Create a test issue with `sdlc:idea`, run worker, verify design comment posted and labels transitioned. | L4 | M | Pending | B-3, B-TC |
+| 8 | B-5 | **Full local scenario.** Complete idea→done lifecycle on a test repo. Multiple worker invocations drive the issue through all stages. Verify: PR created, code review posted, tests run, PR merged, issue closed. | L5 | L | Pending | B-4 |
+| 9 | B-6 | **Testgen integration.** Auto-generate per-node and per-pair tests for SDLC DAG nodes. Verify testgen handles profile-bound modules (interface→provider resolution). | L6 | M | Pending | B-PW |
+| 10 | B-7 | **CLI entrypoint.** However entrypoints work by this point (generated binary or catalog), make `gunbc sdlc` run the pipeline with `--profile` and `--repo` args. | L7 | S | Pending | B-5 |
 
 ### Horizon (after B-7)
 
@@ -137,7 +141,7 @@ L4+ needs transport on GitHub + LLM services — B-TC handles this in the Blue q
 |----------|------|
 | `docs/design/sdlc/mega-modeling-design.md` | Canonical architecture: 9 high-level boxes, core abstractions, canonical contracts, conformance model |
 | `docs/design/sdlc/domain-modeling-comprehensive.md` | All domain objects, state machines, invariants |
-| `docs/design/sdlc/e2e-gap-analysis.md` | Gap tracking (A–J, all resolved at DSL level) |
+| `docs/design/sdlc/e2e-gap-analysis.md` | Gap tracking (A–J). Header says "all resolved" but means DSL files exist — Rust can't execute them yet. Gaps C, F genuinely done in Rust. Gaps A, B, D, E, H, I, J resolved at DSL level only. Gap G (worker invokes compiled DAG) not done at all. |
 | `docs/design/sdlc/implementation-roadmap.md` | Task breakdown and dependency graph |
 
 ---
@@ -302,11 +306,11 @@ The SDLC pipeline only sees interfaces. Each service operation needs a
 `transport rest { ... }` or `transport shell { ... }` block so the
 compiler can generate prepare→execute→parse triplets.
 
-GitHub + LLM transport (16 ops) moved to Blue queue as B-TC (critical path for L4+).
+Local-profile transport (26 ops) moved to Blue queue as B-TC (critical path for L4+).
 
 | ID | Scope | Ops Missing | Notes |
 |----|-------|-------------|-------|
-| RF-TC3 | **SDLC providers**: file stores (6), GCS stores (6), github_issue_provider (7), codex_agent (4), credential providers (4) | 27 | Mixed rest/shell/file. Needed for real (non-stub) execution. |
+| RF-TC3 | **Remaining providers**: GCS stores (6), github_issue_provider (7), credential providers (4) | 17 | Needed for cloud_run profile. Some overlap with B-TC (github_issue_provider delegates to github/issues.dag which B-TC covers). |
 | RF-TC4 | **Stub providers**: stub_providers.dag (26), stub_credential_provider.dag (2) | 28 | Intentional — unit_test profile stubs. Consider `transport stub {}` marker. |
 | RF-TC5 | **Infrastructure stubs**: azure (43), aws (38), gcp-infra (59) | 140 | Dormant — defer until infrastructure provisioning lane opens. |
 

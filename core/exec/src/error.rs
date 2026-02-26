@@ -475,8 +475,8 @@ pub fn decorate_service_failure(
             hint: auth
                 .credential_ref
                 .as_deref()
-                .map(|c| format!("***{c}"))
-                .unwrap_or_else(|| "***".into()),
+                .map(|_| "\"***\"".to_string())
+                .unwrap_or_else(|| "\"\"".into()),
             source: auth
                 .credential_ref
                 .map(|c| format!("env:{c}"))
@@ -595,8 +595,8 @@ mod tests {
                 key: Some(KeyIdentity {
                     scheme: scheme.into(),
                     hint: credential_ref
-                        .map(|c| format!("***{c}"))
-                        .unwrap_or_else(|| "***".into()),
+                        .map(|_| "\"***\"".to_string())
+                        .unwrap_or_else(|| "\"\"".into()),
                     source: credential_ref
                         .map(|c| format!("env:{c}"))
                         .unwrap_or_else(|| "static".into()),
@@ -873,7 +873,7 @@ mod tests {
                 },
                 key: Some(KeyIdentity {
                     scheme: "Bearer".into(),
-                    hint: "***wxyz".into(),
+                    hint: "\"***\"".into(),
                     source: "env:GITHUB_TOKEN".into(),
                 }),
             },
@@ -881,7 +881,7 @@ mod tests {
         };
         assert_eq!(
             layer.diagnostic.to_string(),
-            "AuthContext (Read): POST https://api.github.com/gists with Bearer (key: ***wxyz, source: env:GITHUB_TOKEN)"
+            "AuthContext (Read): POST https://api.github.com/gists with Bearer (key: \"***\", source: env:GITHUB_TOKEN)"
         );
     }
 
