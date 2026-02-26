@@ -191,6 +191,11 @@ pub(crate) fn default_dead_code_rules() -> Vec<DeadCodeAllowRule> {
             relative_path: "src/graph.rs",
             fallback_path: "lib/gcp-ops/src/graph.rs",
         },
+        DeadCodeAllowRule {
+            crate_name: "daglang-lower",
+            relative_path: "src/lib.rs",
+            fallback_path: "core/daglang/daglang-lower/src/lib.rs",
+        },
     ]
 }
 

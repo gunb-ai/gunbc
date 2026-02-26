@@ -200,7 +200,9 @@ data dead_code_allowances: List<DeadCodeAllowance> = [
   { package_name: "gunbc-dag", relative_path: "src/workspace/subdags/languages.rs",
     fallback_path: "gunbc-dag/src/workspace/subdags/languages.rs" },
   { package_name: "gunbc-lib-gcp-ops", relative_path: "src/graph.rs",
-    fallback_path: "lib/gcp-ops/src/graph.rs" }
+    fallback_path: "lib/gcp-ops/src/graph.rs" },
+  { package_name: "daglang-lower", relative_path: "src/lib.rs",
+    fallback_path: "core/daglang/daglang-lower/src/lib.rs" }
 ]
 
 // ── Pragma allow lints ────────────────────────────────────────────────
