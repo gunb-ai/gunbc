@@ -307,6 +307,7 @@ smell catalog above to classify. Include file path + line if possible.
 | Validation at use site | `input_as_string()` returns `"(unresolved)"` for missing inputs — a magic string that silently flows into HTTP requests and shell commands as a real value. Should return `Result<String, ExecError>` when no default is provided. | `gunbc-dag/src/resolve_service.rs:634-641` | R1 scout | 2026-02-26 |
 | String dispatch | `match self.spec.operation.as_str()` for file operations (`"READ"`, `"READ_BYTES"`, `"WRITE"`). Has an error arm for unknown ops (good), but the operation is still a runtime string. Could be a `FileOperation` enum parsed at resolve time. | `gunbc-dag/src/resolve_service.rs:933-948` | R1 scout | 2026-02-26 |
 | String dispatch | `workflow_unit_commands()` matches workflow name strings to hand-written command builders (10 arms + error fallback). Related to RF-A10 (registry pattern for DAG tooling dispatch). Consider whether a registry-driven approach or DSL-declared command specs could replace this. | `gunbc-dag/src/workflow/unit_commands.rs:300-323` | R1 scout | 2026-02-26 |
+| Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets from CI YAML. `ci_live_test_secrets()` iterates `iter_dag_specs()` (inventory-collected `DagSpecDef`), but the `gunbc-codegen` binary doesn't transitively reference symbols from crates that register `DagSpecDef` entries with `live_required` secrets (`lib/gcp-ops`, `lib/review`, etc.). The linker discards those crates and their `inventory::submit!` calls. Current workaround: ci.yml is committed with secrets and not regenerated. | `gunbc-dag/src/ci/mod.rs:56-77`, `gunbc-dag/src/bin/codegen_cli.rs` | lane-2 merge | 2026-02-26 |
 
 ---
 
@@ -336,6 +337,29 @@ GitHub + LLM transport (16 ops) moved to Blue queue as B-TC (critical path for L
 | RF-E5 | `makegen_runtime_differential_interpreter_vs_generated_rust_layer1` (codegen_parity.rs) | FnBodyDelegate gap: interpreter produces raw `{header}{body}`, fn body evaluation only works via `shared.rs` direct path. | Interpreter needs fn body evaluation support. |
 | RF-E6 | `makegen_exec_runtime_e2e_structural_verification` (daglang-driver), `pragma_exec_runtime_e2e_structural_verification` (daglang-driver), `makegen_e2e_generated_binary_produces_correct_makefile` (cli_commands), `pragma_e2e_generated_binary_produces_correct_config_files` (cli_commands) | Exec-runtime emitter missing: `LoadRegistry` handler, `PureRender` fn classification, `ContentUpsertOutputPath` classification. | `daglang-emit` exec-runtime backend needs node classification for all makegen/pragma node kinds. |
 | — | `clippy_toml_dsl_produces_valid_output` (pragma_parity.rs) | Sum type variant tags lost during `build_data_values()` JSON serialization. | FC-CF5 (recursive types). Already tracked in R2 queue. |
+
+### Theme INV: Inventory Linkage (cigen secrets gap)
+
+`gunbc-codegen cigen` silently drops secrets from CI YAML because the
+`inventory` crate's `submit!` registrations are discarded by the linker
+when no symbols from the submitting crate are directly referenced.
+
+**Root cause**: `ci_live_test_secrets()` calls `iter_dag_specs()` which
+collects `DagSpecDef` entries via `inventory`. Entries with `live_required`
+secrets are registered in `lib/gcp-ops`, `lib/review`, etc. The
+`gunbc-codegen` binary (`codegen_cli.rs`) doesn't reference those crates'
+symbols, so the linker drops them and their inventory registrations.
+Meanwhile `gunbc-ci` (`ci.rs`) transitively references them through
+`build_build_graph()`, so it sees the full inventory.
+
+**Impact**: Running `gunbc-codegen cigen` produces a ci.yml missing 5
+GCP secret env vars. Current workaround: ci.yml is committed with
+secrets and not regenerated on every codegen pass.
+
+| ID | Fix | Size | Notes |
+|----|-----|------|-------|
+| RF-INV1 | **Force-link inventory crates in codegen binary.** Add explicit `use` references or `extern crate` for crates that register `DagSpecDef` with `live_required` secrets. Simplest fix, but fragile — adding a new crate with secrets requires updating codegen_cli.rs. | S | Quick fix. |
+| RF-INV2 | **DSL-derive CI secrets from service annotations.** Instead of inventory, derive `live_required` from `@auth` + `@endpoint` annotations on service operations in `.dag` files. The DSL already declares auth schemes — the compiler can extract which env vars are needed. Eliminates the inventory linkage problem entirely. | M | DSL-first fix. Aligns with VIO-2 (derive mock registries from `@mock_response`). |
 
 ### Compiler Features (low priority)
 
