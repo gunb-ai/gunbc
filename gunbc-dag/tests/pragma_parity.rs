@@ -75,26 +75,9 @@ fn lint_policy_dsl_matches_rust() {
     }
 }
 
-/// Verify DSL `derive_clippy_toml()` is blocked on sum type variant tags
-/// in data declarations. The `_variant` field is not preserved when
-/// `ExemptionScope` values are serialized to JSON during `build_data_values()`.
-/// This test documents the blocker — once resolved, remove the #[ignore].
-#[test]
-#[ignore = "blocked on sum type variant tags in data declarations (FC-CF5 prerequisite)"]
-fn clippy_toml_dsl_produces_valid_output() {
-    use gunbc_dag::pragma::dsl_render::render_clippy_toml_via_dsl;
-
-    let dsl_output = render_clippy_toml_via_dsl();
-
-    assert!(
-        dsl_output.contains("disallowed-methods"),
-        "should contain disallowed-methods section"
-    );
-    assert!(
-        dsl_output.contains("disallowed-types"),
-        "should contain disallowed-types section"
-    );
-}
+// DELETED: clippy_toml_dsl_produces_valid_output
+// Tracked as FC-CF5 in tasks.md — blocked on recursive types / sum type variant
+// tags in data declarations. Re-add when FC-CF5 is complete.
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

@@ -307,7 +307,12 @@ pub(super) fn build_process_unit_registry() -> Result<ProcessUnitRegistry, Strin
             }
 
             let process_ref = process_ref_for_stage(variant, &stage.name);
-            let spec = ProcessUnitSpec::new(process_ref.clone(), 1, stage.claims.clone());
+            let claims = if stage.claims.is_empty() {
+                default_stage_claims(&stage.name)
+            } else {
+                stage.claims.clone()
+            };
+            let spec = ProcessUnitSpec::new(process_ref.clone(), 1, claims);
             if let Some(existing) = registry.get(&process_ref) {
                 if existing.required_claims != spec.required_claims {
                     return Err(format!(
@@ -490,7 +495,22 @@ fn literal_string(expr: &Expr) -> Option<String> {
 fn parse_stage_claims(_stmts: &[Stmt]) -> Vec<UnitClaim> {
     // Annotations were removed from the AST; claims are no longer
     // extracted from inline `@file`/`@tool` annotations.
+    // Known stages get default claims below via default_stage_claims().
     Vec::new()
+}
+
+/// Default claims for well-known stages whose resource usage is known
+/// structurally but not yet expressible in DSL stage bodies.
+fn default_stage_claims(stage_name: &str) -> Vec<UnitClaim> {
+    match stage_name {
+        // cargo build writes to target/
+        "build_compile" => vec![UnitClaim::write("file:target"), UnitClaim::read("tool:cargo")],
+        // cargo test reads target/ and test artifacts
+        "test_run" => vec![UnitClaim::read("file:target"), UnitClaim::read("tool:cargo")],
+        // clippy reads source + target
+        "clippy_run" => vec![UnitClaim::read("file:target"), UnitClaim::read("tool:cargo")],
+        _ => vec![],
+    }
 }
 
 fn workflow_file_path(file: &str) -> PathBuf {
