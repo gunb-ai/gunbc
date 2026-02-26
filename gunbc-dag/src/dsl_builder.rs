@@ -1,12 +1,13 @@
 //! Shared helpers for DSL-backed graph builders (T3).
 
+use daglang_derive::CallableProperties;
 use daglang_driver::{
     compile_from_context, compile_from_context_with_options, CompileOptions, DriverContext,
     InferredEntrypoint,
 };
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::resolve_lowered_dag;
 
@@ -24,6 +25,7 @@ struct CompileLoweredResult {
     dag: Dag<daglang_lower::LoweredOp>,
     dsl_type_registry: gunbc_ir::TypeRegistry,
     inferred_entrypoints: Vec<InferredEntrypoint>,
+    callable_properties: BTreeMap<String, CallableProperties>,
 }
 
 fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, BuilderError> {
@@ -45,6 +47,7 @@ fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, Builde
         dag: output.lowered_dag,
         dsl_type_registry: output.dsl_type_registry,
         inferred_entrypoints: output.inferred_entrypoints,
+        callable_properties: output.derived.callable_properties,
     })
 }
 
@@ -79,6 +82,7 @@ fn compile_lowered_with_profile(
         dag: output.lowered_dag,
         dsl_type_registry: output.dsl_type_registry,
         inferred_entrypoints: output.inferred_entrypoints,
+        callable_properties: output.derived.callable_properties,
     })
 }
 
@@ -168,6 +172,8 @@ pub struct DslGraphResult {
     pub dag: Dag<DynOp>,
     /// Type registry extracted from DSL-defined sum/product types.
     pub dsl_type_registry: gunbc_ir::TypeRegistry,
+    /// Per-callable structural properties derived from graph traversal.
+    pub callable_properties: BTreeMap<String, CallableProperties>,
 }
 
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
@@ -189,6 +195,7 @@ pub(crate) fn build_dsl_graph_with_types(
     Ok(DslGraphResult {
         dag,
         dsl_type_registry: result.dsl_type_registry,
+        callable_properties: result.callable_properties,
     })
 }
 

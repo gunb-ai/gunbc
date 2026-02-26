@@ -95,7 +95,7 @@ pub fn build_testgen_graph_auto() -> Result<Dag<TestgenGraphOp>, BuilderError> {
                 .map(|profile| gunbc_codegen::registry::LiveProfileTestConfig {
                     profile_name: profile.name.clone(),
                     test_class: profile.test_class,
-                    fermi_cost: gunbc_test::FermiCost::M,
+                    fermi_cost: profile_fermi_cost(profile),
                     required_env: profile.required_env.clone(),
                     required_any_of: Vec::new(),
                     dag_builder_call: format!(
@@ -165,6 +165,28 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     }
 
     Ok(builder.build())
+}
+
+/// Derive fermi cost from a profile's test class and environment requirements.
+///
+/// Hermetic profiles (stub transports) are cheap → XS.
+/// Integration profiles without env requirements are moderate → S.
+/// Integration profiles needing env vars (credentials, tokens) are heavier → M.
+fn profile_fermi_cost(
+    profile: &super::profile_discovery::DiscoveredProfile,
+) -> gunbc_test::FermiCost {
+    match profile.test_class {
+        gunbc_test::TestClass::Unit | gunbc_test::TestClass::Hermetic => {
+            gunbc_test::FermiCost::XS
+        }
+        gunbc_test::TestClass::Integration => {
+            if profile.required_env.is_empty() {
+                gunbc_test::FermiCost::S
+            } else {
+                gunbc_test::FermiCost::M
+            }
+        }
+    }
 }
 
 fn add_upsert_chain(

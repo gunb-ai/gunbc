@@ -108,6 +108,17 @@ impl Executable for TestgenOp {
                 let safe_name = module_name.replace('.', "-");
                 let spec = crate::mock_defaults::auto_mock_spec(&result.dag, &safe_name);
 
+                // 2b. Classify the module via DSL-evaluated fidelity policy
+                let classification =
+                    crate::fidelity::classify_module(&result.callable_properties);
+                let all_transport_classes: Vec<_> = result
+                    .callable_properties
+                    .values()
+                    .flat_map(|p| p.transport_classes.iter().cloned())
+                    .collect();
+                let requires =
+                    crate::fidelity::requires_from_transport_classes(&all_transport_classes);
+
                 // 3. Build TestgenTargetDef
                 let module_test_name = format!("{}_generated_tests", module_name.replace('.', "_"));
                 let dag_builder_call = format!(
@@ -128,9 +139,9 @@ impl Executable for TestgenOp {
                     flow_tests: true,
                     live_flow_tests: false,
                     window_max_nodes: None,
-                    test_class: None,
-                    fermi_cost: None,
-                    requires: None,
+                    test_class: Some(classification.test_class),
+                    fermi_cost: Some(classification.fermi_cost),
+                    requires: Some(requires),
                     secrets: None,
                     live_test_class: None,
                     live_fermi_cost: None,

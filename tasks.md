@@ -222,10 +222,12 @@ Not scheduled. Promote to active sections when capacity opens.
 Accumulated patterns awaiting consolidation. Grouped by theme — look for
 larger patterns across groups before scheduling individual items.
 
-### Theme A: Typed Dispatch (strings → enums)
+### Theme A: Typed Dispatch (strings → enums, 1:1 mapping consolidation)
 
-Every sub-item is a variation of "strings where there should be types."
-NodeKind (A1) is the highest-value single item; A2–A6 are the long tail.
+Every sub-item is a variation of "strings where there should be types" or
+"the same enum→value mapping repeated in multiple locations." A1 is the
+highest-value single item. A7–A10 are the 1:1 mapping long tail catalogued
+from a codebase-wide audit (2026-02-26).
 
 | ID | Pattern | Scope | Key Files | Notes |
 |----|---------|-------|-----------|-------|
@@ -235,6 +237,10 @@ NodeKind (A1) is the highest-value single item; A2–A6 are the long tail.
 | RF-A4 | **Stringly-typed dispatch in resolve.rs**. 10+ string prefix matches for module/callable routing (`module.starts_with("services.")`, `name.starts_with("service_transport::")`). | 10+ sites, 1 file | gunbc-dag/src/resolve.rs | Create `CallableClass` enum parsed once, dispatched everywhere. |
 | RF-A5 | **Transport node classification**. String-based prepare/execute/parse detection via `name.starts_with("service_transport::execute::")` etc. | 3+ checks per node | gunbc-dag/src/resolve.rs | Define `TransportNodeKind { Prepare, Execute, Parse }` enum. |
 | RF-A6 | **String constants consolidation**. `"__deps"` (45×), `"__out:"` (6×), `"res:file"` (8×), `"tool:"` (15×) scattered as literals. | 74+ sites | scattered | Extract to central consts in `core/ir/src/signature.rs` or `core/ir/src/resource/mod.rs`. |
+| RF-A7 | **Transport class heuristic shadows**. `transport_depth_ordinal()`, `transport_depth_str()`, `transport_is_hermetic()` in `fidelity.rs` are Rust replicas of DSL fns that already exist in `fidelity.dag`. | 3 fns, 3 files | fidelity.rs, dsl/std/fidelity.dag, dsl/config/test_policy.dag | Not "move to impl" — **delete entirely** once DSL `classify_transports()` is callable. See RF-G1–G3 for the blocker (fold extraction). |
+| RF-A8 | **`as_str`/`parse` boilerplate**. 15+ enums implement identical bidirectional string conversion: `as_str() → &str` + `parse(&str) → Option<Self>` + `Display` delegate + `FromStr` delegate. 4 methods × 15 enums = ~60 match blocks. | 15 enums, ~12 files | platform.rs (Arch, Vendor, Os, AbiEnv, ExecutionEnv), cargo.rs (Subcommand, CodegenSubcommand, TermColor), http.rs (HttpMethod), llm/chat.rs (Role, ReasoningEffort, ReasoningSummary), cloud.rs (CloudProviderKind, CloudRuntimeKind), fermi.rs (TestClass, FermiCost) | Derive macro (`#[derive(StringEnum)]`) or trait with blanket `Display`/`FromStr` impls from `as_str()`/`parse()`. |
+| RF-A9 | **Emit backend type-name tables**. DSL type names mapped to target language types in 3+ match blocks per backend. `"String" \| "Path" → "string"`, `"Bool" → "bool"`, etc. — same canonical normalization repeated in `lower_to_ir.rs`, `lower_go.rs`, `lower_rust.rs`. | 3 backends, 10+ types each | daglang-emit/src/lower_to_ir.rs, lower_go.rs, lower_rust.rs | Shared `DslTypeMapping` table indexed by backend, not per-backend match arms. |
+| RF-A10 | **String dispatch in DAG tooling**. 100+ match arms on string literals for workflow names, Makefile targets, unit commands, resource types. Each maps a name to a builder/command/value. | 100+ arms, 5 files | workflow/unit_commands.rs, workflow/catalog.rs, makegen/shared.rs, resolve.rs (resource auto-construction), mock_interpreter.rs | Registry pattern or DSL data declarations. Most are active migration targets (makegen already moved to DSL). |
 
 ### Theme B: Service Transport Completeness
 
@@ -280,6 +286,7 @@ delete scaffolding or update extraction to use typed DSL syntax.
 | RF-E1 | `registry_exposes_required_claims` | Process unit "ci.build_compile" doesn't have `file:target` Write claim. | Likely needs claim registration update in process_registry. |
 | RF-E2 | `makegen_exec_runtime_e2e` (ignored) | Exec-runtime emit missing `LoadRegistry` handler + PureRender fn classification. | NF-5 handler specialization work. |
 | RF-E3 | `pragma_exec_runtime_e2e` (ignored) | `ContentUpsertOutputPath` nodes unclassified for exec-runtime emit. | Depends on RF-E2 handler work. |
+| RF-E4 | **Fidelity classification smoke test**. `comprehensive_auto_testgen_pipeline_validation` discards `target_def` — never asserts what `TestClass`/`FermiCost` each module got. No test catches a derive regression that silently downgrades all modules to Unit/XS (tests would be skipped at runtime). | 1 test gap | dag_test_discovery.rs | Add assertions: makegen→Hermetic/S (shell), gist→Integration/L (REST), bootstrap→Hermetic/S. |
 
 ### Theme F: Underused Abstractions
 
@@ -287,6 +294,70 @@ delete scaffolding or update extraction to use typed DSL syntax.
 |----|------|-------------|-------|
 | RF-F1 | Algebra traits (`PartialOrder`, `JoinSemilattice`, `MeetSemilattice`, `Lattice`, `BoundedLattice`, `Semiring`) | Only `Cardinality` | No generic usage. Keep or delete by 2026-Q3. |
 | RF-F2 | Render traits (`OutputMedium`, `TextMedium`, `GraphicsMedium`, `CodeRenderer<M>`, `MarkupRenderer<M>`, etc.) — 8 traits. | 5 implementors | Under-amortized. Consider unifying. |
+
+### Theme H: Structural Enforcement (parse, don't validate)
+
+Runtime validation where types could make the invalid state
+unrepresentable. Ordered by severity — findings 1–3 are in the
+classification pipeline we just built (fidelity consolidation).
+
+| ID | What | Current | Structural Fix | Scope |
+|----|------|---------|---------------|-------|
+| RF-H1 | **Fidelity silent fallbacks**. `classify_callable()` parses DSL output strings into enums with `unwrap_or(Unit)` / `unwrap_or(XS)`. If DSL returns a typo or `None`, classification silently downgrades to Unit — tests are skipped at runtime with no error. | `TestClass::parse(str).unwrap_or(Unit)` in fidelity.rs:129 | **Eliminated by RF-G unblock**: `classify_transports()` returns typed `DerivedClassification`, no string round-trip. Short-term: change `unwrap_or` to `.expect("DSL classify_from_facts returned invalid tier")`. | Cross-cutting (tied to G) |
+| RF-H2 | **TestgenTargetDef Option fields always populated**. `test_class: Option<TestClass>`, `fermi_cost: Option<FermiCost>`, `requires: Option<Vec<String>>` — every auto-testgen call site now fills `Some(...)` from fidelity. The `Option` only exists for legacy `DagSpecDef` path (which also never overrides). `generate_target_with_types()` does `unwrap_or(Unit)` on every field. | 6 Option fields in registry.rs, unwrap_or chain in testgen-registry lib.rs:170-178 | Make fields non-Option with `Default` impl. Callers construct with values; no unwrapping. `DagSpecDef.to_def()` fills from fidelity instead of leaving `None`. | Local (registry.rs + testgen-registry) |
+| RF-H3 | **TestClass/FermiCost parse returns Option not Result**. `parse(&str) -> Option<Self>` loses the invalid input. Callers chain `.unwrap_or(default)` which masks the error entirely. | fermi.rs:25-31, 56-64 | `FromStr` with `Result<Self, ParseError>`. Callers use `?` to propagate. Overlaps RF-A8 (derive macro). | Local (fermi.rs) |
+| RF-H4 | **ResourceKind string dispatch**. `ResourceAcquireOp { resource_kind: String }` matched at runtime. Unknown kinds fall through to `Value::Str("resource:{other}")` — wrong type, silent. | resolve.rs:365-386 | `ResourceKind` enum parsed once at resolve time. Match is exhaustive, no fallback arm. Overlaps RF-A4. | Local (resolve.rs) |
+| RF-H5 | **Port namespace string conventions**. ~30 `starts_with("res:")` / `"tool:"` / `"__deps"` checks across 8+ files. If prefix changes, every site must be updated or it silently stops matching. | resolve.rs, validate.rs, signature.rs, obligation.rs, etc. | Already RF-A2 (`PortCategory` enum + methods on `PortName`). Listed here for completeness. | Cross-cutting |
+
+**Priority**: H1 is the most dangerous (silent test skipping). H4 is
+the easiest win (local to resolve.rs). H2+H3 are mechanical cleanup
+that improves the pipeline we just built. H5 is RF-A2 (already tracked).
+
+### Theme G: Rust Heuristics Shadowing DSL Declarations
+
+The DSL already has the complete, correct implementation:
+- `std/fidelity.dag::classify_transports(transports: List<TransportClass>)`
+  takes raw transport classes, aggregates via `fermi_max_of` + `all`, returns
+  typed `DerivedClassification { test_class, depth, hermetic }`.
+- `std/fermi.dag::fermi_max_of(depths)` folds over magnitudes.
+- `config/test_policy.dag` adds repo-specific budget policy.
+
+But the Rust side in `fidelity.rs` **replicates this entire computation**
+as hand-wired heuristics: ordinal integers for depth comparison,
+boolean maps for hermetic, string round-trips for enum values. These
+exist solely because `classify_transports` uses `fold` (via
+`fermi_max_of`), and the lowerer can't extract fn bodies containing
+`fold` for `evaluate_fn_body()`.
+
+So `test_policy.dag::classify_from_facts()` was written as a dumbed-down
+version accepting pre-aggregated scalars (`max_depth: String,
+hermetic: Bool`), and Rust replicates the aggregation to produce those
+scalars. **Every 1:1 mapping in fidelity.rs is a Rust shadow of a DSL
+function that already exists but can't be called.**
+
+| ID | Rust Shadow | DSL Original | Blocker |
+|----|-------------|-------------|---------|
+| RF-G1 | `transport_depth_ordinal()` + `transport_depth_str()` — match `ServiceTransportClass` → u8/&str | `fidelity.dag::transport_depth()` → `FermiDepth` | `fermi_max_of` uses `fold` |
+| RF-G2 | `transport_is_hermetic()` — match `ServiceTransportClass` → bool | `fidelity.dag::transport_hermetic()` → Bool | `classify_transports` uses `all` (fold-based) |
+| RF-G3 | `classify_callable()` pre-aggregation — `max_by_key` + `all` + string packing | `fidelity.dag::classify_transports()` — does this natively | Same |
+| RF-G4 | `test_policy.dag::classify_from_facts()` — accepts pre-aggregated scalars | Would be unnecessary if `classify_transports()` were callable | Same |
+| RF-G5 | `TestClass::parse()` + `FermiCost::parse()` round-trip in `classify_callable()` | `classify_transports()` returns typed `DerivedClassification` | DSL evaluator returns `Value::Str` for sum-type variants |
+| RF-G6 | `test_policy.dag::transport_depth()` + `transport_hermetic()` — string-typed duplicates | `fidelity.dag` already has the typed versions | Self-contained policy file can't import + evaluate cross-module fns |
+
+**Unblock**: Fix the lowerer `fold` extraction limitation (fn bodies
+containing `fold` decompose into `Collection` nodes, preventing
+`fn_body` extraction for `evaluate_fn_body()`). Once fixed:
+1. `classify_transports()` becomes callable from Rust
+2. `classify_from_facts()` in test_policy.dag is deleted
+3. All 4 Rust shadow fns in fidelity.rs are deleted
+4. `requires_from_transport_classes()` moves to DSL
+5. `classify_callable()` becomes: compile fidelity.dag, call
+   `classify_transports(props.transport_classes)`, done
+
+**Alternatively**: Implement `fold` aggregation in Rust's
+`evaluate_fn_body()` evaluator (it already handles other collection
+ops). This avoids changing the lowerer and directly enables calling
+the existing DSL fns.
 
 ---
 

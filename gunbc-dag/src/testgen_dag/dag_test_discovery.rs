@@ -185,6 +185,15 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
     let safe_name = module.module_name.replace('.', "-");
     let spec = auto_mock_spec(&result.dag, &safe_name);
 
+    // 2b. Classify the module via DSL-evaluated fidelity policy
+    let classification = crate::fidelity::classify_module(&result.callable_properties);
+    let all_transport_classes: Vec<_> = result
+        .callable_properties
+        .values()
+        .flat_map(|p| p.transport_classes.iter().cloned())
+        .collect();
+    let requires = crate::fidelity::requires_from_transport_classes(&all_transport_classes);
+
     // 3. Build TestgenTargetDef
     let output_path = format!(
         "{}/generated_tests_{}.rs",
@@ -213,9 +222,9 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
         flow_tests: true,
         live_flow_tests: false,
         window_max_nodes: None,
-        test_class: None,
-        fermi_cost: None,
-        requires: None,
+        test_class: Some(classification.test_class),
+        fermi_cost: Some(classification.fermi_cost),
+        requires: Some(requires),
         secrets: None,
         live_test_class: None,
         live_fermi_cost: None,

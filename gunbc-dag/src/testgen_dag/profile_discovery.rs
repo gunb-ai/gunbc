@@ -115,6 +115,12 @@ pub fn profiles_for_module<'a>(
         .collect()
 }
 
+/// Infer test class from profile name.
+///
+/// Profiles named "unit_test" or containing "test" use stub transports → Hermetic.
+/// All others resolve real transports → Integration. This aligns with the fidelity
+/// model: stub transports are hermetic (DryRun-mockable), real transports require
+/// live infrastructure.
 fn infer_test_class(profile_name: &str) -> TestClass {
     if profile_name == "unit_test" || profile_name.contains("test") {
         TestClass::Hermetic
