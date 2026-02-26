@@ -122,7 +122,7 @@ mod tests {
         );
         let key = credential_as_key(&cred);
         assert_eq!(key.scheme, "Bearer");
-        assert_eq!(key.hint, "***5678");
+        assert_eq!(key.hint, "\"***\"");
         assert_eq!(key.source, "env:GITHUB_TOKEN");
     }
 
@@ -142,7 +142,7 @@ mod tests {
         );
         let key = credential_as_key(&cred);
         assert_eq!(key.scheme, "Header:x-api-key");
-        assert_eq!(key.hint, "***alue");
+        assert_eq!(key.hint, "\"***\"");
         assert_eq!(key.source, "exchange:gcp");
     }
 
@@ -156,7 +156,7 @@ mod tests {
         );
         let key = credential_as_key(&cred);
         assert_eq!(key.scheme, "Basic:admin");
-        assert!(key.hint.starts_with("***"));
+        assert_eq!(key.hint, "\"***\"");
         assert_eq!(key.source, "static");
     }
 
@@ -184,7 +184,7 @@ mod tests {
         let display = diag.to_string();
         assert!(display.contains("POST https://api.github.com/gists"));
         assert!(display.contains("Bearer"));
-        assert!(display.contains("***5678"));
+        assert!(display.contains("\"***\""));
         assert!(display.contains("env:GITHUB_TOKEN"));
     }
 
@@ -216,12 +216,12 @@ mod tests {
     fn key_identity_display() {
         let key = KeyIdentity {
             scheme: "Bearer".into(),
-            hint: "***wxyz".into(),
+            hint: "\"***\"".into(),
             source: "env:GITHUB_TOKEN".into(),
         };
         assert_eq!(
             key.to_string(),
-            "Bearer (key: ***wxyz, source: env:GITHUB_TOKEN)"
+            "Bearer (key: \"***\", source: env:GITHUB_TOKEN)"
         );
     }
 
@@ -235,13 +235,13 @@ mod tests {
             },
             key: Some(KeyIdentity {
                 scheme: "Bearer".into(),
-                hint: "***wxyz".into(),
+                hint: "\"***\"".into(),
                 source: "env:GITHUB_TOKEN".into(),
             }),
         };
         assert_eq!(
             diag.to_string(),
-            "AuthContext (Read): POST https://api.github.com/gists with Bearer (key: ***wxyz, source: env:GITHUB_TOKEN)"
+            "AuthContext (Read): POST https://api.github.com/gists with Bearer (key: \"***\", source: env:GITHUB_TOKEN)"
         );
     }
 

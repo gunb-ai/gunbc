@@ -453,6 +453,18 @@ impl Executable for GenericShellPrepareOp {
     }
 }
 
+/// Wrap shell stdout as `Value::Secret` or `Value::Str` based on the output field spec.
+fn shell_trim_value(field: Option<&OutputFieldSpec>, text: String) -> Value {
+    let is_secret = field
+        .map(|f| f.type_id == "Secret" || f.is_secret)
+        .unwrap_or(false);
+    if is_secret {
+        Value::Secret(SecretString::new(text))
+    } else {
+        Value::Str(text)
+    }
+}
+
 /// Generic Shell parse: extracts output fields from a `ShellResponse`.
 #[derive(Debug, Clone)]
 pub struct GenericShellParseOp {
@@ -501,14 +513,12 @@ impl Executable for GenericShellParseOp {
                     }
 
                     ShellOutputParsing::TrimStdout => {
+                        let field = self.spec.output_fields.first();
+                        let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
                         let text = shell.stdout.trim().to_string();
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("output");
-                        OutputMap::new().str(field_name, text).ok()
+                        OutputMap::new()
+                            .value(field_name, shell_trim_value(field, text))
+                            .ok()
                     }
                 }
             }
@@ -539,13 +549,11 @@ impl Executable for GenericShellParseOp {
                         OutputMap::new().str_list(field_name, Vec::new()).ok()
                     }
                     ShellOutputParsing::TrimStdout => {
-                        let field_name = self
-                            .spec
-                            .output_fields
-                            .first()
-                            .map(|f| f.name.as_str())
-                            .unwrap_or("output");
-                        OutputMap::new().str(field_name, String::new()).ok()
+                        let field = self.spec.output_fields.first();
+                        let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
+                        OutputMap::new()
+                            .value(field_name, shell_trim_value(field, String::new()))
+                            .ok()
                     }
                 }
             }
@@ -1948,6 +1956,92 @@ mod tests {
                 );
             }
             other => panic!("expected Local request, got {other:?}"),
+        }
+    }
+
+    fn shell_spec_secret_output() -> ShellOperationSpec {
+        ShellOperationSpec {
+            argv_template: vec![
+                ArgvSegment::Literal("gcloud".to_string()),
+                ArgvSegment::Literal("auth".to_string()),
+                ArgvSegment::Literal("print-access-token".to_string()),
+            ],
+            input_fields: vec![],
+            output_fields: vec![OutputFieldSpec {
+                name: "access_token".to_string(),
+                type_id: "Secret".to_string(),
+                json_path: "access_token".to_string(),
+                is_secret: true,
+                is_raw_body: false,
+            }],
+            output_parsing: ShellOutputParsing::TrimStdout,
+            env: vec![],
+        }
+    }
+
+    #[test]
+    fn shell_parse_trim_stdout_secret() {
+        let op = GenericShellParseOp {
+            spec: shell_spec_secret_output(),
+            service_name: String::new(),
+            operation_name: String::new(),
+        };
+        let response = ShellResponse::ok("  ya29.secret-token  \n");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Shell(response)),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("access_token") {
+            Some(Value::Secret(s)) => {
+                assert_eq!(s.expose_plaintext_for_transport(), "ya29.secret-token");
+            }
+            other => panic!("expected Secret, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_parse_trim_stdout_secret_skipped() {
+        let op = GenericShellParseOp {
+            spec: shell_spec_secret_output(),
+            service_name: String::new(),
+            operation_name: String::new(),
+        };
+        // No response → Skipped/None path
+        let mut inputs = HashMap::new();
+        inputs.insert("response".to_string(), Value::Skipped);
+
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("access_token") {
+            Some(Value::Secret(s)) => {
+                assert!(s.is_empty(), "skipped secret should be empty");
+            }
+            other => panic!("expected Secret, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shell_parse_trim_stdout_empty_secret() {
+        let op = GenericShellParseOp {
+            spec: shell_spec_secret_output(),
+            service_name: String::new(),
+            operation_name: String::new(),
+        };
+        let response = ShellResponse::ok("");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Shell(response)),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("access_token") {
+            Some(Value::Secret(s)) => {
+                assert!(s.is_empty(), "empty stdout should produce empty secret");
+            }
+            other => panic!("expected Secret, got {other:?}"),
         }
     }
 
