@@ -14,6 +14,7 @@ gunbc-codegen = { path = "../core/codegen" }
 gunbc-test = { path = "../core/test" }
 
 # DSL compilation
+daglang-derive = { path = "../core/daglang/daglang-derive" }
 daglang-driver = { path = "../core/daglang/daglang-driver" }
 daglang-emit = { path = "../core/daglang/daglang-emit" }
 daglang-lower = { path = "../core/daglang/daglang-lower" }

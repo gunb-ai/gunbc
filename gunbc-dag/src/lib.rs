@@ -30,6 +30,7 @@ pub mod dsl_builder;
 pub mod dsl_registry;
 pub mod embedded_assets;
 pub mod extern_impls;
+pub mod fidelity;
 pub mod fs_env;
 pub mod gist;
 pub mod infra;

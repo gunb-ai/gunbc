@@ -26,7 +26,7 @@ pub use daglang_contract::{
     TestObligations, TopologyNode,
 };
 use daglang_lower::{
-    classify_obligation, classify_service_transport, CollectionOpKind, LoweredOp,
+    classify_obligation, classify_service_transport, CallableKind, CollectionOpKind, LoweredOp,
     ObligationCategory, ServiceCallMetadata, ServiceTransportClass,
 };
 use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Node};
@@ -38,6 +38,23 @@ pub struct DerivedArtifacts {
     pub obligations: TestObligations,
     pub transport_triplets: Vec<TransportTriplet>,
     pub tool_metadata: ToolMetadata,
+    /// Per-callable structural properties derived from graph traversal.
+    /// Key is callable name (e.g., "tools.makegen::render_makefile").
+    pub callable_properties: BTreeMap<String, CallableProperties>,
+}
+
+/// Structural properties of a callable, extracted by graph walk.
+///
+/// These are raw facts about what transports, permissions, and behavioral
+/// flags a callable transitively reaches. Classification into test tiers
+/// is the DSL's job (via `config/test_policy.dag`), not ours.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct CallableProperties {
+    pub transport_classes: Vec<ServiceTransportClass>,
+    pub permissions: Vec<String>,
+    pub idempotent: bool,
+    pub readonly: bool,
+    pub service_operations: Vec<(String, String)>,
 }
 
 /// A discovered prepare→execute→parse transport triplet.
@@ -152,12 +169,14 @@ pub fn derive_artifacts(dag: &Dag<LoweredOp>) -> Result<DerivedArtifacts, Derive
         modules: derive_module_metadata(&dag.nodes),
     };
     let transport_triplets = derive_transport_triplets(dag);
+    let callable_properties = derive_callable_properties(dag);
 
     Ok(DerivedArtifacts {
         manifest,
         obligations,
         transport_triplets,
         tool_metadata,
+        callable_properties,
     })
 }
 
@@ -758,6 +777,156 @@ impl NodeBodyExt for gunbc_ir::node::NodeBody<LoweredOp> {
             gunbc_ir::node::NodeBody::Opaque(op) => Some(op),
             gunbc_ir::node::NodeBody::SubDag(_) => None,
         }
+    }
+}
+
+/// Derive per-callable structural properties via graph walk.
+///
+/// For each callable (Func/Fn) entrypoint, BFS through reachable nodes
+/// and collect transport classes, permissions, idempotent/readonly flags,
+/// and service operations. SubDag inner nodes are recursively traversed.
+fn derive_callable_properties(dag: &Dag<LoweredOp>) -> BTreeMap<String, CallableProperties> {
+    let node_by_id: HashMap<&str, &Node<LoweredOp>> = dag
+        .nodes
+        .iter()
+        .map(|n| (n.id.0.as_str(), n))
+        .collect();
+
+    // Build adjacency list from edges
+    let mut successors: HashMap<&str, Vec<&str>> = HashMap::new();
+    for edge in &dag.edges {
+        successors
+            .entry(edge.from_node.0.as_str())
+            .or_default()
+            .push(edge.to_node.0.as_str());
+    }
+
+    // Identify callable entrypoints
+    let callable_entries: Vec<(&str, &str, &str)> = dag
+        .nodes
+        .iter()
+        .filter_map(|node| match node.body.as_opaque() {
+            Some(LoweredOp::Callable {
+                kind: CallableKind::Func,
+                module,
+                name,
+                ..
+            }) => Some((node.id.0.as_str(), module.as_str(), name.as_str())),
+            _ => None,
+        })
+        .collect();
+
+    let mut result = BTreeMap::new();
+
+    for (entry_id, module, name) in callable_entries {
+        let mut transport_classes = BTreeSet::new();
+        let mut permissions = BTreeSet::new();
+        let mut idempotent = true;
+        let mut readonly = true;
+        let mut service_operations = BTreeSet::new();
+        let mut has_service_metadata = false;
+
+        // BFS from the callable entrypoint
+        let mut visited = BTreeSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(entry_id);
+
+        while let Some(node_id) = queue.pop_front() {
+            if !visited.insert(node_id) {
+                continue;
+            }
+
+            if let Some(node) = node_by_id.get(node_id) {
+                // Collect service metadata from this node
+                collect_service_metadata_from_node(
+                    node,
+                    &mut transport_classes,
+                    &mut permissions,
+                    &mut idempotent,
+                    &mut readonly,
+                    &mut service_operations,
+                    &mut has_service_metadata,
+                );
+
+                // Recurse into SubDag inner nodes
+                if let gunbc_ir::node::NodeBody::SubDag(subdag) = &node.body {
+                    for inner_node in &subdag.nodes {
+                        collect_service_metadata_from_node(
+                            inner_node,
+                            &mut transport_classes,
+                            &mut permissions,
+                            &mut idempotent,
+                            &mut readonly,
+                            &mut service_operations,
+                            &mut has_service_metadata,
+                        );
+                    }
+                }
+            }
+
+            // Enqueue successors
+            if let Some(nexts) = successors.get(node_id) {
+                for next in nexts {
+                    queue.push_back(next);
+                }
+            }
+        }
+
+        // If no service metadata found, default idempotent/readonly to true (pure)
+        if !has_service_metadata {
+            idempotent = true;
+            readonly = true;
+        }
+
+        let key = format!("{module}::{name}");
+        let mut transport_vec: Vec<ServiceTransportClass> =
+            transport_classes.into_iter().collect();
+        transport_vec.sort();
+        let mut perms_vec: Vec<String> = permissions.into_iter().collect();
+        perms_vec.sort();
+        let mut ops_vec: Vec<(String, String)> = service_operations.into_iter().collect();
+        ops_vec.sort();
+
+        result.insert(
+            key,
+            CallableProperties {
+                transport_classes: transport_vec,
+                permissions: perms_vec,
+                idempotent,
+                readonly,
+                service_operations: ops_vec,
+            },
+        );
+    }
+
+    result
+}
+
+fn collect_service_metadata_from_node(
+    node: &Node<LoweredOp>,
+    transport_classes: &mut BTreeSet<ServiceTransportClass>,
+    permissions: &mut BTreeSet<String>,
+    idempotent: &mut bool,
+    readonly: &mut bool,
+    service_operations: &mut BTreeSet<(String, String)>,
+    has_service_metadata: &mut bool,
+) {
+    let Some(op) = node.body.as_opaque() else {
+        return;
+    };
+    if let Some(metadata) = op.service_call_metadata() {
+        *has_service_metadata = true;
+        transport_classes.insert(metadata.transport);
+        for perm in &metadata.permissions {
+            permissions.insert(perm.clone());
+        }
+        if !metadata.idempotent {
+            *idempotent = false;
+        }
+        if !metadata.readonly {
+            *readonly = false;
+        }
+        service_operations.insert((metadata.service.clone(), metadata.operation.clone()));
     }
 }
 

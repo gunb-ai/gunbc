@@ -363,6 +363,7 @@ name = "gunbc-dag"
 version = "0.1.0"
 dependencies = [
  "cargo_metadata",
+ "daglang-derive",
  "daglang-driver",
  "daglang-emit",
  "daglang-lower",
