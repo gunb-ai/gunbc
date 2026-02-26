@@ -4277,6 +4277,37 @@ fn extract_lambda_field_access(expr: &Expr) -> Option<String> {
 ///
 /// Dispatches based on the expression type:
 /// - `Expr::ServiceCall` → clone transport triplet from service registry
+/// Recursively resolve all `Ident` expressions through an argument map.
+///
+/// When expanding nested pattern calls (e.g., `ensure(check: file_content_matches(path: path, expected: content))`),
+/// inner `Ident` references like `path` and `content` inside `Call(...)` or `ServiceCall(...)` expressions
+/// must be resolved through the parent pattern's `arg_map` to get the caller's actual expressions.
+fn resolve_expr_idents(expr: &Expr, arg_map: &HashMap<String, &Expr>) -> Expr {
+    match expr {
+        Expr::Ident(name) => arg_map
+            .get(name.as_str())
+            .map(|e| (*e).clone())
+            .unwrap_or_else(|| expr.clone()),
+        Expr::Call(name, args) => Expr::Call(
+            name.clone(),
+            args.iter()
+                .map(|(n, e)| (n.clone(), resolve_expr_idents(e, arg_map)))
+                .collect(),
+        ),
+        Expr::ServiceCall(path, args) => Expr::ServiceCall(
+            path.clone(),
+            args.iter()
+                .map(|(n, e)| (n.clone(), resolve_expr_idents(e, arg_map)))
+                .collect(),
+        ),
+        Expr::FieldAccess(base, field) => Expr::FieldAccess(
+            Box::new(resolve_expr_idents(base, arg_map)),
+            field.clone(),
+        ),
+        _ => expr.clone(),
+    }
+}
+
 /// - `Expr::Call("eq", ...)` → create CompareEquality primitive
 /// - `Expr::Call(pattern_name, ...)` → recursive pattern expansion
 #[allow(clippy::too_many_arguments)]
@@ -4353,15 +4384,10 @@ fn expand_pattern_body_node(
             // where `path` and `content` are content_upsert params that map to caller exprs.
             let mut merged_args: Vec<(Option<String>, Expr)> = Vec::new();
             for (inner_arg_name, inner_arg_expr) in call_args {
-                // Resolve any ident args through the parent arg_map to get caller expressions.
-                let resolved_expr = if let Expr::Ident(name) = inner_arg_expr {
-                    arg_map
-                        .get(name.as_str())
-                        .map(|e| (*e).clone())
-                        .unwrap_or_else(|| inner_arg_expr.clone())
-                } else {
-                    inner_arg_expr.clone()
-                };
+                // Recursively resolve idents through the parent arg_map so nested
+                // expressions like `file_content_matches(path: path, expected: content)`
+                // get their idents resolved to the caller's actual expressions.
+                let resolved_expr = resolve_expr_idents(inner_arg_expr, arg_map);
                 merged_args.push((inner_arg_name.clone(), resolved_expr));
             }
 

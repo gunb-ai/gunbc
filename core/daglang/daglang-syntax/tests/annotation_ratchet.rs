@@ -13,7 +13,7 @@ use daglang_syntax::ast::*;
 use daglang_syntax::parser;
 
 /// Current annotation baseline. Decrease this as .dag files are migrated.
-const ANNOTATION_BASELINE: usize = 965;
+const ANNOTATION_BASELINE: usize = 0;
 
 fn count_annotations_in_type_expr(ty: &TypeExpr) -> usize {
     match ty {
