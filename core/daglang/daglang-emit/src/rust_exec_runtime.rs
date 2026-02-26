@@ -435,13 +435,46 @@ fn primitive_literal_to_runtime_value_expr(literal: &PrimitiveLiteral) -> String
         }
         PrimitiveLiteral::Int(value) => format!("Value::Int({value})"),
         PrimitiveLiteral::Bool(value) => format!("Value::Bool({value})"),
-        PrimitiveLiteral::Json(value) => {
-            let encoded = rust_string_literal(&value.to_string());
+        PrimitiveLiteral::Json(value) => json_to_native_value_expr(value),
+        PrimitiveLiteral::Unit => "Value::Unit".to_string(),
+    }
+}
+
+/// Emit a `serde_json::Value` as a native `Value` expression without serde_json dependency.
+fn json_to_native_value_expr(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "Value::Unit".to_string(),
+        serde_json::Value::Bool(b) => format!("Value::Bool({b})"),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                format!("Value::Int({i})")
+            } else {
+                format!("Value::Float({})", n.as_f64().unwrap_or(0.0))
+            }
+        }
+        serde_json::Value::String(s) => {
+            format!("Value::Str({}.to_string())", rust_string_literal(s))
+        }
+        serde_json::Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(json_to_native_value_expr).collect();
+            format!("Value::List(vec![{}])", items.join(", "))
+        }
+        serde_json::Value::Object(obj) => {
+            let entries: Vec<String> = obj
+                .iter()
+                .map(|(k, v)| {
+                    format!(
+                        "({}.to_string(), {})",
+                        rust_string_literal(k),
+                        json_to_native_value_expr(v)
+                    )
+                })
+                .collect();
             format!(
-                "Value::Json(serde_json::from_str::<serde_json::Value>({encoded}).expect(\"valid literal json\"))"
+                "Value::Map([{}].into_iter().collect())",
+                entries.join(", ")
             )
         }
-        PrimitiveLiteral::Unit => "Value::Unit".to_string(),
     }
 }
 
