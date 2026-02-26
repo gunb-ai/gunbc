@@ -2,6 +2,8 @@
 //!
 //! Pragma tool for generating clippy.toml and pragma allowlists.
 
+pub mod dsl_render;
+
 use gunbc_exec::DynOp;
 use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 

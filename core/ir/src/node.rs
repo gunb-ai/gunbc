@@ -9,6 +9,33 @@ use crate::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+/// Structural classification of a node's role in the DAG.
+///
+/// Set by the lowerer (from `ObligationCategory`) and read by the executor,
+/// testgen, and derive — replacing the duplicated port-type heuristics
+/// (`type_id.0 == "TransportRequest"`, etc.) with a single source of truth.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NodeKind {
+    /// Executes transport I/O (consumes TransportRequest).
+    TransportExecute,
+    /// Prepares a transport request.
+    TransportPrepare,
+    /// Parses a transport response.
+    TransportParse,
+    /// Provides a tool environment (emits ToolHandle).
+    ToolEnvironment,
+    /// Consumes a tool handle.
+    ToolConsumer,
+    /// Provides a resource (emits FilesystemHandle, Credential, etc.).
+    ResourceEnvironment,
+    /// Acquires a resource.
+    ResourceAcquire,
+    /// Releases a resource.
+    ResourceRelease,
+    /// Pure computation (no I/O boundary).
+    Pure,
+}
+
 /// A node in the DAG, generic over its operation type.
 ///
 /// Nodes are pure transformations of inputs to outputs.
@@ -43,6 +70,18 @@ pub struct Node<T> {
     /// descendants unless overridden more specifically by nested nodes/ports.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log_detail: Option<LogDetailLevel>,
+    /// Structural classification of this node's role.
+    ///
+    /// Set by the lowerer from `ObligationCategory`. The executor reads this
+    /// instead of re-deriving node kind from port type strings.
+    ///
+    /// `None` means the node has not yet been classified. The executor treats
+    /// `None` as non-effectful for interception purposes and the resource
+    /// validator skips it — so **all effectful nodes must have `kind` set**
+    /// before reaching the executor. Use [`with_kind`](Self::with_kind) for
+    /// hand-built DAGs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<NodeKind>,
 }
 
 impl<T> Node<T> {
@@ -55,6 +94,7 @@ impl<T> Node<T> {
             body: NodeBody::Opaque(op),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         }
     }
 
@@ -123,6 +163,7 @@ impl<T> Node<T> {
             body: NodeBody::SubDag(dag),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         }
     }
 
@@ -166,6 +207,12 @@ impl<T> Node<T> {
             expected_outputs,
             description: Some(description.into()),
         });
+        self
+    }
+
+    /// Set the structural node kind.
+    pub fn with_kind(mut self, kind: NodeKind) -> Self {
+        self.kind = Some(kind);
         self
     }
 
@@ -246,6 +293,7 @@ impl<T> Node<T> {
             body,
             examples: self.examples,
             log_detail: self.log_detail,
+            kind: self.kind,
         }
     }
 

@@ -5,8 +5,8 @@
 
 use crate::dag::{Edge, Port};
 use crate::node::Node;
-use crate::types::{parse_unary_generic_type_id, ValueBacking};
 use crate::type_registry::TypeExprError;
+use crate::types::{parse_unary_generic_type_id, ValueBacking};
 use crate::InvocationContract;
 use crate::Predicate;
 use crate::{Dag, TypeId, TypeOp, TypeRegistry, WrapperKind};
@@ -513,7 +513,9 @@ pub fn validate_dependency_graph_acyclic(models: &[SystemModel]) -> Result<(), S
         let all_deps = model.all_system_deps();
         for target_id in all_deps {
             if indegree.contains_key(&target_id) {
-                *indegree.get_mut(&target_id).expect("target indegree exists") += 1;
+                *indegree
+                    .get_mut(&target_id)
+                    .expect("target indegree exists") += 1;
                 outgoing
                     .get_mut(&model.id)
                     .expect("source entry exists")
@@ -589,10 +591,7 @@ pub fn validate_depends_on_references(models: &[SystemModel]) -> Result<(), Stri
 ///
 /// Properties are gathered from the model itself and all models it transitively
 /// depends on (via `depends_on` and system-typed `dependencies`).
-pub fn collect_inherited_properties(
-    model_id: &str,
-    models: &[SystemModel],
-) -> BTreeSet<Property> {
+pub fn collect_inherited_properties(model_id: &str, models: &[SystemModel]) -> BTreeSet<Property> {
     let model_map: BTreeMap<String, &SystemModel> =
         models.iter().map(|m| (m.id.clone(), m)).collect();
     let mut visited = BTreeSet::new();
@@ -1668,12 +1667,7 @@ mod tests {
         let non_meta_nodes: Vec<_> = dag
             .nodes
             .iter()
-            .filter(|n| {
-                !matches!(
-                    &n.body,
-                    crate::node::NodeBody::Opaque(TypeOp::Meta(_))
-                )
-            })
+            .filter(|n| !matches!(&n.body, crate::node::NodeBody::Opaque(TypeOp::Meta(_))))
             .collect();
 
         // Must have at least the two Identity bookends.
@@ -1687,17 +1681,11 @@ mod tests {
         let first = &non_meta_nodes[0];
         let last = &non_meta_nodes[non_meta_nodes.len() - 1];
         assert!(
-            matches!(
-                &first.body,
-                crate::node::NodeBody::Opaque(TypeOp::Identity)
-            ),
+            matches!(&first.body, crate::node::NodeBody::Opaque(TypeOp::Identity)),
             "first non-Meta node should be Identity"
         );
         assert!(
-            matches!(
-                &last.body,
-                crate::node::NodeBody::Opaque(TypeOp::Identity)
-            ),
+            matches!(&last.body, crate::node::NodeBody::Opaque(TypeOp::Identity)),
             "last non-Meta node should be Identity"
         );
 
@@ -1737,31 +1725,49 @@ mod tests {
         };
 
         vec![
-            SystemModel::new("layer.tcp", "TCP", SystemKind::Convention, "v1", "tcp layer")
-                .with_behaviors(vec![
-                    mk_behavior("connect").with_properties(&[Property::WritesWorld]),
-                ])
-                .with_depends_on(&[]),
-            SystemModel::new("layer.http", "HTTP", SystemKind::Protocol, "v1", "http layer")
-                .with_behaviors(vec![
-                    mk_behavior("get").with_properties(&[Property::ReadOnly, Property::Deterministic]),
-                    mk_behavior("post").with_properties(&[Property::WritesWorld, Property::Idempotent]),
-                ])
-                .with_depends_on(&["layer.tcp"]),
-            SystemModel::new("layer.rest", "REST", SystemKind::Protocol, "v1", "rest layer")
-                .with_behaviors(vec![
-                    mk_behavior("get").with_properties(&[
-                        Property::ReadOnly,
-                        Property::Deterministic,
-                        Property::JsonContentType,
-                    ]),
-                    mk_behavior("post").with_properties(&[
-                        Property::WritesWorld,
-                        Property::Idempotent,
-                        Property::JsonContentType,
-                    ]),
-                ])
-                .with_depends_on(&["layer.http"]),
+            SystemModel::new(
+                "layer.tcp",
+                "TCP",
+                SystemKind::Convention,
+                "v1",
+                "tcp layer",
+            )
+            .with_behaviors(vec![
+                mk_behavior("connect").with_properties(&[Property::WritesWorld])
+            ])
+            .with_depends_on(&[]),
+            SystemModel::new(
+                "layer.http",
+                "HTTP",
+                SystemKind::Protocol,
+                "v1",
+                "http layer",
+            )
+            .with_behaviors(vec![
+                mk_behavior("get").with_properties(&[Property::ReadOnly, Property::Deterministic]),
+                mk_behavior("post").with_properties(&[Property::WritesWorld, Property::Idempotent]),
+            ])
+            .with_depends_on(&["layer.tcp"]),
+            SystemModel::new(
+                "layer.rest",
+                "REST",
+                SystemKind::Protocol,
+                "v1",
+                "rest layer",
+            )
+            .with_behaviors(vec![
+                mk_behavior("get").with_properties(&[
+                    Property::ReadOnly,
+                    Property::Deterministic,
+                    Property::JsonContentType,
+                ]),
+                mk_behavior("post").with_properties(&[
+                    Property::WritesWorld,
+                    Property::Idempotent,
+                    Property::JsonContentType,
+                ]),
+            ])
+            .with_depends_on(&["layer.http"]),
         ]
     }
 
@@ -1788,18 +1794,13 @@ mod tests {
             )])
         };
 
-        let models = vec![
-            SystemModel::new("x.a", "A", SystemKind::Sdk, "v1", "a")
-                .with_behaviors(vec![mk_behavior("op")])
-                .with_depends_on(&["x.nonexistent"]),
-        ];
+        let models = vec![SystemModel::new("x.a", "A", SystemKind::Sdk, "v1", "a")
+            .with_behaviors(vec![mk_behavior("op")])
+            .with_depends_on(&["x.nonexistent"])];
 
         let err = validate_depends_on_references(&models)
             .expect_err("unknown depends_on target should fail");
-        assert!(
-            err.contains("x.nonexistent"),
-            "unexpected error: {err}"
-        );
+        assert!(err.contains("x.nonexistent"), "unexpected error: {err}");
     }
 
     #[test]
@@ -1827,17 +1828,13 @@ mod tests {
 
         let err = validate_depends_on_references(&models)
             .expect_err("self-referencing depends_on should fail");
-        assert!(
-            err.contains("depends on itself"),
-            "unexpected error: {err}"
-        );
+        assert!(err.contains("depends on itself"), "unexpected error: {err}");
     }
 
     #[test]
     fn layered_models_are_acyclic() {
         let models = make_layered_models();
-        validate_dependency_graph_acyclic(&models)
-            .expect("TCP -> HTTP -> REST should be acyclic");
+        validate_dependency_graph_acyclic(&models).expect("TCP -> HTTP -> REST should be acyclic");
     }
 
     #[test]
@@ -1866,8 +1863,7 @@ mod tests {
                 .with_depends_on(&["cycle.a"]),
         ];
 
-        let err = validate_dependency_graph_acyclic(&models)
-            .expect_err("cycle should be detected");
+        let err = validate_dependency_graph_acyclic(&models).expect_err("cycle should be detected");
         assert!(err.contains("cycle"), "unexpected error: {err}");
     }
 

@@ -1,0 +1,265 @@
+// config/arch_rules.dag -- This repo's architectural invariants (Layer 3).
+//
+// Boundary rules restrict RESOURCES, not libraries. Understanding files
+// (Layer 2) declare which resources each library provides. Derivation
+// (Layer 4) joins rules to understandings via the resource key.
+//
+// Import flow: std/lint.dag (Layer 0) -> here (Layer 3).
+// No dependency on Layer 2 understanding files.
+
+module config.arch_rules
+
+import std.lint { ExemptionScope, LintAction }
+
+// ── Invariant definitions ─────────────────────────────────────────────
+
+type Invariant {
+  id: String
+  name: String
+  description: String
+}
+
+data i6: Invariant = {
+  id: "I6",
+  name: "No Escape Hatches",
+  description: "Direct I/O operations are disallowed. The system cannot be bypassed."
+}
+
+data i7: Invariant = {
+  id: "I7",
+  name: "No Fallbacks",
+  description: "Operations either succeed or fail. No silent degradation."
+}
+
+data i8: Invariant = {
+  id: "I8",
+  name: "No Warnings",
+  description: "All lints run with -D warnings. Warnings are errors."
+}
+
+data m7: Invariant = {
+  id: "M7",
+  name: "Transport Boundary Secrets",
+  description: "Secret plaintext extraction only at approved transport boundaries."
+}
+
+// ── Boundary rules ────────────────────────────────────────────────────
+// Each rule restricts access to a RESOURCE, not a specific library.
+// The rationale_template uses {path} as placeholder for the concrete API path.
+
+type BoundaryRule {
+  invariant_id: String
+  restricted_resource: String
+  rationale_template: String
+}
+
+data boundary_rules: List<BoundaryRule> = [
+  {
+    invariant_id: "I6",
+    restricted_resource: "Filesystem",
+    rationale_template: "I6: No escape hatches. Direct filesystem ops must be in transport layer"
+  },
+  {
+    invariant_id: "I6",
+    restricted_resource: "Process",
+    rationale_template: "I6: No escape hatches. Use env nodes + tool handles. Command::new only in transport executor/cli."
+  },
+  {
+    invariant_id: "I6",
+    restricted_resource: "Network",
+    rationale_template: "I6: No escape hatches. Network I/O must be in transport layer"
+  },
+  {
+    invariant_id: "I6",
+    restricted_resource: "GitRepo",
+    rationale_template: "I6: No escape hatches. Git I/O must be in transport layer"
+  },
+  {
+    invariant_id: "M7",
+    restricted_resource: "SecretTransport",
+    rationale_template: "M7: Use expose_plaintext_for_transport at approved transport boundaries only"
+  }
+]
+
+// ── Exemptions ────────────────────────────────────────────────────────
+// Each exemption is tied to a SPECIFIC invariant (feedback #1).
+// An I6 exemption does NOT exempt from M7.
+
+type Exemption {
+  invariant_id: String
+  scope: ExemptionScope
+  rationale: String
+}
+
+data exemptions: List<Exemption> = [
+  {
+    invariant_id: "I6",
+    scope: WholePackage { name: "gunbc-lib-transport" },
+    rationale: "IS the I/O boundary - the designated place for I/O"
+  },
+  {
+    invariant_id: "I6",
+    scope: PackageFile { package_name: "gunbc-exec", path: "src/freshness.rs" },
+    rationale: "freshness steps run external tooling as child processes"
+  },
+  {
+    invariant_id: "I6",
+    scope: PackageFile { package_name: "gunbc-exec", path: "src/display.rs" },
+    rationale: "CI secret masking at transport boundary"
+  },
+  {
+    invariant_id: "I6",
+    scope: PackageFile { package_name: "gunbc-exec", path: "src/execute.rs" },
+    rationale: "CI secret masking at transport boundary"
+  },
+  {
+    invariant_id: "I6",
+    scope: PackagePrefix { prefix: "daglang-" },
+    rationale: "compiler pipeline: filesystem discovery for .dag module resolution"
+  },
+  {
+    invariant_id: "I6",
+    scope: PackagePathPrefix { package_name: "gunbc-dag", prefix: "src/" },
+    rationale: "build-time DSL module discovery and workspace graph construction"
+  },
+  {
+    invariant_id: "I6",
+    scope: PackageFile { package_name: "gunbc-ir", path: "src/workspace_layout.rs" },
+    rationale: "workspace layout discovery uses cargo metadata subprocess"
+  },
+  {
+    invariant_id: "I6",
+    scope: PackageFile { package_name: "gunbc-ir", path: "src/transport/credential.rs" },
+    rationale: "transport boundary: credential applied to outbound requests"
+  },
+  {
+    invariant_id: "I6",
+    scope: PackagePathPrefix { package_name: "gunbc-ir", prefix: "src/resource/" },
+    rationale: "capability-marker validation for resource handles"
+  },
+  {
+    invariant_id: "I6",
+    scope: WholePackage { name: "gunbc-lib-cloud-ops" },
+    rationale: "cloud ops: file-backed config, credential policy, secret cache"
+  },
+  {
+    invariant_id: "I6",
+    scope: WholePackage { name: "gunbc-lib-gcp-ops" },
+    rationale: "GCP ops: secret extraction for GCP service requests"
+  }
+]
+
+// ── Allowlist patterns ────────────────────────────────────────────────
+// Resolved path prefixes for #[allow(clippy::disallowed_methods)].
+// These are the concrete repo-relative paths that the pragma linter checks.
+// When a new crate or exemption is added, update this list.
+
+type AllowlistPattern {
+  pattern: String
+  rationale: String
+}
+
+data allowlist_patterns: List<AllowlistPattern> = [
+  { pattern: "lib/transport/", rationale: "transport boundary" },
+  { pattern: "core/exec/src/freshness.rs", rationale: "freshness steps run external tooling as child processes" },
+  { pattern: "core/exec/src/display.rs", rationale: "CI secret masking at transport boundary" },
+  { pattern: "core/exec/src/execute.rs", rationale: "CI secret masking at transport boundary" },
+  { pattern: "core/daglang/daglang-cli/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-contract/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-derive/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-driver/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-emit/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-lower/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-resolve/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-syntax/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "core/daglang/daglang-typecheck/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
+  { pattern: "gunbc-dag/src/", rationale: "build-time DSL module discovery and workspace graph construction" },
+  { pattern: "core/ir/src/workspace_layout.rs", rationale: "workspace layout discovery uses cargo metadata subprocess" },
+  { pattern: "core/ir/src/transport/credential.rs", rationale: "transport boundary: credential applied to outbound requests" },
+  { pattern: "core/ir/src/resource/", rationale: "capability-marker validation for resource handles" },
+  { pattern: "lib/cloud-ops/", rationale: "cloud ops: file-backed config, credential policy, secret cache" },
+  { pattern: "lib/gcp-ops/", rationale: "GCP ops: secret extraction for GCP service requests" }
+]
+
+// ── Dead code allowances ──────────────────────────────────────────────
+// Files permitted to use #[allow(dead_code)].
+
+type DeadCodeAllowance {
+  package_name: String
+  relative_path: String
+  fallback_path: String
+}
+
+data dead_code_allowances: List<DeadCodeAllowance> = [
+  { package_name: "daglang-syntax", relative_path: "src/parser.rs",
+    fallback_path: "core/daglang/daglang-syntax/src/parser.rs" },
+  { package_name: "daglang-emit", relative_path: "src/lower_mips.rs",
+    fallback_path: "core/daglang/daglang-emit/src/lower_mips.rs" },
+  { package_name: "gunbc-dag", relative_path: "src/makegen/registry.rs",
+    fallback_path: "gunbc-dag/src/makegen/registry.rs" },
+  { package_name: "gunbc-dag", relative_path: "src/workspace/subdags/languages.rs",
+    fallback_path: "gunbc-dag/src/workspace/subdags/languages.rs" },
+  { package_name: "gunbc-lib-gcp-ops", relative_path: "src/graph.rs",
+    fallback_path: "lib/gcp-ops/src/graph.rs" },
+  { package_name: "daglang-lower", relative_path: "src/lib.rs",
+    fallback_path: "core/daglang/daglang-lower/src/lib.rs" }
+]
+
+// ── Pragma allow lints ────────────────────────────────────────────────
+// Lints permitted in #[allow(...)] pragmas.
+
+data pragma_allow_lints: List<String> = [
+  "clippy::large_enum_variant",
+  "clippy::too_many_arguments",
+  "clippy::vec_init_then_push",
+  "unused_variables"
+]
+
+// ── Thresholds ────────────────────────────────────────────────────────
+
+data large_error_threshold: Int = 256
+
+// ── Exec-runtime handler policy ─────────────────────────────────────
+// Obligations classified as passthrough_safe produce Ok(inputs) stubs
+// in generated exec-runtime code. Obligations in require_handler MUST
+// resolve to a specialized handler or extern impl — passthrough is
+// a build error for these.
+
+data passthrough_safe_obligations: List<String> = [
+  "None",
+  "PureGeneric",
+  "ServiceTransportPrepare",
+  "ServiceTransportExecute",
+  "ServiceTransportParse",
+  "ServiceParamSource",
+  "ResourceProvide",
+  "ResourceAcquire",
+  "ResourceRelease",
+  "InterfaceContractVerification"
+]
+
+// NF-5: These obligations need real handlers. Currently passthrough
+// during migration; moving here makes the migration target explicit.
+data require_handler_obligations: List<String> = [
+  "PureRender",
+  "PureDataLoad"
+]
+
+// ── Commit policy ───────────────────────────────────────────────────
+// Files that are generated BUT committed (bootstrap seeds).
+// Generated outputs not listed here must be .gitignored.
+
+type CommitReason = Generated | BuildOutput | BootstrapSeed | Secret
+
+type CommitPolicy {
+  pattern: String
+  reason: CommitReason
+  producer: String?
+}
+
+data bootstrap_seed_files: List<String> = [
+  ".gitignore",
+  "clippy.toml",
+  "deps.toml",
+  "docs/ab-writing-workflows.md"
+]

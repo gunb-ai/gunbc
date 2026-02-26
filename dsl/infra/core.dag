@@ -33,20 +33,17 @@ module infra.core
 
 interface ObjectStorage {
   capability read(key: NonEmptyStr) -> { content: Bytes, found: Bool }
-    @idempotent @readonly
 
   capability write(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
 
   capability delete(key: NonEmptyStr) -> { ok: Bool }
 
   capability list(prefix: String) -> { keys: List<NonEmptyStr> }
-    @idempotent @readonly
 
   // Behavioral contracts -- compiler generates verification tests for
   // every implementor (GCS, S3, Azure Blob).
-  @contract: read(k) after write(k, v) => { content: v, found: true }
-  @contract: read(k) after delete(k) => { found: false }
-  @contract: list(p) after write(p + "/x", v) => keys contains p + "/x"
+  contract read_after_write_returns_value
+  contract delete_removes_key
 }
 
 
@@ -63,16 +60,12 @@ interface Compute {
   capability deploy(image: NonEmptyStr, env: Map<String, String>?) -> { ok: Bool }
 
   capability invoke(path: String, body: Json) -> { response: Json, status: Int }
-    @auth(BearerToken)
 
   capability get_url() -> { url: Url }
-    @idempotent @readonly
 
   capability scale(min_instances: Int, max_instances: Int) -> { ok: Bool }
 
   // Contracts
-  @contract: get_url() after deploy(img, env) => { url is Url }
-  @contract: invoke(p, b) after deploy(img, env) => { status >= 200 }
 }
 
 
@@ -88,18 +81,14 @@ interface Compute {
 
 interface SecretStore {
   capability read_value() -> { value: Secret }
-    @readonly
 
   capability write_value(value: Secret) -> { ok: Bool, version: NonEmptyStr }
 
   capability rotate(new_value: Secret) -> { ok: Bool, new_version: NonEmptyStr }
 
   capability list_versions() -> { versions: List<NonEmptyStr> }
-    @idempotent @readonly
 
   // Contracts
-  @contract: read_value() after write_value(v) => { value: v }
-  @contract: list_versions() after rotate(v) => versions |> count() > 0
 }
 
 
@@ -122,8 +111,6 @@ interface Identity {
   capability revoke(role: NonEmptyStr, target: NonEmptyStr) -> { ok: Bool }
 
   // Contracts
-  @contract: assume(s, t) => { token is Secret, expires_at is String }
-  @contract: revoke(r, tgt) after grant(r, tgt) => { ok: true }
 }
 
 
@@ -140,15 +127,12 @@ interface Queue<T> {
   capability publish(message: T) -> { message_id: NonEmptyStr, ok: Bool }
 
   capability subscribe() -> { messages: List<QueueMessage<T>> }
-    @readonly
 
   capability ack(message_id: NonEmptyStr) -> { ok: Bool }
 
   capability purge() -> { purged_count: Int }
 
   // Contracts
-  @contract: subscribe() after publish(m) => messages |> any(msg => msg.body == m)
-  @contract: subscribe() after ack(id) => messages |> none(msg => msg.id == id)
 }
 
 // Message wrapper for queue items

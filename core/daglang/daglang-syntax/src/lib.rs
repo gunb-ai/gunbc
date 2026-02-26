@@ -14,7 +14,7 @@
 //! - `pattern` -- reusable DAG templates (compile-time expansion)
 //! - `service` -- external service declarations with operations
 //! - `resource` -- resource declarations with acquire/release/capability
-//! - `interface` -- abstract capability contracts with @contract annotations
+//! - `interface` -- abstract capability contracts with `contract` declarations
 //! - `pipeline` -- multi-stage pipeline declarations
 //! - `profile` -- deployment profile interface bindings
 //!
@@ -93,6 +93,8 @@ pub mod ast {
         EnvironmentDef(EnvironmentDef),
         ParamDecl(ParamDecl),
         DataDef(DataDef),
+        ExternFuncDecl(ExternFuncDecl),
+        ExternAssetDecl(ExternAssetDecl),
     }
 
     /// Module-level parameter: `param name: Type` or `param name: Type = default`
@@ -109,6 +111,21 @@ pub mod ast {
         pub name: String,
         pub ty: TypeExpr,
         pub value: Expr,
+    }
+
+    /// `extern func name(input1: Type1, input2: Type2) -> { output1: Type1, output2: Type2 }`
+    #[derive(Debug)]
+    pub struct ExternFuncDecl {
+        pub name: String,
+        pub inputs: Vec<Field>,
+        pub outputs: Vec<Field>,
+    }
+
+    /// `extern asset name: Type`
+    #[derive(Debug)]
+    pub struct ExternAssetDecl {
+        pub name: String,
+        pub ty: TypeExpr,
     }
 
     // ── Types ───────────────────────────────────────────────────────
@@ -135,7 +152,7 @@ pub mod ast {
         pub name: String,
         pub ty: TypeExpr,
         pub default: Option<Expr>,
-        pub annotations: Vec<Annotation>,
+        pub from_path: Option<String>,
     }
 
     #[derive(Debug, Clone)]
@@ -149,7 +166,8 @@ pub mod ast {
         Named(String),
         Generic(String, Vec<TypeExpr>),
         Optional(Box<TypeExpr>),
-        Annotated(Box<TypeExpr>, Vec<Annotation>),
+        /// Refined type: `Base where constraint1, constraint2`
+        Refined(Box<TypeExpr>, Vec<Refinement>),
         /// Anonymous record return type: `-> { field: Type, ... }`
         Record(Vec<Field>),
     }
@@ -175,8 +193,8 @@ pub mod ast {
         pub outputs: Vec<Field>,
         pub uses: Vec<UsesClause>,
         pub provides: Vec<ProvidesClause>,
-        pub annotations: Vec<Annotation>,
         pub body: FuncBody,
+        pub declared_outputs: Vec<String>,
     }
 
     /// Reusable DAG template: `pattern name(params) -> { outputs } uses ... provides ... { body }`
@@ -217,8 +235,8 @@ pub mod ast {
     pub struct ServiceDef {
         pub name: String,
         pub implements: Option<String>,
-        pub annotations: Vec<Annotation>,
         pub operations: Vec<OperationDef>,
+        pub config: ServiceConfig,
     }
 
     #[derive(Debug)]
@@ -226,7 +244,12 @@ pub mod ast {
         pub name: String,
         pub inputs: Vec<Field>,
         pub outputs: Vec<Field>,
-        pub annotations: Vec<Annotation>,
+        pub idempotent: bool,
+        pub readonly: bool,
+        pub hermetic: bool,
+        pub permissions: Vec<String>,
+        pub transport: Option<TransportBinding>,
+        pub mock_response: Vec<MockResponseDef>,
     }
 
     // ── Resources ───────────────────────────────────────────────────
@@ -247,7 +270,9 @@ pub mod ast {
         pub name: String,
         pub inputs: Vec<Field>,
         pub outputs: Vec<Field>,
-        pub annotations: Vec<Annotation>,
+        pub idempotent: bool,
+        pub readonly: bool,
+        pub mock_response: Vec<MockResponseDef>,
     }
 
     // ── Interfaces ──────────────────────────────────────────────────
@@ -257,7 +282,7 @@ pub mod ast {
         pub name: String,
         pub type_params: Vec<String>,
         pub capabilities: Vec<CapabilityDef>,
-        pub contracts: Vec<Annotation>,
+        pub contracts: Vec<ContractDef>,
     }
 
     // ── Pipelines ───────────────────────────────────────────────────
@@ -350,8 +375,8 @@ pub mod ast {
     ///
     /// ```dag
     /// test gist_snapshot_dryrun : cloud_env_fixture {
-    ///     @tier(Unit)
-    ///     @hermetic(true)
+    ///     tier: Unit
+    ///     hermetic
     ///
     ///     input render_snapshot.topology_json = "{}"
     ///
@@ -364,7 +389,6 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub struct TestDef {
         pub name: String,
-        pub annotations: Vec<Annotation>,
         /// Optional parent fixture name.
         pub fixture: Option<String>,
         /// Mock declarations local to this test.
@@ -373,6 +397,11 @@ pub mod ast {
         pub inputs: Vec<InputDecl>,
         /// Assertions on the DAG result.
         pub expects: Vec<ExpectStmt>,
+        pub tier: Option<String>,
+        pub hermetic: bool,
+        pub skip: bool,
+        pub auto_mock: bool,
+        pub mock_helpers: Option<String>,
     }
 
     /// A mock declaration: `mock <node_path>.<port> -> <value>`.
@@ -524,12 +553,58 @@ pub mod ast {
         Literal(Literal),
     }
 
-    // ── Annotations ─────────────────────────────────────────────────
+    // ── Typed syntax ────────────────────────────────────────────────
+
+    #[derive(Debug, Clone, Default)]
+    pub struct ServiceConfig {
+        pub endpoint: Option<String>,
+        pub auth: Option<String>,
+    }
 
     #[derive(Debug, Clone)]
-    pub struct Annotation {
-        pub name: String,
-        pub args: Vec<Expr>,
+    pub enum TransportBinding {
+        Rest {
+            method: String,
+            path: String,
+            body: Option<Expr>,
+            headers: Option<Expr>,
+        },
+        Shell {
+            argv: Vec<Expr>,
+        },
+        File {
+            op: String,
+            path: String,
+        },
+        Local,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct MockResponseDef {
+        pub status: Option<i64>,
+        pub body: Option<Expr>,
+        pub scenario: Option<String>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Refinement {
+        Pattern(String),
+        Range {
+            min: Option<Expr>,
+            max: Option<Expr>,
+        },
+        Brand(String),
+        NonEmpty,
+        Content(String),
+        Format(String),
+        Predicate(String),
+        FileTypes(Vec<String>),
+        RawBody,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ContractDef {
+        pub text: String,
     }
 
     // ── Bodies ───────────────────────────────────────────────────────
@@ -548,13 +623,22 @@ pub mod ast {
         pub lossy: bool,
     }
 
+    /// A `node` statement with optional guards: `node name [after a, when cond]: expr`
+    #[derive(Debug, Clone)]
+    pub struct NodeStmt {
+        pub name: String,
+        pub expr: Expr,
+        pub after: Vec<String>,
+        pub when_guard: Option<Expr>,
+    }
+
     /// Statement in a function body.
     #[derive(Debug, Clone)]
     pub enum Stmt {
         Let(String, Expr),
         Assign(String, Expr),
-        Annotation(Annotation),
         Expr(Expr),
         Return(Vec<(String, Expr)>),
+        Node(NodeStmt),
     }
 }

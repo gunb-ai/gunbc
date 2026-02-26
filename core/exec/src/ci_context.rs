@@ -33,6 +33,7 @@
 //! ci.error("Test failed", Some(("src/lib.rs", 42)));
 //! ```
 
+use crate::error::ExecError;
 use crate::execute::LogEntry;
 use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
 use gunbc_ir::transport::ci::{
@@ -277,7 +278,7 @@ impl ProgressObserver for CiContext {
         }
     }
 
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError) {
         self.error(&format!("Node '{}' failed: {}", node_id.0, error), None);
         if node_id.0 != "report" {
             self.end_group();
@@ -485,7 +486,7 @@ mod tests {
 
         let node = NodeId::from("test");
         ctx.on_node_start(&node);
-        ctx.on_node_failed(&node, "assertion failed");
+        ctx.on_node_failed(&node, &ExecError::new("assertion failed"));
 
         let output = get_output(&buffer);
         assert!(output.contains("=== test ==="));

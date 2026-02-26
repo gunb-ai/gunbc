@@ -14,35 +14,27 @@ import tools.codegen { codegen_ensure }
 
 pipeline deps {
 
-  stage compilation_ensure {
-    @file(WRITE, "target")
-    @tool(READ, "cargo")
-    _ = compilation_ensure()
+  stage compilation_ensure {    _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
-    @file(WRITE, "generated:cli")
     _ = codegen_ensure()
   }
 
   stage platform_env [after codegen_ensure] {}
 
   stage load_manifest [after platform_env] {
-    @file(READ, "workspace")
   }
 
   stage generate_scripts [after load_manifest] {}
 
-  stage execute_installs [after generate_scripts] {
-    @tool(WRITE, "package_manager")
-  }
+  stage execute_installs [after generate_scripts] {  }
 
   stage load_tool_registry [after codegen_ensure] {}
 
   stage render_deps_toml [after load_tool_registry] {}
 
   stage write_deps_toml [after render_deps_toml] {
-    @file(WRITE, "workspace")
   }
 
   stage report [after execute_installs, after write_deps_toml] {}

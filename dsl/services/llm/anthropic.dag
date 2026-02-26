@@ -6,8 +6,7 @@
 module services.llm.anthropic
 
 service llm.Anthropic {
-  @endpoint("https://api.anthropic.com")
-  @auth(Header("x-api-key"))
+  config { endpoint: "https://api.anthropic.com", auth: Header("x-api-key") }
 
   operation Messages {
     input {
@@ -18,23 +17,12 @@ service llm.Anthropic {
       system: String?
     }
     output {
-      content: String @json("content/0/text")
-      model: String @json("model")
-      stop_reason: String @json("stop_reason")
-      input_tokens: Int @json("usage/input_tokens")
-      output_tokens: Int @json("usage/output_tokens")
+      content: String from "content/0/text"
+      model: String from "model"
+      stop_reason: String from "stop_reason"
+      input_tokens: Int from "usage/input_tokens"
+      output_tokens: Int from "usage/output_tokens"
     }
-    @rest(POST, "/v1/messages")
-    @headers({ "anthropic-version": "2023-06-01" })
-    @permissions(["messages"])
-    @mock_response(
-      status: 200,
-      body: {
-        "content": [{"type": "text", "text": "Hello"}],
-        "model": "claude-sonnet-4-20250514",
-        "stop_reason": "end_turn",
-        "usage": {"input_tokens": 10, "output_tokens": 5}
-      }
-    )
+    transport rest { method: POST, path: "/v1/messages" }
   }
 }

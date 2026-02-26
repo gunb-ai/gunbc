@@ -14,7 +14,7 @@ service gcloud.Auth {
   operation Login {
     input { update_adc: Bool = true }
     output { ok: Bool }
-    @shell(["gcloud", "auth", "login", "--update-adc"])
+    transport shell { argv: ["gcloud", "auth", "login", "--update-adc"] }
   }
 
   operation ReadADC {
@@ -24,14 +24,13 @@ service gcloud.Auth {
       client_secret: Secret
       refresh_token: Secret
     }
-    @file(READ, "{path}")
-    @hermetic @readonly
     // Parses JSON: extracts client_id, client_secret, refresh_token
+    transport file { op: READ, path: "\{path\}" }
   }
 }
 
 service oauth2.Google {
-  @endpoint("https://oauth2.googleapis.com")
+  config { endpoint: "https://oauth2.googleapis.com" }
 
   operation Refresh {
     input {
@@ -40,11 +39,10 @@ service oauth2.Google {
       refresh_token: Secret
     }
     output {
-      access_token: Secret @json("access_token")
-      expires_in: Int @json("expires_in")
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
     }
-    @rest(POST, "/token")
-    @idempotent
+    transport rest { method: POST, path: "/token" }
   }
 }
 
@@ -52,8 +50,7 @@ service shell.Find {
   operation ListDirs {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
     output { dirs: List<FilePath> }
-    @shell(["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"])
-    @hermetic @readonly
+    transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
   }
 }
 
@@ -62,8 +59,7 @@ service shell.Codegen {
     input {}
     output { needed: Bool }
     // Checks if codegen output files exist / are stale
-    @shell(["test", "-f", "target/codegen/.stamp"])
-    @hermetic @readonly
+    transport shell { argv: ["test", "-f", "target/codegen/.stamp"] }
   }
 
   operation Run {
@@ -73,8 +69,7 @@ service shell.Codegen {
       stdout: String
       stderr: String
     }
-    @shell(["cargo", "run", "-p", "gunbc-dag", "--bin", "gunbc-codegen", "--", "codegen"])
-    @hermetic
+    transport shell { argv: ["cargo", "run", "--bin", "gunbc-codegen", "--", "--mode=ensure"] }
   }
 }
 
@@ -82,8 +77,7 @@ service rustup.Component {
   operation Add {
     input { component: NonEmptyStr }
     output { success: Bool }
-    @shell(["rustup", "component", "add", "{component}"])
-    @hermetic
+    transport shell { argv: ["rustup", "component", "add", "{component}"] }
   }
 }
 
@@ -91,8 +85,7 @@ service shell.Env {
   operation Get {
     input { name: NonEmptyStr }
     output { value: String? }
-    @shell(["printenv", "{name}"])
-    @hermetic @readonly
+    transport shell { argv: ["printenv", "{name}"] }
   }
 }
 
@@ -100,8 +93,7 @@ service shell.OAuth2 {
   operation RefreshToken {
     input { refresh_token: Secret }
     output { access_token: Secret, valid: Bool }
-    @rest(POST, "/token")
-    @hermetic
+    transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token={refresh_token}"] }
   }
 }
 
@@ -109,8 +101,7 @@ service shell.GCloud {
   operation AuthPrintAccessToken {
     input {}
     output { access_token: Secret }
-    @shell(["gcloud", "auth", "print-access-token"])
-    @hermetic @readonly
+    transport shell { argv: ["gcloud", "auth", "print-access-token"] }
   }
 
   operation SecretManagerAccessVersion {
@@ -120,16 +111,7 @@ service shell.GCloud {
       version: NonEmptyStr = "latest"
     }
     output { secret_value: Secret }
-    @shell([
-      "gcloud",
-      "secrets",
-      "versions",
-      "access",
-      "{version}",
-      "--secret={secret_name}",
-      "--project={project_id}"
-    ])
-    @hermetic @readonly
+    transport shell { argv: ["gcloud", "secrets", "versions", "access", "{version}", "--secret={secret_name}", "--project={project_id}"] }
   }
 }
 
@@ -137,7 +119,6 @@ service shell.Which {
   operation Check {
     input { command: NonEmptyStr }
     output { exists: Bool, path: FilePath? }
-    @shell(["which", "{command}"])
-    @hermetic @readonly
+    transport shell { argv: ["which", "{command}"] }
   }
 }

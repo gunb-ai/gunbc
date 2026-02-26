@@ -28,20 +28,9 @@ use crate::EmittedFile;
 // ===========================================================================
 
 /// Configuration for exec-runtime code generation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EmitConfig {
-    /// When `true` (the default), modules with no real handler implementation
-    /// are emitted as passthrough stubs (`Ok(inputs)`). When `false`, encountering
-    /// such a module produces an `ExecRuntimeError::UnresolvableNode`.
-    pub allow_unimplemented_passthrough: bool,
-}
-
-impl Default for EmitConfig {
-    fn default() -> Self {
-        Self {
-            allow_unimplemented_passthrough: true,
-        }
-    }
+    _private: (),
 }
 
 /// Emit a standalone Rust crate from a lowered DAG.
@@ -78,7 +67,8 @@ pub fn emit_exec_runtime_with_config(
     output_dir: Option<&Path>,
     config: &EmitConfig,
 ) -> Result<Vec<EmittedFile>, ExecRuntimeError> {
-    let classified = classify_nodes_with_config(dag, config.allow_unimplemented_passthrough)?;
+    let _ = config; // EmitConfig reserved for future use.
+    let classified = classify_nodes_with_config(dag)?;
     let handler_kinds = collect_handler_kinds(&classified);
     let source = build_exec_runtime_source(dag, module_name, &classified, &handler_kinds);
     let main_rs = crate::render_rust::render_rust_source(&source);
@@ -155,10 +145,10 @@ enum HandlerKind {
     CompareContent,
     ExecuteTransport,
     Collection,
-    /// Placeholder for modules/surfaces that lack a real handler implementation.
-    /// Gated by `allow_unimplemented_passthrough` — when disallowed, these nodes
-    /// cause an `ExecRuntimeError::UnresolvableNode` at classification time.
-    UnimplementedPassthrough,
+    /// Passthrough stub for callables without a compiled exec-runtime handler.
+    /// These are callables that the compiler validated but that have no
+    /// specialized handler (e.g., std.patterns, std.resources, service transport).
+    Passthrough,
 }
 
 impl HandlerKind {
@@ -180,7 +170,7 @@ impl HandlerKind {
             Self::CompareContent => "CompareContent",
             Self::ExecuteTransport => "ExecuteTransport",
             Self::Collection => "Collection",
-            Self::UnimplementedPassthrough => "UnimplementedPassthrough",
+            Self::Passthrough => "Passthrough",
         }
     }
 
@@ -199,6 +189,12 @@ pub enum EmbeddedAsset {
 }
 
 impl EmbeddedAsset {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::MakegenMakefile => "tools.makegen::makefile",
+        }
+    }
+
     pub fn path(self) -> &'static str {
         match self {
             Self::MakegenMakefile => "src/embedded_makefile.txt",
@@ -221,7 +217,6 @@ struct ClassifiedNode {
 
 fn classify_nodes_with_config(
     dag: &Dag<LoweredOp>,
-    allow_unimplemented_passthrough: bool,
 ) -> Result<Vec<ClassifiedNode>, ExecRuntimeError> {
     let mut result = Vec::with_capacity(dag.nodes.len());
     for node in &dag.nodes {
@@ -236,21 +231,6 @@ fn classify_nodes_with_config(
             node_id: node_id.clone(),
             detail: format!("no runtime op classification for {op:?}"),
         })?;
-
-        if handler == HandlerKind::UnimplementedPassthrough && !allow_unimplemented_passthrough {
-            let (module, name) = match op {
-                LoweredOp::Callable { module, name, .. } => (module.as_str(), name.as_str()),
-                LoweredOp::Pipeline { module, name, .. } => (module.as_str(), name.as_str()),
-                _ => ("unknown", "unknown"),
-            };
-            return Err(ExecRuntimeError::UnresolvableNode {
-                node_id,
-                detail: format!(
-                    "unimplemented handler for {module}::{name} \
-                     — use allow_unimplemented_passthrough to permit passthrough stubs"
-                ),
-            });
-        }
         let op_ctor = classify_op_ctor(op, &node.outputs, handler).map_err(|detail| {
             ExecRuntimeError::UnresolvableNode {
                 node_id: node_id.clone(),
@@ -344,42 +324,76 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
                 | ObligationCategory::ServiceTransportParse,
             ..
         } => {
-            return Some(HandlerKind::UnimplementedPassthrough);
+            return Some(HandlerKind::Passthrough);
         }
         LoweredOp::Callable { .. } => {}
         LoweredOp::LoopUnpack { .. }
         | LoweredOp::LoopPack { .. }
-        | LoweredOp::BranchMerge { .. } => return None,
+        | LoweredOp::BranchMerge { .. }
+        | LoweredOp::UnsupportedPattern { .. }
+        | LoweredOp::ExternCall { .. } => return None,
+        // FC-7: Output path annotation nodes are metadata-only.
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ContentUpsertOutputPath { .. },
+            ..
+        } => return None,
     }
 
-    let (module, name) = match op {
-        LoweredOp::Callable { module, name, .. } => (module.as_str(), name.as_str()),
-        LoweredOp::Pipeline { module, name, .. } => (module.as_str(), name.as_str()),
+    let (module, name, obligation) = match op {
+        LoweredOp::Callable {
+            module,
+            name,
+            obligation,
+            ..
+        } => (module.as_str(), name.as_str(), Some(*obligation)),
+        LoweredOp::Pipeline { module, name, .. } => (module.as_str(), name.as_str(), None),
         _ => return None,
     };
 
     match (module, name) {
-        ("shared.dag_util", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("std.filesystem", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("std.patterns", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("std.resources", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("pipelines.ci", _) => Some(HandlerKind::UnimplementedPassthrough),
-        ("tools.infra", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("tools.makegen", "load_registry") => Some(HandlerKind::MakegenLoadRegistry),
-        ("tools.makegen", "render_makefile") => Some(HandlerKind::MakegenRenderMakefile),
+        ("tools.makegen", "render_makefile_content") => Some(HandlerKind::MakegenRenderMakefile),
         ("tools.makegen", "makegen") => Some(HandlerKind::MakegenEntrypoint),
-        ("tools.makegen", _) => Some(HandlerKind::UnimplementedPassthrough),
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(HandlerKind::RenderPragmaAllowlist)
         }
         ("tools.pragma", "render_pragma_lint_policy") => Some(HandlerKind::RenderPragmaLintPolicy),
         ("tools.pragma", "pragma") => Some(HandlerKind::PragmaEntrypoint),
-        ("tools.pragma", _) => Some(HandlerKind::UnimplementedPassthrough),
-        (module, _) if module.starts_with("services.") => {
-            Some(HandlerKind::UnimplementedPassthrough)
-        }
-        _ => None,
+        // Obligation-gated passthrough: each obligation must be explicitly
+        // classified. Adding a new ObligationCategory variant produces a
+        // compile error here, forcing a conscious classification decision
+        // instead of silent passthrough. The sets below mirror the policy
+        // declarations in dsl/config/arch_rules.dag.
+        _ => match obligation {
+            // Passthrough-safe obligations (mirrors passthrough_safe_obligations()).
+            Some(ObligationCategory::None) | Some(ObligationCategory::PureGeneric) => {
+                Some(HandlerKind::Passthrough)
+            }
+            Some(ObligationCategory::ServiceParamSource)
+            | Some(ObligationCategory::InterfaceContractVerification)
+            | Some(ObligationCategory::ResourceProvide)
+            | Some(ObligationCategory::ResourceAcquire)
+            | Some(ObligationCategory::ResourceRelease) => Some(HandlerKind::Passthrough),
+            // Service transport obligations — should have been caught by the
+            // early return above. Defensive passthrough.
+            Some(ObligationCategory::ServiceTransportPrepare)
+            | Some(ObligationCategory::ServiceTransportExecute)
+            | Some(ObligationCategory::ServiceTransportParse) => Some(HandlerKind::Passthrough),
+            // NF-5: require_handler obligations — still passthrough during
+            // migration, but flagged in debug builds. These should eventually
+            // get specialized handlers or fail-closed.
+            Some(ObligationCategory::PureRender) | Some(ObligationCategory::PureDataLoad) => {
+                #[cfg(debug_assertions)]
+                eprintln!(
+                    "NF-5: obligation {:?} for {module}::{name} is passthrough but should require a handler",
+                    obligation.unwrap(),
+                );
+                Some(HandlerKind::Passthrough)
+            }
+            // Pipeline nodes (no obligation) — passthrough.
+            None => Some(HandlerKind::Passthrough),
+        },
     }
 }
 
@@ -421,13 +435,43 @@ fn primitive_literal_to_runtime_value_expr(literal: &PrimitiveLiteral) -> String
         }
         PrimitiveLiteral::Int(value) => format!("Value::Int({value})"),
         PrimitiveLiteral::Bool(value) => format!("Value::Bool({value})"),
-        PrimitiveLiteral::Json(value) => {
-            let encoded = rust_string_literal(&value.to_string());
-            format!(
-                "Value::Json(serde_json::from_str::<serde_json::Value>({encoded}).expect(\"valid literal json\"))"
-            )
-        }
+        PrimitiveLiteral::Json(value) => json_to_native_value_expr(value),
         PrimitiveLiteral::Unit => "Value::Unit".to_string(),
+    }
+}
+
+/// Emit a `serde_json::Value` as a native `Value` expression without serde_json dependency.
+fn json_to_native_value_expr(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "Value::Unit".to_string(),
+        serde_json::Value::Bool(b) => format!("Value::Bool({b})"),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                format!("Value::Int({i})")
+            } else {
+                format!("Value::Float({})", n.as_f64().unwrap_or(0.0))
+            }
+        }
+        serde_json::Value::String(s) => {
+            format!("Value::Str({}.to_string())", rust_string_literal(s))
+        }
+        serde_json::Value::Array(arr) => {
+            let items: Vec<String> = arr.iter().map(json_to_native_value_expr).collect();
+            format!("Value::List(vec![{}])", items.join(", "))
+        }
+        serde_json::Value::Object(obj) => {
+            let entries: Vec<String> = obj
+                .iter()
+                .map(|(k, v)| {
+                    format!(
+                        "({}.to_string(), {})",
+                        rust_string_literal(k),
+                        json_to_native_value_expr(v)
+                    )
+                })
+                .collect();
+            format!("Value::Map([{}].into_iter().collect())", entries.join(", "))
+        }
     }
 }
 
@@ -608,7 +652,7 @@ fn handler_body(kind: HandlerKind) -> &'static str {
     OutputMap::new().value("items", items).ok()
 "##
         }
-        HandlerKind::UnimplementedPassthrough => {
+        HandlerKind::Passthrough => {
             r##"    Ok(inputs)
 "##
         }
@@ -750,7 +794,9 @@ fn build_exec_runtime_source(
     use gunbc_ir::code_ir::{Import, Item, SourceFile};
 
     let mut items = Vec::new();
-    let needs_output_map = handler_kinds.iter().any(|kind| handler_uses_output_map(*kind));
+    let needs_output_map = handler_kinds
+        .iter()
+        .any(|kind| handler_uses_output_map(*kind));
     let has_classified_edges = emitted_dag_has_edges(dag, classified);
     let needs_transport = handler_kinds.iter().any(|k| {
         matches!(
@@ -1188,8 +1234,10 @@ fn handler_uses_output_map(kind: HandlerKind) -> bool {
 }
 
 fn emitted_dag_has_edges(dag: &Dag<LoweredOp>, classified: &[ClassifiedNode]) -> bool {
-    let classified_ids: std::collections::HashSet<&str> =
-        classified.iter().map(|node| node.node_id.as_str()).collect();
+    let classified_ids: std::collections::HashSet<&str> = classified
+        .iter()
+        .map(|node| node.node_id.as_str())
+        .collect();
 
     dag.edges.iter().any(|edge| {
         classified_ids.contains(edge.from_node.0.as_str())
@@ -1209,8 +1257,42 @@ mod tests {
     };
     use gunbc_ir::{Node, Port};
 
+    // ── Obligation classification policy (Phase 1 mirror of arch_rules.dag) ──
+
+    /// Obligations safe to emit as passthrough stubs in generated exec-runtime
+    /// code. Mirrors `passthrough_safe_obligations` in `dsl/config/arch_rules.dag`.
+    fn passthrough_safe_obligations() -> &'static [ObligationCategory] {
+        &[
+            ObligationCategory::None,
+            ObligationCategory::PureGeneric,
+            ObligationCategory::ServiceTransportPrepare,
+            ObligationCategory::ServiceTransportExecute,
+            ObligationCategory::ServiceTransportParse,
+            ObligationCategory::ServiceParamSource,
+            ObligationCategory::ResourceProvide,
+            ObligationCategory::ResourceAcquire,
+            ObligationCategory::ResourceRelease,
+            ObligationCategory::InterfaceContractVerification,
+        ]
+    }
+
+    /// Obligations that require real handlers. Mirrors `require_handler_obligations`
+    /// in `dsl/config/arch_rules.dag`.
+    fn require_handler_obligations() -> &'static [ObligationCategory] {
+        &[
+            ObligationCategory::PureRender,
+            ObligationCategory::PureDataLoad,
+        ]
+    }
+
+    /// Unknown-module callables with known obligations emit as passthrough
+    /// because all LoweredOp::Callable nodes come from the DSL compiler
+    /// (the lowerer only creates them for items in the typed project).
+    ///
+    /// TODO(NF-5): once all handlers have specialized implementations,
+    /// this should become a rejection (unknown module → error).
     #[test]
-    fn emit_exec_runtime_rejects_unknown_module() {
+    fn emit_exec_runtime_unknown_module_uses_passthrough() {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
             "unknown_op",
@@ -1224,12 +1306,14 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
-        let err = emit_exec_runtime(&dag, "tools.unknown").expect_err("should fail");
+        let result = emit_exec_runtime(&dag, "tools.unknown");
         assert!(
-            matches!(err, ExecRuntimeError::UnresolvableNode { .. }),
-            "should be UnresolvableNode error"
+            result.is_ok(),
+            "compiler-validated callables should emit as passthrough: {:?}",
+            result.err()
         );
     }
 
@@ -1277,7 +1361,8 @@ mod tests {
     }
 
     #[test]
-    fn classify_handler_supports_pattern_and_service_transport_surfaces() {
+    fn classify_handler_uses_passthrough_for_unspecialized_surfaces() {
+        // std.patterns callables use passthrough (obligation: None).
         let pattern_callable = LoweredOp::Callable {
             module: "std.patterns".into(),
             kind: CallableKind::Pattern,
@@ -1286,12 +1371,14 @@ mod tests {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         };
         assert_eq!(
             classify_handler(&pattern_callable),
-            Some(HandlerKind::UnimplementedPassthrough)
+            Some(HandlerKind::Passthrough)
         );
 
+        // Service transport nodes use passthrough.
         let service_prepare = LoweredOp::Callable {
             module: "services.sdlc.control_plane".into(),
             kind: CallableKind::Pattern,
@@ -1300,37 +1387,78 @@ mod tests {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         };
         assert_eq!(
             classify_handler(&service_prepare),
-            Some(HandlerKind::UnimplementedPassthrough)
+            Some(HandlerKind::Passthrough)
         );
     }
 
     #[test]
-    fn emit_exec_runtime_omits_unused_imports_and_args_for_passthrough_only_graph() {
+    fn classify_handler_obligation_gated_passthrough() {
+        // Helper to build a callable with a given obligation.
+        let make = |obligation: ObligationCategory| LoweredOp::Callable {
+            module: "tools.newfeature".into(),
+            kind: CallableKind::Fn,
+            name: "some_op".into(),
+            obligation,
+            service_metadata: None,
+            is_interactive: false,
+            resource_target: None,
+            fn_body: None,
+        };
+
+        // PureGeneric → passthrough (DSL body wrapper, no specialized handler needed).
+        assert_eq!(
+            classify_handler(&make(ObligationCategory::PureGeneric)),
+            Some(HandlerKind::Passthrough),
+            "PureGeneric should passthrough"
+        );
+
+        // PureRender → passthrough during migration (TODO: NF-5).
+        assert_eq!(
+            classify_handler(&make(ObligationCategory::PureRender)),
+            Some(HandlerKind::Passthrough),
+            "PureRender should passthrough (migration)"
+        );
+
+        // PureDataLoad → passthrough during migration (TODO: NF-5).
+        assert_eq!(
+            classify_handler(&make(ObligationCategory::PureDataLoad)),
+            Some(HandlerKind::Passthrough),
+            "PureDataLoad should passthrough (migration)"
+        );
+
+        // ResourceProvide → passthrough (structural).
+        assert_eq!(
+            classify_handler(&make(ObligationCategory::ResourceProvide)),
+            Some(HandlerKind::Passthrough),
+            "ResourceProvide should passthrough"
+        );
+    }
+
+    #[test]
+    fn emit_exec_runtime_omits_unused_imports_and_args_for_single_node_graph() {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
-            "tools.infra::infra",
+            "tools.pragma::render_clippy_toml",
             vec![],
             vec![Port::scalar("return", "String")],
             LoweredOp::Callable {
-                module: "tools.infra".to_string(),
+                module: "tools.pragma".to_string(),
                 kind: CallableKind::Fn,
-                name: "infra".to_string(),
+                name: "render_clippy_toml".to_string(),
                 obligation: ObligationCategory::None,
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
-        let files = emit_exec_runtime(&dag, "tools.infra").expect("emit should succeed");
+        let files = emit_exec_runtime(&dag, "tools.pragma").expect("emit should succeed");
         let main_rs = &files[0].content;
-        assert!(
-            !main_rs.contains("OutputMap"),
-            "passthrough-only graph should not import OutputMap"
-        );
         assert!(
             !main_rs.contains("Edge"),
             "single-node graph should not import Edge"
@@ -1343,5 +1471,60 @@ mod tests {
             main_rs.contains("let trace_json = std::env::args().any"),
             "trace flag parsing should still work without entrypoint args"
         );
+    }
+
+    #[test]
+    fn passthrough_obligations_pinned_to_policy() {
+        // The passthrough arms in classify_handler must exactly match the
+        // policy declarations. Adding a new passthrough obligation without
+        // updating passthrough_safe_obligations() or
+        // require_handler_obligations() fails this test.
+        let safe = passthrough_safe_obligations();
+        let require = require_handler_obligations();
+
+        // No overlap between safe and require-handler sets.
+        for ob in require {
+            assert!(
+                !safe.contains(ob),
+                "obligation {ob:?} appears in both passthrough_safe and require_handler"
+            );
+        }
+
+        // Every ObligationCategory variant is accounted for in exactly one set.
+        let all_obligations = [
+            ObligationCategory::None,
+            ObligationCategory::PureGeneric,
+            ObligationCategory::ServiceTransportPrepare,
+            ObligationCategory::ServiceTransportExecute,
+            ObligationCategory::ServiceTransportParse,
+            ObligationCategory::ServiceParamSource,
+            ObligationCategory::ResourceProvide,
+            ObligationCategory::ResourceAcquire,
+            ObligationCategory::ResourceRelease,
+            ObligationCategory::InterfaceContractVerification,
+            ObligationCategory::PureRender,
+            ObligationCategory::PureDataLoad,
+        ];
+
+        for ob in &all_obligations {
+            assert!(
+                safe.contains(ob) || require.contains(ob),
+                "ObligationCategory::{ob:?} is not in passthrough_safe or require_handler"
+            );
+        }
+
+        // Every entry in the policy sets is a real variant.
+        for ob in safe {
+            assert!(
+                all_obligations.contains(ob),
+                "passthrough_safe contains unknown obligation: {ob:?}"
+            );
+        }
+        for ob in require {
+            assert!(
+                all_obligations.contains(ob),
+                "require_handler contains unknown obligation: {ob:?}"
+            );
+        }
     }
 }

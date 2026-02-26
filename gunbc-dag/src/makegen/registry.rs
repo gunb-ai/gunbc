@@ -1,7 +1,7 @@
 //! Tool registry for makegen.
 //!
-//! Tool targets are derived from the codegen registry (`derive_tool_defs()`) — adding
-//! a tool with `.invocation()` there automatically gives it a Makefile target.
+//! Tool targets are derived from DSL entrypoint inference (`discover_tool_defs_from_dsl()`)
+//! — adding a tool with `.invocation()` automatically gives it a Makefile target.
 //! Only tools that can't be in codegen (like `ci`, which is the bootstrap tool)
 //! are registered manually here.
 //!
@@ -162,8 +162,8 @@ impl BuildConfig {
             build_system: BuildSystem::Cargo,
             use_dag_entrypoints: false,
             warnings: w,
-            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
-                .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
                 .warnings(w)),
             codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone())).warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
@@ -234,7 +234,6 @@ impl BuildConfig {
         config.check = sh(&["buck2", "build", "//..."]);
         config
     }
-
 }
 
 /// Get the default build config (cargo-based).
@@ -581,8 +580,12 @@ impl WorkflowSpec {
 }
 
 fn tool_dependency_targets(tool: &ToolInfo, config: &BuildConfig) -> Vec<String> {
-    let _ = (tool, config);
-    Vec::new()
+    let _ = config;
+    let mut deps = Vec::new();
+    if tool.needs_generated_cli {
+        deps.push("ensure-codegen".to_string());
+    }
+    deps
 }
 
 // ============================================================================
@@ -1248,7 +1251,7 @@ impl ToolRegistry {
 
     /// Build the default registry with all known gunbc tools.
     ///
-    /// Tool targets are derived from the codegen registry's `derive_tool_defs()`.
+    /// Tool targets are derived from DSL entrypoint inference (`discover_tool_defs_from_dsl()`).
     /// Tools with a `CargoInvocation` set automatically get Makefile targets.
     /// Entrypoints with `make_var` set become Make variables.
     ///
@@ -1256,6 +1259,9 @@ impl ToolRegistry {
     /// registry with `.invocation()` is sufficient for it to appear in the
     /// Makefile. Only tools with handwritten binaries that are intentionally
     /// outside codegen discovery are added manually here.
+    ///
+    /// Tools whose `short_name` collides with a core workflow name are
+    /// filtered out to prevent duplicate Makefile targets.
     pub fn default_registry() -> Self {
         let mut registry = Self {
             core_workflows: default_core_workflows(),
@@ -1263,9 +1269,20 @@ impl ToolRegistry {
             meta_targets: default_meta_targets(),
         };
 
+        // Collect core workflow names for dedup filtering.
+        let core_names: BTreeSet<String> = registry
+            .core_workflows
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
+
         // Derive tool targets from DSL entrypoint inference (single source of truth).
+        // Skip tools whose short_name collides with a core workflow name.
         for tool_def in crate::dsl_registry::discover_tool_defs_from_dsl() {
             if let Some(tool_info) = ToolInfo::from_tool_def(&tool_def) {
+                if core_names.contains(&tool_info.short_name) {
+                    continue;
+                }
                 registry.register(tool_info);
             }
         }
@@ -1273,8 +1290,19 @@ impl ToolRegistry {
         let tool_modules = discover_dsl_tool_modules();
         let pipeline_modules = discover_dsl_pipeline_modules();
         validate_required_manual_tool_modules(&tool_modules, &pipeline_modules);
-        for tool in manual_workspace_tools_from_dsl_modules(&tool_modules, &pipeline_modules) {
-            registry.register_if_missing(tool);
+        for manual_tool in manual_workspace_tools_from_dsl_modules(&tool_modules, &pipeline_modules)
+        {
+            // Manual tools override DSL-discovered versions (e.g., to set
+            // needs_generated_cli = false for hand-written binaries).
+            if let Some(existing) = registry
+                .tools
+                .iter_mut()
+                .find(|t| t.short_name == manual_tool.short_name)
+            {
+                existing.needs_generated_cli = manual_tool.needs_generated_cli;
+            } else {
+                registry.register(manual_tool);
+            }
         }
 
         // Enrich tools with live-secret requirements from DagSpec registrations.
@@ -1954,10 +1982,19 @@ mod tests {
     fn test_registry_derived_from_dsl() {
         let registry = ToolRegistry::default_registry();
         let dsl_tools = crate::dsl_registry::discover_tool_defs_from_dsl();
+        let core_names: BTreeSet<String> = registry
+            .core_workflows
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
 
         // Every DSL tool with an invocation must appear in the makegen registry
+        // (unless its name collides with a core workflow).
         for tool_def in &dsl_tools {
             if tool_def.invocation.is_some() {
+                if core_names.contains(tool_def.meta.tool_name.as_ref()) {
+                    continue;
+                }
                 let found = registry
                     .tools
                     .iter()
@@ -1975,9 +2012,18 @@ mod tests {
     fn test_registry_entrypoints_match_dsl() {
         let registry = ToolRegistry::default_registry();
         let dsl_tools = crate::dsl_registry::discover_tool_defs_from_dsl();
+        let core_names: BTreeSet<String> = registry
+            .core_workflows
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
 
         for tool_def in &dsl_tools {
             if tool_def.invocation.is_none() {
+                continue;
+            }
+            // Skip tools filtered out by core workflow collision.
+            if core_names.contains(tool_def.meta.tool_name.as_ref()) {
                 continue;
             }
             let tool_info = registry
@@ -2003,9 +2049,7 @@ mod tests {
             );
 
             // Verify CLI flags match generated CLI flag names
-            for (info_param, dsl_ep) in
-                tool_info.entrypoints.iter().zip(dsl_make_params.iter())
-            {
+            for (info_param, dsl_ep) in tool_info.entrypoints.iter().zip(dsl_make_params.iter()) {
                 assert_eq!(
                     info_param.cli_flag,
                     format!("--{}", dsl_ep.flag_name()),
@@ -2042,18 +2086,122 @@ mod tests {
     }
 
     #[test]
-    fn test_all_tools_have_no_make_deps() {
+    fn test_tool_deps_match_generated_cli_flag() {
         let registry = ToolRegistry::default_registry();
         let config = BuildConfig::cargo();
         for tool in &registry.tools {
             let deps = tool_dependency_targets(tool, &config);
-            assert!(
-                deps.is_empty(),
-                "tool '{}' should have no Make prerequisites, found: {:?}",
-                tool.short_name,
-                deps
-            );
+            if tool.needs_generated_cli {
+                assert_eq!(
+                    deps,
+                    vec!["ensure-codegen"],
+                    "tool '{}' (needs_generated_cli) should depend on ensure-codegen",
+                    tool.short_name,
+                );
+            } else {
+                assert!(
+                    deps.is_empty(),
+                    "manual tool '{}' should have no Make prerequisites, found: {:?}",
+                    tool.short_name,
+                    deps
+                );
+            }
         }
     }
 
+    // ========================================================================
+    // Contract Tests — DSL declarations match Rust sources
+    // ========================================================================
+
+    /// Extract `name` string fields from a DSL `data` list of records.
+    ///
+    /// Given an AST `Expr::List([Expr::Record(_, fields), ...])`, returns
+    /// the value of the `"name"` field from each record.
+    fn extract_record_names(expr: &daglang_syntax::ast::Expr) -> Vec<String> {
+        use daglang_syntax::ast::{Expr, Literal};
+        let Expr::List(items) = expr else {
+            panic!("expected List expression for data declaration");
+        };
+        items
+            .iter()
+            .map(|item| {
+                let Expr::Record(_, fields) = item else {
+                    panic!("expected Record in list, got: {item:?}");
+                };
+                fields
+                    .iter()
+                    .find(|(k, _)| k == "name")
+                    .map(|(_, v)| match v {
+                        Expr::Literal(Literal::String(s)) => s.clone(),
+                        other => panic!("expected string for 'name' field, got: {other:?}"),
+                    })
+                    .expect("record missing 'name' field")
+            })
+            .collect()
+    }
+
+    #[test]
+    #[allow(clippy::disallowed_methods)]
+    fn test_dsl_build_targets_match_rust_declarations() {
+        use daglang_syntax::ast::Item;
+
+        let dsl_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl/config/build_targets.dag");
+        let source = std::fs::read_to_string(&dsl_path).expect("failed to read build_targets.dag");
+        let ast = daglang_syntax::parser::parse(&source)
+            .unwrap_or_else(|errors| panic!("failed to parse build_targets.dag: {errors:?}"));
+
+        // Extract data declarations by name.
+        let mut dsl_core_names: Option<Vec<String>> = None;
+        let mut dsl_meta_names: Option<Vec<String>> = None;
+        for item in &ast.items {
+            if let Item::DataDef(def) = &item.node {
+                match def.name.as_str() {
+                    "core_workflows" => dsl_core_names = Some(extract_record_names(&def.value)),
+                    "meta_targets" => dsl_meta_names = Some(extract_record_names(&def.value)),
+                    _ => {}
+                }
+            }
+        }
+        let dsl_core_names = dsl_core_names.expect("missing 'core_workflows' data in DSL");
+        let dsl_meta_names = dsl_meta_names.expect("missing 'meta_targets' data in DSL");
+
+        // Compare against Rust sources.
+        let rust_core_names: Vec<String> = default_core_workflows()
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
+        let rust_meta_names: Vec<String> = default_meta_targets()
+            .iter()
+            .map(|m| m.name.clone())
+            .collect();
+
+        assert_eq!(
+            dsl_core_names, rust_core_names,
+            "DSL core_workflows names diverged from Rust default_core_workflows()"
+        );
+        assert_eq!(
+            dsl_meta_names, rust_meta_names,
+            "DSL meta_targets names diverged from Rust default_meta_targets()"
+        );
+    }
+
+    #[test]
+    fn test_no_tool_collides_with_core_workflow_name() {
+        let registry = ToolRegistry::default_registry();
+        let core_names: BTreeSet<String> = registry
+            .core_workflows
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
+
+        for tool in &registry.tools {
+            assert!(
+                !core_names.contains(&tool.short_name),
+                "tool '{}' collides with a core workflow name — \
+                 default_registry() should have filtered it out",
+                tool.short_name
+            );
+        }
+    }
 }

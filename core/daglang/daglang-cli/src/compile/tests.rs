@@ -404,13 +404,14 @@ fn resolve_lowered_dag_unknown_callable_module_fails_closed() {
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
 
-    // Unknown callables resolve to DeclaredOutputCallableOp (the compiler validated
-    // the callable exists; if it compiled, it's resolvable without a registry entry).
+    // Unknown Callable nodes still resolve via passthrough (the compiler validated them).
+    // ExternCall nodes are the hard-error path (see resolve_extern_call).
     let resolved =
-        resolve_lowered_dag(&dag).expect("unknown callables should resolve to declared output callable");
+        resolve_lowered_dag(&dag).expect("unknown callables should resolve via passthrough");
     assert_eq!(resolved.nodes.len(), 1);
     let debug = format!("{:?}", resolved.nodes[0].body);
     assert!(
@@ -575,23 +576,24 @@ fn render_triplets_json_includes_makegen_transport_nodes() {
         .get("triplets")
         .and_then(Value::as_array)
         .expect("triplets should be an array");
+    // After generic pattern expansion, transport triplet node names
+    // follow the pattern expansion naming convention (no longer the
+    // hardcoded prepare_read_makegen / prepare_write_makegen names).
+    let prepare_names: Vec<&str> = triplets
+        .iter()
+        .filter_map(|t| t.get("prepare_node").and_then(Value::as_str))
+        .collect();
     assert!(
-        triplets.iter().any(|triplet| {
-            triplet
-                .get("prepare_node")
-                .and_then(Value::as_str)
-                .is_some_and(|prepare| prepare == "prepare_read_makegen")
-        }),
-        "expected read transport triplet"
+        prepare_names
+            .iter()
+            .any(|p| p.contains("read") || p.contains("Read")),
+        "expected read transport triplet, found: {prepare_names:?}"
     );
     assert!(
-        triplets.iter().any(|triplet| {
-            triplet
-                .get("prepare_node")
-                .and_then(Value::as_str)
-                .is_some_and(|prepare| prepare == "prepare_write_makegen")
-        }),
-        "expected write transport triplet"
+        prepare_names
+            .iter()
+            .any(|p| p.contains("write") || p.contains("Write")),
+        "expected write transport triplet, found: {prepare_names:?}"
     );
 }
 
@@ -619,6 +621,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             })),
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -642,6 +645,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             })),
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -665,6 +669,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
             })),
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_edge(Edge::new(
@@ -864,6 +869,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -878,6 +884,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -892,6 +899,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -906,6 +914,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
     dag.add_node(Node::opaque(
@@ -920,6 +929,7 @@ fn collect_transport_triplets_sorts_parse_nodes_and_ignores_non_transport_edges(
             service_metadata: None,
             is_interactive: false,
             resource_target: None,
+            fn_body: None,
         },
     ));
 
@@ -2475,7 +2485,7 @@ fn compile_single_file_unsatisfiable_refinement_fails_in_typecheck_stage() {
     std::fs::write(
         &fixture,
         r#"module sample.types
-fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
+fn run(value: Int where range(min: 5, max: 1)) -> Int { value }
 "#,
     )
     .expect("failed to write unsatisfiable-refinement fixture");
@@ -2637,7 +2647,7 @@ fn compile_directory_unsatisfiable_refinement_fails_in_typecheck_stage() {
     let (context, root) = temp_dag_context(
         "unsatisfiable_refinement_dir",
         r#"module sample.main
-fn run(value: Int @range(min: 5, max: 1)) -> Int { value }
+fn run(value: Int where range(min: 5, max: 1)) -> Int { value }
 "#,
     );
 

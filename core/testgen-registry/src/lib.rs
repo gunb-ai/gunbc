@@ -8,10 +8,6 @@
 // Re-export inventory so macros can submit without depending on it directly.
 pub use inventory;
 
-mod fermi;
-
-use crate::fermi::{infer_fermi_cost, infer_requires, infer_test_class};
-use gunbc_codegen::testgen::analyze::analyze_dag;
 use gunbc_codegen::testgen::{TestConfig, TestGenerator};
 pub use gunbc_codegen::TestgenTargetDef;
 use gunbc_exec::Executable;
@@ -24,7 +20,8 @@ pub struct DagSpecMeta {
     pub output_path: &'static str,
     pub module_name: &'static str,
     /// Tool name for CLI contract test generation. When set, entrypoints
-    /// are looked up from `derive_tool_defs()` and a CLI contract test is emitted.
+    /// are looked up from DSL-driven `discover_tool_defs_from_dsl()` and a
+    /// CLI contract test is emitted.
     pub tool_name: Option<&'static str>,
 }
 
@@ -168,26 +165,15 @@ pub fn generate_target_with_types<T: Executable + Clone>(
     spec: MockSpec,
     dsl_type_registry: Option<&TypeRegistry>,
 ) -> String {
-    let analysis = analyze_dag(&dag);
-    let inferred_class = infer_test_class(&analysis);
-    let inferred_requires = infer_requires(&spec);
-    let inferred_cost = infer_fermi_cost(inferred_class, &inferred_requires);
-
-    let test_class = config.test_class.unwrap_or(inferred_class);
-    let fermi_cost = config.fermi_cost.unwrap_or(inferred_cost);
-    let requires = config
-        .requires
-        .clone()
-        .unwrap_or_else(|| inferred_requires.clone());
+    // Classification is now provided by callers via fidelity::classify_module().
+    // Simple defaults for the rare case a caller doesn't provide them.
+    let test_class = config.test_class.unwrap_or(TestClass::Unit);
+    let fermi_cost = config.fermi_cost.unwrap_or(FermiCost::XS);
+    let requires = config.requires.clone().unwrap_or_default();
     let secrets = config.secrets.clone().unwrap_or_default();
     let live_test_class = config.live_test_class.unwrap_or(TestClass::Integration);
-    let live_requires = config
-        .live_requires
-        .clone()
-        .unwrap_or_else(|| inferred_requires.clone());
-    let live_fermi_cost = config
-        .live_fermi_cost
-        .unwrap_or_else(|| infer_fermi_cost(live_test_class, &live_requires));
+    let live_requires = config.live_requires.clone().unwrap_or_default();
+    let live_fermi_cost = config.live_fermi_cost.unwrap_or(FermiCost::M);
     let live_required = config.live_required.clone().unwrap_or_default();
     let live_required_any_of = config.live_required_any_of.clone().unwrap_or_default();
 
@@ -206,6 +192,8 @@ pub fn generate_target_with_types<T: Executable + Clone>(
         live_requires,
         live_required,
         live_required_any_of,
+        live_profile_tests: config.live_profile_tests.clone(),
+        target_name: config.name.to_string(),
         ..TestConfig::default()
     };
     let mut registry = TypeRegistry::with_core_types();
@@ -221,19 +209,9 @@ pub fn generate_target_with_types<T: Executable + Clone>(
         generator = generator.with_signature_fn(signature_fn.as_ref());
     }
 
-    // Look up CLI entrypoints for contract test generation.
-    if let Some(tool_name) = &config.tool_name {
-        let tools = gunbc_codegen::derive_tool_defs();
-        if let Some(tool) = tools
-            .iter()
-            .find(|t| t.meta.tool_name.as_ref() == tool_name.as_ref())
-        {
-            if !tool.entrypoints.is_empty() {
-                generator =
-                    generator.with_cli_entrypoints(tool_name.to_string(), tool.entrypoints.clone());
-            }
-        }
-    }
+    // CLI contract test generation: tool_name lookup is now DSL-driven via
+    // discover_tool_defs_from_dsl() in gunbc-dag/src/dsl_registry.rs.
+    // All current testgen targets set tool_name: None, so this path is unused.
 
     generator.generate_test_module(&config.module_name, &config.dag_builder_call)
 }

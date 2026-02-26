@@ -20,6 +20,7 @@ const ALLOWED_FILES: &[&str] = &[
     "core/daglang/daglang-emit/src/rust_exec_runtime.rs",
     "core/daglang/daglang-cli/src/compile/context.rs",
     "core/codegen/src/cli_gen.rs",
+    "core/codegen/src/testgen/mock_corpus.rs",
     "core/test/src/boundary.rs",
     "gunbc-dag/src/bin/infra.rs",
     "gunbc-dag/src/mock_defaults.rs",

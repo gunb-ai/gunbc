@@ -20,22 +20,16 @@ resource Clippy {
   capability check {
     input {}
     output { exists: Bool }
-    @shell(["cargo", "clippy", "--version"])
-    @hermetic @readonly
   }
 
   capability install {
     input {}
     output { installed: Bool }
-    @shell(["rustup", "component", "add", "clippy"])
-    @hermetic
   }
 
   capability resolve {
     input {}
     output { handle: String }
-    @shell(["cargo", "clippy", "--version"])
-    @hermetic @readonly
   }
 }
 
@@ -59,7 +53,6 @@ func clippy_lint(paths: List<String>?) -> { clean: Bool, findings: String }
 // ── Tests ──────────────────────────────────────────────────────────
 
 test clippy_lint_all {
-    @testgen_skip(true)
 
     // Transport mocks for the three shell commands
     mock execute_check.response -> shell_response(0, "clippy 0.1.0")

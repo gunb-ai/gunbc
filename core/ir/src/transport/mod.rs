@@ -124,6 +124,7 @@ pub use llm::{
 pub use rest::{RestRequest, RestResponse};
 pub use scope::{CredentialIntent, ScopeContract, ScopeContractError};
 pub use tcp::{TcpRequest, TcpResponse};
+// LocalRequest and LocalResponse are defined in this module (not a submodule).
 pub use tool::{
     check_all_satisfiable,
     default_platform_registry,
@@ -174,6 +175,8 @@ pub enum TransportRequest {
     Tcp(TcpRequest),
     /// Shell command request
     Shell(ShellRequest),
+    /// Local (pure computation, no I/O) request
+    Local(LocalRequest),
 }
 
 /// Unified transport response enum.
@@ -189,6 +192,22 @@ pub enum TransportResponse {
     Tcp(TcpResponse),
     /// Shell command response
     Shell(ShellResponse),
+    /// Local (pure computation, no I/O) response
+    Local(LocalResponse),
+}
+
+/// Local computation request (no I/O — inputs pass through directly).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocalRequest {
+    /// Structured inputs for the local computation.
+    pub inputs: serde_json::Value,
+}
+
+/// Local computation response (no I/O — outputs pass through directly).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocalResponse {
+    /// Structured outputs from the local computation.
+    pub outputs: serde_json::Value,
 }
 
 /// Shell command request.
@@ -392,6 +411,18 @@ impl From<TcpResponse> for TransportResponse {
     }
 }
 
+impl From<LocalRequest> for TransportRequest {
+    fn from(req: LocalRequest) -> Self {
+        TransportRequest::Local(req)
+    }
+}
+
+impl From<LocalResponse> for TransportResponse {
+    fn from(resp: LocalResponse) -> Self {
+        TransportResponse::Local(resp)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,5 +474,43 @@ mod tests {
         let resp = ShellResponse::ok("ok");
         let transport: TransportResponse = resp.into();
         assert!(matches!(transport, TransportResponse::Shell(_)));
+    }
+
+    #[test]
+    fn test_local_request_roundtrip() {
+        let req = LocalRequest {
+            inputs: serde_json::json!({"key": "value", "count": 42}),
+        };
+        let serialized = serde_json::to_string(&req).unwrap();
+        let deserialized: LocalRequest = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(req, deserialized);
+    }
+
+    #[test]
+    fn test_local_response_roundtrip() {
+        let resp = LocalResponse {
+            outputs: serde_json::json!({"result": "ok", "items": [1, 2, 3]}),
+        };
+        let serialized = serde_json::to_string(&resp).unwrap();
+        let deserialized: LocalResponse = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(resp, deserialized);
+    }
+
+    #[test]
+    fn test_from_local_request() {
+        let req = LocalRequest {
+            inputs: serde_json::json!({}),
+        };
+        let transport: TransportRequest = req.into();
+        assert!(matches!(transport, TransportRequest::Local(_)));
+    }
+
+    #[test]
+    fn test_from_local_response() {
+        let resp = LocalResponse {
+            outputs: serde_json::json!({}),
+        };
+        let transport: TransportResponse = resp.into();
+        assert!(matches!(transport, TransportResponse::Local(_)));
     }
 }

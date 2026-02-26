@@ -28,8 +28,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use gunbc_ir::transport::{
-    FileResponse, HttpResponse, RestResponse, ShellResponse, TcpResponse, TransportRequest,
-    TransportResponse,
+    FileResponse, HttpResponse, LocalResponse, RestResponse, ShellResponse, TcpResponse,
+    TransportRequest, TransportResponse,
 };
 use gunbc_ir::value::SecretString;
 use gunbc_ir::Value;
@@ -656,6 +656,8 @@ pub trait TransportResponseExt {
     fn require_http(&self) -> Result<&HttpResponse, ExecError>;
     /// Require a TCP response, returning an error if the variant doesn't match.
     fn require_tcp(&self) -> Result<&TcpResponse, ExecError>;
+    /// Require a Local response, returning an error if the variant doesn't match.
+    fn require_local(&self) -> Result<&LocalResponse, ExecError>;
 }
 
 impl TransportResponseExt for TransportResponse {
@@ -708,6 +710,16 @@ impl TransportResponseExt for TransportResponse {
             ))),
         }
     }
+
+    fn require_local(&self) -> Result<&LocalResponse, ExecError> {
+        match self {
+            TransportResponse::Local(l) => Ok(l),
+            other => Err(ExecError::new(format!(
+                "expected Local response, got {:?}",
+                std::mem::discriminant(other)
+            ))),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -725,7 +737,7 @@ mod tests {
     fn require_str_missing_key_errors() {
         let inputs = HashMap::new();
         let err = require_str(&inputs, "name").unwrap_err();
-        assert!(err.0.contains("missing or invalid 'name' input"));
+        assert!(err.message.contains("missing or invalid 'name' input"));
     }
 
     #[test]
@@ -733,7 +745,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("name".to_string(), Value::Bool(true));
         let err = require_str(&inputs, "name").unwrap_err();
-        assert!(err.0.contains("missing or invalid 'name' input"));
+        assert!(err.message.contains("missing or invalid 'name' input"));
     }
 
     #[test]
@@ -753,7 +765,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("name".to_string(), Value::Bool(true));
         let err = optional_str_strict(&inputs, "name").unwrap_err();
-        assert!(err.0.contains("expected String"));
+        assert!(err.message.contains("expected String"));
     }
 
     #[test]
@@ -761,7 +773,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("flag".to_string(), Value::Str("nope".to_string()));
         let err = optional_bool_strict(&inputs, "flag").unwrap_err();
-        assert!(err.0.contains("expected Bool"));
+        assert!(err.message.contains("expected Bool"));
     }
 
     #[test]
@@ -769,7 +781,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("count".to_string(), Value::Str("nope".to_string()));
         let err = optional_int_strict(&inputs, "count").unwrap_err();
-        assert!(err.0.contains("expected Int"));
+        assert!(err.message.contains("expected Int"));
     }
 
     #[test]
@@ -777,7 +789,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("response".to_string(), Value::Str("nope".to_string()));
         let err = optional_response_strict(&inputs, "response").unwrap_err();
-        assert!(err.0.contains("expected TransportResponse"));
+        assert!(err.message.contains("expected TransportResponse"));
     }
 
     #[test]
@@ -861,7 +873,7 @@ mod tests {
     fn inputs_ext_require_str_missing() {
         let inputs: HashMap<String, Value> = HashMap::new();
         let err = inputs.require_str("name").unwrap_err();
-        assert!(err.0.contains("missing or invalid 'name' input"));
+        assert!(err.message.contains("missing or invalid 'name' input"));
     }
 
     #[test]

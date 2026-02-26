@@ -23,6 +23,7 @@ pub enum TokenKind {
     Pattern,
     Service,
     Resource,
+    Extern,
     Interface,
     Pipeline,
     Profile,
@@ -63,6 +64,17 @@ pub enum TokenKind {
     Mock,
     Expect,
     Contains,
+    // Typed syntax keywords
+    From,
+    Where,
+    Transport,
+    Outputs,
+    Idempotent,
+    Readonly,
+    Hermetic,
+    Contract,
+    Tier,
+    Skip,
     // Delimiters
     LBrace,
     RBrace,
@@ -93,7 +105,6 @@ pub enum TokenKind {
     Ne,
     Le,
     Ge,
-    At,
     Question,
     NullCoalesce,
     // Strings
@@ -129,6 +140,7 @@ impl TokenKind {
             Self::Pattern => "pattern",
             Self::Service => "service",
             Self::Resource => "resource",
+            Self::Extern => "extern",
             Self::Interface => "interface",
             Self::Pipeline => "pipeline",
             Self::Profile => "profile",
@@ -168,6 +180,16 @@ impl TokenKind {
             Self::Mock => "mock",
             Self::Expect => "expect",
             Self::Contains => "contains",
+            Self::From => "from",
+            Self::Where => "where",
+            Self::Transport => "transport",
+            Self::Outputs => "outputs",
+            Self::Idempotent => "idempotent",
+            Self::Readonly => "readonly",
+            Self::Hermetic => "hermetic",
+            Self::Contract => "contract",
+            Self::Tier => "tier",
+            Self::Skip => "skip",
             Self::LBrace => "{",
             Self::RBrace => "}",
             Self::LParen => "(",
@@ -196,7 +218,6 @@ impl TokenKind {
             Self::Ne => "!=",
             Self::Le => "<=",
             Self::Ge => ">=",
-            Self::At => "@",
             Self::Question => "?",
             Self::NullCoalesce => "??",
             Self::Str(_) => "string",
@@ -229,6 +250,20 @@ pub struct Lexer<'a> {
     pos: usize,
     interp_depth: Vec<usize>,
     errors: Vec<LexError>,
+}
+
+// FC-9: Hex escape helpers for \xHH sequences.
+fn is_hex_digit(b: u8) -> bool {
+    b.is_ascii_hexdigit()
+}
+
+fn hex_val(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'a'..=b'f' => b - b'a' + 10,
+        b'A'..=b'F' => b - b'A' + 10,
+        _ => 0,
+    }
 }
 
 impl<'a> Lexer<'a> {
@@ -302,10 +337,15 @@ impl<'a> Lexer<'a> {
     /// Returns the character and the number of bytes it occupies.
     fn decode_utf8_char(&self) -> (char, usize) {
         let b0 = self.source[self.pos];
-        let seq_len = if b0 < 0x80 { 1 }
-            else if b0 < 0xE0 { 2 }
-            else if b0 < 0xF0 { 3 }
-            else { 4 };
+        let seq_len = if b0 < 0x80 {
+            1
+        } else if b0 < 0xE0 {
+            2
+        } else if b0 < 0xF0 {
+            3
+        } else {
+            4
+        };
         let end = (self.pos + seq_len).min(self.source.len());
         match std::str::from_utf8(&self.source[self.pos..end]) {
             Ok(s) => (s.chars().next().unwrap_or('\u{FFFD}'), seq_len),
@@ -442,10 +482,7 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 self.tok(TokenKind::Percent, start)
             }
-            b'@' => {
-                self.advance();
-                self.tok(TokenKind::At, start)
-            }
+            // b'@' — no longer valid syntax, falls through to error handler
             b'/' => {
                 self.advance();
                 self.tok(TokenKind::Slash, start)
@@ -571,6 +608,7 @@ impl<'a> Lexer<'a> {
             "pattern" => TokenKind::Pattern,
             "service" => TokenKind::Service,
             "resource" => TokenKind::Resource,
+            "extern" => TokenKind::Extern,
             "interface" => TokenKind::Interface,
             "pipeline" => TokenKind::Pipeline,
             "profile" => TokenKind::Profile,
@@ -610,6 +648,16 @@ impl<'a> Lexer<'a> {
             "mock" => TokenKind::Mock,
             "expect" => TokenKind::Expect,
             "contains" => TokenKind::Contains,
+            "from" => TokenKind::From,
+            "where" => TokenKind::Where,
+            "transport" => TokenKind::Transport,
+            "outputs" => TokenKind::Outputs,
+            "idempotent" => TokenKind::Idempotent,
+            "readonly" => TokenKind::Readonly,
+            "hermetic" => TokenKind::Hermetic,
+            "contract" => TokenKind::Contract,
+            "tier" => TokenKind::Tier,
+            "skip" => TokenKind::Skip,
             _ => TokenKind::Ident(text.to_string()),
         };
         self.tok(kind, start)
@@ -660,6 +708,21 @@ impl<'a> Lexer<'a> {
             b'}' => {
                 buf.push('}');
                 self.pos += 1;
+            }
+            // FC-9: \xHH hex escape — interpret as the byte value.
+            b'x' => {
+                self.pos += 1; // consume 'x'
+                let hi = self.peek();
+                let lo = self.peek_at(1);
+                if is_hex_digit(hi) && is_hex_digit(lo) {
+                    let byte = (hex_val(hi) << 4) | hex_val(lo);
+                    buf.push(byte as char);
+                    self.pos += 2;
+                } else {
+                    // Malformed \x escape — preserve literally for fail-closed diagnostics.
+                    buf.push('\\');
+                    buf.push('x');
+                }
             }
             other if other >= 0x80 => {
                 buf.push('\\');
@@ -947,5 +1010,56 @@ mod tests {
         assert!(matches!(tokens[2].kind, TokenKind::Unknown('&')));
         assert_eq!(errors.len(), 1);
         assert!(errors[0].message.contains("unexpected character '&'"));
+    }
+
+    // ── FC-9: \xHH hex escape contract tests ──────────────────────────
+
+    #[test]
+    fn hex_escape_produces_byte_value() {
+        let tokens = Lexer::tokenize(r#""hello \x1b[0m""#);
+        let s = match &tokens[0].kind {
+            TokenKind::Str(s) => s.clone(),
+            other => panic!("expected string token, got {other:?}"),
+        };
+        // \x1b should be interpreted as the ESC character (byte 0x1b)
+        assert!(
+            s.contains('\x1b'),
+            "\\x1b should produce ESC byte, got: {:?}",
+            s
+        );
+    }
+
+    #[test]
+    fn hex_escape_uppercase_produces_byte_value() {
+        let tokens = Lexer::tokenize(r#""\x41""#);
+        let s = match &tokens[0].kind {
+            TokenKind::Str(s) => s.clone(),
+            other => panic!("expected string token, got {other:?}"),
+        };
+        assert_eq!(s, "A", "\\x41 should produce 'A'");
+    }
+
+    #[test]
+    fn extern_keyword() {
+        assert_eq!(
+            kinds("extern func extern asset"),
+            vec![
+                TokenKind::Extern,
+                TokenKind::Func,
+                TokenKind::Extern,
+                TokenKind::Ident("asset".into()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn malformed_hex_escape_preserved_literally() {
+        let tokens = Lexer::tokenize(r#""\xZZ""#);
+        let s = match &tokens[0].kind {
+            TokenKind::Str(s) => s.clone(),
+            other => panic!("expected string token, got {other:?}"),
+        };
+        assert_eq!(s, "\\xZZ", "malformed \\xHH should preserve literally");
     }
 }

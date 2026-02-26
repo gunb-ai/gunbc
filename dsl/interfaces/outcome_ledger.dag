@@ -24,20 +24,17 @@ interface OutcomeLedger {
     stage:    NonEmptyStr,
     outcome:  StageOutcome
   ) -> { updated: Bool, previous: StageOutcome? }
-    @idempotent
 
   // Retrieve the outcome for a specific run_key + stage.
   capability get(
     run_key:  NonEmptyStr,
     stage:    NonEmptyStr
   ) -> { found: Bool, outcome: StageOutcome? }
-    @idempotent @readonly
 
   // List all outcomes for a given issue (across all runs and stages).
   capability list_by_issue(
     issue_id: NonEmptyStr
   ) -> { outcomes: List<StageOutcome> }
-    @readonly
 
   // --- Behavioral contracts ------------------------------------------------
   //
@@ -46,6 +43,4 @@ interface OutcomeLedger {
   // INV-14: Retry budget is ledger-backed, not memory-only.
   // INV-15: Terminal states are terminal — no further transitions after TerminalFailed or Success.
 
-  @contract: get(rk, s) after upsert(rk, s, o) => { found: true }
-  @contract: upsert(rk, s, o) after upsert(rk, s, o) => { updated: true }  // idempotent
 }

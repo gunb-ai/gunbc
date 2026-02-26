@@ -1,9 +1,13 @@
 //! Shared helpers for DSL-backed graph builders (T3).
 
-use daglang_driver::{compile_from_context, DriverContext, InferredEntrypoint};
+use daglang_derive::CallableProperties;
+use daglang_driver::{
+    compile_from_context, compile_from_context_with_options, CompileOptions, DriverContext,
+    InferredEntrypoint,
+};
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag, WorkspaceLayout};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::resolve_lowered_dag;
 
@@ -21,6 +25,7 @@ struct CompileLoweredResult {
     dag: Dag<daglang_lower::LoweredOp>,
     dsl_type_registry: gunbc_ir::TypeRegistry,
     inferred_entrypoints: Vec<InferredEntrypoint>,
+    callable_properties: BTreeMap<String, CallableProperties>,
 }
 
 fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, BuilderError> {
@@ -42,6 +47,59 @@ fn compile_lowered(relative_module: &str) -> Result<CompileLoweredResult, Builde
         dag: output.lowered_dag,
         dsl_type_registry: output.dsl_type_registry,
         inferred_entrypoints: output.inferred_entrypoints,
+        callable_properties: output.derived.callable_properties,
+    })
+}
+
+/// Compile a DSL module with an active profile (PT-4).
+///
+/// Threads the profile name through `CompileOptions`, which causes the lowerer
+/// to resolve interface bindings via the profile's bind declarations instead of
+/// using stub transport.
+fn compile_lowered_with_profile(
+    relative_module: &str,
+    profile: &str,
+) -> Result<CompileLoweredResult, BuilderError> {
+    let layout = workspace_layout()?;
+    let dsl_root = layout.workspace_root.join("dsl");
+    let target_file = dsl_root.join(relative_module);
+
+    let context = DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(target_file),
+    };
+    let options = CompileOptions {
+        profile: Some(profile.to_string()),
+        ..CompileOptions::default()
+    };
+
+    let output = compile_from_context_with_options(&context, options).map_err(|error| {
+        BuilderError::InternalInvariant(format!(
+            "failed to compile DSL module `{relative_module}` with profile `{profile}`: {error}"
+        ))
+    })?;
+    Ok(CompileLoweredResult {
+        dag: output.lowered_dag,
+        dsl_type_registry: output.dsl_type_registry,
+        inferred_entrypoints: output.inferred_entrypoints,
+        callable_properties: output.derived.callable_properties,
+    })
+}
+
+/// Build a DSL graph with an active profile (PT-4).
+///
+/// This is the compilation path for per-profile live tests. The profile
+/// resolves interface bindings to concrete service implementations.
+pub fn build_dsl_graph_with_profile(
+    relative_module: &str,
+    profile: &str,
+) -> Result<Dag<DynOp>, BuilderError> {
+    let result = compile_lowered_with_profile(relative_module, profile)?;
+    let lowered = strip_pipeline_nodes(result.dag);
+    resolve_lowered_dag(&lowered).map_err(|error| {
+        BuilderError::InternalInvariant(format!(
+            "failed to resolve lowered DAG for `{relative_module}` with profile `{profile}`: {error}"
+        ))
     })
 }
 
@@ -103,9 +161,8 @@ fn slice_dag_from_entry<T>(mut dag: Dag<T>, entry_node_id: &str) -> Result<Dag<T
     }
 
     dag.nodes.retain(|node| include.contains(&node.id.0));
-    dag.edges.retain(|edge| {
-        include.contains(&edge.from_node.0) && include.contains(&edge.to_node.0)
-    });
+    dag.edges
+        .retain(|edge| include.contains(&edge.from_node.0) && include.contains(&edge.to_node.0));
     Ok(dag)
 }
 
@@ -115,6 +172,8 @@ pub struct DslGraphResult {
     pub dag: Dag<DynOp>,
     /// Type registry extracted from DSL-defined sum/product types.
     pub dsl_type_registry: gunbc_ir::TypeRegistry,
+    /// Per-callable structural properties derived from graph traversal.
+    pub callable_properties: BTreeMap<String, CallableProperties>,
 }
 
 /// Compile a DSL module and resolve lowered ops into `Dag<DynOp>`.
@@ -136,6 +195,7 @@ pub(crate) fn build_dsl_graph_with_types(
     Ok(DslGraphResult {
         dag,
         dsl_type_registry: result.dsl_type_registry,
+        callable_properties: result.callable_properties,
     })
 }
 
@@ -240,43 +300,38 @@ mod tests {
 
     #[test]
     fn builds_bootstrap_dsl_graph() {
-        let dag = build_dsl_graph("tools/bootstrap.dag")
-            .expect("bootstrap DSL graph should resolve");
+        let dag =
+            build_dsl_graph("tools/bootstrap.dag").expect("bootstrap DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_codegen_dsl_graph() {
-        let dag = build_dsl_graph("tools/codegen.dag")
-            .expect("codegen DSL graph should resolve");
+        let dag = build_dsl_graph("tools/codegen.dag").expect("codegen DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_infra_dsl_graph() {
-        let dag = build_dsl_graph("tools/infra.dag")
-            .expect("infra DSL graph should resolve");
+        let dag = build_dsl_graph("tools/infra.dag").expect("infra DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_clippy_dsl_graph() {
-        let dag = build_dsl_graph("tools/clippy.dag")
-            .expect("clippy DSL graph should resolve");
+        let dag = build_dsl_graph("tools/clippy.dag").expect("clippy DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_deps_dsl_graph() {
-        let dag = build_dsl_graph("tools/deps.dag")
-            .expect("deps DSL graph should resolve");
+        let dag = build_dsl_graph("tools/deps.dag").expect("deps DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_review_dsl_graph() {
-        let dag = build_dsl_graph("tools/review.dag")
-            .expect("review DSL graph should resolve");
+        let dag = build_dsl_graph("tools/review.dag").expect("review DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
@@ -296,8 +351,7 @@ mod tests {
 
     #[test]
     fn builds_ci_dsl_graph() {
-        let dag = build_dsl_graph("pipelines/ci.dag")
-            .expect("ci DSL graph should resolve");
+        let dag = build_dsl_graph("pipelines/ci.dag").expect("ci DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
         assert!(
             !dag.nodes.iter().any(|node| node.id.0 == "pipelines.ci::ci"),

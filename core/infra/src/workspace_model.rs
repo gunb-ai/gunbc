@@ -68,20 +68,6 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             is_producer: false,
         },
         CrateSpec {
-            name: "core/tool-registry",
-            tier: CrateTier::Foundation,
-            description: "Tool auto-discovery (inventory)",
-            depends_on: &[],
-            is_producer: false,
-        },
-        CrateSpec {
-            name: "core/tool-registry-macros",
-            tier: CrateTier::Foundation,
-            description: "Proc-macros for tool-registry",
-            depends_on: &[],
-            is_producer: false,
-        },
-        CrateSpec {
             name: "core/testgen-registry",
             tier: CrateTier::Foundation,
             description: "Testgen target registry",
@@ -163,14 +149,21 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             name: "core/daglang/daglang-typecheck",
             tier: CrateTier::Core,
             description: "DSL type checking",
-            depends_on: &["core/daglang/daglang-syntax", "core/daglang/daglang-resolve"],
+            depends_on: &[
+                "core/daglang/daglang-syntax",
+                "core/daglang/daglang-resolve",
+            ],
             is_producer: false,
         },
         CrateSpec {
             name: "core/daglang/daglang-lower",
             tier: CrateTier::Core,
             description: "DSL lowering to IR",
-            depends_on: &["core/daglang/daglang-syntax", "core/daglang/daglang-typecheck", "core/ir"],
+            depends_on: &[
+                "core/daglang/daglang-syntax",
+                "core/daglang/daglang-typecheck",
+                "core/ir",
+            ],
             is_producer: false,
         },
         CrateSpec {
@@ -184,7 +177,10 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             name: "core/daglang/daglang-emit",
             tier: CrateTier::Core,
             description: "DSL code emission",
-            depends_on: &["core/daglang/daglang-syntax", "core/daglang/daglang-typecheck"],
+            depends_on: &[
+                "core/daglang/daglang-syntax",
+                "core/daglang/daglang-typecheck",
+            ],
             is_producer: true,
         },
         CrateSpec {
@@ -536,6 +532,11 @@ pub fn baseline_commit_policies() -> Vec<CommitPolicy> {
             reason: CommitReason::BootstrapSeed,
             producer: Some("deps-config"),
         },
+        CommitPolicy {
+            pattern: "docs/ab-writing-workflows.md",
+            reason: CommitReason::BootstrapSeed,
+            producer: Some("docgen"),
+        },
     ]
 }
 
@@ -847,10 +848,7 @@ mod tests {
     #[test]
     fn toolchain_requirements_include_rustc() {
         let reqs = toolchain_requirements();
-        assert!(
-            reqs.iter().any(|r| r.tool == "rustc"),
-            "must require rustc"
-        );
+        assert!(reqs.iter().any(|r| r.tool == "rustc"), "must require rustc");
     }
 
     #[test]

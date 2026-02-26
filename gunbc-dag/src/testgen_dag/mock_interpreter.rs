@@ -45,14 +45,12 @@ pub fn interpret_expr(expr: &Expr) -> Value {
 
         Expr::List(items) => Value::List(items.iter().map(interpret_expr).collect()),
 
-        Expr::Map(entries) => {
-            Value::Json(serde_json::Value::Object(
-                entries
-                    .iter()
-                    .map(|(k, v)| (expr_to_json_key(k), expr_to_json(v)))
-                    .collect(),
-            ))
-        }
+        Expr::Map(entries) => Value::Json(serde_json::Value::Object(
+            entries
+                .iter()
+                .map(|(k, v)| (expr_to_json_key(k), expr_to_json(v)))
+                .collect(),
+        )),
 
         Expr::StringInterp(parts) => {
             let mut s = String::new();
@@ -125,10 +123,7 @@ fn interpret_literal(lit: &Literal) -> Value {
 }
 
 fn interpret_shell_response(args: &[(Option<String>, Expr)]) -> Value {
-    let exit_code = args
-        .first()
-        .map(|(_, e)| expr_to_i64(e))
-        .unwrap_or(0);
+    let exit_code = args.first().map(|(_, e)| expr_to_i64(e)).unwrap_or(0);
     let stdout = args
         .get(1)
         .map(|(_, e)| expr_to_string(e))
@@ -153,9 +148,7 @@ fn interpret_rest_response(args: &[(Option<String>, Expr)]) -> Value {
 }
 
 fn interpret_file_response(args: &[(Option<String>, Expr)]) -> Value {
-    let content = args
-        .first()
-        .map(|(_, e)| expr_to_string(e));
+    let content = args.first().map(|(_, e)| expr_to_string(e));
     Value::Response(TransportResponse::File(FileResponse {
         path: String::new(),
         operation: FileOp::Read,
@@ -194,9 +187,7 @@ fn interpret_named_transport_record(kind: &str, fields: &[(String, Expr)]) -> Va
 
     match kind {
         "rest_response" | "RestResponse" => {
-            let status = find(&["status", "code"])
-                .map(expr_to_i64)
-                .unwrap_or(200) as u16;
+            let status = find(&["status", "code"]).map(expr_to_i64).unwrap_or(200) as u16;
             let body_fields: serde_json::Map<String, serde_json::Value> = fields
                 .iter()
                 .filter(|(k, _)| k != "status" && k != "code")
@@ -208,12 +199,8 @@ fn interpret_named_transport_record(kind: &str, fields: &[(String, Expr)]) -> Va
             )))
         }
         "shell_response" | "ShellResponse" => {
-            let exit_code = find(&["exit_code"])
-                .map(expr_to_i64)
-                .unwrap_or(0);
-            let stdout = find(&["stdout"])
-                .map(expr_to_string)
-                .unwrap_or_default();
+            let exit_code = find(&["exit_code"]).map(expr_to_i64).unwrap_or(0);
+            let stdout = find(&["stdout"]).map(expr_to_string).unwrap_or_default();
             Value::Response(TransportResponse::Shell(ShellResponse {
                 exit_code: exit_code as i32,
                 stdout,
@@ -272,9 +259,7 @@ fn expr_to_json(expr: &Expr) -> serde_json::Value {
                 .collect();
             serde_json::Value::Object(obj)
         }
-        Expr::List(items) => {
-            serde_json::Value::Array(items.iter().map(expr_to_json).collect())
-        }
+        Expr::List(items) => serde_json::Value::Array(items.iter().map(expr_to_json).collect()),
         _ => serde_json::Value::Null,
     }
 }

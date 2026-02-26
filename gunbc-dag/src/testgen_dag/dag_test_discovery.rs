@@ -16,7 +16,7 @@
 use crate::dsl_builder::{build_dsl_graph, build_dsl_graph_with_types};
 use crate::mock_defaults::auto_mock_spec;
 use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
-use daglang_syntax::ast::{Annotation, ExpectStmt, Expr, FixtureDef, Literal, TestDef};
+use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
 use gunbc_codegen::registry::TestgenTargetDef;
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
@@ -24,7 +24,7 @@ use gunbc_test::{
     BoundaryMock, ExpectedOutput, LiveExpectedOutput, MockSpec, OutputMatcher, TransportMock,
 };
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use super::mock_interpreter::{interpret_expr, is_transport_response};
@@ -42,6 +42,8 @@ pub struct CompilableModule {
     pub func_count: usize,
     /// Whether the module has inline `test` blocks.
     pub has_test_blocks: bool,
+    /// Interface type names imported via `import interfaces.*`.
+    pub interface_imports: HashSet<String>,
     /// Whether the module imports from `interfaces.*` (requires `--profile` to compile).
     pub requires_profile: bool,
 }
@@ -116,16 +118,30 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             .iter()
             .any(|item| matches!(item.node, daglang_syntax::ast::Item::TestDef(_)));
 
-        // Modules that import from `interfaces.*` use profile-bound service
-        // interfaces and cannot be compiled without `--profile <name>`.
-        let requires_profile = ast.imports.iter().any(|import| {
-            import
-                .node
-                .path
-                .segments
-                .first()
-                .is_some_and(|s| s == "interfaces")
-        });
+        // Collect interface type names from `import interfaces.*` statements.
+        let interface_imports: HashSet<String> = ast
+            .imports
+            .iter()
+            .filter(|import| {
+                import
+                    .node
+                    .path
+                    .segments
+                    .first()
+                    .is_some_and(|s| s == "interfaces")
+            })
+            .flat_map(|import| {
+                import
+                    .node
+                    .bindings
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .cloned()
+            })
+            .collect();
+
+        let requires_profile = !interface_imports.is_empty();
 
         // Build relative path from dsl root
         let rel_path = path
@@ -144,6 +160,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             module_name,
             func_count,
             has_test_blocks,
+            interface_imports,
             requires_profile,
         });
     }
@@ -153,10 +170,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
 ///
 /// Pipeline: compile → auto_mock_spec → generate_target. Zero manual input.
 /// Returns `Skipped` if compilation fails (graceful degradation).
-pub fn auto_testgen_for_module(
-    module: &CompilableModule,
-    output_dir: &Path,
-) -> AutoTestgenResult {
+pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> AutoTestgenResult {
     // 1. Compile to Dag<DynOp> + DSL type registry
     let result = match build_dsl_graph_with_types(&module.dsl_path) {
         Ok(result) => result,
@@ -170,6 +184,15 @@ pub fn auto_testgen_for_module(
     // 2. Auto-generate MockSpec from types + DAG structure
     let safe_name = module.module_name.replace('.', "-");
     let spec = auto_mock_spec(&result.dag, &safe_name);
+
+    // 2b. Classify the module via DSL-evaluated fidelity policy
+    let classification = crate::fidelity::classify_module(&result.callable_properties);
+    let all_transport_classes: Vec<_> = result
+        .callable_properties
+        .values()
+        .flat_map(|p| p.transport_classes.iter().cloned())
+        .collect();
+    let requires = crate::fidelity::requires_from_transport_classes(&all_transport_classes);
 
     // 3. Build TestgenTargetDef
     let output_path = format!(
@@ -199,9 +222,9 @@ pub fn auto_testgen_for_module(
         flow_tests: true,
         live_flow_tests: false,
         window_max_nodes: None,
-        test_class: None,
-        fermi_cost: None,
-        requires: None,
+        test_class: Some(classification.test_class),
+        fermi_cost: Some(classification.fermi_cost),
+        requires: Some(requires),
         secrets: None,
         live_test_class: None,
         live_fermi_cost: None,
@@ -209,6 +232,7 @@ pub fn auto_testgen_for_module(
         live_required: None,
         live_required_any_of: None,
         tool_name: None,
+        live_profile_tests: Vec::new(),
     };
 
     // 4. Generate test code via the shared codegen path with DSL type awareness
@@ -281,8 +305,8 @@ pub fn discover_dag_tests(dsl_root: &Path) -> Vec<DagTestTarget> {
         let dsl_module = format!("tools/{file_stem}.dag");
 
         for test in &test_file.tests {
-            // Skip tests marked with @testgen_skip(true)
-            if find_annotation_bool(&test.annotations, "testgen_skip").unwrap_or(false) {
+            // Skip tests marked with skip
+            if test.skip {
                 continue;
             }
 
@@ -368,9 +392,7 @@ pub fn build_testgen_target_def(
     // mock_spec_path: use auto_mock_spec as the runtime function.
     // Test-specific overrides are baked into the MockSpec at generation time,
     // but flow tests calling this path will only get auto-mocked values.
-    let mock_spec_path = format!(
-        "crate::mock_defaults::auto_mock_spec(&dag, \"{test_name}\")"
-    );
+    let mock_spec_path = format!("crate::mock_defaults::auto_mock_spec(&dag, \"{test_name}\")");
 
     TestgenTargetDef {
         name: Cow::Owned(test_name),
@@ -384,8 +406,8 @@ pub fn build_testgen_target_def(
         flow_tests: true,
         live_flow_tests: false,
         window_max_nodes: None,
-        test_class: None,     // inferred from topology
-        fermi_cost: None,     // inferred from topology
+        test_class: None, // inferred from topology
+        fermi_cost: None, // inferred from topology
         requires: None,
         secrets: None,
         live_test_class: None,
@@ -394,6 +416,7 @@ pub fn build_testgen_target_def(
         live_required: None,
         live_required_any_of: None,
         tool_name: None,
+        live_profile_tests: Vec::new(),
     }
 }
 
@@ -417,8 +440,13 @@ pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
         .unwrap_or(dsl_module);
 
     match stem {
-        "testgen" => "crate::testgen_dag::graph::build_testgen_graph_auto().expect(\"graph should build\")".to_string(),
-        _ => format!("crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")"),
+        "testgen" => {
+            "crate::testgen_dag::graph::build_testgen_graph_auto().expect(\"graph should build\")"
+                .to_string()
+        }
+        _ => format!(
+            "crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")"
+        ),
     }
 }
 
@@ -477,12 +505,7 @@ fn apply_mock<T>(
     }
 }
 
-fn apply_expect<T>(
-    spec: &mut MockSpec,
-    expect: &ExpectStmt,
-    module_prefix: &str,
-    dag: &Dag<T>,
-) {
+fn apply_expect<T>(spec: &mut MockSpec, expect: &ExpectStmt, module_prefix: &str, dag: &Dag<T>) {
     match expect {
         ExpectStmt::Eq(lhs, rhs) => {
             if let Some((node, port)) = extract_result_path(lhs) {
@@ -572,17 +595,6 @@ fn extract_result_path(expr: &Expr) -> Option<(String, String)> {
     }
 }
 
-fn find_annotation_bool(annotations: &[Annotation], name: &str) -> Option<bool> {
-    annotations.iter().find(|a| a.name == name).and_then(|a| {
-        a.args.first().and_then(|arg| match arg {
-            Expr::Literal(Literal::Bool(b)) => Some(*b),
-            Expr::Ident(s) if s == "true" => Some(true),
-            Expr::Ident(s) if s == "false" => Some(false),
-            _ => None,
-        })
-    })
-}
-
 fn expr_to_string(expr: &Expr) -> String {
     match expr {
         Expr::Literal(Literal::String(s)) => s.clone(),
@@ -611,13 +623,19 @@ mod tests {
 
         // All tools should be discovered
         let names: Vec<&str> = modules.iter().map(|m| m.module_name.as_str()).collect();
-        assert!(names.contains(&"tools.bootstrap"), "missing tools.bootstrap");
+        assert!(
+            names.contains(&"tools.bootstrap"),
+            "missing tools.bootstrap"
+        );
         assert!(names.contains(&"tools.makegen"), "missing tools.makegen");
         assert!(names.contains(&"tools.pragma"), "missing tools.pragma");
 
         // Non-tool compilable modules should be discovered (e.g., cloud credentials, funcs)
         let has_non_tools = names.iter().any(|n| !n.starts_with("tools."));
-        assert!(has_non_tools, "only tool modules discovered — should include cloud/funcs/etc");
+        assert!(
+            has_non_tools,
+            "only tool modules discovered — should include cloud/funcs/etc"
+        );
 
         // Pure library modules (std.types, std.symbols, etc.) should be excluded
         // because they have no func items
@@ -643,6 +661,7 @@ mod tests {
             module_name: "tools.makegen".to_string(),
             func_count: 1,
             has_test_blocks: true,
+            interface_imports: HashSet::new(),
             requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
@@ -671,6 +690,7 @@ mod tests {
             module_name: "nonexistent.fake".to_string(),
             func_count: 1,
             has_test_blocks: false,
+            interface_imports: HashSet::new(),
             requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
@@ -729,7 +749,10 @@ mod tests {
         for module in &modules {
             let result = auto_testgen_for_module(module, output_dir);
             match result {
-                AutoTestgenResult::Generated { test_code, target_def: _ } => {
+                AutoTestgenResult::Generated {
+                    test_code,
+                    target_def: _,
+                } => {
                     let test_fn_count = test_code.matches("#[test]").count();
                     generated.push((module.module_name.clone(), test_fn_count, test_code.len()));
                 }
@@ -768,7 +791,10 @@ mod tests {
         eprintln!("  Total skipped:      {}", total_skipped);
         eprintln!("  Total test fns:     {}", total_test_fns);
         eprintln!("  Total code bytes:   {}", total_code_bytes);
-        eprintln!("  Success rate:       {:.1}%", (total_generated as f64 / total_discovered as f64) * 100.0);
+        eprintln!(
+            "  Success rate:       {:.1}%",
+            (total_generated as f64 / total_discovered as f64) * 100.0
+        );
         eprintln!("\n========================================\n");
 
         // Assertions
@@ -783,11 +809,7 @@ mod tests {
         );
         // Every generated module should produce at least 1 #[test] fn
         for (name, count, _) in &generated {
-            assert!(
-                *count > 0,
-                "{} generated 0 test functions",
-                name
-            );
+            assert!(*count > 0, "{} generated 0 test functions", name);
         }
     }
 }

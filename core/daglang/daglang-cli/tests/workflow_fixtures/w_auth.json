@@ -21,13 +21,13 @@
       "resource_release_targets": 0,
       "service_param_source_targets": 0,
       "service_transport_execute_targets": 62,
-      "service_transport_external_targets": 53,
-      "service_transport_hermetic_targets": 9,
-      "service_transport_idempotent_targets": 17,
+      "service_transport_external_targets": 52,
+      "service_transport_hermetic_targets": 10,
+      "service_transport_idempotent_targets": 0,
       "service_transport_parse_targets": 62,
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 62,
-      "service_transport_readonly_targets": 15,
+      "service_transport_readonly_targets": 0,
       "total_obligations": 186,
       "transport_execution_targets": 62
     }

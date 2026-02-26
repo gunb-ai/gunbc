@@ -14,6 +14,7 @@ gunbc-codegen = { path = "../core/codegen" }
 gunbc-test = { path = "../core/test" }
 
 # DSL compilation
+daglang-derive = { path = "../core/daglang/daglang-derive" }
 daglang-driver = { path = "../core/daglang/daglang-driver" }
 daglang-emit = { path = "../core/daglang/daglang-emit" }
 daglang-lower = { path = "../core/daglang/daglang-lower" }
@@ -86,10 +87,6 @@ path = "src/bin/deps_config.rs"
 [[bin]]
 name = "gunbc-infra"
 path = "src/bin/infra.rs"
-
-[[bin]]
-name = "gunbc-review"
-path = "../target/codegen/bin/review/main.rs"
 
 [[bin]]
 name = "gunbc-pipeline"

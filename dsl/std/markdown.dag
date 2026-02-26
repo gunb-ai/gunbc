@@ -5,11 +5,9 @@
 // source of truth; generated Rust will eventually replace the
 // hand-written rendering layer.
 //
-// Rendering fn implementations live in the compiled fn bridge
-// (gunbc-dag/src/compiled_fns.rs). They are NOT defined here as DSL
-// fn items because the lowerer creates standalone nodes for all fn
-// items in a module -- importing this module would inject unconnected
-// render_heading / render_node / etc. nodes into the consumer's DAG.
+// Types only. Rendering fns live in std.markdown_render (pure DSL)
+// to avoid the lowerer injecting unconnected fn nodes into consumers.
+// render_tree is the only extern func (recursive algorithm in Rust).
 
 module std.markdown
 
@@ -29,14 +27,13 @@ type MarkdownDoc {
   nodes: List<MarkdownNode>
 }
 
-// ── Rendering fn signatures (compiled fn bridge) ─────────────────────
+// ── Extern func declarations ──────────────────────────────────────────
 //
-// Implementations: gunbc-dag/src/compiled_fns.rs
-//
-//   render_heading(level: Int, text: String) -> String
-//   render_code_block(code: String, language: String?) -> String
-//   render_bullet_list(items: List<String>) -> String
-//   render_numbered_list(items: List<String>) -> String
-//   render_tree(paths: List<String>) -> String
-//   render_node(node: MarkdownNode) -> String
-//   render_markdown(doc: MarkdownDoc) -> String
+// render_tree needs recursive tree algorithm (not expressible in DSL).
+// Implementation: gunbc-dag/src/extern_impls.rs
+
+extern func render_tree(paths: List<String>) -> { return: String }
+
+// Pure DSL rendering fns (including render_heading) are in
+// std.markdown_render to avoid the lowerer injecting unconnected fn
+// nodes into consumers that import this module.

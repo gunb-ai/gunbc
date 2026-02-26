@@ -130,10 +130,6 @@ pipeline ci {
 // mocks for deferred/wrapper nodes.
 
 test ci_pipeline {
-    @tier(Integration)
-    @hermetic(true)
-    @auto_mock(true)
-    @rust_mock_helpers("gunbc_dag::ci::graph_mock")
 
     // Boundary mocks for deferred/wrapper tool nodes.
     // NOTE: Module-qualified node IDs (e.g. "tools.bootstrap::bootstrap")

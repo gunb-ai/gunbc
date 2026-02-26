@@ -64,14 +64,68 @@ pub mod type_codegen;
 // Wave 9: DSL FnBody → abstract IR compiler (function body generation).
 pub mod fn_codegen;
 
+// Wave 10: Data-only .dag artifact emitter (FC-P7-b).
+pub mod dag_emit;
+
 #[cfg(test)]
 mod backend_harness;
 
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
+pub use daglang_lower::extract_output_paths;
 use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
-pub use daglang_lower::{extract_output_paths, extract_outputs_annotation};
-use gunbc_ir::Dag;
+use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag};
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
+
+// ============================================================================
+// FC-14: Reachability analysis for dead-path pruning
+// ============================================================================
+
+/// Compute the set of node IDs reachable from DAG entrypoints.
+///
+/// A node is reachable if it is an entrypoint (no incoming edges on at
+/// least one input port) or if it is downstream of a reachable node via
+/// the edge graph. This is used by emitters to prune unreachable symbols
+/// so generated code passes strict `-D warnings` / `-Wall -Werror` builds.
+pub fn compute_reachable_node_ids(dag: &Dag<LoweredOp>) -> HashSet<String> {
+    // Build adjacency: from_node → [to_node]
+    let mut adj: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    let mut has_incoming: HashSet<&str> = HashSet::new();
+    for edge in &dag.edges {
+        adj.entry(edge.from_node.0.as_str())
+            .or_default()
+            .push(edge.to_node.0.as_str());
+        has_incoming.insert(edge.to_node.0.as_str());
+    }
+
+    // Entrypoints: nodes with no incoming edges (or all nodes if no edges).
+    let entrypoints: Vec<&str> = if dag.edges.is_empty() {
+        dag.nodes.iter().map(|n| n.id.0.as_str()).collect()
+    } else {
+        dag.nodes
+            .iter()
+            .filter(|n| !has_incoming.contains(n.id.0.as_str()))
+            .map(|n| n.id.0.as_str())
+            .collect()
+    };
+
+    // BFS from entrypoints.
+    let mut reachable = HashSet::new();
+    let mut queue: std::collections::VecDeque<&str> = entrypoints.into_iter().collect();
+    while let Some(node_id) = queue.pop_front() {
+        if !reachable.insert(node_id.to_string()) {
+            continue;
+        }
+        if let Some(successors) = adj.get(node_id) {
+            for succ in successors {
+                if !reachable.contains(*succ) {
+                    queue.push_back(succ);
+                }
+            }
+        }
+    }
+    reachable
+}
 
 /// Pre-computed data to embed into generated artifacts.
 ///
@@ -143,6 +197,8 @@ pub enum EmitError {
     UnsupportedConstruct { backend: String, construct: String },
     /// A lowered graph node could not be rendered.
     InvalidLoweredNode(String),
+    /// Required embedded data is missing for the target backend.
+    MissingEmbeddedAsset { backend: String, key: String },
 }
 
 impl std::fmt::Display for EmitError {
@@ -153,6 +209,9 @@ impl std::fmt::Display for EmitError {
             }
             Self::InvalidLoweredNode(reason) => {
                 write!(f, "invalid lowered node encountered during emit: {reason}")
+            }
+            Self::MissingEmbeddedAsset { backend, key } => {
+                write!(f, "backend `{backend}` missing embedded asset `{key}`")
             }
         }
     }
@@ -204,8 +263,11 @@ impl CodegenBackend for RustBackend {
 }
 
 /// Emit a minimal Rust project bundle from lowered GraphIR and derived artifacts.
+///
+/// Accepts a `ReachableDag` to structurally enforce that only reachable nodes
+/// are emitted — the type system prevents access to unreachable code paths.
 pub fn emit_rust_bundle(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
 ) -> Result<EmissionBundle, EmitError> {
     let backend = RustBackend;
@@ -252,7 +314,9 @@ pub fn emit_rust_bundle(
             }
             LoweredOp::LoopUnpack { .. }
             | LoweredOp::LoopPack { .. }
-            | LoweredOp::BranchMerge { .. } => {}
+            | LoweredOp::BranchMerge { .. }
+            | LoweredOp::UnsupportedPattern { .. }
+            | LoweredOp::ExternCall { .. } => {}
         }
     }
 
@@ -301,13 +365,14 @@ pub fn emit_rust_bundle(
 
 /// Emit a minimal Go project bundle from lowered GraphIR and derived artifacts.
 pub fn emit_go_bundle(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
-    let is_makegen = is_makegen_module(artifacts);
+    let has_makegen_asset = has_required_asset(required_assets, MAKEGEN_ASSET_KEY);
     let entrypoints = artifacts
         .manifest
         .entrypoint_nodes
@@ -341,7 +406,7 @@ pub fn emit_go_bundle(
         .collect::<Vec<_>>()
         .join(", ");
 
-    let imports = if is_makegen {
+    let imports = if has_makegen_asset {
         "import (\n    \"fmt\"\n    \"os\"\n)\n".to_string()
     } else if has_service_transport {
         "import (\n    \"fmt\"\n    \"net/http\"\n    \"bytes\"\n    \"encoding/json\"\n    \"os/exec\"\n    \"strings\"\n)\n".to_string()
@@ -349,8 +414,12 @@ pub fn emit_go_bundle(
         "import \"fmt\"\n".to_string()
     };
 
-    let main_go = if is_makegen {
-        let makefile_literal = escape_string_literal(resolve_embedded_makegen(embedded_data));
+    let main_go = if has_makegen_asset {
+        let makefile_literal = escape_string_literal(
+            require_embedded_asset(embedded_data, "go", MAKEGEN_ASSET_KEY)?
+                .content
+                .as_str(),
+        );
         format!(
             "package main\n\n{imports}\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc makegenContent() string {{\n    return \"{makefile_literal}\"\n}}\n\nfunc main() {{\n    if len(os.Args) > 1 {{\n        path := os.Args[1]\n        if err := os.WriteFile(path, []byte(makegenContent()), 0644); err != nil {{\n            fmt.Fprintf(os.Stderr, \"failed to write `%s`: %v\\n\", path, err)\n            os.Exit(1)\n        }}\n    }}\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
         )
@@ -361,7 +430,7 @@ pub fn emit_go_bundle(
     };
 
     // Suppress unused import warnings for service transport code.
-    let main_go = if has_service_transport && !is_makegen {
+    let main_go = if has_service_transport && !has_makegen_asset {
         main_go.replace(
             "func main() {",
             "// Ensure imports used.\nvar _ = http.StatusOK\nvar _ = bytes.Compare\nvar _ = json.Unmarshal\nvar _ = exec.Command\nvar _ = strings.TrimSpace\n\nfunc main() {",
@@ -400,13 +469,14 @@ pub fn emit_go_bundle(
 
 /// Emit a minimal C project bundle from lowered GraphIR and derived artifacts.
 pub fn emit_c_bundle(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
-    let is_makegen = is_makegen_module(artifacts);
+    let has_makegen_asset = has_required_asset(required_assets, MAKEGEN_ASSET_KEY);
     let has_service_transport = symbols.iter().any(|s| s.spec.is_some());
     let entrypoints = artifacts
         .manifest
@@ -436,7 +506,7 @@ pub fn emit_c_bundle(
         .collect::<Vec<_>>()
         .join(", ");
 
-    let includes = if is_makegen {
+    let includes = if has_makegen_asset {
         "#include <stdio.h>\n#include <string.h>\n".to_string()
     } else if has_service_transport {
         "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <curl/curl.h>\n"
@@ -445,8 +515,12 @@ pub fn emit_c_bundle(
         "#include <stdio.h>\n".to_string()
     };
 
-    let main_c = if is_makegen {
-        let makefile_literal = escape_string_literal(resolve_embedded_makegen(embedded_data));
+    let main_c = if has_makegen_asset {
+        let makefile_literal = escape_string_literal(
+            require_embedded_asset(embedded_data, "c", MAKEGEN_ASSET_KEY)?
+                .content
+                .as_str(),
+        );
         format!(
             "{includes}\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\nstatic const char* MAKEGEN_CONTENT = \"{makefile_literal}\";\n\n{symbol_funcs}\nint main(int argc, char** argv) {{\n    (void)CLI_ENTRYPOINTS;\n    if (argc > 1) {{\n        const char* path = argv[1];\n        FILE* file = fopen(path, \"wb\");\n        if (!file) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n        size_t expected = strlen(MAKEGEN_CONTENT);\n        size_t written = fwrite(MAKEGEN_CONTENT, 1, expected, file);\n        fclose(file);\n        if (written != expected) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n    }}\n    printf(\"daglang generated c backend\\n\");\n    return 0;\n}}\n"
         )
@@ -486,13 +560,14 @@ pub fn emit_c_bundle(
 
 /// Emit a minimal MIPS assembly bundle from lowered GraphIR and derived artifacts.
 pub fn emit_mips_bundle(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
     artifacts: &DerivedArtifacts,
+    required_assets: &BTreeSet<ProgramSymbolId>,
     embedded_data: &std::collections::HashMap<String, EmbeddedData>,
 ) -> Result<EmissionBundle, EmitError> {
     let (symbols, callable_count, pipeline_count) = collect_symbols_with_metadata(dag)?;
     let manifest_rendered = render_manifest(&artifacts.manifest);
-    let is_makegen = is_makegen_module(artifacts);
+    let has_makegen_asset = has_required_asset(required_assets, MAKEGEN_ASSET_KEY);
 
     let label_defs = symbols
         .iter()
@@ -509,8 +584,10 @@ pub fn emit_mips_bundle(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let main_s = if is_makegen {
-        let content = resolve_embedded_makegen(embedded_data);
+    let main_s = if has_makegen_asset {
+        let content = require_embedded_asset(embedded_data, "mips", MAKEGEN_ASSET_KEY)?
+            .content
+            .clone();
         let makefile_bytes = content
             .as_bytes()
             .iter()
@@ -562,7 +639,7 @@ struct CollectedSymbol {
 }
 
 fn collect_symbols_with_metadata(
-    dag: &Dag<LoweredOp>,
+    dag: &ReachableDag<LoweredOp>,
 ) -> Result<(Vec<CollectedSymbol>, usize, usize), EmitError> {
     let mut symbols = Vec::new();
     let mut callable_count = 0usize;
@@ -619,7 +696,9 @@ fn collect_symbols_with_metadata(
             }
             LoweredOp::LoopUnpack { .. }
             | LoweredOp::LoopPack { .. }
-            | LoweredOp::BranchMerge { .. } => {}
+            | LoweredOp::BranchMerge { .. }
+            | LoweredOp::UnsupportedPattern { .. }
+            | LoweredOp::ExternCall { .. } => {}
         }
     }
 
@@ -636,31 +715,31 @@ fn service_transport_phase(
         ObligationCategory::ServiceTransportExecute => {
             Some(service_emit::ServiceTransportPhase::Execute)
         }
-        ObligationCategory::ServiceTransportParse => Some(service_emit::ServiceTransportPhase::Parse),
+        ObligationCategory::ServiceTransportParse => {
+            Some(service_emit::ServiceTransportPhase::Parse)
+        }
         _ => None,
     }
 }
 
-fn is_makegen_module(artifacts: &DerivedArtifacts) -> bool {
-    artifacts
-        .tool_metadata
-        .modules
-        .iter()
-        .any(|module| module.module == "tools.makegen")
+const MAKEGEN_ASSET_KEY: &str = "tools.makegen::makefile";
+
+fn has_required_asset(required_assets: &BTreeSet<ProgramSymbolId>, key: &str) -> bool {
+    required_assets.contains(&ProgramSymbolId::from(key))
 }
 
-/// Look up the makegen embedded data from the map, falling back to a stub.
-fn resolve_embedded_makegen(
-    embedded_data: &std::collections::HashMap<String, EmbeddedData>,
-) -> &str {
+fn require_embedded_asset<'a>(
+    embedded_data: &'a std::collections::HashMap<String, EmbeddedData>,
+    backend: &str,
+    key: &str,
+) -> Result<&'a EmbeddedData, EmitError> {
     embedded_data
-        .get("tools.makegen::makefile")
-        .map(|data| data.content.as_str())
-        .unwrap_or(MAKEGEN_STUB_CONTENT)
+        .get(key)
+        .ok_or_else(|| EmitError::MissingEmbeddedAsset {
+            backend: backend.to_string(),
+            key: key.to_string(),
+        })
 }
-
-const MAKEGEN_STUB_CONTENT: &str =
-    "# Generated by daglang\n.PHONY: makegen\n\nmakegen:\n\tcargo run -p gunbc-dag --bin gunbc-makegen\n";
 
 fn escape_string_literal(input: &str) -> String {
     let mut out = String::with_capacity(input.len() + 8);
@@ -785,6 +864,7 @@ mod tests {
     use daglang_derive::derive_artifacts;
     use daglang_lower::ObligationCategory;
     use gunbc_ir::{Edge, Node, Port};
+    use std::collections::{BTreeSet, HashMap};
 
     fn sample_dag() -> Dag<LoweredOp> {
         let mut dag = Dag::new();
@@ -800,6 +880,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_node(Node::opaque(
@@ -814,6 +895,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
         dag.add_edge(Edge::new(
@@ -825,11 +907,32 @@ mod tests {
         dag
     }
 
+    fn makegen_required_assets() -> BTreeSet<ProgramSymbolId> {
+        let mut assets = BTreeSet::new();
+        assets.insert(ProgramSymbolId::from(MAKEGEN_ASSET_KEY));
+        assets
+    }
+
+    fn makegen_embedded_data() -> HashMap<String, EmbeddedData> {
+        let mut data = HashMap::new();
+        data.insert(
+            MAKEGEN_ASSET_KEY.to_string(),
+            EmbeddedData {
+                module: "tools.makegen".to_string(),
+                layer1_file_path: "src/embedded_makefile.txt".to_string(),
+                layer2_ident: "makegen_content".to_string(),
+                content: "makegen-test-content".to_string(),
+            },
+        );
+        data
+    }
+
     #[test]
     fn emit_rust_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_rust_bundle(&dag, &artifacts).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_rust_bundle(&reachable, &artifacts).expect("emit should succeed");
 
         assert_eq!(bundle.backend, "rust");
         assert_eq!(bundle.files.len(), 3);
@@ -863,7 +966,11 @@ mod tests {
     fn emit_go_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let required_assets = makegen_required_assets();
+        let embedded_data = makegen_embedded_data();
+        let bundle = emit_go_bundle(&reachable, &artifacts, &required_assets, &embedded_data)
+            .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "go");
         assert_eq!(bundle.files.len(), 3);
@@ -889,7 +996,11 @@ mod tests {
     fn emit_c_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let required_assets = makegen_required_assets();
+        let embedded_data = makegen_embedded_data();
+        let bundle = emit_c_bundle(&reachable, &artifacts, &required_assets, &embedded_data)
+            .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "c");
         assert_eq!(bundle.files.len(), 3);
@@ -912,7 +1023,11 @@ mod tests {
     fn emit_mips_bundle_generates_main_and_manifest_files() {
         let dag = sample_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let required_assets = makegen_required_assets();
+        let embedded_data = makegen_embedded_data();
+        let bundle = emit_mips_bundle(&reachable, &artifacts, &required_assets, &embedded_data)
+            .expect("emit should succeed");
 
         assert_eq!(bundle.backend, "mips");
         assert_eq!(bundle.files.len(), 3);
@@ -1020,6 +1135,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1045,6 +1161,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1070,6 +1187,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1095,6 +1213,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1120,6 +1239,7 @@ mod tests {
                 })),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -1146,7 +1266,9 @@ mod tests {
     fn go_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_go_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("emit should succeed");
 
         let main_go = bundle
             .files
@@ -1200,7 +1322,9 @@ mod tests {
     fn go_bundle_imports_transport_packages() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_go_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("emit should succeed");
 
         let main_go = bundle
             .files
@@ -1228,7 +1352,9 @@ mod tests {
     fn c_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_c_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("emit should succeed");
 
         let main_c = bundle
             .files
@@ -1272,7 +1398,9 @@ mod tests {
     fn mips_bundle_emits_rest_service_transport_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
-        let bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("emit should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
+        let bundle = emit_mips_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("emit should succeed");
 
         let main_s = bundle
             .files
@@ -1315,10 +1443,15 @@ mod tests {
     fn all_backends_emit_same_number_of_service_functions() {
         let dag = service_dag();
         let artifacts = derive_artifacts(&dag).expect("derive should succeed");
+        let reachable = ReachableDag::from_dag(&dag);
 
-        let go_bundle = emit_go_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("go emit");
-        let c_bundle = emit_c_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("c emit");
-        let mips_bundle = emit_mips_bundle(&dag, &artifacts, &std::collections::HashMap::new()).expect("mips emit");
+        let go_bundle = emit_go_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("go emit");
+        let c_bundle = emit_c_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+            .expect("c emit");
+        let mips_bundle =
+            emit_mips_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+                .expect("mips emit");
 
         // All should report the same callable count.
         assert_eq!(go_bundle.summary.callable_count, 5, "Go callable count");
@@ -1344,6 +1477,141 @@ mod tests {
         assert!(
             !c_main.content.contains("static void"),
             "C should not have void stubs for service nodes"
+        );
+    }
+
+    // ── FC-14: Reachability pruning tests ──────────────────────────
+
+    #[test]
+    fn compute_reachable_node_ids_includes_connected_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "entry",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "entry".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "downstream",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "downstream".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "unreachable",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "unreachable".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        dag.edges
+            .push(Edge::new("entry", "out", "downstream", "in"));
+
+        let reachable = compute_reachable_node_ids(&dag);
+
+        assert!(reachable.contains("entry"), "entry should be reachable");
+        assert!(
+            reachable.contains("downstream"),
+            "downstream of entry should be reachable"
+        );
+        // "unreachable" has no incoming edges either, so it IS reachable
+        // as an independent entrypoint (no incoming = entrypoint).
+        // This is correct: isolated nodes are their own entrypoints.
+        assert!(
+            reachable.contains("unreachable"),
+            "isolated node is its own entrypoint"
+        );
+    }
+
+    #[test]
+    fn compute_reachable_excludes_orphan_with_incoming_only() {
+        // A node with incoming edges from nowhere (edge references a
+        // non-existent source) should still be tracked via BFS.
+        // But a node that only has incoming edges (not from entrypoints)
+        // would be unreachable.
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "entry",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "entry".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "middle",
+            vec![Port::scalar("in", "String")],
+            vec![Port::scalar("out", "String")],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "middle".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        dag.add_node(Node::opaque(
+            "orphan",
+            vec![Port::scalar("in", "String")],
+            vec![],
+            LoweredOp::Callable {
+                module: "test".to_string(),
+                kind: CallableKind::Func,
+                name: "orphan".to_string(),
+                obligation: ObligationCategory::None,
+                service_metadata: None,
+                is_interactive: false,
+                resource_target: None,
+                fn_body: None,
+            },
+        ));
+        // entry -> middle, but orphan has an incoming edge from middle
+        dag.edges.push(Edge::new("entry", "out", "middle", "in"));
+        // orphan is wired from middle but is reachable through the chain
+        dag.edges.push(Edge::new("middle", "out", "orphan", "in"));
+
+        let reachable = compute_reachable_node_ids(&dag);
+        assert!(reachable.contains("entry"));
+        assert!(reachable.contains("middle"));
+        assert!(
+            reachable.contains("orphan"),
+            "orphan is downstream of entry → middle, so it is reachable"
         );
     }
 }

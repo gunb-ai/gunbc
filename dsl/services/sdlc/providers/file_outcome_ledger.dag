@@ -41,15 +41,6 @@ service file.OutcomeLedger : OutcomeLedger {
       updated: Bool
       previous: StageOutcome?
     }
-    @file(READWRITE, "{config.dir}/{run_key}/{stage}.json")
-    @idempotent
-    @mock_response(
-      status: 0,
-      body: {
-        "updated": true,
-        "previous": null
-      }
-    )
   }
 
   operation get {
@@ -61,34 +52,17 @@ service file.OutcomeLedger : OutcomeLedger {
       found: Bool
       outcome: StageOutcome?
     }
-    @file(READ, "{config.dir}/{run_key}/{stage}.json")
-    @idempotent @readonly
-    @mock_response(
-      status: 0,
-      body: {
-        "found": false,
-        "outcome": null
-      }
-    )
   }
 
   operation list_by_issue {
     input { issue_id: NonEmptyStr }
     output { outcomes: List<StageOutcome> }
-    @file(READ, "{config.dir}/")
-    @readonly
-    @mock_response(
-      status: 0,
-      body: { "outcomes": [] }
-    )
   }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
 
 test file_outcome_upsert_idempotent {
-    @tier(Unit)
-    @hermetic(true)
 
     input upsert/prepare.run_key -> "sdlc::42::design::v1"
     input upsert/prepare.stage -> "design"

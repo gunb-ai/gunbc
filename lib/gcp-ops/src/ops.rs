@@ -1,8 +1,8 @@
 //! Pure GCP ops for WIF + Secret Manager.
 
 use gunbc_exec::{
-    optional_bool_strict, optional_str_list_strict, require_bool, require_str,
-    ExecError, Executable, OutputMap,
+    optional_bool_strict, optional_str_list_strict, require_bool, require_str, ExecError,
+    Executable, OutputMap,
 };
 use gunbc_ir::transport::file::FileRequest;
 use gunbc_ir::transport::rest::RestRequest;
@@ -583,7 +583,8 @@ impl Executable for GcpOps {
                     "https://secretmanager.googleapis.com/v1/projects/{}/secrets/{}:addVersion",
                     project, secret
                 );
-                #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret sent to GCP Secret Manager
+                #[allow(clippy::disallowed_methods)]
+                // Approved: transport boundary — secret sent to GCP Secret Manager
                 let encoded_secret = base64_encode(secret_value.expose_plaintext_for_transport());
                 let body = serde_json::json!({
                     "payload": { "data": encoded_secret }

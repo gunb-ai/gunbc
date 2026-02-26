@@ -1,8 +1,0 @@
-[package]
-name = "gunbc-tool-registry"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "Registry for auto-discovered tool targets (deprecated — see gunbc-dag/src/dsl_registry.rs)"
-
-[dependencies]

@@ -521,7 +521,7 @@ mod tests {
         inputs.insert("model".to_string(), Value::Str("gpt-4o".to_string()));
 
         let err = LlmOps::PrepareChatRequest.execute(inputs).unwrap_err();
-        assert!(err.0.contains("provider"));
+        assert!(err.message.contains("provider"));
     }
 
     #[test]
@@ -535,7 +535,7 @@ mod tests {
         );
 
         let err = LlmOps::PrepareChatRequest.execute(inputs).unwrap_err();
-        assert!(err.0.contains("unknown"));
+        assert!(err.message.contains("unknown"));
     }
 
     #[test]
@@ -707,7 +707,7 @@ mod tests {
         inputs.insert("provider".to_string(), Value::Str("unknown".to_string()));
 
         let err = LlmOps::ResolveAuth.execute(inputs).unwrap_err();
-        assert!(err.0.contains("unknown provider"));
+        assert!(err.message.contains("unknown provider"));
     }
 
     #[test]
@@ -738,7 +738,7 @@ mod tests {
         let json = serde_json::json!([{"role": "villain", "content": "mwahaha"}]);
 
         let err = parse_messages_from_json(&json).unwrap_err();
-        assert!(err.0.contains("invalid role"));
+        assert!(err.message.contains("invalid role"));
     }
 
     fn with_env_lock<F>(f: F)
@@ -894,7 +894,7 @@ mod tests {
         // Missing 'content'
 
         let err = LlmOps::PrepareSimpleRequest.execute(inputs).unwrap_err();
-        assert!(err.0.contains("content"));
+        assert!(err.message.contains("content"));
     }
 
     #[test]
@@ -906,7 +906,7 @@ mod tests {
         // Missing 'question'
 
         let err = LlmOps::PrepareSimpleRequest.execute(inputs).unwrap_err();
-        assert!(err.0.contains("question"));
+        assert!(err.message.contains("question"));
     }
 
     #[test]
@@ -967,6 +967,6 @@ mod tests {
         // Missing 'response'
 
         let err = LlmOps::ParseSimpleResponse.execute(inputs).unwrap_err();
-        assert!(err.0.contains("response"));
+        assert!(err.message.contains("response"));
     }
 }

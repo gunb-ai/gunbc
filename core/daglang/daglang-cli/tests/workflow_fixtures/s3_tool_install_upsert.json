@@ -22,17 +22,17 @@
       "resource_acquire_targets": 4,
       "resource_provide_targets": 1,
       "resource_release_targets": 4,
-      "service_param_source_targets": 22,
-      "service_transport_execute_targets": 14,
-      "service_transport_external_targets": 11,
+      "service_param_source_targets": 26,
+      "service_transport_execute_targets": 11,
+      "service_transport_external_targets": 8,
       "service_transport_hermetic_targets": 3,
-      "service_transport_idempotent_targets": 2,
-      "service_transport_parse_targets": 10,
+      "service_transport_idempotent_targets": 0,
+      "service_transport_parse_targets": 7,
       "service_transport_permission_scoped_targets": 0,
-      "service_transport_prepare_targets": 14,
-      "service_transport_readonly_targets": 9,
-      "total_obligations": 125,
-      "transport_execution_targets": 14
+      "service_transport_prepare_targets": 11,
+      "service_transport_readonly_targets": 0,
+      "total_obligations": 122,
+      "transport_execution_targets": 11
     }
   }
 }

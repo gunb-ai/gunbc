@@ -46,9 +46,6 @@ resource GcsBucket implements ObjectStorage {
     )
     resolve = gcp.Storage.GetBucket(name: config.name) [after create]
 
-    @mock_response(check, status: 404, body: { "error": { "code": 404 } })
-    @mock_response(create, status: 200, body: { "name": config.name })
-    @mock_response(resolve, status: 200, body: { "name": config.name, "selfLink": "https://storage.googleapis.com/storage/v1/b/{config.name}" })
   }
 
   release {}
@@ -57,27 +54,21 @@ resource GcsBucket implements ObjectStorage {
   capability read {
     input { key: NonEmptyStr }
     output { content: Bytes, found: Bool }
-    @rest(GET, "https://storage.googleapis.com/storage/v1/b/{config.name}/o/{key}?alt=media")
-    @idempotent @readonly
   }
 
   capability write {
     input { key: NonEmptyStr, content: Bytes }
     output { ok: Bool }
-    @rest(POST, "https://storage.googleapis.com/upload/storage/v1/b/{config.name}/o?name={key}")
   }
 
   capability delete {
     input { key: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "https://storage.googleapis.com/storage/v1/b/{config.name}/o/{key}")
   }
 
   capability list {
     input { prefix: String }
     output { keys: List<NonEmptyStr> }
-    @rest(GET, "https://storage.googleapis.com/storage/v1/b/{config.name}/o?prefix={prefix}")
-    @idempotent @readonly
   }
 }
 
@@ -141,8 +132,6 @@ resource CloudRunService implements Compute {
       name: config.name
     ) [after create, after update]
 
-    @mock_response(check, status: 404, body: { "error": { "code": 404 } })
-    @mock_response(create, status: 200, body: { "name": config.name, "uri": "https://{config.name}-xyz.a.run.app" })
   }
 
   release {}
@@ -156,8 +145,6 @@ resource CloudRunService implements Compute {
   capability invoke {
     input { path: String, body: Json }
     output { response: Json, status: Int }
-    @rest(POST, "{resolve.uri}{path}")
-    @auth(BearerToken)
   }
 
   capability get_url {
@@ -206,8 +193,6 @@ resource ManagedSecret implements SecretStore {
       secret: full_name
     ) [after create]
 
-    @mock_response(check, status: 200, body: { "name": "projects/{config.project}/secrets/{full_name}" })
-    @mock_response(resolve, status: 200, body: { "name": "projects/{config.project}/secrets/{full_name}" })
   }
 
   release {}
@@ -215,7 +200,6 @@ resource ManagedSecret implements SecretStore {
   capability read_value {
     input {}
     output { value: Secret }
-    @readonly
   }
 
   capability write_value {
@@ -231,7 +215,6 @@ resource ManagedSecret implements SecretStore {
   capability list_versions {
     input {}
     output { versions: List<NonEmptyStr> }
-    @idempotent @readonly
   }
 }
 
@@ -271,8 +254,6 @@ resource GcpServiceAccount implements Identity {
       )
     } [after create]
 
-    @mock_response(check, status: 200, body: { "email": email })
-    @mock_response(create, status: 200, body: { "email": email })
   }
 
   release {}
@@ -280,8 +261,6 @@ resource GcpServiceAccount implements Identity {
   capability assume {
     input { scopes: List<String>, lifetime_seconds: Int = 3600 }
     output { token: Secret, expires_at: String }
-    @rest(POST, "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{email}:generateAccessToken")
-    @auth(BearerToken)
   }
 
   capability grant {
@@ -343,8 +322,6 @@ resource WifProvider {
       attribute_condition: config.attribute_condition
     )
 
-    @mock_response(check_pool, status: 200, body: { "name": "projects/{config.project_number}/locations/global/workloadIdentityPools/{config.pool_id}" })
-    @mock_response(check_provider, status: 200, body: { "name": ".../{config.provider_id}" })
   }
 
   release {}
@@ -379,8 +356,6 @@ resource PubSubTopic implements Queue<Bytes> {
       labels: ResourceFingerprint { spec_hash: hash(config) }.to_labels()
     )
 
-    @mock_response(check, status: 404, body: { "error": { "code": 404 } })
-    @mock_response(create, status: 200, body: { "name": "projects/{config.project}/topics/{config.name}" })
   }
 
   release {}
@@ -393,7 +368,6 @@ resource PubSubTopic implements Queue<Bytes> {
   capability subscribe {
     input {}
     output { messages: List<QueueMessage<Bytes>> }
-    @readonly
   }
 
   capability ack {

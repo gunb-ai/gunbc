@@ -1,6 +1,6 @@
 // services/cargo.dag -- Cargo build system operations.
 //
-// All operations use @shell transport. The warning policy is configured
+// All operations use shell transport. The warning policy is configured
 // compositionally via data items from config/build_policy.dag:
 //   - Build/Test take `env: Map<String, String>` defaulting to cargo_compile_env
 //   - Clippy takes `deny_args: List<String>` defaulting to clippy_deny_args
@@ -17,8 +17,7 @@ service cargo.Build {
       stdout: String
       stderr: String
     }
-    @shell(["cargo", "build", "--all-targets"])
-    @hermetic
+    transport shell { argv: ["cargo", "build", "--all-targets"] }
   }
 
   operation Test {
@@ -28,8 +27,7 @@ service cargo.Build {
       stdout: String
       stderr: String
     }
-    @shell(["cargo", "test"])
-    @hermetic
+    transport shell { argv: ["cargo", "test", "--workspace"] }
   }
 
   operation Clippy {
@@ -39,8 +37,7 @@ service cargo.Build {
       stdout: String
       stderr: String
     }
-    @shell(["cargo", "clippy", "--all-targets", "--"])
-    @hermetic
+    transport shell { argv: ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"] }
   }
 
   operation Doc {
@@ -50,8 +47,8 @@ service cargo.Build {
       stdout: String
       stderr: String
     }
-    @shell(["cargo", "doc", "--no-deps"])
-    @hermetic
+    readonly
+    transport shell { argv: ["cargo", "doc", "--no-deps"] }
   }
 
   operation Run {
@@ -61,8 +58,7 @@ service cargo.Build {
       stdout: String
       stderr: String
     }
-    @shell(["cargo", "run", "-p", "{package}", "--bin", "{bin}", "--"])
     // Note: args are appended to the command by the transport layer.
-    @hermetic
+    transport shell { argv: ["cargo", "run", "-p", "\{package\}", "--bin", "\{bin\}"] }
   }
 }

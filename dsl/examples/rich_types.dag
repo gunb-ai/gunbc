@@ -210,13 +210,13 @@ func load_value<T: Serializable>(key: String) -> { value: Result<T, String> }
 //   ⟦Milliseconds⟧ = {n ∈ ℤ | n ≥ 0} ∩ {branded "Milliseconds"}
 //   Milliseconds <: Int ✓,  Seconds <: Int ✓,  Milliseconds <: Seconds ✗
 
-type UserId = String @brand("UserId")
-type TeamId = String @brand("TeamId")
+type UserId = String where brand("UserId")
+type TeamId = String where brand("TeamId")
 // Compiler prevents: let team: TeamId = some_user_id  // type error!
 // Set-theoretically: ⟦UserId⟧ ∩ ⟦TeamId⟧ = ∅, but both ⊂ ⟦String⟧
 
-type Milliseconds = Int @brand("Milliseconds") @range(min: 0)
-type Seconds      = Int @brand("Seconds") @range(min: 0)
+type Milliseconds = Int where brand("Milliseconds"), range(min: 0)
+type Seconds      = Int where brand("Seconds"), range(min: 0)
 // Prevents: let timeout: Seconds = duration_ms  // type error!
 // ⟦Milliseconds⟧ = {n ∈ ℤ | n ≥ 0, branded "Milliseconds"}
 // ⟦Seconds⟧      = {n ∈ ℤ | n ≥ 0, branded "Seconds"}
@@ -235,9 +235,8 @@ type Seconds      = Int @brand("Seconds") @range(min: 0)
 // type-level computation). Preserves P9 (totality).
 
 type DateRange {
-  start: String @pattern("^\\d{4}-\\d{2}-\\d{2}$")
-  end: String @pattern("^\\d{4}-\\d{2}-\\d{2}$")
-  @contract("start <= end")
+  start: String where pattern("^\\d{4}-\\d{2}-\\d{2}$")
+  end: String where pattern("^\\d{4}-\\d{2}-\\d{2}$")
 }
 
 
@@ -263,8 +262,8 @@ type DateRange {
 //     (if SpecificMeta <: Json and M is covariant)
 
 type ReviewArtifact<M: Serializable> {
-  id: String @format(uuid)
-  created_at: String @pattern("^\\d{4}-\\d{2}-\\d{2}T")
+  id: String where format(uuid)
+  created_at: String where pattern("^\\d{4}-\\d{2}-\\d{2}T")
   author: UserId
   metadata: M
   content: NonEmptyStr
@@ -274,7 +273,7 @@ type ReviewArtifact<M: Serializable> {
 type ReviewStatus
   = Pending
   | InProgress { reviewer: UserId, started_at: String }
-  | Completed { reviewer: UserId, score: Int @range(min: 1, max: 5) }
+  | Completed { reviewer: UserId, score: Int where range(min: 1, max: 5) }
   | Rejected { reason: String }
 
 func submit_review<M: Serializable>(

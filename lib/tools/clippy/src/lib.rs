@@ -26,4 +26,3 @@ pub use config::{
 pub use lint::{LintId, LintSource};
 pub use ops::{CliToolOp, Clippy};
 pub use policy::{CratePolicy, CrateRole};
-

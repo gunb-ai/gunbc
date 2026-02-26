@@ -170,11 +170,15 @@ pub fn build_symbol_subdag(symbol: &SymbolEntry) -> Node<SymbolOp> {
         SymbolOp::Resolve,
     ));
 
-    inner.add_edge(crate::dag::build::edge("emoji", "value", "resolve", "emoji"));
+    inner.add_edge(crate::dag::build::edge(
+        "emoji", "value", "resolve", "emoji",
+    ));
     inner.add_edge(crate::dag::build::edge(
         "unicode", "value", "resolve", "unicode",
     ));
-    inner.add_edge(crate::dag::build::edge("ascii", "value", "resolve", "ascii"));
+    inner.add_edge(crate::dag::build::edge(
+        "ascii", "value", "resolve", "ascii",
+    ));
 
     Node::subdag(format!("symbol_{:?}", symbol.id), inner)
 }

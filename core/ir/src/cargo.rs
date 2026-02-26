@@ -246,7 +246,7 @@ pub enum BinaryArgs {
     None,
     /// Subcommand for gunbc-codegen binary.
     Codegen(CodegenSubcommand),
-    /// Mode argument for binaries that support ExecMode (testgen, makegen, etc.).
+    /// Mode argument for hand-written binaries that support ExecMode (deps-config, ci).
     WithMode(ExecMode),
 }
 

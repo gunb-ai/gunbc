@@ -1,6 +1,6 @@
 // services/git.dag -- Git CLI operations.
 //
-// All operations use @shell transport with argv-based argument passing.
+// All operations use shell transport with argv-based argument passing.
 // Output parsing: single String field defaults to trim(stdout).
 // List<String> fields default to split(trim(stdout), "\n").
 //
@@ -14,53 +14,49 @@ service git.Core {
   operation CurrentBranch {
     input {}
     output { branch: String }
-    @shell(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-    @hermetic @readonly
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
   }
 
   operation RemoteBranches {
     input {}
     output { branches: List<String> }
-    @shell(["git", "branch", "-r", "--format=%(refname:short)"])
-    @hermetic @readonly
+    readonly
+    transport shell { argv: ["git", "branch", "-r", "--format=%(refname:short)"] }
   }
 
   operation LsFiles {
     input {}
     output { files: List<FilePath> }
-    @shell(["git", "ls-files"])
-    @hermetic @readonly
+    readonly
+    transport shell { argv: ["git", "ls-files"] }
   }
 
   operation Diff {
     input { base: GitRef, head: GitRef = "HEAD" }
     output { diff: String }
-    @shell(["git", "diff", "{base}...{head}"])
-    @hermetic @readonly
+    readonly
+    transport shell { argv: ["git", "diff", "\{base\}", "\{head\}"] }
   }
 
   operation RevList {
     input { since: String }
     output { commits: List<CommitSha> }
-    @shell(["git", "rev-list", "--since={since}", "HEAD"])
-    @hermetic @readonly
+    readonly
+    transport shell { argv: ["git", "rev-list", "\{since\}..HEAD"] }
   }
 
   operation RevListBase {
     input { since: String }
     output { base_ref: CommitSha }
-    @shell([
-      "bash",
-      "-lc",
-      "base=$(git rev-list --since='{since}' HEAD | tail -n 1); if [ -z \"$base\" ]; then echo HEAD~1; else echo \"$base\"; fi"
-    ])
-    @hermetic @readonly
+    readonly
+    transport shell { argv: ["git", "merge-base", "HEAD", "\{since\}"] }
   }
 
   operation Show {
     input { ref: GitRef, path: FilePath }
     output { content: String }
-    @shell(["git", "show", "{ref}:{path}"])
-    @hermetic @readonly
+    readonly
+    transport shell { argv: ["git", "show", "\{ref\}:\{path\}"] }
   }
 }

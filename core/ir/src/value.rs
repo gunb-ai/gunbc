@@ -86,6 +86,11 @@ impl SecretString {
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
+
+    /// Return an opt-in diagnostic view that reveals a suffix.
+    pub fn hint(&self) -> SecretHint<'_> {
+        SecretHint(self)
+    }
 }
 
 impl fmt::Debug for SecretString {
@@ -97,6 +102,31 @@ impl fmt::Debug for SecretString {
 impl fmt::Display for SecretString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "***")
+    }
+}
+
+/// Opt-in diagnostic display that reveals a suffix of the secret.
+///
+/// Reveals `min(len/4, 4)` trailing characters — always <25%, capped at 4.
+/// Use this in error diagnostics to help identify *which* credential failed,
+/// without changing the default `Display` (which stays fully redacted).
+pub struct SecretHint<'a>(&'a SecretString);
+
+impl fmt::Display for SecretHint<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = &self.0.inner;
+        let reveal = (s.len() / 4).min(4);
+        if reveal == 0 {
+            write!(f, "***")
+        } else {
+            write!(f, "***{}", &s[s.len() - reveal..])
+        }
+    }
+}
+
+impl fmt::Debug for SecretHint<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SecretHint(***)")
     }
 }
 
@@ -705,6 +735,37 @@ impl fmt::Display for Value {
     }
 }
 
+impl From<serde_json::Value> for Value {
+    /// Convert a `serde_json::Value` to a native `Value` with proper types.
+    ///
+    /// Unlike `Value::Json(v)` which wraps JSON opaquely, this produces
+    /// `Value::Map`, `Value::List`, `Value::Str`, etc. so field access,
+    /// iteration, and pattern matching work natively.
+    fn from(json: serde_json::Value) -> Self {
+        match json {
+            serde_json::Value::Null => Value::Unit,
+            serde_json::Value::Bool(b) => Value::Bool(b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Int(i)
+                } else if let Some(f) = n.as_f64() {
+                    Value::Float(f)
+                } else {
+                    Value::Str(n.to_string())
+                }
+            }
+            serde_json::Value::String(s) => Value::Str(s),
+            serde_json::Value::Array(arr) => {
+                Value::List(arr.into_iter().map(Value::from).collect())
+            }
+            serde_json::Value::Object(obj) => {
+                let map = obj.into_iter().map(|(k, v)| (k, Value::from(v))).collect();
+                Value::Map(map)
+            }
+        }
+    }
+}
+
 impl From<TransportRequest> for Value {
     fn from(r: TransportRequest) -> Self {
         Value::Request(r)
@@ -828,6 +889,36 @@ mod tests {
             "display_redacted_truncated() leaked plaintext: {truncated}"
         );
         assert_eq!(truncated, "***");
+    }
+
+    #[test]
+    fn secret_hint_short_secret() {
+        let s = SecretString::new("abc");
+        assert_eq!(format!("{}", s.hint()), "***");
+    }
+
+    #[test]
+    fn secret_hint_medium_secret() {
+        let s = SecretString::new("abcdefgh");
+        assert_eq!(format!("{}", s.hint()), "***gh");
+    }
+
+    #[test]
+    fn secret_hint_long_secret() {
+        let s = SecretString::new("abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(format!("{}", s.hint()), "***wxyz");
+    }
+
+    #[test]
+    fn secret_hint_preserves_display() {
+        let s = SecretString::new("my-secret-token");
+        assert_eq!(format!("{}", s), "***");
+    }
+
+    #[test]
+    fn secret_hint_debug_redacted() {
+        let s = SecretString::new("token123");
+        assert_eq!(format!("{:?}", s.hint()), "SecretHint(***)");
     }
 
     /// M7 intentional: serde_json::to_string serializes plaintext for storage/wire.

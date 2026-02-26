@@ -52,7 +52,7 @@ type FileEntry {
 //
 //   [ReadableEntry] < [FileEntry]
 //   [ReadableEntry] = { e in [FileEntry] | is_text_readable(e) }
-type ReadableEntry = FileEntry @where(is_text_readable)
+type ReadableEntry = FileEntry where is_text_readable
 
 // Partition result -- every input entry lands in exactly one list.
 type PartitionResult {

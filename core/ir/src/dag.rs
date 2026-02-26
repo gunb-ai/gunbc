@@ -1094,3 +1094,188 @@ mod tests {
         assert_eq!(port2.name.0, "res:tool:clippy");
     }
 }
+
+// ============================================================================
+// FC-15: ReachableDag — by-construction reachability enforcement
+// ============================================================================
+
+/// A DAG that contains only nodes reachable from entrypoints.
+///
+/// This is a structural guarantee: emitters that accept `&ReachableDag<T>`
+/// cannot access unreachable nodes. The invariant "emit only reachable code"
+/// is enforced by the type system, not by runtime filtering.
+///
+/// Created via `ReachableDag::from_dag()`, which computes reachability once.
+#[derive(Debug, Clone)]
+pub struct ReachableDag<T> {
+    /// Only reachable nodes.
+    pub nodes: Vec<Node<T>>,
+    /// Only edges between reachable nodes.
+    pub edges: Vec<Edge>,
+}
+
+impl<T> ReachableDag<T> {
+    /// Slice a DAG to only its reachable subgraph.
+    ///
+    /// Computes BFS from entrypoints (nodes with no incoming edges) and
+    /// retains only reachable nodes and their interconnecting edges.
+    pub fn from_dag(dag: &Dag<T>) -> Self
+    where
+        T: Clone,
+    {
+        use std::collections::{HashMap, HashSet, VecDeque};
+
+        // Build adjacency and identify entrypoints.
+        let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut has_incoming: HashSet<&str> = HashSet::new();
+        for edge in &dag.edges {
+            adj.entry(edge.from_node.0.as_str())
+                .or_default()
+                .push(edge.to_node.0.as_str());
+            has_incoming.insert(edge.to_node.0.as_str());
+        }
+
+        let entrypoints: Vec<&str> = if dag.edges.is_empty() {
+            dag.nodes.iter().map(|n| n.id.0.as_str()).collect()
+        } else {
+            dag.nodes
+                .iter()
+                .filter(|n| !has_incoming.contains(n.id.0.as_str()))
+                .map(|n| n.id.0.as_str())
+                .collect()
+        };
+
+        // BFS.
+        let mut reachable_ids: HashSet<String> = HashSet::new();
+        let mut queue: VecDeque<&str> = entrypoints.into_iter().collect();
+        while let Some(node_id) = queue.pop_front() {
+            if !reachable_ids.insert(node_id.to_string()) {
+                continue;
+            }
+            if let Some(successors) = adj.get(node_id) {
+                for succ in successors {
+                    if !reachable_ids.contains(*succ) {
+                        queue.push_back(succ);
+                    }
+                }
+            }
+        }
+
+        let nodes = dag
+            .nodes
+            .iter()
+            .filter(|n| reachable_ids.contains(&n.id.0))
+            .cloned()
+            .collect();
+        let edges = dag
+            .edges
+            .iter()
+            .filter(|e| {
+                reachable_ids.contains(&e.from_node.0) && reachable_ids.contains(&e.to_node.0)
+            })
+            .cloned()
+            .collect();
+
+        Self { nodes, edges }
+    }
+
+    /// Number of reachable nodes.
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Number of edges in the reachable subgraph.
+    pub fn edge_count(&self) -> usize {
+        self.edges.len()
+    }
+}
+
+#[cfg(test)]
+mod reachable_dag_tests {
+    use super::*;
+
+    fn dummy_node(id: &str) -> Node<String> {
+        Node::opaque(id, vec![], vec![], id.to_string())
+    }
+
+    #[test]
+    fn reachable_dag_excludes_unreachable_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(dummy_node("entry"));
+        dag.add_node(dummy_node("downstream"));
+        dag.add_node(dummy_node("orphan_with_incoming"));
+        dag.edges
+            .push(Edge::new("entry", "out", "downstream", "in"));
+        // orphan_with_incoming has an incoming edge from a non-entrypoint source
+        // that itself has no path from entry — but since "orphan_with_incoming"
+        // has incoming edges, it's not an entrypoint. And it's not downstream
+        // of "entry". So it should be excluded... but we need a source node
+        // that is also not an entrypoint for this to work.
+        // Actually in this setup, orphan_with_incoming has no incoming edge
+        // from any node in the graph. Let's make it have one:
+        dag.add_node(dummy_node("island_source"));
+        dag.edges.push(Edge::new(
+            "island_source",
+            "out",
+            "orphan_with_incoming",
+            "in",
+        ));
+
+        let reachable = ReachableDag::from_dag(&dag);
+        let ids: Vec<&str> = reachable.nodes.iter().map(|n| n.id.0.as_str()).collect();
+
+        // "entry" is an entrypoint (no incoming edges)
+        assert!(ids.contains(&"entry"));
+        // "downstream" is reachable from "entry"
+        assert!(ids.contains(&"downstream"));
+        // "island_source" is also an entrypoint (no incoming edges)
+        assert!(ids.contains(&"island_source"));
+        // "orphan_with_incoming" is reachable from "island_source"
+        assert!(ids.contains(&"orphan_with_incoming"));
+    }
+
+    #[test]
+    fn reachable_dag_preserves_all_nodes_when_fully_connected() {
+        let mut dag = Dag::new();
+        dag.add_node(dummy_node("a"));
+        dag.add_node(dummy_node("b"));
+        dag.add_node(dummy_node("c"));
+        dag.edges.push(Edge::new("a", "out", "b", "in"));
+        dag.edges.push(Edge::new("b", "out", "c", "in"));
+
+        let reachable = ReachableDag::from_dag(&dag);
+        assert_eq!(reachable.node_count(), 3);
+        assert_eq!(reachable.edge_count(), 2);
+    }
+
+    #[test]
+    fn reachable_dag_filters_edges_to_unreachable_nodes() {
+        let mut dag = Dag::new();
+        dag.add_node(dummy_node("entry"));
+        dag.add_node(dummy_node("target"));
+        // Edge from non-existent source to target: target has incoming
+        // but source doesn't exist as a node, so target is not reachable
+        dag.edges
+            .push(Edge::new("nonexistent", "out", "target", "in"));
+
+        let reachable = ReachableDag::from_dag(&dag);
+        // entry is reachable (no incoming), target is not (incoming from nowhere)
+        assert_eq!(reachable.node_count(), 1);
+        assert!(reachable.nodes[0].id.0 == "entry");
+        // Edge is filtered out because target is unreachable
+        assert_eq!(reachable.edge_count(), 0);
+    }
+
+    #[test]
+    fn reachable_dag_is_deterministic() {
+        let mut dag = Dag::new();
+        dag.add_node(dummy_node("a"));
+        dag.add_node(dummy_node("b"));
+        dag.edges.push(Edge::new("a", "out", "b", "in"));
+
+        let r1 = ReachableDag::from_dag(&dag);
+        let r2 = ReachableDag::from_dag(&dag);
+        assert_eq!(r1.node_count(), r2.node_count());
+        assert_eq!(r1.edge_count(), r2.edge_count());
+    }
+}

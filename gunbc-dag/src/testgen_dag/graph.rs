@@ -67,14 +67,15 @@ pub fn build_testgen_graph_auto() -> Result<Dag<TestgenGraphOp>, BuilderError> {
     let output_dir = layout.workspace_root.join("gunbc-dag").join("src");
     let modules = discover_compilable_modules(&dsl_root);
 
+    // PT-6: Discover available profiles for per-profile live test generation.
+    let profiles = super::profile_discovery::discover_profiles(&dsl_root);
+
     let mut builder = DagBuilder::new();
     let fs_env = add_fs_env_root_node(&mut builder, dyn_op)?;
 
     for module in &modules {
-        // Skip modules that require a --profile flag (bound interface imports).
-        if module.requires_profile {
-            continue;
-        }
+        // IS-3: No longer skip modules that require --profile.
+        // Stub transport allows compilation without a profile for DryRun testing.
 
         let safe_name = module.module_name.replace('.', "-");
         let output_path = format!(
@@ -82,6 +83,28 @@ pub fn build_testgen_graph_auto() -> Result<Dag<TestgenGraphOp>, BuilderError> {
             output_dir.display(),
             module.module_name.replace('.', "_"),
         );
+
+        // PT-6: Populate per-profile live test configs for modules that
+        // import interfaces. Only profiles binding at least one imported
+        // interface are included (scoping per PT-4).
+        let live_profile_tests = if module.interface_imports.is_empty() {
+            Vec::new()
+        } else {
+            super::profile_discovery::profiles_for_module(&profiles, &module.interface_imports)
+                .into_iter()
+                .map(|profile| gunbc_codegen::registry::LiveProfileTestConfig {
+                    profile_name: profile.name.clone(),
+                    test_class: profile.test_class,
+                    fermi_cost: profile_fermi_cost(profile),
+                    required_env: profile.required_env.clone(),
+                    required_any_of: Vec::new(),
+                    dag_builder_call: format!(
+                        "crate::dsl_builder::build_dsl_graph_with_profile(\"{}\", \"{}\").expect(\"profile graph should build\")",
+                        module.dsl_path, profile.name,
+                    ),
+                })
+                .collect()
+        };
 
         add_upsert_chain(
             &mut builder,
@@ -91,6 +114,7 @@ pub fn build_testgen_graph_auto() -> Result<Dag<TestgenGraphOp>, BuilderError> {
                 dsl_path: module.dsl_path.clone(),
                 module_name: module.module_name.clone(),
                 output_path,
+                live_profile_tests,
             }),
         )?;
     }
@@ -143,6 +167,28 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     Ok(builder.build())
 }
 
+/// Derive fermi cost from a profile's test class and environment requirements.
+///
+/// Hermetic profiles (stub transports) are cheap → XS.
+/// Integration profiles without env requirements are moderate → S.
+/// Integration profiles needing env vars (credentials, tokens) are heavier → M.
+fn profile_fermi_cost(
+    profile: &super::profile_discovery::DiscoveredProfile,
+) -> gunbc_test::FermiCost {
+    match profile.test_class {
+        gunbc_test::TestClass::Unit | gunbc_test::TestClass::Hermetic => {
+            gunbc_test::FermiCost::XS
+        }
+        gunbc_test::TestClass::Integration => {
+            if profile.required_env.is_empty() {
+                gunbc_test::FermiCost::S
+            } else {
+                gunbc_test::FermiCost::M
+            }
+        }
+    }
+}
+
 fn add_upsert_chain(
     builder: &mut DagBuilder<TestgenGraphOp>,
     fs_env: &gunbc_ir::builder::NodeRef<TestgenGraphOp>,
@@ -154,10 +200,7 @@ fn add_upsert_chain(
     let generate = builder.add_root_node(Node::opaque(
         gen_id.as_str(),
         vec![],
-        vec![
-            port("content", "NonEmptyString"),
-            port("path", "String"),
-        ],
+        vec![port("content", "NonEmptyString"), port("path", "String")],
         generate_op,
     ))?;
 

@@ -11,3 +11,9 @@ data warning_policy: WarningPolicy = DenyAll
 data cargo_compile_env: Map<String, String> = { "RUSTFLAGS": "-D warnings" }
 
 data clippy_deny_args: List<String> = ["-D", "warnings"]
+
+// ── DryRun policy ───────────────────────────────────────────────────
+// Every tool binary must have a mock_spec_call. Running --dry-run with
+// empty mocks silently skips all boundary interception.
+
+data dryrun_requires_mock_spec: Bool = true

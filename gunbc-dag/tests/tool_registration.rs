@@ -1,8 +1,9 @@
 use daglang_driver::{compile_from_context, DriverContext};
 use daglang_lower::LoweredOp;
-use gunbc_dag::compiled_fns::lookup_compiled_fn;
 use gunbc_dag::dsl_registry::discover_tool_defs_from_dsl;
+use gunbc_dag::extern_impls::lookup_extern_impl;
 use gunbc_dag::makegen::{BuildConfig, ToolInfo, ToolRegistry};
+use gunbc_infra::workspace_model::{baseline_commit_policies, CommitReason};
 use gunbc_ir::cargo::Warnings;
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::resource::ResourceIo;
@@ -59,13 +60,33 @@ fn dsl_discovery_finds_expected_tools() {
 
 #[test]
 fn makegen_default_registry_matches_dsl_tools_plus_manual_targets() {
+    let registry = ToolRegistry::default_registry();
+
+    // Core workflow names that filter out DSL tool collisions.
+    let core_names: HashSet<String> = registry
+        .core_workflows
+        .iter()
+        .map(|w| w.name.clone())
+        .collect();
+
+    // Manual tools overridden to needs_generated_cli = false.
+    let manual_names: HashSet<&str> = registry
+        .tools
+        .iter()
+        .filter(|tool| !tool.needs_generated_cli)
+        .map(|tool| tool.short_name.as_str())
+        .collect();
+
+    // DSL-derived tools with invocations, minus core workflow collisions
+    // and manual overrides.
     let derived_with_invocation: HashSet<String> = dsl_tools()
         .into_iter()
         .filter(|tool| tool.invocation.is_some())
+        .filter(|tool| !core_names.contains(tool.meta.tool_name.as_ref()))
+        .filter(|tool| !manual_names.contains(tool.meta.tool_name.as_ref()))
         .map(|tool| tool.meta.tool_name.to_string())
         .collect();
 
-    let registry = ToolRegistry::default_registry();
     let makegen_generated: HashSet<String> = registry
         .tools
         .iter()
@@ -75,18 +96,14 @@ fn makegen_default_registry_matches_dsl_tools_plus_manual_targets() {
 
     assert_eq!(
         makegen_generated, derived_with_invocation,
-        "makegen generated-cli tools must stay in lockstep with DSL-derived tools"
+        "makegen generated-cli tools must stay in lockstep with DSL-derived tools \
+         (excluding core workflow collisions and manual overrides)"
     );
 
-    let manual_targets: HashSet<&str> = registry
-        .tools
-        .iter()
-        .filter(|tool| !tool.needs_generated_cli)
-        .map(|tool| tool.short_name.as_str())
-        .collect();
-    let expected_manual: HashSet<&str> = HashSet::new();
+    // Manual targets: tools with hand-written binaries (no generated CLI).
+    let expected_manual: HashSet<&str> = HashSet::from(["pragma"]);
     assert_eq!(
-        manual_targets, expected_manual,
+        manual_names, expected_manual,
         "makegen manual targets must stay explicit and auditable"
     );
 }
@@ -200,12 +217,15 @@ fn tool_declared_outputs_match_dsl_compilation() {
     }
 }
 
-const COMMITTED_SEED_FILES: &[&str] = &[
-    ".gitignore",
-    "clippy.toml",
-    "deps.toml",
-    "docs/ab-writing-workflows.md",
-];
+/// Bootstrap seed files: generated but committed. Derived from the single
+/// source of truth in `baseline_commit_policies()` (workspace_model).
+fn committed_seed_files() -> Vec<&'static str> {
+    baseline_commit_policies()
+        .into_iter()
+        .filter(|p| p.reason == CommitReason::BootstrapSeed)
+        .map(|p| p.pattern)
+        .collect()
+}
 
 #[test]
 #[allow(clippy::disallowed_methods)]
@@ -216,7 +236,7 @@ fn no_generated_files_committed() {
 
     for tool in &tools {
         for pattern in &tool.outputs {
-            if COMMITTED_SEED_FILES.contains(&pattern.as_str()) {
+            if committed_seed_files().contains(&pattern.as_str()) {
                 continue;
             }
             let output = std::process::Command::new("git")
@@ -235,7 +255,11 @@ fn no_generated_files_committed() {
         }
     }
 
-    assert!(violations.is_empty(), "generated files committed:\n{}", violations.join("\n"));
+    assert!(
+        violations.is_empty(),
+        "generated files committed:\n{}",
+        violations.join("\n")
+    );
 }
 
 #[test]
@@ -247,8 +271,12 @@ fn all_tool_outputs_gitignored() {
 
     for tool in &tools {
         for pattern in &tool.outputs {
-            if pattern.contains('*') || pattern.contains('?') { continue; }
-            if COMMITTED_SEED_FILES.contains(&pattern.as_str()) { continue; }
+            if pattern.contains('*') || pattern.contains('?') {
+                continue;
+            }
+            if committed_seed_files().contains(&pattern.as_str()) {
+                continue;
+            }
             let status = std::process::Command::new("git")
                 .args(["check-ignore", "-q", pattern])
                 .current_dir(&workspace_root)
@@ -263,7 +291,11 @@ fn all_tool_outputs_gitignored() {
         }
     }
 
-    assert!(not_ignored.is_empty(), "tool outputs not gitignored:\n{}", not_ignored.join("\n"));
+    assert!(
+        not_ignored.is_empty(),
+        "tool outputs not gitignored:\n{}",
+        not_ignored.join("\n")
+    );
 }
 
 // ============================================================================
@@ -295,7 +327,11 @@ fn dsl_is_single_authority() {
         outside_dsl,
     );
 
-    assert!(dsl_names.len() >= 8, "DSL discovery too few tools ({})", dsl_names.len());
+    assert!(
+        dsl_names.len() >= 8,
+        "DSL discovery too few tools ({})",
+        dsl_names.len()
+    );
 }
 
 #[test]
@@ -306,11 +342,18 @@ fn workspace_binary_invocations_are_consistent() {
     for binary in WorkspaceBinary::ALL {
         let inv = binary.invocation();
         if inv.binary.is_empty() {
-            violations.push(format!("WorkspaceBinary '{}' has empty binary", binary.tool_name()));
+            violations.push(format!(
+                "WorkspaceBinary '{}' has empty binary",
+                binary.tool_name()
+            ));
         }
     }
 
-    assert!(violations.is_empty(), "violations:\n{}", violations.join("\n"));
+    assert!(
+        violations.is_empty(),
+        "violations:\n{}",
+        violations.join("\n")
+    );
 }
 
 #[test]
@@ -330,7 +373,8 @@ fn workspace_binary_enum_covers_dsl_tools() {
         "review",
     ]);
 
-    let enum_binaries: BTreeSet<&str> = WorkspaceBinary::ALL.iter().map(|b| b.tool_name()).collect();
+    let enum_binaries: BTreeSet<&str> =
+        WorkspaceBinary::ALL.iter().map(|b| b.tool_name()).collect();
     let dsl_invocable: BTreeSet<String> = dsl_tools()
         .into_iter()
         .filter(|tool| tool.invocation.is_some())
@@ -342,7 +386,11 @@ fn workspace_binary_enum_covers_dsl_tools() {
         .filter(|name| !enum_binaries.contains(name.as_str()))
         .filter(|name| !non_workspace_dispatch.contains(name.as_str()))
         .collect();
-    assert!(missing.is_empty(), "DSL tools missing from WorkspaceBinary: {:?}", missing);
+    assert!(
+        missing.is_empty(),
+        "DSL tools missing from WorkspaceBinary: {:?}",
+        missing
+    );
 }
 
 // ============================================================================
@@ -355,19 +403,36 @@ fn repeatable_flags_survive_roundtrip() {
     let mut checked = 0usize;
 
     for tool in &tools {
-        let Some(info) = ToolInfo::from_tool_def(tool) else { continue };
+        let Some(info) = ToolInfo::from_tool_def(tool) else {
+            continue;
+        };
         for ep in &tool.entrypoints {
-            let Some(ref make_var) = ep.make_var else { continue };
-            let param = info.entrypoints.iter().find(|p| p.make_var == *make_var)
-                .unwrap_or_else(|| panic!("tool '{}' ep '{}' make_var='{}' not in ToolInfo",
-                    tool.meta.tool_name, ep.port_name, make_var));
+            let Some(ref make_var) = ep.make_var else {
+                continue;
+            };
+            let param = info
+                .entrypoints
+                .iter()
+                .find(|p| p.make_var == *make_var)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "tool '{}' ep '{}' make_var='{}' not in ToolInfo",
+                        tool.meta.tool_name, ep.port_name, make_var
+                    )
+                });
 
             if ep.cardinality.allows_many() {
-                assert!(param.repeatable, "tool '{}' ep '{}': allows_many but not repeatable",
-                    tool.meta.tool_name, ep.port_name);
+                assert!(
+                    param.repeatable,
+                    "tool '{}' ep '{}': allows_many but not repeatable",
+                    tool.meta.tool_name, ep.port_name
+                );
             } else {
-                assert!(!param.repeatable, "tool '{}' ep '{}': not allows_many but repeatable",
-                    tool.meta.tool_name, ep.port_name);
+                assert!(
+                    !param.repeatable,
+                    "tool '{}' ep '{}': not allows_many but repeatable",
+                    tool.meta.tool_name, ep.port_name
+                );
             }
             checked += 1;
         }
@@ -382,23 +447,43 @@ fn default_values_survive_roundtrip() {
     let mut checked = 0usize;
 
     for tool in &tools {
-        let Some(info) = ToolInfo::from_tool_def(tool) else { continue };
+        let Some(info) = ToolInfo::from_tool_def(tool) else {
+            continue;
+        };
         for ep in &tool.entrypoints {
-            let Some(ref make_var) = ep.make_var else { continue };
-            let param = info.entrypoints.iter().find(|p| p.make_var == *make_var)
-                .unwrap_or_else(|| panic!("tool '{}' ep '{}' make_var='{}' not in ToolInfo",
-                    tool.meta.tool_name, ep.port_name, make_var));
+            let Some(ref make_var) = ep.make_var else {
+                continue;
+            };
+            let param = info
+                .entrypoints
+                .iter()
+                .find(|p| p.make_var == *make_var)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "tool '{}' ep '{}' make_var='{}' not in ToolInfo",
+                        tool.meta.tool_name, ep.port_name, make_var
+                    )
+                });
 
-            assert_eq!(ep.default_value, param.default,
+            assert_eq!(
+                ep.default_value, param.default,
                 "tool '{}' ep '{}' (make_var={}): default mismatch",
-                tool.meta.tool_name, ep.port_name, make_var);
+                tool.meta.tool_name, ep.port_name, make_var
+            );
             checked += 1;
         }
     }
 
-    let has_default = tools.iter().any(|t| t.entrypoints.iter()
-        .any(|ep| ep.make_var.is_some() && ep.default_value.is_some()));
-    assert!(has_default, "no entrypoints with make_var AND default_value ({} checked)", checked);
+    let has_default = tools.iter().any(|t| {
+        t.entrypoints
+            .iter()
+            .any(|ep| ep.make_var.is_some() && ep.default_value.is_some())
+    });
+    assert!(
+        has_default,
+        "no entrypoints with make_var AND default_value ({} checked)",
+        checked
+    );
 }
 
 #[test]
@@ -408,49 +493,72 @@ fn make_var_cli_flag_bijection() {
     let mut checked_tools = 0usize;
 
     for tool in &tools {
-        let Some(info) = ToolInfo::from_tool_def(tool) else { continue };
+        let Some(info) = ToolInfo::from_tool_def(tool) else {
+            continue;
+        };
 
-        let ep_make_vars: BTreeMap<&str, &str> = tool.entrypoints.iter()
+        let ep_make_vars: BTreeMap<&str, &str> = tool
+            .entrypoints
+            .iter()
             .filter_map(|ep| ep.make_var.as_deref().map(|mv| (mv, ep.port_name.as_str())))
             .collect();
-        let param_make_vars: BTreeMap<&str, &str> = info.entrypoints.iter()
+        let param_make_vars: BTreeMap<&str, &str> = info
+            .entrypoints
+            .iter()
             .map(|p| (p.make_var.as_str(), p.port_name.as_str()))
             .collect();
 
         for (mv, pn) in &ep_make_vars {
             if !param_make_vars.contains_key(mv) {
-                violations.push(format!("tool '{}': ep '{}' make_var='{}' missing from ToolInfo",
-                    tool.meta.tool_name, pn, mv));
+                violations.push(format!(
+                    "tool '{}': ep '{}' make_var='{}' missing from ToolInfo",
+                    tool.meta.tool_name, pn, mv
+                ));
             }
         }
         for (mv, pn) in &param_make_vars {
             if !ep_make_vars.contains_key(mv) {
-                violations.push(format!("tool '{}': param '{}' make_var='{}' missing from ep",
-                    tool.meta.tool_name, pn, mv));
+                violations.push(format!(
+                    "tool '{}': param '{}' make_var='{}' missing from ep",
+                    tool.meta.tool_name, pn, mv
+                ));
             }
         }
         for param in &info.entrypoints {
             if param.cli_flag.is_empty() {
-                violations.push(format!("tool '{}': param '{}' empty cli_flag",
-                    tool.meta.tool_name, param.port_name));
+                violations.push(format!(
+                    "tool '{}': param '{}' empty cli_flag",
+                    tool.meta.tool_name, param.port_name
+                ));
             }
             if !param.cli_flag.starts_with("--") {
-                violations.push(format!("tool '{}': cli_flag='{}' missing '--'",
-                    tool.meta.tool_name, param.cli_flag));
+                violations.push(format!(
+                    "tool '{}': cli_flag='{}' missing '--'",
+                    tool.meta.tool_name, param.cli_flag
+                ));
             }
         }
-        if !ep_make_vars.is_empty() || !param_make_vars.is_empty() { checked_tools += 1; }
+        if !ep_make_vars.is_empty() || !param_make_vars.is_empty() {
+            checked_tools += 1;
+        }
     }
 
-    assert!(violations.is_empty(), "bijection violations:\n{}", violations.join("\n"));
+    assert!(
+        violations.is_empty(),
+        "bijection violations:\n{}",
+        violations.join("\n")
+    );
     assert!(checked_tools > 0, "no tools with make_var entrypoints");
 }
 
 #[test]
 fn dsl_warning_policy_matches_build_config() {
     let config = BuildConfig::cargo();
-    assert_eq!(config.warnings, Warnings::Deny,
-        "BuildConfig.warnings must match dsl/config/build_policy.dag warning_policy=DenyAll");
+    assert_eq!(
+        config.warnings,
+        Warnings::Deny,
+        "BuildConfig.warnings must match dsl/config/build_policy.dag warning_policy=DenyAll"
+    );
 }
 
 // ============================================================================
@@ -458,39 +566,28 @@ fn dsl_warning_policy_matches_build_config() {
 // ============================================================================
 
 fn is_passthrough_callable(module: &str, name: &str, has_service_metadata: bool) -> bool {
-    if module == "std.resources" || module == "tools.infra" { return false; }
-    if module.starts_with("services.") || module.starts_with("workspace.") { return false; }
-    if name.starts_with("service_transport::") && (has_service_metadata || name.starts_with("service_transport::execute::")) {
+    if module == "std.resources" || module == "tools.infra" {
         return false;
     }
-    if lookup_compiled_fn(module, name).is_some() { return false; }
+    if module.starts_with("services.") || module.starts_with("workspace.") {
+        return false;
+    }
+    if name.starts_with("service_transport::")
+        && (has_service_metadata || name.starts_with("service_transport::execute::"))
+    {
+        return false;
+    }
+    if lookup_extern_impl(module, name).is_some() {
+        return false;
+    }
     true
 }
 
+// Callables with fn_body (fn items) are evaluated by FnBodyDelegate, not passthrough.
+// Only func/pattern items without fn_body appear here.
 const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
-    "shared.dag_util::aggregate_results",
-    "shared.dag_util::all_succeeded",
-    "shared.dag_util::blank_line",
-    "shared.dag_util::comment_line",
-    "shared.dag_util::doc",
-    "shared.dag_util::doc_with_header",
-    "shared.dag_util::format_report",
-    "shared.dag_util::generated_header",
-    "shared.dag_util::render_document",
-    "shared.dag_util::render_document_line",
-    "shared.dag_util::render_document_section",
-    "shared.dag_util::section",
-    "shared.dag_util::skipped_stage",
-    "shared.dag_util::stage_from_output",
-    "shared.dag_util::stage_result",
-    "shared.dag_util::text_line",
-    "shared.dag_util::titled_section",
     "std.filesystem::is_text_readable",
-    "std.filesystem::partition_entries",
-    "std.filesystem::skip_reason",
     "std.patterns::acquire_subject_token",
-    "std.patterns::add_iam_binding",
-    "std.patterns::check_iam_binding",
     "std.patterns::classify_files",
     "std.patterns::content_upsert",
     "std.patterns::credential_chain",
@@ -514,26 +611,14 @@ const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
     "tools.codegen::codegen_ensure",
     "tools.deps::deps_generate",
     "tools.deps::deps",
-    "tools.deps::render_deps_toml",
-    "tools.deps::select_platform_deps",
-    "tools.design::design_system_prompt",
-    "tools.design::design_user_prompt",
     "tools.design::generate_design",
     "tools.design::review_design",
-    "tools.design::review_system_prompt",
-    "tools.design::review_user_prompt",
-    "tools.design::summarize_design",
     "tools.docgen::docgen",
-    "tools.docgen::render_ab_workflows_doc",
-    "tools.docgen::render_ab_workflows_document",
     "tools.gist::gist_diff",
     "tools.gist::gist_recent",
     "tools.gist::gist",
+    "tools.makegen::makegen",
     "tools.pragma::pragma",
-    "tools.pragma::render_clippy_toml_document",
-    "tools.pragma::render_disallowed_methods_allowlist_document",
-    "tools.pragma::render_pragma_lint_policy_document",
-    "tools.testgen::generate_tests",
     "tools.testgen::testgen",
 ];
 
@@ -555,9 +640,17 @@ fn passthrough_callables_are_allowlisted() {
 
         for node in &output.lowered_dag.nodes {
             if let NodeBody::Opaque(LoweredOp::Callable {
-                module, name, service_metadata, ..
+                module,
+                name,
+                service_metadata,
+                fn_body,
+                ..
             }) = &node.body
             {
+                // Callables with fn_body are evaluated by FnBodyDelegate, not passthrough.
+                if fn_body.is_some() {
+                    continue;
+                }
                 if is_passthrough_callable(module, name, service_metadata.is_some()) {
                     found_passthrough.insert(format!("{module}::{name}"));
                 }
@@ -567,13 +660,23 @@ fn passthrough_callables_are_allowlisted() {
 
     let allowlist: BTreeSet<&str> = ALLOWED_PASSTHROUGH_CALLABLES.iter().copied().collect();
 
-    let unexpected: BTreeSet<&String> = found_passthrough.iter()
+    let unexpected: BTreeSet<&String> = found_passthrough
+        .iter()
         .filter(|key| !allowlist.contains(key.as_str()))
         .collect();
-    assert!(unexpected.is_empty(), "passthrough callables not in allowlist:\n  {:?}", unexpected);
+    assert!(
+        unexpected.is_empty(),
+        "passthrough callables not in allowlist:\n  {:?}",
+        unexpected
+    );
 
-    let stale: BTreeSet<&&str> = allowlist.iter()
+    let stale: BTreeSet<&&str> = allowlist
+        .iter()
         .filter(|key| !found_passthrough.contains(**key))
         .collect();
-    assert!(stale.is_empty(), "stale ALLOWED_PASSTHROUGH_CALLABLES:\n  {:?}", stale);
+    assert!(
+        stale.is_empty(),
+        "stale ALLOWED_PASSTHROUGH_CALLABLES:\n  {:?}",
+        stale
+    );
 }

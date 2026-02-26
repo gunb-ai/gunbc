@@ -13172,8 +13172,8 @@ fn compile_with_out_emits_deterministic_manifest_for_same_input() {
         .expect("second emit manifest should exist and be readable");
     let parsed_first: Value =
         serde_json::from_str(&manifest_first).expect("first emit manifest should be valid JSON");
-    let parsed_second: Value = serde_json::from_str(&manifest_second)
-        .expect("second emit manifest should be valid JSON");
+    let parsed_second: Value =
+        serde_json::from_str(&manifest_second).expect("second emit manifest should be valid JSON");
     assert_eq!(
         parsed_first, parsed_second,
         "emit manifest should be deterministic across repeated compile runs"
@@ -13192,7 +13192,10 @@ fn compile_with_trace_stages_prints_canonical_stage_flow() {
         .current_dir(workspace_root())
         .output()
         .expect("failed to run daglang compile --trace-stages");
-    assert!(output.status.success(), "compile --trace-stages should succeed");
+    assert!(
+        output.status.success(),
+        "compile --trace-stages should succeed"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("Compilation stages:"),
@@ -13412,7 +13415,8 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
     //    Cargo.toml workspace path dependencies should be derived from the actual
     //    output directory (not fixed-depth assumptions).
     let ws_root = workspace_root();
-    let out_dir = ws_root.join("target/test-artifacts/e2e_codegen_test/nested/deeper/tools-makegen");
+    let out_dir =
+        ws_root.join("target/test-artifacts/e2e_codegen_test/nested/deeper/tools-makegen");
     // Clean up any leftover from a previous run.
     let _ = std::fs::remove_dir_all(ws_root.join("target/test-artifacts/e2e_codegen_test"));
 
@@ -13502,7 +13506,8 @@ fn makegen_e2e_generated_binary_produces_correct_makefile() {
 #[ignore]
 fn pragma_e2e_generated_binary_produces_correct_config_files() {
     let ws_root = workspace_root();
-    let out_dir = ws_root.join("target/test-artifacts/e2e_codegen_test_pragma/nested/deeper/tools-pragma");
+    let out_dir =
+        ws_root.join("target/test-artifacts/e2e_codegen_test_pragma/nested/deeper/tools-pragma");
     let _ = std::fs::remove_dir_all(ws_root.join("target/test-artifacts/e2e_codegen_test_pragma"));
 
     // 1. Compile pragma.dag → exec-runtime.
@@ -13570,7 +13575,13 @@ fn pragma_e2e_generated_binary_produces_correct_config_files() {
 fn gen_types_produces_all_rendering_types() {
     let output = Command::new(daglang_bin())
         .current_dir(workspace_root())
-        .args(["gen-types", "--module", "std.symbols", "--module", "std.render"])
+        .args([
+            "gen-types",
+            "--module",
+            "std.symbols",
+            "--module",
+            "std.render",
+        ])
         .output()
         .expect("failed to run gen-types");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -13581,8 +13592,12 @@ fn gen_types_produces_all_rendering_types() {
     );
 
     let expected_enums = [
-        "SemanticColor", "Tier", "SymbolId", "RenderMode",
-        "CursorAction", "ViewportUnit",
+        "SemanticColor",
+        "Tier",
+        "SymbolId",
+        "RenderMode",
+        "CursorAction",
+        "ViewportUnit",
     ];
     for name in expected_enums {
         assert!(
@@ -13592,8 +13607,13 @@ fn gen_types_produces_all_rendering_types() {
     }
 
     let expected_structs = [
-        "SpanStyle", "Span", "Line", "Frame", "Viewport",
-        "SymbolEntry", "AnsiMapping",
+        "SpanStyle",
+        "Span",
+        "Line",
+        "Frame",
+        "Viewport",
+        "SymbolEntry",
+        "AnsiMapping",
     ];
     for name in expected_structs {
         assert!(
@@ -13618,10 +13638,13 @@ fn gen_types_symbol_id_has_40_variants() {
         .nth(1)
         .and_then(|rest| rest.split('}').next())
         .unwrap_or("");
-    let variant_count = in_enum.lines().filter(|l| {
-        let trimmed = l.trim();
-        !trimmed.is_empty() && trimmed != "{" && !trimmed.starts_with("//")
-    }).count();
+    let variant_count = in_enum
+        .lines()
+        .filter(|l| {
+            let trimmed = l.trim();
+            !trimmed.is_empty() && trimmed != "{" && !trimmed.starts_with("//")
+        })
+        .count();
 
     assert_eq!(
         variant_count, 40,
@@ -13725,10 +13748,7 @@ fn gen_types_emits_standard_symbols_static() {
     // fields directly — no .to_string() in the data declarations. Builtin
     // function bodies (resolve_symbol, ansi_code) may use .to_string() to
     // bridge from &'static str accessors to the declared String return type.
-    let data_section = stdout
-        .split("pub fn ")
-        .next()
-        .unwrap_or(&stdout);
+    let data_section = stdout.split("pub fn ").next().unwrap_or(&stdout);
     assert!(
         !data_section.contains(".to_string()"),
         "static data declarations should use &str, not .to_string():\n{data_section}"

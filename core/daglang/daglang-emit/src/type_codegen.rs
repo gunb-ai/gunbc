@@ -36,7 +36,7 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
         TypeExpr::Optional(inner) => {
             format!("Option<{}>", type_expr_to_rust(inner))
         }
-        TypeExpr::Annotated(inner, _annotations) => type_expr_to_rust(inner),
+        TypeExpr::Refined(inner, _) => type_expr_to_rust(inner),
         TypeExpr::Record(fields) => {
             let field_strs: Vec<String> = fields
                 .iter()
@@ -71,7 +71,6 @@ fn is_default_compatible(ty: &TypeExpr) -> bool {
     match ty {
         TypeExpr::Optional(_) => true,
         TypeExpr::Named(name) => name == "Bool",
-        TypeExpr::Annotated(inner, _) => is_default_compatible(inner),
         _ => false,
     }
 }
@@ -110,10 +109,7 @@ pub fn typedef_to_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
                 derives.push("Hash".to_string());
             }
 
-            let variant_strs: Vec<String> = variants
-                .iter()
-                .map(format_variant)
-                .collect();
+            let variant_strs: Vec<String> = variants.iter().map(format_variant).collect();
 
             vec![code_ir::Item::Enum(EnumDef {
                 name: td.name.clone(),
@@ -221,12 +217,9 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                     .map(|e| render_data_record(e, &elem_type, &field_types))
                     .collect::<Vec<_>>()
                     .join(",\n    "),
-                _ => "/* unsupported data value */".to_string(),
+                _ => "compile_error!(\"unsupported data value in type_codegen\")".to_string(),
             };
-            (
-                format!("&[{elem_type}]"),
-                format!("&[\n    {items}\n]"),
-            )
+            (format!("&[{elem_type}]"), format!("&[\n    {items}\n]"))
         }
         _ => {
             let rust_ty = type_expr_to_rust(&dd.ty);
@@ -257,12 +250,10 @@ fn resolve_field_types(struct_name: &str, struct_defs: &[&TypeDef]) -> Vec<(Stri
 /// Extract field types for a data table's element type.
 fn resolve_field_types_for_data(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<(String, String)> {
     let elem_type_name = match &dd.ty {
-        TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => {
-            match &args[0] {
-                TypeExpr::Named(n) => n.as_str(),
-                _ => return vec![],
-            }
-        }
+        TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => match &args[0] {
+            TypeExpr::Named(n) => n.as_str(),
+            _ => return vec![],
+        },
         _ => return vec![],
     };
     resolve_field_types(elem_type_name, struct_defs)
@@ -274,18 +265,14 @@ fn type_expr_to_rust_name(expr: &TypeExpr) -> String {
         TypeExpr::Named(name) => name.clone(),
         TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         TypeExpr::Generic(name, _) => name.clone(),
-        TypeExpr::Annotated(inner, _) => type_expr_to_rust_name(inner),
+        TypeExpr::Refined(inner, _) => type_expr_to_rust_name(inner),
         TypeExpr::Record(_) => "Anonymous".to_string(),
     }
 }
 
 /// Render a record expression for a data table entry,
 /// using field type info to qualify enum variant references.
-fn render_data_record(
-    expr: &Expr,
-    context_type: &str,
-    field_types: &[(String, String)],
-) -> String {
+fn render_data_record(expr: &Expr, context_type: &str, field_types: &[(String, String)]) -> String {
     match expr {
         Expr::Record(maybe_name, fields) => {
             let type_name = maybe_name.as_deref().unwrap_or(context_type);
@@ -315,12 +302,23 @@ struct RenderOpts {
     static_context: bool,
 }
 
-const STATIC_OPTS: RenderOpts = RenderOpts { static_context: true };
+const STATIC_OPTS: RenderOpts = RenderOpts {
+    static_context: true,
+};
 
 /// Render a DSL expression to a Rust expression string.
 ///
 /// `context_type` is the Rust type name for the surrounding context,
 /// used to qualify bare identifiers as enum variants.
+/// Capitalize the first character of a string (PascalCase heuristic for type names).
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+
 fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> String {
     match expr {
         Expr::Literal(lit) => render_literal(lit, opts),
@@ -330,13 +328,18 @@ fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> Str
             format!("{context_type}::{name}")
         }
         Expr::Record(maybe_name, fields) => {
-            let type_name = maybe_name
-                .as_deref()
-                .unwrap_or(context_type);
+            let type_name = maybe_name.as_deref().unwrap_or(context_type);
             let field_strs: Vec<String> = fields
                 .iter()
                 .map(|(name, val)| {
-                    let field_val = render_expr_to_rust(val, name, opts);
+                    // FC-3: Use field name as context type only as a last resort.
+                    // In most cases, the correct context type would come from type
+                    // information. Since we don't have full type context here, we
+                    // use the field name capitalized as a heuristic for enum type names
+                    // (e.g., field "color" → context type "Color" for variant resolution).
+                    // This is imperfect but better than raw field names as types.
+                    let field_context = capitalize_first(name);
+                    let field_val = render_expr_to_rust(val, &field_context, opts);
                     format!("{name}: {field_val}")
                 })
                 .collect();
@@ -367,7 +370,13 @@ fn render_expr_to_rust(expr: &Expr, context_type: &str, opts: RenderOpts) -> Str
                 format!("\"{s}\".to_string()")
             }
         }
-        _ => format!("/* unsupported expr: {expr:?} */"),
+        _ => format!(
+            "compile_error!(\"unsupported expr in type_codegen: {}\")",
+            format!("{:?}", expr)
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+        ),
     }
 }
 
@@ -414,17 +423,32 @@ fn escape_rust_string(s: &str) -> String {
                     i += 1;
                 }
             }
-            '"' => { out.push_str("\\\""); i += 1; }
-            '\n' => { out.push_str("\\n"); i += 1; }
-            '\r' => { out.push_str("\\r"); i += 1; }
-            '\t' => { out.push_str("\\t"); i += 1; }
+            '"' => {
+                out.push_str("\\\"");
+                i += 1;
+            }
+            '\n' => {
+                out.push_str("\\n");
+                i += 1;
+            }
+            '\r' => {
+                out.push_str("\\r");
+                i += 1;
+            }
+            '\t' => {
+                out.push_str("\\t");
+                i += 1;
+            }
             c if c.is_control() => {
                 for byte in c.to_string().bytes() {
                     out.push_str(&format!("\\x{byte:02x}"));
                 }
                 i += 1;
             }
-            c => { out.push(c); i += 1; }
+            c => {
+                out.push(c);
+                i += 1;
+            }
         }
     }
     out
@@ -610,9 +634,7 @@ pub fn impl_from_data_table(
     struct_defs: &[&TypeDef],
 ) -> Option<code_ir::Item> {
     let (elem_type_name, elements) = match (&data.ty, &data.value) {
-        (TypeExpr::Generic(name, args), Expr::List(elems))
-            if name == "List" && args.len() == 1 =>
-        {
+        (TypeExpr::Generic(name, args), Expr::List(elems)) if name == "List" && args.len() == 1 => {
             let elem_name = match &args[0] {
                 TypeExpr::Named(n) => n.as_str(),
                 _ => return None,
@@ -641,10 +663,7 @@ pub fn impl_from_data_table(
     let mut match_arms = Vec::new();
     for elem in elements {
         if let Expr::Record(_, fields) = elem {
-            let key_val = fields
-                .iter()
-                .find(|(n, _)| n == key_field)
-                .map(|(_, v)| v);
+            let key_val = fields.iter().find(|(n, _)| n == key_field).map(|(_, v)| v);
             let val_val = fields
                 .iter()
                 .find(|(n, _)| n == value_field)
@@ -696,8 +715,11 @@ pub fn typedefs_to_source_file(
         }
     }
     let ctx = fn_codegen::CompileContext {
-        data_names, optional_fields, variant_to_enum,
-        struct_field_types, enum_variants,
+        data_names,
+        optional_fields,
+        variant_to_enum,
+        struct_field_types,
+        enum_variants,
     };
     let mut code_items = Vec::new();
     for item in items {
@@ -736,7 +758,8 @@ pub fn generate_types_for_modules(
     // appear as elements in `data` lists (so we can make their String
     // fields `&'static str` for static-friendly structs).
     let mut type_defs: Vec<&TypeDef> = Vec::new();
-    let mut static_struct_types: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut static_struct_types: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     for module in &typed.modules {
         let module_name = module.module_path.join(".");
         if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
@@ -799,7 +822,8 @@ pub fn generate_types_for_modules(
                     all_items.extend(datadef_to_code_ir_with(dd, &type_defs));
                 }
                 daglang_syntax::ast::Item::FnDef(fd) => {
-                    let mut fn_data_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+                    let mut fn_data_names: std::collections::HashSet<String> =
+                        std::collections::HashSet::new();
                     for dd in &data_defs {
                         fn_data_names.insert(dd.name.clone());
                     }
@@ -866,9 +890,12 @@ pub fn generate_types_for_modules(
         }))
     });
     if needs_char_funcs {
-        all_items.insert(0, code_ir::Item::Raw(
-            "#[inline]\npub fn code_point_i64(c: char) -> i64 { c as u32 as i64 }".to_string(),
-        ));
+        all_items.insert(
+            0,
+            code_ir::Item::Raw(
+                "#[inline]\npub fn code_point_i64(c: char) -> i64 { c as u32 as i64 }".to_string(),
+            ),
+        );
     }
 
     // Replace resolve_symbol/symbol_color/ansi_code todo!() stubs with
@@ -908,7 +935,8 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
              Tier::Emoji => id.emoji().to_string(),\n        \
              Tier::Unicode => id.unicode().to_string(),\n        \
              Tier::Ascii => id.ascii().to_string(),\n    \
-             }".to_string(),
+             }"
+            .to_string(),
         ))]),
         "symbol_color" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "id.color()".to_string(),
@@ -927,7 +955,8 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
                  used += w;\n        \
              }\n        \
              result\n    \
-             }".to_string(),
+             }"
+            .to_string(),
         ))]),
         "truncate_spans" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "{\n        \
@@ -946,7 +975,8 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
                  }\n        \
              }\n        \
              kept\n    \
-             }".to_string(),
+             }"
+            .to_string(),
         ))]),
         "repeat_char" => Some(vec![code_ir::Stmt::TailExpr(code_ir::Expr::RawCode(
             "c.repeat(n.max(0) as usize)".to_string(),
@@ -958,7 +988,9 @@ fn builtin_body(name: &str) -> Option<Vec<code_ir::Stmt>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_syntax::ast::{DataDef, Expr, Field, FnDef, FnBody, Literal, Param, TypeBody, TypeDef, TypeExpr, Variant};
+    use daglang_syntax::ast::{
+        DataDef, Expr, Field, FnBody, FnDef, Literal, Param, TypeBody, TypeDef, TypeExpr, Variant,
+    };
 
     #[test]
     fn simple_enum_generates_copy_hash() {
@@ -966,9 +998,18 @@ mod tests {
             name: "SemanticColor".to_string(),
             params: vec![],
             body: TypeBody::Sum(vec![
-                Variant { name: "Default".into(), fields: vec![] },
-                Variant { name: "Success".into(), fields: vec![] },
-                Variant { name: "Error".into(), fields: vec![] },
+                Variant {
+                    name: "Default".into(),
+                    fields: vec![],
+                },
+                Variant {
+                    name: "Success".into(),
+                    fields: vec![],
+                },
+                Variant {
+                    name: "Error".into(),
+                    fields: vec![],
+                },
             ]),
         };
         let items = typedef_to_code_ir(&td);
@@ -994,13 +1035,13 @@ mod tests {
                     name: "color".into(),
                     ty: TypeExpr::Optional(Box::new(TypeExpr::Named("SemanticColor".into()))),
                     default: None,
-                    annotations: vec![],
+                    from_path: None,
                 },
                 Field {
                     name: "bold".into(),
                     ty: TypeExpr::Named("Bool".into()),
                     default: None,
-                    annotations: vec![],
+                    from_path: None,
                 },
             ]),
         };
@@ -1011,7 +1052,10 @@ mod tests {
                 assert_eq!(s.name, "SpanStyle");
                 assert!(s.is_pub);
                 assert_eq!(s.fields.len(), 2);
-                assert_eq!(s.fields[0], ("color".into(), "Option<SemanticColor>".into(), true));
+                assert_eq!(
+                    s.fields[0],
+                    ("color".into(), "Option<SemanticColor>".into(), true)
+                );
                 assert_eq!(s.fields[1], ("bold".into(), "bool".into(), true));
             }
             _ => panic!("expected Struct"),
@@ -1028,13 +1072,13 @@ mod tests {
                     name: "spans".into(),
                     ty: TypeExpr::Generic("List".into(), vec![TypeExpr::Named("Span".into())]),
                     default: None,
-                    annotations: vec![],
+                    from_path: None,
                 },
                 Field {
                     name: "indent".into(),
                     ty: TypeExpr::Named("Int".into()),
                     default: None,
-                    annotations: vec![],
+                    from_path: None,
                 },
             ]),
         };
@@ -1077,10 +1121,13 @@ mod tests {
                         name: "radius".into(),
                         ty: TypeExpr::Named("Float".into()),
                         default: None,
-                        annotations: vec![],
+                        from_path: None,
                     }],
                 },
-                Variant { name: "Point".into(), fields: vec![] },
+                Variant {
+                    name: "Point".into(),
+                    fields: vec![],
+                },
             ]),
         };
         let items = typedef_to_code_ir(&td);
@@ -1100,28 +1147,51 @@ mod tests {
             name: "Entry".to_string(),
             params: vec![],
             body: TypeBody::Record(vec![
-                Field { name: "id".into(), ty: TypeExpr::Named("EntryKind".into()), default: None, annotations: vec![] },
-                Field { name: "label".into(), ty: TypeExpr::Named("String".into()), default: None, annotations: vec![] },
+                Field {
+                    name: "id".into(),
+                    ty: TypeExpr::Named("EntryKind".into()),
+                    default: None,
+                    from_path: None,
+                },
+                Field {
+                    name: "label".into(),
+                    ty: TypeExpr::Named("String".into()),
+                    default: None,
+                    from_path: None,
+                },
             ]),
         };
         let dd = DataDef {
             name: "testData".to_string(),
             ty: TypeExpr::Generic("List".into(), vec![TypeExpr::Named("Entry".into())]),
-            value: Expr::List(vec![
-                Expr::Record(None, vec![
+            value: Expr::List(vec![Expr::Record(
+                None,
+                vec![
                     ("id".into(), Expr::Ident("Alpha".into())),
-                    ("label".into(), Expr::Literal(Literal::String("first".into()))),
-                ]),
-            ]),
+                    (
+                        "label".into(),
+                        Expr::Literal(Literal::String("first".into())),
+                    ),
+                ],
+            )]),
         };
         let items = datadef_to_code_ir_with(&dd, &[&entry_td]);
         assert_eq!(items.len(), 1);
         match &items[0] {
             code_ir::Item::Raw(s) => {
                 assert!(s.contains("pub static TEST_DATA: &[Entry]"), "got: {s}");
-                assert!(s.contains("id: EntryKind::Alpha"), "should resolve field type: {s}");
-                assert!(s.contains(r#"label: "first""#), "static context uses &str: {s}");
-                assert!(!s.contains("to_string"), "no to_string in static context: {s}");
+                assert!(
+                    s.contains("id: EntryKind::Alpha"),
+                    "should resolve field type: {s}"
+                );
+                assert!(
+                    s.contains(r#"label: "first""#),
+                    "static context uses &str: {s}"
+                );
+                assert!(
+                    !s.contains("to_string"),
+                    "no to_string in static context: {s}"
+                );
             }
             _ => panic!("expected Raw"),
         }
@@ -1156,11 +1226,22 @@ mod tests {
             name: "resolve_symbol".to_string(),
             type_params: vec![],
             params: vec![
-                Param { name: "id".into(), ty: TypeExpr::Named("SymbolId".into()), default: None },
-                Param { name: "tier".into(), ty: TypeExpr::Named("Tier".into()), default: None },
+                Param {
+                    name: "id".into(),
+                    ty: TypeExpr::Named("SymbolId".into()),
+                    default: None,
+                },
+                Param {
+                    name: "tier".into(),
+                    ty: TypeExpr::Named("Tier".into()),
+                    default: None,
+                },
             ],
             return_type: TypeExpr::Named("String".into()),
-            body: FnBody { stmts: vec![], lossy: false },
+            body: FnBody {
+                stmts: vec![],
+                lossy: false,
+            },
         };
         let ctx = fn_codegen::CompileContext::new();
         let items = fndef_to_code_ir(&fd, &ctx);
@@ -1169,10 +1250,13 @@ mod tests {
             code_ir::Item::Fn(f) => {
                 assert_eq!(f.name, "resolve_symbol");
                 assert!(f.is_pub);
-                assert_eq!(f.params, vec![
-                    ("id".to_string(), "SymbolId".to_string()),
-                    ("tier".to_string(), "Tier".to_string()),
-                ]);
+                assert_eq!(
+                    f.params,
+                    vec![
+                        ("id".to_string(), "SymbolId".to_string()),
+                        ("tier".to_string(), "Tier".to_string()),
+                    ]
+                );
                 assert_eq!(f.return_type.as_deref(), Some("String"));
             }
             other => panic!("expected Fn, got: {other:?}"),
@@ -1184,20 +1268,18 @@ mod tests {
         let fd = FnDef {
             name: "add_one".to_string(),
             type_params: vec![],
-            params: vec![
-                Param { name: "x".into(), ty: TypeExpr::Named("Int".into()), default: None },
-            ],
+            params: vec![Param {
+                name: "x".into(),
+                ty: TypeExpr::Named("Int".into()),
+                default: None,
+            }],
             return_type: TypeExpr::Named("Int".into()),
             body: FnBody {
-                stmts: vec![
-                    daglang_syntax::ast::Stmt::Expr(
-                        Expr::BinOp(
-                            Box::new(Expr::Ident("x".into())),
-                            daglang_syntax::ast::BinOp::Add,
-                            Box::new(Expr::Literal(Literal::Int(1))),
-                        ),
-                    ),
-                ],
+                stmts: vec![daglang_syntax::ast::Stmt::Expr(Expr::BinOp(
+                    Box::new(Expr::Ident("x".into())),
+                    daglang_syntax::ast::BinOp::Add,
+                    Box::new(Expr::Literal(Literal::Int(1))),
+                ))],
                 lossy: false,
             },
         };
@@ -1208,7 +1290,10 @@ mod tests {
             code_ir::Item::Fn(f) => {
                 assert_eq!(f.name, "add_one");
                 assert_eq!(f.body.len(), 1);
-                assert!(matches!(f.body[0], code_ir::Stmt::TailExpr(code_ir::Expr::BinOp { .. })));
+                assert!(matches!(
+                    f.body[0],
+                    code_ir::Stmt::TailExpr(code_ir::Expr::BinOp { .. })
+                ));
             }
             other => panic!("expected Fn, got: {other:?}"),
         }
@@ -1226,30 +1311,58 @@ mod tests {
             name: "Color".to_string(),
             params: vec![],
             body: TypeBody::Sum(vec![
-                Variant { name: "Red".into(), fields: vec![] },
-                Variant { name: "Blue".into(), fields: vec![] },
+                Variant {
+                    name: "Red".into(),
+                    fields: vec![],
+                },
+                Variant {
+                    name: "Blue".into(),
+                    fields: vec![],
+                },
             ]),
         };
         let mapping_td = TypeDef {
             name: "ColorMapping".to_string(),
             params: vec![],
             body: TypeBody::Record(vec![
-                Field { name: "color".into(), ty: TypeExpr::Named("Color".into()), default: None, annotations: vec![] },
-                Field { name: "code".into(), ty: TypeExpr::Named("String".into()), default: None, annotations: vec![] },
+                Field {
+                    name: "color".into(),
+                    ty: TypeExpr::Named("Color".into()),
+                    default: None,
+                    from_path: None,
+                },
+                Field {
+                    name: "code".into(),
+                    ty: TypeExpr::Named("String".into()),
+                    default: None,
+                    from_path: None,
+                },
             ]),
         };
         let dd = DataDef {
             name: "mappings".to_string(),
             ty: TypeExpr::Generic("List".into(), vec![TypeExpr::Named("ColorMapping".into())]),
             value: Expr::List(vec![
-                Expr::Record(None, vec![
-                    ("color".into(), Expr::Ident("Red".into())),
-                    ("code".into(), Expr::Literal(Literal::String("red_code".into()))),
-                ]),
-                Expr::Record(None, vec![
-                    ("color".into(), Expr::Ident("Blue".into())),
-                    ("code".into(), Expr::Literal(Literal::String("blue_code".into()))),
-                ]),
+                Expr::Record(
+                    None,
+                    vec![
+                        ("color".into(), Expr::Ident("Red".into())),
+                        (
+                            "code".into(),
+                            Expr::Literal(Literal::String("red_code".into())),
+                        ),
+                    ],
+                ),
+                Expr::Record(
+                    None,
+                    vec![
+                        ("color".into(), Expr::Ident("Blue".into())),
+                        (
+                            "code".into(),
+                            Expr::Literal(Literal::String("blue_code".into())),
+                        ),
+                    ],
+                ),
             ]),
         };
 
@@ -1260,10 +1373,66 @@ mod tests {
             code_ir::Item::Raw(s) => {
                 assert!(s.contains("impl Color"), "should impl on key type: {s}");
                 assert!(s.contains("pub fn code(&self)"), "should have method: {s}");
-                assert!(s.contains("Self::Red => \"red_code\""), "should have match arm: {s}");
-                assert!(s.contains("Self::Blue => \"blue_code\""), "should have match arm: {s}");
+                assert!(
+                    s.contains("Self::Red => \"red_code\""),
+                    "should have match arm: {s}"
+                );
+                assert!(
+                    s.contains("Self::Blue => \"blue_code\""),
+                    "should have match arm: {s}"
+                );
             }
             _ => panic!("expected Raw"),
+        }
+    }
+
+    #[test]
+    fn unsupported_data_value_produces_compile_error() {
+        // DataDef with List type but non-List value hits unsupported data value path.
+        let dd = DataDef {
+            name: "bad".to_string(),
+            ty: TypeExpr::Generic("List".into(), vec![TypeExpr::Named("Int".into())]),
+            value: Expr::Literal(Literal::Int(42)), // not Expr::List
+        };
+        let items = datadef_to_code_ir(&dd);
+        assert_eq!(items.len(), 1);
+        match &items[0] {
+            code_ir::Item::Raw(s) => {
+                assert!(
+                    s.contains("compile_error!"),
+                    "expected compile_error! marker, got: {s}"
+                );
+                assert!(
+                    !s.contains("/* unsupported"),
+                    "should not produce silent comment"
+                );
+            }
+            _ => panic!("expected Raw item"),
+        }
+    }
+
+    #[test]
+    fn unsupported_expr_in_render_produces_compile_error() {
+        // Scalar DataDef with unsupported expr (e.g. Call) hits the catch-all.
+        let dd = DataDef {
+            name: "bad".to_string(),
+            ty: TypeExpr::Named("Int".into()),
+            value: Expr::Call("foo".into(), vec![]), // unsupported in render_expr_to_rust
+        };
+        let items = datadef_to_code_ir(&dd);
+        assert_eq!(items.len(), 1);
+        match &items[0] {
+            code_ir::Item::Raw(s) => {
+                assert!(
+                    s.contains("compile_error!"),
+                    "expected compile_error! marker, got: {s}"
+                );
+                assert!(
+                    !s.contains("/* unsupported"),
+                    "should not produce silent comment"
+                );
+            }
+            _ => panic!("expected Raw item"),
         }
     }
 

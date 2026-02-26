@@ -144,10 +144,7 @@ pub fn build_transport_tcp_model() -> SystemModel {
             invocation_for_transport_kind(TransportKind::Tcp),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("TcpRequest"))])
-        .with_outputs(vec![BehaviorOutput::new(
-            "response",
-            out_ty("TcpResponse"),
-        )])
+        .with_outputs(vec![BehaviorOutput::new("response", out_ty("TcpResponse"))])
         .with_properties(&[Property::WritesWorld]),
         Behavior::new(
             "send",
@@ -155,10 +152,7 @@ pub fn build_transport_tcp_model() -> SystemModel {
             invocation_for_transport_kind(TransportKind::Tcp),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("TcpRequest"))])
-        .with_outputs(vec![BehaviorOutput::new(
-            "response",
-            out_ty("TcpResponse"),
-        )])
+        .with_outputs(vec![BehaviorOutput::new("response", out_ty("TcpResponse"))])
         .with_properties(&[Property::WritesWorld]),
         Behavior::new(
             "receive",
@@ -166,10 +160,7 @@ pub fn build_transport_tcp_model() -> SystemModel {
             invocation_for_transport_kind(TransportKind::Tcp),
         )
         .with_inputs(vec![BehaviorInput::required("request", ty("TcpRequest"))])
-        .with_outputs(vec![BehaviorOutput::new(
-            "response",
-            out_ty("TcpResponse"),
-        )])
+        .with_outputs(vec![BehaviorOutput::new("response", out_ty("TcpResponse"))])
         .with_properties(&[Property::WritesWorld]),
     ])
 }
@@ -329,10 +320,7 @@ pub fn build_transport_rest_model() -> SystemModel {
             "response",
             out_ty("RestResponse"),
         )])
-        .with_properties(&[
-            Property::WritesWorld,
-            Property::JsonContentType,
-        ]),
+        .with_properties(&[Property::WritesWorld, Property::JsonContentType]),
         Behavior::new(
             "delete",
             "REST DELETE request",

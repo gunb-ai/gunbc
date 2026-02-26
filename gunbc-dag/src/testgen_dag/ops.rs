@@ -28,6 +28,8 @@ pub enum TestgenOp {
         dsl_path: String,
         module_name: String,
         output_path: String,
+        /// PT-6: Per-profile live test configurations for this module.
+        live_profile_tests: Vec<gunbc_codegen::registry::LiveProfileTestConfig>,
     },
 }
 
@@ -83,6 +85,7 @@ impl Executable for TestgenOp {
                 dsl_path,
                 module_name,
                 output_path,
+                live_profile_tests,
             } => {
                 // 1. Compile .dag → Dag<DynOp> + DSL type registry
                 let result = match crate::dsl_builder::build_dsl_graph_with_types(dsl_path) {
@@ -105,15 +108,24 @@ impl Executable for TestgenOp {
                 let safe_name = module_name.replace('.', "-");
                 let spec = crate::mock_defaults::auto_mock_spec(&result.dag, &safe_name);
 
+                // 2b. Classify the module via DSL-evaluated fidelity policy
+                let classification =
+                    crate::fidelity::classify_module(&result.callable_properties);
+                let all_transport_classes: Vec<_> = result
+                    .callable_properties
+                    .values()
+                    .flat_map(|p| p.transport_classes.iter().cloned())
+                    .collect();
+                let requires =
+                    crate::fidelity::requires_from_transport_classes(&all_transport_classes);
+
                 // 3. Build TestgenTargetDef
-                let module_test_name =
-                    format!("{}_generated_tests", module_name.replace('.', "_"));
+                let module_test_name = format!("{}_generated_tests", module_name.replace('.', "_"));
                 let dag_builder_call = format!(
                     "crate::dsl_builder::build_dsl_graph(\"{dsl_path}\").expect(\"graph should build\")"
                 );
-                let mock_spec_path = format!(
-                    "crate::mock_defaults::auto_mock_spec(&dag, \"{safe_name}\")"
-                );
+                let mock_spec_path =
+                    format!("crate::mock_defaults::auto_mock_spec(&dag, \"{safe_name}\")");
 
                 let target_def = TestgenTargetDef {
                     name: std::borrow::Cow::Owned(safe_name),
@@ -127,9 +139,9 @@ impl Executable for TestgenOp {
                     flow_tests: true,
                     live_flow_tests: false,
                     window_max_nodes: None,
-                    test_class: None,
-                    fermi_cost: None,
-                    requires: None,
+                    test_class: Some(classification.test_class),
+                    fermi_cost: Some(classification.fermi_cost),
+                    requires: Some(requires),
                     secrets: None,
                     live_test_class: None,
                     live_fermi_cost: None,
@@ -137,6 +149,7 @@ impl Executable for TestgenOp {
                     live_required: None,
                     live_required_any_of: None,
                     tool_name: None,
+                    live_profile_tests: live_profile_tests.clone(),
                 };
 
                 // 4. Generate test code with DSL type awareness

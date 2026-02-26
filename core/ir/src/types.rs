@@ -846,8 +846,7 @@ impl ValueBacking {
 pub fn value_backing_for_type_id(type_id: &str) -> ValueBacking {
     use std::sync::OnceLock;
     static REGISTRY: OnceLock<crate::type_registry::TypeRegistry> = OnceLock::new();
-    let registry =
-        REGISTRY.get_or_init(crate::type_registry::TypeRegistry::with_core_types);
+    let registry = REGISTRY.get_or_init(crate::type_registry::TypeRegistry::with_core_types);
     registry.value_backing(&TypeId::from(type_id))
 }
 

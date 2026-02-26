@@ -34,8 +34,6 @@ resource S3Bucket implements ObjectStorage {
       tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
     )
 
-    @mock_response(check, status: 404, body: {})
-    @mock_response(create, status: 200, body: { "location": "/{config.name}" })
   }
 
   release {}
@@ -43,31 +41,21 @@ resource S3Bucket implements ObjectStorage {
   capability read {
     input { key: NonEmptyStr }
     output { content: Bytes, found: Bool }
-    @rest(GET, "https://{config.name}.s3.{config.region}.amazonaws.com/{key}")
-    @auth(AwsSigV4)
-    @idempotent @readonly
   }
 
   capability write {
     input { key: NonEmptyStr, content: Bytes }
     output { ok: Bool }
-    @rest(PUT, "https://{config.name}.s3.{config.region}.amazonaws.com/{key}")
-    @auth(AwsSigV4)
   }
 
   capability delete {
     input { key: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "https://{config.name}.s3.{config.region}.amazonaws.com/{key}")
-    @auth(AwsSigV4)
   }
 
   capability list {
     input { prefix: String }
     output { keys: List<NonEmptyStr> }
-    @rest(GET, "https://{config.name}.s3.{config.region}.amazonaws.com/?list-type=2&prefix={prefix}")
-    @auth(AwsSigV4)
-    @idempotent @readonly
   }
 }
 
@@ -124,8 +112,6 @@ resource LambdaFunction implements Compute {
       environment: config.env
     ) [after update_code]
 
-    @mock_response(check, status: 404, body: { "Type": "ResourceNotFoundException" })
-    @mock_response(create, status: 201, body: { "FunctionArn": "arn:aws:lambda:{config.region}:*:function:{config.name}" })
   }
 
   release {}
@@ -179,8 +165,6 @@ resource AwsSecret implements SecretStore {
       tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
     )
 
-    @mock_response(check, status: 200, body: { "ARN": "arn:aws:secretsmanager:{config.region}:*:secret:{config.name}", "Name": config.name })
-    @mock_response(create, status: 200, body: { "ARN": "arn:aws:...", "Name": config.name })
   }
 
   release {}
@@ -188,7 +172,6 @@ resource AwsSecret implements SecretStore {
   capability read_value {
     input {}
     output { value: Secret }
-    @readonly
   }
 
   capability write_value {
@@ -204,7 +187,6 @@ resource AwsSecret implements SecretStore {
   capability list_versions {
     input {}
     output { versions: List<NonEmptyStr> }
-    @idempotent @readonly
   }
 }
 
@@ -242,8 +224,6 @@ resource AwsIamRole implements Identity {
       )
     } [after create]
 
-    @mock_response(check, status: 200, body: { "Role": { "Arn": "arn:aws:iam::*:role/{config.name}", "RoleName": config.name } })
-    @mock_response(create, status: 200, body: { "Role": { "Arn": "arn:aws:iam::*:role/{config.name}" } })
   }
 
   release {}
@@ -294,8 +274,6 @@ resource SqsQueue implements Queue<String> {
       tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
     )
 
-    @mock_response(check, status: 400, body: { "Error": { "Code": "AWS.SimpleQueueService.NonExistentQueue" } })
-    @mock_response(create, status: 200, body: { "QueueUrl": "https://sqs.{config.region}.amazonaws.com/123456789012/{config.name}" })
   }
 
   release {}
@@ -308,7 +286,6 @@ resource SqsQueue implements Queue<String> {
   capability subscribe {
     input {}
     output { messages: List<QueueMessage<String>> }
-    @readonly
   }
 
   capability ack {

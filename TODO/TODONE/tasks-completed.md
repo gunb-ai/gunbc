@@ -354,3 +354,73 @@ makegen path regression fix, mock cleanup, transport-call consolidation.
 | EX-5 | Lower control flow in function bodies: control-flow pattern lowering for `for`/`if`/`match` plus parser fixes so `if`/`match` expressions parse non-lossy in function bodies. | Done 2026-02-22 |
 | EX-6 | Lower string interpolation and formatting: ensured interpolation template extraction/lowering paths are preserved and test-covered for identifier interpolation. | Done 2026-02-22 |
 | EX-7 | Structured document rendering: added `Document`/`TextFile` DSL types and shared render helpers, migrated pragma/makegen/docgen/build rendering through structured document construction + rendering pipeline. | Done 2026-02-22 |
+
+---
+
+## Mega Lane — Track B: Interface Stub Transport (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| IS-1 | Add `InterfaceStub` to `ServiceTransportClass` + `ServiceOperationSpec`: new enum variants, all match arms audited for exhaustiveness. | Done 2026-02-25 |
+| IS-2 | Add `add_interface_stub_transport_triplets()`: mirrors resource capability transport pattern for interface stubs. | Done 2026-02-25 |
+| IS-3 | Relax `enforce_profile_for_bound_uses()`: converts hard error to informational return of `HashSet<String>` of interfaces needing stubs. | Done 2026-02-25 |
+| IS-4 | Wire stubs into lowering flow: stubs registered in endpoint registry after real endpoints (stubs fill gaps). | Done 2026-02-25 |
+| IS-5 | Simplify `resolve_service_call_source()`: single lookup path for real and stub endpoints; no special-case error for missing profile. | Done 2026-02-25 |
+| IS-6 | Handle `InterfaceStub` in DynOp resolver: `InterfaceStubPrepareOp` (LocalRequest), `InterfaceStubExecuteOp` (errors in Real, auto-mocked in DryRun), `InterfaceStubParseOp` (identity passthrough). | Done 2026-02-25 |
+| IS-7 | Verify auto-mock compatibility: stub execute nodes carry `ServiceTransportExecute` obligation and `TransportRequest` input port. | Done 2026-02-25 |
+| IS-8 | Tests: 4 InterfaceStub op tests (prepare, skip propagation, execute Real-mode error, parse passthrough). Full workspace test suite green. | Done 2026-02-25 |
+
+## Mega Lane — Track D: Fail-Closed Cleanup (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| FC-1 | Fail closed for unsupported DSL expression codegen: replaced `/* unsupported ... */` comments with `compile_error!()` / `#error` markers in fn_codegen, render_c, type_codegen. | Done 2026-02-25 |
+| FC-2 | String interpolation correctness: converted Rust-style `{}` placeholders to Go `%v` and C `%s` in backend lowerers. | Done 2026-02-25 |
+| FC-3 | Record/variant context typing fix: replaced raw field-name-as-type-context with capitalize_first() heuristic for enum variant qualification. | Done 2026-02-25 |
+| FC-4 | No panic in lowering for unsupported patterns: replaced 6 `panic!()` calls with `LoweredOp::UnsupportedPattern` + `ResolveError`. | Done 2026-02-25 |
+| FC-5 | SubDag runtime op cfg hygiene: documented and added guardrail test verifying production resolver preserves SubDag structure. | Done 2026-02-25 |
+| FC-6 | Pipeline dispatch contract hardening: explicit progression contract, empty `current_stage` validation, stage-name diagnostics, terminal self-loop. | Done 2026-02-25 |
+| FC-9 | Define and enforce `\xHH` string semantics: added proper hex escape parsing to lexer (`\xHH` → byte value), malformed escapes preserved literally, 3 contract tests. | Done 2026-02-25 |
+| FC-10 | Proper `@local` transport type: added `TransportRequest::Local` / `TransportResponse::Local`, `TransportKind::LocalDirect`, replaced `ShellRequest::new("echo")` hack. | Done 2026-02-25 |
+| FC-11 | Collapse `service_prepare_ports()` match arms: added `ServiceOperationSpec::input_fields()` and `output_fields()` methods, collapsed 4 match arms to 1. | Done 2026-02-25 |
+
+## Mega Lane — Track C: Per-Profile Live Tests (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| PT-1 | Profile discovery module: `discover_profiles()` scans `dsl/profiles/*.dag`, extracts profile name, bound interfaces, inferred test class (Hermetic/Integration). `profiles_for_module()` cross-references module interface imports. | Done 2026-02-25 |
+| PT-2 | Augment `CompilableModule` with `interface_imports: HashSet<String>`: populated from `import interfaces.*` in AST. `requires_profile` derived as `!interface_imports.is_empty()`. | Done 2026-02-25 |
+| PT-3 | Add `LiveProfileTestConfig` to `TestgenTargetDef`: struct with `profile_name`, `test_class`, `fermi_cost`, `required_env`, `required_any_of`, `dag_builder_call`. | Done 2026-02-25 |
+| PT-4 | Add `build_dsl_graph_with_profile()`: compilation path threading profile through `CompileOptions`, resolving interface bindings via profile bind declarations. | Done 2026-02-25 |
+| PT-5 | Generate per-profile test sections: `build_per_profile_live_flow_sections()` generates `test_live_flow_{module}_{profile}_profile()` functions, gated by env requirements. | Done 2026-02-25 |
+| PT-6 | Wire profile discovery into auto-testgen: `build_testgen_graph_auto()` calls `discover_profiles()`, `profiles_for_module()` per module, populates `live_profile_tests` in `AutoGenerate`. Removed `requires_profile` skip filter. | Done 2026-02-25 |
+
+## Mega Lane — Track D: FC-14/FC-15 (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| FC-14 | Dead-path pruning emit variant: added `compute_reachable_node_ids()` BFS from entrypoints, wired into `emit_rust_bundle()` and `collect_symbols_with_metadata()` to skip unreachable nodes. 2 reachability tests. | Done 2026-02-25 |
+| FC-15 | By-construction reachability: design doc at `docs/design/v4/by-construction-reachability.md` (invariant spec, failure modes, proof obligations, migration plan). Vertical slice: `ReachableDag<T>` wrapper type in `core/ir/src/dag.rs` with 4 contract tests. | Done 2026-02-25 |
+
+## Mega Lane — Track A: NF-4..NF-6 Compile+Link Completion (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| NF-4 | Collapse link phase into compile-time resolution: `SymbolTable`, `OpRef`, `IntrinsicOp`, `link()` already deleted. Resolution happens at compile time in `resolve.rs` via `resolve_lowered_dag()`. `CodegenBackend` is for codegen, not linking. `extern` keyword + `ExternCall` + `resolve_extern_call()` remain as the fail-closed contract. | Done 2026-02-25 |
+| NF-5 | Delete fallback surfaces: Policy mirror (`passthrough_safe_obligations` / `require_handler_obligations`) in `dsl/config/arch_rules.dag` and pinning test in `rust_exec_runtime.rs`. No stub asset fallbacks exist. No module-name dispatch heuristics — all routing explicit. `PureRender`/`PureDataLoad` flagged with debug assertions; final removal gated on NF-7 (extern func wiring). | Done 2026-02-25 |
+| NF-6 | Determinism contract hardening: `CompileReceipt` with 3-part digest (source, IR, emit-manifest). `--receipt` CLI flag. `normalize_diagnostics()` for deterministic ordering. 4 determinism tests (single-file, directory, CI pipeline, diagnostic ordering) all passing. | Done 2026-02-25 |
+
+## Mega Lane — Track A: NF-1 Extern DSL Surface (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| NF-1 | Extern DSL surface: `Extern` keyword in lexer, `ExternFuncDecl` and `ExternAssetDecl` AST nodes, parser support for `extern func name(inputs) -> { outputs };` and `extern asset name: Type;`, typecheck validation, `LoweredOp::ExternCall` in lowerer, resolver error for unlinked externs. 5 tests (lexer, parser ×3, resolver). | Done 2026-02-25 |
+| NF-2 | Minimal symbol model: `ProgramSymbolId` (canonical identity), `IntrinsicOp` (compiler primitives), `OpRef` (Intrinsic/Call/Extern classification), `SymbolTable` (collected symbols), `LoweredOp::classify_op_ref()`, `build_symbol_table()`. 8 tests. | Done 2026-02-25 |
+| NF-3 | Link step + backend resolver contract: `Backend` trait with `resolve_extern_func()`/`resolve_extern_asset()`, `link()` function, `LinkError` with deterministic ordering, `EmptyBackend`, `LinkResult`. 4 tests. | Done 2026-02-25 |
+
+## Mega Lane — Track D: FC-7/FC-8 (Done 2026-02-25)
+
+| ID | Task | Status |
+|----|------|--------|
+| FC-7 | Replace `content_upsert_path_` substring hack with explicit `PrimitiveOpKind::ContentUpsertOutputPath` annotation. `extract_output_paths()` checks annotation first, legacy fallback for backward compat. | Done 2026-02-25 |
+| FC-8 | Fail-closed content extraction: `extract_file_contents()` returns error descriptions for unexpected schemas (missing keys, wrong types, non-list values) instead of silent empty strings. | Done 2026-02-25 |

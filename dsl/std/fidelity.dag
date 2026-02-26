@@ -1,0 +1,70 @@
+// std/fidelity.dag -- Transport fidelity: cost classification for external calls.
+//
+// Layers on fermi.dag. Defines transport classification as abstract
+// vocabulary (like lint.dag defines lint concepts without being tool-specific).
+//
+// Used by:
+//   - Test generation (derive tier/hermetic from graph structure)
+//   - CI gating (skip expensive tests locally)
+//   - Cost estimation (timeout budgets per transport class)
+//
+// No repo-specific policy here -- that lives in config/test_policy.dag.
+
+module std.fidelity
+
+import std.types { FermiDepth }
+import std.fermi { fermi_max_of }
+
+// Transport classification (mirrors ServiceTransportClass in compiler)
+type TransportClass = LocalDirect | ShellLocal | FileBoundary | RestNetwork | InterfaceStub | Unknown
+
+// Test classification
+type TestClass = Unit | Hermetic | Integration
+
+// Transport -> magnitude mapping (tautological: what each transport costs)
+fn transport_depth(tc: TransportClass) -> FermiDepth {
+  match tc {
+    LocalDirect    => Xs
+    InterfaceStub  => Xs
+    ShellLocal     => S
+    FileBoundary   => S
+    RestNetwork    => L
+    Unknown        => Xl
+  }
+}
+
+// Transport -> hermetic flag (can it be mocked in DryRun?)
+fn transport_hermetic(tc: TransportClass) -> Bool {
+  match tc {
+    LocalDirect    => true
+    InterfaceStub  => true
+    ShellLocal     => true
+    FileBoundary   => true
+    RestNetwork    => false
+    Unknown        => false
+  }
+}
+
+// --- Transitive derivation (the core composition) -------------------
+
+// Given all transport classes reached transitively, derive properties.
+// This is the "big-O" rule: max transport dominates.
+type DerivedClassification {
+  test_class: TestClass
+  depth: FermiDepth
+  hermetic: Bool
+}
+
+fn classify_transports(transports: List<TransportClass>) -> DerivedClassification {
+  let n = transports |> count()
+  if n == 0 {
+    DerivedClassification { test_class: Unit, depth: Xs, hermetic: true }
+  } else {
+    let depths = transports |> map(tc => transport_depth(tc: tc))
+    let depth = fermi_max_of(depths: depths)
+    let hermetic = transports |> all(tc => transport_hermetic(tc: tc))
+    let test_class = if hermetic { Hermetic } else { Integration }
+
+    DerivedClassification { test_class: test_class, depth: depth, hermetic: hermetic }
+  }
+}

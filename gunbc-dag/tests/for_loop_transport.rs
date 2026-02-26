@@ -57,7 +57,7 @@ fn gist_graph_has_build_snapshot_content_node() {
 
     assert!(
         has_build_snapshot,
-        "gist graph should contain build_snapshot_content compiled fn node. Got nodes: {:?}",
+        "gist graph should contain build_snapshot_content extern fn node. Got nodes: {:?}",
         lowered
             .dag
             .nodes
@@ -111,7 +111,9 @@ fn gist_snapshot_dry_run_completes() {
         "execution should include read_text_files pattern. Got: {node_ids:?}"
     );
     assert!(
-        node_ids.iter().any(|id| id.contains("build_snapshot_content")),
+        node_ids
+            .iter()
+            .any(|id| id.contains("build_snapshot_content")),
         "execution should include build_snapshot_content. Got: {node_ids:?}"
     );
     assert!(

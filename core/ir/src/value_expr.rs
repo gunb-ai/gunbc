@@ -175,6 +175,10 @@ fn request_to_value_expr(req: &TransportRequest) -> ValueExpr {
                 ("data".to_string(), opt_str(&t.data)),
             ],
         },
+        TransportRequest::Local(l) => ValueExpr::Struct {
+            name: "TransportRequest::Local".to_string(),
+            fields: vec![("inputs".to_string(), ValueExpr::Json(l.inputs.clone()))],
+        },
     }
 }
 
@@ -240,6 +244,10 @@ fn response_to_value_expr(resp: &TransportResponse) -> ValueExpr {
                 ),
                 ("error".to_string(), opt_str(&t.error)),
             ],
+        },
+        TransportResponse::Local(l) => ValueExpr::Struct {
+            name: "TransportResponse::Local".to_string(),
+            fields: vec![("outputs".to_string(), ValueExpr::Json(l.outputs.clone()))],
         },
     }
 }

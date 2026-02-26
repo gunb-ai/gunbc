@@ -345,6 +345,12 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
+        LoweredOp::UnsupportedPattern { name } => Err(ClassifyError::SubDagNode(format!(
+            "unsupported pattern: {name}"
+        ))),
+        LoweredOp::ExternCall { symbol } => {
+            Err(ClassifyError::SubDagNode(format!("extern call: {symbol}")))
+        }
     }
 }
 
@@ -424,6 +430,12 @@ fn classify_primitive(
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
+        // FC-7: Output path annotation nodes are metadata-only, no computation.
+        PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::Null),
+        }),
     }
 }
 
@@ -481,6 +493,8 @@ fn classify_collection(
         daglang_lower::CollectionOpKind::Sort | daglang_lower::CollectionOpKind::Dedup => {
             CollectionOpKind::Sort
         }
+        daglang_lower::CollectionOpKind::Split => CollectionOpKind::Map,
+        daglang_lower::CollectionOpKind::Zip => CollectionOpKind::Map,
     };
 
     Ok(Computation::Collection {
@@ -617,6 +631,9 @@ fn infer_transport_kind(
             ServiceTransportClass::RestNetwork => TransportKind::HttpRequest,
             ServiceTransportClass::LocalDirect => TransportKind::ShellExec,
             ServiceTransportClass::Unknown => TransportKind::ShellExec,
+            // InterfaceStub: auto-mocked in DryRun; Real mode errors before transport.
+            // Classified as ShellExec for emit purposes (execute node is intercepted).
+            ServiceTransportClass::InterfaceStub => TransportKind::ShellExec,
         };
     }
     // Fallback: infer from name
@@ -734,6 +751,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -760,6 +778,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -927,6 +946,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -950,6 +970,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -973,6 +994,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -999,6 +1021,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1025,6 +1048,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1125,6 +1149,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1155,6 +1180,7 @@ mod tests {
                 service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1194,6 +1220,7 @@ mod tests {
                 service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();
@@ -1230,6 +1257,7 @@ mod tests {
                 service_metadata: Some(Box::new(meta)),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         );
         let comp = classify_computation(&node).unwrap();

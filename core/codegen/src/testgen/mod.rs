@@ -23,6 +23,7 @@
 pub mod analyze;
 pub mod cardinality;
 pub mod codegen;
+pub mod mock_corpus;
 pub mod obligation;
 pub mod probe_observer;
 pub mod render_rust;

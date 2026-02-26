@@ -72,9 +72,7 @@ pub fn build_gcp_secret_manager_model() -> SystemModel {
         .with_outputs(vec![BehaviorOutput::new("written", out_ty("Bool"))])
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
-    .with_dependencies(vec![Dependency::secret(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-    )])
+    .with_dependencies(vec![Dependency::secret("GOOGLE_APPLICATION_CREDENTIALS")])
 }
 
 gunbc_ir::submit_system_model!(build_gcp_secret_manager_model);
@@ -178,9 +176,7 @@ pub fn build_gcp_iam_model() -> SystemModel {
         .with_outputs(vec![BehaviorOutput::new("provider", out_ty("Json"))])
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
-    .with_dependencies(vec![Dependency::secret(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-    )])
+    .with_dependencies(vec![Dependency::secret("GOOGLE_APPLICATION_CREDENTIALS")])
 }
 
 gunbc_ir::submit_system_model!(build_gcp_iam_model);
@@ -254,9 +250,7 @@ pub fn build_gcp_gcs_model() -> SystemModel {
         .with_outputs(vec![BehaviorOutput::new("deleted", out_ty("Bool"))])
         .with_properties(&[Property::WritesWorld, Property::Idempotent]),
     ])
-    .with_dependencies(vec![Dependency::secret(
-        "GOOGLE_APPLICATION_CREDENTIALS",
-    )])
+    .with_dependencies(vec![Dependency::secret("GOOGLE_APPLICATION_CREDENTIALS")])
 }
 
 gunbc_ir::submit_system_model!(build_gcp_gcs_model);
@@ -278,9 +272,7 @@ mod tests {
         let model = build_gcp_secret_manager_model();
         assert!(model.dependencies.iter().any(|dep| {
             dep.kind
-                == DependencyKind::Secret(SecretDependencyId::new(
-                    "GOOGLE_APPLICATION_CREDENTIALS",
-                ))
+                == DependencyKind::Secret(SecretDependencyId::new("GOOGLE_APPLICATION_CREDENTIALS"))
         }));
     }
 

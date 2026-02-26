@@ -81,6 +81,7 @@ pub fn detect_entrypoints<T>(dag: &Dag<T>) -> EntrypointInfo {
     let connected: HashSet<(NodeId, PortName)> = dag
         .edges
         .iter()
+        .filter(|e| e.kind.carries_data())
         .map(|e| (e.to_node.clone(), e.to_port.clone()))
         .collect();
 
@@ -94,6 +95,7 @@ pub fn detect_entrypoints<T>(dag: &Dag<T>) -> EntrypointInfo {
                 .map(|p| (n.id.clone(), p.name.clone(), p.type_id.clone()))
                 .filter(|(node_id, port_name, _)| {
                     !connected.contains(&(node_id.clone(), port_name.clone()))
+                        && !port_name.0.starts_with("__out:")
                 })
         })
         .collect();

@@ -1,8 +1,8 @@
 //! Shared binary entry helpers for DAG tool runners.
 
 use gunbc_exec::{
-    compose_with_freshness, execute_and_display, print_attention,
-    AttentionLevel, BoundaryMocks, Executable, ExecutionMode, FreshnessStep,
+    compose_with_freshness, execute_and_display, print_attention, AttentionLevel, BoundaryMocks,
+    Executable, ExecutionMode, FreshnessStep,
 };
 use gunbc_ir::Dag;
 use std::io::IsTerminal;

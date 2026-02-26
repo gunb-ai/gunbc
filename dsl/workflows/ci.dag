@@ -7,46 +7,30 @@ module workflows.ci
 pipeline ci {
 
   stage lint_upsert {
-    @file(WRITE, "workspace")
   }
 
   stage codegen [after lint_upsert] {
-    @file(WRITE, "generated:cli")
   }
 
   stage bootstrap [after codegen] {
-    @file(WRITE, "manifest")
   }
 
   stage pragma [after codegen] {
-    @file(WRITE, "workspace")
   }
 
   stage testgen [after codegen] {
-    @file(WRITE, "generated:tests")
   }
 
-  stage build_compile [after codegen, after testgen] {
-    @file(WRITE, "target")
-    @tool(READ, "cargo")
-  }
+  stage build_compile [after codegen, after testgen] {  }
 
-  stage test_run [after build_compile] {
-    @file(READ, "target")
-    @tool(READ, "cargo")
-  }
+  stage test_run [after build_compile] {  }
 
-  stage clippy_run [after build_compile] {
-    @file(READ, "target")
-    @tool(READ, "cargo")
-  }
+  stage clippy_run [after build_compile] {  }
 
   stage guardrails [after pragma, after testgen] {
-    @file(READ, "workspace")
   }
 
   stage verify [after pragma, after testgen, after bootstrap] {
-    @file(READ, "generated")
   }
 
   stage report [after test_run, after clippy_run, after guardrails, after verify] {}

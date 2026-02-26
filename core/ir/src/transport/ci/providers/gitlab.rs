@@ -456,6 +456,7 @@ mod tests {
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         });
         dag.add_node(Node {
             id: "test".into(),
@@ -464,6 +465,7 @@ mod tests {
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         });
         dag.add_edge(edge("build", "success", "test", "build_success"));
 

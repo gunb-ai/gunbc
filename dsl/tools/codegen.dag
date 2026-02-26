@@ -11,7 +11,6 @@ module tools.codegen
 import std.resources { Filesystem }
 import services.shell { shell.Codegen }
 
-@outputs("target/codegen/.stamp")
 func codegen() -> { success: Bool, ran: Bool }
   uses fs: Filesystem(mode: ReadWrite)
 {

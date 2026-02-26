@@ -44,15 +44,6 @@ service file.ClaimStore : ClaimStore {
       conflict: Bool
       lease_generation: Int
     }
-    @file(READWRITE, "{config.dir}/{issue_id}/{stage}.json")
-    @mock_response(
-      status: 0,
-      body: {
-        "acquired": true,
-        "conflict": false,
-        "lease_generation": 1
-      }
-    )
   }
 
   operation heartbeat {
@@ -63,12 +54,6 @@ service file.ClaimStore : ClaimStore {
       generation: Int
     }
     output { accepted: Bool }
-    @file(READWRITE, "{config.dir}/{issue_id}/{stage}.json")
-    @idempotent
-    @mock_response(
-      status: 0,
-      body: { "accepted": true }
-    )
   }
 
   operation release {
@@ -79,20 +64,12 @@ service file.ClaimStore : ClaimStore {
       generation: Int
     }
     output { released: Bool }
-    @file(READWRITE, "{config.dir}/{issue_id}/{stage}.json")
-    @idempotent
-    @mock_response(
-      status: 0,
-      body: { "released": true }
-    )
   }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
 
 test file_claim_acquire_release {
-    @tier(Unit)
-    @hermetic(true)
 
     input acquire/prepare.issue_id -> "42"
     input acquire/prepare.stage -> "design"

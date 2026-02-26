@@ -9,24 +9,17 @@ import tools.codegen { codegen_ensure }
 
 pipeline sdlc {
 
-  stage compilation_ensure {
-    @file(WRITE, "target")
-    @tool(READ, "cargo")
-    _ = compilation_ensure()
+  stage compilation_ensure {    _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
-    @file(WRITE, "generated:cli")
     _ = codegen_ensure()
   }
 
   stage intake [after codegen_ensure] {
-    @file(WRITE, "target")
-    @file(READ, "workspace")
   }
 
   stage worker [after intake] {
-    @file(WRITE, "target")
   }
 
   stage report [after worker] {}

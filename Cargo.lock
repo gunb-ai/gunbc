@@ -363,6 +363,7 @@ name = "gunbc-dag"
 version = "0.1.0"
 dependencies = [
  "cargo_metadata",
+ "daglang-derive",
  "daglang-driver",
  "daglang-emit",
  "daglang-lower",
@@ -597,14 +598,6 @@ dependencies = [
  "quote",
  "syn 1.0.109",
 ]
-
-[[package]]
-name = "gunbc-tool-registry"
-version = "0.1.0"
-
-[[package]]
-name = "gunbc-tool-registry-macros"
-version = "0.1.0"
 
 [[package]]
 name = "hashbrown"

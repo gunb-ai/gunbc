@@ -63,7 +63,9 @@ fn corpus_covers_all_top_level_item_variants() {
                 | Item::ComponentDef(_)
                 | Item::EnvironmentDef(_)
                 | Item::ParamDecl(_)
-                | Item::DataDef(_) => {}
+                | Item::DataDef(_)
+                | Item::ExternFuncDecl(_)
+                | Item::ExternAssetDecl(_) => {}
             }
         }
     }

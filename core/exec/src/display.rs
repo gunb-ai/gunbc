@@ -15,6 +15,7 @@
 //! ```
 
 use crate::box_draw;
+use crate::error::{ErrorLayer, FailureDetail, NodeRole};
 use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
@@ -226,8 +227,13 @@ pub fn execute_and_display<T: Executable + Clone + Send + 'static>(
                 process::exit(1);
             }
         }
-        Err(e) => {
-            print_attention(AttentionLevel::Error, "Execution failed", &e.to_string());
+        Err(err) => {
+            // Node failures are already rendered by observers/error boxes.
+            // Pre-node failures (e.g., lowering) need a fallback attention
+            // block so users never get a silent exit.
+            if should_render_fallback_error(&err) {
+                print_attention(AttentionLevel::Error, "Execution failed", &err.to_string());
+            }
             process::exit(1);
         }
     }
@@ -495,6 +501,12 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
     // This MUST happen before the `?` so the display is cleaned up even on failure.
     render_final_static_frame_seeded(&progress, &layout, &profile, last_lines);
 
+    // Render error detail boxes BEFORE propagating executor errors.
+    // Node failures produce structured ErrorLayers (service, auth, http context).
+    // If we `?` first, print_error_boxes is skipped and the caller only sees
+    // the flat error string via print_attention — losing all structured context.
+    print_error_boxes(&progress, profile.tier, profile.supports_color);
+
     let log = log_result?;
 
     // Check final node states for hard failures
@@ -503,9 +515,6 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
         .values()
         .any(|np| np.state == NodeState::Failed);
     should_fail = should_fail || success_port_failed(&log, success_port);
-
-    // Render error detail boxes for failed nodes
-    print_error_boxes(&progress, profile.tier, profile.supports_color);
 
     // Surface boundary outputs after progress render so users see
     // the actual tool results (e.g., gist URL) instead of only the DAG view.
@@ -558,8 +567,8 @@ impl NonTtyProgressCounts {
 struct NonTtyProgressObserver {
     labels: HashMap<NodeId, String>,
     states: HashMap<NodeId, NonTtyNodeState>,
-    /// Track failed nodes with their error first lines for the dag_complete summary.
-    failures: Vec<(String, String)>,
+    /// Track failed nodes with their structured failure details for the dag_complete summary.
+    failures: Vec<(String, FailureDetail)>,
     /// Stage groups from the snapshot (empty for non-CI DAGs).
     groups: Vec<StageGroup>,
     /// Maps node_id → group index for quick lookup.
@@ -718,17 +727,74 @@ impl ProgressObserver for NonTtyProgressObserver {
         self.maybe_emit_group_summary(node_id);
     }
 
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError) {
         self.set_state(node_id, NonTtyNodeState::Failed);
         let label = self.label_for(node_id).to_string();
-        // Save first line for the dag_complete summary
-        let first_line = error.lines().next().unwrap_or(error).to_string();
-        self.failures.push((label.clone(), first_line));
-        eprintln!("✗ {}: {}", label, error);
+        let detail = error.to_failure_detail();
+        let classification = error.classification();
+        let msg = error.to_string();
+
+        // Summary line with classification tag and optional service label
+        if let Some(svc) = error.service_label() {
+            eprintln!(
+                "✗ {} [{}] ({}): {}",
+                label,
+                classification.label(),
+                svc,
+                msg
+            );
+        } else {
+            eprintln!("✗ {} [{}]: {}", label, classification.label(), msg);
+        }
+
         // Print boxed failure detail, capped at FAILURE_DETAIL_LINES
+        let box_label = error.service_label().unwrap_or_else(|| label.clone());
+        let box_tag = classification.box_tag();
         eprintln!();
-        eprintln!("  ┌─ [ERROR] {}", label);
-        let lines: Vec<&str> = error.lines().collect();
+        eprintln!("  ┌─ {} {}", box_tag, box_label);
+
+        // Render layer context lines
+        for layer in error.layers() {
+            match layer {
+                ErrorLayer::Service(s) => {
+                    eprintln!("  │ Service:   {} → {}", s.provider, s.operation);
+                }
+                ErrorLayer::Http(h) => {
+                    if let Some(ref reason) = h.reason {
+                        eprintln!("  │ Http:      {} ({})", h.status_code, reason);
+                    } else {
+                        eprintln!("  │ Http:      {}", h.status_code);
+                    }
+                }
+                ErrorLayer::Rest(r) => {
+                    eprintln!("  │ Transport: {} {}", r.method, r.endpoint);
+                }
+                ErrorLayer::Acquisition(a) => {
+                    eprintln!("  │ Auth:      {}", a.diagnostic);
+                }
+                ErrorLayer::Shell(s) => {
+                    if let Some(code) = s.exit_code {
+                        eprintln!("  │ Shell:     {} (exit {})", s.command, code);
+                    } else {
+                        eprintln!("  │ Shell:     {}", s.command);
+                    }
+                }
+                ErrorLayer::File(f) => {
+                    eprintln!("  │ File:      {} ({})", f.path, f.operation);
+                }
+                ErrorLayer::NodeTrace(t) => {
+                    let role_str = match t.role {
+                        NodeRole::TransportExecutor => "transport",
+                        NodeRole::ResourceProvider => "resource",
+                        NodeRole::ToolConsumer => "tool",
+                        NodeRole::Pure => "pure",
+                    };
+                    eprintln!("  │ Node:      {} ({})", t.node_id, role_str);
+                }
+            }
+        }
+
+        let lines: Vec<&str> = msg.lines().collect();
         let display_lines = lines.len().min(FAILURE_DETAIL_LINES);
         for line in &lines[..display_lines] {
             eprintln!("  │ {}", line);
@@ -740,6 +806,8 @@ impl ProgressObserver for NonTtyProgressObserver {
             );
         }
         eprintln!("  └─");
+
+        self.failures.push((label, detail));
         self.maybe_emit_group_summary(node_id);
     }
 
@@ -758,11 +826,14 @@ impl ProgressObserver for NonTtyProgressObserver {
         let counts = self.counts();
         eprintln!("{}", format_non_tty_summary_line(counts, elapsed));
 
-        // Print failure summary listing all failed nodes with error first lines
+        // Print failure summary listing all failed nodes with classification
         if !self.failures.is_empty() {
             eprintln!();
-            for (label, first_line) in &self.failures {
-                eprintln!("  ┌─ [FAILED] {}", label);
+            for (label, detail) in &self.failures {
+                let first_line = detail.message.lines().next().unwrap_or(&detail.message);
+                let tag = detail.classification();
+                let display_label = detail.service_label().unwrap_or_else(|| label.clone());
+                eprintln!("  ┌─ [FAILED] {} [{}]", display_label, tag.label());
                 eprintln!("  │ {}", first_line);
                 eprintln!("  └─");
             }
@@ -785,10 +856,10 @@ impl ProgressObserver for ChannelObserver {
             .send(ExecutionEvent::NodeComplete(node_id.clone(), summary));
     }
 
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError) {
         let _ = self.tx.send(ExecutionEvent::NodeFailed(
             node_id.clone(),
-            error.to_string(),
+            error.to_failure_detail(),
         ));
     }
 
@@ -924,18 +995,28 @@ fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) ->
 
     log.entries.iter().any(|entry| {
         match entry.outputs.get(port) {
-            Some(Value::Bool(true)) => false,  // explicitly passed
-            Some(_) => true,                   // Bool(false), Skipped, or unexpected type
-            None => false,                     // port not on this node
+            Some(Value::Bool(true)) => false, // explicitly passed
+            Some(_) => true,                  // Bool(false), Skipped, or unexpected type
+            None => false,                    // port not on this node
         }
     })
+}
+
+/// Returns true when the caller should print an explicit fallback error block.
+///
+/// Node failures carry a NodeTrace layer and are rendered by progress observers
+/// (plain mode) or error boxes (animated mode). Errors without NodeTrace are
+/// typically pre-node failures and need explicit fallback rendering.
+fn should_render_fallback_error(err: &ExecError) -> bool {
+    err.node_trace().is_none()
 }
 
 /// Render error detail boxes for all failed nodes in the DAG.
 ///
 /// Each failed node gets an open-right box with `Error` color border and
-/// `Dim` content text. Error text is truncated to [`ERROR_OUTPUT_MAX_LINES`]
-/// lines. Matches `gunb.ai`'s `printErrorBoxes()` behavior.
+/// `Dim` content text. Renders structured layer context (Service, Http, Rest,
+/// Auth, Shell, File) when available, plus a classification tag. Error text
+/// is truncated to [`ERROR_OUTPUT_MAX_LINES`] lines.
 ///
 /// [`ERROR_OUTPUT_MAX_LINES`]: crate::box_draw::ERROR_OUTPUT_MAX_LINES
 pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
@@ -947,21 +1028,80 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
     let mut stderr = io::stderr();
     let _ = writeln!(stderr);
 
-    for (label, error) in &failures {
-        let b = box_draw::error_box(label, tier, use_color);
+    for (label, detail) in &failures {
+        // Build the box title: "[CLASSIFICATION] service → op" or "[CLASSIFICATION] node_label"
+        let classification = detail.classification();
+        let display_label = detail.service_label().unwrap_or_else(|| label.clone());
+        let box_label = if classification == crate::ErrorClass::Unknown {
+            display_label
+        } else {
+            format!("{} {}", classification.box_tag(), display_label)
+        };
+        let b = box_draw::error_box(&box_label, tier, use_color);
 
-        // Truncate error output to max lines
-        let lines: Vec<&str> = error.lines().collect();
+        // Build content lines: error message first, then layer context
+        let mut content_lines: Vec<String> = Vec::new();
+
+        // Error message
+        for line in detail.message.lines() {
+            content_lines.push(line.to_string());
+        }
+
+        // Layer context (only if layers are present)
+        if !detail.layers.is_empty() {
+            content_lines.push(String::new()); // blank separator
+        }
+        for layer in &detail.layers {
+            match layer {
+                ErrorLayer::Service(s) => {
+                    content_lines.push(format!("Service:   {} → {}", s.provider, s.operation));
+                }
+                ErrorLayer::Http(h) => {
+                    if let Some(ref reason) = h.reason {
+                        content_lines.push(format!("Http:      {} ({})", h.status_code, reason));
+                    } else {
+                        content_lines.push(format!("Http:      {}", h.status_code));
+                    }
+                }
+                ErrorLayer::Rest(r) => {
+                    content_lines.push(format!("Transport: {} {}", r.method, r.endpoint));
+                }
+                ErrorLayer::Acquisition(a) => {
+                    content_lines.push(format!("Auth:      {}", a.diagnostic));
+                }
+                ErrorLayer::Shell(s) => {
+                    if let Some(code) = s.exit_code {
+                        content_lines.push(format!("Shell:     {} (exit {})", s.command, code));
+                    } else {
+                        content_lines.push(format!("Shell:     {}", s.command));
+                    }
+                }
+                ErrorLayer::File(f) => {
+                    content_lines.push(format!("File:      {} ({})", f.path, f.operation));
+                }
+                ErrorLayer::NodeTrace(t) => {
+                    let role_str = match t.role {
+                        NodeRole::TransportExecutor => "transport",
+                        NodeRole::ResourceProvider => "resource",
+                        NodeRole::ToolConsumer => "tool",
+                        NodeRole::Pure => "pure",
+                    };
+                    content_lines.push(format!("Node:      {} ({})", t.node_id, role_str));
+                }
+            }
+        }
+
+        // Truncate to max lines
         let max = box_draw::ERROR_OUTPUT_MAX_LINES;
-        if lines.len() <= max {
-            let _ = b.render(&mut stderr, &lines);
+        let refs: Vec<&str> = content_lines.iter().map(|s| s.as_str()).collect();
+        if refs.len() <= max {
+            let _ = b.render(&mut stderr, &refs);
         } else {
             let _ = b.write_top(&mut stderr);
-            // Show last `max` lines (most relevant for errors)
-            let skip = lines.len() - max;
+            let skip = refs.len() - max;
             let truncation_notice = format!("... ({} lines omitted, showing last {})", skip, max);
             let _ = b.write_content(&mut stderr, &truncation_notice);
-            for line in &lines[skip..] {
+            for line in &refs[skip..] {
                 let _ = b.write_content(&mut stderr, line);
             }
             let _ = b.write_bottom(&mut stderr);
@@ -1074,7 +1214,7 @@ mod tests {
             },
         );
         observer.on_node_start(&b);
-        observer.on_node_failed(&b, "boom");
+        observer.on_node_failed(&b, &ExecError::new("boom"));
         observer.on_node_skipped(&c);
 
         let counts = observer.counts();
@@ -1241,11 +1381,14 @@ mod tests {
         let mut observer = NonTtyProgressObserver::default();
         observer.on_dag_start(&snapshot);
         observer.on_node_start(&NodeId::from("a"));
-        observer.on_node_failed(&NodeId::from("a"), "error line 1\nerror line 2");
+        observer.on_node_failed(
+            &NodeId::from("a"),
+            &ExecError::new("error line 1\nerror line 2"),
+        );
 
         assert_eq!(observer.failures.len(), 1);
         assert_eq!(observer.failures[0].0, "A");
-        assert_eq!(observer.failures[0].1, "error line 1");
+        assert_eq!(observer.failures[0].1.message, "error line 1\nerror line 2");
     }
 
     #[test]
@@ -1346,5 +1489,22 @@ mod tests {
     fn success_port_failed_returns_false_when_no_success_port() {
         let log = log_with_output("overall_success", Value::Bool(false));
         assert!(!success_port_failed(&log, None));
+    }
+
+    #[test]
+    fn fallback_error_rendering_required_without_node_trace() {
+        let err = ExecError::new("lowering failed");
+        assert!(should_render_fallback_error(&err));
+    }
+
+    #[test]
+    fn fallback_error_rendering_not_required_with_node_trace() {
+        let err = ExecError::new("node failed").with_layer(ErrorLayer::NodeTrace(
+            crate::NodeTraceLayer {
+                node_id: "n1".to_string(),
+                role: NodeRole::Pure,
+            },
+        ));
+        assert!(!should_render_fallback_error(&err));
     }
 }

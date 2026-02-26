@@ -11,9 +11,12 @@ use daglang_lower::{
     ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
     RestOperationSpec, ShellOperationSpec, ShellOutputParsing,
 };
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    decorate_service_failure, AuthContext, ExecError, Executable, OutputMap, ServiceCallMetadata,
+    TransportContext,
+};
 use gunbc_ir::transport::{
-    FileRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
+    FileRequest, LocalRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
 };
 use gunbc_ir::{SecretString, Value};
 
@@ -31,9 +34,7 @@ impl Executable for GenericRestPrepareOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // Propagate skip from upstream (e.g., non-selected match branches).
         if inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .ok();
+            return OutputMap::new().value("request", Value::Skipped).ok();
         }
 
         // Skip when required non-config inputs are missing (e.g., param_source
@@ -45,9 +46,7 @@ impl Executable for GenericRestPrepareOp {
                 && !inputs.contains_key(&field.name)
         });
         if has_missing_required {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .ok();
+            return OutputMap::new().value("request", Value::Skipped).ok();
         }
 
         ensure_required_profile_config_inputs(&self.spec, &inputs)?;
@@ -161,6 +160,10 @@ impl Executable for GenericRestPrepareOp {
 #[derive(Debug, Clone)]
 pub struct GenericRestParseOp {
     pub spec: RestOperationSpec,
+    pub service_name: String,
+    pub operation_name: String,
+    pub auth_scheme: String,
+    pub permissions: Vec<String>,
 }
 
 impl Executable for GenericRestParseOp {
@@ -187,7 +190,56 @@ impl Executable for GenericRestParseOp {
                             self.spec.method, self.spec.path_template, rest.status, body_excerpt
                         )
                     };
-                    return Err(ExecError::new(detail));
+                    // Determine auth scheme + credential ref.
+                    // Prefer explicit @auth scheme; fall back to inferring from
+                    // @headers Authorization pattern.
+                    let (scheme, cred_ref) = if !self.auth_scheme.is_empty() {
+                        (self.auth_scheme.clone(), None)
+                    } else {
+                        infer_auth_from_headers(&self.spec.headers)
+                    };
+                    // Attach auth context when we have auth metadata OR when
+                    // the HTTP status implies auth failure.
+                    let is_auth_status = rest.status == 401 || rest.status == 403;
+                    let auth =
+                        if !scheme.is_empty() || is_auth_status || !self.permissions.is_empty() {
+                            Some(AuthContext {
+                                scheme: if scheme.is_empty() {
+                                    None
+                                } else {
+                                    Some(scheme)
+                                },
+                                credential_ref: cred_ref,
+                                required_permissions: self.permissions.clone(),
+                                lock_target: rest_lock_target(
+                                    &self.spec.method,
+                                    &self.spec.endpoint,
+                                    &self.spec.path_template,
+                                ),
+                            })
+                        } else {
+                            None
+                        };
+
+                    let err = decorate_service_failure(
+                        ExecError::new(detail),
+                        ServiceCallMetadata {
+                            provider: self.service_name.clone(),
+                            operation: self.operation_name.clone(),
+                        },
+                        TransportContext::Rest {
+                            endpoint: self.spec.endpoint.clone(),
+                            method: self.spec.method.clone(),
+                            status_code: rest.status,
+                            reason: if body_excerpt.is_empty() {
+                                None
+                            } else {
+                                Some(body_excerpt.clone())
+                            },
+                        },
+                        auth,
+                    );
+                    return Err(err);
                 }
 
                 let mut out = OutputMap::new();
@@ -334,9 +386,11 @@ impl Executable for GenericShellPrepareOp {
         }
 
         // Skip when required inputs are missing (non-taken branch param sources).
-        let has_missing_required = self.spec.input_fields.iter().any(|field| {
-            field.default.is_none() && !inputs.contains_key(&field.name)
-        });
+        let has_missing_required = self
+            .spec
+            .input_fields
+            .iter()
+            .any(|field| field.default.is_none() && !inputs.contains_key(&field.name));
         if has_missing_required {
             return OutputMap::new()
                 .value("request", Value::Skipped)
@@ -403,6 +457,8 @@ impl Executable for GenericShellPrepareOp {
 #[derive(Debug, Clone)]
 pub struct GenericShellParseOp {
     pub spec: ShellOperationSpec,
+    pub service_name: String,
+    pub operation_name: String,
 }
 
 impl Executable for GenericShellParseOp {
@@ -493,10 +549,31 @@ impl Executable for GenericShellParseOp {
                     }
                 }
             }
-            Some(other) => Err(ExecError::new(format!(
-                "expected Shell response for parse, got {:?}",
-                std::mem::discriminant(other)
-            ))),
+            Some(other) => Err(decorate_service_failure(
+                ExecError::new(format!(
+                    "expected Shell response for parse, got {:?}",
+                    std::mem::discriminant(other)
+                )),
+                ServiceCallMetadata {
+                    provider: self.service_name.clone(),
+                    operation: self.operation_name.clone(),
+                },
+                TransportContext::Shell {
+                    exit_code: Some(-1),
+                    command: self
+                        .spec
+                        .argv_template
+                        .iter()
+                        .filter_map(|s| match s {
+                            ArgvSegment::Literal(l) => Some(l.as_str()),
+                            _ => None,
+                        })
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_string(),
+                },
+                None,
+            )),
         }
     }
 }
@@ -504,6 +581,53 @@ impl Executable for GenericShellParseOp {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/// Build a stable lock target for REST acquisition diagnostics.
+///
+/// Includes method + endpoint + path template so operations under a shared
+/// endpoint do not collapse into the same lock identity.
+fn rest_lock_target(method: &str, endpoint: &str, path_template: &str) -> String {
+    let endpoint = endpoint.trim_end_matches('/');
+    let path = path_template.trim();
+    if endpoint.is_empty() {
+        return format!("{method} {path}");
+    }
+    if path.is_empty() {
+        return format!("{method} {endpoint}");
+    }
+    if path.starts_with('/') {
+        format!("{method} {endpoint}{path}")
+    } else {
+        format!("{method} {endpoint}/{path}")
+    }
+}
+
+/// Infer auth scheme and credential reference from `@headers` annotation.
+///
+/// Looks for an `Authorization` header and extracts the scheme (Bearer, Basic)
+/// and the credential input name from template interpolation (`{auth_token}`).
+/// Returns `(scheme, Option<credential_ref>)`.
+fn infer_auth_from_headers(headers: &[(String, String)]) -> (String, Option<String>) {
+    for (key, value) in headers {
+        if key.eq_ignore_ascii_case("authorization") {
+            let scheme = if value.starts_with("Bearer ") {
+                "BearerToken"
+            } else if value.starts_with("Basic ") {
+                "BasicAuth"
+            } else {
+                "Header"
+            };
+            // Extract input name from template: "Bearer {auth_token}" → "auth_token"
+            let cred_ref = value.find('{').and_then(|start| {
+                value[start + 1..]
+                    .find('}')
+                    .map(|end| value[start + 1..start + 1 + end].to_string())
+            });
+            return (scheme.to_string(), cred_ref);
+        }
+    }
+    (String::new(), None)
+}
 
 /// Extract an input value as a string, handling Secret and defaults.
 #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret values marshalled into service requests
@@ -665,7 +789,8 @@ fn insert_value_as_json(
         Value::Str(s) => {
             map.insert(key.to_string(), serde_json::Value::String(s.clone()));
         }
-        #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret serialized for service request
+        #[allow(clippy::disallowed_methods)]
+        // Approved: transport boundary — secret serialized for service request
         Value::Secret(secret) => {
             map.insert(
                 key.to_string(),
@@ -682,10 +807,7 @@ fn insert_value_as_json(
             map.insert(key.to_string(), j.clone());
         }
         Value::List(items) => {
-            let arr: Vec<serde_json::Value> = items
-                .iter()
-                .filter_map(value_to_json)
-                .collect();
+            let arr: Vec<serde_json::Value> = items.iter().filter_map(value_to_json).collect();
             map.insert(key.to_string(), serde_json::Value::Array(arr));
         }
         Value::Map(entries) => {
@@ -805,12 +927,9 @@ impl Executable for GenericFilePrepareOp {
                 .bool("skip", true)
                 .ok();
         }
-        let path = inputs
-            .get("path")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
-            })?;
+        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+            ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
+        })?;
         let request = match self.spec.operation.as_str() {
             "READ" => FileRequest::read(path),
             "READ_BYTES" => FileRequest::read_bytes(path),
@@ -845,10 +964,7 @@ impl Executable for GenericFileParseOp {
         match inputs.get("response") {
             Some(Value::Response(TransportResponse::File(file_resp))) => {
                 if !file_resp.success {
-                    let err = file_resp
-                        .error
-                        .as_deref()
-                        .unwrap_or("unknown file error");
+                    let err = file_resp.error.as_deref().unwrap_or("unknown file error");
                     return Err(ExecError::new(format!(
                         "File operation failed on `{}`: {err}",
                         file_resp.path
@@ -906,7 +1022,6 @@ impl Executable for GenericLocalPrepareOp {
                 .bool("skip", true)
                 .ok();
         }
-        // Package inputs as JSON in a shell request (carrier for local ops).
         let mut body = serde_json::Map::new();
         for field in &self.spec.input_fields {
             if let Some(val) = inputs.get(&field.name) {
@@ -915,10 +1030,11 @@ impl Executable for GenericLocalPrepareOp {
                 }
             }
         }
-        let json_str = serde_json::Value::Object(body).to_string();
-        let request = ShellRequest::new("echo").args(vec![json_str]);
+        let request = LocalRequest {
+            inputs: serde_json::Value::Object(body),
+        };
         OutputMap::new()
-            .request("request", TransportRequest::Shell(request))
+            .request("request", TransportRequest::Local(request))
             .bool("skip", false)
             .ok()
     }
@@ -933,8 +1049,22 @@ pub struct GenericLocalParseOp {
 impl Executable for GenericLocalParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match inputs.get("response") {
+            Some(Value::Response(TransportResponse::Local(local_resp))) => {
+                let parsed = &local_resp.outputs;
+                let mut out = OutputMap::new();
+                for field in &self.spec.output_fields {
+                    let val = parsed.get(&field.name);
+                    out = match val {
+                        Some(serde_json::Value::String(s)) => out.str(&field.name, s.clone()),
+                        Some(serde_json::Value::Bool(b)) => out.bool(&field.name, *b),
+                        Some(other) => out.str(&field.name, other.to_string()),
+                        None => out.str(&field.name, String::new()),
+                    };
+                }
+                out.ok()
+            }
+            // Backward compat: accept Shell responses from the old echo-based carrier.
             Some(Value::Response(TransportResponse::Shell(shell))) => {
-                // Parse stdout as JSON and extract named output fields.
                 let parsed: serde_json::Value =
                     serde_json::from_str(shell.stdout.trim()).unwrap_or_default();
                 let mut out = OutputMap::new();
@@ -957,10 +1087,86 @@ impl Executable for GenericLocalParseOp {
                 out.ok()
             }
             Some(other) => Err(ExecError::new(format!(
-                "GenericLocalParse: expected Shell response, got {:?}",
+                "GenericLocalParse: expected Local or Shell response, got {:?}",
                 std::mem::discriminant(other)
             ))),
         }
+    }
+}
+
+// ============================================================================
+// InterfaceStub (IS-6): stub ops for interface capabilities without profile
+// ============================================================================
+
+/// Interface stub prepare: packages inputs into a `TransportRequest` for
+/// structural transport detection (DryRun boundary interception).
+#[derive(Debug, Clone)]
+pub struct InterfaceStubPrepareOp {
+    pub interface: String,
+    pub capability: String,
+}
+
+impl Executable for InterfaceStubPrepareOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        if inputs.values().any(|v| matches!(v, Value::Skipped)) {
+            return OutputMap::new()
+                .value("request", Value::Skipped)
+                .bool("skip", true)
+                .ok();
+        }
+        // Package inputs as a Local request for structural transport detection.
+        // Redact secrets — stub transport should never expose plaintext.
+        let mut body = serde_json::Map::new();
+        for (key, val) in &inputs {
+            if matches!(val, Value::Secret(_)) {
+                body.insert(key.clone(), serde_json::Value::String("***".to_string()));
+            } else if let Some(json_val) = value_to_json(val) {
+                body.insert(key.clone(), json_val);
+            }
+        }
+        let request = gunbc_ir::transport::LocalRequest {
+            inputs: serde_json::Value::Object(body),
+        };
+        OutputMap::new()
+            .request("request", TransportRequest::Local(request))
+            .bool("skip", false)
+            .ok()
+    }
+}
+
+/// Interface stub execute: errors in Real mode ("requires --profile"),
+/// auto-mocked in DryRun (boundary mocks supply typed outputs).
+#[derive(Debug, Clone)]
+pub struct InterfaceStubExecuteOp {
+    pub interface: String,
+    pub capability: String,
+}
+
+impl Executable for InterfaceStubExecuteOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        Err(ExecError::new(format!(
+            "interface stub `{}.{}` requires --profile: no active profile bindings \
+             (this call would be auto-mocked in DryRun mode)",
+            self.interface, self.capability
+        )))
+    }
+}
+
+/// Interface stub parse: identity passthrough. Forwards typed capability
+/// outputs from execute (or from DryRun mocks) unchanged.
+#[derive(Debug, Clone)]
+pub struct InterfaceStubParseOp {
+    pub interface: String,
+    pub capability: String,
+}
+
+impl Executable for InterfaceStubParseOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // Identity passthrough: forward all inputs as outputs.
+        Ok(inputs)
     }
 }
 
@@ -1167,6 +1373,10 @@ mod tests {
     fn rest_parse_extracts_fields() {
         let op = GenericRestParseOp {
             spec: rest_spec_simple(),
+            service_name: String::new(),
+            operation_name: String::new(),
+            auth_scheme: String::new(),
+            permissions: vec![],
         };
         let response = RestResponse::ok(serde_json::json!({ "id": "abc-123" }));
         let mut inputs = HashMap::new();
@@ -1207,7 +1417,13 @@ mod tests {
             auth_scheme: None,
             error_mappings: vec![],
         };
-        let op = GenericRestParseOp { spec };
+        let op = GenericRestParseOp {
+            spec,
+            service_name: String::new(),
+            operation_name: String::new(),
+            auth_scheme: String::new(),
+            permissions: vec![],
+        };
         let response = RestResponse::ok(serde_json::json!({
             "access_token": "ya29.secret-token",
             "expires_in": 3600,
@@ -1232,6 +1448,10 @@ mod tests {
     fn rest_parse_bytes_base64() {
         let op = GenericRestParseOp {
             spec: rest_spec_with_path_params(),
+            service_name: String::new(),
+            operation_name: String::new(),
+            auth_scheme: String::new(),
+            permissions: vec![],
         };
         let response = RestResponse::ok(serde_json::json!({
             "name": "projects/p/secrets/s/versions/1",
@@ -1322,6 +1542,8 @@ mod tests {
     fn shell_parse_trim_stdout() {
         let op = GenericShellParseOp {
             spec: shell_spec_simple(),
+            service_name: String::new(),
+            operation_name: String::new(),
         };
         let response = ShellResponse::ok("  main  \n");
         let mut inputs = HashMap::new();
@@ -1338,6 +1560,8 @@ mod tests {
     fn shell_parse_exit_code_bool() {
         let op = GenericShellParseOp {
             spec: shell_spec_exit_code(),
+            service_name: String::new(),
+            operation_name: String::new(),
         };
         let response = ShellResponse::ok("");
         let mut inputs = HashMap::new();
@@ -1369,7 +1593,11 @@ mod tests {
             output_parsing: ShellOutputParsing::SplitLines,
             env: vec![],
         };
-        let op = GenericShellParseOp { spec };
+        let op = GenericShellParseOp {
+            spec,
+            service_name: String::new(),
+            operation_name: String::new(),
+        };
         let response = ShellResponse::ok("origin/main\norigin/dev\n\n");
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -1421,7 +1649,11 @@ mod tests {
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
             env: vec![],
         };
-        let op = GenericShellParseOp { spec };
+        let op = GenericShellParseOp {
+            spec,
+            service_name: String::new(),
+            operation_name: String::new(),
+        };
         let mut response = ShellResponse::ok("compiled ok");
         response.stderr = "warning: unused var".to_string();
         let mut inputs = HashMap::new();
@@ -1616,5 +1848,118 @@ mod tests {
 
         let outputs = op.execute(inputs).unwrap();
         assert_eq!(outputs.get("content"), Some(&Value::Skipped));
+    }
+
+    // ── InterfaceStub ops (IS-6 / IS-8) ──────────────────────────────
+
+    #[test]
+    fn interface_stub_prepare_packages_inputs_as_local_request() {
+        let op = InterfaceStubPrepareOp {
+            interface: "IssueProvider".to_string(),
+            capability: "list_issues".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("project".to_string(), Value::Str("my-project".to_string()));
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(false)));
+        match outputs.get("request") {
+            Some(Value::Request(TransportRequest::Local(local))) => {
+                assert!(local.inputs.get("project").is_some());
+            }
+            other => panic!("expected Local request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interface_stub_prepare_propagates_skip() {
+        let op = InterfaceStubPrepareOp {
+            interface: "IssueProvider".to_string(),
+            capability: "list_issues".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("project".to_string(), Value::Skipped);
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("request"), Some(&Value::Skipped));
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn interface_stub_execute_errors_in_real_mode() {
+        let op = InterfaceStubExecuteOp {
+            interface: "IssueProvider".to_string(),
+            capability: "list_issues".to_string(),
+        };
+        let error = op
+            .execute(HashMap::new())
+            .expect_err("stub execute should error in Real mode");
+        let msg = error.to_string();
+        assert!(
+            msg.contains("IssueProvider.list_issues"),
+            "error should name the interface.capability: {msg}"
+        );
+        assert!(
+            msg.contains("--profile"),
+            "error should mention --profile: {msg}"
+        );
+    }
+
+    #[test]
+    fn interface_stub_parse_is_identity_passthrough() {
+        let op = InterfaceStubParseOp {
+            interface: "IssueProvider".to_string(),
+            capability: "list_issues".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("issues".to_string(), Value::Str("issue-1".to_string()));
+        inputs.insert("count".to_string(), Value::Int(1));
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(
+            outputs.get("issues"),
+            Some(&Value::Str("issue-1".to_string()))
+        );
+        assert_eq!(outputs.get("count"), Some(&Value::Int(1)));
+    }
+
+    #[test]
+    fn interface_stub_prepare_redacts_secrets() {
+        let op = InterfaceStubPrepareOp {
+            interface: "CredentialProvider".to_string(),
+            capability: "get_token".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "api_key".to_string(),
+            Value::Secret(SecretString::new("super-secret-key")),
+        );
+        inputs.insert("scope".to_string(), Value::Str("read".to_string()));
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("request") {
+            Some(Value::Request(TransportRequest::Local(local))) => {
+                // Secret should be redacted to "***"
+                assert_eq!(
+                    local.inputs.get("api_key"),
+                    Some(&serde_json::Value::String("***".to_string())),
+                    "secrets must be redacted in stub transport"
+                );
+                // Non-secret values should be passed through
+                assert_eq!(
+                    local.inputs.get("scope"),
+                    Some(&serde_json::Value::String("read".to_string()))
+                );
+            }
+            other => panic!("expected Local request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rest_lock_target_includes_path_template() {
+        let target = rest_lock_target("GET", "https://api.example.com", "/v1/items/{id}");
+        assert_eq!(target, "GET https://api.example.com/v1/items/{id}");
+    }
+
+    #[test]
+    fn rest_lock_target_supports_relative_path_templates() {
+        let target = rest_lock_target("POST", "https://api.example.com/", "v1/items");
+        assert_eq!(target, "POST https://api.example.com/v1/items");
     }
 }

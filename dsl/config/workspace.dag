@@ -1,0 +1,57 @@
+// config/workspace.dag -- Workspace crate declarations.
+//
+// Single source of truth for the gunbc workspace structure. Each crate
+// is declared with its path, crate name, and layer classification.
+// A CI drift test verifies this data matches the actual Cargo.toml.
+
+module config.workspace
+
+// ── Types ──────────────────────────────────────────────────────────────
+
+type CrateLayer = Core | Compiler | Library | Tool | Repo
+
+type CrateSpec {
+  path: String
+  name: String
+  layer: CrateLayer
+}
+
+// ── Workspace members ──────────────────────────────────────────────────
+
+data workspace_crates: List<CrateSpec> = [
+  // Core crates (handwritten foundation)
+  { path: "core/infra",                     name: "gunbc-infra",                  layer: Core },
+  { path: "core/ir",                        name: "gunbc-ir",                     layer: Core },
+  { path: "core/exec",                      name: "gunbc-exec",                   layer: Core },
+  { path: "core/cli",                       name: "gunbc-cli",                    layer: Core },
+  { path: "core/codegen",                   name: "gunbc-codegen",                layer: Core },
+  { path: "core/test",                      name: "gunbc-test",                   layer: Core },
+  { path: "core/testgen-registry",          name: "gunbc-testgen-registry",       layer: Core },
+  { path: "core/testgen-registry-macros",   name: "gunbc-testgen-registry-macros", layer: Core },
+  { path: "core/delegate-macros",           name: "gunbc-delegate-macros",        layer: Core },
+  // DSL compiler (daglang)
+  { path: "core/daglang/daglang-syntax",    name: "daglang-syntax",              layer: Compiler },
+  { path: "core/daglang/daglang-contract",  name: "daglang-contract",            layer: Compiler },
+  { path: "core/daglang/daglang-resolve",   name: "daglang-resolve",             layer: Compiler },
+  { path: "core/daglang/daglang-typecheck", name: "daglang-typecheck",           layer: Compiler },
+  { path: "core/daglang/daglang-lower",     name: "daglang-lower",               layer: Compiler },
+  { path: "core/daglang/daglang-derive",    name: "daglang-derive",              layer: Compiler },
+  { path: "core/daglang/daglang-emit",      name: "daglang-emit",                layer: Compiler },
+  { path: "core/daglang/daglang-driver",    name: "daglang-driver",              layer: Compiler },
+  { path: "core/daglang/daglang-cli",       name: "daglang-cli",                 layer: Compiler },
+  // Library crates (DAG op libraries)
+  { path: "lib/primitives",                 name: "gunbc-primitives",             layer: Library },
+  { path: "lib/blob",                       name: "gunbc-lib-blob",              layer: Library },
+  { path: "lib/cloud-ops",                  name: "gunbc-lib-cloud-ops",         layer: Library },
+  { path: "lib/aws-ops",                    name: "gunbc-lib-aws-ops",           layer: Library },
+  { path: "lib/llm-ops",                    name: "gunbc-lib-llm-ops",           layer: Library },
+  { path: "lib/review",                     name: "gunbc-lib-review",            layer: Library },
+  { path: "lib/design-ops",                 name: "gunbc-design-ops",            layer: Library },
+  { path: "lib/transport",                  name: "gunbc-lib-transport",         layer: Library },
+  { path: "lib/gcp-ops",                    name: "gunbc-lib-gcp-ops",           layer: Library },
+  // General tool definitions (reusable by any project)
+  { path: "lib/tools/deps",                 name: "gunbc-deps",                  layer: Tool },
+  { path: "lib/tools/clippy",               name: "gunbc-clippy",                layer: Tool },
+  // Repo-specific configuration (gunbc's own DAGs)
+  { path: "gunbc-dag",                      name: "gunbc-dag",                   layer: Repo }
+]

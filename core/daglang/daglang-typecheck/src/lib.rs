@@ -17,16 +17,16 @@
 //! - Generic type instantiation (`List<T>`, `Map<K,V>`, `Queue<T>`)
 //! - Interface conformance (`resource X implements Y` — all capabilities present)
 //! - `CloudConfig` sum type → provider resolution at compile time
-//! - `@contract` annotation validation (behavioral specs are well-typed)
+//! - `contract` declaration validation (behavioral specs are well-typed)
 //! - Subtyping via the bounded lattice (§4.1.4 of dsl-design.md)
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Annotation, Expr, Field, Item, Literal, Param, ProvidesClause, SourceFile, Stmt, TypeBody,
-    TypeExpr, UsesClause, PipelineDef,
+    Expr, Field, Item, Literal, Param, PipelineDef, ProvidesClause, Refinement, SourceFile, Stmt,
+    TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys,
@@ -263,11 +263,6 @@ pub enum TypeError {
         binding: String,
         resource_type: String,
     },
-    /// Unknown type-level annotation encountered during validation.
-    UnknownAnnotation {
-        context: String,
-        annotation: String,
-    },
 }
 
 impl std::fmt::Display for TypeError {
@@ -488,15 +483,7 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "ambiguous provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
-            ),
-            Self::UnknownAnnotation {
-                context,
-                annotation,
-            } => write!(
-                f,
-                "unknown type annotation `@{annotation}` in `{context}`"
-            ),
-        }
+            ),        }
     }
 }
 
@@ -902,6 +889,42 @@ fn collect_signatures(
             | Item::ProfileDef(_)
             | Item::ParamDecl(_)
             | Item::DataDef(_) => {}
+            Item::ExternFuncDecl(def) => {
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
+                for field in &def.inputs {
+                    errors.extend(validate_type_expr(
+                        &field.ty,
+                        &module_known_types,
+                        context.generic_arity_registry,
+                        &format!("{}.{}", def.name, field.name),
+                    ));
+                }
+                for field in &def.outputs {
+                    errors.extend(validate_type_expr(
+                        &field.ty,
+                        &module_known_types,
+                        context.generic_arity_registry,
+                        &format!("{}.{}", def.name, field.name),
+                    ));
+                }
+            }
+            Item::ExternAssetDecl(def) => {
+                errors.extend(record_duplicate_item_name(
+                    module_name,
+                    &def.name,
+                    &mut seen_items,
+                ));
+                errors.extend(validate_type_expr(
+                    &def.ty,
+                    &module_known_types,
+                    context.generic_arity_registry,
+                    &def.name,
+                ));
+            }
         }
     }
 
@@ -990,7 +1013,9 @@ fn validate_pipeline_def(
                 errors.push(TypeError::PipelineStageWhenTypeMismatch {
                     pipeline: pipeline_name.clone(),
                     stage: stage.name.clone(),
-                    got: inferred.display_name().unwrap_or_else(|| "Unknown".to_string()),
+                    got: inferred
+                        .display_name()
+                        .unwrap_or_else(|| "Unknown".to_string()),
                 });
             }
         }
@@ -1210,6 +1235,19 @@ fn collect_unique_callables(
                         },
                     },
                 ),
+                Item::ExternFuncDecl(def) => register_callable_contract(
+                    &mut callables,
+                    def.name.clone(),
+                    CallableContract {
+                        arity: required_field_arity(&def.inputs),
+                        params: def.inputs.iter().map(|field| field.name.clone()).collect(),
+                        output: if def.outputs.len() == 1 && def.outputs[0].name == "return" {
+                            ValueType::Named(type_expr_to_string(&def.outputs[0].ty))
+                        } else {
+                            ValueType::Record(field_signature_map(&def.outputs))
+                        },
+                    },
+                ),
                 Item::TypeDef(def) => {
                     if let TypeBody::Sum(variants) = &def.body {
                         for variant in variants {
@@ -1314,6 +1352,14 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             },
         ),
         (
+            "flat_map".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["f".to_string()]),
+                output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
             "max_by".to_string(),
             CallableContract {
                 arity: 1,
@@ -1366,6 +1412,14 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             CallableContract {
                 arity: 1,
                 params: HashSet::from(["separator".to_string()]),
+                output: ValueType::Named("String".to_string()),
+            },
+        ),
+        (
+            "repeat".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["n".to_string()]),
                 output: ValueType::Named("String".to_string()),
             },
         ),
@@ -1569,6 +1623,22 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
                 arity: 1,
                 params: HashSet::from(["item".to_string()]),
                 output: ValueType::Named("Bool".to_string()),
+            },
+        ),
+        (
+            "split".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["delimiter".to_string()]),
+                output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
+            "zip".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["other".to_string()]),
+                output: ValueType::Named("List".to_string()),
             },
         ),
     ]
@@ -2289,7 +2359,11 @@ fn validate_callable_body(
                 trailing_expr_type = None;
                 trailing_expr = None;
             }
-            Stmt::Annotation(_) => {
+            Stmt::Node(ns) => {
+                let (inferred, infer_errors) =
+                    infer_expr_type(&ns.expr, &local_bindings, &infer_context);
+                errors.extend(infer_errors);
+                local_bindings.insert(ns.name.clone(), inferred);
                 trailing_expr_type = None;
                 trailing_expr = None;
             }
@@ -2424,9 +2498,10 @@ fn infer_expr_type_for_expected_named_record(
             compatible = false;
             continue;
         };
-        if !gunbc_ir::type_registry::TypeRegistry::with_core_types()
-            .is_compatible(&normalize_type_id(&inferred_name), &normalize_type_id(expected_field_ty))
-        {
+        if !gunbc_ir::type_registry::TypeRegistry::with_core_types().is_compatible(
+            &normalize_type_id(&inferred_name),
+            &normalize_type_id(expected_field_ty),
+        ) {
             eprintln!("[DEBUG field_mismatch] expected_type={expected_type:?} field={name:?} expected_field_ty={expected_field_ty:?} inferred={inferred_name:?}");
             errors.push(TypeError::TypeMismatch {
                 expected: expected_field_ty.clone(),
@@ -3217,67 +3292,58 @@ fn validate_type_expr(
                 context,
             ));
         }
-        TypeExpr::Annotated(inner, annotations) => {
+        TypeExpr::Refined(inner, refinements) => {
             errors.extend(validate_type_expr(
                 inner,
                 known_types,
                 generic_arity_registry,
                 context,
             ));
-            for annotation in annotations {
-                match annotation.name.as_str() {
-                    "range" => {
-                        let (min, max) = extract_range_bounds(&annotation.args);
-                        if let (Some(min), Some(max)) = (min, max) {
-                            if min > max {
+            for refinement in refinements {
+                match refinement {
+                    Refinement::Range { min, max } => {
+                        let min_val = min.as_ref().and_then(extract_int_literal);
+                        let max_val = max.as_ref().and_then(extract_int_literal);
+                        if let (Some(mn), Some(mx)) = (min_val, max_val) {
+                            if mn > mx {
                                 errors.push(TypeError::UnsatisfiableRefinement {
                                     ty: type_expr_to_string(inner),
-                                    constraint: format!("range min {min} exceeds max {max}"),
+                                    constraint: format!("range min {mn} exceeds max {mx}"),
                                 });
                             }
                         }
                     }
-                    "content" | "brand" | "non_empty" | "pattern" | "file_types" => {
-                        match process_supported_annotation(annotation) {
-                            Ok(processed) => match processed {
-                                ProcessedAnnotation::PredicateContent(encoding) => {
-                                    debug_assert!(!encoding.is_empty());
-                                }
-                                ProcessedAnnotation::TypeOpBrand(brand) => {
-                                    debug_assert!(!brand.is_empty());
-                                }
-                                ProcessedAnnotation::PredicateNonEmpty => {}
-                                ProcessedAnnotation::PredicateMatches(regex) => {
-                                    debug_assert!(!regex.is_empty());
-                                }
-                                ProcessedAnnotation::FileTypes(mapping) => {
-                                    if mapping.is_empty() {
-                                        errors.push(TypeError::UnsatisfiableRefinement {
-                                            ty: type_expr_to_string(inner),
-                                            constraint: "@file_types must define at least one extension or default mapping".to_string(),
-                                        });
-                                    }
-                                }
-                            },
-                            Err(constraint) => {
-                                errors.push(TypeError::UnsatisfiableRefinement {
-                                    ty: type_expr_to_string(inner),
-                                    constraint,
-                                });
-                            }
+                    Refinement::Content(enc) => {
+                        if canonical_content_encoding(enc).is_none() {
+                            errors.push(TypeError::UnsatisfiableRefinement {
+                                ty: type_expr_to_string(inner),
+                                constraint: format!(
+                                    "unknown content encoding `{enc}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
+                                ),
+                            });
                         }
                     }
-                    // Known-but-deferred: these annotations are valid but not yet
-                    // lowered to TypeOp. They will be migrated in future modeling
-                    // phases (M8 + MetadataPayload extensions for AccessMode/ServiceMode).
-                    "json" | "format" | "invariant" | "contract"
-                    | "tool" | "mode" => {}
-                    other => {
-                        errors.push(TypeError::UnknownAnnotation {
-                            context: context.to_string(),
-                            annotation: other.to_string(),
-                        });
+                    Refinement::Brand(name) => {
+                        if name.trim().is_empty() {
+                            errors.push(TypeError::UnsatisfiableRefinement {
+                                ty: type_expr_to_string(inner),
+                                constraint: "brand requires a non-empty name".to_string(),
+                            });
+                        }
                     }
+                    Refinement::Pattern(regex) => {
+                        if regex.trim().is_empty() {
+                            errors.push(TypeError::UnsatisfiableRefinement {
+                                ty: type_expr_to_string(inner),
+                                constraint: "pattern requires a non-empty regex".to_string(),
+                            });
+                        }
+                    }
+                    Refinement::NonEmpty
+                    | Refinement::Format(_)
+                    | Refinement::Predicate(_)
+                    | Refinement::RawBody
+                    | Refinement::FileTypes(_) => {}
                 }
             }
         }
@@ -3313,187 +3379,11 @@ fn resolve_generic_arity(
     None
 }
 
-/// Extract a string value from an expression (string literal or identifier).
-fn expr_as_string(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Literal(Literal::String(s)) => Some(s.clone()),
-        Expr::Ident(name) => Some(name.clone()),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ProcessedAnnotation {
-    PredicateContent(String),
-    TypeOpBrand(String),
-    PredicateNonEmpty,
-    PredicateMatches(String),
-    FileTypes(BTreeMap<String, String>),
-}
-
-fn process_supported_annotation(annotation: &Annotation) -> Result<ProcessedAnnotation, String> {
-    match annotation.name.as_str() {
-        "content" => {
-            if annotation.args.len() != 1 {
-                return Err("@content requires exactly one encoding argument".to_string());
-            }
-            let encoding_name = annotation
-                .args
-                .first()
-                .and_then(expr_as_string)
-                .ok_or_else(|| "@content encoding argument must be a string/identifier".to_string())?;
-            let canonical = canonical_content_encoding(&encoding_name).ok_or_else(|| {
-                format!(
-                    "unknown content encoding `{encoding_name}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
-                )
-            })?;
-            Ok(ProcessedAnnotation::PredicateContent(canonical))
-        }
-        "brand" => {
-            if annotation.args.len() != 1 {
-                return Err("@brand requires exactly one name argument".to_string());
-            }
-            let brand = annotation
-                .args
-                .first()
-                .and_then(expr_as_string)
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| "@brand requires a non-empty name argument".to_string())?;
-            Ok(ProcessedAnnotation::TypeOpBrand(brand))
-        }
-        "non_empty" => {
-            if !annotation.args.is_empty() {
-                return Err("@non_empty does not accept arguments".to_string());
-            }
-            Ok(ProcessedAnnotation::PredicateNonEmpty)
-        }
-        "pattern" => {
-            if annotation.args.len() != 1 {
-                return Err("@pattern requires exactly one regex argument".to_string());
-            }
-            let regex = annotation
-                .args
-                .first()
-                .and_then(expr_as_string)
-                .ok_or_else(|| "@pattern regex argument must be a string/identifier".to_string())?;
-            if regex.trim().is_empty() {
-                return Err("@pattern requires a non-empty regex".to_string());
-            }
-            Ok(ProcessedAnnotation::PredicateMatches(regex))
-        }
-        "file_types" => process_file_types_annotation(annotation),
-        _ => Err(format!(
-            "unsupported annotation processor `{}`",
-            annotation.name
-        )),
-    }
-}
-
-fn process_file_types_annotation(annotation: &Annotation) -> Result<ProcessedAnnotation, String> {
-    if annotation.args.len() != 1 {
-        return Err("@file_types requires exactly one record argument".to_string());
-    }
-    let record = annotation
-        .args
-        .first()
-        .ok_or_else(|| "@file_types requires one record argument".to_string())?;
-    let Expr::Record(_, fields) = record else {
-        return Err("@file_types argument must be a record".to_string());
-    };
-
-    let mut mapping: BTreeMap<String, String> = BTreeMap::new();
-    for (field_name, field_expr) in fields {
-        match field_name.as_str() {
-            "text" => {
-                for ext in expr_as_string_list(field_expr)? {
-                    validate_file_extension(&ext)?;
-                    mapping.insert(ext, "Text".to_string());
-                }
-            }
-            "binary" => {
-                for ext in expr_as_string_list(field_expr)? {
-                    validate_file_extension(&ext)?;
-                    mapping.insert(ext, "Binary".to_string());
-                }
-            }
-            "default" => {
-                let default_encoding = expr_as_string(field_expr).ok_or_else(|| {
-                    "@file_types.default must be a string/identifier encoding".to_string()
-                })?;
-                let canonical = canonical_content_encoding(&default_encoding).ok_or_else(|| {
-                    format!(
-                        "unknown @file_types.default encoding `{default_encoding}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
-                    )
-                })?;
-                mapping.insert("*".to_string(), canonical);
-            }
-            other => {
-                return Err(format!(
-                    "@file_types field `{other}` is unsupported (expected text|binary|default)"
-                ));
-            }
-        }
-    }
-
-    Ok(ProcessedAnnotation::FileTypes(mapping))
-}
-
-fn expr_as_string_list(expr: &Expr) -> Result<Vec<String>, String> {
-    let Expr::List(items) = expr else {
-        return Err("expected list of string extensions".to_string());
-    };
-    let mut out = Vec::with_capacity(items.len());
-    for item in items {
-        let value = expr_as_string(item)
-            .ok_or_else(|| "file extension list items must be strings/identifiers".to_string())?;
-        out.push(value);
-    }
-    Ok(out)
-}
-
-fn validate_file_extension(ext: &str) -> Result<(), String> {
-    if !ext.starts_with('.') || ext.trim().len() < 2 {
-        return Err(format!(
-            "invalid file extension `{ext}` — expected dot-prefixed suffix like `.rs`"
-        ));
-    }
-    Ok(())
-}
-
 fn canonical_content_encoding(raw: &str) -> Option<String> {
     match raw {
-        "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown" => {
-            Some(raw.to_string())
-        }
+        "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown" => Some(raw.to_string()),
         _ => None,
     }
-}
-
-fn extract_range_bounds(args: &[Expr]) -> (Option<i64>, Option<i64>) {
-    let mut min = None;
-    let mut max = None;
-    for arg in args {
-        match arg {
-            Expr::Record(_, fields) => {
-                for (name, value) in fields {
-                    match name.as_str() {
-                        "min" => min = extract_int_literal(value),
-                        "max" => max = extract_int_literal(value),
-                        _ => {}
-                    }
-                }
-            }
-            _ => {
-                if min.is_none() {
-                    min = extract_int_literal(arg);
-                } else if max.is_none() {
-                    max = extract_int_literal(arg);
-                }
-            }
-        }
-    }
-    (min, max)
 }
 
 fn extract_int_literal(expr: &Expr) -> Option<i64> {
@@ -3533,85 +3423,6 @@ mod tests {
             })
             .collect();
         ModuleGraph { modules }
-    }
-
-    fn ann(name: &str, args: Vec<Expr>) -> Annotation {
-        Annotation {
-            name: name.to_string(),
-            args,
-        }
-    }
-
-    #[test]
-    fn process_supported_annotation_content_maps_to_predicate_content() {
-        let processed = process_supported_annotation(&ann("content", vec![Expr::Ident("UTF8".into())]))
-            .expect("content annotation should process");
-        assert_eq!(
-            processed,
-            ProcessedAnnotation::PredicateContent("UTF8".to_string())
-        );
-    }
-
-    #[test]
-    fn process_supported_annotation_brand_requires_name() {
-        let err = process_supported_annotation(&ann("brand", vec![]))
-            .expect_err("brand without name should fail");
-        assert!(err.contains("@brand requires exactly one name argument"));
-    }
-
-    #[test]
-    fn process_supported_annotation_non_empty_rejects_args() {
-        let err = process_supported_annotation(&ann(
-            "non_empty",
-            vec![Expr::Literal(Literal::String("oops".into()))],
-        ))
-        .expect_err("non_empty should reject arguments");
-        assert!(err.contains("@non_empty does not accept arguments"));
-    }
-
-    #[test]
-    fn process_supported_annotation_file_types_maps_extensions() {
-        let processed = process_supported_annotation(&ann(
-            "file_types",
-            vec![Expr::Record(
-                None,
-                vec![
-                    (
-                        "text".to_string(),
-                        Expr::List(vec![Expr::Literal(Literal::String(".rs".into()))]),
-                    ),
-                    (
-                        "binary".to_string(),
-                        Expr::List(vec![Expr::Literal(Literal::String(".png".into()))]),
-                    ),
-                    ("default".to_string(), Expr::Ident("Binary".into())),
-                ],
-            )],
-        ))
-        .expect("file_types should process");
-
-        let ProcessedAnnotation::FileTypes(mapping) = processed else {
-            panic!("expected file_types annotation mapping");
-        };
-        assert_eq!(mapping.get(".rs").map(String::as_str), Some("Text"));
-        assert_eq!(mapping.get(".png").map(String::as_str), Some("Binary"));
-        assert_eq!(mapping.get("*").map(String::as_str), Some("Binary"));
-    }
-
-    #[test]
-    fn process_supported_annotation_file_types_rejects_non_dot_extensions() {
-        let err = process_supported_annotation(&ann(
-            "file_types",
-            vec![Expr::Record(
-                None,
-                vec![(
-                    "text".to_string(),
-                    Expr::List(vec![Expr::Literal(Literal::String("rs".into()))]),
-                )],
-            )],
-        ))
-        .expect_err("invalid extension should fail");
-        assert!(err.contains("invalid file extension"));
     }
 
     // Test infrastructure: filesystem access for test fixtures
@@ -5121,12 +4932,12 @@ func run() -> { ok: Bool } provides out: ArtifactStore(kind: temporary) {
     }
 
     #[test]
-    fn strict_mode_accepts_annotated_provides_resource_type_reference() {
+    fn strict_mode_accepts_provides_resource_type_reference() {
         let graph = module_graph_from_sources(&[(
             "sample/main.dag",
             r#"module sample.main
 resource ArtifactStore {}
-func run() -> { ok: Bool } provides out: ArtifactStore @test_integration {
+func run() -> { ok: Bool } provides out: ArtifactStore {
   return { ok: true }
 }"#,
         )]);
@@ -5136,7 +4947,7 @@ func run() -> { ok: Bool } provides out: ArtifactStore @test_integration {
                 allow_unresolved_imports: false,
             },
         )
-        .expect("annotated provided resource type should resolve in strict mode");
+        .expect("provided resource type should resolve in strict mode");
         assert_eq!(typed.modules.len(), 1);
     }
 
@@ -5403,7 +5214,7 @@ fn run(input: Payload) -> String { input.missing }"#,
         let graph = module_graph_from_sources(&[(
             "unsat_refinement.dag",
             r#"module sample.refinement
-fn run(value: Int @range(min: 5, max: 1)) -> Int { value }"#,
+fn run(value: Int where range(min: 5, max: 1)) -> Int { value }"#,
         )]);
         let errors = typecheck_module_graph(graph).expect_err("unsatisfiable range should fail");
         assert!(errors.iter().any(|error| matches!(
@@ -5460,8 +5271,8 @@ pipeline ci {
   stage build [after missing] {}
 }"#,
         )]);
-        let errors =
-            typecheck_module_graph(graph).expect_err("unknown pipeline stage dependency should fail");
+        let errors = typecheck_module_graph(graph)
+            .expect_err("unknown pipeline stage dependency should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::UnknownPipelineStageDependency {
@@ -5482,7 +5293,8 @@ pipeline ci {
   stage build {}
 }"#,
         )]);
-        let errors = typecheck_module_graph(graph).expect_err("duplicate pipeline stage should fail");
+        let errors =
+            typecheck_module_graph(graph).expect_err("duplicate pipeline stage should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::DuplicatePipelineStage { pipeline, stage }

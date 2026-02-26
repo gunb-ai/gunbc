@@ -8,52 +8,40 @@ module infra.azure.services
 // --- Blob Storage --------------------------------------------------------
 
 service azure.BlobStorage {
-  @endpoint("https://{account_name}.blob.core.windows.net")
-  @auth(BearerToken)
 
   operation GetContainer {
     input { account_name: NonEmptyStr, container: NonEmptyStr }
     output { exists: Bool }
-    @rest(GET, "/{container}?restype=container")
-    @idempotent @readonly
   }
 
   operation CreateContainer {
     input { account_name: NonEmptyStr, container: NonEmptyStr }
     output { ok: Bool }
-    @rest(PUT, "/{container}?restype=container")
   }
 
   operation DeleteContainer {
     input { account_name: NonEmptyStr, container: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "/{container}?restype=container")
   }
 
   operation GetBlob {
     input { account_name: NonEmptyStr, container: NonEmptyStr, blob: NonEmptyStr }
     output { content: Bytes, found: Bool }
-    @rest(GET, "/{container}/{blob}")
-    @idempotent @readonly
   }
 
   operation PutBlob {
     input { account_name: NonEmptyStr, container: NonEmptyStr, blob: NonEmptyStr, content: Bytes }
     output { etag: String }
-    @rest(PUT, "/{container}/{blob}")
   }
 
   operation DeleteBlob {
     input { account_name: NonEmptyStr, container: NonEmptyStr, blob: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "/{container}/{blob}")
   }
 
   operation ListBlobs {
     input { account_name: NonEmptyStr, container: NonEmptyStr, prefix: String? }
     output { blobs: List<NonEmptyStr> }
-    @rest(GET, "/{container}?restype=container&comp=list&prefix={prefix}")
-    @idempotent @readonly
   }
 }
 
@@ -61,14 +49,10 @@ service azure.BlobStorage {
 // --- Container Apps ------------------------------------------------------
 
 service azure.ContainerApps {
-  @endpoint("https://management.azure.com")
-  @auth(BearerToken)
 
   operation Get {
     input { subscription_id: NonEmptyStr, resource_group: NonEmptyStr, name: NonEmptyStr }
     output { exists: Bool, fqdn: Url?, properties: Json? }
-    @rest(GET, "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.App/containerApps/{name}?api-version=2024-03-01")
-    @idempotent @readonly
   }
 
   operation CreateOrUpdate {
@@ -88,13 +72,11 @@ service azure.ContainerApps {
       tags: Map<String, String>?
     }
     output { fqdn: Url, provisioning_state: String }
-    @rest(PUT, "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.App/containerApps/{name}?api-version=2024-03-01")
   }
 
   operation Delete {
     input { subscription_id: NonEmptyStr, resource_group: NonEmptyStr, name: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.App/containerApps/{name}?api-version=2024-03-01")
   }
 }
 
@@ -102,33 +84,25 @@ service azure.ContainerApps {
 // --- Key Vault -----------------------------------------------------------
 
 service azure.KeyVault {
-  @endpoint("https://{vault_name}.vault.azure.net")
-  @auth(BearerToken)
 
   operation GetSecret {
     input { vault_name: NonEmptyStr, name: NonEmptyStr }
     output { exists: Bool, value: Secret?, version: String? }
-    @rest(GET, "/secrets/{name}?api-version=7.4")
-    @idempotent @readonly
   }
 
   operation SetSecret {
     input { vault_name: NonEmptyStr, name: NonEmptyStr, value: Secret, tags: Map<String, String>? }
     output { version: NonEmptyStr }
-    @rest(PUT, "/secrets/{name}?api-version=7.4")
   }
 
   operation GetSecretVersions {
     input { vault_name: NonEmptyStr, name: NonEmptyStr }
     output { versions: List<NonEmptyStr> }
-    @rest(GET, "/secrets/{name}/versions?api-version=7.4")
-    @idempotent @readonly
   }
 
   operation DeleteSecret {
     input { vault_name: NonEmptyStr, name: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "/secrets/{name}?api-version=7.4")
   }
 }
 
@@ -136,14 +110,10 @@ service azure.KeyVault {
 // --- Managed Identity ----------------------------------------------------
 
 service azure.ManagedIdentity {
-  @endpoint("https://management.azure.com")
-  @auth(BearerToken)
 
   operation Get {
     input { subscription_id: NonEmptyStr, resource_group: NonEmptyStr, name: NonEmptyStr }
     output { exists: Bool, principal_id: String?, client_id: String? }
-    @rest(GET, "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{name}?api-version=2023-01-31")
-    @idempotent @readonly
   }
 
   operation Create {
@@ -155,7 +125,6 @@ service azure.ManagedIdentity {
       tags: Map<String, String>?
     }
     output { principal_id: String, client_id: String }
-    @rest(PUT, "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{name}?api-version=2023-01-31")
   }
 
   operation CreateFederatedCredential {
@@ -169,7 +138,6 @@ service azure.ManagedIdentity {
       audiences: List<String>
     }
     output { ok: Bool }
-    @rest(PUT, "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identity_name}/federatedIdentityCredentials/{name}?api-version=2023-01-31")
   }
 }
 
@@ -177,14 +145,10 @@ service azure.ManagedIdentity {
 // --- Service Bus ---------------------------------------------------------
 
 service azure.ServiceBus {
-  @endpoint("https://management.azure.com")
-  @auth(BearerToken)
 
   operation GetQueue {
     input { subscription_id: NonEmptyStr, resource_group: NonEmptyStr, namespace: NonEmptyStr, queue_name: NonEmptyStr }
     output { exists: Bool }
-    @rest(GET, "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.ServiceBus/namespaces/{namespace}/queues/{queue_name}?api-version=2022-10-01-preview")
-    @idempotent @readonly
   }
 
   operation CreateQueue {
@@ -198,26 +162,21 @@ service azure.ServiceBus {
       default_message_ttl: String = "P4D"
     }
     output { ok: Bool }
-    @rest(PUT, "/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.ServiceBus/namespaces/{namespace}/queues/{queue_name}?api-version=2022-10-01-preview")
   }
 
   operation SendMessage {
     input { namespace: NonEmptyStr, queue_name: NonEmptyStr, body: String }
     output { message_id: NonEmptyStr }
-    @rest(POST, "https://{namespace}.servicebus.windows.net/{queue_name}/messages")
   }
 
   operation ReceiveMessages {
     input { namespace: NonEmptyStr, queue_name: NonEmptyStr, max_messages: Int = 10 }
     output { messages: List<Json> }
-    @rest(POST, "https://{namespace}.servicebus.windows.net/{queue_name}/messages/head?timeout=30")
-    @readonly
   }
 
   operation CompleteMessage {
     input { namespace: NonEmptyStr, queue_name: NonEmptyStr, lock_token: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "https://{namespace}.servicebus.windows.net/{queue_name}/messages/{lock_token}")
   }
 }
 
@@ -225,8 +184,6 @@ service azure.ServiceBus {
 // --- Role Assignments (for identity grants) ------------------------------
 
 service azure.Authorization {
-  @endpoint("https://management.azure.com")
-  @auth(BearerToken)
 
   operation CreateRoleAssignment {
     input {
@@ -236,12 +193,10 @@ service azure.Authorization {
       principal_id: NonEmptyStr
     }
     output { ok: Bool }
-    @rest(PUT, "/{scope}/providers/Microsoft.Authorization/roleAssignments/{assignment_name}?api-version=2022-04-01")
   }
 
   operation DeleteRoleAssignment {
     input { scope: NonEmptyStr, assignment_name: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "/{scope}/providers/Microsoft.Authorization/roleAssignments/{assignment_name}?api-version=2022-04-01")
   }
 }

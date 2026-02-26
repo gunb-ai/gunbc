@@ -194,13 +194,16 @@ fn derive_entrypoints(params: &[DslParam]) -> Vec<CliEntrypoint> {
     let mut entrypoints = Vec::new();
 
     for param in params {
-        let short = param.name.chars().next().and_then(|c| {
-            if used_shorts.insert(c) {
-                Some(c)
-            } else {
-                None
-            }
-        });
+        let short =
+            param.name.chars().next().and_then(
+                |c| {
+                    if used_shorts.insert(c) {
+                        Some(c)
+                    } else {
+                        None
+                    }
+                },
+            );
 
         let help = humanize_param_name(&param.name);
 
@@ -317,8 +320,27 @@ fn testgen_tool_def() -> ToolDef {
 // ── Tests ──────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // Tests need filesystem access for scanning
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn collect_rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rust_files(&path, files);
+                continue;
+            }
+            if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                files.push(path);
+            }
+        }
+    }
 
     #[test]
     fn discovers_inferred_tools_from_dsl() {
@@ -401,10 +423,7 @@ mod tests {
     #[test]
     fn pragma_has_expected_outputs() {
         let tools = discover_tool_defs_from_dsl();
-        let pragma = tools
-            .iter()
-            .find(|t| t.meta.tool_name == "pragma")
-            .unwrap();
+        let pragma = tools.iter().find(|t| t.meta.tool_name == "pragma").unwrap();
 
         // pragma produces 3 outputs via content_upsert
         assert!(
@@ -436,5 +455,33 @@ mod tests {
                 tool.meta.tool_name,
             );
         }
+    }
+
+    #[test]
+    fn derive_tool_defs_symbol_is_not_used_in_rust_sources() {
+        let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("workspace root");
+        let mut files = Vec::new();
+        collect_rust_files(&workspace_root.join("core"), &mut files);
+        collect_rust_files(&workspace_root.join("gunbc-dag/src"), &mut files);
+        collect_rust_files(&workspace_root.join("gunbc-dag/tests"), &mut files);
+
+        let mut offenders = Vec::new();
+        let needle = ["derive_tool_defs", "("].concat();
+        for file in files {
+            let Ok(source) = fs::read_to_string(&file) else {
+                continue;
+            };
+            if source.contains(&needle) {
+                offenders.push(file.display().to_string());
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "derive_tool_defs is removed; found stale references in: {:?}",
+            offenders
+        );
     }
 }

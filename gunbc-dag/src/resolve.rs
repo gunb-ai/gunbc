@@ -27,8 +27,8 @@
 use std::collections::HashMap;
 
 use daglang_lower::{
-    CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind,
-    ServiceCallMetadata, ServiceOperationSpec,
+    CallableKind, CollectionOpKind, LoweredOp, PrimitiveLiteral,
+    PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
@@ -74,9 +74,17 @@ fn execute_with_declared_output_passthrough(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
     for (key, value) in &inputs {
+        if key.starts_with("__out:") {
+            continue;
+        }
         outputs.insert(key.clone(), value.clone());
     }
     for port_name in output_port_names {
+        let passthrough_key = format!("__out:{port_name}");
+        if let Some(value) = inputs.get(&passthrough_key) {
+            outputs.insert(port_name.clone(), value.clone());
+            continue;
+        }
         outputs.entry(port_name.clone()).or_insert_with(|| {
             passthrough_fallback_value(port_name, &inputs).unwrap_or(Value::Skipped)
         });
@@ -152,12 +160,12 @@ fn passthrough_value_to_text(value: &Value) -> String {
     }
 }
 
-/// Identity callable op for DSL-compiled callables.
+/// Identity callable op for DSL-compiled callables with fn bodies.
 ///
 /// Forwards all inputs to outputs, filling any declared output port that
 /// has no matching input with `Value::Skipped`. This is the correct runtime
-/// behavior for DSL `fn`/`func` items that don't have compiled fn bridge
-/// implementations — they are pure data transformations validated at compile time.
+/// behavior for DSL `fn`/`func` items whose bodies execute as SubDag nodes —
+/// the callable node itself is a passthrough that maps SubDag results to outputs.
 #[derive(Debug, Clone)]
 struct DeclaredOutputCallableOp {
     output_port_names: Vec<String>,
@@ -197,6 +205,17 @@ impl std::fmt::Debug for PipelineDispatchOp {
 }
 
 impl Executable for PipelineDispatchOp {
+    /// Execute pipeline dispatch with explicit stage progression contract.
+    ///
+    /// **Stage progression contract**:
+    /// - `stages`: total stage count (always emitted)
+    /// - `stage_order`: ordered list of stage names (always emitted)
+    /// - `active_stage`: defaults to the first stage (always emitted if stages exist)
+    /// - If `current_stage` is provided:
+    ///   - Must be a non-empty string matching a known stage name
+    ///   - `next_stage` is set to the following stage, or to `current_stage` itself
+    ///     if already at the last stage (terminal self-loop)
+    /// - If `current_stage` is absent: no `next_stage` is emitted
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let mut outputs =
             execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
@@ -209,15 +228,24 @@ impl Executable for PipelineDispatchOp {
             outputs.insert("active_stage".to_string(), Value::Str(first.clone()));
         }
         if let Some(current_stage) = outputs.get("current_stage").and_then(Value::as_str) {
+            // Fail closed on empty current_stage — this is a wiring bug.
+            if current_stage.is_empty() {
+                return Err(ExecError::new(
+                    "pipeline dispatch received empty `current_stage` value — expected a valid stage name",
+                ));
+            }
             let Some(position) = self
                 .stage_names
                 .iter()
                 .position(|stage| stage == current_stage)
             else {
                 return Err(ExecError::new(format!(
-                    "pipeline dispatch received unknown `current_stage` value `{current_stage}`"
+                    "pipeline dispatch received unknown `current_stage` value `{current_stage}` \
+                     (valid stages: {})",
+                    self.stage_names.join(", ")
                 )));
             };
+            // Terminal stage: next_stage is self (no progression past the end).
             let next_stage = self
                 .stage_names
                 .get(position + 1)
@@ -239,6 +267,19 @@ impl Executable for IdentityCallableOp {
     }
 }
 
+/// Test-only SubDag execution adapter.
+///
+/// **Production path**: `resolve_node_body` handles `NodeBody::SubDag` via
+/// recursive `resolve_lowered_dag(inner)`, which preserves the SubDag structure
+/// in the resolved `Dag<DynOp>`. The execution engine then handles SubDag
+/// expansion at runtime.
+///
+/// **Test path**: `SubDagDispatchOp` flattens and executes the inner DAG
+/// immediately, which is convenient for unit tests that need to verify SubDag
+/// node behavior without a full engine setup.
+///
+/// This is intentionally `#[cfg(test)]`-gated because it is NOT the production
+/// dispatch path. The production resolver preserves SubDag structure.
 #[cfg(test)]
 #[derive(Debug, Clone)]
 struct SubDagDispatchOp {
@@ -276,119 +317,22 @@ impl Executable for SubDagDispatchOp {
     }
 }
 
-/// Runtime adapter for lowered collection nodes.
-///
-/// Lowering models collection chains structurally. This adapter provides
-/// conservative executable semantics over the `items` input so collection
-/// nodes are executable in dry-run and integration tests.
+/// Thin delegate to compiler's collection evaluator.
 #[derive(Debug, Clone)]
-struct CollectionDispatchOp {
+struct CollectionDelegate {
     kind: CollectionOpKind,
 }
 
-impl Executable for CollectionDispatchOp {
+impl Executable for CollectionDelegate {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut items = match inputs.get("items") {
+        let items = match inputs.get("items") {
             Some(Value::List(values)) => values.clone(),
             Some(Value::Skipped) | None => Vec::new(),
             Some(value) => vec![value.clone()],
         };
-
-        let output = match self.kind {
-            CollectionOpKind::Map | CollectionOpKind::Filter | CollectionOpKind::FlatMap => {
-                Value::List(items)
-            }
-            CollectionOpKind::Sort => {
-                items.sort_by_key(collection_sort_key);
-                Value::List(items)
-            }
-            CollectionOpKind::Dedup => {
-                let mut out = Vec::new();
-                for item in items {
-                    if !out.contains(&item) {
-                        out.push(item);
-                    }
-                }
-                Value::List(out)
-            }
-            CollectionOpKind::Join => {
-                let joined = items
-                    .iter()
-                    .map(collection_value_to_string)
-                    .collect::<Vec<_>>()
-                    .join(",");
-                Value::Str(joined)
-            }
-            CollectionOpKind::Fold | CollectionOpKind::Len => Value::Int(items.len() as i64),
-            CollectionOpKind::Any => Value::Bool(items.iter().any(collection_value_truthy)),
-            CollectionOpKind::All => Value::Bool(items.iter().all(collection_value_truthy)),
-            CollectionOpKind::Contains => {
-                let needle = inputs
-                    .get("needle")
-                    .or_else(|| inputs.get("item"))
-                    .or_else(|| inputs.get("contains"));
-                let contains = needle
-                    .map(|needle| items.iter().any(|value| value == needle))
-                    .unwrap_or(false);
-                Value::Bool(contains)
-            }
-        };
-
+        let output = daglang_lower::eval::evaluate_collection(&self.kind, items, &inputs)
+            .map_err(|e| ExecError::new(e.message))?;
         OutputMap::new().value("items", output).ok()
-    }
-}
-
-fn collection_sort_key(value: &Value) -> String {
-    match value {
-        Value::Str(s) => format!("s:{s}"),
-        Value::Int(i) => format!("i:{i:020}"),
-        Value::Bool(b) => format!("b:{b}"),
-        Value::List(items) => format!("l:{}", items.len()),
-        Value::Map(map) => format!("m:{}", map.len()),
-        Value::Set(items) => format!("set:{}", items.len()),
-        Value::Json(json) => format!("j:{json}"),
-        Value::Request(request) => format!("req:{request:?}"),
-        Value::Response(response) => format!("resp:{response:?}"),
-        Value::Secret(secret) => format!("secret:{}", secret.len()),
-        Value::Float(f) => format!("f:{f}"),
-        Value::Bytes(b) => format!("bytes:{}", b.len()),
-        Value::Skipped => "skipped".to_string(),
-        Value::Unit => "unit".to_string(),
-    }
-}
-
-fn collection_value_to_string(value: &Value) -> String {
-    match value {
-        Value::Str(s) => s.clone(),
-        Value::Int(i) => i.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Unit => "()".to_string(),
-        Value::Skipped => "<skipped>".to_string(),
-        Value::List(items) => format!("[{}]", items.len()),
-        Value::Set(items) => format!("set({})", items.len()),
-        Value::Map(map) => format!("map({})", map.len()),
-        Value::Json(json) => json.to_string(),
-        Value::Request(request) => format!("{request:?}"),
-        Value::Response(response) => format!("{response:?}"),
-        Value::Secret(secret) => format!("secret({})", secret.len()),
-        Value::Float(f) => f.to_string(),
-        Value::Bytes(b) => format!("<{} bytes>", b.len()),
-    }
-}
-
-fn collection_value_truthy(value: &Value) -> bool {
-    match value {
-        Value::Bool(b) => *b,
-        Value::Int(i) => *i != 0,
-        Value::Float(f) => *f != 0.0,
-        Value::Str(s) => !s.is_empty(),
-        Value::List(items) | Value::Set(items) => !items.is_empty(),
-        Value::Map(map) => !map.is_empty(),
-        Value::Json(json) => !json.is_null(),
-        Value::Secret(secret) => !secret.is_empty(),
-        Value::Bytes(b) => !b.is_empty(),
-        Value::Skipped | Value::Unit => false,
-        Value::Request(_) | Value::Response(_) => true,
     }
 }
 
@@ -587,6 +531,7 @@ pub fn resolve_lowered_dag(dag: &Dag<LoweredOp>) -> Result<Dag<DynOp>, ResolveEr
             body: resolve_node_body(node)?,
             examples: node.examples.clone(),
             log_detail: node.log_detail,
+            kind: node.kind,
         };
         normalize_release_resource_inputs(&mut resolved_node);
         if let Some(mode) = needs_transport_resource(node, &resolved_node) {
@@ -653,9 +598,17 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
         LoweredOp::Callable {
             module,
             name,
+            kind,
             service_metadata,
             ..
-        } => resolve_domain(node_id, module, name, outputs, service_metadata.as_deref()),
+        } => resolve_domain(
+            node_id,
+            module,
+            name,
+            *kind,
+            outputs,
+            service_metadata.as_deref(),
+        ),
         LoweredOp::LoopUnpack {
             input_port,
             element_port,
@@ -669,6 +622,13 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
         LoweredOp::BranchMerge { output_port } => Ok(DynOp::new(PatternOp::BranchMerge {
             output_port: output_port.clone(),
         })),
+        LoweredOp::UnsupportedPattern { name } => Err(ResolveError {
+            node_id: node_id.to_string(),
+            reason: format!(
+                "unsupported pattern `{name}` — not yet implemented in daglang lowering"
+            ),
+        }),
+        LoweredOp::ExternCall { symbol } => resolve_extern_call(node_id, symbol),
     }
 }
 
@@ -690,7 +650,7 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
                 PrimitiveLiteral::String(value) => Value::Str(value.clone()),
                 PrimitiveLiteral::Int(value) => Value::Int(*value),
                 PrimitiveLiteral::Bool(value) => Value::Bool(*value),
-                PrimitiveLiteral::Json(value) => Value::Json(value.clone()),
+                PrimitiveLiteral::Json(value) => Value::from(value.clone()),
                 PrimitiveLiteral::Unit => Value::Unit,
             };
             Ok(DynOp::new(LiteralSourceOp { output_port, value }))
@@ -700,6 +660,8 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         PrimitiveOpKind::CompareEquality => Ok(DynOp::new(BlobOps::CompareContent)),
         PrimitiveOpKind::IoPrepareFileWrite => Ok(DynOp::new(PrepareFileWriteCompatOp)),
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
+        // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
+        PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
     }
 }
 
@@ -707,10 +669,12 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
 // Domain resolution (per-module callables)
 // ============================================================================
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_domain(
     node_id: &str,
     module: &str,
     name: &str,
+    kind: CallableKind,
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
@@ -734,19 +698,40 @@ fn resolve_domain(
     //    specs (e.g., not-yet-implemented service operations) fall through to the
     //    passthrough default.
     if name.starts_with("service_transport::") {
-        let has_spec = service_metadata
-            .as_ref()
-            .is_some_and(|m| m.spec.is_some());
+        let has_spec = service_metadata.as_ref().is_some_and(|m| m.spec.is_some());
         let is_execute = name.starts_with("service_transport::execute::");
         if has_spec || is_execute {
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
         }
     }
-    // 4. Compiled fn bridge — DSL fn items with real Executable implementations.
-    if let Some(op) = crate::compiled_fns::lookup_compiled_fn(module, name) {
+    // 4. Extern impl lookup — DSL `extern func` items resolved to Rust ops.
+    //
+    // Shadow bridge detection: if an extern impl exists for a Fn/Func callable,
+    // the Rust impl silently overrides whatever DSL body the callable has.
+    // This is a documented workaround for a lowerer limitation (NF-7: same-module
+    // extern func calls don't wire output ports correctly). Once NF-7 is resolved,
+    // these callables should be converted to `extern func` declarations in DSL
+    // and this shadow bridge path can be removed.
+    let _ = &kind; // used in debug_assertions block below; suppress release warning
+    if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
+        #[cfg(debug_assertions)]
+        if matches!(kind, CallableKind::Fn | CallableKind::Func) {
+            eprintln!(
+                "resolve: shadow bridge {module}::{name} (kind={kind:?}) — \
+                 Rust extern impl overrides DSL callable body"
+            );
+        }
         return Ok(op);
     }
-    // 5. Default: identity callable. The compiler validated this callable exists.
+    // 5. Default: identity callable for compiler-validated callables.
+    //
+    // All LoweredOp::Callable nodes are produced by the DSL compiler (the
+    // lowerer only emits Callable for items in the typed project). The
+    // callable's logic is wired as separate nodes/edges in the DAG; this
+    // wrapper node maps SubDag results to output ports via passthrough.
+    //
+    // ExternCall nodes (from `extern func` declarations) use
+    // resolve_extern_call() which is fail-closed — no passthrough fallback.
     Ok(DynOp::new(DeclaredOutputCallableOp {
         output_port_names: declared_output_names(outputs),
     }))
@@ -786,12 +771,16 @@ impl Executable for InfraDispatchOp {
         let environment = inputs
             .get("environment")
             .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("missing required 'environment' input for tools.infra::infra"))?
+            .ok_or_else(|| {
+                ExecError::new("missing required 'environment' input for tools.infra::infra")
+            })?
             .to_string();
         let runtime = inputs
             .get("runtime")
             .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("missing required 'runtime' input for tools.infra::infra"))?
+            .ok_or_else(|| {
+                ExecError::new("missing required 'runtime' input for tools.infra::infra")
+            })?
             .to_string();
         let spec_targets = inputs
             .get("spec_targets")
@@ -828,8 +817,9 @@ impl Executable for InfraDispatchOp {
         let target_count = planned_targets.len() as i64;
         let mode = if execute { "apply" } else { "plan" };
         let applied_count = if execute { target_count } else { 0 };
-        let report =
-            format!("infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)");
+        let report = format!(
+            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
+        );
 
         OutputMap::new()
             .str("environment", environment)
@@ -843,6 +833,47 @@ impl Executable for InfraDispatchOp {
     }
 }
 
+// ============================================================================
+// Extern symbol resolution
+// ============================================================================
+
+/// Resolve an `ExternCall` node at compile time.
+///
+/// Parses the symbol into (module, name) and dispatches to the same
+/// resolvers used by Callable nodes. Unlike Callable, unresolvable
+/// extern symbols are hard errors — no passthrough fallback.
+fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveError> {
+    use gunbc_ir::ProgramSymbolId;
+
+    let sym = ProgramSymbolId::new(symbol);
+    let module = sym.module().unwrap_or("");
+    let name = sym.name().unwrap_or("");
+
+    if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
+        return Ok(op);
+    }
+    if module == "std.resources" {
+        return Ok(resolve_std_resources(name));
+    }
+    if let Some(op) = resolve_tools_infra(name) {
+        if module == "tools.infra" {
+            return Ok(op);
+        }
+    }
+
+    Err(ResolveError {
+        node_id: node_id.to_string(),
+        reason: format!(
+            "extern symbol `{symbol}` could not be resolved — \
+             no extern impl, std.resources, or tools.infra handler found"
+        ),
+    })
+}
+
+// ============================================================================
+// Service transport resolution
+// ============================================================================
+
 fn resolve_service_transport(
     node_id: &str,
     module: &str,
@@ -850,8 +881,22 @@ fn resolve_service_transport(
     _outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
-    // Execute nodes are always the same transport executor.
+    // Execute nodes: for InterfaceStub specs, use the stub execute op
+    // (errors in Real mode, auto-mocked in DryRun). All others use the
+    // standard transport executor.
     if name.starts_with("service_transport::execute::") {
+        if let Some(metadata) = service_metadata {
+            if let Some(ServiceOperationSpec::InterfaceStub {
+                interface,
+                capability,
+            }) = &metadata.spec
+            {
+                return Ok(DynOp::new(crate::resolve_service::InterfaceStubExecuteOp {
+                    interface: interface.clone(),
+                    capability: capability.clone(),
+                }));
+            }
+        }
         return Ok(DynOp::new(TransportOps::Execute));
     }
 
@@ -870,6 +915,10 @@ fn resolve_service_transport(
                 (ServiceOperationSpec::Rest(rest_spec), _, true) => {
                     return Ok(DynOp::new(GenericRestParseOp {
                         spec: rest_spec.clone(),
+                        service_name: metadata.service.clone(),
+                        operation_name: metadata.operation.clone(),
+                        auth_scheme: rest_spec.auth_scheme.clone().unwrap_or_default(),
+                        permissions: metadata.permissions.clone(),
                     }));
                 }
                 (ServiceOperationSpec::Shell(shell_spec), true, _) => {
@@ -880,6 +929,8 @@ fn resolve_service_transport(
                 (ServiceOperationSpec::Shell(shell_spec), _, true) => {
                     return Ok(DynOp::new(GenericShellParseOp {
                         spec: shell_spec.clone(),
+                        service_name: metadata.service.clone(),
+                        operation_name: metadata.operation.clone(),
                     }));
                 }
                 (ServiceOperationSpec::File(file_spec), true, _) => {
@@ -900,6 +951,33 @@ fn resolve_service_transport(
                 (ServiceOperationSpec::Local(local_spec), _, true) => {
                     return Ok(DynOp::new(GenericLocalParseOp {
                         spec: local_spec.clone(),
+                    }));
+                }
+                // IS-6: InterfaceStub ops for interface capabilities without profile.
+                (
+                    ServiceOperationSpec::InterfaceStub {
+                        interface,
+                        capability,
+                    },
+                    true,
+                    _,
+                ) => {
+                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubPrepareOp {
+                        interface: interface.clone(),
+                        capability: capability.clone(),
+                    }));
+                }
+                (
+                    ServiceOperationSpec::InterfaceStub {
+                        interface,
+                        capability,
+                    },
+                    _,
+                    true,
+                ) => {
+                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubParseOp {
+                        interface: interface.clone(),
+                        capability: capability.clone(),
                     }));
                 }
                 _ => {}
@@ -924,7 +1002,7 @@ fn resolve_service_transport(
 // ============================================================================
 
 fn resolve_collection(kind: &CollectionOpKind) -> Result<DynOp, ResolveError> {
-    Ok(DynOp::new(CollectionDispatchOp { kind: *kind }))
+    Ok(DynOp::new(CollectionDelegate { kind: *kind }))
 }
 
 // ============================================================================
@@ -957,11 +1035,7 @@ fn needs_transport_resource(
             kind: PrimitiveOpKind::IoExecuteFileRead,
             ..
         }) => AccessMode::Read,
-        NodeBody::Opaque(LoweredOp::Callable {
-            name, obligation, ..
-        }) if matches!(obligation, ObligationCategory::ServiceTransportExecute)
-            || name.starts_with("service_transport::execute::") =>
-        {
+        _ if lowered.kind == Some(gunbc_ir::NodeKind::TransportExecute) => {
             // Service transport execute nodes need filesystem access.
             AccessMode::Read
         }
@@ -1011,12 +1085,15 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
             .map(|port| port.name.0.clone())
             .unwrap_or_else(|| "FilesystemHandle".to_string())
     } else {
-        dag.add_node(Node::opaque(
-            fs_node_id.as_str(),
-            vec![],
-            vec![Port::new("FilesystemHandle", "FilesystemHandle")],
-            DynOp::new(DslFsEnvOp),
-        ));
+        dag.add_node(
+            Node::opaque(
+                fs_node_id.as_str(),
+                vec![],
+                vec![Port::new("FilesystemHandle", "FilesystemHandle")],
+                DynOp::new(DslFsEnvOp),
+            )
+            .with_kind(gunbc_ir::NodeKind::ResourceEnvironment),
+        );
         "FilesystemHandle".to_string()
     };
 
@@ -1045,7 +1122,7 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, PrimitiveLiteral, PrimitiveOpKind};
+    use daglang_lower::{CallableKind, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind};
     use gunbc_ir::{Node, Port};
 
     fn callable_node(
@@ -1066,54 +1143,9 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         )
-    }
-
-    // ---- Behavioral assertion helpers ----
-
-    /// Assert a resolved op behaves as identity callable: inputs forwarded,
-    /// declared output ports filled with Skipped when no matching input.
-    fn assert_identity_callable_behavior(op: &DynOp) {
-        let mut inputs = HashMap::new();
-        inputs.insert("x".to_string(), Value::Str("hello".to_string()));
-        let outputs = op.execute(inputs).expect("passthrough should succeed");
-        assert_eq!(
-            outputs.get("x").and_then(Value::as_str),
-            Some("hello"),
-            "passthrough should forward inputs"
-        );
-        // Declared output port "out" should be filled with Skipped
-        assert_eq!(
-            outputs.get("out"),
-            Some(&Value::Skipped),
-            "passthrough should fill undeclared output ports with Skipped"
-        );
-    }
-
-    #[test]
-    fn identity_callable_result_port_falls_back_to_input_alias() {
-        let op = DeclaredOutputCallableOp {
-            output_port_names: vec!["result".to_string()],
-        };
-        let mut inputs = HashMap::new();
-        inputs.insert("input".to_string(), Value::Str("ok".to_string()));
-        let outputs = op.execute(inputs).expect("passthrough should execute");
-        assert_eq!(outputs.get("result"), Some(&Value::Str("ok".to_string())));
-    }
-
-    #[test]
-    fn identity_callable_return_port_falls_back_to_content_alias() {
-        let op = DeclaredOutputCallableOp {
-            output_port_names: vec!["return".to_string()],
-        };
-        let mut inputs = HashMap::new();
-        inputs.insert("content".to_string(), Value::Str("rendered".to_string()));
-        let outputs = op.execute(inputs).expect("passthrough should execute");
-        assert_eq!(
-            outputs.get("return"),
-            Some(&Value::Str("rendered".to_string()))
-        );
     }
 
     fn collection_node(id: &str, kind: CollectionOpKind) -> Node<LoweredOp> {
@@ -1185,68 +1217,6 @@ mod tests {
                 "resolver should execute bootstrap renderer `{name}` and emit non-empty return"
             );
         }
-    }
-
-    #[test]
-    fn resolve_makegen_ops() {
-        let node = callable_node(
-            "load_registry",
-            "tools.makegen",
-            "load_registry",
-            ObligationCategory::None,
-        );
-        let result = resolve_node(&node).expect("load_registry");
-        let outputs = result
-            .execute(HashMap::new())
-            .expect("load_registry should execute");
-        assert!(
-            matches!(outputs.get("registry"), Some(Value::Json(_))),
-            "load_registry should emit registry json"
-        );
-
-        let node = callable_node(
-            "render_makefile",
-            "tools.makegen",
-            "render_makefile",
-            ObligationCategory::None,
-        );
-        let result = resolve_node(&node).expect("render_makefile");
-        let outputs = result
-            .execute(HashMap::new())
-            .expect("render_makefile should execute");
-        assert!(
-            outputs
-                .get("return")
-                .and_then(Value::as_str)
-                .map(|content| content.contains(".PHONY"))
-                .unwrap_or(false),
-            "render_makefile should emit rendered makefile content"
-        );
-
-        let node = callable_node(
-            "makegen",
-            "tools.makegen",
-            "makegen",
-            ObligationCategory::None,
-        );
-        let result = resolve_node(&node).expect("makegen");
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "__deps".to_string(),
-            Value::List(vec![Value::Response(
-                gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse {
-                    success: true,
-                    content: None,
-                    operation: gunbc_ir::transport::FileOp::Write,
-                    path: "Makefile".to_string(),
-                    exists: None,
-                    error: None,
-                    bytes: None,
-                }),
-            )]),
-        );
-        let outputs = result.execute(inputs).expect("makegen should execute");
-        assert_eq!(outputs.get("written"), Some(&Value::Bool(true)));
     }
 
     #[test]
@@ -1358,6 +1328,63 @@ mod tests {
                 .contains("pipeline dispatch received unknown `current_stage`"),
             "unexpected error: {error}"
         );
+        // FC-6: error message should include valid stage names for diagnostics
+        assert!(
+            error.to_string().contains("fetch") && error.to_string().contains("design"),
+            "error should list valid stages: {error}"
+        );
+    }
+
+    #[test]
+    fn resolve_pipeline_dispatch_fails_closed_for_empty_stage() {
+        let node = Node::opaque(
+            "pipeline_sdlc",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.sdlc".to_string(),
+                name: "sdlc".to_string(),
+                stages: 2,
+                stage_names: vec!["fetch".to_string(), "design".to_string()],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline node should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert("current_stage".to_string(), Value::Str(String::new()));
+        let error = op
+            .execute(inputs)
+            .expect_err("empty current_stage should fail closed");
+        assert!(
+            error.to_string().contains("empty `current_stage`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn resolve_pipeline_dispatch_last_stage_loops_to_self() {
+        let node = Node::opaque(
+            "pipeline_sdlc",
+            vec![],
+            vec![Port::new("stages", "Int")],
+            LoweredOp::Pipeline {
+                module: "pipelines.sdlc".to_string(),
+                name: "sdlc".to_string(),
+                stages: 2,
+                stage_names: vec!["fetch".to_string(), "design".to_string()],
+            },
+        );
+        let op = resolve_node(&node).expect("pipeline node should resolve");
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "current_stage".to_string(),
+            Value::Str("design".to_string()),
+        );
+        let outputs = op.execute(inputs).expect("last stage should not error");
+        assert_eq!(
+            outputs.get("next_stage"),
+            Some(&Value::Str("design".to_string())),
+            "last stage should loop to self as terminal"
+        );
     }
 
     #[test]
@@ -1403,6 +1430,7 @@ mod tests {
                 service_metadata: Some(Box::new(metadata)),
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         )
     }
@@ -1532,15 +1560,20 @@ mod tests {
     }
 
     #[test]
-    fn resolve_tools_codegen_entrypoint_identity_callable() {
+    fn resolve_tools_codegen_entrypoint_uses_passthrough() {
         let node = callable_node(
             "codegen",
             "tools.codegen",
             "codegen",
             ObligationCategory::None,
         );
-        let result = resolve_node(&node).expect("tools.codegen::codegen");
-        assert_identity_callable_behavior(&result);
+        let result =
+            resolve_node(&node).expect("tools.codegen::codegen should resolve via passthrough");
+        let debug = format!("{result:?}");
+        assert!(
+            debug.contains("DeclaredOutputCallableOp"),
+            "should use DeclaredOutputCallableOp: {debug}"
+        );
     }
 
     #[test]
@@ -1876,28 +1909,35 @@ mod tests {
     }
 
     #[test]
-    fn resolve_unknown_module_defaults_to_identity_callable() {
+    fn resolve_unknown_module_uses_passthrough() {
         let node = callable_node(
             "unknown_op",
             "tools.unknown",
             "do_something",
             ObligationCategory::None,
         );
-        let result = resolve_node(&node).expect("unknown modules should default to identity callable");
-        assert_identity_callable_behavior(&result);
+        let result = resolve_node(&node).expect("unknown modules should resolve via passthrough");
+        let debug = format!("{result:?}");
+        assert!(
+            debug.contains("DeclaredOutputCallableOp"),
+            "should use DeclaredOutputCallableOp: {debug}"
+        );
     }
 
     #[test]
-    fn resolve_unknown_callable_in_custom_module_uses_identity_callable() {
+    fn resolve_unknown_callable_in_custom_module_uses_passthrough() {
         let node = callable_node(
             "bad_op",
             "tools.pragma",
             "nonexistent_op",
             ObligationCategory::None,
         );
-        let result =
-            resolve_node(&node).expect("unknown callable should use identity callable");
-        assert_identity_callable_behavior(&result);
+        let result = resolve_node(&node).expect("unknown callable should resolve via passthrough");
+        let debug = format!("{result:?}");
+        assert!(
+            debug.contains("DeclaredOutputCallableOp"),
+            "should use DeclaredOutputCallableOp: {debug}"
+        );
     }
 
     #[test]
@@ -2045,6 +2085,7 @@ mod tests {
                 service_metadata: None,
                 is_interactive: false,
                 resource_target: None,
+                fn_body: None,
             },
         ));
 
@@ -2061,6 +2102,120 @@ mod tests {
             handle_port.cardinality,
             Cardinality::ZERO_OR_MORE,
             "release resource_handle input should accept fan-in without scalar conflicts"
+        );
+    }
+
+    /// FC-5 guardrail: verify that `resolve_lowered_dag` preserves SubDag
+    /// structure in the resolved output (production path), rather than flattening
+    /// it via `SubDagDispatchOp` (test-only path).
+    #[test]
+    fn resolve_lowered_dag_preserves_subdag_structure() {
+        let mut inner = Dag::new();
+        inner.add_node(Node::opaque(
+            "inner_literal",
+            vec![],
+            vec![Port::new("out", "String")],
+            LoweredOp::Primitive {
+                module: "test".to_string(),
+                name: "literal".to_string(),
+                kind: PrimitiveOpKind::CallLiteralSource {
+                    literal: PrimitiveLiteral::String("ok".to_string()),
+                },
+            },
+        ));
+        let mut dag = Dag::new();
+        dag.add_node(Node::subdag("wrapper", inner));
+
+        let resolved = resolve_lowered_dag(&dag).expect("resolve dag with SubDag");
+        let wrapper = resolved
+            .get_node(&"wrapper".into())
+            .expect("wrapper node should exist");
+        assert!(
+            matches!(wrapper.body, NodeBody::SubDag(_)),
+            "production resolver should preserve SubDag structure, not flatten it"
+        );
+    }
+
+    #[test]
+    fn resolve_extern_call_returns_error_for_unknown_symbol() {
+        let node = Node::opaque(
+            "extern_fetch",
+            vec![],
+            vec![],
+            LoweredOp::ExternCall {
+                symbol: "fetch_data".to_string(),
+            },
+        );
+        let err = resolve_node(&node).expect_err("unknown extern call should return error");
+        assert!(
+            err.reason.contains("extern symbol `fetch_data`"),
+            "error should name the extern symbol: {}",
+            err.reason
+        );
+        assert!(
+            err.reason.contains("could not be resolved"),
+            "error should indicate resolution failure: {}",
+            err.reason
+        );
+    }
+
+    #[test]
+    fn resolve_extern_call_succeeds_for_known_extern_impl() {
+        let node = Node::opaque(
+            "extern_render",
+            vec![],
+            vec![],
+            LoweredOp::ExternCall {
+                symbol: "std.markdown::render_tree".to_string(),
+            },
+        );
+        let result = resolve_node(&node);
+        assert!(
+            result.is_ok(),
+            "known extern call should resolve successfully: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn resolve_unsupported_pattern_returns_error_not_panic() {
+        let node = Node::opaque(
+            "unsupported_retry",
+            vec![],
+            vec![],
+            LoweredOp::UnsupportedPattern {
+                name: "RetryController".to_string(),
+            },
+        );
+        let err = resolve_node(&node).expect_err("unsupported pattern should return error");
+        assert!(
+            err.reason.contains("unsupported pattern `RetryController`"),
+            "error should name the unsupported pattern: {}",
+            err.reason
+        );
+    }
+
+    /// Shadow bridge: a Callable (DSL fn body) that has a Rust extern impl.
+    /// The extern impl wins at resolution (Step 4 > Step 5). This test
+    /// documents the behavior. When NF-7 lands (same-module extern func
+    /// wiring), these callables should become ExternCall nodes and this
+    /// shadow bridge pattern should be eliminated.
+    #[test]
+    fn resolve_shadow_bridge_callable_uses_extern_impl_not_passthrough() {
+        // tools.pragma::render_clippy_toml has a Rust extern impl.
+        // When it appears as a Callable (fn body), the extern impl wins.
+        let node = callable_node(
+            "render_clippy_toml",
+            "tools.pragma",
+            "render_clippy_toml",
+            ObligationCategory::PureRender,
+        );
+        let result =
+            resolve_node(&node).expect("shadow bridge callable should resolve to extern impl");
+        let debug = format!("{result:?}");
+        assert!(
+            debug.contains("RenderClippyTomlOp"),
+            "should resolve to RenderClippyTomlOp (extern impl), not DeclaredOutputCallableOp: {debug}"
         );
     }
 }

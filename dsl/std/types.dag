@@ -51,7 +51,7 @@ module std.types
 //   Char = Brand("Char", Int)
 // String decomposes to List<Char> via the chars() builtin.
 //   ⟦Char⟧ = {n ∈ ℤ | 0 ≤ n ≤ 1114111}
-type Char = Int @brand("Char") @range(min: 0, max: 1114111)
+type Char = Int where brand("Char"), range(min: 0, max: 1114111)
 
 // --- Refinement types (Level 1: Subset Comprehension) -----------------
 // Each adds a Validate node to the base type's DAG:
@@ -68,29 +68,29 @@ type Char = Int @brand("Char") @range(min: 0, max: 1114111)
 //   2. Auto-generation of test inputs (valid from ⟦T⟧, invalid from ⟦T⟧ᶜ)
 //   3. Documentation of expected shapes
 
-type CommitSha    = String @pattern("^[a-f0-9]{40}$")     // ⟦CommitSha⟧ ⊂ ⟦String⟧
-type RetryCount   = Int @range(min: 1, max: 5)           // ⟦RetryCount⟧ = {1,2,3,4,5} ⊂ ⟦Int⟧
-type HttpStatus   = Int @range(min: 100, max: 599)       // |⟦HttpStatus⟧| = 500
-type Email        = String @pattern("^[^@]+@[^@]+\\.[^@]+$")
-type Port         = Int @range(min: 1, max: 65535)       // ⟦Port⟧ = {n ∈ ℤ | 1 ≤ n ≤ 65535}
-type GistId       = String @format(uuid)                 // ⟦GistId⟧ ⊂ ⟦String⟧
-type SecretValue  = Secret @non_empty                    // ⟦SecretValue⟧ = {s ∈ Σ* | s ≠ ""}
-type Url          = String @pattern("^https?://")        // ⟦Url⟧ ⊂ ⟦NonEmptyStr⟧ ⊂ ⟦String⟧
-type SemVer       = String @pattern("^\\d+\\.\\d+\\.\\d+")
-type NonEmptyStr  = String @non_empty                    // ⟦NonEmptyStr⟧ = {s ∈ Σ* | |s| > 0}
+type CommitSha    = String where pattern("^[a-f0-9]{40}$")
+type RetryCount   = Int where range(min: 1, max: 5)
+type HttpStatus   = Int where range(min: 100, max: 599)
+type Email        = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
+type Port         = Int where range(min: 1, max: 65535)
+type GistId       = String where format(uuid)
+type SecretValue  = Secret where non_empty
+type Url          = String where pattern("^https?://")
+type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
+type NonEmptyStr  = String where non_empty
 
 // Path modeling (EX-2):
 // - FilePath remains a compatibility alias for existing modules.
 // - FilePathParts and GlobPattern provide structured forms for new DSL code.
-type PathSegment   = NonEmptyStr @brand("PathSegment")
-type GlobSegment   = NonEmptyStr @brand("GlobSegment")
+type PathSegment   = NonEmptyStr where brand("PathSegment")
+type GlobSegment   = NonEmptyStr where brand("GlobSegment")
 type FilePathParts {
   segments: List<PathSegment>
 }
 type GlobPattern {
   segments: List<GlobSegment>
 }
-type FilePath      = String @non_empty                   // compatibility alias (legacy modules)
+type FilePath      = String where non_empty
 
 // --- Temporal types (Level 1: Refinements for time) -----------------------
 // Addresses deficit D14 from domain-modeling-comprehensive.md §9.
@@ -104,9 +104,9 @@ type FilePath      = String @non_empty                   // compatibility alias 
 //   ⟦Duration⟧  ⊂ ⟦Int⟧
 //   ⟦EpochMs⟧   ⊂ ⟦Int⟧
 
-type Timestamp    = String @pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")  // ISO 8601
-type EpochMs      = Int @range(min: 0)                    // Unix epoch milliseconds (non-negative)
-type Duration     = Int @range(min: 0)                    // Duration in milliseconds (non-negative)
+type Timestamp    = String where pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")
+type EpochMs      = Int where range(min: 0)
+type Duration     = Int where range(min: 0)
 
 // --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
 // Addresses deficit D15 from domain-modeling-comprehensive.md §9.
@@ -119,24 +119,24 @@ type Duration     = Int @range(min: 0)                    // Duration in millise
 // This prevents accidental mixups (passing an IntentId where IssueId
 // is expected) at compile time.
 
-type IntentId     = NonEmptyStr @brand("IntentId")        // Stable intent identity
-type IssueId      = NonEmptyStr @brand("IssueId")         // Provider-specific issue ID
-type RunKey       = NonEmptyStr @brand("RunKey")           // Stage execution idempotency key
-type ArtifactId   = NonEmptyStr @brand("ArtifactId")       // Deterministic artifact identity
-type LeaseToken   = NonEmptyStr @brand("LeaseToken")       // Claim lease token
-type WorkerId     = NonEmptyStr @brand("WorkerId")         // Worker/pod identity
-type CommentId    = NonEmptyStr @brand("CommentId")        // Issue comment identity
-type SignalKey    = NonEmptyStr @brand("SignalKey")         // Signal idempotency key
-type ContentHash  = NonEmptyStr @brand("ContentHash")      // Normalized content hash
+type IntentId     = NonEmptyStr where brand("IntentId")
+type IssueId      = NonEmptyStr where brand("IssueId")
+type RunKey       = NonEmptyStr where brand("RunKey")
+type ArtifactId   = NonEmptyStr where brand("ArtifactId")
+type LeaseToken   = NonEmptyStr where brand("LeaseToken")
+type WorkerId     = NonEmptyStr where brand("WorkerId")
+type CommentId    = NonEmptyStr where brand("CommentId")
+type SignalKey    = NonEmptyStr where brand("SignalKey")
+type ContentHash  = NonEmptyStr where brand("ContentHash")
 
 // --- Git types (refinements of String) ------------------------------------
-type GitRef       = String @non_empty                    // ⟦GitRef⟧ ⊂ ⟦String⟧ (branch name, tag, "HEAD", etc.)
+type GitRef       = String where non_empty
 // Note: CommitSha <: GitRef <: String. A SHA is always a valid ref,
 // but a ref is not always a SHA (e.g., "main", "HEAD~1").
 
 // --- GCP types (refinements for cloud identifiers) -----------------------
-type ProjectId    = String @non_empty @pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")  // GCP project IDs
-type ServiceAccountEmail = String @pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")
+type ProjectId    = String where non_empty, pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
+type ServiceAccountEmail = String where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")
 
 // Refinement chain example (transitive subtyping):
 //   ⟦Url⟧ ⊂ ⟦NonEmptyStr⟧ ⊂ ⟦String⟧ ⊂ ⟦Json⟧
@@ -274,8 +274,8 @@ type ContentEncoding
 //   ⟦FilePath⟧ ⊄ ⟦TextFilePath⟧  →  "cannot prove content is text"
 // The developer must insert an explicit classification step.
 
-type TextFilePath   = FilePath @content(Text)     // referent is Σ* decodable
-type BinaryFilePath = FilePath @content(Binary)   // referent is {0..255}*
+type TextFilePath   = FilePath where content(Text)
+type BinaryFilePath = FilePath where content(Binary)
 
 // What Filesystem.probe returns -- classifies a path's referent.
 // Now includes entry kind (regular file, directory, symlink, etc.)
@@ -290,7 +290,7 @@ type FileClassification {
   mime: MimeType?
 }
 
-type MimeType = String @pattern("^[a-z]+/[a-z0-9.+-]+$")
+type MimeType = String where pattern("^[a-z]+/[a-z0-9.+-]+$")
 
 // File type rules -- declarative extension-to-encoding mapping.
 // This is compile-time data the compiler uses for:
@@ -300,16 +300,7 @@ type MimeType = String @pattern("^[a-z]+/[a-z0-9.+-]+$")
 //   4. Repo integration tests: expected binary/text file counts
 //
 // Defines the partitioning:  classify: ⟦FilePath⟧ → TextFilePath ⊔ BinaryFilePath
-@file_types {
-  text: [".rs", ".toml", ".dag", ".md", ".txt", ".json", ".yaml", ".yml",
-         ".sh", ".html", ".css", ".js", ".ts", ".py", ".go", ".java",
-         ".xml", ".csv", ".sql", ".graphql", ".proto", ".lock"]
-  binary: [".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
-           ".wasm", ".zip", ".tar", ".gz", ".bz2", ".xz",
-           ".exe", ".dll", ".so", ".dylib", ".o", ".a",
-           ".mp3", ".mp4", ".wav", ".ogg", ".avi", ".mov"]
-  default: Binary   // unknown extensions → Binary (fail-safe)
-}
+// file_types configuration removed (was annotation)
 
 // --- Auth types (Level 3+4: Product and Coproduct DAGs) ---------------
 // Records compile to Product nodes with parallel SubDag fields.

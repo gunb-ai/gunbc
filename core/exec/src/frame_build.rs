@@ -6,6 +6,7 @@
 
 use crate::progress::{DagPhase, DagProgress, GroupProgress, NodeState};
 use crate::render::RenderMode;
+use crate::ErrorClass;
 use gunbc_ir::layout::DagLayout;
 use gunbc_ir::render_ir::{CursorAction, Frame, Line, Span, SpanStyle};
 use gunbc_ir::symbols::{SemanticColor, SymbolId, SymbolSet, Tier};
@@ -117,12 +118,16 @@ fn build_dag_header(
             Line::new(spans)
         }
         DagPhase::Failed { node, error } => {
-            let label = progress
-                .snapshot
-                .labels
-                .get(node)
-                .map(|s| s.as_str())
-                .unwrap_or(&node.0);
+            // Prefer service label ("github.Gist → Create") over internal node ID
+            let label = error.service_label().unwrap_or_else(|| {
+                progress
+                    .snapshot
+                    .labels
+                    .get(node)
+                    .cloned()
+                    .unwrap_or_else(|| node.0.clone())
+            });
+            let classification = error.classification();
             let icon_spans = match tier {
                 Tier::Emoji => {
                     vec![Span::styled(
@@ -136,10 +141,17 @@ fn build_dag_header(
                 _ => vec![symbol_span(SymbolId::DagFailed, symbol_set, tier)],
             };
             let mut spans = icon_spans;
-            spans.push(Span::plain(format!(
-                " Failed at {}: {} [{}]",
-                label, error, elapsed
-            )));
+            if classification != ErrorClass::Unknown {
+                spans.push(Span::plain(format!(
+                    " Failed at {}: {} — {} [{}]",
+                    label, error.message, classification, elapsed
+                )));
+            } else {
+                spans.push(Span::plain(format!(
+                    " Failed at {}: {} [{}]",
+                    label, error.message, elapsed
+                )));
+            }
             Line::new(spans)
         }
     }
@@ -988,8 +1000,14 @@ mod tests {
 
     #[test]
     fn test_display_width_emoji_regression() {
-        assert!(display_width("✅") >= 1, "checkmark emoji should have width >= 1");
-        assert!(display_width("🔄") >= 1, "rotation emoji should have width >= 1");
+        assert!(
+            display_width("✅") >= 1,
+            "checkmark emoji should have width >= 1"
+        );
+        assert!(
+            display_width("🔄") >= 1,
+            "rotation emoji should have width >= 1"
+        );
         assert_eq!(display_width(""), 0);
         assert_eq!(display_width("a"), 1);
     }
@@ -1267,7 +1285,10 @@ mod tests {
         progress.on_node_start(&NodeId::from("prepare_build"));
         progress.on_node_complete(&NodeId::from("prepare_build"), empty_summary());
         progress.on_node_start(&NodeId::from("execute_build"));
-        progress.on_node_failed(&NodeId::from("execute_build"), "boom");
+        progress.on_node_failed(
+            &NodeId::from("execute_build"),
+            &crate::ExecError::new("boom"),
+        );
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);

@@ -40,8 +40,8 @@ use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{
     contract, parse_map_type_id, semantic_carrier_class_for_type_id, value_compatible_with_type_id,
-    value_kind_name, Cardinality, Dag, NodeId, Os, PortName, SecretString, SeedPlaceholderPolicy,
-    SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
+    value_kind_name, Cardinality, Dag, NodeId, NodeKind, Os, PortName, SecretString,
+    SeedPlaceholderPolicy, SemanticCarrierClass, TypeRegistry, Value, ValueExpr,
 };
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -163,6 +163,14 @@ pub struct TestConfig {
     pub optional_input_tests: bool,
     /// Generate probe-observer integration tests (non-tautological chain tests)
     pub probe_observer_tests: bool,
+    /// Generate per-node corpus tests (BB-2: black-box node testing from cross-workflow corpus)
+    pub corpus_tests: bool,
+    /// Generate adjacent-pair edge tests (BB-3: 2-node window through real executor wiring)
+    pub adjacent_pair_tests: bool,
+    /// Generate cross-workflow consistency tests (BB-5: same node, multiple workflows)
+    pub cross_workflow_tests: bool,
+    /// Generate transport fidelity ladder tests (BB-6: tiered test variants)
+    pub fidelity_ladder_tests: bool,
     /// Max window size for windowed tests (None = disabled).
     /// DEPRECATED: Tautological — replaced by probe_observer_tests.
     pub window_max_nodes: Option<usize>,
@@ -186,6 +194,10 @@ pub struct TestConfig {
     pub live_required: Vec<String>,
     /// Live test required any-of env var groups
     pub live_required_any_of: Vec<Vec<String>>,
+    /// Per-profile live test configurations (PT-5).
+    pub live_profile_tests: Vec<crate::registry::LiveProfileTestConfig>,
+    /// Target name for generating test function names.
+    pub target_name: String,
 }
 
 impl Default for TestConfig {
@@ -202,6 +214,10 @@ impl Default for TestConfig {
             example_tests: true,
             optional_input_tests: true,
             probe_observer_tests: true,
+            corpus_tests: false,
+            adjacent_pair_tests: false,
+            cross_workflow_tests: false,
+            fidelity_ladder_tests: false,
             window_max_nodes: None, // Deprecated: use probe_observer_tests instead
             visibility: "pub".to_string(),
             test_class: TestClass::Hermetic,
@@ -213,6 +229,8 @@ impl Default for TestConfig {
             live_requires: Vec::new(),
             live_required: Vec::new(),
             live_required_any_of: Vec::new(),
+            live_profile_tests: Vec::new(),
+            target_name: String::new(),
         }
     }
 }
@@ -233,6 +251,10 @@ pub struct TestGenerator<'a, T> {
     cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
     /// Type registry for contract-derived witness values.
     type_registry: TypeRegistry,
+    /// Cross-workflow mock corpus for per-node black-box tests (BB-2).
+    corpus: Option<HashMap<gunbc_test::NodeIdentity, gunbc_test::MockCorpus>>,
+    /// Edge examples for adjacent-pair tests (BB-3).
+    edge_examples: Option<Vec<gunbc_test::EdgeExample>>,
 }
 
 struct ProbeObserverBundle {
@@ -258,6 +280,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             signature_fn: None,
             cli_entrypoints: None,
             type_registry: TypeRegistry::with_core_types(),
+            corpus: None,
+            edge_examples: None,
         }
     }
 
@@ -304,6 +328,21 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     /// Set a type registry for contract-derived witness values.
     pub fn with_type_registry(mut self, registry: TypeRegistry) -> Self {
         self.type_registry = registry;
+        self
+    }
+
+    /// Set cross-workflow mock corpus for per-node black-box tests (BB-2).
+    pub fn with_corpus(
+        mut self,
+        corpus: HashMap<gunbc_test::NodeIdentity, gunbc_test::MockCorpus>,
+    ) -> Self {
+        self.corpus = Some(corpus);
+        self
+    }
+
+    /// Set edge examples for adjacent-pair tests (BB-3).
+    pub fn with_edge_examples(mut self, examples: Vec<gunbc_test::EdgeExample>) -> Self {
+        self.edge_examples = Some(examples);
         self
     }
 
@@ -667,46 +706,15 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     }
 
     fn lowered_intercept_kind(node: &gunbc_ir::Node<T>) -> Option<&'static str> {
-        let is_transport_executor = node
-            .inputs
-            .iter()
-            .any(|port| port.type_id.0 == "TransportRequest");
-        if is_transport_executor {
-            return Some("transport executor");
+        match node.kind {
+            Some(NodeKind::TransportExecute) => Some("transport executor"),
+            Some(NodeKind::ToolEnvironment) => Some("tool environment"),
+            Some(NodeKind::ResourceEnvironment | NodeKind::ResourceAcquire) => {
+                Some("resource environment")
+            }
+            Some(NodeKind::ToolConsumer) => Some("tool consumer"),
+            _ => None,
         }
-
-        let is_tool_env = node
-            .outputs
-            .iter()
-            .any(|port| port.type_id.0 == "ToolHandle");
-        if is_tool_env {
-            return Some("tool environment");
-        }
-
-        let is_resource_env = node.outputs.iter().any(|port| {
-            matches!(
-                port.type_id.0.as_str(),
-                "FilesystemHandle"
-                    | "NetworkHandle"
-                    | "Timestamp"
-                    | "Credential"
-                    | "Platform"
-                    | "CloudSecretConfig"
-            )
-        });
-        if is_resource_env {
-            return Some("resource environment");
-        }
-
-        let is_tool_consumer = node
-            .inputs
-            .iter()
-            .any(|port| port.type_id.0 == "ToolHandle");
-        if is_tool_consumer {
-            return Some("tool consumer");
-        }
-
-        None
     }
 
     /// Find mock values whose types don't match the port's declared TypeId.
@@ -1222,6 +1230,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
+        // PT-5: Per-profile live flow test sections.
+        for section in self.build_per_profile_live_flow_sections() {
+            file.sections.push(section);
+        }
+
         if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
             if let Some(section) = self.build_window_section(graph_builder_fn) {
                 file.sections.push(section);
@@ -1238,6 +1251,34 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         if self.config.example_tests {
             if let Some(section) = self.build_node_example_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        // BB-2: Per-node corpus tests
+        if self.config.corpus_tests {
+            if let Some(section) = self.build_corpus_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        // BB-3: Adjacent pair tests
+        if self.config.adjacent_pair_tests {
+            if let Some(section) = self.build_adjacent_pair_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        // BB-5: Cross-workflow consistency tests
+        if self.config.cross_workflow_tests {
+            if let Some(section) = self.build_cross_workflow_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        // BB-6: Transport fidelity ladder tests
+        if self.config.fidelity_ladder_tests {
+            if let Some(section) = self.build_fidelity_ladder_section(analysis, graph_builder_fn) {
                 file.sections.push(section);
             }
         }
@@ -2191,10 +2232,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         NamingCase::SnakeCase.apply(variant_name),
                     );
 
-                    let mock_value =
-                        ValueExpr::Str(variant_name.clone());
-                    let mocks_expr =
-                        self.dryrun_mocks_expr(analysis, "variant coverage tests");
+                    let mock_value = ValueExpr::Str(variant_name.clone());
+                    let mocks_expr = self.dryrun_mocks_expr(analysis, "variant coverage tests");
 
                     let exec = Expr::call(
                         "execute_with_mode",
@@ -3891,6 +3930,101 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         })
     }
 
+    /// PT-5: Generate per-profile live flow test sections.
+    ///
+    /// One test function per `LiveProfileTestConfig` entry, named
+    /// `test_live_flow_{module}_{profile}()`, gated by the profile's
+    /// env requirements.
+    fn build_per_profile_live_flow_sections(&self) -> Vec<TestSection> {
+        self.config
+            .live_profile_tests
+            .iter()
+            .map(|profile_test| {
+                let test_name = format!(
+                    "test_live_flow_{}_{}_profile",
+                    NamingCase::SnakeCase.apply(&self.config.target_name),
+                    NamingCase::SnakeCase.apply(&profile_test.profile_name),
+                );
+
+                let class_variant = Self::class_variant(profile_test.test_class);
+                let cost_variant = Self::cost_variant(profile_test.fermi_cost);
+                let class_expr = Expr::path(&["TestClass", class_variant]);
+                let cost_expr = Expr::path(&["FermiCost", cost_variant]);
+                let required_expr = Self::slice_expr(&profile_test.required_env);
+                let required_any_of_expr = Self::slice_2d_expr(&profile_test.required_any_of);
+
+                let guard_call = Expr::call(
+                    "guard_test_with_env",
+                    vec![
+                        Expr::Str(test_name.clone()),
+                        class_expr,
+                        cost_expr,
+                        Expr::Array(vec![]), // requires (external tools)
+                        required_expr,
+                        required_any_of_expr,
+                    ],
+                );
+                let guard_stmt = Stmt::Expr(Expr::If {
+                    cond: Box::new(guard_call.logical_not()),
+                    then_body: vec![Stmt::Return(Expr::raw("()"))],
+                    else_body: None,
+                });
+
+                let body = vec![
+                    guard_stmt,
+                    Stmt::Comment(format!(
+                        "Compile with profile '{}' and execute in Real mode",
+                        profile_test.profile_name
+                    )),
+                    Stmt::let_bind("dag", Expr::raw(&profile_test.dag_builder_call)),
+                    Stmt::let_bind(
+                        "log",
+                        Expr::call(
+                            "execute_with_mode",
+                            vec![
+                                Expr::var("dag").ref_of(),
+                                Expr::Path(vec!["ExecutionMode".to_string(), "Real".to_string()]),
+                            ],
+                        )
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!(
+                                "Real execution with profile '{}' should succeed",
+                                profile_test.profile_name,
+                            ))],
+                        ),
+                    ),
+                    Stmt::Assert(Assert::True {
+                        expr: Expr::var("log")
+                            .field("entries")
+                            .method("is_empty", vec![])
+                            .logical_not(),
+                        message: "execution should produce log entries".to_string(),
+                    }),
+                ];
+
+                TestSection {
+                    title: format!(
+                        "Per-profile live flow: {} (profile: {})",
+                        self.config.target_name, profile_test.profile_name
+                    ),
+                    notes: vec![format!(
+                        "Compiles with --profile {}, executes in Real mode.",
+                        profile_test.profile_name
+                    )],
+                    tests: vec![TestFn {
+                        name: test_name,
+                        doc: vec![format!(
+                            "Live flow test for profile '{}'.",
+                            profile_test.profile_name
+                        )],
+                        body,
+                    }],
+                }
+            })
+            .collect()
+    }
+
     fn build_window_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
         self.mock_spec_fn.as_ref()?;
 
@@ -5075,6 +5209,314 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             tests: vec![parse_test, print_inputs_test],
         })
     }
+
+    // =======================================================================
+    // BB-2: Per-Node Corpus Tests
+    // =======================================================================
+
+    fn build_corpus_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+        let corpus = self.corpus.as_ref()?;
+        if corpus.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+
+        for (identity, node_corpus) in corpus {
+            if node_corpus.is_empty() {
+                continue;
+            }
+
+            let sanitized_id = sanitize_to_snake_case(&identity.to_string());
+            let test_name = format!("test_corpus_{}", sanitized_id);
+
+            let example_count = node_corpus.len();
+            let workflows = node_corpus.workflow_names();
+
+            let doc = vec![
+                format!(
+                    "Corpus test for node '{}' ({} examples from workflows: {}).",
+                    identity,
+                    example_count,
+                    workflows.join(", ")
+                ),
+                String::new(),
+                "Each example exercises the node with inputs observed from a workflow DryRun."
+                    .to_string(),
+                "Pure nodes assert exact output match; effectful nodes assert type contracts."
+                    .to_string(),
+            ];
+
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::Assert(Assert::True {
+                    expr: Expr::var("dag")
+                        .field("nodes")
+                        .method("is_empty", vec![])
+                        .logical_not(),
+                    message: format!("DAG should have nodes for corpus test of '{}'", identity),
+                }),
+                Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(format!(
+                        "[corpus] {} examples for node '{}'",
+                        example_count, identity
+                    ))],
+                )),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
+        }
+
+        if tests.is_empty() {
+            return None;
+        }
+
+        Some(TestSection {
+            title: "BB-2: Per-Node Corpus Tests (cross-workflow black-box)".to_string(),
+            notes: vec![
+                "Tests nodes against inputs accumulated from ALL workflows they appear in."
+                    .to_string(),
+                "Catches regressions that single-workflow tests miss.".to_string(),
+            ],
+            tests,
+        })
+    }
+
+    // =======================================================================
+    // BB-3: Adjacent Pair Tests
+    // =======================================================================
+
+    fn build_adjacent_pair_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+        let edge_examples = self.edge_examples.as_ref()?;
+        if edge_examples.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+        let mut seen_pairs = HashSet::new();
+
+        for example in edge_examples {
+            let pair_key = format!("{}_{}", example.from_node, example.to_node);
+            if !seen_pairs.insert(pair_key) {
+                continue;
+            }
+
+            let wf = &example.provenance.workflow;
+            let test_name = format!(
+                "test_edge_{}_{}_wf_{}",
+                sanitize_to_snake_case(&example.from_node.to_string()),
+                sanitize_to_snake_case(&example.to_node.to_string()),
+                sanitize_to_snake_case(wf),
+            );
+
+            let doc = vec![
+                format!(
+                    "Adjacent pair test: {} → {} (from workflow '{}')",
+                    example.from_node, example.to_node, wf
+                ),
+                String::new(),
+                "Tests the real wiring between two connected nodes.".to_string(),
+            ];
+
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::Assert(Assert::True {
+                    expr: Expr::var("dag")
+                        .field("edges")
+                        .method("is_empty", vec![])
+                        .logical_not(),
+                    message: "DAG should have edges for adjacent pair test".to_string(),
+                }),
+                Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(format!(
+                        "[edge] {} → {}",
+                        example.from_node, example.to_node
+                    ))],
+                )),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
+        }
+
+        if tests.is_empty() {
+            return None;
+        }
+
+        Some(TestSection {
+            title: "BB-3: Adjacent Pair Tests (2-node window, real wiring)".to_string(),
+            notes: vec![
+                "Tests real executor wiring between connected node pairs.".to_string(),
+                "Catches param→port translation bugs that per-node tests miss.".to_string(),
+            ],
+            tests,
+        })
+    }
+
+    // =======================================================================
+    // BB-5: Cross-Workflow Consistency Tests
+    // =======================================================================
+
+    fn build_cross_workflow_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+        let corpus = self.corpus.as_ref()?;
+
+        let multi_workflow_nodes: Vec<_> = corpus
+            .iter()
+            .filter(|(_, c)| c.workflow_names().len() >= 2)
+            .collect();
+
+        if multi_workflow_nodes.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+
+        for (identity, node_corpus) in &multi_workflow_nodes {
+            let workflows = node_corpus.workflow_names();
+            let test_name = format!(
+                "test_cross_wf_{}",
+                sanitize_to_snake_case(&identity.to_string())
+            );
+
+            let doc = vec![
+                format!(
+                    "Cross-workflow consistency: '{}' appears in {} workflows ({}).",
+                    identity,
+                    workflows.len(),
+                    workflows.join(", ")
+                ),
+                String::new(),
+                "Asserts that the same node produces consistent output shape".to_string(),
+                "regardless of which workflow provides its inputs.".to_string(),
+            ];
+
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(format!(
+                        "[cross-wf] '{}' in {} workflows: {}",
+                        identity,
+                        workflows.len(),
+                        workflows.join(", ")
+                    ))],
+                )),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
+        }
+
+        if tests.is_empty() {
+            return None;
+        }
+
+        Some(TestSection {
+            title: "BB-5: Cross-Workflow Consistency Tests".to_string(),
+            notes: vec![
+                "For nodes appearing in 2+ workflows, asserts consistent output shape."
+                    .to_string(),
+                "Would have caught the FnBodyDelegate regression (pragma/gist broke, makegen didn't)."
+                    .to_string(),
+            ],
+            tests,
+        })
+    }
+
+    // =======================================================================
+    // BB-6: Transport Fidelity Ladder Tests
+    // =======================================================================
+
+    fn build_fidelity_ladder_section(
+        &self,
+        analysis: &DagAnalysis,
+        graph_builder_fn: &str,
+    ) -> Option<TestSection> {
+        if analysis.transport_executors.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+
+        tests.push(TestFn {
+            name: "test_fidelity_xs_dryrun".to_string(),
+            doc: vec![
+                "Fidelity XS: DryRun intercept (pure mock).".to_string(),
+                String::new(),
+                "This is the baseline tier — all transport nodes are intercepted.".to_string(),
+            ],
+            body: vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::Assert(Assert::True {
+                    expr: Expr::var("dag")
+                        .field("nodes")
+                        .method("is_empty", vec![])
+                        .logical_not(),
+                    message: "DAG should have nodes for fidelity XS test".to_string(),
+                }),
+                Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(
+                        "[fidelity] XS tier: DryRun intercept verified".to_string(),
+                    )],
+                )),
+            ],
+        });
+
+        let tier_labels = [
+            ("s_virtual_io", "S", "S-tier: in-memory hermetic I/O"),
+            ("m_sandboxed", "M", "M-tier: sandboxed container/tempdir"),
+            ("l_real_local", "L", "L-tier: real local execution"),
+            ("xl_real_remote", "XL", "XL-tier: real remote/network"),
+        ];
+
+        for (suffix, cost_label, description) in &tier_labels {
+            let test_name = format!("test_fidelity_{}", suffix);
+            tests.push(TestFn {
+                name: test_name,
+                doc: vec![
+                    format!(
+                        "Fidelity {}: {} (gated by cost budget).",
+                        cost_label, description
+                    ),
+                    String::new(),
+                    format!(
+                        "TODO: Implement {}-tier transport resolution when virtual I/O lands.",
+                        cost_label
+                    ),
+                ],
+                body: vec![Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(format!(
+                        "[fidelity] {}-tier: not yet implemented (placeholder)",
+                        cost_label
+                    ))],
+                ))],
+            });
+        }
+
+        Some(TestSection {
+            title: "BB-6: Transport Fidelity Ladder Tests".to_string(),
+            notes: vec![
+                "Tiered test variants based on transport fidelity (XS=mock through XL=real)."
+                    .to_string(),
+                "S+ tiers are stubs until virtual I/O infrastructure lands.".to_string(),
+            ],
+            tests,
+        })
+    }
 }
 
 /// Sanitize a description string into a valid snake_case identifier fragment.
@@ -5433,11 +5875,7 @@ fn witness_value_for_count(
         let variant_values = contract::variant_witnesses(type_id, registry);
         let elements = if variant_values.len() > 1 {
             (0..count as usize)
-                .map(|i| {
-                    variant_values[i % variant_values.len()]
-                        .1
-                        .clone()
-                })
+                .map(|i| variant_values[i % variant_values.len()].1.clone())
                 .collect()
         } else {
             vec![elem; count as usize]
@@ -5492,10 +5930,7 @@ fn required_count_for_port(port: &gunbc_ir::Port) -> Option<u32> {
     Some(1)
 }
 
-fn candidate_values_for_guard(
-    port: &gunbc_ir::Port,
-    registry: &TypeRegistry,
-) -> Vec<Value> {
+fn candidate_values_for_guard(port: &gunbc_ir::Port, registry: &TypeRegistry) -> Vec<Value> {
     let Some(count) = required_count_for_port(port) else {
         return Vec::new();
     };
@@ -5532,10 +5967,7 @@ fn select_guard_value(port: &gunbc_ir::Port, registry: &TypeRegistry) -> Option<
         .find(|candidate| port.check_guard(candidate))
 }
 
-fn required_value_for_port(
-    port: &gunbc_ir::Port,
-    registry: &TypeRegistry,
-) -> Option<Value> {
+fn required_value_for_port(port: &gunbc_ir::Port, registry: &TypeRegistry) -> Option<Value> {
     let count = required_count_for_port(port)?;
     try_mock_value_for_count(port.type_id.0.as_str(), port.cardinality, count, registry)
 }
@@ -5901,14 +6333,10 @@ fn collect_pure_nodes<T>(dag: &Dag<T>) -> HashSet<NodeId> {
 }
 
 fn is_pure_node<T>(node: &gunbc_ir::Node<T>) -> bool {
-    let is_transport_executor = node
-        .inputs
-        .iter()
-        .any(|p| p.type_id.0 == "TransportRequest");
-    let is_tool_env = node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle");
-    let is_tool_consumer = node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
-
-    !is_transport_executor && !is_tool_env && !is_tool_consumer
+    matches!(
+        node.kind,
+        Some(NodeKind::Pure | NodeKind::TransportPrepare | NodeKind::TransportParse) | None
+    )
 }
 
 #[cfg(test)]
@@ -6169,24 +6597,33 @@ mod tests {
     #[test]
     fn test_generate_with_transport_executor() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![],
-            vec![port("request", "TransportRequest")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "parse",
-            vec![port("response", "TransportResponse")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![],
+                vec![port("request", "TransportRequest")],
+                (),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "parse",
+                vec![port("response", "TransportResponse")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportParse),
+        );
         dag.add_edge(edge("prepare", "request", "execute", "request"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
 
@@ -6244,8 +6681,7 @@ mod tests {
             ValueExpr::List(vec![ValueExpr::Str("example".to_string())])
         );
 
-        let opt_zero =
-            mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, &registry);
+        let opt_zero = mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, &registry);
         assert_eq!(opt_zero, ValueExpr::Unit);
     }
 
@@ -6254,25 +6690,31 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
 
         // Transport executor that produces a condition
-        dag.add_node(Node::opaque(
-            "check",
-            vec![port("request", "TransportRequest")],
-            vec![
-                port("response", "TransportResponse"),
-                port("condition", "Bool"),
-            ],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "check",
+                vec![port("request", "TransportRequest")],
+                vec![
+                    port("response", "TransportResponse"),
+                    port("condition", "Bool"),
+                ],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
         // Guarded node: only executes when condition is true
-        dag.add_node(Node::opaque(
-            "process",
-            vec![
-                build::guarded("condition", "Bool", Value::Bool(true)),
-                port("data", "String"),
-            ],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "process",
+                vec![
+                    build::guarded("condition", "Bool", Value::Bool(true)),
+                    port("data", "String"),
+                ],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("check", "condition", "process", "condition"));
         dag.add_edge(edge("check", "response", "process", "data"));
 
@@ -6365,12 +6807,15 @@ mod tests {
     #[should_panic(expected = "I/O examples required")]
     fn test_examples_required_for_pure_nodes() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "transform",
-            vec![port("in", "String")],
-            vec![port("out", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "transform",
+                vec![port("in", "String")],
+                vec![port("out", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
 
         // MockSpec provided but no examples and no skip — should panic
         let spec = MockSpec::new("test").boundary("transform", "out", Value::Str("<MOCK>".into()));
@@ -6384,12 +6829,15 @@ mod tests {
     #[should_panic(expected = "MockSpec required")]
     fn test_mockspec_required_for_transport_dags() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
 
         // No MockSpec provided - should panic
         let config = TestConfig {
@@ -6412,24 +6860,33 @@ mod tests {
     #[should_panic(expected = "DryRun mock coverage incomplete")]
     fn test_transport_mock_coverage_required() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![],
-            vec![port("request", "TransportRequest")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse"), port("status", "Int")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "parse",
-            vec![port("response", "TransportResponse"), port("status", "Int")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![],
+                vec![port("request", "TransportRequest")],
+                (),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse"), port("status", "Int")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "parse",
+                vec![port("response", "TransportResponse"), port("status", "Int")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportParse),
+        );
         dag.add_edge(edge("prepare", "request", "execute", "request"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
         dag.add_edge(edge("execute", "status", "parse", "status"));
@@ -6461,18 +6918,24 @@ mod tests {
     #[test]
     fn test_transport_mock_coverage_passes_when_complete() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse"), port("status", "Int")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "parse",
-            vec![port("response", "TransportResponse"), port("status", "Int")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse"), port("status", "Int")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_node(
+            Node::opaque(
+                "parse",
+                vec![port("response", "TransportResponse"), port("status", "Int")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportParse),
+        );
         dag.add_edge(edge("execute", "response", "parse", "response"));
         dag.add_edge(edge("execute", "status", "parse", "status"));
 

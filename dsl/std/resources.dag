@@ -29,22 +29,6 @@ resource Filesystem {
   capability probe {
     input { path: FilePath }
     output { classification: FileClassification }
-    @file(PROBE, "{path}")
-    @mock_response {
-      classification: { path: "{path}", kind: RegularFile, encoding: UTF8, size: 42, mime: "text/plain" }
-    }
-    @mock_response(scenario: "binary") {
-      classification: { path: "{path}", kind: RegularFile, encoding: Binary, size: 1024, mime: "application/pdf" }
-    }
-    @mock_response(scenario: "directory") {
-      classification: { path: "{path}", kind: Directory, size: 0 }
-    }
-    @mock_response(scenario: "symlink_to_dir") {
-      classification: { path: "{path}", kind: Symlink, symlink_target: TargetDir, size: 0 }
-    }
-    @mock_response(scenario: "missing") {
-      classification: { path: "{path}", kind: Missing, size: 0 }
-    }
   }
 
   // Read text content. Requires TextFilePath -- the compiler rejects
@@ -58,7 +42,6 @@ resource Filesystem {
   capability read {
     input { path: String }
     output { content: String }
-    @file(READ, "{path}")
   }
 
   // Read raw bytes. Accepts any FilePath -- no encoding requirement.
@@ -67,13 +50,11 @@ resource Filesystem {
   capability read_bytes {
     input { path: FilePath }
     output { content: Bytes }
-    @file(READ, "{path}")
   }
 
   capability write {
     input { path: FilePath, content: String }
     output { written: Bool }
-    @file(WRITE, "{path}")
   }
 }
 
@@ -91,13 +72,12 @@ resource Network {
 resource Clock {
   kind: Observation
   mode: Read
-  acquire { @hermetic }
+  acquire { hermetic }
   release {}
 
   capability now {
     input {}
     output { timestamp: String }
-    @hermetic
   }
   // Clock.now() is deterministic in tests (seeded from run_id).
   // In production it reads the system clock -- a hermetic, read-only

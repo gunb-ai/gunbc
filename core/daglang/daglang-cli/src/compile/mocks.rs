@@ -7,6 +7,11 @@ use gunbc_ir::transport::{FileResponse, TransportResponse};
 use gunbc_ir::Value;
 
 /// Input mocks for the makegen entrypoint.
+///
+/// Injects the output path and pre-computed Makefile content.  DSL fn bodies
+/// don't evaluate at runtime (DeclaredOutputCallableOp passthrough), so we
+/// pre-compute the content via direct fn body evaluation and inject it as an
+/// output mock — mirroring the generated binary's embedded asset approach.
 pub fn makegen_entrypoint_mocks(output_path: &str) -> BoundaryMocks {
     let mut input_mocks = BoundaryMocks::new();
     input_mocks.set_input(
@@ -19,6 +24,18 @@ pub fn makegen_entrypoint_mocks(output_path: &str) -> BoundaryMocks {
         "path",
         Value::Str(output_path.to_string()),
     );
+
+    // Pre-compute Makefile content and inject as output mock for
+    // render_makefile_content.  Without this, the passthrough callable
+    // forwards the literal DSL template string ("{header}{body}") instead
+    // of the evaluated Makefile.
+    let makefile_content = gunbc_dag::embedded_assets::compute_makegen_content();
+    input_mocks.set_value(
+        "tools.makegen::render_makefile_content",
+        "return",
+        Value::Str(makefile_content),
+    );
+
     input_mocks
 }
 

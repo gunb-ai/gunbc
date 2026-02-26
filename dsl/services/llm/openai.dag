@@ -6,8 +6,6 @@
 module services.llm.openai
 
 service llm.OpenAI {
-  @endpoint("https://api.openai.com")
-  @auth(BearerToken)
 
   operation ChatCompletion {
     input {
@@ -17,22 +15,12 @@ service llm.OpenAI {
       max_tokens: Int?
     }
     output {
-      content: String @json("choices/0/message/content")
-      model: String @json("model")
-      finish_reason: String @json("choices/0/finish_reason")
-      prompt_tokens: Int @json("usage/prompt_tokens")
-      completion_tokens: Int @json("usage/completion_tokens")
+      content: String from "choices/0/message/content"
+      model: String from "model"
+      finish_reason: String from "choices/0/finish_reason"
+      prompt_tokens: Int from "usage/prompt_tokens"
+      completion_tokens: Int from "usage/completion_tokens"
     }
-    @rest(POST, "/v1/chat/completions")
-    @permissions(["chat_completion"])
-    @mock_response(
-      status: 200,
-      body: {
-        "model": "gpt-4o",
-        "choices": [{"message": {"role": "assistant", "content": "Hello"}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5}
-      }
-    )
   }
 
   operation Responses {
@@ -43,13 +31,11 @@ service llm.OpenAI {
       max_output_tokens: Int?
     }
     output {
-      content: String @json("output/0/content/0/text")
-      model: String @json("model")
-      output_tokens: Int @json("usage/output_tokens")
-      input_tokens: Int @json("usage/input_tokens")
+      content: String from "output/0/content/0/text"
+      model: String from "model"
+      output_tokens: Int from "usage/output_tokens"
+      input_tokens: Int from "usage/input_tokens"
     }
-    @rest(POST, "/v1/responses")
-    @permissions(["chat_completion"])
   }
 }
 
@@ -69,9 +55,6 @@ fixture llm_cloud_env {
 }
 
 test openai_chat_completion : llm_cloud_env {
-    @tier(Unit)
-    @hermetic(true)
-    @rust_mock_helpers("gunbc_lib_llm_ops::graph_mock")
 
     // Inputs
     input chat_completion/prepare.provider -> "openai"
@@ -91,9 +74,6 @@ test openai_chat_completion : llm_cloud_env {
 }
 
 test anthropic_chat_completion : llm_cloud_env {
-    @tier(Unit)
-    @hermetic(true)
-    @rust_mock_helpers("gunbc_lib_llm_ops::graph_mock")
 
     // Inputs
     input chat_completion/prepare.provider -> "anthropic"
@@ -114,9 +94,6 @@ test anthropic_chat_completion : llm_cloud_env {
 }
 
 test code_review_completion : llm_cloud_env {
-    @tier(Scenario)
-    @hermetic(true)
-    @rust_mock_helpers("gunbc_lib_llm_ops::graph_mock")
 
     // Inputs
     input chat_completion/prepare.provider -> "openai"

@@ -79,6 +79,7 @@ pub mod platform;
 pub mod render_ir;
 pub mod resource;
 pub mod signature;
+pub mod symbol;
 pub mod symbols;
 pub mod system_model;
 pub mod transport;
@@ -93,7 +94,6 @@ pub mod value;
 pub mod value_bridge;
 pub mod value_expr;
 pub mod workspace_layout;
-
 
 // Codegen output locations used by the bootstrapper and codegen DAG.
 pub const CODEGEN_OUT_DIR: &str = "target/codegen";
@@ -128,7 +128,7 @@ pub use contract::{
 };
 pub use dag::{
     build, canonical_edge_order, edges_to_port, Dag, DagEdgePorts, DagInputPort, DagOutputPort,
-    Edge, EdgeKind, Guard, Port,
+    Edge, EdgeKind, Guard, Port, ReachableDag,
 };
 pub use dag_topology::{DagTopology, EdgeTopology, NodeTopology, PortTopology};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
@@ -140,7 +140,7 @@ pub use layout::{
 };
 pub use log_detail::LogDetailLevel;
 pub use makefile_render::MakefileStructuredRenderer;
-pub use node::{Node, NodeBody, NodeIoExample};
+pub use node::{Node, NodeBody, NodeIoExample, NodeKind};
 pub use patterns::{
     canonical_authenticate_chain,
     content_upsert::{add_content_upsert_chain, ContentUpsertChain},
@@ -172,6 +172,7 @@ pub use resource::{
     RESOURCE_FILE, RESOURCE_FILE_PREFIX, RESOURCE_PORT_PREFIX, RESOURCE_REPO, RESOURCE_TARGET,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
+pub use symbol::ProgramSymbolId;
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
 pub use system_model::{
     default_system_models, derive_contract_test_specs, generate_contract_test_harnesses,
@@ -190,8 +191,8 @@ pub use type_op::{
     BaseType, Coercion, ContentEncoding, MetadataPayload, PlatformRepr, Predicate, PredicateValue,
     TypeOp, WrapperKind,
 };
-pub use type_shape::{type_shape, ContainerShape, TypeShape};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
+pub use type_shape::{type_shape, ContainerShape, TypeShape};
 pub use typed_io::{
     typed_input, typed_output, typed_port, AnyTag, CredentialTag, FilePathTag, FilesystemHandleTag,
     ListTag, NetworkHandleTag, NonEmptyListTag, OptionalTag, PlatformTag, PortTypeTag, SecretTag,
@@ -210,7 +211,9 @@ pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
     PortDirection, SubDagError, UnwiredResource,
 };
-pub use value::{SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH};
+pub use value::{
+    SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH,
+};
 pub use value_bridge::{classify_value, from_bridge_json, to_bridge_json, ValueCategory};
 pub use value_expr::ValueExpr;
 pub use workspace_layout::{WorkspaceLayout, WorkspaceLayoutError};

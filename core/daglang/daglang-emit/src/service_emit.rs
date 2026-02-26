@@ -891,11 +891,7 @@ mod tests {
     #[test]
     fn go_rest_parse_bytes_field_uses_type_safe_conversion() {
         let spec = ServiceOperationSpec::Rest(sample_rest_with_bytes_output());
-        let code = emit_go_service_func(
-            "parse_secret_access",
-            ServiceTransportPhase::Parse,
-            &spec,
-        );
+        let code = emit_go_service_func("parse_secret_access", ServiceTransportPhase::Parse, &spec);
         assert!(
             code.contains("Payload []byte"),
             "bytes output field should map to []byte: {code}"
@@ -925,11 +921,8 @@ mod tests {
     #[test]
     fn go_shell_prepare_generates_exec_command() {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
-        let code = emit_go_service_func(
-            "prepare_cargo_build",
-            ServiceTransportPhase::Prepare,
-            &spec,
-        );
+        let code =
+            emit_go_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec);
         assert!(code.contains("*exec.Cmd"), "returns exec.Cmd: {code}");
         assert!(code.contains("exec.Command"), "uses exec.Command");
         assert!(code.contains("\"cargo\""), "has cargo");
@@ -939,11 +932,7 @@ mod tests {
     #[test]
     fn go_shell_parse_success_stdout_stderr() {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
-        let code = emit_go_service_func(
-            "parse_cargo_build",
-            ServiceTransportPhase::Parse,
-            &spec,
-        );
+        let code = emit_go_service_func("parse_cargo_build", ServiceTransportPhase::Parse, &spec);
         assert!(code.contains("Success bool"), "has Success: {code}");
         assert!(code.contains("Stdout string"), "has Stdout");
         assert!(code.contains("Stderr string"), "has Stderr");
@@ -998,11 +987,8 @@ mod tests {
     #[test]
     fn c_shell_prepare_has_argv_comment() {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
-        let code = emit_c_service_func(
-            "prepare_cargo_build",
-            ServiceTransportPhase::Prepare,
-            &spec,
-        );
+        let code =
+            emit_c_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec);
         assert!(code.contains("\"cargo\""), "has cargo in comment: {code}");
         assert!(code.contains("\"build\""), "has build in comment");
     }
@@ -1029,11 +1015,8 @@ mod tests {
     #[test]
     fn mips_shell_prepare_has_argv_comment() {
         let spec = ServiceOperationSpec::Shell(sample_shell_spec());
-        let code = emit_mips_service_func(
-            "prepare_cargo_build",
-            ServiceTransportPhase::Prepare,
-            &spec,
-        );
+        let code =
+            emit_mips_service_func("prepare_cargo_build", ServiceTransportPhase::Prepare, &spec);
         assert!(
             code.contains("prepare shell [cargo build]"),
             "has argv: {code}"
@@ -1044,11 +1027,8 @@ mod tests {
     #[test]
     fn mips_execute_stub_has_description() {
         let spec = ServiceOperationSpec::Rest(sample_rest_spec());
-        let code = emit_mips_service_func(
-            "execute_transport",
-            ServiceTransportPhase::Execute,
-            &spec,
-        );
+        let code =
+            emit_mips_service_func("execute_transport", ServiceTransportPhase::Execute, &spec);
         assert!(
             code.contains("execute transport request"),
             "has description: {code}"

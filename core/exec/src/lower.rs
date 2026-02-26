@@ -262,18 +262,24 @@ fn lower_with_log_detail<T: Clone>(
                             body: sub_node.body.clone(),
                             examples: sub_node.examples.clone(),
                             log_detail: sub_node.log_detail,
+                            kind: sub_node.kind,
                         };
                         result.add_node(prefixed_node);
                     }
 
                     // Add internal edges from the sub-DAG with prefixed node IDs
                     for sub_edge in &lowered_sub.dag.edges {
-                        let prefixed_edge = Edge::new(
-                            format!("{}/{}", node.id.0, sub_edge.from_node.0),
-                            sub_edge.from_port.0.clone(),
-                            format!("{}/{}", node.id.0, sub_edge.to_node.0),
-                            sub_edge.to_port.0.clone(),
-                        );
+                        let prefixed_edge = Edge {
+                            from_node: NodeId::new(format!(
+                                "{}/{}",
+                                node.id.0, sub_edge.from_node.0
+                            )),
+                            from_port: sub_edge.from_port.clone(),
+                            to_node: NodeId::new(format!("{}/{}", node.id.0, sub_edge.to_node.0)),
+                            to_port: sub_edge.to_port.clone(),
+                            index: sub_edge.index,
+                            kind: sub_edge.kind,
+                        };
                         result.add_edge(prefixed_edge);
                     }
 
@@ -304,12 +310,14 @@ fn lower_with_log_detail<T: Clone>(
                     if let Some((inner_node, inner_port)) =
                         mapping.output_mappings.get(&edge.from_port)
                     {
-                        result.add_edge(Edge::new(
-                            inner_node.0.clone(),
-                            inner_port.0.clone(),
-                            edge.to_node.0.clone(),
-                            edge.to_port.0.clone(),
-                        ));
+                        result.add_edge(Edge {
+                            from_node: inner_node.clone(),
+                            from_port: inner_port.clone(),
+                            to_node: edge.to_node.clone(),
+                            to_port: edge.to_port.clone(),
+                            index: edge.index,
+                            kind: edge.kind,
+                        });
                     }
                 }
             }
@@ -320,12 +328,14 @@ fn lower_with_log_detail<T: Clone>(
                     if let Some(targets) = mapping.input_mappings.get(&edge.to_port) {
                         // Fan out to all inner entrypoints with matching name
                         for (inner_node, inner_port) in targets {
-                            result.add_edge(Edge::new(
-                                edge.from_node.0.clone(),
-                                edge.from_port.0.clone(),
-                                inner_node.0.clone(),
-                                inner_port.0.clone(),
-                            ));
+                            result.add_edge(Edge {
+                                from_node: edge.from_node.clone(),
+                                from_port: edge.from_port.clone(),
+                                to_node: inner_node.clone(),
+                                to_port: inner_port.clone(),
+                                index: edge.index,
+                                kind: edge.kind,
+                            });
                         }
                     }
                 }
@@ -342,12 +352,14 @@ fn lower_with_log_detail<T: Clone>(
                     {
                         if let Some(targets) = to_map.input_mappings.get(&edge.to_port) {
                             for (to_inner, to_port) in targets {
-                                result.add_edge(Edge::new(
-                                    from_inner.0.clone(),
-                                    from_port.0.clone(),
-                                    to_inner.0.clone(),
-                                    to_port.0.clone(),
-                                ));
+                                result.add_edge(Edge {
+                                    from_node: from_inner.clone(),
+                                    from_port: from_port.clone(),
+                                    to_node: to_inner.clone(),
+                                    to_port: to_port.clone(),
+                                    index: edge.index,
+                                    kind: edge.kind,
+                                });
                             }
                         }
                     }
@@ -397,6 +409,7 @@ fn apply_log_detail_context<T: Clone>(
             body,
             examples: node.examples.clone(),
             log_detail: effective_node_log_detail,
+            kind: node.kind,
         });
     }
     for edge in &dag.edges {
@@ -430,6 +443,7 @@ fn lower_loop_subdag<T: Clone>(
         body: unpack.body.clone(),
         examples: unpack.examples.clone(),
         log_detail: unpack.log_detail.or(inherited_log_detail),
+        kind: unpack.kind,
     };
     let prefixed_pack = Node {
         id: pack_id.clone(),
@@ -438,6 +452,7 @@ fn lower_loop_subdag<T: Clone>(
         body: pack.body.clone(),
         examples: pack.examples.clone(),
         log_detail: pack.log_detail.or(inherited_log_detail),
+        kind: pack.kind,
     };
 
     let mut flat_dag = Dag::new();
@@ -449,12 +464,14 @@ fn lower_loop_subdag<T: Clone>(
     // with body execution results before pack runs.
     for edge in &inner_dag.edges {
         if edge.from_node.0 == "unpack" && edge.to_node.0 == "pack" {
-            flat_dag.add_edge(Edge::new(
-                unpack_id.0.clone(),
-                edge.from_port.0.clone(),
-                pack_id.0.clone(),
-                edge.to_port.0.clone(),
-            ));
+            flat_dag.add_edge(Edge {
+                from_node: unpack_id.clone(),
+                from_port: edge.from_port.clone(),
+                to_node: pack_id.clone(),
+                to_port: edge.to_port.clone(),
+                index: edge.index,
+                kind: edge.kind,
+            });
         }
     }
     // Direct element→result edge: unpack's element output feeds pack's result input.

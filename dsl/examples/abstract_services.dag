@@ -38,22 +38,17 @@ import std.types { FilePath }
 
 interface Storage {
   operation Get(key: String) -> { value: Bytes?, found: Bool }
-    @idempotent @readonly
 
   operation Put(key: String, value: Bytes) -> { ok: Bool }
 
   operation Delete(key: String) -> { ok: Bool }
 
   operation List(prefix: String) -> { keys: List<String> }
-    @idempotent @readonly
 
   // Behavioral contracts -- the compiler uses these for:
   //   1. Test generation (verify implementations obey the contract)
   //   2. Static analysis (reason about program behavior)
   //   3. Documentation
-  @contract: Get(k) after Put(k, v) => { value: v, found: true }
-  @contract: Get(k) after Delete(k) => { found: false }
-  @contract: List(p) after Put(p + "/x", v) => keys contains p + "/x"
 }
 
 // --- LLM interface -------------------------------------------------------
@@ -78,11 +73,8 @@ interface LLM {
   ) -> { content: String, usage: Usage }
 
   operation Embed(text: String) -> { embedding: List<Float>, dimensions: Int }
-    @idempotent @readonly
 
   // Contracts
-  @contract: Complete(msgs).content is non-empty when msgs is non-empty
-  @contract: Embed(t).dimensions == Embed(t2).dimensions  // consistent dimensionality
 }
 
 // --- Queue interface -----------------------------------------------------
@@ -99,7 +91,6 @@ interface AbstractQueue<T> {
 
 interface DurableStorage : Storage {
   operation Snapshot(key: String) -> { version: String }
-    @idempotent @readonly
 
   operation Restore(key: String, version: String) -> { ok: Bool }
 }
@@ -118,8 +109,6 @@ interface DurableStorage : Storage {
 // --- GCS implements Storage ----------------------------------------------
 
 service gcs.Storage : Storage {
-  @endpoint("https://storage.googleapis.com/storage/v1")
-  @auth(BearerToken)
 
   config {
     bucket: String          // bound at deploy time
@@ -129,33 +118,27 @@ service gcs.Storage : Storage {
   operation Get {
     input { key: String }
     output { value: Bytes?, found: Bool }
-    @rest(GET, "/b/{config.bucket}/o/{key}?alt=media")
   }
 
   operation Put {
     input { key: String, value: Bytes }
     output { ok: Bool }
-    @rest(POST, "/upload/storage/v1/b/{config.bucket}/o?name={key}")
   }
 
   operation Delete {
     input { key: String }
     output { ok: Bool }
-    @rest(DELETE, "/b/{config.bucket}/o/{key}")
   }
 
   operation List {
     input { prefix: String }
     output { keys: List<String> }
-    @rest(GET, "/b/{config.bucket}/o?prefix={prefix}")
   }
 }
 
 // --- S3 implements Storage -----------------------------------------------
 
 service aws.S3 : Storage {
-  @endpoint("https://{config.bucket}.s3.{config.region}.amazonaws.com")
-  @auth(AwsSigV4)
 
   config {
     bucket: String
@@ -165,25 +148,21 @@ service aws.S3 : Storage {
   operation Get {
     input { key: String }
     output { value: Bytes?, found: Bool }
-    @rest(GET, "/{key}")
   }
 
   operation Put {
     input { key: String, value: Bytes }
     output { ok: Bool }
-    @rest(PUT, "/{key}")
   }
 
   operation Delete {
     input { key: String }
     output { ok: Bool }
-    @rest(DELETE, "/{key}")
   }
 
   operation List {
     input { prefix: String }
     output { keys: List<String> }
-    @rest(GET, "/?prefix={prefix}")
   }
 }
 
@@ -198,38 +177,27 @@ service local.FileStore : Storage {
   operation Get {
     input { key: String }
     output { value: Bytes?, found: Bool }
-    @shell(["cat", "{config.base_dir}/{key}"])
-    @hermetic
   }
 
   operation Put {
     input { key: String, value: Bytes }
     output { ok: Bool }
-    @shell(["mkdir", "-p", "$(dirname {config.base_dir}/{key})", "&&",
-            "tee", "{config.base_dir}/{key}"])
-    @hermetic
   }
 
   operation Delete {
     input { key: String }
     output { ok: Bool }
-    @shell(["rm", "-f", "{config.base_dir}/{key}"])
-    @hermetic
   }
 
   operation List {
     input { prefix: String }
     output { keys: List<String> }
-    @shell(["find", "{config.base_dir}/{prefix}", "-type", "f"])
-    @hermetic
   }
 }
 
 // --- OpenAI implements LLM -----------------------------------------------
 
 service openai.ChatGPT : LLM {
-  @endpoint("https://api.openai.com/v1")
-  @auth(BearerToken)
 
   config {
     model: String = "gpt-4"
@@ -243,28 +211,17 @@ service openai.ChatGPT : LLM {
       max_tokens: Int?
     }
     output { content: String, usage: Usage }
-    @rest(POST, "/chat/completions")
-    @mock_response(
-      status: 200,
-      body: {
-        "choices": [{"message": {"content": "Mock review"}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-      }
-    )
   }
 
   operation Embed {
     input { text: String }
     output { embedding: List<Float>, dimensions: Int }
-    @rest(POST, "/embeddings")
   }
 }
 
 // --- Vertex AI implements LLM --------------------------------------------
 
 service gcp.VertexAI : LLM {
-  @endpoint("https://{config.region}-aiplatform.googleapis.com/v1")
-  @auth(BearerToken)
 
   config {
     project_id: String
@@ -279,13 +236,11 @@ service gcp.VertexAI : LLM {
       max_tokens: Int?
     }
     output { content: String, usage: Usage }
-    @rest(POST, "/projects/{config.project}/locations/{config.region}/publishers/google/models/{config.model}:generateContent")
   }
 
   operation Embed {
     input { text: String }
     output { embedding: List<Float>, dimensions: Int }
-    @rest(POST, "/projects/{config.project}/locations/{config.region}/publishers/google/models/textembedding-gecko:predict")
   }
 }
 
