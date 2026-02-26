@@ -5,6 +5,7 @@
 module services.github.gist
 
 service github.Gist {
+  config { endpoint: "https://api.github.com", auth: BearerToken }
 
   operation Create {
     input {
@@ -17,5 +18,6 @@ service github.Gist {
       id: GistId
       html_url: Url
     }
+    transport rest { method: POST, path: "/gists" }
   }
 }

@@ -6,6 +6,7 @@
 module services.llm.anthropic
 
 service llm.Anthropic {
+  config { endpoint: "https://api.anthropic.com", auth: Header("x-api-key") }
 
   operation Messages {
     input {
@@ -22,5 +23,6 @@ service llm.Anthropic {
       input_tokens: Int from "usage/input_tokens"
       output_tokens: Int from "usage/output_tokens"
     }
+    transport rest { method: POST, path: "/v1/messages" }
   }
 }

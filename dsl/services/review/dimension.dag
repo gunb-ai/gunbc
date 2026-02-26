@@ -24,6 +24,7 @@ service review.Dimension {
       question: String
       system_prompt: String
     }
+    transport local {}
   }
 
   operation ParseDimensionResponse {
@@ -36,6 +37,7 @@ service review.Dimension {
       output: Json
       errors: Json
     }
+    transport local {}
   }
 
   operation FormatDiffArtifact {
@@ -45,6 +47,7 @@ service review.Dimension {
     output {
       artifact: String
     }
+    transport local {}
   }
 
   operation FormatPriorFindings {
@@ -56,6 +59,7 @@ service review.Dimension {
     output {
       prior_findings: String
     }
+    transport local {}
   }
 
   operation MergeDimensionOutputs {
@@ -69,5 +73,6 @@ service review.Dimension {
       output: Json
       summary: String
     }
+    transport local {}
   }
 }
