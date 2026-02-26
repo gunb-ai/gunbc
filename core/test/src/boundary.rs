@@ -11,7 +11,7 @@
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"
 
 use gunbc_exec::{execute_with_mode, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
-use gunbc_ir::{Dag, Value};
+use gunbc_ir::{Dag, NodeKind, Value};
 
 /// Result of a transport interception test.
 #[derive(Debug)]
@@ -32,16 +32,10 @@ impl BoundaryTestResult {
 }
 
 /// Find all transport executor nodes in a DAG.
-///
-/// A transport executor node is one that has an input with type "TransportRequest".
 fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
     dag.nodes
         .iter()
-        .filter(|node| {
-            node.inputs
-                .iter()
-                .any(|port| port.type_id.0 == "TransportRequest")
-        })
+        .filter(|node| node.kind == Some(NodeKind::TransportExecute))
         .map(|node| node.id.0.clone())
         .collect()
 }
@@ -147,21 +141,24 @@ mod tests {
     use super::*;
     use crate::mock::MockOp;
     use gunbc_ir::build::*;
-    use gunbc_ir::Node;
+    use gunbc_ir::{Node, NodeKind};
 
     #[test]
     fn test_transport_executor_mockable_passes() {
         // A transport executor node has TransportRequest input
         let mut dag: Dag<MockOp> = Dag::new();
-        dag.add_node(Node::opaque(
-            "execute_transport",
-            vec![port("request", "TransportRequest")], // This makes it a transport executor
-            vec![port("response", "TransportResponse")],
-            MockOp::new(
+        dag.add_node(
+            Node::opaque(
                 "execute_transport",
-                [("response", Value::Str("real".to_string()))],
-            ),
-        ));
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                MockOp::new(
+                    "execute_transport",
+                    [("response", Value::Str("real".to_string()))],
+                ),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
 
         let result = assert_boundary_mockable(
             &dag,
@@ -177,14 +174,17 @@ mod tests {
 
     #[test]
     fn test_no_transport_executors_succeeds() {
-        // DAG with no transport executor nodes (no TransportRequest inputs)
+        // DAG with no transport executor nodes
         let mut dag: Dag<MockOp> = Dag::new();
-        dag.add_node(Node::opaque(
-            "pure_node",
-            vec![port("input", "String")],
-            vec![port("output", "String")],
-            MockOp::new("pure_node", [("output", Value::Str("result".to_string()))]),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "pure_node",
+                vec![port("input", "String")],
+                vec![port("output", "String")],
+                MockOp::new("pure_node", [("output", Value::Str("result".to_string()))]),
+            )
+            .with_kind(NodeKind::Pure),
+        );
 
         let result = assert_boundary_mockable(&dag, BoundaryMocks::new());
         assert!(result.is_ok());

@@ -555,6 +555,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -587,6 +588,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -619,6 +621,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -653,6 +656,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -688,6 +692,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -801,6 +806,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -846,6 +852,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -878,6 +885,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -917,6 +925,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
+            kind: None,
         };
 
         let mut dag: Dag<()> = Dag::new();

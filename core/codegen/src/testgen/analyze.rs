@@ -7,7 +7,7 @@
 //!    produce tests.
 
 use gunbc_ir::resource::ResourceAccess;
-use gunbc_ir::{detect_boundaries, BoundaryInfo, Cardinality, Dag, TypeId, TypeRegistry};
+use gunbc_ir::{detect_boundaries, BoundaryInfo, Cardinality, Dag, NodeKind, TypeId, TypeRegistry};
 
 use crate::testgen::cardinality::fermi_test_cases;
 use crate::testgen::obligation::{collect_obligations, ObligationSet};
@@ -113,20 +113,20 @@ pub fn analyze_dag_with_obligations<T>(
     (analysis, obligations)
 }
 
-/// Find transport executor nodes (consume TransportRequest).
+/// Find transport executor nodes.
 fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
     dag.nodes
         .iter()
-        .filter(|n| n.inputs.iter().any(|p| p.type_id.0 == "TransportRequest"))
+        .filter(|n| n.kind == Some(NodeKind::TransportExecute))
         .map(|n| n.id.0.clone())
         .collect()
 }
 
-/// Find tool environment nodes (emit ToolHandle).
+/// Find tool environment nodes.
 fn find_tool_env_nodes<T>(dag: &Dag<T>) -> Vec<String> {
     dag.nodes
         .iter()
-        .filter(|n| n.outputs.iter().any(|p| p.type_id.0 == "ToolHandle"))
+        .filter(|n| n.kind == Some(NodeKind::ToolEnvironment))
         .map(|n| n.id.0.clone())
         .collect()
 }
@@ -164,10 +164,11 @@ fn find_pure_nodes<T>(
         .filter(|n| {
             let id = &n.id.0;
             // SubDag nodes are composite — not pure opaque nodes.
+            let is_tool_consumer = n.kind == Some(NodeKind::ToolConsumer);
             n.is_opaque()
                 && !transport_executors.contains(id)
                 && !tool_env_nodes.contains(id)
-                && !n.inputs.iter().any(|p| p.type_id.0 == "ToolHandle")
+                && !is_tool_consumer
         })
         .map(|n| n.id.0.clone())
         .collect()
@@ -239,18 +240,21 @@ fn types_compatible(from: &TypeId, to: &TypeId, registry: &TypeRegistry) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{build::*, Dag, Node};
+    use gunbc_ir::{build::*, Dag, Node, NodeKind};
 
     #[test]
     fn test_analyze_simple_dag() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("A", vec![], vec![port("out", "String")], ()));
-        dag.add_node(Node::opaque(
-            "B",
-            vec![port("in", "String")],
-            vec![port("out", "String")],
-            (),
-        ));
+        dag.add_node(Node::opaque("A", vec![], vec![port("out", "String")], ()).with_kind(NodeKind::Pure));
+        dag.add_node(
+            Node::opaque(
+                "B",
+                vec![port("in", "String")],
+                vec![port("out", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("A", "out", "B", "in"));
 
         let analysis = analyze_dag(&dag);
@@ -264,18 +268,24 @@ mod tests {
     #[test]
     fn test_analyze_transport_detection() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![],
-            vec![port("request", "TransportRequest")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![],
+                vec![port("request", "TransportRequest")],
+                (),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
         dag.add_edge(edge("prepare", "request", "execute", "request"));
 
         let analysis = analyze_dag(&dag);
@@ -288,18 +298,24 @@ mod tests {
     #[test]
     fn test_analyze_tool_env_detection() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "env",
-            vec![],
-            vec![port("tool:clippy", "ToolHandle")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "lint",
-            vec![port("tool:clippy", "ToolHandle")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "env",
+                vec![],
+                vec![port("tool:clippy", "ToolHandle")],
+                (),
+            )
+            .with_kind(NodeKind::ToolEnvironment),
+        );
+        dag.add_node(
+            Node::opaque(
+                "lint",
+                vec![port("tool:clippy", "ToolHandle")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::ToolConsumer),
+        );
         dag.add_edge(edge("env", "tool:clippy", "lint", "tool:clippy"));
 
         let analysis = analyze_dag(&dag);
@@ -312,18 +328,24 @@ mod tests {
     #[test]
     fn test_analyze_credential_detection() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "cloud_credential",
-            vec![],
-            vec![port("credential", "Credential")],
-            (),
-        ));
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("credential", "Credential")],
-            vec![port("response", "String")],
-            (),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "cloud_credential",
+                vec![],
+                vec![port("credential", "Credential")],
+                (),
+            )
+            .with_kind(NodeKind::ResourceEnvironment),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("credential", "Credential")],
+                vec![port("response", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge(
             "cloud_credential",
             "credential",
@@ -339,13 +361,16 @@ mod tests {
     #[test]
     fn test_analyze_with_obligations() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("a", vec![], vec![port("out", "String")], ()));
-        dag.add_node(Node::opaque(
-            "b",
-            vec![port("in", "String")],
-            vec![port("result", "String")],
-            (),
-        ));
+        dag.add_node(Node::opaque("a", vec![], vec![port("out", "String")], ()).with_kind(NodeKind::Pure));
+        dag.add_node(
+            Node::opaque(
+                "b",
+                vec![port("in", "String")],
+                vec![port("result", "String")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
         dag.add_edge(edge("a", "out", "b", "in"));
 
         let registry = TypeRegistry::with_core_types();

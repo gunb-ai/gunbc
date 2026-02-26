@@ -13,17 +13,12 @@
 //! > "World I/O is performed only by transport executor nodes"
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"
 //!
-//! A node is considered a transport executor if:
-//! - It has an input port with type `TransportRequest`
-//!
-//! A node is considered a tool environment node if:
-//! - It has an output port with type `ToolHandle`
-//!
-//! A node is considered a resource environment node if:
-//! - It has an output port with type `FilesystemHandle`, `NetworkHandle`, `Timestamp`, `Credential`, or `Platform`
-//!
-//! A node is considered a tool consumer node if:
-//! - It has an input port with type `ToolHandle`
+//! Interception is driven by `NodeKind` (set by the lowerer's
+//! `stamp_node_kinds`). The executor does **not** fall back to port-type
+//! heuristics — nodes with `kind: None` are treated as pure. A pre-flight
+//! check (`validate_node_kinds_for_interception`) errors if any `kind: None`
+//! node has port patterns that indicate it should have been classified.
+//! Hand-built DAGs must call `Node::with_kind()` to set the kind explicitly.
 //!
 //! Boundary detection (`BoundaryInfo`) is still used for signature inference
 //! and workflow interface detection, but NOT for DryRun interception.
@@ -38,7 +33,7 @@ use gunbc_ir::transport::{FileOp, TransportResponse};
 use gunbc_ir::{
     canonical_edge_order, classify_coercion, detect_boundaries, detect_entrypoints,
     normalize_resource_id, AccessMode, AppliedCoercion, BoundaryInfo, Cardinality, Dag,
-    LogDetailLevel, Node, NodeBody, NodeId, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
+    LogDetailLevel, Node, NodeBody, NodeId, NodeKind, Value, RESOURCE_FILE, RESOURCE_FILE_PREFIX,
 };
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -456,6 +451,10 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
     // Lower sub-DAGs first (in case the target node is inside a sub-DAG)
     let lowered = lower(dag).exec_context("lowering failed")?;
 
+    if matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_)) {
+        validate_node_kinds_for_interception(&lowered.dag)?;
+    }
+
     // Find the node
     let node = lowered
         .dag
@@ -464,22 +463,8 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
         .find(|n| n.id.0 == node_id)
         .ok_or_else(|| ExecError::new(format!("node '{}' not found in DAG", node_id)))?;
 
-    // Check if this is a transport execution node for interception
-    let is_transport_executor = is_transport_execution_node(node);
-    let is_tool_env = is_tool_env_node(node);
-    let is_resource_env = is_resource_env_node(node);
-    let is_tool_consumer = consumes_tool_handle(node);
-    let has_full_mock = match &mode {
-        ExecutionMode::DryRun(m) => has_full_mock_for_node(node, m),
-        ExecutionMode::Simulate(config) => has_full_mock_for_node(node, &config.boundary_mocks),
-        _ => false,
-    };
-    let should_intercept = (is_transport_executor
-        || is_tool_env
-        || is_resource_env
-        || is_tool_consumer
-        || has_full_mock)
-        && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+    // Check if this node should be intercepted in DryRun/Simulate mode
+    let should_intercept = should_intercept_for_mode(node, &mode);
 
     if should_intercept {
         // Intercept: use mock values for boundary outputs
@@ -628,6 +613,9 @@ fn execute_flat<T: Executable + Clone + Send>(
     loops: &[LoopInfo<T>],
     log_detail: LogDetailLevel,
 ) -> Result<ExecutionLog, ExecError> {
+    if matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_)) {
+        validate_node_kinds_for_interception(dag)?;
+    }
     let sequential = observer.as_ref().is_some_and(|o| o.requires_sequential());
     if sequential {
         execute_flat_sequential(
@@ -1235,17 +1223,13 @@ fn enforce_runtime_file_guard<T>(
 }
 
 fn should_intercept_for_mode<T>(node: &Node<T>, mode: &ExecutionMode) -> bool {
-    let is_transport_executor = is_transport_execution_node(node);
-    let is_tool_env = is_tool_env_node(node);
-    let is_resource_env = is_resource_env_node(node);
-    let is_tool_consumer = consumes_tool_handle(node);
     let has_full_mock = match mode {
         ExecutionMode::DryRun(mocks) => has_full_mock_for_node(node, mocks),
         ExecutionMode::Simulate(config) => has_full_mock_for_node(node, &config.boundary_mocks),
         ExecutionMode::Real => false,
     };
 
-    (is_transport_executor || is_tool_env || is_resource_env || is_tool_consumer || has_full_mock)
+    (should_intercept_by_kind(node) || has_full_mock)
         && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
 }
 
@@ -1881,7 +1865,7 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
 
     let mut augmented = existing.clone();
     for node in &body_dag.nodes {
-        if is_transport_execution_node(node) {
+        if node.kind == Some(NodeKind::TransportExecute) {
             // Only add default mocks for outputs that don't already have one
             for port in &node.outputs {
                 if !existing.has_mock(&node.id, &port.name) {
@@ -2052,71 +2036,96 @@ fn has_full_mock_for_node<T>(node: &Node<T>, mocks: &BoundaryMocks) -> bool {
         .all(|port| mocks.has_mock(&node.id, &port.name))
 }
 
-/// Check if a node is a transport execution node.
+/// Check whether a node should be intercepted in DryRun/Simulate mode
+/// based on its structural kind.
 ///
-/// A transport execution node is one that consumes `TransportRequest` values.
-/// These are the only nodes where actual I/O happens, and therefore the only
-/// nodes that should be intercepted in DryRun mode.
-///
-/// This is a structural check based on port types, aligning with the design
-/// principle: "impossibility by structure" - if a node doesn't consume a
-/// TransportRequest, it can't perform transport I/O.
-fn is_transport_execution_node<T>(node: &Node<T>) -> bool {
-    node.inputs
-        .iter()
-        .any(|port| port.type_id.0 == "TransportRequest")
+/// Only nodes with an explicit effectful `NodeKind` are intercepted.
+/// Nodes with `kind: None` are **not** intercepted — callers must ensure
+/// all effectful nodes have `kind` set before execution. See
+/// [`validate_node_kinds_for_interception`] for the pre-flight check.
+fn should_intercept_by_kind<T>(node: &Node<T>) -> bool {
+    matches!(
+        node.kind,
+        Some(
+            NodeKind::TransportExecute
+                | NodeKind::ToolEnvironment
+                | NodeKind::ToolConsumer
+                | NodeKind::ResourceEnvironment
+                | NodeKind::ResourceAcquire
+        )
+    )
 }
 
-/// Check if a node is a tool environment boundary.
+/// Port-level heuristic: does this node look effectful despite `kind: None`?
 ///
-/// Tool environment nodes emit `ToolHandle` outputs and are intercepted in DryRun.
-fn is_tool_env_node<T>(node: &Node<T>) -> bool {
-    node.outputs
-        .iter()
-        .any(|port| port.type_id.0 == "ToolHandle")
-}
-
-/// Check if a node is a non-tool resource environment boundary.
-///
-/// These emit resource values like FilesystemHandle, Timestamp, Credential, Platform.
-fn is_resource_env_node<T>(node: &Node<T>) -> bool {
-    node.outputs.iter().any(|port| {
-        matches!(
-            port.type_id.0.as_str(),
+/// Returns a human-readable reason string if the node has port patterns that
+/// indicate it should have been classified (transport request inputs,
+/// tool handle ports, resource ports).
+fn looks_effectful_without_kind<T>(node: &Node<T>) -> Option<&'static str> {
+    for p in &node.inputs {
+        if p.type_id.0 == "TransportRequest" {
+            return Some("has TransportRequest input (transport executor)");
+        }
+        if p.type_id.0 == "ToolHandle" {
+            return Some("has ToolHandle input (tool consumer)");
+        }
+        if p.name.0.starts_with("res:") {
+            return Some("has res:* input port (resource consumer)");
+        }
+    }
+    for p in &node.outputs {
+        if p.type_id.0 == "ToolHandle" {
+            return Some("has ToolHandle output (tool environment)");
+        }
+        if matches!(
+            p.type_id.0.as_str(),
             "FilesystemHandle"
                 | "NetworkHandle"
                 | "Timestamp"
                 | "Credential"
                 | "Platform"
-                | "CloudSecretConfig"
-        )
-    })
+        ) {
+            return Some("has resource-environment output");
+        }
+    }
+    None
 }
 
-/// Check if a node consumes a ToolHandle input.
+/// Pre-flight check: error if any node with `kind: None` has effectful port patterns.
 ///
-/// Nodes that consume ToolHandles (like CLI tool runners) should be intercepted
-/// in DryRun mode because they would otherwise try to execute with a mock path.
-fn consumes_tool_handle<T>(node: &Node<T>) -> bool {
-    node.inputs
-        .iter()
-        .any(|port| port.type_id.0 == "ToolHandle")
+/// Called before DryRun/Simulate execution to ensure no effectful node slips
+/// through interception due to a missing `NodeKind`. This enforces the
+/// "no silent fallback" invariant — either the lowerer stamps `kind`, or
+/// the hand-built DAG sets it explicitly via [`Node::with_kind`].
+fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError> {
+    for node in &dag.nodes {
+        if node.kind.is_some() {
+            continue;
+        }
+        if let Some(reason) = looks_effectful_without_kind(node) {
+            return Err(ExecError::new(format!(
+                "node '{}' has kind: None but {reason}. \
+                 Set NodeKind via Node::with_kind() or the lowerer's stamp_node_kinds() \
+                 so DryRun/Simulate can intercept it correctly.",
+                node.id.0,
+            )));
+        }
+    }
+    Ok(())
 }
 
-/// Classify a node's structural role from its port types.
-///
-/// This is the single function that maps port-type facts to [`NodeRole`].
-/// It uses the same structural checks as the DryRun interception logic,
-/// ensuring consistent classification everywhere.
+/// Classify a node's structural role for error reporting.
 fn classify_node_role<T>(node: &Node<T>) -> NodeRole {
-    if is_transport_execution_node(node) {
-        NodeRole::TransportExecutor
-    } else if consumes_tool_handle(node) {
-        NodeRole::ToolConsumer
-    } else if is_tool_env_node(node) || is_resource_env_node(node) {
-        NodeRole::ResourceProvider
-    } else {
-        NodeRole::Pure
+    match node.kind {
+        Some(NodeKind::TransportExecute) => NodeRole::TransportExecutor,
+        Some(NodeKind::ToolConsumer) => NodeRole::ToolConsumer,
+        Some(
+            NodeKind::ToolEnvironment
+            | NodeKind::ResourceEnvironment
+            | NodeKind::ResourceAcquire
+            | NodeKind::ResourceRelease,
+        ) => NodeRole::ResourceProvider,
+        _ => NodeRole::Pure,
     }
 }
 
@@ -2764,13 +2773,16 @@ mod tests {
     fn test_dry_run_intercepts_transport_executor() {
         // A transport executor node consumes TransportRequest
         let mut dag: Dag<Produce> = Dag::new();
-        dag.add_node(Node::opaque(
-            "execute_transport",
-            // This input marks it as a transport executor - will be intercepted
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            TestOp::produce("response", Value::Str("real-response".to_string())),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "execute_transport",
+                // This input marks it as a transport executor - will be intercepted
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                TestOp::produce("response", Value::Str("real-response".to_string())),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
 
         // In dry-run mode, transport executor nodes should be intercepted
         let mut mocks = BoundaryMocks::new();
@@ -2817,20 +2829,26 @@ mod tests {
         let mut dag: Dag<Produce> = Dag::new();
 
         // Pure node - prepares a request but doesn't execute it
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![port("content", "String")],
-            vec![port("request", "TransportRequest")],
-            TestOp::produce("request", Value::Str("prepared-request".to_string())),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![port("content", "String")],
+                vec![port("request", "TransportRequest")],
+                TestOp::produce("request", Value::Str("prepared-request".to_string())),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
 
         // Transport executor - consumes the request (will be intercepted)
-        dag.add_node(Node::opaque(
-            "execute",
-            vec![port("request", "TransportRequest")], // This makes it a transport executor
-            vec![port("response", "TransportResponse")],
-            TestOp::produce("response", Value::Str("real-response".to_string())),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "execute",
+                vec![port("request", "TransportRequest")], // This makes it a transport executor
+                vec![port("response", "TransportResponse")],
+                TestOp::produce("response", Value::Str("real-response".to_string())),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
         dag.add_edge(edge("prepare", "request", "execute", "request"));
 
         let mut mocks = BoundaryMocks::new();
@@ -2885,12 +2903,15 @@ mod tests {
     fn test_simulate_with_mocks() {
         // Transport executor node (consumes TransportRequest) should be intercepted in simulation
         let mut dag: Dag<Produce> = Dag::new();
-        dag.add_node(Node::opaque(
-            "transport_node",
-            vec![port("request", "TransportRequest")], // Makes it a transport executor
-            vec![port("result", "String")],
-            TestOp::produce("result", Value::Str("real-value".to_string())),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "transport_node",
+                vec![port("request", "TransportRequest")], // Makes it a transport executor
+                vec![port("result", "String")],
+                TestOp::produce("result", Value::Str("real-value".to_string())),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
 
         let mut mocks = BoundaryMocks::new();
         mocks.set_value(
@@ -3722,18 +3743,24 @@ mod tests {
     fn test_input_mocks_with_dry_run_mode() {
         // Combine input mocks with DryRun boundary interception
         let mut dag: Dag<TestOp> = Dag::new();
-        dag.add_node(Node::opaque(
-            "prepare",
-            vec![port("arg", "String")],
-            vec![port("request", "TransportRequest")],
-            TestOp::produce("request", Value::Str("built-request".into())),
-        ));
-        dag.add_node(Node::opaque(
-            "execute_http",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            TestOp::produce("response", Value::Str("real-response".into())),
-        ));
+        dag.add_node(
+            Node::opaque(
+                "prepare",
+                vec![port("arg", "String")],
+                vec![port("request", "TransportRequest")],
+                TestOp::produce("request", Value::Str("built-request".into())),
+            )
+            .with_kind(NodeKind::TransportPrepare),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute_http",
+                vec![port("request", "TransportRequest")],
+                vec![port("response", "TransportResponse")],
+                TestOp::produce("response", Value::Str("real-response".into())),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
         dag.add_edge(edge("prepare", "request", "execute_http", "request"));
 
         // DryRun mocks intercept the transport executor
@@ -4206,5 +4233,107 @@ mod tests {
             "expected OptionalToList, got {:?}",
             b_entry.coercions_applied[0].kind
         );
+    }
+
+    #[test]
+    fn validate_node_kinds_rejects_kindless_transport_node() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transport",
+            vec![port("req", "TransportRequest")],
+            vec![port("resp", "TransportResponse")],
+            Produce::produce("resp", Value::Str("ok".into())),
+        ));
+        let err = validate_node_kinds_for_interception(&dag);
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("transport"), "expected transport mention: {msg}");
+        assert!(msg.contains("kind: None"), "expected kind: None mention: {msg}");
+    }
+
+    #[test]
+    fn validate_node_kinds_rejects_kindless_tool_consumer() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![port("tool:clippy", "ToolHandle")],
+            vec![port("result", "String")],
+            Produce::produce("result", Value::Str("clean".into())),
+        ));
+        let err = validate_node_kinds_for_interception(&dag);
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("ToolHandle input"));
+    }
+
+    #[test]
+    fn validate_node_kinds_rejects_kindless_tool_environment() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(Node::opaque(
+            "env",
+            vec![],
+            vec![port("tool:clippy", "ToolHandle")],
+            Produce::produce("tool:clippy", Value::Str("handle".into())),
+        ));
+        let err = validate_node_kinds_for_interception(&dag);
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("ToolHandle output"));
+    }
+
+    #[test]
+    fn validate_node_kinds_rejects_kindless_resource_environment() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![port("handle", "FilesystemHandle")],
+            Produce::produce("handle", Value::Str("fs".into())),
+        ));
+        let err = validate_node_kinds_for_interception(&dag);
+        assert!(err.is_err());
+        assert!(err.unwrap_err().to_string().contains("resource-environment"));
+    }
+
+    #[test]
+    fn validate_node_kinds_accepts_pure_kindless_node() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(Node::opaque(
+            "pure",
+            vec![port("input", "String")],
+            vec![port("output", "String")],
+            Produce::produce("output", Value::Str("ok".into())),
+        ));
+        let result = validate_node_kinds_for_interception(&dag);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_node_kinds_accepts_classified_transport_node() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "transport",
+                vec![port("req", "TransportRequest")],
+                vec![port("resp", "TransportResponse")],
+                Produce::produce("resp", Value::Str("ok".into())),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        let result = validate_node_kinds_for_interception(&dag);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn dry_run_rejects_kindless_effectful_node() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transport",
+            vec![port("req", "TransportRequest")],
+            vec![port("resp", "TransportResponse")],
+            Produce::produce("resp", Value::Str("ok".into())),
+        ));
+        let mocks = BoundaryMocks::new();
+        let result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("kind: None"));
     }
 }
