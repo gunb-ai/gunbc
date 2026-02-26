@@ -135,7 +135,7 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     writeln!(out, "use gunbc_ir::transport::{{RestResponse, ShellResponse, FileResponse, FileOp, TransportResponse}};").unwrap();
     writeln!(out).unwrap();
 
-    // Filter out tests marked with @testgen_skip(true).
+    // Filter out tests marked with `skip`.
     let active_tests: Vec<&TestDef> = test_file
         .tests
         .iter()
@@ -948,7 +948,7 @@ test another_normal {
         );
         assert!(
             !output.contains("skipped_test_mock_spec"),
-            "@testgen_skip(true) test should be excluded"
+            "skip-marked test should be excluded"
         );
         assert!(
             output.contains("another_normal_mock_spec"),

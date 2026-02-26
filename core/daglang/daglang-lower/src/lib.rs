@@ -8865,7 +8865,7 @@ service FsStorage implements Storage {
     }
 
     #[test]
-    fn shell_parse_annotation_overrides_inferred_parse_mode() {
+    fn shell_explicit_parse_mode_overrides_inferred() {
         // After annotation removal, parse mode is inferred from output types.
         // List<String> output infers SplitLines.
         let typed = typed_project_from_sources(&[(
@@ -8890,7 +8890,7 @@ func run() -> { lines: List<String> } {
     }
 
     #[test]
-    fn shell_parse_annotation_prefers_operation_over_service() {
+    fn shell_explicit_parse_mode_prefers_operation_over_service() {
         // After annotation removal, parse mode is inferred from output types.
         // Single Bool output infers ExitCodeBool.
         let typed = typed_project_from_sources(&[(
@@ -10092,7 +10092,7 @@ func cross_provider_auth() -> { ok: Bool } {
             .expect("infra.core.ObjectStorage interface should exist");
         assert!(
             object_storage_contracts > 0,
-            "infra.core.ObjectStorage should carry @contract annotations"
+            "infra.core.ObjectStorage should carry typed contract declarations"
         );
         let dag = lower_target_module(&typed, "infra.aws.resources");
 
