@@ -74,6 +74,22 @@ impl TransportBackend for GistRecentBackend {
 }
 
 #[test]
+fn gist_recent_graph_no_ls_files() {
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+        .expect("gist-recent graph should build");
+    let ls_files_nodes: Vec<&str> = dag
+        .nodes
+        .iter()
+        .filter(|n| n.id.0.contains("LsFiles"))
+        .map(|n| n.id.0.as_str())
+        .collect();
+    assert!(
+        ls_files_nodes.is_empty(),
+        "gist_recent graph should NOT contain LsFiles nodes (cross-callable leakage): {ls_files_nodes:?}"
+    );
+}
+
+#[test]
 fn gist_recent_graph_wires_diff_base_input() {
     let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent").expect("gist-recent graph should build");
     let lowered = lower(&dag).expect("lowered gist-recent");

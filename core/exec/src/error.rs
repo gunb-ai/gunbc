@@ -12,6 +12,13 @@ use std::fmt;
 // ---------------------------------------------------------------------------
 
 /// A single layer in the error's diagnostic stack.
+///
+/// **Domain layers** (Http, Rest, Auth, Service, Shell, File) are pushed by
+/// individual ops that understand their transport/protocol context.
+///
+/// **NodeTrace** is pushed automatically by the executor for every node
+/// failure — like a stack frame, it records which node was executing when
+/// the error occurred. This is structural: no hand-wiring needed per op.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrorLayer {
     Http(HttpErrorLayer),
@@ -20,6 +27,8 @@ pub enum ErrorLayer {
     Service(ServiceErrorLayer),
     Shell(ShellErrorLayer),
     File(FileErrorLayer),
+    /// Automatically pushed by the executor — identifies the failing node.
+    NodeTrace(NodeTraceLayer),
 }
 
 /// HTTP-level failure information.
@@ -64,6 +73,35 @@ pub struct FileErrorLayer {
     pub operation: String,
 }
 
+/// Execution trace — automatically pushed by the executor for every node failure.
+///
+/// Like a stack frame: records which node was executing when the error occurred.
+/// For nested execution (loop bodies), multiple NodeTrace layers form a trace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeTraceLayer {
+    /// The internal node ID (e.g., "parse_transport_services_github_gist_github_Gist_Create").
+    pub node_id: String,
+    /// Structural role inferred from the node's port types (not from string parsing).
+    pub role: NodeRole,
+}
+
+/// Structural role of a node, inferred from its port types.
+///
+/// This classification comes from the node's actual ports, not from naming
+/// conventions. Adding a new node type with `TransportRequest` inputs
+/// automatically classifies it as `TransportExecutor` — no hand-wiring.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeRole {
+    /// Node consumes `TransportRequest` — performs actual I/O.
+    TransportExecutor,
+    /// Node emits `ToolHandle`, `FilesystemHandle`, etc. — environment provider.
+    ResourceProvider,
+    /// Node consumes `ToolHandle` — tool runner.
+    ToolConsumer,
+    /// Pure computation node — no transport or resource ports.
+    Pure,
+}
+
 // ---------------------------------------------------------------------------
 // classify_layers — priority-based, full-scan
 // ---------------------------------------------------------------------------
@@ -97,7 +135,7 @@ pub fn classify_layers(layers: &[ErrorLayer]) -> &'static str {
                 // Keep the last HTTP status seen (could also keep highest).
                 http_status = Some(h.status_code);
             }
-            ErrorLayer::Rest(_) | ErrorLayer::Service(_) => {}
+            ErrorLayer::Rest(_) | ErrorLayer::Service(_) | ErrorLayer::NodeTrace(_) => {}
         }
     }
 
@@ -143,6 +181,14 @@ impl FailureDetail {
     pub fn service_label(&self) -> Option<String> {
         self.layers.iter().find_map(|l| match l {
             ErrorLayer::Service(s) => Some(format!("{} → {}", s.provider, s.operation)),
+            _ => None,
+        })
+    }
+
+    /// The node ID from the first [`NodeTraceLayer`], if any.
+    pub fn node_trace(&self) -> Option<&NodeTraceLayer> {
+        self.layers.iter().find_map(|l| match l {
+            ErrorLayer::NodeTrace(t) => Some(t),
             _ => None,
         })
     }
@@ -235,6 +281,14 @@ impl ExecError {
     pub fn service_label(&self) -> Option<String> {
         self.layers.iter().find_map(|l| match l {
             ErrorLayer::Service(s) => Some(format!("{} → {}", s.provider, s.operation)),
+            _ => None,
+        })
+    }
+
+    /// The node ID from the first [`NodeTraceLayer`], if any.
+    pub fn node_trace(&self) -> Option<&NodeTraceLayer> {
+        self.layers.iter().find_map(|l| match l {
+            ErrorLayer::NodeTrace(t) => Some(t),
             _ => None,
         })
     }
@@ -582,6 +636,38 @@ mod tests {
         let err = ExecError::new("generic error");
         assert_eq!(err.classification(), "UNKNOWN");
         assert_eq!(err.service_label(), None);
+    }
+
+    #[test]
+    fn node_trace_layer() {
+        let err = ExecError::new("request failed")
+            .with_layer(ErrorLayer::Http(HttpErrorLayer {
+                status_code: 401,
+                reason: Some("Unauthorized".into()),
+            }))
+            .with_layer(ErrorLayer::NodeTrace(NodeTraceLayer {
+                node_id: "parse_transport_services_github_gist".into(),
+                role: NodeRole::Pure,
+            }));
+
+        // NodeTrace doesn't affect classification — domain layers win
+        assert_eq!(err.classification(), "HTTP_ERROR");
+        let trace = err.node_trace().unwrap();
+        assert_eq!(trace.node_id, "parse_transport_services_github_gist");
+        assert_eq!(trace.role, NodeRole::Pure);
+    }
+
+    #[test]
+    fn node_trace_only_classifies_unknown() {
+        // When the only layer is NodeTrace, classification falls through to UNKNOWN
+        let err = ExecError::new("something broke").with_layer(ErrorLayer::NodeTrace(
+            NodeTraceLayer {
+                node_id: "some_node".into(),
+                role: NodeRole::TransportExecutor,
+            },
+        ));
+        assert_eq!(err.classification(), "UNKNOWN");
+        assert!(err.node_trace().is_some());
     }
 
     #[test]

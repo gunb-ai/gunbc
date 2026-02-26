@@ -12,7 +12,8 @@ use std::path::PathBuf;
 const EXTERN_FUNC_DECL_BASELINE: usize = 2;
 
 /// Current baseline: number of extern implementations in `all_extern_symbols()`.
-const EXTERN_IMPL_BASELINE: usize = 8;
+/// Decreased from 8 → 6: allowlist + lint_policy migrated to DSL evaluation (FC-P6-d).
+const EXTERN_IMPL_BASELINE: usize = 6;
 
 #[test]
 #[allow(clippy::disallowed_methods)]
@@ -127,8 +128,8 @@ fn every_extern_impl_has_dag_declaration() {
         ("tools.gist", "build_snapshot_content"),
         ("tools.makegen", "discover_tools"),
         ("tools.pragma", "render_clippy_toml"),
-        ("tools.pragma", "render_disallowed_methods_allowlist"),
-        ("tools.pragma", "render_pragma_lint_policy"),
+        // render_disallowed_methods_allowlist and render_pragma_lint_policy
+        // migrated to DSL evaluation (FC-P6-d) — no longer in all_extern_symbols().
     ];
 
     let mut missing = Vec::new();

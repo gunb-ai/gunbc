@@ -1086,9 +1086,12 @@ impl Executable for InterfaceStubPrepareOp {
                 .ok();
         }
         // Package inputs as a Local request for structural transport detection.
+        // Redact secrets — stub transport should never expose plaintext.
         let mut body = serde_json::Map::new();
         for (key, val) in &inputs {
-            if let Some(json_val) = value_to_json(val) {
+            if matches!(val, Value::Secret(_)) {
+                body.insert(key.clone(), serde_json::Value::String("***".to_string()));
+            } else if let Some(json_val) = value_to_json(val) {
                 body.insert(key.clone(), json_val);
             }
         }
@@ -1886,5 +1889,36 @@ mod tests {
             Some(&Value::Str("issue-1".to_string()))
         );
         assert_eq!(outputs.get("count"), Some(&Value::Int(1)));
+    }
+
+    #[test]
+    fn interface_stub_prepare_redacts_secrets() {
+        let op = InterfaceStubPrepareOp {
+            interface: "CredentialProvider".to_string(),
+            capability: "get_token".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "api_key".to_string(),
+            Value::Secret(SecretString::new("super-secret-key")),
+        );
+        inputs.insert("scope".to_string(), Value::Str("read".to_string()));
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("request") {
+            Some(Value::Request(TransportRequest::Local(local))) => {
+                // Secret should be redacted to "***"
+                assert_eq!(
+                    local.inputs.get("api_key"),
+                    Some(&serde_json::Value::String("***".to_string())),
+                    "secrets must be redacted in stub transport"
+                );
+                // Non-secret values should be passed through
+                assert_eq!(
+                    local.inputs.get("scope"),
+                    Some(&serde_json::Value::String("read".to_string()))
+                );
+            }
+            other => panic!("expected Local request, got {other:?}"),
+        }
     }
 }

@@ -98,14 +98,19 @@ pub fn discover_profiles(dsl_root: &Path) -> Vec<DiscoveredProfile> {
     profiles
 }
 
-/// Return profiles that bind at least one interface the module imports.
+/// Return profiles that bind ALL interfaces the module imports.
+/// A profile that only binds a subset would leave some interfaces unresolved,
+/// causing runtime errors for the unbound capabilities.
 pub fn profiles_for_module<'a>(
     profiles: &'a [DiscoveredProfile],
     interface_imports: &HashSet<String>,
 ) -> Vec<&'a DiscoveredProfile> {
+    if interface_imports.is_empty() {
+        return vec![];
+    }
     profiles
         .iter()
-        .filter(|p| !p.bound_interfaces.is_disjoint(interface_imports))
+        .filter(|p| interface_imports.iter().all(|iface| p.bound_interfaces.contains(iface)))
         .collect()
 }
 

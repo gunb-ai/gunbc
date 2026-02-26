@@ -493,6 +493,8 @@ fn classify_collection(
         daglang_lower::CollectionOpKind::Sort | daglang_lower::CollectionOpKind::Dedup => {
             CollectionOpKind::Sort
         }
+        daglang_lower::CollectionOpKind::Split => CollectionOpKind::Map,
+        daglang_lower::CollectionOpKind::Zip => CollectionOpKind::Map,
     };
 
     Ok(Computation::Collection {

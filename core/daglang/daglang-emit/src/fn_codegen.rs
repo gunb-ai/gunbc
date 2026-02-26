@@ -618,6 +618,100 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
             }
         }
 
+        // string |> split(delimiter: "/") => for-loop building parts vec
+        ast::Expr::Call(name, args) if name == "split" => {
+            let delim = args
+                .iter()
+                .find(|(n, _)| n.as_deref() == Some("delimiter"))
+                .or_else(|| args.first())
+                .map(|(_, e)| compile_expr(e, ctx))
+                .unwrap_or(code_ir::Expr::Str(",".to_string()));
+
+            let result = fresh("split_parts");
+            let source = fresh("split_src");
+            let delim_var = fresh("split_delim");
+            let elem = fresh("part");
+
+            code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_bind(source.clone(), collection),
+                code_ir::Stmt::let_bind(delim_var.clone(), delim),
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::Array(vec![])),
+                code_ir::Stmt::For {
+                    binding: elem.clone(),
+                    iter: code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::MethodCall {
+                            receiver: Box::new(code_ir::Expr::Var(source)),
+                            method: "split".to_string(),
+                            args: vec![code_ir::Expr::MethodCall {
+                                receiver: Box::new(code_ir::Expr::Var(delim_var)),
+                                method: "as_str".to_string(),
+                                args: vec![],
+                            }],
+                        }),
+                        method: "map".to_string(),
+                        args: vec![code_ir::Expr::Path(vec![
+                            "String".to_string(),
+                            "from".to_string(),
+                        ])],
+                    },
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                        method: "push".to_string(),
+                        args: vec![code_ir::Expr::Var(elem)],
+                    })],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+            ])
+        }
+
+        // list |> zip(other: list2) => for-loop building paired result
+        ast::Expr::Call(name, args) if name == "zip" => {
+            let other = args
+                .iter()
+                .find(|(n, _)| n.as_deref() == Some("other"))
+                .or_else(|| args.first())
+                .map(|(_, e)| compile_expr(e, ctx))
+                .unwrap_or(code_ir::Expr::Array(vec![]));
+
+            let result = fresh("zipped");
+            let left_var = fresh("zip_left");
+            let right_var = fresh("zip_right");
+            let pair = fresh("zip_pair");
+
+            code_ir::Expr::Block(vec![
+                code_ir::Stmt::let_mut(&result, code_ir::Expr::Array(vec![])),
+                code_ir::Stmt::let_bind(left_var.clone(), collection),
+                code_ir::Stmt::let_bind(right_var.clone(), other),
+                code_ir::Stmt::For {
+                    binding: pair.clone(),
+                    iter: code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::MethodCall {
+                            receiver: Box::new(code_ir::Expr::Var(left_var)),
+                            method: "into_iter".to_string(),
+                            args: vec![],
+                        }),
+                        method: "zip".to_string(),
+                        args: vec![code_ir::Expr::MethodCall {
+                            receiver: Box::new(code_ir::Expr::Var(right_var)),
+                            method: "into_iter".to_string(),
+                            args: vec![],
+                        }],
+                    },
+                    body: vec![code_ir::Stmt::Expr(code_ir::Expr::MethodCall {
+                        receiver: Box::new(code_ir::Expr::Var(result.clone())),
+                        method: "push".to_string(),
+                        args: vec![code_ir::Expr::RawCode(format!(
+                            "std::collections::BTreeMap::from([\
+                            (\"first\".to_string(), {pair}.0), \
+                            (\"second\".to_string(), {pair}.1)\
+                            ])"
+                        ))],
+                    })],
+                },
+                code_ir::Stmt::TailExpr(code_ir::Expr::Var(result)),
+            ])
+        }
+
         // string |> repeat(n: Int) => string.repeat(n.max(0) as usize)
         ast::Expr::Call(name, args) if name == "repeat" => {
             let n = args

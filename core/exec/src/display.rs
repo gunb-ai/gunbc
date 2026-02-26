@@ -15,7 +15,7 @@
 //! ```
 
 use crate::box_draw;
-use crate::error::{ErrorLayer, FailureDetail};
+use crate::error::{ErrorLayer, FailureDetail, NodeRole};
 use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
@@ -782,6 +782,15 @@ impl ProgressObserver for NonTtyProgressObserver {
                 ErrorLayer::File(f) => {
                     eprintln!("  │ File:      {} ({})", f.path, f.operation);
                 }
+                ErrorLayer::NodeTrace(t) => {
+                    let role_str = match t.role {
+                        NodeRole::TransportExecutor => "transport",
+                        NodeRole::ResourceProvider => "resource",
+                        NodeRole::ToolConsumer => "tool",
+                        NodeRole::Pure => "pure",
+                    };
+                    eprintln!("  │ Node:      {} ({})", t.node_id, role_str);
+                }
                 _ => {}
             }
         }
@@ -1079,6 +1088,16 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
                 ErrorLayer::File(f) => {
                     content_lines
                         .push(format!("File:      {} ({})", f.path, f.operation));
+                }
+                ErrorLayer::NodeTrace(t) => {
+                    let role_str = match t.role {
+                        NodeRole::TransportExecutor => "transport",
+                        NodeRole::ResourceProvider => "resource",
+                        NodeRole::ToolConsumer => "tool",
+                        NodeRole::Pure => "pure",
+                    };
+                    content_lines
+                        .push(format!("Node:      {} ({})", t.node_id, role_str));
                 }
             }
         }

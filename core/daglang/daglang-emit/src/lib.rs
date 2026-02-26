@@ -64,6 +64,9 @@ pub mod type_codegen;
 // Wave 9: DSL FnBody → abstract IR compiler (function body generation).
 pub mod fn_codegen;
 
+// Wave 10: Data-only .dag artifact emitter (FC-P7-b).
+pub mod dag_emit;
+
 #[cfg(test)]
 mod backend_harness;
 

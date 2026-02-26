@@ -31,8 +31,6 @@ pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
         ("tools.gist", "build_snapshot_content"),
         ("tools.makegen", "discover_tools"),
         ("tools.pragma", "render_clippy_toml"),
-        ("tools.pragma", "render_disallowed_methods_allowlist"),
-        ("tools.pragma", "render_pragma_lint_policy"),
     ]
 }
 
@@ -52,7 +50,9 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(DynOp::new(RenderAllowlistOp))
         }
-        ("tools.pragma", "render_pragma_lint_policy") => Some(DynOp::new(RenderLintPolicyOp)),
+        ("tools.pragma", "render_pragma_lint_policy") => {
+            Some(DynOp::new(RenderLintPolicyOp))
+        }
 
         ("tools.bootstrap", "render_bootstrap_makefile") => {
             Some(DynOp::new(GenerateBootstrapMakefileOp))
@@ -312,13 +312,14 @@ impl Executable for RenderClippyTomlOp {
     }
 }
 
+/// DSL-backed allowlist renderer. Replaces Rust extern impl (FC-P6-d).
+/// Compiles `config/clippy_policy.dag` and evaluates `derive_disallowed_methods_allowlist()`.
 #[derive(Debug, Clone)]
 struct RenderAllowlistOp;
 
 impl Executable for RenderAllowlistOp {
     fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        use crate::policy::pragma::render_disallowed_methods_allowlist;
-        let content = render_disallowed_methods_allowlist();
+        let content = crate::pragma::dsl_render::render_allowlist_via_dsl();
         OutputMap::new()
             .str("content", content.clone())
             .str("return", content)
@@ -326,13 +327,14 @@ impl Executable for RenderAllowlistOp {
     }
 }
 
+/// DSL-backed lint policy renderer. Replaces Rust extern impl (FC-P6-d).
+/// Compiles `config/clippy_policy.dag` and evaluates `derive_pragma_lint_policy()`.
 #[derive(Debug, Clone)]
 struct RenderLintPolicyOp;
 
 impl Executable for RenderLintPolicyOp {
     fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        use crate::policy::pragma::render_pragma_lint_policy;
-        let content = render_pragma_lint_policy();
+        let content = crate::pragma::dsl_render::render_lint_policy_via_dsl();
         OutputMap::new()
             .str("content", content.clone())
             .str("return", content)

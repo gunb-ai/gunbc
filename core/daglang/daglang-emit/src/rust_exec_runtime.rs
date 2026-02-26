@@ -352,7 +352,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
 
     match (module, name) {
         ("tools.makegen", "load_registry") => Some(HandlerKind::MakegenLoadRegistry),
-        ("tools.makegen", "render_makefile") => Some(HandlerKind::MakegenRenderMakefile),
+        ("tools.makegen", "render_makefile_content") => Some(HandlerKind::MakegenRenderMakefile),
         ("tools.makegen", "makegen") => Some(HandlerKind::MakegenEntrypoint),
         ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {

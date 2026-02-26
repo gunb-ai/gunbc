@@ -21,7 +21,7 @@ pub fn makegen_embedded_data() -> EmbeddedData {
     }
 }
 
-fn compute_makegen_content() -> String {
+pub fn compute_makegen_content() -> String {
     let registry = ToolRegistry::default_registry();
     crate::render_makefile(&registry)
 }

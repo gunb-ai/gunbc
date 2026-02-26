@@ -57,7 +57,8 @@ pub use display::{
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{
     classify_layers, AuthErrorLayer, ErrorLayer, ExecError, FailureDetail, FileErrorLayer,
-    HttpErrorLayer, IntoExecResult, RestErrorLayer, ResultExt, ServiceErrorLayer, ShellErrorLayer,
+    HttpErrorLayer, IntoExecResult, NodeRole, NodeTraceLayer, RestErrorLayer, ResultExt,
+    ServiceErrorLayer, ShellErrorLayer,
 };
 pub use execute::{
     execute, execute_single_node, execute_with_mode, execute_with_mode_and_inputs,

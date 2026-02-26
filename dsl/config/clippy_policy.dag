@@ -72,8 +72,17 @@ fn render_type_group(group: DisallowedTypeGroup) -> String {
   "{comments}\n{entries}"
 }
 
+fn scope_label(scope: ExemptionScope) -> String {
+  match scope {
+    WholePackage(pkg) => pkg.name,
+    PackagePrefix(pp) => pp.prefix + "*",
+    PackageFile(pf) => pf.package_name + "/" + pf.path,
+    PackagePathPrefix(pp) => pp.package_name + "/" + pp.prefix + "*"
+  }
+}
+
 fn render_exceptions_list(exs: List<Exemption>) -> String {
-  exs |> map(e => "#   - {e.scope.name} ({e.rationale})") |> join("\n")
+  exs |> map(e => "#   - " + scope_label(scope: e.scope) + " (" + e.rationale + ")") |> join("\n")
 }
 
 // ── Derivation functions ────────────────────────────────────────────

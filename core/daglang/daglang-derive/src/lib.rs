@@ -454,6 +454,8 @@ fn collection_kind_label(kind: CollectionOpKind) -> &'static str {
         CollectionOpKind::All => "AllNode",
         CollectionOpKind::Len => "LenNode",
         CollectionOpKind::Contains => "ContainsNode",
+        CollectionOpKind::Split => "SplitNode",
+        CollectionOpKind::Zip => "ZipNode",
     }
 }
 

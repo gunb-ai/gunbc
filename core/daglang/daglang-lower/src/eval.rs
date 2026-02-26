@@ -107,6 +107,10 @@ pub fn evaluate_collection(
                 .unwrap_or(false);
             Ok(Value::Bool(found))
         }
+        // Split/Zip are handled as pipe methods in eval_pipe_method, not as
+        // collection ops on pre-materialized item lists.
+        CollectionOpKind::Split => Ok(Value::List(items)),
+        CollectionOpKind::Zip => Ok(Value::List(items)),
     }
 }
 
@@ -844,6 +848,62 @@ fn eval_pipe_method(
                     Ok(Value::Bool(s.ends_with(&value_to_string(&p))))
                 }
                 _ => Err(EvalError::new("ends_with requires string and suffix")),
+            }
+        }
+
+        "split" => {
+            let delim = args
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("delimiter"))
+                .or_else(|| args.first());
+            match (receiver, delim) {
+                (Value::Str(s), Some((_, expr))) => {
+                    let d = eval_expr(expr, env, sibling_fns)?;
+                    let delimiter = value_to_string(&d);
+                    let parts: Vec<Value> = s
+                        .split(&delimiter)
+                        .map(|part| Value::Str(part.to_string()))
+                        .collect();
+                    Ok(Value::List(parts))
+                }
+                (Value::Str(s), None) => {
+                    // Default delimiter: ","
+                    let parts: Vec<Value> = s
+                        .split(',')
+                        .map(|part| Value::Str(part.to_string()))
+                        .collect();
+                    Ok(Value::List(parts))
+                }
+                _ => Err(EvalError::new("split requires a string")),
+            }
+        }
+
+        "zip" => {
+            let other_expr = args
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("other"))
+                .or_else(|| args.first());
+            match (receiver, other_expr) {
+                (Value::List(items), Some((_, expr))) => {
+                    let other = eval_expr(expr, env, sibling_fns)?;
+                    let other_list = match other {
+                        Value::List(l) => l,
+                        _ => return Err(EvalError::new("zip requires a list for 'other'")),
+                    };
+                    let pairs: Vec<Value> = items
+                        .into_iter()
+                        .zip(other_list)
+                        .map(|(a, b)| {
+                            let mut map = std::collections::BTreeMap::new();
+                            map.insert("first".to_string(), a);
+                            map.insert("second".to_string(), b);
+                            Value::Map(map)
+                        })
+                        .collect();
+                    Ok(Value::List(pairs))
+                }
+                (Value::List(_), None) => Err(EvalError::new("zip requires 'other' argument")),
+                _ => Err(EvalError::new("zip requires a list")),
             }
         }
 

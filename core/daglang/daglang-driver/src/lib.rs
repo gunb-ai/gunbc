@@ -64,6 +64,62 @@ pub struct CompileOutput {
     pub data_values: HashMap<String, serde_json::Value>,
 }
 
+impl CompileOutput {
+    /// Emit a data-only `.dag` artifact containing compilation metadata.
+    ///
+    /// Produces a file with:
+    /// - `data entrypoints: List<EntrypointInfo> = [...]`
+    /// - `data output_paths: List<String> = [...]`
+    ///
+    /// The output is a valid `.dag` file that can be imported by downstream
+    /// DSL modules for introspection.
+    pub fn emit_artifact_dag(&self, module_name: &str) -> String {
+        use daglang_emit::dag_emit::{emit_data_dag, DataEntry, TypeDef};
+
+        let types = vec![TypeDef {
+            name: "EntrypointInfo".to_string(),
+            fields: vec![
+                ("func_name".to_string(), "String".to_string()),
+                ("module".to_string(), "String".to_string()),
+                ("node_id".to_string(), "String".to_string()),
+            ],
+        }];
+
+        let entrypoints_json: Vec<serde_json::Value> = self
+            .inferred_entrypoints
+            .iter()
+            .map(|ep| {
+                serde_json::json!({
+                    "func_name": ep.func_name,
+                    "module": ep.module,
+                    "node_id": ep.node_id,
+                })
+            })
+            .collect();
+
+        let output_paths_json: Vec<serde_json::Value> = self
+            .output_paths
+            .iter()
+            .map(|p| serde_json::json!(p))
+            .collect();
+
+        let data = vec![
+            DataEntry {
+                name: "entrypoints".to_string(),
+                type_expr: "List<EntrypointInfo>".to_string(),
+                value: serde_json::Value::Array(entrypoints_json),
+            },
+            DataEntry {
+                name: "output_paths".to_string(),
+                type_expr: "List<String>".to_string(),
+                value: serde_json::Value::Array(output_paths_json),
+            },
+        ];
+
+        emit_data_dag(module_name, &types, &data)
+    }
+}
+
 /// Deterministic compilation receipt.
 ///
 /// Contains content-addressable digests for each stage of the compilation

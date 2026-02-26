@@ -1254,11 +1254,29 @@ fn add_interface_stub_transport_triplets(
                     },
                 ));
 
-                // Execute node: TransportRequest → TransportResponse.
+                // Execute node: TransportRequest → typed capability outputs.
+                // In DryRun, boundary mocks supply typed fields directly.
+                // In Real mode, the execute op errors with "requires --profile".
+                let typed_outputs = if capability.outputs.is_empty() {
+                    vec![Port::scalar("result", "Unit")]
+                } else {
+                    capability
+                        .outputs
+                        .iter()
+                        .map(|field| {
+                            let ty = type_expr_to_string(&field.ty);
+                            Port::with_cardinality(
+                                field.name.as_str(),
+                                ty.as_str(),
+                                Cardinality::ONE,
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
                 let execute_node = Node::opaque(
                     execute_id.clone(),
                     vec![Port::scalar("request", "TransportRequest")],
-                    vec![Port::scalar("response", "TransportResponse")],
+                    typed_outputs.clone(),
                     LoweredOp::Callable {
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
@@ -1276,27 +1294,11 @@ fn add_interface_stub_transport_triplets(
                 .with_input_guard("request", Guard::NotEq(Value::Skipped));
                 builder.add_node(execute_node);
 
-                // Parse node: TransportResponse → capability outputs.
-                let parse_outputs = if capability.outputs.is_empty() {
-                    vec![Port::scalar("result", "Unit")]
-                } else {
-                    capability
-                        .outputs
-                        .iter()
-                        .map(|field| {
-                            let ty = type_expr_to_string(&field.ty);
-                            Port::with_cardinality(
-                                field.name.as_str(),
-                                ty.as_str(),
-                                Cardinality::ONE,
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                };
+                // Parse node: typed capability outputs → typed capability outputs (identity).
                 builder.add_node(Node::opaque(
                     parse_id.clone(),
-                    vec![Port::scalar("response", "TransportResponse")],
-                    parse_outputs,
+                    typed_outputs.clone(),
+                    typed_outputs,
                     LoweredOp::Callable {
                         module: module_name.clone(),
                         kind: CallableKind::Pattern,
@@ -1319,12 +1321,23 @@ fn add_interface_stub_transport_triplets(
                     execute_id.as_str(),
                     "request",
                 );
-                builder.add_edge(
-                    execute_id.as_str(),
-                    "response",
-                    parse_id.as_str(),
-                    "response",
-                );
+                // Wire per-field edges from execute to parse.
+                for field in &capability.outputs {
+                    builder.add_edge(
+                        execute_id.as_str(),
+                        field.name.as_str(),
+                        parse_id.as_str(),
+                        field.name.as_str(),
+                    );
+                }
+                if capability.outputs.is_empty() {
+                    builder.add_edge(
+                        execute_id.as_str(),
+                        "result",
+                        parse_id.as_str(),
+                        "result",
+                    );
+                }
 
                 // Register endpoints under multiple keys for flexible resolution.
                 let parse_output = capability
@@ -1893,6 +1906,7 @@ fn lower_typed_project_with_callable_scope(
     } else {
         add_service_transport_triplets(&mut builder, project, None)
     };
+    let data_values = build_data_values(project);
     add_dependency_edges(
         &mut builder,
         project,
@@ -1901,6 +1915,7 @@ fn lower_typed_project_with_callable_scope(
         &service_registry,
         emit_collection_nodes,
         entry_module,
+        &data_values,
     );
     let profile_registry = collect_profile_binding_registry(project, active_profile.is_some())?;
     let active_profile_bindings =
@@ -1911,7 +1926,6 @@ fn lower_typed_project_with_callable_scope(
     // IS-4: Register stub transport triplets so resolve_service_call_source can find them.
     add_interface_stub_transport_triplets(&mut builder, project, &stub_interfaces, &mut service_registry);
     let known_interface_types = collect_interface_type_names(project);
-    let data_values = build_data_values(project);
     add_service_call_edges(
         &mut builder,
         project,
@@ -2897,6 +2911,7 @@ fn register_endpoint(
         .or_insert(Some(endpoint));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_dependency_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -2905,6 +2920,7 @@ fn add_dependency_edges(
     service_registry: &ServiceEndpointRegistry,
     emit_collection_nodes: bool,
     entry_module: Option<&str>,
+    data_values: &HashMap<String, serde_json::Value>,
 ) {
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -2964,6 +2980,7 @@ fn add_dependency_edges(
                     target,
                     endpoints_by_name,
                     &param_types,
+                    data_values,
                 );
             }
             if emit_collection_nodes {
@@ -3412,6 +3429,7 @@ fn add_control_flow_pattern_nodes(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn expand_content_upsert_patterns(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -3420,6 +3438,7 @@ fn expand_content_upsert_patterns(
     target: &LoweredEndpoint,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
     param_types: &HashMap<String, String>,
+    data_values: &HashMap<String, serde_json::Value>,
 ) {
     let mut bound_callables = HashMap::<String, String>::new();
     let mut expansion_count = 0usize;
@@ -3441,6 +3460,7 @@ fn expand_content_upsert_patterns(
                             &bound_callables,
                             endpoints_by_name,
                             param_types,
+                            data_values,
                         );
                     }
                 }
@@ -3470,6 +3490,7 @@ fn expand_content_upsert_patterns(
                         &bound_callables,
                         endpoints_by_name,
                         param_types,
+                        data_values,
                     );
                 }
             }
@@ -3494,6 +3515,7 @@ fn expand_single_content_upsert(
     bound_callables: &HashMap<String, String>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
     param_types: &HashMap<String, String>,
+    data_values: &HashMap<String, serde_json::Value>,
 ) {
     let suffix = expansion_suffix(item_name, expansion_count);
     let prepare_read_id = format!("prepare_read_{suffix}");
@@ -3597,18 +3619,38 @@ fn expand_single_content_upsert(
     builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
     builder.add_edge(&execute_transport_id, "response", &target.node_id, "__deps");
 
-    wire_resolved_or_param_source(
+    let content_destinations = [
+        (compare_id.as_str(), "expected_content"),
+        (prepare_write_id.as_str(), "content"),
+    ];
+    let wired_content = wire_resolved_or_param_source(
         builder,
         module_name,
         item_name,
         param_types,
         resolve_content_source(args, bound_callables, endpoints_by_name),
         resolve_named_ident_arg(args, "content"),
-        &[
-            (compare_id.as_str(), "expected_content"),
-            (prepare_write_id.as_str(), "content"),
-        ],
+        &content_destinations,
     );
+    // Fallback: if the content arg is a data declaration ident, create a
+    // literal source node with the data value — mirrors wire_fn_call_arguments.
+    if !wired_content {
+        if let Some(ident) = resolve_named_ident_arg(args, "content") {
+            if let Some(json_val) = data_values.get(ident) {
+                let literal = ServiceCallArgLiteral::Json(json_val.clone());
+                let src = ensure_literal_source_node(
+                    builder,
+                    module_name,
+                    item_name,
+                    "content",
+                    "String",
+                    &literal,
+                    "content_upsert",
+                );
+                wire_output_to_destinations(builder, &src, "content", &content_destinations);
+            }
+        }
+    }
 
     let wired_path = wire_resolved_or_param_source(
         builder,
@@ -5194,7 +5236,7 @@ fn add_service_call_edges(
                 endpoints_by_name,
             );
             let caller = format!("{module_name}::{item_name}");
-            let bound_service_sources = collect_bound_service_sources(
+            let mut bound_service_sources = collect_bound_service_sources(
                 caller.as_str(),
                 stmts,
                 &uses_binding_types,
@@ -5239,6 +5281,16 @@ fn add_service_call_edges(
                 } else {
                     source.endpoint.clone()
                 };
+                // Update bound_service_sources entries that still point to the
+                // original endpoint so arg wiring below (and later fn-call/return
+                // wiring) uses this callable's effective endpoint, not the
+                // original (which may belong to a different callable).
+                let original_prepare_id = source.endpoint.prepare_node_id.clone();
+                for svc_source in bound_service_sources.values_mut() {
+                    if svc_source.prepare_node_id == original_prepare_id {
+                        *svc_source = effective_endpoint.clone();
+                    }
+                }
                 builder.add_edge(
                     effective_endpoint.parse.node_id.as_str(),
                     effective_endpoint.parse.primary_output.as_str(),
@@ -6513,6 +6565,8 @@ pub enum CollectionOpKind {
     All,
     Len,
     Contains,
+    Split,
+    Zip,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6540,6 +6594,8 @@ fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
         "len" | "count" => Some(CollectionOpKind::Len),
         "contains" => Some(CollectionOpKind::Contains),
         "sum" => Some(CollectionOpKind::Fold),
+        "split" => Some(CollectionOpKind::Split),
+        "zip" => Some(CollectionOpKind::Zip),
         _ => None,
     }
 }
@@ -6594,6 +6650,8 @@ fn collection_kind_node_label(kind: CollectionOpKind) -> &'static str {
         CollectionOpKind::All => "AllNode",
         CollectionOpKind::Len => "LenNode",
         CollectionOpKind::Contains => "ContainsNode",
+        CollectionOpKind::Split => "SplitNode",
+        CollectionOpKind::Zip => "ZipNode",
     }
 }
 
@@ -7765,6 +7823,8 @@ fn run(values: List<String>) -> String {
             CollectionOpKind::All => 8,
             CollectionOpKind::Len => 9,
             CollectionOpKind::Contains => 10,
+            CollectionOpKind::Split => 11,
+            CollectionOpKind::Zip => 12,
         });
         assert_eq!(
             collection_kinds,
