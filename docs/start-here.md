@@ -384,6 +384,14 @@ Before making a decision in any of these areas, read the relevant doc.
 | [`docs/design/modeling/m7-secret-redaction-by-default.md`](design/modeling/m7-secret-redaction-by-default.md) | Secret = redacted by default |
 | [`docs/design/modeling/m11-strict-dry-run.md`](design/modeling/m11-strict-dry-run.md) | DryRun intercepts all transport |
 
+### Testing
+
+| Doc | Key decision |
+|-----|-------------|
+| [`docs/design/testgen.md`](design/testgen.md) | 4-bucket obligation model, anti-tautology rule |
+| [`docs/design/integration-testgen.md`](design/integration-testgen.md) | Repo-wide integration contracts, Fermi cost tiers |
+| [`docs/design/black-box-node-testing.md`](design/black-box-node-testing.md) | Cross-workflow mock corpus, transport fidelity ladders |
+
 ### SDLC pipeline
 
 | Doc | Key decision |

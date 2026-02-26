@@ -7,8 +7,9 @@
 
 ## Roadmap: SDLC in Pure DSL (~10 weeks)
 
-Two parallel tracks: foundation cleanup (delete Rust, add compiler features) and
-SDLC activation (pipeline runs e2e). Model first, delete along the way.
+Three parallel tracks: foundation cleanup (delete Rust, add compiler features),
+SDLC activation (pipeline runs e2e), and black-box testing (cross-workflow mock
+corpus + transport fidelity). Model first, delete along the way.
 
 ```
               Foundation                           SDLC
@@ -26,6 +27,17 @@ SDLC activation (pipeline runs e2e). Model first, delete along the way.
         └─────────────────┘               │        │         │
                                           │ SDLC-CD (cloud)  │
                                           └──────────────────┘
+
+         Testing (independent)
+        ┌──────────────────┐
+        │ BB-0 (modeling)  │
+        │ BB-1 (corpus)    │
+        │ BB-2 (per-node)  │
+        │ BB-3 (adjacent)  │
+        │ BB-4 (types)     │
+        │ BB-5 (cross-wf)  │
+        │ BB-6 (fidelity)  │
+        └──────────────────┘
 ```
 
 SDLC-1:6 can start immediately (no foundation dependency).
@@ -36,6 +48,7 @@ FC-P6 and FC-P7 are UNBLOCKED — fn eval works, can convert remaining extern br
 FC-WM (workflow minimality) can start immediately — no foundation dependency.
 FC-CF runs in parallel with P6/P7.
 FC-P8 requires FC-P6 + FC-P7 + FC-CF (split, zip, recursion at minimum).
+BB-0:6 (black-box testing) runs independently — no Foundation or SDLC dependency.
 
 ---
 
@@ -123,6 +136,30 @@ Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 5.
 **Foundation endstate**: Zero extern bridges. `extern_impls.rs` (610 lines) +
 policy const arrays in `pragma.rs` (~300 lines) deleted. All domain logic in DSL.
 (~1,350 lines already deleted by FC-NF7 + FC-CL.)
+
+---
+
+## Testing: Black-Box Node Testing (BB)
+
+Every node is a black box: feed accumulated mocks from all workflows, assert
+output contracts. Type DAG provides free mock pairs via set algebra and
+cardinality. Transport fidelity ladders generate tiered test variants.
+Design: `docs/design/black-box-node-testing.md`.
+
+| ID | Task | Size | Status | Deps |
+|----|------|------|--------|------|
+| BB-0 | **Compositional type modeling.** Define core types and prove composition algebra before any test generation. Types: `NodeIdentity` (module + callable, stable across workflows), `CorpusExample` (inputs + Expectation + Provenance), `Expectation` enum (ExactOutputs/OutputMatchers/TypeContractOnly/ExpectValidationError), `Provenance` (workflow, profile, node_instance, subdag_path, seed_kind), `MockCorpus` (flat `Vec<CorpusExample>` with union/dedup algebra), `EdgeExample` (for Level 2 window tests), `FidelityLadder` (per-TransportKind tier definitions), `FidelityLevel` (PureMock/VirtualIo/Sandboxed/RealLocal/RealRemote). Composition contracts: (1) Expectation assignment per SeedKind (WorkflowObserved+pure→ExactOutputs, TypeDerived→TypeContractOnly, etc.), (2) anchored mutation default for multi-port nodes (vary one port, hold others at base), (3) FidelityLadder × TransportKind (one canonical ladder per kind), (4) node max fidelity = transitive meet of transport dep fidelities, (5) normalization/redaction policy (canonical maps, path substitution, secret redaction, 64KB cap). Integration tests proving the algebra. | M | Pending | — |
+| BB-1 | **Mock corpus builder.** Accumulate `ObservedCase` across all DSL workflow baseline DryRuns. Piggyback on existing testgen baseline pass. Operate on `lower(&dag).dag` for SubDag visibility. Group by `NodeIdentity`, dedup by `(workflow, hash(inputs))`. Output: `HashMap<NodeIdentity, MockCorpus>`. | M | Pending | BB-0 |
+| BB-2 | **Per-node test generation (Level 1a/1b).** For each corpus case, execute node and assert output shape (1a) or exact match via OutputMatcher (1b). Start with pure nodes only (`ExecutionMode::Real`, no transport mocking). Effectful nodes use DryRun + shape-only assertions. | M | Pending | BB-1 |
+| BB-3 | **Adjacent pair test generation (Level 2).** Capture `EdgeExample` per workflow edge during DryRun. For each pure→pure edge, generate 2-node window test via `Window::from_nodes` — execute through real executor wiring (not manual port-map feeding). This tests param→port translation, the exact plumbing where wiring bugs live. Extend to mixed edges after pure-only proven. | M | Pending | BB-2 |
+| BB-4 | **Type-derived boundary values.** Wire `contract::witnesses()`, `cross_product_witnesses()`, `variant_witnesses()` into corpus builder. Default: anchored mutation (vary one port at a time from observed base cases). Pairwise cross-product opt-in per node. Merge/dedup with workflow-observed values. `max_test_cases_per_node = 50`. Most infrastructure already exists. | S | Pending | BB-1 |
+| BB-5 | **Cross-workflow consistency tests (Level 4).** For nodes in 2+ workflows, assert structurally compatible outputs across all workflow-specific inputs. Gate on `is_pure && no_resource_deps && no_env_reads`. | S | Pending | BB-2 |
+| BB-6 | **Transport fidelity ladders.** `FidelityLadder` type + canonical definitions per `TransportKind` (File: PureMock→VirtualFs→SandboxedFs→RealFs→RemoteFs; Shell: similar; Rest/Http/Tcp: similar). Node-level max fidelity inference (transitive meet of transport deps). Tiered test variant generation (same corpus inputs, different transport resolution per tier). DSL `fidelity { }` block syntax in resource definitions. Gate by existing `GUNBC_TEST_MAX_COST`. | L | Pending | BB-0 |
+
+**BB endstate**: Every node tested against every input context from every workflow.
+Type-derived boundary values cover cardinality + refinement + coproduct variants.
+Transport fidelity ladders generate hermetic (≤S) through live (XL) test tiers.
+~4400 hermetic tests auto-generated, <13s total.
 
 ---
 
