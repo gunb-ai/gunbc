@@ -11,7 +11,6 @@
 module services.review.dimension
 
 service review.Dimension {
-  @local
 
   operation PrepareDimensionPrompt {
     input {
@@ -25,7 +24,6 @@ service review.Dimension {
       question: String
       system_prompt: String
     }
-    @mock_response(
       body: {
         "question": "Review this code for quality issues.",
         "system_prompt": "You are a code reviewer."
@@ -43,7 +41,6 @@ service review.Dimension {
       output: Json
       errors: Json
     }
-    @mock_response(
       body: {
         "output": {"findings": [], "summary": "No issues found."},
         "errors": {}
@@ -58,7 +55,6 @@ service review.Dimension {
     output {
       artifact: String
     }
-    @mock_response(
       body: {
         "artifact": "--- a/file.rs\n+++ b/file.rs\n@@ -1 +1 @@\n-old\n+new"
       }
@@ -74,7 +70,6 @@ service review.Dimension {
     output {
       prior_findings: String
     }
-    @mock_response(
       body: {
         "prior_findings": "Prior findings from coherence, quality, and requirements dimensions."
       }
@@ -92,7 +87,6 @@ service review.Dimension {
       output: Json
       summary: String
     }
-    @mock_response(
       body: {
         "output": {"dimensions": {}},
         "summary": "Review complete."

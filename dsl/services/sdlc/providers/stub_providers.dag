@@ -25,18 +25,15 @@ import std.types {
 // =========================================================================
 
 service stub.IssueProvider : IssueProvider {
-  @hermetic
 
   operation discover {
     input { labels: List<String>, state: IssueState? }
     output { issues: List<TrackedIssue> }
-    @mock_response(status: 0, body: [])
   }
 
   operation get {
     input { id: NonEmptyStr }
     output { issue: TrackedIssue, found: Bool }
-    @mock_response(status: 0, body: {
       "issue": {
         "id": "{id}",
         "title": "Stub issue",
@@ -55,7 +52,6 @@ service stub.IssueProvider : IssueProvider {
   operation create {
     input { title: NonEmptyStr, body: String, labels: List<String> }
     output { issue: TrackedIssue }
-    @mock_response(status: 0, body: {
       "issue": {
         "id": "stub-1",
         "title": "{title}",
@@ -71,25 +67,21 @@ service stub.IssueProvider : IssueProvider {
   operation comment {
     input { id: NonEmptyStr, body: String, marker: NonEmptyStr? }
     output { comment_id: NonEmptyStr, ok: Bool }
-    @mock_response(status: 0, body: { "comment_id": "stub-comment-1", "ok": true })
   }
 
   operation set_labels {
     input { id: NonEmptyStr, labels: List<String> }
     output { ok: Bool }
-    @mock_response(status: 0, body: { "ok": true })
   }
 
   operation close {
     input { id: NonEmptyStr }
     output { ok: Bool }
-    @mock_response(status: 0, body: { "ok": true })
   }
 
   operation list_events {
     input { id: NonEmptyStr, since: String? }
     output { events: List<IssueEvent> }
-    @mock_response(status: 0, body: [])
   }
 }
 
@@ -98,24 +90,20 @@ service stub.IssueProvider : IssueProvider {
 // =========================================================================
 
 service stub.ClaimStore : ClaimStore {
-  @hermetic
 
   operation acquire {
     input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, lease_ttl_ms: Int }
     output { acquired: Bool, conflict: Bool, lease_generation: Int }
-    @mock_response(status: 0, body: { "acquired": true, "conflict": false, "lease_generation": 1 })
   }
 
   operation heartbeat {
     input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { accepted: Bool }
-    @mock_response(status: 0, body: { "accepted": true })
   }
 
   operation release {
     input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { released: Bool }
-    @mock_response(status: 0, body: { "released": true })
   }
 }
 
@@ -124,24 +112,20 @@ service stub.ClaimStore : ClaimStore {
 // =========================================================================
 
 service stub.OutcomeLedger : OutcomeLedger {
-  @hermetic
 
   operation upsert {
     input { run_key: NonEmptyStr, stage: NonEmptyStr, outcome: StageOutcome }
     output { updated: Bool, previous: StageOutcome? }
-    @mock_response(status: 0, body: { "updated": true, "previous": null })
   }
 
   operation get {
     input { run_key: NonEmptyStr, stage: NonEmptyStr }
     output { found: Bool, outcome: StageOutcome? }
-    @mock_response(status: 0, body: { "found": false, "outcome": null })
   }
 
   operation list_by_issue {
     input { issue_id: NonEmptyStr }
     output { outcomes: List<StageOutcome> }
-    @mock_response(status: 0, body: { "outcomes": [] })
   }
 }
 
@@ -150,30 +134,25 @@ service stub.OutcomeLedger : OutcomeLedger {
 // =========================================================================
 
 service stub.AgentProvider : AgentProvider {
-  @hermetic
 
   operation spawn {
     input { prompt: String, repo_path: String, branch: NonEmptyStr, model: String?, timeout_seconds: Int?, approval_mode: ApprovalMode? }
     output { run_id: NonEmptyStr, status: AgentStatus, started: Bool }
-    @mock_response(status: 0, body: { "run_id": "stub-run-001", "status": "AgentCompleted", "started": true })
   }
 
   operation poll {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
-    @mock_response(status: 0, body: { "status": "AgentCompleted", "finished": true, "exit_code": 0, "error": null })
   }
 
   operation cancel {
     input { run_id: NonEmptyStr, reason: String? }
     output { cancelled: Bool, final_status: AgentStatus }
-    @mock_response(status: 0, body: { "cancelled": true, "final_status": "AgentCancelled" })
   }
 
   operation get_result {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
-    @mock_response(status: 0, body: { "status": "AgentCompleted", "exit_code": 0, "stdout": "Stub implementation.", "stderr": "", "files_changed": [] })
   }
 }
 
@@ -182,24 +161,20 @@ service stub.AgentProvider : AgentProvider {
 // =========================================================================
 
 service stub.SignalStore : SignalStore {
-  @hermetic
 
   operation emit {
     input { signal: Signal }
     output { emitted: Bool }
-    @mock_response(status: 0, body: { "emitted": true })
   }
 
   operation consume {
     input { signal_types: List<SignalType>, limit: Int? }
     output { signals: List<Signal> }
-    @mock_response(status: 0, body: { "signals": [] })
   }
 
   operation ack {
     input { idempotency_key: NonEmptyStr }
     output { acked: Bool }
-    @mock_response(status: 0, body: { "acked": true })
   }
 }
 
@@ -208,29 +183,24 @@ service stub.SignalStore : SignalStore {
 // =========================================================================
 
 service stub.ArtifactStore : ArtifactStore {
-  @hermetic
 
   operation store {
     input { artifact_id: NonEmptyStr, payload: ArtifactPayload, content_hash: NonEmptyStr }
     output { stored: Bool, conflict: Bool }
-    @mock_response(status: 0, body: { "stored": true, "conflict": false })
   }
 
   operation retrieve {
     input { artifact_id: NonEmptyStr }
     output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
-    @mock_response(status: 0, body: { "found": false, "payload": null, "content_hash": null })
   }
 
   operation store_marker {
     input { marker: ArtifactMarker }
     output { stored: Bool }
-    @mock_response(status: 0, body: { "stored": true })
   }
 
   operation get_canonical_marker {
     input { run_key: NonEmptyStr, artifact_type: ArtifactType }
     output { found: Bool, marker: ArtifactMarker? }
-    @mock_response(status: 0, body: { "found": false, "marker": null })
   }
 }

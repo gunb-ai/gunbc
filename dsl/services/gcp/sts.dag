@@ -5,7 +5,6 @@
 module services.gcp.sts
 
 service gcp.STS {
-  @endpoint("https://sts.googleapis.com")
 
   operation Exchange {
     input {
@@ -13,11 +12,9 @@ service gcp.STS {
       audience: NonEmptyStr
     }
     output {
-      access_token: Secret @json("access_token")
-      expires_in: Int @json("expires_in")
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
     }
-    @rest(POST, "/v1/token")
-    @idempotent
     // Body includes grant_type and token_type fields -- the compiler
     // generates the full OAuth2 token exchange request from these inputs.
   }
@@ -39,21 +36,15 @@ service github.OIDC {
       request_url: String
       request_token: Secret
     }
-    output { subject_token: Secret @json("value") }
-    @rest(GET, "{request_url}?audience={audience}")
-    @headers({ "Authorization": "Bearer {request_token}" })
-    @readonly
+    output { subject_token: Secret from "value" }
   }
 }
 
 service gcp.Metadata {
-  @endpoint("http://metadata.google.internal")
 
   operation GetIdentityToken {
     input { audience: NonEmptyStr }
     output { subject_token: Secret }
-    @rest(GET, "/computeMetadata/v1/instance/service-accounts/default/identity?audience={audience}&format=full")
-    @readonly
     // Response body IS the token (not JSON), parsed as raw string.
   }
 }

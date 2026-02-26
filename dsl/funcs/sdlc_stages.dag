@@ -553,9 +553,6 @@ func handle_done(
 // ═══════════════════════════════════════════════════════════════════
 
 test stage_dispatch_idea {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> Idea
@@ -584,9 +581,6 @@ test stage_dispatch_idea {
 }
 
 test stage_dispatch_design_review {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> DesignReview
@@ -607,9 +601,6 @@ test stage_dispatch_design_review {
 }
 
 test stage_code_review_with_pr_diff {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> CodeReview
@@ -664,9 +655,6 @@ test stage_code_review_with_pr_diff {
 }
 
 test stage_testing_cargo_pass {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> Testing
@@ -693,9 +681,6 @@ test stage_testing_cargo_pass {
 }
 
 test stage_testing_cargo_fail {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     input execute/prepare.issue_id -> "42"
     input execute/prepare.stage -> Testing
@@ -721,9 +706,6 @@ test stage_testing_cargo_fail {
 }
 
 test full_stage_chain {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     // This test verifies that determine_stage correctly routes and
     // each handler returns the correct next_stage for chaining.

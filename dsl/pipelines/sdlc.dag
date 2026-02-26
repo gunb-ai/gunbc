@@ -496,9 +496,6 @@ pipeline sdlc
 // ── Tests ──────────────────────────────────────────────────────────
 
 test sdlc_idea_to_design {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     // Pipeline parameters
     input repo_owner -> "gunb-ai"

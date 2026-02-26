@@ -284,11 +284,9 @@ func infra_bootstrap_aws() -> { ready: Bool }
 
 func store_and_verify(key: NonEmptyStr, content: Bytes) -> { stored: Bool, verified: Bool }
   uses store: ObjectStorage
-  @hermetic(
     probes: { key: "test/hello.txt", content: "hello world" |> to_bytes() },
     observers: { stored: true, verified: true }
   )
-  @tier(Integration,
     cost: M,
     requires_env: ["CLOUD_PROVIDER"],
     config_override: { store.name: "test-artifacts-{uuid()}" },

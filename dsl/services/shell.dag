@@ -14,7 +14,6 @@ service gcloud.Auth {
   operation Login {
     input { update_adc: Bool = true }
     output { ok: Bool }
-    @shell(["gcloud", "auth", "login", "--update-adc"])
   }
 
   operation ReadADC {
@@ -24,14 +23,11 @@ service gcloud.Auth {
       client_secret: Secret
       refresh_token: Secret
     }
-    @file(READ, "{path}")
-    @hermetic @readonly
     // Parses JSON: extracts client_id, client_secret, refresh_token
   }
 }
 
 service oauth2.Google {
-  @endpoint("https://oauth2.googleapis.com")
 
   operation Refresh {
     input {
@@ -40,11 +36,9 @@ service oauth2.Google {
       refresh_token: Secret
     }
     output {
-      access_token: Secret @json("access_token")
-      expires_in: Int @json("expires_in")
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
     }
-    @rest(POST, "/token")
-    @idempotent
   }
 }
 
@@ -52,8 +46,6 @@ service shell.Find {
   operation ListDirs {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
     output { dirs: List<FilePath> }
-    @shell(["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"])
-    @hermetic @readonly
   }
 }
 
@@ -62,8 +54,6 @@ service shell.Codegen {
     input {}
     output { needed: Bool }
     // Checks if codegen output files exist / are stale
-    @shell(["test", "-f", "target/codegen/.stamp"])
-    @hermetic @readonly
   }
 
   operation Run {
@@ -73,8 +63,6 @@ service shell.Codegen {
       stdout: String
       stderr: String
     }
-    @shell(["cargo", "run", "-p", "gunbc-dag", "--bin", "gunbc-codegen", "--", "codegen"])
-    @hermetic
   }
 }
 
@@ -82,8 +70,6 @@ service rustup.Component {
   operation Add {
     input { component: NonEmptyStr }
     output { success: Bool }
-    @shell(["rustup", "component", "add", "{component}"])
-    @hermetic
   }
 }
 
@@ -91,8 +77,6 @@ service shell.Env {
   operation Get {
     input { name: NonEmptyStr }
     output { value: String? }
-    @shell(["printenv", "{name}"])
-    @hermetic @readonly
   }
 }
 
@@ -100,8 +84,6 @@ service shell.OAuth2 {
   operation RefreshToken {
     input { refresh_token: Secret }
     output { access_token: Secret, valid: Bool }
-    @rest(POST, "/token")
-    @hermetic
   }
 }
 
@@ -109,8 +91,6 @@ service shell.GCloud {
   operation AuthPrintAccessToken {
     input {}
     output { access_token: Secret }
-    @shell(["gcloud", "auth", "print-access-token"])
-    @hermetic @readonly
   }
 
   operation SecretManagerAccessVersion {
@@ -120,7 +100,6 @@ service shell.GCloud {
       version: NonEmptyStr = "latest"
     }
     output { secret_value: Secret }
-    @shell([
       "gcloud",
       "secrets",
       "versions",
@@ -129,7 +108,6 @@ service shell.GCloud {
       "--secret={secret_name}",
       "--project={project_id}"
     ])
-    @hermetic @readonly
   }
 }
 
@@ -137,7 +115,5 @@ service shell.Which {
   operation Check {
     input { command: NonEmptyStr }
     output { exists: Bool, path: FilePath? }
-    @shell(["which", "{command}"])
-    @hermetic @readonly
   }
 }

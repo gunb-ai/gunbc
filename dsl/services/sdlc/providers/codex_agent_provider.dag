@@ -37,7 +37,6 @@ service codex.AgentProvider : AgentProvider {
       status: AgentStatus
       started: Bool
     }
-    @shell(["codex", "exec",
             "--prompt", "{prompt}",
             "--cwd", "{repo_path}",
             "--branch", "{branch}",
@@ -45,7 +44,6 @@ service codex.AgentProvider : AgentProvider {
             "--timeout", "{timeout_seconds ?? 600}",
             "--approval-mode", "{approval_mode ?? \"full-auto\"}",
             "--output-format", "json"])
-    @mock_response(
       status: 0,
       body: {
         "run_id": "codex-run-001",
@@ -58,11 +56,8 @@ service codex.AgentProvider : AgentProvider {
   operation poll {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
-    @shell(["codex", "status",
             "--run-id", "{run_id}",
             "--output-format", "json"])
-    @readonly
-    @mock_response(
       status: 0,
       body: {
         "status": "completed",
@@ -76,11 +71,9 @@ service codex.AgentProvider : AgentProvider {
   operation cancel {
     input { run_id: NonEmptyStr, reason: String? }
     output { cancelled: Bool, final_status: AgentStatus }
-    @shell(["codex", "cancel",
             "--run-id", "{run_id}",
             "--reason", "{reason ?? \"pipeline-cancelled\"}",
             "--output-format", "json"])
-    @mock_response(
       status: 0,
       body: { "cancelled": true, "final_status": "cancelled" }
     )
@@ -89,11 +82,8 @@ service codex.AgentProvider : AgentProvider {
   operation get_result {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
-    @shell(["codex", "result",
             "--run-id", "{run_id}",
             "--output-format", "json"])
-    @readonly
-    @mock_response(
       status: 0,
       body: {
         "status": "completed",

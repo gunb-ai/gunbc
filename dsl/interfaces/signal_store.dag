@@ -19,7 +19,6 @@ interface SignalStore {
   // Emit a signal. Idempotent: dedup by idempotency_key.
   capability emit(signal: Signal)
     -> { emitted: Bool }
-    @idempotent  // dedup by idempotency_key
 
   // Consume signals of specified types. Returns unconsumed signals
   // up to the specified limit.
@@ -30,7 +29,6 @@ interface SignalStore {
   // signal is a no-op success.
   capability ack(idempotency_key: NonEmptyStr)
     -> { acked: Bool }
-    @idempotent
 
   // --- Behavioral contracts ------------------------------------------------
   //
@@ -38,6 +36,4 @@ interface SignalStore {
   // INV-19: Periodic store-driven scans are mandatory anti-entropy (deployment concern).
   // Controllers tolerate duplicate, delayed, and reordered signals.
 
-  @contract: consume(types, _) after emit(s) => signals contains s when s.signal_type in types
-  @contract: ack(k) after ack(k) => { acked: true }  // idempotent
 }

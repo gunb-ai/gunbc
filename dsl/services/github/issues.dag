@@ -24,8 +24,6 @@ import interfaces.issue_provider { IssueProvider, IssueEvent }
 import std.types { TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url }
 
 service github.Issues : IssueProvider {
-  @endpoint("https://api.github.com")
-  @auth(BearerToken)
 
   // --- Core CRUD ---------------------------------------------------------
 
@@ -36,11 +34,8 @@ service github.Issues : IssueProvider {
       labels: List<String>
     }
     output {
-      issue: TrackedIssue @json(".")
+      issue: TrackedIssue from "."
     }
-    @rest(POST, "/repos/gunb-ai/gunbc/issues")
-    @permissions(["issues:write"])
-    @mock_response(
       status: 201,
       body: {
         "id": "1234567",
@@ -55,12 +50,9 @@ service github.Issues : IssueProvider {
       id: NonEmptyStr
     }
     output {
-      issue: TrackedIssue @json(".")
-      found: Bool @json("status == 200")
+      issue: TrackedIssue from "."
+      found: Bool from "status == 200"
     }
-    @rest(GET, "/repos/gunb-ai/gunbc/issues/{id}")
-    @permissions(["issues:read"])
-    @mock_response(
       status: 200,
       body: {
         "number": 42,
@@ -79,11 +71,8 @@ service github.Issues : IssueProvider {
       id: NonEmptyStr
     }
     output {
-      ok: Bool @json("state == \"closed\"")
+      ok: Bool from "state == \"closed\""
     }
-    @rest(PATCH, "/repos/gunb-ai/gunbc/issues/{id}")
-    @permissions(["issues:write"])
-    @mock_response(
       status: 200,
       body: {
         "state": "closed"
@@ -102,12 +91,9 @@ service github.Issues : IssueProvider {
       marker: NonEmptyStr?
     }
     output {
-      comment_id: NonEmptyStr @json("id")
-      ok: Bool @json("id != 0")
+      comment_id: NonEmptyStr from "id"
+      ok: Bool from "id != 0"
     }
-    @rest(POST, "/repos/gunb-ai/gunbc/issues/{id}/comments")
-    @permissions(["issues:write"])
-    @mock_response(
       status: 201,
       body: {
         "id": 999,
@@ -127,11 +113,8 @@ service github.Issues : IssueProvider {
       labels: List<String>
     }
     output {
-      ok: Bool @json("status == 200")
+      ok: Bool from "status == 200"
     }
-    @rest(PUT, "/repos/gunb-ai/gunbc/issues/{id}/labels")
-    @permissions(["issues:write"])
-    @mock_response(
       status: 200,
       body: [{"name": "design"}]
     )
@@ -147,9 +130,6 @@ service github.Issues : IssueProvider {
     output {
       issues: List<TrackedIssue>
     }
-    @rest(GET, "/repos/gunb-ai/gunbc/issues")
-    @permissions(["issues:read"])
-    @mock_response(
       status: 200,
       body: []
     )
@@ -163,9 +143,6 @@ service github.Issues : IssueProvider {
     output {
       events: List<IssueEvent>
     }
-    @rest(GET, "/repos/gunb-ai/gunbc/issues/{id}/events")
-    @permissions(["issues:read"])
-    @mock_response(
       status: 200,
       body: []
     )
@@ -180,8 +157,6 @@ fixture github_auth {
 }
 
 test create_issue : github_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input create/prepare.owner -> "gunb-ai"
     input create/prepare.repo -> "gunbc"
@@ -201,8 +176,6 @@ test create_issue : github_auth {
 }
 
 test add_comment : github_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input comment/prepare.owner -> "gunb-ai"
     input comment/prepare.repo -> "gunbc"
@@ -218,8 +191,6 @@ test add_comment : github_auth {
 }
 
 test list_issues_by_label : github_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input list/prepare.owner -> "gunb-ai"
     input list/prepare.repo -> "gunbc"

@@ -193,9 +193,6 @@ func dispatch_sdlc(
 // Step 5 (gap analysis): integration test for multi-stage progression.
 
 test worker_dispatches_and_advances_stage {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
@@ -255,9 +252,6 @@ test worker_dispatches_and_advances_stage {
 }
 
 test worker_skips_on_claim_conflict {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
@@ -292,9 +286,6 @@ test worker_skips_on_claim_conflict {
 }
 
 test worker_replay_skips_completed_stage {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"
@@ -336,9 +327,6 @@ test worker_replay_skips_completed_stage {
 }
 
 test worker_retries_failed_stage {
-    @tier(Scenario)
-    @hermetic(true)
-    @auto_mock(true)
 
     input dispatch/prepare.owner -> "gunb-ai"
     input dispatch/prepare.repo -> "gunbc"

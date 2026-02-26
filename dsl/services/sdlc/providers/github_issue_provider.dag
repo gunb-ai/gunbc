@@ -21,8 +21,6 @@ import std.types { TrackedIssue, IssueState, NonEmptyStr, Url }
 // Credential: env("GITHUB_TOKEN") for local, secret("github-token") for cloud_run
 
 service github.IssueProvider : IssueProvider {
-  @endpoint("https://api.github.com")
-  @auth(BearerToken)
 
   config {
     owner: NonEmptyStr                 // GitHub org or user
@@ -39,9 +37,6 @@ service github.IssueProvider : IssueProvider {
     output {
       issues: List<TrackedIssue>                     // List<TrackedIssue> (provider transforms)
     }
-    @rest(GET, "/repos/{config.owner}/{config.repo}/issues?labels={labels}&state={state ?? \"open\"}")
-    @permissions(["issues:read"])
-    @mock_response(
       status: 200,
       body: [
         {
@@ -67,9 +62,6 @@ service github.IssueProvider : IssueProvider {
       issue: TrackedIssue                      // TrackedIssue shape
       found: Bool
     }
-    @rest(GET, "/repos/{config.owner}/{config.repo}/issues/{id}")
-    @permissions(["issues:read"])
-    @mock_response(
       status: 200,
       body: {
         "issue": {
@@ -97,9 +89,6 @@ service github.IssueProvider : IssueProvider {
     output {
       issue: TrackedIssue                      // TrackedIssue shape
     }
-    @rest(POST, "/repos/{config.owner}/{config.repo}/issues")
-    @permissions(["issues:write"])
-    @mock_response(
       status: 201,
       body: {
         "issue": {
@@ -126,9 +115,6 @@ service github.IssueProvider : IssueProvider {
       comment_id: NonEmptyStr
       ok: Bool
     }
-    @rest(POST, "/repos/{config.owner}/{config.repo}/issues/{id}/comments")
-    @permissions(["issues:write"])
-    @mock_response(
       status: 201,
       body: {
         "comment_id": "999",
@@ -145,9 +131,6 @@ service github.IssueProvider : IssueProvider {
       labels: List<String>
     }
     output { ok: Bool }
-    @rest(PUT, "/repos/{config.owner}/{config.repo}/issues/{id}/labels")
-    @permissions(["issues:write"])
-    @mock_response(
       status: 200,
       body: { "ok": true }
     )
@@ -158,9 +141,6 @@ service github.IssueProvider : IssueProvider {
   operation close {
     input { id: NonEmptyStr }
     output { ok: Bool }
-    @rest(PATCH, "/repos/{config.owner}/{config.repo}/issues/{id}")
-    @permissions(["issues:write"])
-    @mock_response(
       status: 200,
       body: { "ok": true }
     )
@@ -174,9 +154,6 @@ service github.IssueProvider : IssueProvider {
       since: String?
     }
     output { events: List<IssueEvent> }
-    @rest(GET, "/repos/{config.owner}/{config.repo}/issues/{id}/events")
-    @permissions(["issues:read"])
-    @mock_response(
       status: 200,
       body: []
     )
@@ -186,8 +163,6 @@ service github.IssueProvider : IssueProvider {
 // ── Tests ──────────────────────────────────────────────────────────
 
 test github_discover_issues {
-    @tier(Unit)
-    @hermetic(true)
 
     mock discover/execute.response -> rest_response(200, [
         {
@@ -205,8 +180,6 @@ test github_discover_issues {
 }
 
 test github_comment_idempotent {
-    @tier(Unit)
-    @hermetic(true)
 
     input comment/prepare.id -> "42"
     input comment/prepare.body -> "Test comment"

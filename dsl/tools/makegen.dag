@@ -271,7 +271,6 @@ fn render_makefile_content(workflows: List<CoreWorkflow>, metas: List<MetaTarget
 
 // ── Entry point ───────────────────────────────────────────────────────
 
-@outputs("Makefile")
 func makegen(path: String = "Makefile") -> { written: Bool } {
   tools = discover_tools()
   content = render_makefile_content(workflows: core_workflows, metas: meta_targets, tools: tools, res_targets: resource_targets)

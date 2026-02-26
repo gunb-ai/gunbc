@@ -7,30 +7,20 @@ module workflows.test_all
 pipeline test_all {
 
   stage lint_upsert {
-    @file(WRITE, "workspace")
   }
 
   stage codegen [after lint_upsert] {
-    @file(WRITE, "generated:cli")
   }
 
   stage testgen [after lint_upsert] {
-    @file(WRITE, "generated:tests")
   }
 
-  stage build_compile [after codegen, after testgen] {
-    @file(WRITE, "target")
-    @tool(READ, "cargo")
-  }
+  stage build_compile [after codegen, after testgen] {  }
 
   stage verify_fix [after codegen, after testgen] {
-    @file(WRITE, "workspace")
   }
 
-  stage cargo_test_xl [after build_compile, after verify_fix] {
-    @file(READ, "target")
-    @tool(READ, "cargo")
-  }
+  stage cargo_test_xl [after build_compile, after verify_fix] {  }
 
   stage report [after cargo_test_xl, after verify_fix] {}
 }

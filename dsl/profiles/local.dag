@@ -44,24 +44,16 @@ service FileClaimStore : ClaimStore {
   operation acquire {
     input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, lease_ttl_ms: Int }
     output { acquired: Bool, conflict: Bool, lease_generation: Int }
-    @rest(POST, "/v1/sdlc/claims/acquire")
-    @mock_response(status: 200, body: { "acquired": true, "conflict": false, "lease_generation": 1 })
   }
 
   operation heartbeat {
     input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { accepted: Bool }
-    @rest(POST, "/v1/sdlc/claims/heartbeat")
-    @idempotent
-    @mock_response(status: 200, body: { "accepted": true })
   }
 
   operation release {
     input { issue_id: NonEmptyStr, stage: NonEmptyStr, owner: NonEmptyStr, generation: Int }
     output { released: Bool }
-    @rest(POST, "/v1/sdlc/claims/release")
-    @idempotent
-    @mock_response(status: 200, body: { "released": true })
   }
 }
 
@@ -73,25 +65,16 @@ service FileOutcomeLedger : OutcomeLedger {
   operation upsert {
     input { run_key: NonEmptyStr, stage: NonEmptyStr, outcome: StageOutcome }
     output { updated: Bool, previous: StageOutcome? }
-    @rest(PUT, "/v1/sdlc/outcomes/{run_key}/{stage}")
-    @idempotent
-    @mock_response(status: 200, body: { "updated": true, "previous": null })
   }
 
   operation get {
     input { run_key: NonEmptyStr, stage: NonEmptyStr }
     output { found: Bool, outcome: StageOutcome? }
-    @rest(GET, "/v1/sdlc/outcomes/{run_key}/{stage}")
-    @idempotent @readonly
-    @mock_response(status: 200, body: { "found": false, "outcome": null })
   }
 
   operation list_by_issue {
     input { issue_id: NonEmptyStr }
     output { outcomes: List<StageOutcome> }
-    @rest(GET, "/v1/sdlc/outcomes/by-issue/{issue_id}")
-    @readonly
-    @mock_response(status: 200, body: { "outcomes": [] })
   }
 }
 
@@ -103,24 +86,16 @@ service FileSignalStore : SignalStore {
   operation emit {
     input { signal: Signal }
     output { emitted: Bool }
-    @rest(POST, "/v1/sdlc/signals/emit")
-    @idempotent
-    @mock_response(status: 200, body: { "emitted": true })
   }
 
   operation consume {
     input { signal_types: List<SignalType>, limit: Int? }
     output { signals: List<Signal> }
-    @rest(POST, "/v1/sdlc/signals/consume")
-    @mock_response(status: 200, body: { "signals": [] })
   }
 
   operation ack {
     input { idempotency_key: NonEmptyStr }
     output { acked: Bool }
-    @rest(POST, "/v1/sdlc/signals/ack")
-    @idempotent
-    @mock_response(status: 200, body: { "acked": true })
   }
 }
 
@@ -131,32 +106,20 @@ service InlineArtifactStore : ArtifactStore {
   operation store {
     input { artifact_id: NonEmptyStr, payload: ArtifactPayload, content_hash: NonEmptyStr }
     output { stored: Bool, conflict: Bool }
-    @rest(POST, "/v1/sdlc/artifacts/store")
-    @idempotent
-    @mock_response(status: 200, body: { "stored": true, "conflict": false })
   }
 
   operation retrieve {
     input { artifact_id: NonEmptyStr }
     output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
-    @rest(GET, "/v1/sdlc/artifacts/{artifact_id}")
-    @readonly
-    @mock_response(status: 200, body: { "found": false, "payload": null, "content_hash": null })
   }
 
   operation store_marker {
     input { marker: ArtifactMarker }
     output { stored: Bool }
-    @rest(POST, "/v1/sdlc/artifacts/markers")
-    @idempotent
-    @mock_response(status: 200, body: { "stored": true })
   }
 
   operation get_canonical_marker {
     input { run_key: NonEmptyStr, artifact_type: ArtifactType }
     output { found: Bool, marker: ArtifactMarker? }
-    @rest(GET, "/v1/sdlc/artifacts/markers/{run_key}/{artifact_type}")
-    @readonly
-    @mock_response(status: 200, body: { "found": false, "marker": null })
   }
 }

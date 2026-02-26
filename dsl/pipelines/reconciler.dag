@@ -227,9 +227,6 @@ pipeline reconciler
 // ── Tests ──────────────────────────────────────────────────────────
 
 test reconciler_converged_issues {
-    @tier(Unit)
-    @hermetic(true)
-    @auto_mock(true)
 
     // Mock: discover returns one open issue
     mock discover/execute.response -> rest_response(200, {

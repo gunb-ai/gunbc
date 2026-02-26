@@ -10,8 +10,6 @@
 module services.github.pull_request
 
 service github.PullRequest {
-  @endpoint("https://api.github.com")
-  @auth(BearerToken)
 
   operation Create {
     input {
@@ -24,15 +22,12 @@ service github.PullRequest {
       draft: Bool = false
     }
     output {
-      number: Int @json("number")
-      url: String @json("html_url")
-      id: Int @json("id")
-      node_id: String @json("node_id")
-      head_sha: String @json("head.sha")
+      number: Int from "number"
+      url: String from "html_url"
+      id: Int from "id"
+      node_id: String from "node_id"
+      head_sha: String from "head.sha"
     }
-    @rest(POST, "/repos/{owner}/{repo}/pulls")
-    @permissions(["pull_requests:write"])
-    @mock_response(
       status: 201,
       body: {
         "number": 99,
@@ -51,19 +46,16 @@ service github.PullRequest {
       number: Int
     }
     output {
-      number: Int @json("number")
-      title: String @json("title")
-      body: String @json("body")
-      state: String @json("state")
-      url: String @json("html_url")
-      head_sha: String @json("head.sha")
-      base_ref: String @json("base.ref")
-      mergeable: Bool? @json("mergeable")
-      merged: Bool @json("merged")
+      number: Int from "number"
+      title: String from "title"
+      body: String from "body"
+      state: String from "state"
+      url: String from "html_url"
+      head_sha: String from "head.sha"
+      base_ref: String from "base.ref"
+      mergeable: Bool? from "mergeable"
+      merged: Bool from "merged"
     }
-    @rest(GET, "/repos/{owner}/{repo}/pulls/{number}")
-    @permissions(["pull_requests:read"])
-    @mock_response(
       status: 200,
       body: {
         "number": 99,
@@ -87,12 +79,9 @@ service github.PullRequest {
       body: String
     }
     output {
-      id: Int @json("id")
-      url: String @json("html_url")
+      id: Int from "id"
+      url: String from "html_url"
     }
-    @rest(POST, "/repos/{owner}/{repo}/issues/{number}/comments")
-    @permissions(["pull_requests:write"])
-    @mock_response(
       status: 201,
       body: {
         "id": 888,
@@ -111,13 +100,10 @@ service github.PullRequest {
       commit_message: String?
     }
     output {
-      merged: Bool @json("merged")
-      sha: String @json("sha")
-      message: String @json("message")
+      merged: Bool from "merged"
+      sha: String from "sha"
+      message: String from "message"
     }
-    @rest(PUT, "/repos/{owner}/{repo}/pulls/{number}/merge")
-    @permissions(["pull_requests:write"])
-    @mock_response(
       status: 200,
       body: {
         "merged": true,
@@ -137,9 +123,6 @@ service github.PullRequest {
     output {
       files: Json
     }
-    @rest(GET, "/repos/{owner}/{repo}/pulls/{number}/files")
-    @permissions(["pull_requests:read"])
-    @mock_response(
       status: 200,
       body: [
         { "filename": "src/main.rs", "status": "modified", "additions": 10, "deletions": 2 }
@@ -156,11 +139,8 @@ service github.PullRequest {
       team_reviewers: List<String>?
     }
     output {
-      url: String @json("html_url")
+      url: String from "html_url"
     }
-    @rest(POST, "/repos/{owner}/{repo}/pulls/{number}/requested_reviewers")
-    @permissions(["pull_requests:write"])
-    @mock_response(
       status: 201,
       body: {
         "html_url": "https://github.com/{owner}/{repo}/pull/99"
@@ -177,9 +157,6 @@ service github.PullRequest {
     output {
       reviews: Json
     }
-    @rest(GET, "/repos/{owner}/{repo}/pulls/{number}/reviews")
-    @permissions(["pull_requests:read"])
-    @mock_response(
       status: 200,
       body: [
         { "id": 1, "user": { "login": "reviewer" }, "state": "APPROVED", "body": "LGTM" }
@@ -196,8 +173,6 @@ fixture github_auth {
 }
 
 test create_pr : github_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input create/prepare.owner -> "gunb-ai"
     input create/prepare.repo -> "gunbc"
@@ -218,8 +193,6 @@ test create_pr : github_auth {
 }
 
 test merge_pr : github_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input merge/prepare.owner -> "gunb-ai"
     input merge/prepare.repo -> "gunbc"
@@ -236,8 +209,6 @@ test merge_pr : github_auth {
 }
 
 test list_pr_files : github_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input list_files/prepare.owner -> "gunb-ai"
     input list_files/prepare.repo -> "gunbc"

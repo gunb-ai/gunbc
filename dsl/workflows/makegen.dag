@@ -13,14 +13,10 @@ import tools.codegen { codegen_ensure }
 
 pipeline makegen {
 
-  stage compilation_ensure {
-    @file(WRITE, "target")
-    @tool(READ, "cargo")
-    _ = compilation_ensure()
+  stage compilation_ensure {    _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
-    @file(WRITE, "generated:cli")
     _ = codegen_ensure()
   }
 
@@ -29,7 +25,6 @@ pipeline makegen {
   stage render_makefile [after load_registry] {}
 
   stage upsert_makefile [after render_makefile] {
-    @file(WRITE, "workspace")
   }
 
   stage report [after upsert_makefile] {}

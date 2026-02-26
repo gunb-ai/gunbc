@@ -139,7 +139,7 @@ pattern acquire_subject_token(
 pattern optional_impersonation(
   access_token: String,
   service_account: ServiceAccountEmail?,
-  lifetime_seconds: Int @range(min: 1, max: 3600) = 3600
+  lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
 ) -> { token: String } {
   node result = match service_account {
     Some(sa) => {
@@ -243,7 +243,7 @@ pattern credential_chain(
   header_name: String?,
   source_id: NonEmptyStr,
   required_scopes: List<String>,
-  lifetime_seconds: Int @range(min: 1, max: 3600) = 3600
+  lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
 ) -> { token: AccessToken }
   uses net: Network
   provides auth: AuthContext
@@ -304,7 +304,6 @@ pattern transaction<Begin: -> R, Body, Commit, Rollback>(
 
 pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Int = 1000) -> {} {
   node op: Op
-  @retry(max: max_attempts, backoff: exponential(backoff_ms))
 }
 
 // --- Approval Yield (D18) -----------------------------------------------

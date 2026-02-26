@@ -31,8 +31,6 @@ import std.types { NonEmptyStr, StageOutcome }
 
 service gcs.OutcomeLedger : OutcomeLedger {
 
-  @endpoint("https://storage.googleapis.com")
-  @auth(BearerToken)
 
   config {
     bucket: NonEmptyStr
@@ -52,11 +50,6 @@ service gcs.OutcomeLedger : OutcomeLedger {
     // Write outcome object. For first write, generation-match: 0 ensures
     // exactly-once semantics. For replays with matching content_hash, the
     // handler reads the existing object and returns success if hashes match.
-    @rest(POST, "/upload/storage/v1/b/{config.bucket}/o?uploadType=media&name=outcomes/{run_key}/{stage}.json")
-    @header("Content-Type", "application/json")
-    @idempotent
-    @permissions(["storage.objects.create", "storage.objects.get"])
-    @mock_response(
       status: 200,
       body: {
         "updated": true,
@@ -75,11 +68,6 @@ service gcs.OutcomeLedger : OutcomeLedger {
       outcome: StageOutcome?
     }
     // Read outcome object. 404 → { found: false, outcome: null }.
-    @rest(GET, "/storage/v1/b/{config.bucket}/o/outcomes%2F{run_key}%2F{stage}.json?alt=media")
-    @idempotent @readonly
-    @permissions(["storage.objects.get"])
-    @error_map(status: 404, body: { "found": false, "outcome": null })
-    @mock_response(
       status: 200,
       body: {
         "found": true,
@@ -103,10 +91,6 @@ service gcs.OutcomeLedger : OutcomeLedger {
     input { issue_id: NonEmptyStr }
     output { outcomes: List<StageOutcome> }
     // List objects with prefix matching the issue_id, then read each.
-    @rest(GET, "/storage/v1/b/{config.bucket}/o?prefix=outcomes/{issue_id}/")
-    @readonly
-    @permissions(["storage.objects.list"])
-    @mock_response(
       status: 200,
       body: { "outcomes": [] }
     )
@@ -121,8 +105,6 @@ fixture gcs_auth {
 }
 
 test gcs_outcome_upsert : gcs_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input upsert/prepare.run_key -> "sdlc::42::design::v1"
     input upsert/prepare.stage -> "design"
@@ -137,8 +119,6 @@ test gcs_outcome_upsert : gcs_auth {
 }
 
 test gcs_outcome_get_found : gcs_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input get/prepare.run_key -> "sdlc::42::design::v1"
     input get/prepare.stage -> "design"
@@ -160,8 +140,6 @@ test gcs_outcome_get_found : gcs_auth {
 }
 
 test gcs_outcome_get_not_found : gcs_auth {
-    @tier(Unit)
-    @hermetic(true)
 
     input get/prepare.run_key -> "sdlc::99::idea::v1"
     input get/prepare.stage -> "idea"

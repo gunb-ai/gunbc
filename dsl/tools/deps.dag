@@ -74,7 +74,6 @@ fixture deps_env {
 }
 
 test deps_install_dryrun : deps_env {
-    @testgen_skip(true)
 
     // File transport mock: load manifest
     mock load_manifest/execute_load_manifest.response -> file_response("deps.toml")
@@ -87,7 +86,6 @@ test deps_install_dryrun : deps_env {
 }
 
 test deps_install_pkg_fails : deps_env {
-    @testgen_skip(true)
 
     // File transport mock: load manifest
     mock load_manifest/execute_load_manifest.response -> file_response("deps.toml")

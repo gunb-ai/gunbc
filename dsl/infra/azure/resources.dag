@@ -36,8 +36,6 @@ resource BlobContainer implements ObjectStorage {
       container: config.name
     )
 
-    @mock_response(check, status: 404, body: {})
-    @mock_response(create, status: 201, body: {})
   }
 
   release {}
@@ -45,31 +43,21 @@ resource BlobContainer implements ObjectStorage {
   capability read {
     input { key: NonEmptyStr }
     output { content: Bytes, found: Bool }
-    @rest(GET, "https://{config.account_name}.blob.core.windows.net/{config.name}/{key}")
-    @auth(BearerToken)
-    @idempotent @readonly
   }
 
   capability write {
     input { key: NonEmptyStr, content: Bytes }
     output { ok: Bool }
-    @rest(PUT, "https://{config.account_name}.blob.core.windows.net/{config.name}/{key}")
-    @auth(BearerToken)
   }
 
   capability delete {
     input { key: NonEmptyStr }
     output { ok: Bool }
-    @rest(DELETE, "https://{config.account_name}.blob.core.windows.net/{config.name}/{key}")
-    @auth(BearerToken)
   }
 
   capability list {
     input { prefix: String }
     output { keys: List<NonEmptyStr> }
-    @rest(GET, "https://{config.account_name}.blob.core.windows.net/{config.name}?restype=container&comp=list&prefix={prefix}")
-    @auth(BearerToken)
-    @idempotent @readonly
   }
 }
 
@@ -121,8 +109,6 @@ resource ContainerApp implements Compute {
       tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
     )
 
-    @mock_response(check, status: 404, body: { "error": { "code": "ResourceNotFound" } })
-    @mock_response(deploy, status: 200, body: { "properties": { "configuration": { "ingress": { "fqdn": "https://{config.name}.azurecontainerapps.io" } } } })
   }
 
   release {}
@@ -135,8 +121,6 @@ resource ContainerApp implements Compute {
   capability invoke {
     input { path: String, body: Json }
     output { response: Json, status: Int }
-    @rest(POST, "https://{config.name}.azurecontainerapps.io{path}")
-    @auth(BearerToken)
   }
 
   capability get_url {
@@ -176,7 +160,6 @@ resource KeyVaultSecret implements SecretStore {
     // If the secret doesn't exist yet, we don't create an empty one --
     // we assume it will be populated via write_value or external tooling.
 
-    @mock_response(check, status: 200, body: { "value": "mock-secret-value", "id": "https://{config.vault_name}.vault.azure.net/secrets/{config.name}/version1" })
   }
 
   release {}
@@ -184,7 +167,6 @@ resource KeyVaultSecret implements SecretStore {
   capability read_value {
     input {}
     output { value: Secret }
-    @readonly
   }
 
   capability write_value {
@@ -200,7 +182,6 @@ resource KeyVaultSecret implements SecretStore {
   capability list_versions {
     input {}
     output { versions: List<NonEmptyStr> }
-    @idempotent @readonly
   }
 }
 
@@ -236,8 +217,6 @@ resource AzureManagedIdentity implements Identity {
       tags: ResourceFingerprint { spec_hash: hash(config) }.to_tags()
     )
 
-    @mock_response(check, status: 200, body: { "properties": { "principalId": "00000000-...", "clientId": "11111111-..." } })
-    @mock_response(create, status: 201, body: { "properties": { "principalId": "00000000-...", "clientId": "11111111-..." } })
   }
 
   release {}
@@ -297,8 +276,6 @@ resource ServiceBusQueue implements Queue<String> {
       max_delivery_count: config.max_delivery_count
     )
 
-    @mock_response(check, status: 404, body: { "error": { "code": "QueueNotFound" } })
-    @mock_response(create, status: 200, body: {})
   }
 
   release {}
@@ -311,7 +288,6 @@ resource ServiceBusQueue implements Queue<String> {
   capability subscribe {
     input {}
     output { messages: List<QueueMessage<String>> }
-    @readonly
   }
 
   capability ack {

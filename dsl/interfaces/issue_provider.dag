@@ -30,14 +30,11 @@ interface IssueProvider {
 
   capability discover(labels: List<String>, state: IssueState?)
     -> { issues: List<TrackedIssue> }
-    @contract: discover([], _) => issues is List
-    @readonly
 
   // --- Single issue --------------------------------------------------------
 
   capability get(id: NonEmptyStr)
     -> { issue: TrackedIssue, found: Bool }
-    @idempotent @readonly
 
   // --- Mutations -----------------------------------------------------------
 
@@ -46,20 +43,17 @@ interface IssueProvider {
 
   capability comment(id: NonEmptyStr, body: String, marker: NonEmptyStr?)
     -> { comment_id: NonEmptyStr, ok: Bool }
-    @idempotent  // marker enables idempotent upsert
 
   capability set_labels(id: NonEmptyStr, labels: List<String>)
     -> { ok: Bool }
 
   capability close(id: NonEmptyStr)
     -> { ok: Bool }
-    @idempotent
 
   // --- Events (for audit trail) --------------------------------------------
 
   capability list_events(id: NonEmptyStr, since: String?)
     -> { events: List<IssueEvent> }
-    @readonly
 
   // --- Behavioral contracts ------------------------------------------------
   //
@@ -68,6 +62,4 @@ interface IssueProvider {
   // set_labels: replaces the full label set (not additive).
   // close: idempotent — closing an already-closed issue is success.
 
-  @contract: get(id) after create(t, b, l) => { found: true }
-  @contract: close(id) after close(id) => { ok: true }
 }

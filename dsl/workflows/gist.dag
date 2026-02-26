@@ -23,40 +23,31 @@ import tools.codegen { codegen_ensure }
 
 pipeline gist {
 
-  stage compilation_ensure {
-    @file(WRITE, "target")
-    @tool(READ, "cargo")
-    _ = compilation_ensure()
+  stage compilation_ensure {    _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
-    @file(WRITE, "generated:cli")
     _ = codegen_ensure()
   }
 
   stage branch_resolution [after codegen_ensure] {
-    @file(READ, "workspace")
   }
 
   stage credential_resolve [after codegen_ensure] {
   }
 
   stage list_files [after codegen_ensure, when mode == "gist" || mode == "gist-snapshot"] {
-    @file(READ, "workspace")
   }
 
   stage read_files [after list_files, when mode == "gist" || mode == "gist-snapshot"] {
-    @file(READ, "workspace")
   }
 
   stage render_snapshot [after read_files, when mode == "gist" || mode == "gist-snapshot"] {}
 
   stage rev_list [after codegen_ensure, when mode == "gist-recent"] {
-    @file(READ, "workspace")
   }
 
   stage diff [after codegen_ensure, after rev_list, when mode == "gist-diff" || mode == "gist-recent"] {
-    @file(READ, "workspace")
   }
 
   stage render_diff [after diff, when mode == "gist-diff" || mode == "gist-recent"] {}
