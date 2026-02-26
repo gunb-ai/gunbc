@@ -1670,7 +1670,6 @@ impl std::fmt::Display for LowerError {
 /// - `pipeline` declarations become opaque pipeline nodes
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
-
 fn collect_variant_names(project: &TypedProject) -> HashSet<String> {
     let mut names = HashSet::new();
     for module in &project.modules {
@@ -1795,6 +1794,7 @@ fn lower_typed_project_with_callable_scope(
     let mut builder = DagBuilder::new();
     let mut endpoints_by_full = HashMap::<(String, String), LoweredEndpoint>::new();
     let mut endpoints_by_name = HashMap::<String, Option<LoweredEndpoint>>::new();
+    let variant_names = collect_variant_names(project);
 
     for module in &project.modules {
         let module_name = module.module_path.join(".");
@@ -5264,30 +5264,6 @@ fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
     }
 }
 
-/// The path may be a plain string literal or a string interpolation. Interpolated
-/// expressions like `{project}` are converted back to template placeholders `{project}`.
-
-/// Extract argv template from `@shell(["cmd", "arg", "{param}"])`.
-
-/// Extract shell parse mode from `@parse(mode)`.
-///
-/// Supported aliases:
-/// - trim / trim_stdout / string -> TrimStdout
-/// - split_lines / lines / line_list -> SplitLines
-/// - exit_code_bool / bool / success_bool -> ExitCodeBool
-/// - success_stdout_stderr / triple / result -> SuccessStdoutStderr
-
-/// Extract body template from `@body_template({ "key": value, ... })`.
-///
-/// Supports nested structures:
-/// ```dagl
-/// @body_template({
-///   description: description,
-///   files: { "filename.md": { content: content } },
-///   public: public
-/// })
-/// ```
-
 /// Recursively convert an expression (Record or Map) to body template entries.
 fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
     match expr {
@@ -5327,21 +5303,6 @@ fn body_template_entry(key: &str, value: &Expr) -> Option<BodyEntry> {
         _ => None,
     }
 }
-
-/// Extract custom headers from `@headers({ "key": "value", ... })`.
-///
-/// Handles both `Expr::Record` (unquoted keys) and `Expr::Map` (quoted keys).
-
-/// Extract the auth scheme string from `@auth(...)` annotations.
-///
-/// Returns the scheme identifier used by `Credential::apply()` at execute time:
-/// - `@auth(BearerToken)` → `"BearerToken"`
-/// - `@auth(Header("x-api-key"))` → `"Header:x-api-key"`
-/// - `@auth(Basic)` → `"Basic"`
-///
-/// The scheme is stored on `RestOperationSpec.auth_scheme` and drives
-/// `res:credential` wiring on the execute node. No `config.credential`
-/// header template is generated.
 
 /// Derive input field specs from operation inputs.
 fn derive_input_fields(
