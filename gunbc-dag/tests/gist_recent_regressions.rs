@@ -30,7 +30,14 @@ impl TransportBackend for GistRecentBackend {
                         "feature/mock\n",
                     )));
                 }
-                if args == ["diff", "oldest-commit...HEAD"] {
+                // RevListBase: git merge-base HEAD <since>
+                if args.len() == 3 && args[0] == "merge-base" {
+                    return Ok(TransportResponse::Shell(ShellResponse::ok(
+                        "oldest-commit\n",
+                    )));
+                }
+                // git Diff: DSL uses separate base/head args
+                if args.len() == 3 && args[0] == "diff" {
                     return Ok(TransportResponse::Shell(ShellResponse::ok(
                         "diff --git a/a b/a\n+line\n",
                     )));
@@ -230,7 +237,10 @@ fn gist_recent_end_to_end_emits_gist_url() {
         matches!(
             request,
             TransportRequest::Shell(shell)
-            if shell.command == "git" && shell.args.as_slice() == ["diff", "oldest-commit...HEAD"]
+            if shell.command == "git"
+                && shell.args.len() == 3
+                && shell.args[0] == "diff"
+                && shell.args[1] == "oldest-commit"
         )
     });
     assert!(
