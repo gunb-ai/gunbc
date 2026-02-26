@@ -7,34 +7,28 @@
 
 ## Operating Model: Blue Team / Red Team
 
-Two teams, two lanes each, never blocking each other.
+One blue lane (scenario-driven), two red lanes, never blocking each other.
 
 ```
-  BLUE TEAM — Advance                        RED TEAM — Harden
-  ─────────────────────────                  ────────────────────────
-  Lane B1: SDLC Pipeline                    Lane R1: Structural Correctness
-    RF-B1 → SDLC-1 → SDLC-2 →               RF-H4 → RF-H2 → RF-E4 →
-    SDLC-3 → SDLC-4 → ─┐                    RF-G-unblock → RF-A1 →
-                         ├→ SDLC-7 → 8        RF-A2a → RF-A4
-  Lane B2: SDLC Infra   │
-    RF-B2 → SDLC-5 → ──┘                   Lane R2: Testing + Foundation
-    SDLC-6 → ──────────┘                     BB-2 → BB-3 → BB-5 →
-                                              FC-P7-c2 → FC-P7-d →
-  ─ then ─                                    FC-CF5 → FC-CF6 →
-  Lane B1: Cloud + Scale                      FC-P8-a → FC-P8-b → FC-P8-c
-    SDLC-CD1:6 → DG1
-  Lane B2: Agent Integration                ─ then ─
-    SDLC-AG1:3 → webhook-driven             Lane R1: Typed Dispatch
-    stage transitions                         RF-A5 → RF-A6a → RF-A8
-                                            Lane R2: Code Hygiene
-                                              RF-A2b → RF-A6b → RF-C1 →
-                                              RF-C2 → RF-D eval
+  BLUE TEAM — Advance                     RED TEAM — Harden
+  ────────────────────────────            ────────────────────────
+  SDLC Activation (single lane):         Lane R1: Structural Correctness
+    B-0 → B-1 → B-2 → B-3 →               RF-RG1 → RF-RG2 → RF-H4 →
+    B-4 → B-5 → B-6 → B-7 →               RF-H2 → RF-G-unblock → RF-A1 →
+    B-8:13 → ...cloud deployment            RF-A2a → RF-A4
+
+                                          Lane R2: Testing + Foundation
+                                            BB-2 → BB-3 → BB-5 →
+                                            FC-P7-c2 → FC-P7-d →
+                                            FC-CF5 → FC-CF6 →
+                                            FC-P8-a → FC-P8-b → FC-P8-c
 ```
 
 ### Protocols
 
-**Independence**: Lanes within a team touch different files. No merge
-conflicts between lanes. Each lane can be worked by a separate agent.
+**Independence**: Blue and Red touch different files. No merge conflicts.
+Blue: `dsl/`, `gunbc-dag/src/workflow/`, `gunbc-dag/tests/sdlc_*`.
+Red: `core/`, `gunbc-dag/src/resolve.rs`, `gunbc-dag/src/fidelity.rs`.
 
 **Scouting**: Every PR includes a `Scouted:` line listing
 opportunities for the other team discovered during implementation.
@@ -53,75 +47,98 @@ and red cleans up later.
 
 # BLUE TEAM — Advance
 
-## Lane B1: SDLC Pipeline
+## SDLC Activation (Single Lane)
 
-Registration, dispatch, validation, stage handlers. Touches
-`gunbc-dag/src/workflow/`, `dsl/sdlc/`, `dsl/services/github/`.
+### The Scenario
 
-### Transport Declarations — Active Services (RF-B1)
+A GitHub issue goes through the full lifecycle:
 
-| ID | Scope | Ops Missing | Status | Notes |
-|----|-------|-------------|--------|-------|
-| RF-B1 | github/issues.dag (8), github/pull_request.dag (6), llm/openai.dag (2) | 16 | Pending | REST transport; need `config { endpoint, auth }` |
+1. Someone creates issue with label `sdlc:idea`
+2. Worker discovers issue → acquires claim → dispatches `handle_idea_to_design`
+3. LLM generates design → posted as comment → labels transition to `sdlc:design`
+4. Worker dispatches `handle_design_to_review` → LLM reviews → `sdlc:design-review`
+5. `handle_review_to_accepted` → approves → `sdlc:accepted`
+6. `handle_accepted_to_implementing` → spawns Codex agent on dedicated branch
+7. Agent completes → `handle_implementing_to_code_review` → creates PR, LLM reviews diff
+8. `handle_code_review_to_testing` → review approved → `sdlc:testing`
+9. `handle_testing_to_done` → cargo test + clippy → merges PR if green
+10. `handle_done` → closes issue
 
-### Pipeline Activation
+### Testing Levels
 
-| ID | Task | Size | Status | Deps |
-|----|------|------|--------|------|
-| SDLC-1 | Register SDLC in workflow catalog + WorkspaceBinary dispatch. | M | Pending | — |
-| SDLC-2 | Fill dispatch runtime: real stage transition logic via state machine. | M | Pending | SDLC-1 |
-| SDLC-3 | Fill validation runtime: review_gate, ci_gate with real logic. | M | Pending | SDLC-2 |
-| SDLC-4 | Complete testing→done handler (cargo test + clippy + conditional merge). | M | Pending | SDLC-1 |
+| Level | What | Profile | Transport | Proves |
+|-------|------|---------|-----------|--------|
+| L0 | Pipeline compiles | — | — | DSL modules resolve, type-check, lower |
+| L1 | Hermetic scenario | unit_test | DryRun/stubs | Full idea→done with stubs; stage transitions, claim lifecycle, outcome recording |
+| L2 | Per-stage handlers | unit_test | DryRun/stubs | Each of 8 handlers individually correct |
+| L3 | Worker loop | unit_test | DryRun/stubs | Discover→claim→dispatch→record→release; replay-skip, retry, claim conflict |
+| L4 | Local integration | local | Real GitHub + file | Single stage transition (idea→design) against real API |
+| L5 | Full local scenario | local | Real GitHub + file | Complete idea→done on test repo, multiple worker invocations |
+| L6 | Testgen | — | — | Auto-generated per-node and per-pair coverage for SDLC DAGs |
+| L7 | CLI entrypoint | local | Real | `gunbc sdlc --profile local --repo owner/name` |
+| L8 | Cloud deployment | cloud_run | GCS + PubSub | Multi-worker CAS, GCS stores, Cloud Run |
 
-### Convergence (needs both lanes)
+### Current State
 
-| ID | Task | Size | Status | Deps |
-|----|------|------|--------|------|
-| SDLC-7 | Profile binding verification: compile all 3 profiles, hermetic e2e on unit_test. | M | Pending | SDLC-1:6 |
-| SDLC-8 | Local profile e2e: real GitHub repo, idea → design → review flow. | L | Pending | SDLC-7 |
+**DSL is comprehensive** (~3,600 lines across 20 .dag files):
+- Pipeline: 11 stages, complete with service calls and LLM integration (`pipelines/sdlc.dag`, 551 lines)
+- Stage handlers: 8/8 implemented with real logic (`funcs/sdlc_stages.dag`, 739 lines)
+- Worker dispatch: full discover→claim→dispatch→record→release (`funcs/sdlc_worker.dag`, 381 lines)
+- Dispatch policy: 6 stage transition fns (`funcs/sdlc_dispatch_runtime.dag`, 104 lines)
+- Validation policy: 3 gate fns (`funcs/sdlc_validation_runtime.dag`, 59 lines)
+- Interfaces: 7 with 24 capabilities (`interfaces/`)
+- Providers: 9 implementations — stubs, file-based, GCS-based (`services/sdlc/providers/`)
+- Profiles: 3 — unit_test (all stubs), local (GitHub + file), cloud_run (GCS + PubSub) (`profiles/sdlc.dag`)
+- DSL-level tests: 10+ test blocks defined in .dag files
 
-**Deliverable**: `gunbc sdlc --profile local --repo owner/name`
+**What's missing** — Rust-side infrastructure to compile and execute:
+- resolve.rs doesn't handle SDLC module paths (generalization needed — Red RF-RG2)
+- Profile-aware compilation doesn't exist
+- Transport declarations missing on GitHub/LLM services (compositional modeling — Red RF-TC1)
+- No CLI entrypoint (catalog is manual — Red RF-RG1 eliminates, or Blue wires inline)
 
-### B1 Horizon (after SDLC-8)
+**Key dependency**: L0–L3 use stubs and don't need transport declarations.
+L4+ needs transport on GitHub services. Non-blocking protocol applies: Blue adds
+transport inline if Red hasn't completed RF-TC1.
 
-| ID | Task | Size | Status | Deps |
-|----|------|------|--------|------|
-| SDLC-CD1 | GCS SignalStore (PubSub-backed, at-least-once). | M | Pending | SDLC-8 |
-| SDLC-CD2 | GCS ArtifactStore (GCS-backed, generation CAS). | M | Pending | SDLC-8 |
-| SDLC-CD3 | GCP credential chaining (WIF OIDC exchange). | L | Pending | SDLC-8 |
-| SDLC-CD4 | Cloud Run deployment DAG. | L | Pending | SDLC-CD1:3 |
-| SDLC-CD5 | Multi-worker CAS stress test (3 workers, exactly-once). Tests SDLC-CD1/CD2 stores, not S12-E. | M | Pending | SDLC-CD4 |
-| SDLC-CD6 | CI integration (hermetic + cloud smoke). | M | Pending | SDLC-CD5 |
-| DG1 | Daggen: re-enable `needs_daggen()` for dynamic DAG generation from git diffs. | L | Pending | SDLC-CD6 |
+### Queue
 
----
+| Order | ID | Task | Level | Size | Status | Deps |
+|-------|----|------|-------|------|--------|------|
+| 1 | B-0 | **Compile SDLC pipeline.** `build_dsl_graph_for_entry("pipelines/sdlc.dag", "...")` succeeds. May need minimal resolve.rs wiring for SDLC module paths. Profile-aware compilation for unit_test profile. | L0 | M | Pending | — |
+| 2 | B-1 | **Hermetic scenario test.** unit_test profile, DryRun, full idea→done with stubs. Assert: stage transitions correct, claims acquired/released, outcomes recorded, labels changed. | L1 | M | Pending | B-0 |
+| 3 | B-2 | **Per-stage handler tests.** Exercise all 8 handlers individually with mocked interfaces. Verify each handler's outputs, label transitions, service call arguments. | L2 | M | Pending | B-0 |
+| 4 | B-3 | **Worker dispatch loop test.** Full discover→claim→dispatch→record→release cycle. Test paths: happy path, replay-skip (prior SUCCESS), retry (prior FAILED), claim conflict (another worker holds it). | L3 | S | Pending | B-2 |
+| 5 | B-4 | **Local integration: single stage.** local profile, real GitHub API + file stores. Create a test issue with `sdlc:idea`, run worker, verify design comment posted and labels transitioned. Add transport declarations on GitHub services inline if RF-TC1 not done. | L4 | M | Pending | B-3 |
+| 6 | B-5 | **Full local scenario.** Complete idea→done lifecycle on a test repo. Multiple worker invocations drive the issue through all stages. Verify: PR created, code review posted, tests run, PR merged, issue closed. | L5 | L | Pending | B-4 |
+| 7 | B-6 | **Testgen integration.** Auto-generate per-node and per-pair tests for SDLC DAG nodes. Verify testgen handles profile-bound modules (interface→provider resolution). | L6 | M | Pending | B-0 |
+| 8 | B-7 | **CLI entrypoint.** However entrypoints work by this point (generated binary or catalog), make `gunbc sdlc` run the pipeline with `--profile` and `--repo` args. | L7 | S | Pending | B-5 |
 
-## Lane B2: SDLC Infrastructure
+### Horizon (after B-7)
 
-Providers, stores, resource implementations. Touches
-`dsl/sdlc/providers/`, `gunbc-dag/src/sdlc/`, new provider crates.
-**Independent from Lane B1** — can be built in parallel.
+| ID | Task | Level | Size | Deps |
+|----|------|-------|------|------|
+| B-8 | GCS SignalStore (PubSub-backed, at-least-once) | L8 | M | B-7 |
+| B-9 | GCS ArtifactStore (content-hash, generation CAS) | L8 | M | B-7 |
+| B-10 | GCP credential chaining (WIF OIDC exchange) | L8 | L | B-7 |
+| B-11 | Cloud Run deployment DAG | L8 | L | B-8:10 |
+| B-12 | Multi-worker CAS stress test (3 workers, exactly-once) | L8 | M | B-11 |
+| B-13 | CI integration (hermetic + cloud smoke) | L8 | M | B-12 |
+| B-AG1 | Agent provider: wire codex_agent.dag to real LLM | L5 | M | B-5 |
+| B-AG2 | Credential provider: local keychain for tokens | L5 | M | B-5 |
+| B-AG3 | Webhook-driven stage transitions | L8 | L | B-AG1 |
 
-### Transport Declarations — Providers (RF-B2)
+**Deliverable**: `gunbc sdlc --profile local --repo owner/name` runs full lifecycle.
+**Endstate**: SDLC on Cloud Run with GCS stores, PubSub signals, multi-worker CAS.
 
-| ID | Scope | Ops Missing | Status | Notes |
-|----|-------|-------------|--------|-------|
-| RF-B2 | file stores (6), GCS stores (6), github_issue_provider (7), codex_agent (4), credential providers (4) | 27 | Pending | Mixed rest/shell/file/local |
+### Design References
 
-### Provider Activation
-
-| ID | Task | Size | Status | Deps |
-|----|------|------|--------|------|
-| SDLC-5 | Local SignalStore provider (file-based, satisfies signal_store.dag contracts). | M | Pending | — |
-| SDLC-6 | Local ArtifactStore provider (file-based, content-hash keyed, two-phase commit). | M | Pending | — |
-
-### B2 Horizon (after stores + convergence)
-
-| ID | Task | Size | Status | Deps |
-|----|------|------|--------|------|
-| SDLC-AG1 | Agent provider: wire codex_agent.dag to LLM service for automated code review in review stage. | M | Pending | SDLC-8 |
-| SDLC-AG2 | Credential provider: local keychain integration for GITHUB_TOKEN + LLM API keys. | M | Pending | SDLC-8 |
-| SDLC-AG3 | Webhook-driven stage transitions: GitHub webhook → local listener → stage advance. | L | Pending | SDLC-AG1 |
+| Document | What |
+|----------|------|
+| `docs/design/sdlc/mega-modeling-design.md` | Canonical architecture: 9 high-level boxes, core abstractions, canonical contracts, conformance model |
+| `docs/design/sdlc/domain-modeling-comprehensive.md` | All domain objects, state machines, invariants |
+| `docs/design/sdlc/e2e-gap-analysis.md` | Gap tracking (A–J, all resolved at DSL level) |
+| `docs/design/sdlc/implementation-roadmap.md` | Task breakdown and dependency graph |
 
 ---
 
@@ -143,7 +160,7 @@ Triaged and sized. Promote to lane queues when horizon items are exhausted.
 | ID | Item | Size | Priority | Notes |
 |----|------|------|----------|-------|
 | H10 | Compute stack orchestration: Cloud Run/GCS/LB lifecycle DAG builder. | L | P2 | `docs/design/horizon/h10-compute-stack-services.md` |
-| S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS. DSL exists. Distinct from SDLC-CD5 (which stress-tests SignalStore/ArtifactStore). | M | P2 | Deferred until cloud_run profile needed |
+| S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS. DSL exists. Distinct from B-12 (which stress-tests SignalStore/ArtifactStore). | M | P2 | Deferred until cloud_run profile needed |
 | H1 | Display reactive DSL: channel-driven event loop. | XL | P3 | No current use case. Review 2026-Q3, delete if not promoted. |
 
 ---
@@ -176,22 +193,16 @@ same class of bug?* If yes, you relocated it. If no, you eliminated it.
 | **Stringly-typed enum** | `String` field that only holds N known values | Dedicated enum. `FromStr` at boundary, `.as_str()` only for serialization. |
 | **Fallback arm** | `_ => default` or `other => ...` in a match on known variants | Exhaustive enum match. If a new variant appears, compilation forces handling it. |
 | **Duplicate filter logic** | Same `starts_with("res:")` / `"tool:"` check in 5 files | Central type (`PortCategory`) with one `from()` impl. Call sites use the type. |
+| **Manual registry** | Hand-maintained list mapping names → files/modules | Derive from DSL graph, Cargo.toml, or structural inference. |
 
 ### Remediation Ladder
 
 When you find a smell, apply the **highest rung** that's feasible:
 
 1. **Eliminate the representation** — the bad state can't be constructed
-   (e.g., `NodeKind` required in constructor → no `Option` exists)
-2. **Parse at the boundary** — raw input becomes a typed value once,
-   all downstream code receives the type (e.g., `ResourceKind` enum
-   parsed in resolve step, never a `String` again)
-3. **Derive from source of truth** — delete the hand-maintained copy,
-   generate from DSL/enum/data declaration (e.g., RF-G-unblock deletes
-   6 Rust heuristic fns by calling DSL `classify_transports`)
-4. **Centralize** — if elimination isn't possible yet, at least have
-   one canonical impl that all call sites use (e.g., `PortCategory`
-   enum + methods, used everywhere instead of ad-hoc `starts_with`)
+2. **Parse at the boundary** — raw input becomes a typed value once
+3. **Derive from source of truth** — delete the hand-maintained copy
+4. **Centralize** — if elimination isn't possible yet, at least one canonical impl
 
 Rung 4 is a **waypoint**, not a destination. If you centralize, file
 a follow-up to eliminate.
@@ -201,32 +212,35 @@ a follow-up to eliminate.
 ## Lane R1: Structural Correctness
 
 Types over validation, enums over strings. Touches `core/ir/`,
-`core/test/`, `gunbc-dag/src/fidelity.rs`, `gunbc-dag/src/resolve.rs`.
-**No overlap with Lane R2 files.** (RF-A2/RF-A6 split: R1 defines
-types in `core/ir/`, R2 migrates call sites in `core/daglang/` + `core/codegen/`.)
+`core/test/`, `gunbc-dag/src/resolve.rs`, `gunbc-dag/src/binaries.rs`,
+`gunbc-dag/src/workflow/catalog.rs`.
+**No overlap with Lane R2 files.**
 
-Queue ordered by danger (silent failures first, then mechanical cleanup):
+Queue ordered by: manual registries first (pre-SDLC cleanup the user
+explicitly flagged), then danger (silent failures), then mechanical cleanup.
 
 | Order | ID | What | Size | Status | Deps |
 |-------|----|------|------|--------|------|
-| 1 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
-| 2 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
-| 3 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
-| 4 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks (was RF-H1). | M | Pending | — |
-| 5 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
-| 6 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. R1-scoped (definition only). | M | Pending | — |
-| 7 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
+| 1 | RF-RG1 | **Manual registry elimination.** `WorkspaceBinary` enum (13 entries, `binaries.rs`) is derivable from Cargo.toml `[[bin]]`. Workflow variant catalog (10 entries, `catalog.rs`) is derivable from DSL `pipeline` declarations + annotations for aliases/modes. Delete both manual tables, replace with auto-derivation. | M | Pending | — |
+| 2 | RF-RG2 | **Resolve generalization.** `resolve.rs` hardcodes 3 module paths (`std.resources`, `tools.infra`, prefix `services.*`). New DSL modules (SDLC, future tools) must work without touching resolve.rs. Replace with metadata-driven dispatch or convention-based fallthrough. | M | Pending | — |
+| 3 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
+| 4 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
+| 5 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
+| 6 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks. | M | Pending | — |
+| 7 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
+| 8 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
+| 9 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
 
 ### R1 Horizon (after A4)
 
 | Order | ID | What | Size |
 |-------|----|------|------|
-| 8 | RF-A5 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
-| 9 | RF-A6a | String constants: define central consts in `core/ir/src/signature.rs`. R1-scoped (definition only). | S |
-| 10 | RF-A8 | `#[derive(StringEnum)]` macro for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr` (was RF-H3). | M |
-| 11 | RF-A3 | ModulePath unification across 4 crates. | S |
-| 12 | RF-A9 | Shared DslTypeMapping table for emit backends. | S |
-| 13 | RF-A10 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
+| 10 | RF-A5 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
+| 11 | RF-A6a | String constants: define central consts in `core/ir/src/signature.rs`. | S |
+| 12 | RF-A8 | `#[derive(StringEnum)]` macro for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr`. | M |
+| 13 | RF-A3 | ModulePath unification across 4 crates. | S |
+| 14 | RF-A9 | Shared DslTypeMapping table for emit backends. | S |
+| 15 | RF-A10 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
 
 ---
 
@@ -255,8 +269,8 @@ Queue ordered by dependency chain:
 
 | Order | ID | What | Size |
 |-------|----|------|------|
-| 11 | RF-A2b | Port namespace typing: migrate `starts_with("res:")`/`"tool:"` call sites in `core/daglang/`, `core/codegen/testgen/` to `PortCategory`. | S |
-| 12 | RF-A6b | String constants: migrate `__deps`/`res:file`/`tool:` references in `core/daglang/`, `core/codegen/testgen/` to central consts. | M |
+| 11 | RF-A2b | Port namespace typing: migrate `starts_with("res:")`/`"tool:"` call sites to `PortCategory`. | S |
+| 12 | RF-A6b | String constants: migrate `__deps`/`res:file`/`tool:` references to central consts. | M |
 | 13 | RF-C1 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
 | 14 | RF-C2 | Unify passthrough op variants to single data-driven PassthroughOp. | S |
 | 15 | RF-C3 | Error type consolidation (6 types → layered like ExecError). | M |
@@ -281,18 +295,26 @@ smell catalog above to classify. Include file path + line if possible.
 
 Triaged and sized. Promote to lane queues when horizon items are exhausted.
 
-### Theme B: Remaining Transport Gaps (non-blocking)
+### Theme TC: Transport Completeness (compositional modeling)
+
+Transport declarations belong on the **service layer**, not on SDLC.
+The SDLC pipeline only sees interfaces. Each service operation needs a
+`transport rest { ... }` or `transport shell { ... }` block so the
+compiler can generate prepare→execute→parse triplets.
 
 | ID | Scope | Ops Missing | Notes |
 |----|-------|-------------|-------|
-| RF-B3 | **Stub providers**: stub_providers.dag (26), stub_credential_provider.dag (2) | 28 | Intentional — unit_test profile stubs. Consider `transport stub {}` marker. |
-| RF-B4 | **Infrastructure stubs**: azure (43), aws (38), gcp-infra (59) | 140 | Dormant — defer until infrastructure provisioning lane opens. |
+| RF-TC1 | **GitHub services**: `github/issues.dag` (7 ops), `github/pull_request.dag` (7 ops) | 14 | REST transport. Blue B-4 depends on this (non-blocking: Blue adds inline if needed). |
+| RF-TC2 | **LLM service**: `llm/openai.dag` (2 ops) | 2 | REST transport. Needed for LLM-driven stages (design, review). |
+| RF-TC3 | **SDLC providers**: file stores (6), GCS stores (6), github_issue_provider (7), codex_agent (4), credential providers (4) | 27 | Mixed rest/shell/file. Needed for real (non-stub) execution. |
+| RF-TC4 | **Stub providers**: stub_providers.dag (26), stub_credential_provider.dag (2) | 28 | Intentional — unit_test profile stubs. Consider `transport stub {}` marker. |
+| RF-TC5 | **Infrastructure stubs**: azure (43), aws (38), gcp-infra (59) | 140 | Dormant — defer until infrastructure provisioning lane opens. |
 
 ### Theme E: Deleted Tests (re-add when root cause fixed)
 
 | ID | Deleted Tests | Root Cause | Blocker |
 |----|---------------|-----------|---------|
-| RF-E5 | `makegen_runtime_differential_interpreter_vs_generated_rust_layer1` (codegen_parity.rs) | FnBodyDelegate gap: interpreter produces raw `{header}{body}`, fn body evaluation only works via `shared.rs` direct path, not DAG executor. | Interpreter needs fn body evaluation support. |
+| RF-E5 | `makegen_runtime_differential_interpreter_vs_generated_rust_layer1` (codegen_parity.rs) | FnBodyDelegate gap: interpreter produces raw `{header}{body}`, fn body evaluation only works via `shared.rs` direct path. | Interpreter needs fn body evaluation support. |
 | RF-E6 | `makegen_exec_runtime_e2e_structural_verification` (daglang-driver), `pragma_exec_runtime_e2e_structural_verification` (daglang-driver), `makegen_e2e_generated_binary_produces_correct_makefile` (cli_commands), `pragma_e2e_generated_binary_produces_correct_config_files` (cli_commands) | Exec-runtime emitter missing: `LoadRegistry` handler, `PureRender` fn classification, `ContentUpsertOutputPath` classification. | `daglang-emit` exec-runtime backend needs node classification for all makegen/pragma node kinds. |
 | — | `clippy_toml_dsl_produces_valid_output` (pragma_parity.rs) | Sum type variant tags lost during `build_data_values()` JSON serialization. | FC-CF5 (recursive types). Already tracked in R2 queue. |
 
@@ -311,6 +333,31 @@ Detailed descriptions for items in lane queues. Consult when picking
 up a task — the lane queue has the priority order, this section has
 the context.
 
+### Theme RG: Manual Registry Elimination
+
+**Audit findings** (2026-02-26):
+
+| Registry | Location | Entries | Derivable From | Status |
+|----------|----------|---------|----------------|--------|
+| `WorkspaceBinary` enum | `binaries.rs:55-70` | 13 | Cargo.toml `[[bin]]` section | ⚠️ Manual |
+| Workflow variant catalog | `catalog.rs:34-127` | 10 | DSL `pipeline` declarations + annotations | ⚠️ Manual |
+| Extern impls | `extern_impls.rs:26-64` | 6 | DSL `extern func` declarations (gated by ratchet) | ✓ Gated |
+| Module path dispatch | `resolve.rs:683-706` | 3 + prefix | Convention-based fallthrough | ⚠️ Implicit |
+| Tool definitions | `dsl_registry.rs:44-178` | dynamic | Structural inference from DSL | ✓ Auto |
+| Entrypoint inference | `daglang-lower` | dynamic | Unconnected port analysis | ✓ Auto |
+| Process unit registry | `process_registry.rs` | dynamic | DSL workflow DAGs | ✓ Auto |
+
+**RF-RG1**: Eliminate `WorkspaceBinary` + workflow variant catalog.
+Both are static tables that duplicate information the compiler already derives.
+Tool definitions and entrypoints are already auto-derived from DSL. These two
+should follow the same pattern.
+
+**RF-RG2**: Generalize resolve.rs so new DSL modules work without adding
+hardcoded paths. Current hardcoded: `std.resources` (resource lifecycle),
+`tools.infra` (single custom op), prefix `services.*` / `workspace.*`
+(generic transport). Convention: if a module doesn't match any special
+pattern, fall through to generic callable resolution.
+
 ### Theme G: Rust Heuristics Shadowing DSL Declarations
 
 The DSL already has the complete, correct implementation:
@@ -327,7 +374,7 @@ exist solely because `classify_transports` uses `fold` (via
 `fermi_max_of`), and the lowerer can't extract fn bodies containing
 `fold` for `evaluate_fn_body()`.
 
-**RF-G-unblock** (in R1 queue position 4): Implement `fold` aggregation
+**RF-G-unblock** (in R1 queue position 6): Implement `fold` aggregation
 in Rust's `evaluate_fn_body()` evaluator (it already handles other
 collection ops). This directly enables calling the existing DSL fns.
 Once done, delete:
@@ -337,10 +384,7 @@ Once done, delete:
 - `test_policy.dag::classify_from_facts()` (RF-G4)
 - `TestClass::parse()` / `FermiCost::parse()` round-trip (RF-G5)
 - `test_policy.dag` shadow fns (RF-G6)
-- Fidelity silent fallbacks `unwrap_or(Unit)` / `unwrap_or(XS)` (was RF-H1)
-
-Note: RF-A7 ("transport class heuristic shadows") was deleted as a
-standalone item — it is a deliverable of this task, not independent work.
+- Fidelity silent fallbacks `unwrap_or(Unit)` / `unwrap_or(XS)`
 
 ### Theme H: Structural Enforcement (parse, don't validate)
 
@@ -348,11 +392,6 @@ standalone item — it is a deliverable of this task, not independent work.
 |----|------|---------|---------------|
 | RF-H2 | **TestgenTargetDef Option fields always populated**. `test_class: Option<TestClass>`, `fermi_cost: Option<FermiCost>`, `requires: Option<Vec<String>>` — every auto-testgen call site now fills `Some(...)` from fidelity. The `Option` only exists for legacy `DagSpecDef` path (which also never overrides). `generate_target_with_types()` does `unwrap_or(Unit)` on every field. | 6 Option fields in registry.rs | Make fields non-Option with `Default` impl. Callers construct with values; no unwrapping. `DagSpecDef.to_def()` fills from fidelity instead of leaving `None`. |
 | RF-H4 | **ResourceKind string dispatch**. `ResourceAcquireOp { resource_kind: String }` matched at runtime. Unknown kinds fall through to `Value::Str("resource:{other}")` — wrong type, silent. | resolve.rs:365-386 | `ResourceKind` enum parsed once at resolve time. Match is exhaustive, no fallback arm. |
-
-Deleted from this theme (subsumed by other tasks):
-- RF-H1 → subsumed by RF-G-unblock (fidelity silent fallbacks eliminated when classify_transports returns typed DerivedClassification)
-- RF-H3 → merged into RF-A8 (derive macro handles FromStr for all 15 enums including TestClass/FermiCost)
-- RF-H5 → duplicate of RF-A2a/RF-A2b (PortCategory enum)
 
 ### Theme A: Typed Dispatch (full detail)
 
@@ -366,7 +405,7 @@ Deleted from this theme (subsumed by other tasks):
 | RF-A5 | **Transport node classification**. String-based prepare/execute/parse detection. | resolve.rs | `TransportNodeKind { Prepare, Execute, Parse }`. |
 | RF-A6a | **String constants (definition)**. Define central consts (`__deps`, `__out:`, `res:file`, `tool:`) in `core/ir/src/signature.rs`. | core/ir/ | R1 scope. |
 | RF-A6b | **String constants (migration)**. Migrate 141+ `__deps`, 7 `res:file`, 15 `tool:` references in `core/daglang/`, `core/codegen/testgen/`. | R2 files | R2 scope. Depends on RF-A6a. |
-| RF-A8 | **`as_str`/`parse` boilerplate**. `#[derive(StringEnum)]` for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr` (was RF-H3). | 12 files | |
+| RF-A8 | **`as_str`/`parse` boilerplate**. `#[derive(StringEnum)]` for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr`. | 12 files | |
 | RF-A9 | **Emit backend type-name tables**. Same type mapping in 3 backends. | daglang-emit | Shared `DslTypeMapping` table. |
 | RF-A10 | **String dispatch in DAG tooling**. 100+ match arms on string literals. | 5 files | Registry pattern or DSL data declarations. |
 
