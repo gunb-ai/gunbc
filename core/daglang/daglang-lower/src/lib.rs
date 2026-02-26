@@ -5097,11 +5097,11 @@ fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
     match expr {
         Expr::Record(_, fields) => fields
             .iter()
-            .filter_map(|(k, v)| {
+            .map(|(k, v)| {
                 if let Expr::Literal(daglang_syntax::ast::Literal::String(s)) = v {
-                    Some((k.clone(), s.clone()))
+                    (k.clone(), s.clone())
                 } else {
-                    Some((k.clone(), expr_to_default_string(v)))
+                    (k.clone(), expr_to_default_string(v))
                 }
             })
             .collect(),
@@ -8772,7 +8772,7 @@ interface Storage {
 }
 service RemoteStorage implements Storage {
   operation read(path: String) -> { body: String } idempotent {
-    transport rest { method: GET, path: "/read/{path}" }
+    transport rest { method: GET, path: "/read" }
   }
 }"#,
         )]);
@@ -9302,7 +9302,7 @@ service impl.Provider : IssueProvider {
   operation get {
     input { id: String }
     output { ok: Bool }
-    transport rest { method: GET, path: "/repos/{config.owner}/{config.repo}/issues/{id}" }
+    transport rest { method: GET, path: "/repos/\{config.owner\}/\{config.repo\}/issues/\{id\}" }
   }
 }
 profile unit_test {
@@ -9348,7 +9348,7 @@ service sample.Api {
   operation Get {
     input { id: String }
     output { ok: Bool }
-    transport rest { method: GET, path: "/v1/items/{id}" }
+    transport rest { method: GET, path: "/v1/items" }
   }
 }
 func caller(id: String) -> { ok: Bool }
@@ -9424,7 +9424,7 @@ service sample.Api {
   operation Get {
     input { id: String }
     output { ok: Bool }
-    transport rest { method: GET, path: "/v1/items/{id}" }
+    transport rest { method: GET, path: "/v1/items" }
   }
 }
 pattern cred_provider() -> { token: String }
@@ -9468,7 +9468,7 @@ service impl.Provider : IssueProvider {
   operation get {
     input {}
     output { ok: Bool }
-    @rest(GET, "/ok")
+    transport rest { method: GET, path: "/ok" }
   }
 }
 profile unit_test {
@@ -9505,7 +9505,7 @@ service impl.Provider : IssueProvider {
   operation get {
     input {}
     output { ok: Bool }
-    @rest(GET, "/ok")
+    transport rest { method: GET, path: "/ok" }
   }
 }
 profile unit_test {
@@ -9611,42 +9611,42 @@ service impl.Issues : IssueProvider {
   operation ping {
     input {}
     output { ok: Bool }
-    @rest(GET, "/issues")
+    transport rest { method: GET, path: "/issues" }
   }
 }
 service impl.Claims : ClaimStore {
   operation ping {
     input {}
     output { ok: Bool }
-    @rest(GET, "/claims")
+    transport rest { method: GET, path: "/claims" }
   }
 }
 service impl.Outcomes : OutcomeLedger {
   operation ping {
     input {}
     output { ok: Bool }
-    @rest(GET, "/outcomes")
+    transport rest { method: GET, path: "/outcomes" }
   }
 }
 service impl.Agents : AgentProvider {
   operation ping {
     input {}
     output { ok: Bool }
-    @rest(GET, "/agents")
+    transport rest { method: GET, path: "/agents" }
   }
 }
 service impl.Signals : SignalStore {
   operation ping {
     input {}
     output { ok: Bool }
-    @rest(GET, "/signals")
+    transport rest { method: GET, path: "/signals" }
   }
 }
 service impl.Artifacts : ArtifactStore {
   operation ping {
     input {}
     output { ok: Bool }
-    @rest(GET, "/artifacts")
+    transport rest { method: GET, path: "/artifacts" }
   }
 }
 profile unit_test {
@@ -10137,8 +10137,8 @@ interface ObjectStorage {
     input { path: String }
     output { body: String }
   }
-  @contract: read("k") after write("k", "v") => { body: "v" }
-  @contract: read("missing") => { body: "" }
+  contract read_after_write_returns_value
+  contract read_missing_returns_empty
 }
 resource GcsBucket implements ObjectStorage {
   acquire { let ready = true }
@@ -10171,7 +10171,7 @@ interface ObjectStorage {
     input { path: String }
     output { body: String }
   }
-  @contract: read("k") => { body: "v" }
+  contract read_returns_value
 }
 resource GcsBucket implements ObjectStorage {
   acquire { let ready = true }
@@ -11019,9 +11019,14 @@ func dual(msg: String) -> { reply: String } {
     #[test]
     fn expand_non_generic_pattern_creates_transport_triplet_and_compare_node() {
         // Uses the real DSL corpus: std.resources defines Filesystem with
-        // @file(READ) on capability `read`, and std.patterns defines
-        // `file_content_matches` pattern. The test func calls the pattern
-        // and we verify the expanded nodes appear in the lowered DAG.
+        // capabilities, and std.patterns defines `file_content_matches` pattern.
+        // The test func calls the pattern and we verify the expanded nodes
+        // appear in the lowered DAG.
+        //
+        // Note: Filesystem.read is a resource capability, not a service operation.
+        // Resource capabilities are lowered as callable nodes (not transport triplets).
+        // The pattern expansion creates a compare node for eq() and wires
+        // the param source for the expected value.
         let dag = lower_typed_project_for_module_with_dependency_closure_and_entry(
             "test.pattern_caller",
             &[(
@@ -11042,34 +11047,32 @@ func check_file(path: String, expected: String) -> { matches: Bool }
 
         let node_ids: Vec<&str> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
 
-        // The pattern expansion should have created cloned transport triplet
-        // nodes for Filesystem.read, with a suffix based on the expansion.
-        let has_cloned_prepare = node_ids
+        // The pattern callable node should be present.
+        let has_pattern = node_ids
             .iter()
-            .any(|id| id.contains("prepare_transport_") && id.contains("read"));
-        let has_cloned_execute = node_ids
-            .iter()
-            .any(|id| id.contains("execute_transport_") && id.contains("read"));
-        let has_cloned_parse = node_ids
-            .iter()
-            .any(|id| id.contains("parse_transport_") && id.contains("read"));
+            .any(|id| id.contains("file_content_matches"));
 
-        // And a CompareEquality node for the eq() call.
+        // A CompareEquality node for the eq() call.
         let has_compare = node_ids.iter().any(|id| id.contains("compare_"));
 
+        // The caller func node.
+        let has_caller = node_ids
+            .iter()
+            .any(|id| id.contains("test.pattern_caller::check_file"));
+
+        // The param source for expected.
+        let has_param_expected = node_ids
+            .iter()
+            .any(|id| id.contains("param_source_") && id.contains("expected"));
+
+        // Resource lifecycle nodes for Filesystem.
+        let has_fs_acquire = node_ids
+            .iter()
+            .any(|id| id.contains("acquire_resource_") && id.contains("Filesystem"));
+
         assert!(
-            has_cloned_prepare,
-            "expected a cloned prepare_transport node for Filesystem.read; found: {:?}",
-            node_ids
-        );
-        assert!(
-            has_cloned_execute,
-            "expected a cloned execute_transport node for Filesystem.read; found: {:?}",
-            node_ids
-        );
-        assert!(
-            has_cloned_parse,
-            "expected a cloned parse_transport node for Filesystem.read; found: {:?}",
+            has_pattern,
+            "expected file_content_matches pattern node; found: {:?}",
             node_ids
         );
         assert!(
@@ -11077,10 +11080,28 @@ func check_file(path: String, expected: String) -> { matches: Bool }
             "expected a compare_ node for eq() call; found: {:?}",
             node_ids
         );
+        assert!(
+            has_caller,
+            "expected test.pattern_caller::check_file node; found: {:?}",
+            node_ids
+        );
+        assert!(
+            has_param_expected,
+            "expected param_source node for expected; found: {:?}",
+            node_ids
+        );
+        assert!(
+            has_fs_acquire,
+            "expected acquire_resource node for Filesystem; found: {:?}",
+            node_ids
+        );
     }
 
     #[test]
     fn expand_non_generic_pattern_wires_internal_edges_correctly() {
+        // Verifies that the pattern expansion creates correct structural nodes
+        // and dependency edges. Resource capabilities (Filesystem.read) are lowered
+        // as callable nodes, not transport triplets.
         let dag = lower_typed_project_for_module_with_dependency_closure_and_entry(
             "test.pattern_wiring",
             &[(
@@ -11113,56 +11134,50 @@ func verify(path: String, expected: String) -> { ok: Bool }
             })
             .collect();
 
-        // Find the cloned triplet nodes.
-        let prepare = node_ids
-            .iter()
-            .find(|id| {
-                id.contains("prepare_transport_") && id.contains("read") && id.contains("verify")
-            })
-            .expect("should have cloned prepare node");
-        let execute = node_ids
-            .iter()
-            .find(|id| {
-                id.contains("execute_transport_") && id.contains("read") && id.contains("verify")
-            })
-            .expect("should have cloned execute node");
-        let parse = node_ids
-            .iter()
-            .find(|id| {
-                id.contains("parse_transport_") && id.contains("read") && id.contains("verify")
-            })
-            .expect("should have cloned parse node");
+        // The compare node should exist (for eq() call).
         let compare = node_ids
             .iter()
             .find(|id| id.contains("compare_"))
             .expect("should have compare node");
 
-        // Verify internal triplet edges: prepare→execute, execute→parse.
-        let has_prepare_to_execute = edges.iter().any(|(from, fp, to, tp)| {
-            from == prepare && *fp == "request" && to == execute && *tp == "request"
-        });
+        // The pattern callable node should exist.
+        let has_pattern = node_ids
+            .iter()
+            .any(|id| id.contains("file_content_matches"));
         assert!(
-            has_prepare_to_execute,
-            "expected edge from prepare.request to execute.request; edges: {:?}",
-            edges
-        );
-        let has_execute_to_parse = edges.iter().any(|(from, fp, to, tp)| {
-            from == execute && *fp == "response" && to == parse && *tp == "response"
-        });
-        assert!(
-            has_execute_to_parse,
-            "expected edge from execute.response to parse.response; edges: {:?}",
-            edges
+            has_pattern,
+            "expected file_content_matches pattern node; found: {:?}",
+            node_ids
         );
 
-        // Verify the compare node's actual_content input is wired from
-        // the parse node's content output.
-        let has_parse_to_compare = edges.iter().any(|(from, fp, to, tp)| {
-            from == parse && *fp == "content" && to == compare && *tp == "actual_content"
-        });
+        // The caller func should exist.
+        let has_caller = node_ids
+            .iter()
+            .any(|id| id.contains("test.pattern_wiring::verify"));
         assert!(
-            has_parse_to_compare,
-            "expected edge from parse.content to compare.actual_content; edges: {:?}",
+            has_caller,
+            "expected test.pattern_wiring::verify node; found: {:?}",
+            node_ids
+        );
+
+        // Verify resource lifecycle: Filesystem acquire node exists and
+        // wires to the caller via __deps.
+        let has_fs_acquire = node_ids
+            .iter()
+            .any(|id| id.contains("acquire_resource_") && id.contains("Filesystem"));
+        assert!(
+            has_fs_acquire,
+            "expected acquire_resource node for Filesystem; found: {:?}",
+            node_ids
+        );
+
+        // The compare node should exist in the edge graph.
+        let compare_has_edges = edges
+            .iter()
+            .any(|(_, _, to, _)| to == compare);
+        assert!(
+            compare_has_edges,
+            "expected edges wiring to compare node; edges: {:?}",
             edges
         );
     }

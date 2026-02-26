@@ -14,6 +14,7 @@ service gcloud.Auth {
   operation Login {
     input { update_adc: Bool = true }
     output { ok: Bool }
+    transport shell { argv: ["gcloud", "auth", "login", "--update-adc"] }
   }
 
   operation ReadADC {
@@ -24,10 +25,12 @@ service gcloud.Auth {
       refresh_token: Secret
     }
     // Parses JSON: extracts client_id, client_secret, refresh_token
+    transport file { op: READ, path: "\{path\}" }
   }
 }
 
 service oauth2.Google {
+  config { endpoint: "https://oauth2.googleapis.com" }
 
   operation Refresh {
     input {
@@ -39,6 +42,7 @@ service oauth2.Google {
       access_token: Secret from "access_token"
       expires_in: Int from "expires_in"
     }
+    transport rest { method: POST, path: "/token" }
   }
 }
 
@@ -46,6 +50,7 @@ service shell.Find {
   operation ListDirs {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
     output { dirs: List<FilePath> }
+    transport shell { argv: ["find", "{path}", "-maxdepth", "{max_depth}", "-mindepth", "{min_depth}", "-type", "d"] }
   }
 }
 
@@ -54,6 +59,7 @@ service shell.Codegen {
     input {}
     output { needed: Bool }
     // Checks if codegen output files exist / are stale
+    transport shell { argv: ["test", "-f", "target/codegen/.stamp"] }
   }
 
   operation Run {
@@ -63,6 +69,7 @@ service shell.Codegen {
       stdout: String
       stderr: String
     }
+    transport shell { argv: ["cargo", "run", "--bin", "gunbc-codegen", "--", "--mode=ensure"] }
   }
 }
 
@@ -70,6 +77,7 @@ service rustup.Component {
   operation Add {
     input { component: NonEmptyStr }
     output { success: Bool }
+    transport shell { argv: ["rustup", "component", "add", "{component}"] }
   }
 }
 
@@ -77,6 +85,7 @@ service shell.Env {
   operation Get {
     input { name: NonEmptyStr }
     output { value: String? }
+    transport shell { argv: ["printenv", "{name}"] }
   }
 }
 
@@ -84,6 +93,7 @@ service shell.OAuth2 {
   operation RefreshToken {
     input { refresh_token: Secret }
     output { access_token: Secret, valid: Bool }
+    transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token={refresh_token}"] }
   }
 }
 
@@ -91,6 +101,7 @@ service shell.GCloud {
   operation AuthPrintAccessToken {
     input {}
     output { access_token: Secret }
+    transport shell { argv: ["gcloud", "auth", "print-access-token"] }
   }
 
   operation SecretManagerAccessVersion {
@@ -100,6 +111,7 @@ service shell.GCloud {
       version: NonEmptyStr = "latest"
     }
     output { secret_value: Secret }
+    transport shell { argv: ["gcloud", "secrets", "versions", "access", "{version}", "--secret={secret_name}", "--project={project_id}"] }
   }
 }
 
@@ -107,5 +119,6 @@ service shell.Which {
   operation Check {
     input { command: NonEmptyStr }
     output { exists: Bool, path: FilePath? }
+    transport shell { argv: ["which", "{command}"] }
   }
 }

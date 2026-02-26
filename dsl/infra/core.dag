@@ -42,6 +42,8 @@ interface ObjectStorage {
 
   // Behavioral contracts -- compiler generates verification tests for
   // every implementor (GCS, S3, Azure Blob).
+  contract read_after_write_returns_value
+  contract delete_removes_key
 }
 
 

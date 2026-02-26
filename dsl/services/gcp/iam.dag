@@ -6,6 +6,7 @@
 module services.gcp.iam
 
 service gcp.IAM {
+  config { endpoint: "https://iamcredentials.googleapis.com", auth: BearerToken }
 
   operation GenerateAccessToken {
     input {
@@ -17,14 +18,17 @@ service gcp.IAM {
       access_token: Secret from "accessToken"
       expire_time: String from "expireTime"
     }
+    transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
   }
 }
 
 service gcp.ResourceManager {
+  config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: BearerToken }
 
   operation GetIamPolicy {
     input { project_id: ProjectId }
     output { bindings: Json, etag: String }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
   }
 
   operation SetIamPolicy {
@@ -34,5 +38,6 @@ service gcp.ResourceManager {
       etag: NonEmptyStr
     }
     output { ok: Bool }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy" }
   }
 }

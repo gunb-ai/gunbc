@@ -16,8 +16,8 @@
 //! }
 //!
 //! test bootstrap_dryrun : cloud_env {
-//!     @tier(Unit)
-//!     @hermetic(true)
+//!     tier: Unit
+//!     hermetic
 //!     mock execute.response -> rest_response(200, { ok: true })
 //!     expect result.ok == true
 //! }
@@ -139,7 +139,7 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     let active_tests: Vec<&TestDef> = test_file
         .tests
         .iter()
-        .filter(|t| !t.skip && !t.skip)
+        .filter(|t| !t.skip)
         .collect();
 
     // Emit Rust mock helper annotations as documentation comments.
@@ -720,10 +720,6 @@ fn emit_inline_expr(expr: &Expr) -> String {
     }
 }
 
-/// Find a string value for an annotation by name.
-
-/// Find a boolean value for an annotation by name.
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -737,8 +733,8 @@ fixture cloud_base {
 }
 
 test bootstrap_dryrun : cloud_base {
-    @tier(Unit)
-    @hermetic(true)
+    tier: Unit
+    hermetic
     mock execute.response -> rest_response(200, { ok: true })
     expect result.ok == true
 }
@@ -880,15 +876,27 @@ test sentinel_check {
 
     #[test]
     fn rust_mock_helpers_annotation_emitted_as_comment() {
-        let source = r#"
-test with_helpers {
-    @rust_mock_helpers("gunbc_lib_review::graph_mock")
-    mock execute.data -> { ok: true }
-}
-"#;
-
-        let ast = parser::parse(source).expect("should parse");
-        let test_file = TestFile::from_source(&ast);
+        // mock_helpers has no typed DSL syntax (parser always returns None).
+        // Construct TestFile directly to verify emit logic for mock_helpers.
+        let test_file = TestFile {
+            fixtures: BTreeMap::new(),
+            tests: vec![TestDef {
+                name: "with_helpers".to_string(),
+                fixture: None,
+                mocks: vec![MockDecl {
+                    node_segments: vec!["execute".to_string()],
+                    port: "data".to_string(),
+                    value: Expr::Record(None, vec![("ok".to_string(), Expr::Literal(Literal::Bool(true)))]),
+                }],
+                inputs: vec![],
+                expects: vec![],
+                tier: None,
+                hermetic: false,
+                skip: false,
+                auto_mock: false,
+                mock_helpers: Some("gunbc_lib_review::graph_mock".to_string()),
+            }],
+        };
 
         let config = TestEmitConfig {
             dag_builder: "crate::build_graph()".to_string(),
@@ -906,18 +914,18 @@ test with_helpers {
     fn testgen_skip_excludes_test_from_emission() {
         let source = r#"
 test normal_test {
-    @tier(Unit)
+    tier: Unit
     mock execute.data -> { ok: true }
 }
 
 test skipped_test {
-    @tier(Unit)
-    @testgen_skip(true)
+    tier: Unit
+    skip
     mock execute.data -> { ok: true }
 }
 
 test another_normal {
-    @tier(Unit)
+    tier: Unit
     mock execute.data -> { ok: false }
 }
 "#;

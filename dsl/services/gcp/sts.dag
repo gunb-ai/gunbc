@@ -5,6 +5,7 @@
 module services.gcp.sts
 
 service gcp.STS {
+  config { endpoint: "https://sts.googleapis.com" }
 
   operation Exchange {
     input {
@@ -17,6 +18,7 @@ service gcp.STS {
     }
     // Body includes grant_type and token_type fields -- the compiler
     // generates the full OAuth2 token exchange request from these inputs.
+    transport rest { method: POST, path: "/v1/token" }
   }
 }
 
@@ -37,14 +39,17 @@ service github.OIDC {
       request_token: Secret
     }
     output { subject_token: Secret from "value" }
+    transport rest { method: GET, path: "/\{audience\}" }
   }
 }
 
 service gcp.Metadata {
+  config { endpoint: "http://metadata.google.internal" }
 
   operation GetIdentityToken {
     input { audience: NonEmptyStr }
     output { subject_token: Secret }
     // Response body IS the token (not JSON), parsed as raw string.
+    transport rest { method: GET, path: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}" }
   }
 }
