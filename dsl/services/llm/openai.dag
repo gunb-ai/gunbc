@@ -21,13 +21,6 @@ service llm.OpenAI {
       prompt_tokens: Int from "usage/prompt_tokens"
       completion_tokens: Int from "usage/completion_tokens"
     }
-      status: 200,
-      body: {
-        "model": "gpt-4o",
-        "choices": [{"message": {"role": "assistant", "content": "Hello"}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5}
-      }
-    )
   }
 
   operation Responses {

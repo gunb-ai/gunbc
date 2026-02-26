@@ -37,21 +37,6 @@ service github.IssueProvider : IssueProvider {
     output {
       issues: List<TrackedIssue>                     // List<TrackedIssue> (provider transforms)
     }
-      status: 200,
-      body: [
-        {
-          "number": 42,
-          "title": "Mock issue",
-          "body": "Mock body",
-          "state": "open",
-          "labels": [{"name": "sdlc:idea"}],
-          "html_url": "https://github.com/{config.owner}/{config.repo}/issues/42",
-          "user": {"login": "mock-user"},
-          "created_at": "2026-01-01T00:00:00Z",
-          "updated_at": "2026-01-01T00:00:00Z"
-        }
-      ]
-    )
   }
 
   // --- Single issue ------------------------------------------------------
@@ -62,20 +47,6 @@ service github.IssueProvider : IssueProvider {
       issue: TrackedIssue                      // TrackedIssue shape
       found: Bool
     }
-      status: 200,
-      body: {
-        "issue": {
-          "number": 42,
-          "title": "Mock issue",
-          "body": "Mock body",
-          "state": "open",
-          "labels": [{"name": "sdlc:idea"}],
-          "html_url": "https://github.com/{config.owner}/{config.repo}/issues/42",
-          "user": {"login": "mock-user"}
-        },
-        "found": true
-      }
-    )
   }
 
   // --- Create ------------------------------------------------------------
@@ -89,18 +60,6 @@ service github.IssueProvider : IssueProvider {
     output {
       issue: TrackedIssue                      // TrackedIssue shape
     }
-      status: 201,
-      body: {
-        "issue": {
-          "number": 42,
-          "title": "New issue",
-          "body": "Description",
-          "state": "open",
-          "labels": [{"name": "sdlc:idea"}],
-          "html_url": "https://github.com/{config.owner}/{config.repo}/issues/42"
-        }
-      }
-    )
   }
 
   // --- Comment (idempotent via marker) -----------------------------------
@@ -115,12 +74,6 @@ service github.IssueProvider : IssueProvider {
       comment_id: NonEmptyStr
       ok: Bool
     }
-      status: 201,
-      body: {
-        "comment_id": "999",
-        "ok": true
-      }
-    )
   }
 
   // --- Set labels (replace full set) ------------------------------------

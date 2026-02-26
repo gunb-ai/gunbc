@@ -182,7 +182,6 @@ service local.FileStore : Storage {
   operation Put {
     input { key: String, value: Bytes }
     output { ok: Bool }
-            "tee", "{config.base_dir}/{key}"])
   }
 
   operation Delete {
@@ -212,12 +211,6 @@ service openai.ChatGPT : LLM {
       max_tokens: Int?
     }
     output { content: String, usage: Usage }
-      status: 200,
-      body: {
-        "choices": [{"message": {"content": "Mock review"}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-      }
-    )
   }
 
   operation Embed {

@@ -41,12 +41,6 @@ service file.OutcomeLedger : OutcomeLedger {
       updated: Bool
       previous: StageOutcome?
     }
-      status: 0,
-      body: {
-        "updated": true,
-        "previous": null
-      }
-    )
   }
 
   operation get {
@@ -58,12 +52,6 @@ service file.OutcomeLedger : OutcomeLedger {
       found: Bool
       outcome: StageOutcome?
     }
-      status: 0,
-      body: {
-        "found": false,
-        "outcome": null
-      }
-    )
   }
 
   operation list_by_issue {

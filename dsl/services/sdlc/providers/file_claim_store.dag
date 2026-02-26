@@ -44,13 +44,6 @@ service file.ClaimStore : ClaimStore {
       conflict: Bool
       lease_generation: Int
     }
-      status: 0,
-      body: {
-        "acquired": true,
-        "conflict": false,
-        "lease_generation": 1
-      }
-    )
   }
 
   operation heartbeat {

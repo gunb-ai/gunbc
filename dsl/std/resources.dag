@@ -29,16 +29,6 @@ resource Filesystem {
   capability probe {
     input { path: FilePath }
     output { classification: FileClassification }
-      classification: { path: "{path}", kind: RegularFile, encoding: UTF8, size: 42, mime: "text/plain" }
-    }
-      classification: { path: "{path}", kind: RegularFile, encoding: Binary, size: 1024, mime: "application/pdf" }
-    }
-      classification: { path: "{path}", kind: Directory, size: 0 }
-    }
-      classification: { path: "{path}", kind: Symlink, symlink_target: TargetDir, size: 0 }
-    }
-      classification: { path: "{path}", kind: Missing, size: 0 }
-    }
   }
 
   // Read text content. Requires TextFilePath -- the compiler rejects

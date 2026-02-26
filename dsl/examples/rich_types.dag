@@ -235,7 +235,7 @@ type Seconds      = Int where brand("Seconds"), range(min: 0)
 // type-level computation). Preserves P9 (totality).
 
 type DateRange {
-  start: String where pattern("^\\d{4}-\\d{2}-\\d{2}$")None
+  start: String where pattern("^\\d{4}-\\d{2}-\\d{2}$")
   end: String where pattern("^\\d{4}-\\d{2}-\\d{2}$")None
 }
 
@@ -263,7 +263,7 @@ type DateRange {
 
 type ReviewArtifact<M: Serializable> {
   id: String where format(uuid)
-  created_at: String where pattern("^\\d{4}-\\d{2}-\\d{2}T")None
+  created_at: String where pattern("^\\d{4}-\\d{2}-\\d{2}T")
   author: UserId
   metadata: M
   content: NonEmptyStr
