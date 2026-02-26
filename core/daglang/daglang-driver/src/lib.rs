@@ -1879,7 +1879,7 @@ service stub.Provider : IssueProvider {
   operation get {
     input {}
     output { ok: Bool }
-    @rest(GET, "/ok")
+    transport rest { method: GET, path: "/ok" }
   }
 }"#,
         )
@@ -1946,7 +1946,7 @@ service stub.Provider : IssueProvider {
   operation get {
     input {}
     output { ok: Bool }
-    @rest(GET, "/ok")
+    transport rest { method: GET, path: "/ok" }
   }
 }"#,
         )
