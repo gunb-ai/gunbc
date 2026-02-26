@@ -181,9 +181,12 @@ fn lower_stmt(stmt: &ast::Stmt) -> LoweredStmt {
             LoweredStmt::Let(ns.name.clone(), expr)
         }
         ast::Stmt::Expr(expr) => LoweredStmt::Expr(lower_expr(expr)),
-        ast::Stmt::Return(fields) => {
-            LoweredStmt::Return(fields.iter().map(|(k, v)| (k.clone(), lower_expr(v))).collect())
-        }
+        ast::Stmt::Return(fields) => LoweredStmt::Return(
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), lower_expr(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -278,9 +281,12 @@ fn lower_expr(expr: &ast::Expr) -> LoweredExpr {
             // After deps are DAG scheduling concerns — evaluate the inner expr
             lower_expr(expr)
         }
-        ast::Expr::Return(fields) => {
-            LoweredExpr::Return(fields.iter().map(|(k, v)| (k.clone(), lower_expr(v))).collect())
-        }
+        ast::Expr::Return(fields) => LoweredExpr::Return(
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), lower_expr(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -417,13 +423,11 @@ mod tests {
         };
         let lowered = lower_fn_body(&body);
         match &lowered.stmts[0] {
-            LoweredStmt::Expr(LoweredExpr::IfElse {
-                cond,
-                then_,
-                else_,
-            }) => {
+            LoweredStmt::Expr(LoweredExpr::IfElse { cond, then_, else_ }) => {
                 assert!(matches!(cond.as_ref(), LoweredExpr::Ident(n) if n == "flag"));
-                assert!(matches!(then_.as_ref(), LoweredExpr::Literal(LoweredLiteral::String(s)) if s == "yes"));
+                assert!(
+                    matches!(then_.as_ref(), LoweredExpr::Literal(LoweredLiteral::String(s)) if s == "yes")
+                );
                 assert!(else_.is_some());
             }
             other => panic!("expected IfElse, got: {other:?}"),
@@ -458,14 +462,8 @@ mod tests {
         let expr = ast::Expr::Call(
             "render_target".to_string(),
             vec![
-                (
-                    Some("name".to_string()),
-                    ast::Expr::Ident("n".to_string()),
-                ),
-                (
-                    Some("deps".to_string()),
-                    ast::Expr::List(vec![]),
-                ),
+                (Some("name".to_string()), ast::Expr::Ident("n".to_string())),
+                (Some("deps".to_string()), ast::Expr::List(vec![])),
             ],
         );
         let lowered = lower_expr(&expr);

@@ -239,11 +239,7 @@ fn eval_expr(
             }
         }
 
-        LoweredExpr::IfElse {
-            cond,
-            then_,
-            else_,
-        } => {
+        LoweredExpr::IfElse { cond, then_, else_ } => {
             let condition = eval_expr(cond, env, sibling_fns)?;
             if value_truthy(&condition) {
                 eval_expr(then_, env, sibling_fns)
@@ -259,9 +255,7 @@ fn eval_expr(
             eval_match(&scrutinee, arms, env, sibling_fns)
         }
 
-        LoweredExpr::Call { name, args } => {
-            eval_call(name, args, env, sibling_fns)
-        }
+        LoweredExpr::Call { name, args } => eval_call(name, args, env, sibling_fns),
 
         LoweredExpr::Pipe { receiver, call } => {
             let recv_val = eval_expr(receiver, env, sibling_fns)?;
@@ -366,13 +360,9 @@ fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
 fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, EvalError> {
     match op {
         // String concatenation
-        LoweredBinOp::Add if matches!(lhs, Value::Str(_)) || matches!(rhs, Value::Str(_)) => {
-            Ok(Value::Str(format!(
-                "{}{}",
-                value_to_string(lhs),
-                value_to_string(rhs)
-            )))
-        }
+        LoweredBinOp::Add if matches!(lhs, Value::Str(_)) || matches!(rhs, Value::Str(_)) => Ok(
+            Value::Str(format!("{}{}", value_to_string(lhs), value_to_string(rhs))),
+        ),
         // Arithmetic
         LoweredBinOp::Add => int_op(lhs, rhs, |a, b| a + b),
         LoweredBinOp::Sub => int_op(lhs, rhs, |a, b| a - b),
@@ -399,11 +389,7 @@ fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, EvalE
     }
 }
 
-fn int_op(
-    lhs: &Value,
-    rhs: &Value,
-    f: impl Fn(i64, i64) -> i64,
-) -> Result<Value, EvalError> {
+fn int_op(lhs: &Value, rhs: &Value, f: impl Fn(i64, i64) -> i64) -> Result<Value, EvalError> {
     match (lhs, rhs) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(f(*a, *b))),
         _ => Err(EvalError::new(format!(
@@ -490,9 +476,7 @@ fn eval_call(
             let mut map = BTreeMap::new();
             map.insert("_variant".to_string(), Value::Str(name.to_string()));
             for (idx, (arg_name, arg_expr)) in args.iter().enumerate() {
-                let field_name = arg_name
-                    .clone()
-                    .unwrap_or_else(|| format!("_{idx}"));
+                let field_name = arg_name.clone().unwrap_or_else(|| format!("_{idx}"));
                 map.insert(field_name, eval_expr(arg_expr, env, sibling_fns)?);
             }
             Ok(Value::Map(map))
@@ -575,10 +559,7 @@ fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String,
                     if variant == Some(variant_name.as_str()) {
                         let mut bindings = vec![];
                         for (field_name, sub_pattern) in fields {
-                            let field_value = map
-                                .get(field_name)
-                                .cloned()
-                                .unwrap_or(Value::Unit);
+                            let field_value = map.get(field_name).cloned().unwrap_or(Value::Unit);
                             if let Some(sub_bindings) = match_pattern(sub_pattern, &field_value) {
                                 bindings.extend(sub_bindings);
                             } else {
@@ -633,7 +614,11 @@ fn eval_pipe_method(
             };
             match receiver {
                 Value::List(items) => {
-                    let joined = items.iter().map(value_to_string).collect::<Vec<_>>().join(&sep);
+                    let joined = items
+                        .iter()
+                        .map(value_to_string)
+                        .collect::<Vec<_>>()
+                        .join(&sep);
                     Ok(Value::Str(joined))
                 }
                 _ => Err(EvalError::new("join requires a list")),
@@ -757,7 +742,10 @@ fn eval_pipe_method(
                     }
                     Ok(Value::List(base))
                 }
-                (other, _) => Err(EvalError::new(format!("append requires a list, got {:?}", other))),
+                (other, _) => Err(EvalError::new(format!(
+                    "append requires a list, got {:?}",
+                    other
+                ))),
             }
         }
 
@@ -824,9 +812,9 @@ fn eval_pipe_method(
         }
 
         "contains" => {
-            let needle_expr = args.first().or_else(|| {
-                args.iter().find(|(k, _)| k.as_deref() == Some("item"))
-            });
+            let needle_expr = args
+                .first()
+                .or_else(|| args.iter().find(|(k, _)| k.as_deref() == Some("item")));
             match (receiver, needle_expr) {
                 (Value::List(items), Some((_, expr))) => {
                     let needle = eval_expr(expr, env, sibling_fns)?;
@@ -863,7 +851,10 @@ fn eval_pipe_method(
 
         // String methods
         "starts_with" => {
-            let prefix = args.iter().find(|(k, _)| k.as_deref() == Some("prefix")).or_else(|| args.first());
+            let prefix = args
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("prefix"))
+                .or_else(|| args.first());
             match (receiver, prefix) {
                 (Value::Str(s), Some((_, expr))) => {
                     let p = eval_expr(expr, env, sibling_fns)?;
@@ -874,7 +865,10 @@ fn eval_pipe_method(
         }
 
         "ends_with" => {
-            let suffix = args.iter().find(|(k, _)| k.as_deref() == Some("suffix")).or_else(|| args.first());
+            let suffix = args
+                .iter()
+                .find(|(k, _)| k.as_deref() == Some("suffix"))
+                .or_else(|| args.first());
             match (receiver, suffix) {
                 (Value::Str(s), Some((_, expr))) => {
                     let p = eval_expr(expr, env, sibling_fns)?;
@@ -1084,7 +1078,10 @@ mod tests {
                         right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(1))),
                     },
                 ),
-                LoweredStmt::Return(vec![("return".to_string(), LoweredExpr::Ident("x".to_string()))]),
+                LoweredStmt::Return(vec![(
+                    "return".to_string(),
+                    LoweredExpr::Ident("x".to_string()),
+                )]),
             ],
         };
         let inputs: HashMap<String, Value> =
@@ -1217,16 +1214,14 @@ mod tests {
         };
 
         // x = "hello" → returns "hello"
-        let inputs: HashMap<String, Value> =
-            [("x".to_string(), Value::Str("hello".to_string()))]
-                .into_iter()
-                .collect();
+        let inputs: HashMap<String, Value> = [("x".to_string(), Value::Str("hello".to_string()))]
+            .into_iter()
+            .collect();
         let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
         assert_eq!(result["return"], Value::Str("hello".to_string()));
 
         // x = Unit (none) → returns "default"
-        let inputs: HashMap<String, Value> =
-            [("x".to_string(), Value::Unit)].into_iter().collect();
+        let inputs: HashMap<String, Value> = [("x".to_string(), Value::Unit)].into_iter().collect();
         let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
         assert_eq!(result["return"], Value::Str("default".to_string()));
     }
