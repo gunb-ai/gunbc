@@ -80,9 +80,9 @@ FC-NF7 is done — these fns can now execute at runtime via FnBodyDelegate.
 |----|------|------|--------|------|
 | FC-P6-0 | Validate flat_map: DSL test exercising `CollectionOpKind::FlatMap` e2e. | S | **Done** | — |
 | FC-P6-a | `dsl/config/workspace.dag`: CrateSpec type + workspace_crates data + CI drift test. | M | **Done** | — |
-| FC-P6-b | `dsl/config/pragma_policy.dag`: AllowlistRule, DeadCodeRule types + data from pragma.rs. Partial: clippy_disallowed.dag + arch_rules.dag AllowlistPattern data already exist. | M | Pending | FC-P6-a |
-| FC-P6-c | DSL policy rendering fns using Document types. Partial: clippy_policy.dag rendering helpers already exist. | M | Pending | FC-P6-a, FC-P6-b, FC-P6-0 |
-| FC-P6-d | Delete 3 pragma extern impls. Wire pragma.dag to call derive_* fns from clippy_policy.dag. Add parity golden tests for clippy.toml, allowlist, lint policy. | S | Pending | FC-P6-c |
+| FC-P6-b | `dsl/config/pragma_policy.dag`: AllowlistRule, DeadCodeRule types + data from pragma.rs. Partial: clippy_disallowed.dag + arch_rules.dag AllowlistPattern data already exist. | M | **Done** | FC-P6-a |
+| FC-P6-c | DSL policy rendering fns using Document types. Parity tests: allowlist + lint_policy match Rust output byte-for-byte. clippy_toml blocked on sum type variant tags (FC-CF5). | M | **Done** | FC-P6-a, FC-P6-b, FC-P6-0 |
+| FC-P6-d | Delete 2 of 3 pragma extern impls (allowlist, lint_policy → DSL eval). clippy_toml remains (blocked on FC-CF5). `all_extern_symbols()`: 8→6. Golden parity tests gate transition. | S | **Done** | FC-P6-c |
 
 ---
 
@@ -95,8 +95,8 @@ Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 7.
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
 | FC-P7-a | `dsl/config/build_workflows.dag`: WorkflowSpec + MetaTarget types + data. | M | **Done** | — |
-| FC-P7-b | Compiler artifact emitter: emit `generated/tool_registry.dag` from CompileOutput. | L | Pending | — |
-| FC-P7-c1 | DSL Makefile types + rendering: MakefileTarget, GitignoreCategory, render fns. | M | Pending | FC-P7-a |
+| FC-P7-b | Compiler artifact emitter: `dag_emit.rs` emits data-only `.dag` from CompileOutput. `emit_artifact_dag()` produces EntrypointInfo type + entrypoints + output_paths data. Round-trip tests verify re-parse. | L | **Done** | — |
+| FC-P7-c1 | DSL Makefile types: already exist in `extdeps/make.dag` (MakeTarget, ToolTarget, Makefile, etc.). No new work needed. | M | **Done** | FC-P7-a |
 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | FC-P7-a, FC-P7-b, FC-P7-c1 |
 | FC-P7-d | Delete 2 bootstrap extern impls (render_bootstrap_makefile, render_bootstrap_gitignore). Makefile: delegate to makegen DSL rendering. Gitignore: DSL categories + tool output data. Add parity golden tests. | M | Pending | FC-P7-c2 |
 
@@ -109,8 +109,8 @@ business cases — features expressible via existing `fold` are deprioritized.
 
 | ID | Feature | Size | Status | Deps | Unblocks | Notes |
 |----|---------|------|--------|------|----------|-------|
-| FC-CF1 | `split(delim)`: String → List\<String\> | M | Pending | — | FC-P8-a | Irreducible. Path parsing for tree rendering. |
-| FC-CF7 | `zip()`: List\<A\> × List\<B\> → List\<(A, B)\> | M | Pending | — | FC-P8-b | Irreducible. Parallel list assembly in snapshot. |
+| FC-CF1 | `split(delim)`: String → List\<String\>. 4 compiler stages + 5 e2e tests. | M | **Done** | — | FC-P8-a | Irreducible. Path parsing for tree rendering. |
+| FC-CF7 | `zip()`: List\<A\> × List\<B\> → List\<Map{first, second}\>. 4 compiler stages + 4 e2e tests. | M | **Done** | — | FC-P8-b | Irreducible. Parallel list assembly in snapshot. |
 | FC-CF5 | Recursive types (self-referential type defs) | L | Pending | — | FC-CF6 | DirEntry { children: List\<DirEntry\> }. |
 | FC-CF6 | Recursive functions (self-calls in fn bodies) | L | Pending | FC-CF5 | FC-P8-a | Tree traversal (flatten, render). |
 | FC-CF2 | `skip(n)`: List\<T\> → List\<T\> | S | Pending | — | FC-P8-a | Low priority — expressible via fold+index. |
@@ -222,3 +222,7 @@ Not scheduled. Promote to active sections when capacity opens.
 NF-1 through NF-6 (compile+link hardening): complete 2026-02-25. Detail: `TODO/TODONE/tasks-completed.md`.
 FC-NF7 (fn-level evaluation): complete 2026-02-25. `expr.rs` IR + `eval.rs` evaluator + `FnBodyDelegate`. `makegen/render.rs` deleted (~1200 lines). Makegen rendering is pure DSL.
 FC-CL (dead code cleanup): complete 2026-02-25. Deleted `core/tool-registry` + `core/tool-registry-macros`, 14 orphaned spec builder fns, stale rules/comments.
+FC-P6-b/c/d (pragma policy migration): complete 2026-02-26. `dsl_render.rs` evaluates `derive_*` DSL fns via `evaluate_fn_body()`. Allowlist + lint_policy migrated; clippy_toml blocked on FC-CF5. `all_extern_symbols()` 8→6.
+FC-CF1 + FC-CF7 (split + zip): complete 2026-02-26. Both pipe methods across 4 compiler stages (typecheck, lower, eval, emit). 9 e2e tests.
+FC-P7-b (artifact emitter): complete 2026-02-26. `dag_emit.rs` emits valid `.dag` syntax. `CompileOutput::emit_artifact_dag()` for downstream introspection.
+FC-P7-c1 (Makefile DSL types): complete 2026-02-26. Types already existed in `extdeps/make.dag`.
