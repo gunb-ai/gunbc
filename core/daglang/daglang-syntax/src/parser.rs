@@ -372,6 +372,102 @@ impl Parser {
         Ok(config)
     }
 
+    fn parse_transport_binding(&mut self) -> Result<TransportBinding, ParseError> {
+        self.expect(&TokenKind::Transport)?;
+        let kind = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let binding = match kind.as_str() {
+            "rest" => {
+                let mut method = String::new();
+                let mut path = String::new();
+                let mut body = None;
+                let mut headers = None;
+                while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                    if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                        let field_name = self.expect_ident()?;
+                        if self.eat(&TokenKind::Colon) {
+                            match field_name.as_str() {
+                                "method" => { method = self.expect_ident()?; }
+                                "path" => {
+                                    if let TokenKind::Str(s) = &self.peek().kind {
+                                        path = s.clone();
+                                        self.advance();
+                                    } else {
+                                        path = self.expect_ident()?;
+                                    }
+                                }
+                                "body" => { body = Some(self.parse_expr(0)?); }
+                                "headers" => { headers = Some(self.parse_expr(0)?); }
+                                _ => { self.advance(); }
+                            }
+                        }
+                    } else {
+                        self.advance();
+                    }
+                    self.eat(&TokenKind::Comma);
+                }
+                TransportBinding::Rest { method, path, body, headers }
+            }
+            "shell" => {
+                let mut argv = Vec::new();
+                while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                    if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                        let field_name = self.expect_ident()?;
+                        if self.eat(&TokenKind::Colon) && field_name == "argv" {
+                            if self.eat(&TokenKind::LBracket) {
+                                while !self.check(&TokenKind::RBracket) && !self.at_eof() {
+                                    argv.push(self.parse_expr(0)?);
+                                    self.eat(&TokenKind::Comma);
+                                }
+                                self.expect(&TokenKind::RBracket)?;
+                            }
+                        } else {
+                            self.advance();
+                        }
+                    } else {
+                        self.advance();
+                    }
+                    self.eat(&TokenKind::Comma);
+                }
+                TransportBinding::Shell { argv }
+            }
+            "file" => {
+                let mut op = String::new();
+                let mut fpath = String::new();
+                while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+                    if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                        let field_name = self.expect_ident()?;
+                        if self.eat(&TokenKind::Colon) {
+                            match field_name.as_str() {
+                                "op" => { op = self.expect_ident()?; }
+                                "path" => {
+                                    if let TokenKind::Str(s) = &self.peek().kind {
+                                        fpath = s.clone();
+                                        self.advance();
+                                    } else {
+                                        fpath = self.expect_ident()?;
+                                    }
+                                }
+                                _ => { self.advance(); }
+                            }
+                        }
+                    } else {
+                        self.advance();
+                    }
+                    self.eat(&TokenKind::Comma);
+                }
+                TransportBinding::File { op, path: fpath }
+            }
+            _ => {
+                // Unknown transport kind — consume block and treat as Local
+                self.consume_brace_block_contents()?;
+                return Ok(TransportBinding::Local);
+            }
+        };
+        self.expect(&TokenKind::RBrace)?;
+        Ok(binding)
+    }
+
     fn end_span(&self, start: Span) -> Span {
         let end = self.tokens[self.pos.saturating_sub(1)].span;
         Span {
@@ -1048,6 +1144,12 @@ impl Parser {
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
         let mut annotations = Vec::new();
+        let mut idempotent = false;
+        let mut readonly = false;
+        let mut hermetic = false;
+        let permissions: Vec<String> = Vec::new();
+        let mut transport: Option<TransportBinding> = None;
+        let mock_response: Vec<MockResponseDef> = Vec::new();
 
         if self.eat(&TokenKind::LParen) {
             inputs = self.parse_field_list_until_rparen()?;
@@ -1057,8 +1159,18 @@ impl Parser {
             outputs = self.parse_field_list_until_rbrace()?;
             self.expect(&TokenKind::RBrace)?;
         }
-        while self.check(&TokenKind::At) {
-            annotations.push(self.parse_annotation()?);
+        loop {
+            if self.check(&TokenKind::At) {
+                annotations.push(self.parse_annotation()?);
+            } else if self.check(&TokenKind::Idempotent) {
+                self.advance(); idempotent = true;
+            } else if self.check(&TokenKind::Readonly) {
+                self.advance(); readonly = true;
+            } else if self.check(&TokenKind::Hermetic) {
+                self.advance(); hermetic = true;
+            } else {
+                break;
+            }
         }
         if self.eat(&TokenKind::LBrace) {
             while !self.check(&TokenKind::RBrace) && !self.at_eof() {
@@ -1074,6 +1186,14 @@ impl Parser {
                     self.expect(&TokenKind::LBrace)?;
                     outputs = self.parse_field_list_until_rbrace()?;
                     self.expect(&TokenKind::RBrace)?;
+                } else if self.check(&TokenKind::Idempotent) {
+                    self.advance(); idempotent = true;
+                } else if self.check(&TokenKind::Readonly) {
+                    self.advance(); readonly = true;
+                } else if self.check(&TokenKind::Hermetic) {
+                    self.advance(); hermetic = true;
+                } else if self.check(&TokenKind::Transport) {
+                    transport = Some(self.parse_transport_binding()?);
                 } else {
                     self.advance();
                 }
@@ -1085,12 +1205,12 @@ impl Parser {
             inputs,
             outputs,
             annotations,
-            idempotent: false,
-            readonly: false,
-            hermetic: false,
-            permissions: Vec::new(),
-            transport: None,
-            mock_response: Vec::new(),
+            idempotent,
+            readonly,
+            hermetic,
+            permissions,
+            transport,
+            mock_response,
         })
     }
 
@@ -1165,6 +1285,9 @@ impl Parser {
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
         let mut annotations = Vec::new();
+        let mut idempotent = false;
+        let mut readonly = false;
+        let mock_response: Vec<MockResponseDef> = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.check(&TokenKind::Input) {
                 self.advance();
@@ -1178,6 +1301,10 @@ impl Parser {
                 self.expect(&TokenKind::RBrace)?;
             } else if self.check(&TokenKind::At) {
                 annotations.push(self.parse_annotation()?);
+            } else if self.check(&TokenKind::Idempotent) {
+                self.advance(); idempotent = true;
+            } else if self.check(&TokenKind::Readonly) {
+                self.advance(); readonly = true;
             } else {
                 self.advance();
             }
@@ -1188,9 +1315,9 @@ impl Parser {
             inputs,
             outputs,
             annotations,
-            idempotent: false,
-            readonly: false,
-            mock_response: Vec::new(),
+            idempotent,
+            readonly,
+            mock_response,
         })
     }
 
@@ -1287,6 +1414,8 @@ impl Parser {
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
         let mut annotations = Vec::new();
+        let mut idempotent = false;
+        let mut readonly = false;
 
         if self.eat(&TokenKind::LParen) {
             inputs = self.parse_field_list_until_rparen()?;
@@ -1296,8 +1425,16 @@ impl Parser {
             outputs = self.parse_field_list_until_rbrace()?;
             self.expect(&TokenKind::RBrace)?;
         }
-        while self.check(&TokenKind::At) && !self.next_annotation_is_contract() {
-            annotations.push(self.parse_annotation()?);
+        loop {
+            if self.check(&TokenKind::At) && !self.next_annotation_is_contract() {
+                annotations.push(self.parse_annotation()?);
+            } else if self.check(&TokenKind::Idempotent) {
+                self.advance(); idempotent = true;
+            } else if self.check(&TokenKind::Readonly) {
+                self.advance(); readonly = true;
+            } else {
+                break;
+            }
         }
 
         if self.eat(&TokenKind::LBrace) {
@@ -1314,6 +1451,10 @@ impl Parser {
                     self.expect(&TokenKind::RBrace)?;
                 } else if self.check(&TokenKind::At) {
                     annotations.push(self.parse_annotation()?);
+                } else if self.check(&TokenKind::Idempotent) {
+                    self.advance(); idempotent = true;
+                } else if self.check(&TokenKind::Readonly) {
+                    self.advance(); readonly = true;
                 } else {
                     self.advance();
                 }
@@ -1326,8 +1467,8 @@ impl Parser {
             inputs,
             outputs,
             annotations,
-            idempotent: false,
-            readonly: false,
+            idempotent,
+            readonly,
             mock_response: Vec::new(),
         })
     }
@@ -1561,6 +1702,35 @@ impl Parser {
             }
         }
 
+        let mut tier = None;
+        let mut hermetic = false;
+        let mut skip = false;
+        let auto_mock = false;
+        let mock_helpers = None;
+
+        // Parse typed test metadata keywords before mock/input/expect
+        loop {
+            match &self.peek().kind {
+                TokenKind::Tier => {
+                    self.advance();
+                    if self.eat(&TokenKind::Colon) {
+                        if let Ok(t) = self.expect_ident() {
+                            tier = Some(t);
+                        }
+                    }
+                }
+                TokenKind::Hermetic => {
+                    self.advance();
+                    hermetic = true;
+                }
+                TokenKind::Skip => {
+                    self.advance();
+                    skip = true;
+                }
+                _ => break,
+            }
+        }
+
         let mut mocks = Vec::new();
         let mut inputs = Vec::new();
         let mut expects = Vec::new();
@@ -1587,11 +1757,11 @@ impl Parser {
             mocks,
             inputs,
             expects,
-            tier: None,
-            hermetic: false,
-            skip: false,
-            auto_mock: false,
-            mock_helpers: None,
+            tier,
+            hermetic,
+            skip,
+            auto_mock,
+            mock_helpers,
         })
     }
 
@@ -1820,12 +1990,24 @@ impl Parser {
         while self.check(&TokenKind::At) {
             annotations.push(self.parse_annotation()?);
         }
+        let from_path = if self.check(&TokenKind::From) {
+            self.advance();
+            if let TokenKind::Str(s) = &self.peek().kind {
+                let path = s.clone();
+                self.advance();
+                Some(path)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         Ok(Field {
             name,
             ty,
             default,
             annotations,
-            from_path: None,
+            from_path,
         })
     }
 

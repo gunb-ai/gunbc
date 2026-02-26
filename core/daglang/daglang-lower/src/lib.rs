@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
     Annotation, CapabilityDef, DataDef, Expr, Item, Literal, NodeStmt, OperationDef, ServiceDef,
-    Stmt, TypeExpr,
+    Stmt, TransportBinding, TypeExpr,
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, resource_type_name,
@@ -4942,9 +4942,15 @@ fn derive_service_call_metadata(
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
 ) -> ServiceCallMetadata {
-    let transport = annotation_transport_class(&operation.annotations)
-        .or_else(|| annotation_transport_class(&service.annotations))
-        .unwrap_or(ServiceTransportClass::Unknown);
+    let transport = match &operation.transport {
+        Some(TransportBinding::Rest { .. }) => ServiceTransportClass::RestNetwork,
+        Some(TransportBinding::Shell { .. }) => ServiceTransportClass::ShellLocal,
+        Some(TransportBinding::File { .. }) => ServiceTransportClass::FileBoundary,
+        Some(TransportBinding::Local) => ServiceTransportClass::LocalDirect,
+        None => annotation_transport_class(&operation.annotations)
+            .or_else(|| annotation_transport_class(&service.annotations))
+            .unwrap_or(ServiceTransportClass::Unknown),
+    };
     let mut permissions = annotation_permissions(&service.annotations, &[]);
     permissions.extend(annotation_permissions(&operation.annotations, &operation.permissions));
     permissions.sort();
@@ -5085,7 +5091,9 @@ fn derive_operation_spec(
 }
 
 fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
-    let endpoint = annotation_string_arg(&service.annotations, "endpoint").unwrap_or_default();
+    let endpoint = service.config.endpoint.clone()
+        .or_else(|| annotation_string_arg(&service.annotations, "endpoint"))
+        .unwrap_or_default();
     let (method, path_template) =
         annotation_rest_details(&operation.annotations, &service.annotations)?;
 
@@ -5093,8 +5101,13 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
     let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers);
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = annotation_body_template(&operation.annotations);
-    let auth_scheme =
-        annotation_auth_scheme(&operation.annotations, &service.annotations);
+    let auth_scheme = service.config.auth.as_ref().map(|a| {
+        match a.as_str() {
+            "BearerToken" => "BearerToken".to_string(),
+            "Basic" => "Basic".to_string(),
+            other => other.to_string(),
+        }
+    }).or_else(|| annotation_auth_scheme(&operation.annotations, &service.annotations));
 
     Some(RestOperationSpec {
         endpoint,
@@ -5608,7 +5621,8 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
                 other => (type_expr_to_string(other), [].as_slice()),
             };
             // Check field annotations first, fall back to type annotations.
-            let json_path = annotation_string_arg(&field.annotations, "json")
+            let json_path = field.from_path.clone()
+                .or_else(|| annotation_string_arg(&field.annotations, "json"))
                 .or_else(|| annotation_string_arg(type_annotations, "json"))
                 .unwrap_or_else(|| field.name.clone());
             let is_raw_body = has_annotation(&field.annotations, "raw_body")

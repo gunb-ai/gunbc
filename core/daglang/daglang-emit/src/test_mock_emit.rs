@@ -140,13 +140,16 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     let active_tests: Vec<&TestDef> = test_file
         .tests
         .iter()
-        .filter(|t| !find_annotation_bool(&t.annotations, "testgen_skip").unwrap_or(false))
+        .filter(|t| !t.skip && !find_annotation_bool(&t.annotations, "testgen_skip").unwrap_or(false))
         .collect();
 
     // Emit Rust mock helper annotations as documentation comments.
     let rust_helpers: Vec<&str> = active_tests
         .iter()
-        .filter_map(|t| find_annotation_string(&t.annotations, "rust_mock_helpers"))
+        .filter_map(|t| {
+            t.mock_helpers.clone()
+                .or_else(|| find_annotation_string(&t.annotations, "rust_mock_helpers"))
+        })
         .collect::<Vec<_>>()
         .into_iter()
         .map(|s| s.leak() as &str) // Static lifetime for dedup — emitter runs once.
@@ -197,9 +200,14 @@ fn emit_test_fn(
     let fn_name = format!("{}_mock_spec", test.name);
     let test_name = test.name.replace('_', "-");
 
-    // Extract tier and other annotations
-    let tier = find_annotation_string(&test.annotations, "tier");
-    let hermetic = find_annotation_bool(&test.annotations, "hermetic");
+    // Prefer typed fields, fall back to annotations
+    let tier = test.tier.clone()
+        .or_else(|| find_annotation_string(&test.annotations, "tier"));
+    let hermetic = if test.hermetic {
+        Some(true)
+    } else {
+        find_annotation_bool(&test.annotations, "hermetic")
+    };
 
     // Determine testgen flags
     let flow_flag = if hermetic.unwrap_or(true) {
