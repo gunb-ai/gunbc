@@ -101,7 +101,6 @@ impl TestFile {
                 Item::TestDef(t) => {
                     tests.push(TestDef {
                         name: t.name.clone(),
-                        annotations: t.annotations.clone(),
                         fixture: t.fixture.clone(),
                         mocks: t.mocks.clone(),
                         inputs: t.inputs.clone(),

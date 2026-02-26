@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use daglang_syntax::{
-    ast::{Annotation, Expr, Item, Literal, Stmt},
+    ast::{Expr, Item, Literal, Stmt},
     parser,
 };
 use gunbc_ir::{AccessMode, Dag, Edge, Node, Port};
@@ -487,87 +487,10 @@ fn literal_string(expr: &Expr) -> Option<String> {
     }
 }
 
-fn parse_stage_claims(stmts: &[Stmt]) -> Vec<UnitClaim> {
-    let mut claims = Vec::new();
-
-    for stmt in stmts {
-        let Stmt::Annotation(annotation) = stmt else {
-            continue;
-        };
-        let Some(claim) = claim_from_annotation(annotation) else {
-            continue;
-        };
-        claims.push(claim);
-    }
-
-    claims.sort_by(|left, right| {
-        left.claim_id.cmp(&right.claim_id).then_with(|| {
-            access_mode_rank(left.access_mode).cmp(&access_mode_rank(right.access_mode))
-        })
-    });
-    claims.dedup();
-    claims
-}
-
-fn claim_from_annotation(annotation: &Annotation) -> Option<UnitClaim> {
-    let normalized = annotation.name.trim().to_ascii_lowercase();
-    let args = &annotation.args;
-
-    match normalized.as_str() {
-        "file" | "tool" | "ledger" | "network" | "credential" => {
-            if args.len() < 2 {
-                return None;
-            }
-            let mode = parse_access_mode(&args[0])?;
-            let target = parse_stringish_arg(&args[1])?;
-            let claim_id = compose_claim_id(&normalized, &target);
-            Some(UnitClaim::new(ClaimId::new(claim_id), mode))
-        }
-        "claim" => {
-            if args.len() < 2 {
-                return None;
-            }
-            let mode = parse_access_mode(&args[0])?;
-            let claim_id = parse_stringish_arg(&args[1])?;
-            Some(UnitClaim::new(ClaimId::new(claim_id), mode))
-        }
-        _ => None,
-    }
-}
-
-fn parse_access_mode(expr: &Expr) -> Option<AccessMode> {
-    let raw = parse_stringish_arg(expr)?;
-    let normalized = raw.trim().to_ascii_uppercase();
-    match normalized.as_str() {
-        "READ" => Some(AccessMode::Read),
-        "WRITE" => Some(AccessMode::Write),
-        "EXCLUSIVE" => Some(AccessMode::Exclusive),
-        _ => None,
-    }
-}
-
-fn parse_stringish_arg(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Literal(Literal::String(value)) => Some(value.clone()),
-        Expr::Ident(value) => Some(value.clone()),
-        _ => None,
-    }
-}
-
-fn compose_claim_id(kind: &str, target: &str) -> String {
-    if target.starts_with(&format!("{kind}:")) {
-        target.to_string()
-    } else {
-        format!("{kind}:{target}")
-    }
-}
-
-fn access_mode_rank(mode: AccessMode) -> u8 {
-    match mode {
-        AccessMode::Read => 0,
-        AccessMode::Write => 1,
-        AccessMode::Exclusive => 2,
-    }
+fn parse_stage_claims(_stmts: &[Stmt]) -> Vec<UnitClaim> {
+    // Annotations were removed from the AST; claims are no longer
+    // extracted from inline `@file`/`@tool` annotations.
+    Vec::new()
 }
 
 fn workflow_file_path(file: &str) -> PathBuf {
@@ -600,36 +523,6 @@ fn default_codegen_claims() -> Vec<UnitClaim> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn claim_parser_handles_file_and_network_annotations() {
-        let stmts = vec![
-            Stmt::Annotation(Annotation {
-                name: "file".to_string(),
-                args: vec![
-                    Expr::Ident("WRITE".to_string()),
-                    Expr::Literal(Literal::String("workspace".to_string())),
-                ],
-            }),
-            Stmt::Annotation(Annotation {
-                name: "network".to_string(),
-                args: vec![
-                    Expr::Ident("READ".to_string()),
-                    Expr::Literal(Literal::String("github".to_string())),
-                ],
-            }),
-        ];
-        let claims = parse_stage_claims(&stmts);
-        assert_eq!(claims.len(), 2);
-        assert!(claims
-            .iter()
-            .any(|claim| claim.claim_id.0 == "file:workspace"
-                && claim.access_mode == AccessMode::Write));
-        assert!(claims
-            .iter()
-            .any(|claim| claim.claim_id.0 == "network:github"
-                && claim.access_mode == AccessMode::Read));
-    }
 
     #[test]
     fn stage_mode_parser_extracts_mode_literals() {

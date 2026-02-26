@@ -3289,50 +3289,6 @@ fn validate_type_expr(
                 context,
             ));
         }
-                    "content" | "brand" | "non_empty" | "pattern" | "file_types" => {
-                        match process_supported_annotation(annotation) {
-                            Ok(processed) => match processed {
-                                ProcessedAnnotation::PredicateContent(encoding) => {
-                                    debug_assert!(!encoding.is_empty());
-                                }
-                                ProcessedAnnotation::TypeOpBrand(brand) => {
-                                    debug_assert!(!brand.is_empty());
-                                }
-                                ProcessedAnnotation::PredicateNonEmpty => {}
-                                ProcessedAnnotation::PredicateMatches(regex) => {
-                                    debug_assert!(!regex.is_empty());
-                                }
-                                ProcessedAnnotation::FileTypes(mapping) => {
-                                    if mapping.is_empty() {
-                                        errors.push(TypeError::UnsatisfiableRefinement {
-                                            ty: type_expr_to_string(inner),
-                                            constraint: "@file_types must define at least one extension or default mapping".to_string(),
-                                        });
-                                    }
-                                }
-                            },
-                            Err(constraint) => {
-                                errors.push(TypeError::UnsatisfiableRefinement {
-                                    ty: type_expr_to_string(inner),
-                                    constraint,
-                                });
-                            }
-                        }
-                    }
-                    // Known-but-deferred: these annotations are valid but not yet
-                    // lowered to TypeOp. They will be migrated in future modeling
-                    // phases (M8 + MetadataPayload extensions for AccessMode/ServiceMode).
-                    "json" | "format" | "invariant" | "contract"
-                    | "tool" | "mode" => {}
-                    other => {
-                        errors.push(TypeError::UnknownAnnotation {
-                            context: context.to_string(),
-                            annotation: other.to_string(),
-                        });
-                    }
-                }
-            }
-        }
         TypeExpr::Refined(inner, refinements) => {
             errors.extend(validate_type_expr(
                 inner,

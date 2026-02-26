@@ -311,7 +311,7 @@ pub fn compile_from_module_graph_with_options(
     }
     .map_err(|error| format!("lower error: {error}"))?;
     let dag_paths = daglang_lower::extract_output_paths(&lowered);
-    let annotation_paths = daglang_lower::extract_outputs_annotation(&typed);
+    let annotation_paths = daglang_lower::extract_declared_outputs(&typed);
     let output_paths = merge_dedup_paths(dag_paths, annotation_paths);
 
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
@@ -644,7 +644,6 @@ fn collect_covered_stages_from_stmt(
                 collect_covered_stages_from_expr(expr, producer_by_binding, covered);
             }
         }
-        Stmt::Annotation(_) => {}
     }
 }
 

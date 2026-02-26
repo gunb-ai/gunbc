@@ -16,7 +16,7 @@
 use crate::dsl_builder::{build_dsl_graph, build_dsl_graph_with_types};
 use crate::mock_defaults::auto_mock_spec;
 use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
-use daglang_syntax::ast::{Annotation, ExpectStmt, Expr, FixtureDef, Literal, TestDef};
+use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
 use gunbc_codegen::registry::TestgenTargetDef;
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
@@ -299,8 +299,8 @@ pub fn discover_dag_tests(dsl_root: &Path) -> Vec<DagTestTarget> {
         let dsl_module = format!("tools/{file_stem}.dag");
 
         for test in &test_file.tests {
-            // Skip tests marked with @testgen_skip(true)
-            if find_annotation_bool(&test.annotations, "testgen_skip").unwrap_or(false) {
+            // Skip tests marked with skip
+            if test.skip {
                 continue;
             }
 
@@ -591,16 +591,6 @@ fn extract_result_path(expr: &Expr) -> Option<(String, String)> {
     }
 }
 
-fn find_annotation_bool(annotations: &[Annotation], name: &str) -> Option<bool> {
-    annotations.iter().find(|a| a.name == name).and_then(|a| {
-        a.args.first().and_then(|arg| match arg {
-            Expr::Literal(Literal::Bool(b)) => Some(*b),
-            Expr::Ident(s) if s == "true" => Some(true),
-            Expr::Ident(s) if s == "false" => Some(false),
-            _ => None,
-        })
-    })
-}
 
 fn expr_to_string(expr: &Expr) -> String {
     match expr {
