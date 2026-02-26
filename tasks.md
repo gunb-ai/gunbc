@@ -269,15 +269,15 @@ Queue ordered by: model correctness (typecheck gap), then dependency chain.
 |-------|----|------|------|--------|------|
 | 1 | RF-TV1 | **Transport block validation in typecheck.** The typechecker completely ignores transport blocks — invalid contents compile silently and fail at resolve time with confusing errors. `LowerError::MissingTransport` is dead code (lowerer falls through to `ServiceOperationSpec::None` instead of erroring). **Fix**: (a) Validate transport block contents in typechecker: method/op field is required, path template variables match operation input fields, auth scheme matches service config. (b) Make the lowerer emit `LowerError::MissingTransport` instead of silently producing `ServiceOperationSpec::None`. Touches: `daglang-typecheck`, `daglang-lower`. | M | Pending | — |
 | 2 | BB-2 | Per-node test generation (Level 1a/1b). Pure nodes real exec, effectful DryRun. | M | Pending | BB-1 |
-| 2 | BB-3 | Adjacent pair test generation (Level 2). Window tests for wiring bugs. | M | Pending | BB-2 |
-| 3 | BB-5 | Cross-workflow consistency tests (Level 4). Same node, multiple workflows. | S | Pending | BB-2 |
-| 4 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | — |
-| 5 | FC-P7-d | Delete 2 bootstrap extern impls. Parity golden tests. | M | Pending | FC-P7-c2 |
-| 6 | FC-CF5 | Recursive types (self-referential type defs). | L | Pending | — |
-| 7 | FC-CF6 | Recursive functions (self-calls in fn bodies). | L | Pending | FC-CF5 |
-| 8 | FC-P8-a | Tree rendering in pure DSL. Delete RenderTreeOp. | L | Pending | FC-CF5, FC-CF6 |
-| 9 | FC-P8-b | Snapshot content as MarkdownDoc. Delete BuildSnapshotContentOp. | M | Pending | FC-P8-a |
-| 10 | FC-P8-c | Delete extern_impls.rs entirely. Zero extern func in any .dag file. | S | Pending | FC-P8-a, FC-P8-b |
+| 3 | BB-3 | Adjacent pair test generation (Level 2). Window tests for wiring bugs. | M | Pending | BB-2 |
+| 4 | BB-5 | Cross-workflow consistency tests (Level 4). Same node, multiple workflows. | S | Pending | BB-2 |
+| 5 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | — |
+| 6 | FC-P7-d | Delete 2 bootstrap extern impls. Parity golden tests. | M | Pending | FC-P7-c2 |
+| 7 | FC-CF5 | Recursive types (self-referential type defs). | L | Pending | — |
+| 8 | FC-CF6 | Recursive functions (self-calls in fn bodies). | L | Pending | FC-CF5 |
+| 9 | FC-P8-a | Tree rendering in pure DSL. Delete RenderTreeOp. | L | Pending | FC-CF5, FC-CF6 |
+| 10 | FC-P8-b | Snapshot content as MarkdownDoc. Delete BuildSnapshotContentOp. | M | Pending | FC-P8-a |
+| 11 | FC-P8-c | Delete extern_impls.rs entirely. Zero extern func in any .dag file. | S | Pending | FC-P8-a, FC-P8-b |
 
 ### R2 Horizon (after FC-P8-c)
 
