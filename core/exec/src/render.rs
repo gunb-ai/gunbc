@@ -257,7 +257,7 @@ mod tests {
 
         progress.on_dag_start(&snap);
         progress.on_node_start(&NodeId::from("lint"));
-        progress.on_node_failed(&NodeId::from("lint"), "clippy error");
+        progress.on_node_failed(&NodeId::from("lint"), &crate::ExecError::new("clippy error"));
         progress.on_dag_complete(Duration::from_millis(100));
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
@@ -458,7 +458,7 @@ mod tests {
         progress.on_node_start(&NodeId::from("lint"));
         progress.on_node_complete(&NodeId::from("lint"), empty_summary());
         progress.on_node_start(&NodeId::from("build"));
-        progress.on_node_failed(&NodeId::from("build"), "compilation error");
+        progress.on_node_failed(&NodeId::from("build"), &crate::ExecError::new("compilation error"));
         progress.on_dag_complete(Duration::from_millis(150));
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);

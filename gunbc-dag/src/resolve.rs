@@ -919,6 +919,10 @@ fn resolve_service_transport(
                 (ServiceOperationSpec::Rest(rest_spec), _, true) => {
                     return Ok(DynOp::new(GenericRestParseOp {
                         spec: rest_spec.clone(),
+                        service_name: metadata.service.clone(),
+                        operation_name: metadata.operation.clone(),
+                        permissions: metadata.permissions.clone(),
+                        auth_scheme: rest_spec.auth_scheme.clone().unwrap_or_default(),
                     }));
                 }
                 (ServiceOperationSpec::Shell(shell_spec), true, _) => {
@@ -929,6 +933,8 @@ fn resolve_service_transport(
                 (ServiceOperationSpec::Shell(shell_spec), _, true) => {
                     return Ok(DynOp::new(GenericShellParseOp {
                         spec: shell_spec.clone(),
+                        service_name: metadata.service.clone(),
+                        operation_name: metadata.operation.clone(),
                     }));
                 }
                 (ServiceOperationSpec::File(file_spec), true, _) => {

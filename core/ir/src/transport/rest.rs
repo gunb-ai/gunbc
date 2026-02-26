@@ -140,6 +140,46 @@ impl RestRequest {
         self.timeout_ms = Some(ms);
         self
     }
+
+    /// Returns a copy of headers with auth-bearing values masked.
+    ///
+    /// Redacts values for header keys that are known to carry credentials:
+    /// `authorization`, `x-api-key`, `x-api-token`, `proxy-authorization`,
+    /// `cookie`, `set-cookie`, `x-auth-token`, `x-access-token`.
+    ///
+    /// Also applies a heuristic: any header name containing `token`, `secret`,
+    /// `key`, `auth`, or `cookie` (case-insensitive) is redacted.
+    ///
+    /// Use this method in error paths that format request details.
+    pub fn redacted_headers(&self) -> HashMap<String, String> {
+        self.headers
+            .iter()
+            .map(|(k, v)| {
+                let lower = k.to_ascii_lowercase();
+                let redact = matches!(
+                    lower.as_str(),
+                    "authorization"
+                        | "x-api-key"
+                        | "x-api-token"
+                        | "proxy-authorization"
+                        | "cookie"
+                        | "set-cookie"
+                        | "x-auth-token"
+                        | "x-access-token"
+                ) || lower.contains("token")
+                    || lower.contains("secret")
+                    || lower.contains("key")
+                    || lower.contains("auth")
+                    || lower.contains("cookie");
+
+                if redact {
+                    (k.clone(), "***".to_string())
+                } else {
+                    (k.clone(), v.clone())
+                }
+            })
+            .collect()
+    }
 }
 
 impl RestResponse {
@@ -215,5 +255,42 @@ mod tests {
             resp.get_str("html_url"),
             Some("https://gist.github.com/abc123")
         );
+    }
+
+    #[test]
+    fn test_redacted_headers_masks_auth_headers() {
+        let req = RestRequest::get("https://api.example.com")
+            .header("Authorization", "Bearer ghp_secret123")
+            .header("Content-Type", "application/json")
+            .header("X-Api-Key", "my-api-key")
+            .header("Accept", "application/json");
+
+        let redacted = req.redacted_headers();
+        assert_eq!(redacted["Authorization"], "***");
+        assert_eq!(redacted["X-Api-Key"], "***");
+        assert_eq!(redacted["Content-Type"], "application/json");
+        assert_eq!(redacted["Accept"], "application/json");
+    }
+
+    #[test]
+    fn test_redacted_headers_masks_cookie_headers() {
+        let req = RestRequest::get("https://api.example.com")
+            .header("Cookie", "session=abc123")
+            .header("Set-Cookie", "session=abc123; Path=/");
+
+        let redacted = req.redacted_headers();
+        assert_eq!(redacted["Cookie"], "***");
+        assert_eq!(redacted["Set-Cookie"], "***");
+    }
+
+    #[test]
+    fn test_redacted_headers_heuristic_matching() {
+        let req = RestRequest::get("https://api.example.com")
+            .header("X-Custom-Auth-Token", "secret-value")
+            .header("X-Request-Id", "abc123");
+
+        let redacted = req.redacted_headers();
+        assert_eq!(redacted["X-Custom-Auth-Token"], "***");
+        assert_eq!(redacted["X-Request-Id"], "abc123");
     }
 }

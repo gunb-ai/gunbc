@@ -212,7 +212,7 @@ pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
     PortDirection, SubDagError, UnwiredResource,
 };
-pub use value::{SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH};
+pub use value::{SecretHint, SecretString, Value, ValueKind, HUMAN_TEXT_MAX_LINES, HUMAN_TEXT_MAX_LINE_WIDTH};
 pub use value_bridge::{classify_value, from_bridge_json, to_bridge_json, ValueCategory};
 pub use value_expr::ValueExpr;
 pub use workspace_layout::{WorkspaceLayout, WorkspaceLayoutError};

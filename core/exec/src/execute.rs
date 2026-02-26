@@ -849,20 +849,20 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                                 // Failure diagnostics and error annotation happen inside
                                 // the CI group, then the group is closed by on_node_failed.
                                 observer.on_failure_diagnostics(node_id, &saved_inputs);
-                                observer.on_node_failed(node_id, &e.to_string());
+                                observer.on_node_failed(node_id, &e);
                                 observer.on_dag_complete(dag_start.elapsed());
                                 return Err(e);
                             }
                         }
                     }
                     NodeBody::SubDag(_) => {
-                        let err_msg = format!(
+                        let err = ExecError::new(format!(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0
-                        );
-                        observer.on_node_failed(node_id, &err_msg);
+                        ));
+                        observer.on_node_failed(node_id, &err);
                         observer.on_dag_complete(dag_start.elapsed());
-                        return Err(ExecError::new(err_msg));
+                        return Err(err);
                     }
                 }
             }
@@ -870,7 +870,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
 
         if !skip && !was_intercepted {
             if let Err(e) = enforce_runtime_file_guard(node, &outputs, file_guard_enabled) {
-                observer.on_node_failed(node_id, &e.to_string());
+                observer.on_node_failed(node_id, &e);
                 observer.on_dag_complete(dag_start.elapsed());
                 return Err(e);
             }
@@ -1659,7 +1659,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         Ok(outputs) => outputs,
                         Err(e) => {
                             if let Some(ref mut o) = obs {
-                                o.on_node_failed(&node_id, &e.to_string());
+                                o.on_node_failed(&node_id, &e);
                             }
                             release_node_requirements(requirements, &mut active_resource_locks);
                             return Err(e);
@@ -1708,7 +1708,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                             node_id.0
                         ));
                         if let Some(ref mut o) = obs {
-                            o.on_node_failed(&node_id, &err.to_string());
+                            o.on_node_failed(&node_id, &err);
                         }
                         release_node_requirements(requirements, &mut active_resource_locks);
                         return Err(err);
@@ -1759,7 +1759,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                             })?;
                     if let Err(e) = enforce_runtime_file_guard(node, &outputs, file_guard_enabled) {
                         if let Some(ref mut o) = obs {
-                            o.on_node_failed(&completed_node.node_id, &e.to_string());
+                            o.on_node_failed(&completed_node.node_id, &e);
                         }
                         return Err(e);
                     }
@@ -1784,7 +1784,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 }
                 Err(e) => {
                     if let Some(ref mut o) = obs {
-                        o.on_node_failed(&completed_node.node_id, &e.to_string());
+                        o.on_node_failed(&completed_node.node_id, &e);
                     }
                     return Err(e);
                 }

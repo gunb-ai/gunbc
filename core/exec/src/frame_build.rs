@@ -1267,7 +1267,7 @@ mod tests {
         progress.on_node_start(&NodeId::from("prepare_build"));
         progress.on_node_complete(&NodeId::from("prepare_build"), empty_summary());
         progress.on_node_start(&NodeId::from("execute_build"));
-        progress.on_node_failed(&NodeId::from("execute_build"), "boom");
+        progress.on_node_failed(&NodeId::from("execute_build"), &crate::ExecError::new("boom"));
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);

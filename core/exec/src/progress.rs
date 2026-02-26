@@ -15,6 +15,7 @@
 //! `DagProgress` implements `ProgressObserver` — it's a concrete observer that
 //! maintains the "power flow" state machine (NodeState, EdgeState transitions).
 
+use crate::error::{ExecError, FailureDetail};
 use gunbc_ir::{Edge, NodeId, Value};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -38,7 +39,7 @@ pub trait ProgressObserver: Send {
     fn on_node_complete(&mut self, node_id: &NodeId, summary: OutputSummary);
 
     /// Called when a node fails.
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str);
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError);
 
     /// Called when a node is skipped (guard predicate false).
     fn on_node_skipped(&mut self, node_id: &NodeId);
@@ -343,7 +344,7 @@ pub enum ExecutionEvent {
     DagStart(DagSnapshot),
     NodeStart(NodeId),
     NodeComplete(NodeId, OutputSummary),
-    NodeFailed(NodeId, String),
+    NodeFailed(NodeId, FailureDetail),
     NodeSkipped(NodeId),
     NodeIntercepted(NodeId, OutputSummary),
     DagComplete(Duration),
@@ -378,13 +379,36 @@ pub enum EdgeState {
 }
 
 /// Overall DAG execution phase.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum DagPhase {
     NotStarted,
     Running { current_node: NodeId },
     Completed { elapsed: Duration },
-    Failed { node: NodeId, error: String },
+    Failed { node: NodeId, error: FailureDetail },
 }
+
+impl PartialEq for DagPhase {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::NotStarted, Self::NotStarted) => true,
+            (Self::Running { current_node: a }, Self::Running { current_node: b }) => a == b,
+            (Self::Completed { elapsed: a }, Self::Completed { elapsed: b }) => a == b,
+            (
+                Self::Failed {
+                    node: n1,
+                    error: e1,
+                },
+                Self::Failed {
+                    node: n2,
+                    error: e2,
+                },
+            ) => n1 == n2 && e1.message == e2.message,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for DagPhase {}
 
 /// Per-node progress tracking.
 #[derive(Debug, Clone)]
@@ -393,8 +417,8 @@ pub struct NodeProgress {
     pub start_time: Option<Instant>,
     pub elapsed: Option<Duration>,
     pub summary: Option<OutputSummary>,
-    /// Error message for failed nodes. Populated by `on_node_failed`.
-    pub error: Option<String>,
+    /// Structured failure detail for failed nodes. Populated by `on_node_failed`.
+    pub error: Option<FailureDetail>,
 }
 
 /// Per-edge progress tracking.
@@ -481,7 +505,10 @@ impl DagProgress {
             ExecutionEvent::DagStart(snapshot) => self.on_dag_start(&snapshot),
             ExecutionEvent::NodeStart(id) => self.on_node_start(&id),
             ExecutionEvent::NodeComplete(id, summary) => self.on_node_complete(&id, summary),
-            ExecutionEvent::NodeFailed(id, error) => self.on_node_failed(&id, &error),
+            ExecutionEvent::NodeFailed(id, detail) => {
+                let err = ExecError::from_failure_detail(detail);
+                self.on_node_failed(&id, &err);
+            }
             ExecutionEvent::NodeSkipped(id) => self.on_node_skipped(&id),
             ExecutionEvent::NodeIntercepted(id, summary) => self.on_node_intercepted(&id, summary),
             ExecutionEvent::DagComplete(elapsed) => self.on_dag_complete(elapsed),
@@ -510,8 +537,8 @@ impl DagProgress {
 
     /// Collect information about all failed nodes.
     ///
-    /// Returns `(node_label, error_message)` pairs for rendering error boxes.
-    pub fn failed_nodes(&self) -> Vec<(String, String)> {
+    /// Returns `(node_label, failure_detail)` pairs for rendering error boxes.
+    pub fn failed_nodes(&self) -> Vec<(String, FailureDetail)> {
         let mut failures = Vec::new();
         // Walk in topo order to maintain deterministic ordering
         for node_id in &self.snapshot.topo_order {
@@ -523,11 +550,11 @@ impl DagProgress {
                         .get(node_id)
                         .cloned()
                         .unwrap_or_else(|| node_id.0.clone());
-                    let error = np
-                        .error
-                        .clone()
-                        .unwrap_or_else(|| "(no error detail)".to_string());
-                    failures.push((label, error));
+                    let detail = np.error.clone().unwrap_or_else(|| FailureDetail {
+                        message: "(no error detail)".to_string(),
+                        layers: Vec::new(),
+                    });
+                    failures.push((label, detail));
                 }
             }
         }
@@ -614,16 +641,17 @@ impl ProgressObserver for DagProgress {
         self.flow_edges_from(node_id);
     }
 
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError) {
+        let detail = error.to_failure_detail();
         if let Some(np) = self.nodes.get_mut(node_id) {
             np.state = NodeState::Failed;
             np.elapsed = np.start_time.map(|t| t.elapsed());
-            np.error = Some(error.to_string());
+            np.error = Some(detail.clone());
         }
         self.kill_edges_from(node_id);
         self.phase = DagPhase::Failed {
             node: node_id.clone(),
-            error: error.to_string(),
+            error: detail,
         };
     }
 
@@ -692,7 +720,7 @@ impl ProgressObserver for ComposedObserver<'_, '_> {
         self.secondary.on_node_complete(node_id, summary);
     }
 
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError) {
         self.primary.on_node_failed(node_id, error);
         self.secondary.on_node_failed(node_id, error);
     }
@@ -748,7 +776,7 @@ pub enum ProgressEvent {
     DagStart,
     NodeStart(NodeId),
     NodeComplete(NodeId),
-    NodeFailed(NodeId, String),
+    NodeFailed(NodeId, FailureDetail),
     NodeSkipped(NodeId),
     NodeIntercepted(NodeId),
     DagComplete(Duration),
@@ -800,10 +828,10 @@ impl ProgressObserver for RecordingObserver {
         self.events
             .push(ProgressEvent::NodeComplete(node_id.clone()));
     }
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError) {
         self.events.push(ProgressEvent::NodeFailed(
             node_id.clone(),
-            error.to_string(),
+            FailureDetail::from(error),
         ));
     }
     fn on_node_skipped(&mut self, node_id: &NodeId) {
@@ -932,7 +960,7 @@ mod tests {
 
         // B fails
         progress.on_node_start(&NodeId::from("B"));
-        progress.on_node_failed(&NodeId::from("B"), "something broke");
+        progress.on_node_failed(&NodeId::from("B"), &ExecError::new("something broke"));
 
         assert_eq!(progress.nodes[&NodeId::from("B")].state, NodeState::Failed);
         assert_eq!(

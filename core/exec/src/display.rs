@@ -15,6 +15,7 @@
 //! ```
 
 use crate::box_draw;
+use crate::error::{ErrorLayer, FailureDetail};
 use crate::frame_build::{build_frame, format_duration};
 use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
@@ -558,8 +559,8 @@ impl NonTtyProgressCounts {
 struct NonTtyProgressObserver {
     labels: HashMap<NodeId, String>,
     states: HashMap<NodeId, NonTtyNodeState>,
-    /// Track failed nodes with their error first lines for the dag_complete summary.
-    failures: Vec<(String, String)>,
+    /// Track failed nodes with their structured failure details for the dag_complete summary.
+    failures: Vec<(String, FailureDetail)>,
     /// Stage groups from the snapshot (empty for non-CI DAGs).
     groups: Vec<StageGroup>,
     /// Maps node_id → group index for quick lookup.
@@ -718,17 +719,58 @@ impl ProgressObserver for NonTtyProgressObserver {
         self.maybe_emit_group_summary(node_id);
     }
 
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError) {
         self.set_state(node_id, NonTtyNodeState::Failed);
         let label = self.label_for(node_id).to_string();
-        // Save first line for the dag_complete summary
-        let first_line = error.lines().next().unwrap_or(error).to_string();
-        self.failures.push((label.clone(), first_line));
-        eprintln!("✗ {}: {}", label, error);
+        let detail = error.to_failure_detail();
+        let classification = error.classification();
+        let msg = error.to_string();
+
+        // Summary line with classification tag and optional service label
+        if let Some(svc) = error.service_label() {
+            eprintln!("✗ {} [{}] ({}): {}", label, classification, svc, msg);
+        } else {
+            eprintln!("✗ {} [{}]: {}", label, classification, msg);
+        }
+
         // Print boxed failure detail, capped at FAILURE_DETAIL_LINES
         eprintln!();
         eprintln!("  ┌─ [ERROR] {}", label);
-        let lines: Vec<&str> = error.lines().collect();
+
+        // Render layer context lines
+        for layer in error.layers() {
+            match layer {
+                ErrorLayer::Service(s) => {
+                    eprintln!("  │ Service: {}.{}", s.provider, s.operation);
+                }
+                ErrorLayer::Http(h) => {
+                    let reason = h.reason.as_deref().unwrap_or("");
+                    eprintln!("  │ Http: {} {}", h.status_code, reason);
+                }
+                ErrorLayer::Rest(r) => {
+                    eprintln!("  │ Rest: {} {}", r.method, r.endpoint);
+                }
+                ErrorLayer::Auth(a) => {
+                    if let Some(ref cred) = a.credential_ref {
+                        eprintln!("  │ Auth: {} (credential: {})", a.scheme, cred);
+                    } else {
+                        eprintln!("  │ Auth: {}", a.scheme);
+                    }
+                }
+                ErrorLayer::Shell(s) => {
+                    if let Some(code) = s.exit_code {
+                        eprintln!("  │ Shell: {} (exit {})", s.command, code);
+                    } else {
+                        eprintln!("  │ Shell: {}", s.command);
+                    }
+                }
+                ErrorLayer::File(f) => {
+                    eprintln!("  │ File: {} ({})", f.path, f.operation);
+                }
+            }
+        }
+
+        let lines: Vec<&str> = msg.lines().collect();
         let display_lines = lines.len().min(FAILURE_DETAIL_LINES);
         for line in &lines[..display_lines] {
             eprintln!("  │ {}", line);
@@ -740,6 +782,8 @@ impl ProgressObserver for NonTtyProgressObserver {
             );
         }
         eprintln!("  └─");
+
+        self.failures.push((label, detail));
         self.maybe_emit_group_summary(node_id);
     }
 
@@ -758,11 +802,17 @@ impl ProgressObserver for NonTtyProgressObserver {
         let counts = self.counts();
         eprintln!("{}", format_non_tty_summary_line(counts, elapsed));
 
-        // Print failure summary listing all failed nodes with error first lines
+        // Print failure summary listing all failed nodes with classification
         if !self.failures.is_empty() {
             eprintln!();
-            for (label, first_line) in &self.failures {
-                eprintln!("  ┌─ [FAILED] {}", label);
+            for (label, detail) in &self.failures {
+                let first_line = detail
+                    .message
+                    .lines()
+                    .next()
+                    .unwrap_or(&detail.message);
+                let tag = detail.classification();
+                eprintln!("  ┌─ [FAILED] {} [{}]", label, tag);
                 eprintln!("  │ {}", first_line);
                 eprintln!("  └─");
             }
@@ -785,10 +835,10 @@ impl ProgressObserver for ChannelObserver {
             .send(ExecutionEvent::NodeComplete(node_id.clone(), summary));
     }
 
-    fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &ExecError) {
         let _ = self.tx.send(ExecutionEvent::NodeFailed(
             node_id.clone(),
-            error.to_string(),
+            error.to_failure_detail(),
         ));
     }
 
@@ -934,8 +984,9 @@ fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) ->
 /// Render error detail boxes for all failed nodes in the DAG.
 ///
 /// Each failed node gets an open-right box with `Error` color border and
-/// `Dim` content text. Error text is truncated to [`ERROR_OUTPUT_MAX_LINES`]
-/// lines. Matches `gunb.ai`'s `printErrorBoxes()` behavior.
+/// `Dim` content text. Renders structured layer context (Service, Http, Rest,
+/// Auth, Shell, File) when available, plus a classification tag. Error text
+/// is truncated to [`ERROR_OUTPUT_MAX_LINES`] lines.
 ///
 /// [`ERROR_OUTPUT_MAX_LINES`]: crate::box_draw::ERROR_OUTPUT_MAX_LINES
 pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
@@ -947,21 +998,79 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
     let mut stderr = io::stderr();
     let _ = writeln!(stderr);
 
-    for (label, error) in &failures {
-        let b = box_draw::error_box(label, tier, use_color);
+    for (label, detail) in &failures {
+        // Build a label that includes service label and classification if available
+        let box_label = match detail.service_label() {
+            Some(svc) => format!("{} ({}) [{}]", label, svc, detail.classification()),
+            None => {
+                let tag = detail.classification();
+                if tag != "UNKNOWN" {
+                    format!("{} [{}]", label, tag)
+                } else {
+                    label.clone()
+                }
+            }
+        };
+        let b = box_draw::error_box(&box_label, tier, use_color);
 
-        // Truncate error output to max lines
-        let lines: Vec<&str> = error.lines().collect();
+        // Build content lines: layer context first, then error message
+        let mut content_lines: Vec<String> = Vec::new();
+
+        for layer in &detail.layers {
+            match layer {
+                ErrorLayer::Service(s) => {
+                    content_lines.push(format!("Service: {}.{}", s.provider, s.operation));
+                }
+                ErrorLayer::Http(h) => {
+                    let reason = h.reason.as_deref().unwrap_or("");
+                    content_lines.push(format!("Http: {} {}", h.status_code, reason));
+                }
+                ErrorLayer::Rest(r) => {
+                    content_lines.push(format!("Rest: {} {}", r.method, r.endpoint));
+                }
+                ErrorLayer::Auth(a) => {
+                    if let Some(ref cred) = a.credential_ref {
+                        content_lines
+                            .push(format!("Auth: {} (credential: {})", a.scheme, cred));
+                    } else {
+                        content_lines.push(format!("Auth: {}", a.scheme));
+                    }
+                }
+                ErrorLayer::Shell(s) => {
+                    if let Some(code) = s.exit_code {
+                        content_lines.push(format!("Shell: {} (exit {})", s.command, code));
+                    } else {
+                        content_lines.push(format!("Shell: {}", s.command));
+                    }
+                }
+                ErrorLayer::File(f) => {
+                    content_lines.push(format!("File: {} ({})", f.path, f.operation));
+                }
+            }
+        }
+
+        // Add separator between layers and message if layers are present
+        if !content_lines.is_empty() {
+            content_lines.push(String::new());
+        }
+
+        // Add error message lines
+        let msg_lines: Vec<&str> = detail.message.lines().collect();
+        for line in &msg_lines {
+            content_lines.push(line.to_string());
+        }
+
+        // Truncate to max lines
         let max = box_draw::ERROR_OUTPUT_MAX_LINES;
-        if lines.len() <= max {
-            let _ = b.render(&mut stderr, &lines);
+        let refs: Vec<&str> = content_lines.iter().map(|s| s.as_str()).collect();
+        if refs.len() <= max {
+            let _ = b.render(&mut stderr, &refs);
         } else {
             let _ = b.write_top(&mut stderr);
-            // Show last `max` lines (most relevant for errors)
-            let skip = lines.len() - max;
+            let skip = refs.len() - max;
             let truncation_notice = format!("... ({} lines omitted, showing last {})", skip, max);
             let _ = b.write_content(&mut stderr, &truncation_notice);
-            for line in &lines[skip..] {
+            for line in &refs[skip..] {
                 let _ = b.write_content(&mut stderr, line);
             }
             let _ = b.write_bottom(&mut stderr);
@@ -1074,7 +1183,7 @@ mod tests {
             },
         );
         observer.on_node_start(&b);
-        observer.on_node_failed(&b, "boom");
+        observer.on_node_failed(&b, &ExecError::new("boom"));
         observer.on_node_skipped(&c);
 
         let counts = observer.counts();
@@ -1241,11 +1350,11 @@ mod tests {
         let mut observer = NonTtyProgressObserver::default();
         observer.on_dag_start(&snapshot);
         observer.on_node_start(&NodeId::from("a"));
-        observer.on_node_failed(&NodeId::from("a"), "error line 1\nerror line 2");
+        observer.on_node_failed(&NodeId::from("a"), &ExecError::new("error line 1\nerror line 2"));
 
         assert_eq!(observer.failures.len(), 1);
         assert_eq!(observer.failures[0].0, "A");
-        assert_eq!(observer.failures[0].1, "error line 1");
+        assert_eq!(observer.failures[0].1.message, "error line 1\nerror line 2");
     }
 
     #[test]

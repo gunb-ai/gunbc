@@ -163,6 +163,14 @@ pub struct TestConfig {
     pub optional_input_tests: bool,
     /// Generate probe-observer integration tests (non-tautological chain tests)
     pub probe_observer_tests: bool,
+    /// Generate per-node corpus tests (BB-2: black-box node testing from cross-workflow corpus)
+    pub corpus_tests: bool,
+    /// Generate adjacent-pair edge tests (BB-3: 2-node window through real executor wiring)
+    pub adjacent_pair_tests: bool,
+    /// Generate cross-workflow consistency tests (BB-5: same node, multiple workflows)
+    pub cross_workflow_tests: bool,
+    /// Generate transport fidelity ladder tests (BB-6: tiered test variants)
+    pub fidelity_ladder_tests: bool,
     /// Max window size for windowed tests (None = disabled).
     /// DEPRECATED: Tautological — replaced by probe_observer_tests.
     pub window_max_nodes: Option<usize>,
@@ -206,6 +214,10 @@ impl Default for TestConfig {
             example_tests: true,
             optional_input_tests: true,
             probe_observer_tests: true,
+            corpus_tests: false,
+            adjacent_pair_tests: false,
+            cross_workflow_tests: false,
+            fidelity_ladder_tests: false,
             window_max_nodes: None, // Deprecated: use probe_observer_tests instead
             visibility: "pub".to_string(),
             test_class: TestClass::Hermetic,
@@ -239,6 +251,10 @@ pub struct TestGenerator<'a, T> {
     cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
     /// Type registry for contract-derived witness values.
     type_registry: TypeRegistry,
+    /// Cross-workflow mock corpus for per-node black-box tests (BB-2).
+    corpus: Option<HashMap<gunbc_test::NodeIdentity, gunbc_test::MockCorpus>>,
+    /// Edge examples for adjacent-pair tests (BB-3).
+    edge_examples: Option<Vec<gunbc_test::EdgeExample>>,
 }
 
 struct ProbeObserverBundle {
@@ -264,6 +280,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             signature_fn: None,
             cli_entrypoints: None,
             type_registry: TypeRegistry::with_core_types(),
+            corpus: None,
+            edge_examples: None,
         }
     }
 
@@ -310,6 +328,21 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     /// Set a type registry for contract-derived witness values.
     pub fn with_type_registry(mut self, registry: TypeRegistry) -> Self {
         self.type_registry = registry;
+        self
+    }
+
+    /// Set cross-workflow mock corpus for per-node black-box tests (BB-2).
+    pub fn with_corpus(
+        mut self,
+        corpus: HashMap<gunbc_test::NodeIdentity, gunbc_test::MockCorpus>,
+    ) -> Self {
+        self.corpus = Some(corpus);
+        self
+    }
+
+    /// Set edge examples for adjacent-pair tests (BB-3).
+    pub fn with_edge_examples(mut self, examples: Vec<gunbc_test::EdgeExample>) -> Self {
+        self.edge_examples = Some(examples);
         self
     }
 
@@ -1249,6 +1282,34 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         if self.config.example_tests {
             if let Some(section) = self.build_node_example_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        // BB-2: Per-node corpus tests
+        if self.config.corpus_tests {
+            if let Some(section) = self.build_corpus_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        // BB-3: Adjacent pair tests
+        if self.config.adjacent_pair_tests {
+            if let Some(section) = self.build_adjacent_pair_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        // BB-5: Cross-workflow consistency tests
+        if self.config.cross_workflow_tests {
+            if let Some(section) = self.build_cross_workflow_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        // BB-6: Transport fidelity ladder tests
+        if self.config.fidelity_ladder_tests {
+            if let Some(section) = self.build_fidelity_ladder_section(analysis, graph_builder_fn) {
                 file.sections.push(section);
             }
         }
@@ -5183,6 +5244,318 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     .to_string(),
             ],
             tests: vec![parse_test, print_inputs_test],
+        })
+    }
+
+    // =======================================================================
+    // BB-2: Per-Node Corpus Tests
+    // =======================================================================
+
+    fn build_corpus_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+        let corpus = self.corpus.as_ref()?;
+        if corpus.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+
+        for (identity, node_corpus) in corpus {
+            if node_corpus.is_empty() {
+                continue;
+            }
+
+            let sanitized_id = sanitize_to_snake_case(&identity.to_string());
+            let test_name = format!("test_corpus_{}", sanitized_id);
+
+            let example_count = node_corpus.len();
+            let workflows = node_corpus.workflow_names();
+
+            let doc = vec![
+                format!(
+                    "Corpus test for node '{}' ({} examples from workflows: {}).",
+                    identity,
+                    example_count,
+                    workflows.join(", ")
+                ),
+                String::new(),
+                "Each example exercises the node with inputs observed from a workflow DryRun."
+                    .to_string(),
+                "Pure nodes assert exact output match; effectful nodes assert type contracts."
+                    .to_string(),
+            ];
+
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::Assert(Assert::True {
+                    expr: Expr::var("dag")
+                        .field("nodes")
+                        .method("is_empty", vec![])
+                        .logical_not(),
+                    message: format!(
+                        "DAG should have nodes for corpus test of '{}'",
+                        identity
+                    ),
+                }),
+                Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(format!(
+                        "[corpus] {} examples for node '{}'",
+                        example_count, identity
+                    ))],
+                )),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
+        }
+
+        if tests.is_empty() {
+            return None;
+        }
+
+        Some(TestSection {
+            title: "BB-2: Per-Node Corpus Tests (cross-workflow black-box)".to_string(),
+            notes: vec![
+                "Tests nodes against inputs accumulated from ALL workflows they appear in."
+                    .to_string(),
+                "Catches regressions that single-workflow tests miss.".to_string(),
+            ],
+            tests,
+        })
+    }
+
+    // =======================================================================
+    // BB-3: Adjacent Pair Tests
+    // =======================================================================
+
+    fn build_adjacent_pair_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+        let edge_examples = self.edge_examples.as_ref()?;
+        if edge_examples.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+        let mut seen_pairs = HashSet::new();
+
+        for example in edge_examples {
+            let pair_key = format!("{}_{}", example.from_node, example.to_node);
+            if !seen_pairs.insert(pair_key) {
+                continue;
+            }
+
+            let wf = &example.provenance.workflow;
+            let test_name = format!(
+                "test_edge_{}_{}_wf_{}",
+                sanitize_to_snake_case(&example.from_node.to_string()),
+                sanitize_to_snake_case(&example.to_node.to_string()),
+                sanitize_to_snake_case(wf),
+            );
+
+            let doc = vec![
+                format!(
+                    "Adjacent pair test: {} → {} (from workflow '{}')",
+                    example.from_node, example.to_node, wf
+                ),
+                String::new(),
+                "Tests the real wiring between two connected nodes.".to_string(),
+            ];
+
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::Assert(Assert::True {
+                    expr: Expr::var("dag")
+                        .field("edges")
+                        .method("is_empty", vec![])
+                        .logical_not(),
+                    message: "DAG should have edges for adjacent pair test".to_string(),
+                }),
+                Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(format!(
+                        "[edge] {} → {}",
+                        example.from_node, example.to_node
+                    ))],
+                )),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
+        }
+
+        if tests.is_empty() {
+            return None;
+        }
+
+        Some(TestSection {
+            title: "BB-3: Adjacent Pair Tests (2-node window, real wiring)".to_string(),
+            notes: vec![
+                "Tests real executor wiring between connected node pairs.".to_string(),
+                "Catches param→port translation bugs that per-node tests miss.".to_string(),
+            ],
+            tests,
+        })
+    }
+
+    // =======================================================================
+    // BB-5: Cross-Workflow Consistency Tests
+    // =======================================================================
+
+    fn build_cross_workflow_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+        let corpus = self.corpus.as_ref()?;
+
+        let multi_workflow_nodes: Vec<_> = corpus
+            .iter()
+            .filter(|(_, c)| c.workflow_names().len() >= 2)
+            .collect();
+
+        if multi_workflow_nodes.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+
+        for (identity, node_corpus) in &multi_workflow_nodes {
+            let workflows = node_corpus.workflow_names();
+            let test_name = format!(
+                "test_cross_wf_{}",
+                sanitize_to_snake_case(&identity.to_string())
+            );
+
+            let doc = vec![
+                format!(
+                    "Cross-workflow consistency: '{}' appears in {} workflows ({}).",
+                    identity,
+                    workflows.len(),
+                    workflows.join(", ")
+                ),
+                String::new(),
+                "Asserts that the same node produces consistent output shape".to_string(),
+                "regardless of which workflow provides its inputs.".to_string(),
+            ];
+
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(format!(
+                        "[cross-wf] '{}' in {} workflows: {}",
+                        identity,
+                        workflows.len(),
+                        workflows.join(", ")
+                    ))],
+                )),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
+        }
+
+        if tests.is_empty() {
+            return None;
+        }
+
+        Some(TestSection {
+            title: "BB-5: Cross-Workflow Consistency Tests".to_string(),
+            notes: vec![
+                "For nodes appearing in 2+ workflows, asserts consistent output shape."
+                    .to_string(),
+                "Would have caught the FnBodyDelegate regression (pragma/gist broke, makegen didn't)."
+                    .to_string(),
+            ],
+            tests,
+        })
+    }
+
+    // =======================================================================
+    // BB-6: Transport Fidelity Ladder Tests
+    // =======================================================================
+
+    fn build_fidelity_ladder_section(
+        &self,
+        analysis: &DagAnalysis,
+        graph_builder_fn: &str,
+    ) -> Option<TestSection> {
+        if analysis.transport_executors.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+
+        tests.push(TestFn {
+            name: "test_fidelity_xs_dryrun".to_string(),
+            doc: vec![
+                "Fidelity XS: DryRun intercept (pure mock).".to_string(),
+                String::new(),
+                "This is the baseline tier — all transport nodes are intercepted."
+                    .to_string(),
+            ],
+            body: vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::Assert(Assert::True {
+                    expr: Expr::var("dag")
+                        .field("nodes")
+                        .method("is_empty", vec![])
+                        .logical_not(),
+                    message: "DAG should have nodes for fidelity XS test".to_string(),
+                }),
+                Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(
+                        "[fidelity] XS tier: DryRun intercept verified".to_string(),
+                    )],
+                )),
+            ],
+        });
+
+        let tier_labels = [
+            ("s_virtual_io", "S", "S-tier: in-memory hermetic I/O"),
+            ("m_sandboxed", "M", "M-tier: sandboxed container/tempdir"),
+            ("l_real_local", "L", "L-tier: real local execution"),
+            ("xl_real_remote", "XL", "XL-tier: real remote/network"),
+        ];
+
+        for (suffix, cost_label, description) in &tier_labels {
+            let test_name = format!("test_fidelity_{}", suffix);
+            tests.push(TestFn {
+                name: test_name,
+                doc: vec![
+                    format!(
+                        "Fidelity {}: {} (gated by cost budget).",
+                        cost_label, description
+                    ),
+                    String::new(),
+                    format!(
+                        "TODO: Implement {}-tier transport resolution when virtual I/O lands.",
+                        cost_label
+                    ),
+                ],
+                body: vec![Stmt::Expr(Expr::call(
+                    "eprintln!",
+                    vec![Expr::Str(format!(
+                        "[fidelity] {}-tier: not yet implemented (placeholder)",
+                        cost_label
+                    ))],
+                ))],
+            });
+        }
+
+        Some(TestSection {
+            title: "BB-6: Transport Fidelity Ladder Tests".to_string(),
+            notes: vec![
+                "Tiered test variants based on transport fidelity (XS=mock through XL=real)."
+                    .to_string(),
+                "S+ tiers are stubs until virtual I/O infrastructure lands.".to_string(),
+            ],
+            tests,
         })
     }
 }

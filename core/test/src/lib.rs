@@ -38,7 +38,9 @@
 #![deny(dead_code)]
 pub mod boundary;
 pub mod composition;
+pub mod corpus;
 pub mod fermi;
+pub mod fidelity;
 pub mod mock;
 pub mod mock_requirements;
 pub mod mock_spec;
@@ -50,6 +52,13 @@ pub use boundary::{
     assert_boundary_mockable, default_mocks, mocks_with_values, BoundaryTestResult,
 };
 pub use composition::{assert_types_compatible, TypeCompatibility};
+pub use corpus::{
+    is_redacted_type, normalize_value, CorpusExample, EdgeExample, Expectation, MockCorpus,
+    NodeIdentity, Provenance, SeedKind,
+};
+pub use fidelity::{
+    canonical_ladders, node_max_fidelity, FidelityLadder, FidelityLevel, FidelityRung,
+};
 pub use fermi::{
     guard, guard_test, guard_test_with_env, max_cost_from_env, FermiCost, TestClass, TestMeta,
 };

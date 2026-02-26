@@ -11,7 +11,10 @@ use daglang_lower::{
     ArgvSegment, BodyEntry, FieldSpec, FileOperationSpec, LocalOperationSpec, OutputFieldSpec,
     RestOperationSpec, ShellOperationSpec, ShellOutputParsing,
 };
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    AuthErrorLayer, ErrorLayer, ExecError, Executable, HttpErrorLayer, OutputMap, RestErrorLayer,
+    ServiceErrorLayer, ShellErrorLayer,
+};
 use gunbc_ir::transport::{
     FileRequest, LocalRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
 };
@@ -161,6 +164,10 @@ impl Executable for GenericRestPrepareOp {
 #[derive(Debug, Clone)]
 pub struct GenericRestParseOp {
     pub spec: RestOperationSpec,
+    pub service_name: String,
+    pub operation_name: String,
+    pub permissions: Vec<String>,
+    pub auth_scheme: String,
 }
 
 impl Executable for GenericRestParseOp {
@@ -187,7 +194,27 @@ impl Executable for GenericRestParseOp {
                             self.spec.method, self.spec.path_template, rest.status, body_excerpt
                         )
                     };
-                    return Err(ExecError::new(detail));
+                    return Err(ExecError::new(detail)
+                        .with_layer(ErrorLayer::Service(ServiceErrorLayer {
+                            provider: self.service_name.clone(),
+                            operation: self.operation_name.clone(),
+                        }))
+                        .with_layer(ErrorLayer::Http(HttpErrorLayer {
+                            status_code: rest.status,
+                            reason: if body_excerpt.is_empty() {
+                                None
+                            } else {
+                                Some(body_excerpt.clone())
+                            },
+                        }))
+                        .with_layer(ErrorLayer::Rest(RestErrorLayer {
+                            endpoint: self.spec.endpoint.clone(),
+                            method: self.spec.method.clone(),
+                        }))
+                        .with_layer(ErrorLayer::Auth(AuthErrorLayer {
+                            scheme: self.auth_scheme.clone(),
+                            credential_ref: None,
+                        })));
                 }
 
                 let mut out = OutputMap::new();
@@ -403,6 +430,8 @@ impl Executable for GenericShellPrepareOp {
 #[derive(Debug, Clone)]
 pub struct GenericShellParseOp {
     pub spec: ShellOperationSpec,
+    pub service_name: String,
+    pub operation_name: String,
 }
 
 impl Executable for GenericShellParseOp {
@@ -496,7 +525,25 @@ impl Executable for GenericShellParseOp {
             Some(other) => Err(ExecError::new(format!(
                 "expected Shell response for parse, got {:?}",
                 std::mem::discriminant(other)
-            ))),
+            ))
+            .with_layer(ErrorLayer::Service(ServiceErrorLayer {
+                provider: self.service_name.clone(),
+                operation: self.operation_name.clone(),
+            }))
+            .with_layer(ErrorLayer::Shell(ShellErrorLayer {
+                exit_code: Some(-1),
+                command: self
+                    .spec
+                    .argv_template
+                    .iter()
+                    .filter_map(|s| match s {
+                        ArgvSegment::Literal(l) => Some(l.as_str()),
+                        _ => None,
+                    })
+                    .next()
+                    .unwrap_or("unknown")
+                    .to_string(),
+            }))),
         }
     }
 }
@@ -1254,6 +1301,10 @@ mod tests {
     fn rest_parse_extracts_fields() {
         let op = GenericRestParseOp {
             spec: rest_spec_simple(),
+            service_name: String::new(),
+            operation_name: String::new(),
+            permissions: vec![],
+            auth_scheme: String::new(),
         };
         let response = RestResponse::ok(serde_json::json!({ "id": "abc-123" }));
         let mut inputs = HashMap::new();
@@ -1294,7 +1345,13 @@ mod tests {
             auth_scheme: None,
             error_mappings: vec![],
         };
-        let op = GenericRestParseOp { spec };
+        let op = GenericRestParseOp {
+            spec,
+            service_name: String::new(),
+            operation_name: String::new(),
+            permissions: vec![],
+            auth_scheme: String::new(),
+        };
         let response = RestResponse::ok(serde_json::json!({
             "access_token": "ya29.secret-token",
             "expires_in": 3600,
@@ -1319,6 +1376,10 @@ mod tests {
     fn rest_parse_bytes_base64() {
         let op = GenericRestParseOp {
             spec: rest_spec_with_path_params(),
+            service_name: String::new(),
+            operation_name: String::new(),
+            permissions: vec![],
+            auth_scheme: String::new(),
         };
         let response = RestResponse::ok(serde_json::json!({
             "name": "projects/p/secrets/s/versions/1",
@@ -1409,6 +1470,8 @@ mod tests {
     fn shell_parse_trim_stdout() {
         let op = GenericShellParseOp {
             spec: shell_spec_simple(),
+            service_name: String::new(),
+            operation_name: String::new(),
         };
         let response = ShellResponse::ok("  main  \n");
         let mut inputs = HashMap::new();
@@ -1425,6 +1488,8 @@ mod tests {
     fn shell_parse_exit_code_bool() {
         let op = GenericShellParseOp {
             spec: shell_spec_exit_code(),
+            service_name: String::new(),
+            operation_name: String::new(),
         };
         let response = ShellResponse::ok("");
         let mut inputs = HashMap::new();
@@ -1456,7 +1521,11 @@ mod tests {
             output_parsing: ShellOutputParsing::SplitLines,
             env: vec![],
         };
-        let op = GenericShellParseOp { spec };
+        let op = GenericShellParseOp {
+            spec,
+            service_name: String::new(),
+            operation_name: String::new(),
+        };
         let response = ShellResponse::ok("origin/main\norigin/dev\n\n");
         let mut inputs = HashMap::new();
         inputs.insert(
@@ -1508,7 +1577,11 @@ mod tests {
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
             env: vec![],
         };
-        let op = GenericShellParseOp { spec };
+        let op = GenericShellParseOp {
+            spec,
+            service_name: String::new(),
+            operation_name: String::new(),
+        };
         let mut response = ShellResponse::ok("compiled ok");
         response.stderr = "warning: unused var".to_string();
         let mut inputs = HashMap::new();

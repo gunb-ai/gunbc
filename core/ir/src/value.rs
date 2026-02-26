@@ -86,6 +86,11 @@ impl SecretString {
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
+
+    /// Return an opt-in diagnostic view that reveals a suffix.
+    pub fn hint(&self) -> SecretHint<'_> {
+        SecretHint(self)
+    }
 }
 
 impl fmt::Debug for SecretString {
@@ -97,6 +102,31 @@ impl fmt::Debug for SecretString {
 impl fmt::Display for SecretString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "***")
+    }
+}
+
+/// Opt-in diagnostic display that reveals a suffix of the secret.
+///
+/// Reveals `min(len/4, 4)` trailing characters — always <25%, capped at 4.
+/// Use this in error diagnostics to help identify *which* credential failed,
+/// without changing the default `Display` (which stays fully redacted).
+pub struct SecretHint<'a>(&'a SecretString);
+
+impl fmt::Display for SecretHint<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = &self.0.inner;
+        let reveal = (s.len() / 4).min(4);
+        if reveal == 0 {
+            write!(f, "***")
+        } else {
+            write!(f, "***{}", &s[s.len() - reveal..])
+        }
+    }
+}
+
+impl fmt::Debug for SecretHint<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SecretHint(***)")
     }
 }
 
@@ -859,6 +889,36 @@ mod tests {
             "display_redacted_truncated() leaked plaintext: {truncated}"
         );
         assert_eq!(truncated, "***");
+    }
+
+    #[test]
+    fn secret_hint_short_secret() {
+        let s = SecretString::new("abc");
+        assert_eq!(format!("{}", s.hint()), "***");
+    }
+
+    #[test]
+    fn secret_hint_medium_secret() {
+        let s = SecretString::new("abcdefgh");
+        assert_eq!(format!("{}", s.hint()), "***gh");
+    }
+
+    #[test]
+    fn secret_hint_long_secret() {
+        let s = SecretString::new("abcdefghijklmnopqrstuvwxyz");
+        assert_eq!(format!("{}", s.hint()), "***wxyz");
+    }
+
+    #[test]
+    fn secret_hint_preserves_display() {
+        let s = SecretString::new("my-secret-token");
+        assert_eq!(format!("{}", s), "***");
+    }
+
+    #[test]
+    fn secret_hint_debug_redacted() {
+        let s = SecretString::new("token123");
+        assert_eq!(format!("{:?}", s.hint()), "SecretHint(***)");
     }
 
     /// M7 intentional: serde_json::to_string serializes plaintext for storage/wire.
