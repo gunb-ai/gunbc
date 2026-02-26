@@ -20,6 +20,7 @@ pub fn type_expr_to_string(expr: &TypeExpr) -> String {
                 .collect::<Vec<_>>()
                 .join(" ")
         ),
+        TypeExpr::Refined(inner, _) => type_expr_to_string(inner),
         TypeExpr::Record(_) => "Record".to_string(),
     }
 }
@@ -42,7 +43,7 @@ pub fn canonical_resource_type_name(name: &str) -> String {
 pub fn resource_type_name(resource_type: &TypeExpr) -> String {
     match resource_type {
         TypeExpr::Named(name) | TypeExpr::Generic(name, _) => canonical_resource_type_name(name),
-        TypeExpr::Optional(inner) | TypeExpr::Annotated(inner, _) => resource_type_name(inner),
+        TypeExpr::Optional(inner) | TypeExpr::Annotated(inner, _) | TypeExpr::Refined(inner, _) => resource_type_name(inner),
         TypeExpr::Record(_) => "Record".to_string(),
     }
 }

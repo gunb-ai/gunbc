@@ -106,6 +106,11 @@ impl TestFile {
                         mocks: t.mocks.clone(),
                         inputs: t.inputs.clone(),
                         expects: t.expects.clone(),
+                        tier: t.tier.clone(),
+                        hermetic: t.hermetic,
+                        skip: t.skip,
+                        auto_mock: t.auto_mock,
+                        mock_helpers: t.mock_helpers.clone(),
                     });
                 }
                 _ => {} // Ignore non-test items (types, imports, etc.)

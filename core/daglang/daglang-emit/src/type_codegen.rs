@@ -37,6 +37,7 @@ fn type_expr_to_rust(expr: &TypeExpr) -> String {
             format!("Option<{}>", type_expr_to_rust(inner))
         }
         TypeExpr::Annotated(inner, _annotations) => type_expr_to_rust(inner),
+        TypeExpr::Refined(inner, _) => type_expr_to_rust(inner),
         TypeExpr::Record(fields) => {
             let field_strs: Vec<String> = fields
                 .iter()
@@ -275,6 +276,7 @@ fn type_expr_to_rust_name(expr: &TypeExpr) -> String {
         TypeExpr::Optional(inner) => type_expr_to_rust_name(inner),
         TypeExpr::Generic(name, _) => name.clone(),
         TypeExpr::Annotated(inner, _) => type_expr_to_rust_name(inner),
+        TypeExpr::Refined(inner, _) => type_expr_to_rust_name(inner),
         TypeExpr::Record(_) => "Anonymous".to_string(),
     }
 }
@@ -1017,12 +1019,14 @@ mod tests {
                     ty: TypeExpr::Optional(Box::new(TypeExpr::Named("SemanticColor".into()))),
                     default: None,
                     annotations: vec![],
+                from_path: None,
                 },
                 Field {
                     name: "bold".into(),
                     ty: TypeExpr::Named("Bool".into()),
                     default: None,
                     annotations: vec![],
+                from_path: None,
                 },
             ]),
         };
@@ -1051,12 +1055,14 @@ mod tests {
                     ty: TypeExpr::Generic("List".into(), vec![TypeExpr::Named("Span".into())]),
                     default: None,
                     annotations: vec![],
+                from_path: None,
                 },
                 Field {
                     name: "indent".into(),
                     ty: TypeExpr::Named("Int".into()),
                     default: None,
                     annotations: vec![],
+                from_path: None,
                 },
             ]),
         };
@@ -1100,6 +1106,7 @@ mod tests {
                         ty: TypeExpr::Named("Float".into()),
                         default: None,
                         annotations: vec![],
+                    from_path: None,
                     }],
                 },
                 Variant { name: "Point".into(), fields: vec![] },
@@ -1122,8 +1129,8 @@ mod tests {
             name: "Entry".to_string(),
             params: vec![],
             body: TypeBody::Record(vec![
-                Field { name: "id".into(), ty: TypeExpr::Named("EntryKind".into()), default: None, annotations: vec![] },
-                Field { name: "label".into(), ty: TypeExpr::Named("String".into()), default: None, annotations: vec![] },
+                Field { name: "id".into(), ty: TypeExpr::Named("EntryKind".into()), default: None, annotations: vec![], from_path: None },
+                Field { name: "label".into(), ty: TypeExpr::Named("String".into()), default: None, annotations: vec![], from_path: None },
             ]),
         };
         let dd = DataDef {
@@ -1256,8 +1263,8 @@ mod tests {
             name: "ColorMapping".to_string(),
             params: vec![],
             body: TypeBody::Record(vec![
-                Field { name: "color".into(), ty: TypeExpr::Named("Color".into()), default: None, annotations: vec![] },
-                Field { name: "code".into(), ty: TypeExpr::Named("String".into()), default: None, annotations: vec![] },
+                Field { name: "color".into(), ty: TypeExpr::Named("Color".into()), default: None, annotations: vec![], from_path: None },
+                Field { name: "code".into(), ty: TypeExpr::Named("String".into()), default: None, annotations: vec![], from_path: None },
             ]),
         };
         let dd = DataDef {

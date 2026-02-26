@@ -256,6 +256,16 @@ impl Parser {
             TokenKind::Contains => "contains",
             TokenKind::DataKw => "data",
             TokenKind::ParamKw => "param",
+            TokenKind::From => "from",
+            TokenKind::Where => "where",
+            TokenKind::Transport => "transport",
+            TokenKind::Outputs => "outputs",
+            TokenKind::Idempotent => "idempotent",
+            TokenKind::Readonly => "readonly",
+            TokenKind::Hermetic => "hermetic",
+            TokenKind::Contract => "contract",
+            TokenKind::Tier => "tier",
+            TokenKind::Skip => "skip",
             _ => return None,
         };
         Some(text.to_string())
@@ -329,26 +339,37 @@ impl Parser {
         }
     }
 
-    fn skip_block_contents(&mut self) {
-        let mut depth = 0i32;
-        while !self.at_eof() {
-            match &self.peek().kind {
-                TokenKind::LBrace => {
-                    depth += 1;
-                    self.advance();
-                }
-                TokenKind::RBrace => {
-                    if depth <= 0 {
-                        return;
+    fn parse_service_config(&mut self) -> Result<ServiceConfig, ParseError> {
+        let mut config = ServiceConfig::default();
+        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
+            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                let name = self.expect_ident()?;
+                if self.eat(&TokenKind::Colon) {
+                    match name.as_str() {
+                        "endpoint" => {
+                            if let TokenKind::Str(s) = &self.peek().kind {
+                                config.endpoint = Some(s.clone());
+                                self.advance();
+                            } else {
+                                self.advance();
+                            }
+                        }
+                        "auth" => {
+                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                config.auth = Some(self.expect_ident()?);
+                            } else {
+                                self.advance();
+                            }
+                        }
+                        _ => { self.advance(); }
                     }
-                    depth -= 1;
-                    self.advance();
                 }
-                _ => {
-                    self.advance();
-                }
+            } else {
+                self.advance();
             }
+            self.eat(&TokenKind::Comma);
         }
+        Ok(config)
     }
 
     fn end_span(&self, start: Span) -> Span {
@@ -878,6 +899,7 @@ impl Parser {
             provides,
             annotations,
             body,
+            declared_outputs: Vec::new(),
         })
     }
 
@@ -918,6 +940,7 @@ impl Parser {
                 ty,
                 default: None,
                 annotations: Vec::new(),
+                from_path: None,
             }]);
         }
         let fields = self.parse_field_list_until_rbrace()?;
@@ -994,6 +1017,7 @@ impl Parser {
         self.expect(&TokenKind::LBrace)?;
         let mut annotations = leading;
         let mut operations = Vec::new();
+        let mut config = ServiceConfig::default();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.check(&TokenKind::At) {
                 annotations.push(self.parse_annotation()?);
@@ -1002,7 +1026,7 @@ impl Parser {
             } else if self.check(&TokenKind::Config) {
                 self.advance();
                 self.expect(&TokenKind::LBrace)?;
-                self.skip_block_contents();
+                config = self.parse_service_config()?;
                 self.expect(&TokenKind::RBrace)?;
             } else {
                 self.advance();
@@ -1014,6 +1038,7 @@ impl Parser {
             implements,
             annotations,
             operations,
+            config,
         })
     }
 
@@ -1060,6 +1085,12 @@ impl Parser {
             inputs,
             outputs,
             annotations,
+            idempotent: false,
+            readonly: false,
+            hermetic: false,
+            permissions: Vec::new(),
+            transport: None,
+            mock_response: Vec::new(),
         })
     }
 
@@ -1157,6 +1188,9 @@ impl Parser {
             inputs,
             outputs,
             annotations,
+            idempotent: false,
+            readonly: false,
+            mock_response: Vec::new(),
         })
     }
 
@@ -1178,6 +1212,9 @@ impl Parser {
                     inputs: op.inputs,
                     outputs: op.outputs,
                     annotations: op.annotations,
+                    idempotent: op.idempotent,
+                    readonly: op.readonly,
+                    mock_response: op.mock_response,
                 });
             } else if self.check(&TokenKind::Capability) {
                 capabilities.push(self.parse_interface_capability_signature()?);
@@ -1198,6 +1235,7 @@ impl Parser {
             type_params,
             capabilities,
             contracts,
+            typed_contracts: Vec::new(),
         })
     }
 
@@ -1214,6 +1252,7 @@ impl Parser {
                 ty: p.ty,
                 default: p.default,
                 annotations: Vec::new(),
+                from_path: None,
             })
             .collect();
         let mut outputs = Vec::new();
@@ -1224,6 +1263,7 @@ impl Parser {
                 ty: ret,
                 default: None,
                 annotations: Vec::new(),
+                from_path: None,
             });
         }
         let mut annotations = Vec::new();
@@ -1235,6 +1275,9 @@ impl Parser {
             inputs,
             outputs,
             annotations,
+            idempotent: false,
+            readonly: false,
+            mock_response: Vec::new(),
         })
     }
 
@@ -1283,6 +1326,9 @@ impl Parser {
             inputs,
             outputs,
             annotations,
+            idempotent: false,
+            readonly: false,
+            mock_response: Vec::new(),
         })
     }
 
@@ -1541,6 +1587,11 @@ impl Parser {
             mocks,
             inputs,
             expects,
+            tier: None,
+            hermetic: false,
+            skip: false,
+            auto_mock: false,
+            mock_helpers: None,
         })
     }
 
@@ -1774,6 +1825,7 @@ impl Parser {
             ty,
             default,
             annotations,
+            from_path: None,
         })
     }
 

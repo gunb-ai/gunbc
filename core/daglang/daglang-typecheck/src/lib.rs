@@ -3370,6 +3370,14 @@ fn validate_type_expr(
                 }
             }
         }
+        TypeExpr::Refined(inner, _refinements) => {
+            errors.extend(validate_type_expr(
+                inner,
+                known_types,
+                generic_arity_registry,
+                context,
+            ));
+        }
         TypeExpr::Record(fields) => {
             for field in fields {
                 errors.extend(validate_type_expr(
