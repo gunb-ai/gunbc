@@ -828,7 +828,10 @@ impl ProgressObserver for NonTtyProgressObserver {
                     .next()
                     .unwrap_or(&detail.message);
                 let tag = detail.classification();
-                eprintln!("  ┌─ [FAILED] {} [{}]", label, tag);
+                let display_label = detail
+                    .service_label()
+                    .unwrap_or_else(|| label.clone());
+                eprintln!("  ┌─ [FAILED] {} [{}]", display_label, tag);
                 eprintln!("  │ {}", first_line);
                 eprintln!("  └─");
             }
