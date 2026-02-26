@@ -559,7 +559,7 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     }
 
     yaml.push_str(
-        "      - name: Verify Bootstrap Invariants\n        run: rm -rf target/codegen && cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci\n\n",
+        "      - name: Verify Bootstrap Invariants\n        run: |\n          rm -rf target/codegen\n          # Cargo validates all [[bin]] paths even with --bin filter.\n          # Create minimal stubs so the manifest parses, then check only bootstrap binaries.\n          for dir in $(grep 'path = \"../target/codegen/' gunbc-dag/Cargo.toml | sed 's|.*\"../\\(.*\\)/main.rs\"|\\1|'); do\n            mkdir -p \"$dir\" && echo 'fn main() {}' > \"$dir/main.rs\"\n          done\n          cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci\n\n",
     );
 
     write!(

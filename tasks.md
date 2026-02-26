@@ -149,7 +149,7 @@ Blue team promotes to backlog or lane queues during triage.
 
 | Observation | Source | Date |
 |-------------|--------|------|
-| *(empty — add observations here)* | | |
+| CI YAML generation (`generate_github_actions_template`, `generate_gitlab_ci_template`) is ~120 lines of hand-wired `push_str`/`write!` string concatenation in `codegen_cli.rs:503-609`. The DSL already has rendering infrastructure (`std/render.dag`, `std/markdown_render.dag`) and a proven code-generation pattern (`tools/makegen.dag`). CI YAML types (Workflow, Job, Step, Trigger, Permission, Cache) should be modeled in `.dag` with pure rendering functions, following the makegen pattern: discover via extern → render in pure DSL → `content_upsert`. Deletes both template functions + the validation functions (lines 450-500). See task breakdown below. | R1 scout | 2026-02-26 |
 
 ---
 
@@ -159,6 +159,11 @@ Triaged and sized. Promote to lane queues when horizon items are exhausted.
 
 | ID | Item | Size | Priority | Notes |
 |----|------|------|----------|-------|
+| CG-1 | DSL CI model types: `dsl/std/ci.dag` — `CiWorkflow`, `CiJob`, `CiStep` (Run/Uses/DagRun), `CiTrigger`, `CiPermission`, `CiCache`, `CiEnv`, plus provider sum type `CiProvider = GitHub \| GitLab`. Data declarations for shared configs (Rust cache paths, cargo env). | M | P1 | Layer 0 types — no rendering yet. Follow `std/languages.dag` pattern for tautological definitions. |
+| CG-2 | DSL CI rendering functions: `dsl/std/ci_render.dag` — `render_github_workflow(w: CiWorkflow) -> String`, `render_gitlab_workflow(w: CiWorkflow) -> String`, plus helpers (`render_step`, `render_job`, `render_permissions`, `render_env_block`, `render_cache`). Pure functions, string interpolation + join. | M | P1 | Follow `makegen.dag` rendering pattern: small composable fns, `\|> map` + `\|> join("\n")`. YAML indentation via string literals (no general YAML serializer needed). |
+| CG-3 | DSL cigen tool: `dsl/tools/cigen.dag` — single entrypoint `func cigen() -> { written: Bool }` that discovers CI config via extern (permissions, secrets, tool invocation, branches), constructs `CiWorkflow` records, renders both providers, calls `content_upsert` for each. Extern bridge: `discover_ci_config() -> CiConfig`. | M | P1 | Follow `makegen.dag` entrypoint pattern. Discovery extern returns structured config, all rendering is pure DSL. |
+| CG-4 | Delete Rust cigen code: remove `generate_github_actions_template()`, `generate_gitlab_ci_template()`, `validate_github_actions_template()`, `validate_gitlab_ci_template()` from `codegen_cli.rs`. Wire `cmd_cigen()` to the new DSL tool (same pattern as `cmd_codegen()` calling `build_dsl_graph_for_entrypoint`). | S | P1 | ~200 lines deleted from `codegen_cli.rs:450-609`. Validation moves to DSL-side (structural — if the types construct, the YAML is valid). |
+| CG-5 | Migrate `RenderConfig` builder + `SharedStep` + `yaml_block` from `core/ir/src/transport/ci/render.rs` — evaluate what remains needed as Rust runtime vs what becomes dead code after CG-1:4. Delete dead code, keep only provider detection (`detect_provider`, `is_ci`). | S | P1 | May keep `CiRenderer` trait for runtime step-level rendering (animated progress). CI YAML generation is a separate concern. |
 | H10 | Compute stack orchestration: Cloud Run/GCS/LB lifecycle DAG builder. | L | P2 | `docs/design/horizon/h10-compute-stack-services.md` |
 | S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS. DSL exists. Distinct from B-12 (which stress-tests SignalStore/ArtifactStore). | M | P2 | Deferred until cloud_run profile needed |
 | H1 | Display reactive DSL: channel-driven event loop. | XL | P3 | No current use case. Review 2026-Q3, delete if not promoted. |
@@ -221,15 +226,13 @@ explicitly flagged), then danger (silent failures), then mechanical cleanup.
 
 | Order | ID | What | Size | Status | Deps |
 |-------|----|------|------|--------|------|
-| 1 | RF-RG1 | **Manual registry elimination.** `WorkspaceBinary` enum (13 entries, `binaries.rs`) is derivable from Cargo.toml `[[bin]]`. Workflow variant catalog (10 entries, `catalog.rs`) is derivable from DSL `pipeline` declarations + annotations for aliases/modes. Delete both manual tables, replace with auto-derivation. | M | Pending | — |
-| 2 | RF-RG2 | **Resolve generalization.** `resolve.rs` hardcodes 3 module paths (`std.resources`, `tools.infra`, prefix `services.*`). New DSL modules (SDLC, future tools) must work without touching resolve.rs. Replace with metadata-driven dispatch or convention-based fallthrough. | M | Pending | — |
-| 3 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
-| 4 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
-| 5 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
-| 6 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks. | M | Pending | — |
-| 7 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
-| 8 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
-| 9 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
+| 1 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | **Done** | — |
+| 2 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | **Done** | — |
+| 3 | RF-E4 | Fidelity classification smoke test. makegen callable→Unit/XS, gist module→Integration/L. | S | **Done** | — |
+| 4 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks (was RF-H1). | M | Pending | — |
+| 5 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
+| 6 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. R1-scoped (definition only). | M | Pending | — |
+| 7 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
 
 ### R1 Horizon (after A4)
 
@@ -295,7 +298,15 @@ smell catalog above to classify. Include file path + line if possible.
 
 | Smell | Observation | File | Source | Date |
 |-------|-------------|------|--------|------|
-| *(empty — add observations here)* | | | | |
+| Static mapping table | Three functions (`transport_depth_ordinal`, `transport_depth_str`, `transport_is_hermetic`) encode the same semantic mapping for `ServiceTransportClass`. Adding a variant requires updating all three. Consolidate into a single `TransportClassMetadata` struct or const array. | `gunbc-dag/src/fidelity.rs:60-89` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `passthrough_fallback_value()` hard-codes a port alias table (`"result"→["input","value","content",...]`, `"return"→[11 aliases]`) to guess output port mappings. DSL callables should declare output port names explicitly; this table is a wiring-ambiguity bandaid. | `gunbc-dag/src/resolve.rs:95-162` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `looks_effectful_without_kind()` re-derives NodeKind from port type strings (`"TransportRequest"`, `"ToolHandle"`, `starts_with("res:")`) to validate the lowerer. Becomes dead code once RF-A1 makes `kind: NodeKind` non-Option. Track as RF-A1 follow-up. | `core/exec/src/execute.rs:2064-2092` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `classify_module()` aggregates ALL callables in the compiled output, including transitive auth callables from `std.patterns` (github_oidc, local_auth, metadata_oidc). Module-level classification is inflated beyond what the entry-point actually uses. Consider callable-scoped or entry-point-reachable classification. | `gunbc-dag/src/fidelity.rs:184-209` | RF-E4 impl | 2026-02-26 |
+| Fallback arm | HTTP method `_ => RestRequest::post(&url)` — unknown methods silently become POST instead of failing. A typo in a DSL `@rest(PTCH, ...)` annotation would produce a POST request with no error. Parse HTTP method to an enum at boundary (lowerer or resolve step). | `gunbc-dag/src/resolve_service.rs:72-79` | R1 scout | 2026-02-26 |
+| String dispatch | `match field.type_id.as_str()` for JSON→Value conversion appears twice (`parse_output_field` and `default_output_value`). Both use the same type string set (`"Secret"`, `"Int"`, `"Bool"`, `"Bytes"`, `"Json"`, fallback to String). A `TypeId` enum with `to_default_value()` and `parse_json()` methods would consolidate both match blocks. | `gunbc-dag/src/resolve_service.rs:291-335, 352-366` | R1 scout | 2026-02-26 |
+| Validation at use site | `input_as_string()` returns `"(unresolved)"` for missing inputs — a magic string that silently flows into HTTP requests and shell commands as a real value. Should return `Result<String, ExecError>` when no default is provided. | `gunbc-dag/src/resolve_service.rs:634-641` | R1 scout | 2026-02-26 |
+| String dispatch | `match self.spec.operation.as_str()` for file operations (`"READ"`, `"READ_BYTES"`, `"WRITE"`). Has an error arm for unknown ops (good), but the operation is still a runtime string. Could be a `FileOperation` enum parsed at resolve time. | `gunbc-dag/src/resolve_service.rs:933-948` | R1 scout | 2026-02-26 |
+| String dispatch | `workflow_unit_commands()` matches workflow name strings to hand-written command builders (10 arms + error fallback). Related to RF-A10 (registry pattern for DAG tooling dispatch). Consider whether a registry-driven approach or DSL-declared command specs could replace this. | `gunbc-dag/src/workflow/unit_commands.rs:300-323` | R1 scout | 2026-02-26 |
 
 ---
 

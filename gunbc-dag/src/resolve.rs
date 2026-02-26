@@ -354,16 +354,38 @@ impl Executable for LiteralSourceOp {
     }
 }
 
+/// Standard resource kinds from `dsl/std/resources.dag`.
+///
+/// Parsed once at resolution time (fail-fast). Unknown resource names
+/// become `ResolveError` — no silent runtime fallback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResourceKind {
+    Filesystem,
+    Network,
+    Clock,
+    AuthContext,
+}
+
+impl ResourceKind {
+    fn parse(name: &str) -> Option<Self> {
+        match name {
+            "Filesystem" => Some(Self::Filesystem),
+            "Network" => Some(Self::Network),
+            "Clock" => Some(Self::Clock),
+            "AuthContext" => Some(Self::AuthContext),
+            _ => None,
+        }
+    }
+}
+
 /// Resource lifecycle acquire adapter for `std.resources`.
 ///
 /// Produces a resource handle value appropriate for the resource kind.
 /// In production, these will be real handle acquisitions; for now, they
 /// produce cross-platform default handles for dry-run/test execution.
-/// The `resource_kind` is derived from the DSL callable name — no
-/// hardcoded list of resource names needed in the resolver.
 #[derive(Debug, Clone)]
 struct ResourceAcquireOp {
-    resource_kind: String,
+    resource_kind: ResourceKind,
 }
 
 impl Executable for ResourceAcquireOp {
@@ -371,16 +393,14 @@ impl Executable for ResourceAcquireOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        let handle: Value = match self.resource_kind.as_str() {
-            "Filesystem" => {
+        let handle: Value = match self.resource_kind {
+            ResourceKind::Filesystem => {
                 filename::FilesystemHandle::cross_platform(filename::Scope::Write).into()
             }
-            "Network" => Value::Str("network:default".to_string()),
-            "Clock" => Value::Str("clock:monotonic".to_string()),
-            "AuthContext" => Value::Str("auth:deferred".to_string()),
-            other => Value::Str(format!("resource:{other}")),
+            ResourceKind::Network => Value::Str("network:default".to_string()),
+            ResourceKind::Clock => Value::Str("clock:monotonic".to_string()),
+            ResourceKind::AuthContext => Value::Str("auth:deferred".to_string()),
         };
-        // Output port name matches the lowered graph convention.
         OutputMap::new().value("resource_handle", handle).ok()
     }
 }
@@ -680,8 +700,10 @@ fn resolve_domain(
 ) -> Result<DynOp, ResolveError> {
     // 1. Modules with custom resolvers — return Some for known callables,
     //    None for unknown (which falls through to passthrough).
+    if module == "std.resources" {
+        return resolve_std_resources(name);
+    }
     let custom = match module {
-        "std.resources" => Some(resolve_std_resources(name)),
         "tools.infra" => resolve_tools_infra(name),
         _ => None,
     };
@@ -737,23 +759,27 @@ fn resolve_domain(
     }))
 }
 
-fn resolve_std_resources(name: &str) -> DynOp {
+fn resolve_std_resources(name: &str) -> Result<DynOp, ResolveError> {
     // Resource lifecycle acquire/release nodes from the DSL resource system.
     // Names follow the pattern: `resource_lifecycle::acquire::ResourceName`
     // or `resource_lifecycle::release::ResourceName`.
-    // The resource name is taken directly from the DSL callable —
-    // no hardcoded list needed. Adding a new resource to std/resources.dag
-    // works without changing resolver code.
     if let Some(resource_name) = name.strip_prefix("resource_lifecycle::acquire::") {
-        return DynOp::new(ResourceAcquireOp {
-            resource_kind: resource_name.to_string(),
-        });
+        let kind = ResourceKind::parse(resource_name).ok_or_else(|| ResolveError {
+            node_id: format!("resource_lifecycle::acquire::{resource_name}"),
+            reason: format!(
+                "unknown resource kind `{resource_name}` — \
+                 expected one of: Filesystem, Network, Clock, AuthContext"
+            ),
+        })?;
+        return Ok(DynOp::new(ResourceAcquireOp {
+            resource_kind: kind,
+        }));
     }
     if name.starts_with("resource_lifecycle::release::") {
-        return DynOp::new(ResourceReleaseOp);
+        return Ok(DynOp::new(ResourceReleaseOp));
     }
     // Other std.resources callables pass through as identity.
-    DynOp::new(IdentityCallableOp)
+    Ok(DynOp::new(IdentityCallableOp))
 }
 
 fn resolve_tools_infra(name: &str) -> Option<DynOp> {
@@ -853,7 +879,7 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
         return Ok(op);
     }
     if module == "std.resources" {
-        return Ok(resolve_std_resources(name));
+        return resolve_std_resources(name);
     }
     if let Some(op) = resolve_tools_infra(name) {
         if module == "tools.infra" {
