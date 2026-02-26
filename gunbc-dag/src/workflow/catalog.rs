@@ -124,6 +124,15 @@ const WORKFLOW_VARIANTS: &[WorkflowVariantDef] = &[
         namespace: "build_all",
         is_tool: true,
     },
+    WorkflowVariantDef {
+        canonical_name: "sdlc",
+        aliases: &["sdlc_pipeline"],
+        file: "sdlc.dag",
+        pipeline: "sdlc",
+        mode: None,
+        namespace: "sdlc",
+        is_tool: true,
+    },
 ];
 
 #[derive(Debug, Clone)]
@@ -552,5 +561,23 @@ mod tests {
         assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.gist_create")));
         assert!(registry.contains(&compilation_ref()));
         assert!(registry.contains(&codegen_ref()));
+    }
+
+    #[test]
+    fn sdlc_workflow_variant_resolves() {
+        let variant = resolve_workflow_variant("sdlc").expect("sdlc should resolve");
+        assert_eq!(variant.canonical_name, "sdlc");
+        assert!(variant.is_tool);
+
+        let alias_variant =
+            resolve_workflow_variant("sdlc_pipeline").expect("sdlc_pipeline alias should resolve");
+        assert_eq!(alias_variant.canonical_name, "sdlc");
+    }
+
+    #[test]
+    fn sdlc_process_units_are_registered() {
+        let registry = build_process_unit_registry().expect("derive registry");
+        assert!(registry.contains(&ProcessUnitRef::new("sdlc", "sdlc.intake")));
+        assert!(registry.contains(&ProcessUnitRef::new("sdlc", "sdlc.worker")));
     }
 }

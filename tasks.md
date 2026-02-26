@@ -62,16 +62,16 @@ Registration, dispatch, validation, stage handlers. Touches
 
 | ID | Scope | Ops Missing | Status | Notes |
 |----|-------|-------------|--------|-------|
-| RF-B1 | github/issues.dag (8), github/pull_request.dag (6), llm/openai.dag (2) | 16 | Pending | REST transport; need `config { endpoint, auth }` |
+| RF-B1 | github/issues.dag (7), github/pull_request.dag (7), llm/openai.dag (2) | 16 | Done | config blocks + transport rest blocks on all ops |
 
 ### Pipeline Activation
 
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
-| SDLC-1 | Register SDLC in workflow catalog + WorkspaceBinary dispatch. | M | Pending | — |
-| SDLC-2 | Fill dispatch runtime: real stage transition logic via state machine. | M | Pending | SDLC-1 |
-| SDLC-3 | Fill validation runtime: review_gate, ci_gate with real logic. | M | Pending | SDLC-2 |
-| SDLC-4 | Complete testing→done handler (cargo test + clippy + conditional merge). | M | Pending | SDLC-1 |
+| SDLC-1 | Register SDLC in workflow catalog + WorkspaceBinary dispatch. | M | Done | — |
+| SDLC-2 | Fill dispatch runtime: real stage transition logic via state machine. | M | Done | SDLC-1 |
+| SDLC-3 | Fill validation runtime: review_gate, ci_gate with real logic. | M | Done | SDLC-2 |
+| SDLC-4 | Complete testing→done handler (cargo test + clippy + conditional merge). | M | Done | SDLC-1 |
 
 ### Convergence (needs both lanes)
 

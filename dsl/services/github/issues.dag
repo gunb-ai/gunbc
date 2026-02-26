@@ -24,11 +24,14 @@ import interfaces.issue_provider { IssueProvider, IssueEvent }
 import std.types { TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url }
 
 service github.Issues : IssueProvider {
+  config { endpoint: "https://api.github.com", auth: BearerToken }
 
   // --- Core CRUD ---------------------------------------------------------
 
   operation create {
     input {
+      owner: String
+      repo: String
       title: NonEmptyStr
       body: String
       labels: List<String>
@@ -36,25 +39,33 @@ service github.Issues : IssueProvider {
     output {
       issue: TrackedIssue from "."
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues" }
   }
 
   operation get {
     input {
+      owner: String
+      repo: String
       id: NonEmptyStr
     }
     output {
       issue: TrackedIssue from "."
       found: Bool from "status == 200"
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
   }
 
   operation close {
     input {
+      owner: String
+      repo: String
       id: NonEmptyStr
+      state: String = "closed"
     }
     output {
       ok: Bool from "state == \"closed\""
     }
+    transport rest { method: PATCH, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
   }
 
   // --- Comments ----------------------------------------------------------
@@ -63,6 +74,8 @@ service github.Issues : IssueProvider {
 
   operation comment {
     input {
+      owner: String
+      repo: String
       id: NonEmptyStr
       body: String
       marker: NonEmptyStr?
@@ -71,6 +84,7 @@ service github.Issues : IssueProvider {
       comment_id: NonEmptyStr from "id"
       ok: Bool from "id != 0"
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/comments" }
   }
 
   // --- Labels (lifecycle stage transitions) ------------------------------
@@ -80,34 +94,43 @@ service github.Issues : IssueProvider {
 
   operation set_labels {
     input {
+      owner: String
+      repo: String
       id: NonEmptyStr
       labels: List<String>
     }
     output {
       ok: Bool from "status == 200"
     }
+    transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/labels" }
   }
 
   // --- Listing (for polling / batch processing) --------------------------
 
   operation discover {
     input {
+      owner: String
+      repo: String
       labels: List<String>
       state: IssueState? = Open
     }
     output {
       issues: List<TrackedIssue>
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues" }
   }
 
   operation list_events {
     input {
+      owner: String
+      repo: String
       id: NonEmptyStr
       since: String?
     }
     output {
       events: List<IssueEvent>
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/events" }
   }
 }
 
@@ -141,7 +164,7 @@ test add_comment : github_auth {
 
     input comment/prepare.owner -> "gunb-ai"
     input comment/prepare.repo -> "gunbc"
-    input comment/prepare.number -> 42
+    input comment/prepare.id -> "42"
     input comment/prepare.body -> "## Design\n\nHere is the generated design..."
 
     mock comment/execute.response -> rest_response(201, {

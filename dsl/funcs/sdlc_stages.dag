@@ -470,7 +470,9 @@ func handle_code_review_to_testing(
 
 // ── Stage 7: Testing -> Done ───────────────────────────────────────
 // Real acceptance testing: run cargo test + cargo clippy on PR branch.
-// Transitions: sdlc:testing -> sdlc:done.
+// On success: merge PR (squash), transition to done.
+// On failure: stay at testing for retry.
+// Transitions: sdlc:testing -> sdlc:done (on pass) or stays at sdlc:testing (on fail).
 
 func handle_testing_to_done(
   issue_id: NonEmptyStr,
@@ -500,9 +502,24 @@ func handle_testing_to_done(
     false => "FAILED"
   }
 
+  // Conditional merge: only merge PR if all checks pass
+  merge_status = if all_passed {
+    merge = PullRequest.Merge(
+      owner: owner,
+      repo: repo,
+      number: number,
+      merge_method: "squash",
+      commit_title: "feat: resolve issue #{number} via SDLC pipeline",
+      commit_message: "Automated merge by gunbc SDLC pipeline.\n\nRun key: {run_key}\nCloses #{number}"
+    )
+    if merge.merged { "merged (squash)" } else { "merge failed: {merge.message}" }
+  } else {
+    "skipped: tests failed"
+  }
+
   report_body = match all_passed {
-    true  => "## Acceptance Tests: PASSED\n\n| Check | Status |\n|-------|--------|\n| cargo test | {test_status} |\n| cargo clippy | {clippy_status} |\n\nAll checks passed. Issue complete.\n\n---\n_Tested by gunbc SDLC pipeline_"
-    false => "## Acceptance Tests: FAILED\n\n| Check | Status |\n|-------|--------|\n| cargo test | {test_status} |\n| cargo clippy | {clippy_status} |\n\n### Test Output\n```\n{test_result.stderr}\n```\n\n### Clippy Output\n```\n{clippy_result.stderr}\n```\n\n---\n_Tested by gunbc SDLC pipeline_"
+    true  => "## Acceptance Tests: PASSED\n\n| Check | Status |\n|-------|--------|\n| cargo test | {test_status} |\n| cargo clippy | {clippy_status} |\n| PR merge | {merge_status} |\n\nAll checks passed. PR merged. Issue complete.\n\n---\n_Tested by gunbc SDLC pipeline_"
+    false => "## Acceptance Tests: FAILED\n\n| Check | Status |\n|-------|--------|\n| cargo test | {test_status} |\n| cargo clippy | {clippy_status} |\n| PR merge | {merge_status} |\n\n### Test Output\n```\n{test_result.stderr}\n```\n\n### Clippy Output\n```\n{clippy_result.stderr}\n```\n\n---\n_Tested by gunbc SDLC pipeline_"
   }
 
   // Post result

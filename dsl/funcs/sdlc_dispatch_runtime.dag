@@ -1,104 +1,243 @@
-// funcs/sdlc_dispatch_runtime.dag -- compiled SDLC stage dispatch policy.
+// funcs/sdlc_dispatch_runtime.dag -- SDLC stage transition state machine.
 //
-// Each function returns deterministic transition directives for a single
-// lifecycle stage. Rust selects which compiled callable to execute based on
-// the current stage, while side-effects (claim/retry/report updates) remain
-// in the worker runtime.
+// Centralized dispatch policy for the SDLC pipeline. Provides:
+//   1. State machine validation (valid transition check)
+//   2. Next-stage determination from current stage
+//   3. Approval gate detection
+//   4. Terminal state handling
+//   5. Retry budget enforcement
+//
+// The worker (sdlc_worker.dag) calls dispatch_stage() before executing
+// a stage handler. Side-effects (claim/retry/report) remain in the worker.
 
 module funcs.sdlc_dispatch_runtime
 
-func dispatch_idea(
-  run_key: String,
-  worker_id: String,
-  issue_id: Int,
-  owner: String,
-  repo: String
-) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "design",
-    awaiting_approval: false,
-    marker: "design-marker",
-    message: "Generated design prompt",
-    value: { "next_stage": "design", "awaiting_approval": false }
+import funcs.sdlc_stages { next_stage_label }
+import std.types { IssueLifecycleStage, NonEmptyStr }
+
+// ── State machine: valid transitions ─────────────────────────────
+
+fn valid_next_stage(current: IssueLifecycleStage) -> IssueLifecycleStage {
+  match current {
+    Idea            => Design
+    Design          => DesignReview
+    DesignReview    => Accepted
+    Accepted        => Implementing
+    Implementing    => CodeReview
+    CodeReview      => Testing
+    Testing         => Done
+    Done            => Done
   }
 }
 
-func dispatch_design(
-  run_key: String,
-  worker_id: String,
-  issue_id: Int,
-  owner: String,
-  repo: String
-) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "design-review",
-    awaiting_approval: false,
-    marker: "sdlc:design-review",
-    message: "Design review initiated for run_key `{run_key}`",
-    value: { "next_stage": "design-review", "awaiting_approval": false }
+fn sdlc_validate_transition(from: IssueLifecycleStage, to: IssueLifecycleStage) -> Bool {
+  match from {
+    Idea            => to == Design
+    Design          => to == DesignReview
+    DesignReview    => to == Accepted
+    Accepted        => to == Implementing
+    Implementing    => to == CodeReview
+    CodeReview      => to == Testing
+    Testing         => to == Done || to == Testing
+    Done            => false
   }
 }
 
-func dispatch_design_review(
-  run_key: String,
-  worker_id: String,
-  issue_id: Int,
-  owner: String,
-  repo: String
-) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "design-review",
-    awaiting_approval: true,
-    marker: "sdlc:approval-gate",
-    message: "Awaiting explicit approval for run_key `{run_key}`; transition to `accepted` after review sign-off.",
-    value: { "next_stage": "design-review", "awaiting_approval": true }
+fn sdlc_is_terminal(stage: IssueLifecycleStage) -> Bool {
+  match stage {
+    Done => true
+    _    => false
   }
 }
 
-func dispatch_accepted(
-  run_key: String,
-  worker_id: String,
-  issue_id: Int,
-  owner: String,
-  repo: String
-) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
-  return {
-    next_stage: "implementation",
-    awaiting_approval: false,
-    marker: "sdlc:implementation",
-    message: "Implementation started on branch `sdlc/issue-{issue_id}` for `{owner}/{repo}` (worker: `{worker_id}`)",
-    value: { "next_stage": "implementation", "awaiting_approval": false }
+fn requires_approval(stage: IssueLifecycleStage) -> Bool {
+  match stage {
+    DesignReview => true
+    _            => false
   }
 }
 
-func dispatch_implementation(
+// ── Unified dispatch function ────────────────────────────────────
+// Returns transition metadata for the worker to act on.
+// The worker checks should_execute before calling execute_stage.
+
+fn dispatch_stage(
+  current_stage: IssueLifecycleStage,
   run_key: String,
   worker_id: String,
-  issue_id: Int,
+  issue_id: String,
   owner: String,
-  repo: String
-) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  repo: String,
+  retry_budget_remaining: Int
+) -> { next_stage: IssueLifecycleStage, should_execute: Bool, awaiting_approval: Bool, terminal: Bool, marker: String, message: String } {
+
+  // Terminal: Done stage has no further transitions
+  if sdlc_is_terminal(stage: current_stage) {
+    return {
+      next_stage: Done,
+      should_execute: false,
+      awaiting_approval: false,
+      terminal: true,
+      marker: "",
+      message: "Issue already at terminal stage Done."
+    }
+  }
+
+  // Retry budget exhausted: mark as terminal failure
+  if retry_budget_remaining <= 0 {
+    return {
+      next_stage: current_stage,
+      should_execute: false,
+      awaiting_approval: false,
+      terminal: true,
+      marker: "sdlc:terminal-failed:{run_key}",
+      message: "Retry budget exhausted for stage {current_stage} on issue {issue_id} in {owner}/{repo}. Marking as terminal failure."
+    }
+  }
+
+  next = valid_next_stage(current: current_stage)
+  needs_approval = requires_approval(stage: current_stage)
+  next_label = next_stage_label(current: current_stage)
+
   return {
-    next_stage: "closed",
-    awaiting_approval: false,
-    marker: "sdlc:acceptance",
-    message: "Acceptance testing and close for run_key `{run_key}` in `{owner}/{repo}` (worker: `{worker_id}`)",
-    value: { "next_stage": "closed", "awaiting_approval": false }
+    next_stage: next,
+    should_execute: true,
+    awaiting_approval: needs_approval,
+    terminal: false,
+    marker: "sdlc:{next_label}:{run_key}",
+    message: match current_stage {
+      Idea            => "Generating design for issue #{issue_id} in {owner}/{repo}"
+      Design          => "Initiating design review for run_key {run_key}"
+      DesignReview    => "Awaiting approval for design review on issue #{issue_id}"
+      Accepted        => "Starting implementation on branch sdlc/issue-{issue_id} for {owner}/{repo} (worker: {worker_id})"
+      Implementing    => "Creating PR and requesting code review for issue #{issue_id}"
+      CodeReview      => "Running code review for issue #{issue_id} in {owner}/{repo}"
+      Testing         => "Running acceptance tests (cargo test + clippy) for issue #{issue_id}"
+      Done            => "Issue #{issue_id} complete"
+    }
   }
 }
 
-func dispatch_closed(
+// ── Per-stage dispatch functions ─────────────────────────────────
+// Convenience wrappers around dispatch_stage for backward compatibility.
+// Each returns the same record shape as the original stub.
+
+fn dispatch_idea(
   run_key: String,
   worker_id: String,
   issue_id: Int,
   owner: String,
   repo: String
 ) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  let d = dispatch_stage(
+    current_stage: Idea, run_key: run_key, worker_id: worker_id,
+    issue_id: "{issue_id}", owner: owner, repo: repo, retry_budget_remaining: 3
+  )
   return {
-    next_stage: "closed",
-    awaiting_approval: false,
-    marker: "",
-    message: "",
-    value: { "next_stage": "closed", "awaiting_approval": false }
+    next_stage: "{d.next_stage}",
+    awaiting_approval: d.awaiting_approval,
+    marker: d.marker,
+    message: d.message,
+    value: { "next_stage": "{d.next_stage}", "awaiting_approval": d.awaiting_approval, "terminal": d.terminal }
+  }
+}
+
+fn dispatch_design(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  let d = dispatch_stage(
+    current_stage: Design, run_key: run_key, worker_id: worker_id,
+    issue_id: "{issue_id}", owner: owner, repo: repo, retry_budget_remaining: 3
+  )
+  return {
+    next_stage: "{d.next_stage}",
+    awaiting_approval: d.awaiting_approval,
+    marker: d.marker,
+    message: d.message,
+    value: { "next_stage": "{d.next_stage}", "awaiting_approval": d.awaiting_approval, "terminal": d.terminal }
+  }
+}
+
+fn dispatch_design_review(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  let d = dispatch_stage(
+    current_stage: DesignReview, run_key: run_key, worker_id: worker_id,
+    issue_id: "{issue_id}", owner: owner, repo: repo, retry_budget_remaining: 3
+  )
+  return {
+    next_stage: "{d.next_stage}",
+    awaiting_approval: d.awaiting_approval,
+    marker: d.marker,
+    message: d.message,
+    value: { "next_stage": "{d.next_stage}", "awaiting_approval": d.awaiting_approval, "terminal": d.terminal }
+  }
+}
+
+fn dispatch_accepted(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  let d = dispatch_stage(
+    current_stage: Accepted, run_key: run_key, worker_id: worker_id,
+    issue_id: "{issue_id}", owner: owner, repo: repo, retry_budget_remaining: 3
+  )
+  return {
+    next_stage: "{d.next_stage}",
+    awaiting_approval: d.awaiting_approval,
+    marker: d.marker,
+    message: d.message,
+    value: { "next_stage": "{d.next_stage}", "awaiting_approval": d.awaiting_approval, "terminal": d.terminal }
+  }
+}
+
+fn dispatch_implementation(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  let d = dispatch_stage(
+    current_stage: Implementing, run_key: run_key, worker_id: worker_id,
+    issue_id: "{issue_id}", owner: owner, repo: repo, retry_budget_remaining: 3
+  )
+  return {
+    next_stage: "{d.next_stage}",
+    awaiting_approval: d.awaiting_approval,
+    marker: d.marker,
+    message: d.message,
+    value: { "next_stage": "{d.next_stage}", "awaiting_approval": d.awaiting_approval, "terminal": d.terminal }
+  }
+}
+
+fn dispatch_closed(
+  run_key: String,
+  worker_id: String,
+  issue_id: Int,
+  owner: String,
+  repo: String
+) -> { next_stage: String, awaiting_approval: Bool, marker: String, message: String, value: Json } {
+  let d = dispatch_stage(
+    current_stage: Done, run_key: run_key, worker_id: worker_id,
+    issue_id: "{issue_id}", owner: owner, repo: repo, retry_budget_remaining: 3
+  )
+  return {
+    next_stage: "{d.next_stage}",
+    awaiting_approval: d.awaiting_approval,
+    marker: d.marker,
+    message: d.message,
+    value: { "next_stage": "{d.next_stage}", "awaiting_approval": d.awaiting_approval, "terminal": d.terminal }
   }
 }

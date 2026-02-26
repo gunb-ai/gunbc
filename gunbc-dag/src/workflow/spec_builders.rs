@@ -61,6 +61,10 @@ pub fn deps_workflow_spec() -> Result<WorkflowSpec, String> {
     workflow_spec("deps")
 }
 
+pub fn sdlc_workflow_spec() -> Result<WorkflowSpec, String> {
+    workflow_spec("sdlc")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
