@@ -255,6 +255,21 @@ fn eval_expr(
             eval_match(&scrutinee, arms, env, sibling_fns)
         }
 
+        LoweredExpr::VariantConstruct { tag, fields } => {
+            if fields.is_empty() {
+                // Unit variant: `Closed` → Value::Str("Closed")
+                Ok(Value::Str(tag.clone()))
+            } else {
+                // Payload variant: `Ok { value: x }` → Map with _variant tag
+                let mut map = BTreeMap::new();
+                map.insert("_variant".to_string(), Value::Str(tag.clone()));
+                for (key, value_expr) in fields {
+                    map.insert(key.clone(), eval_expr(value_expr, env, sibling_fns)?);
+                }
+                Ok(Value::Map(map))
+            }
+        }
+
         LoweredExpr::Call { name, args } => eval_call(name, args, env, sibling_fns),
 
         LoweredExpr::Pipe { receiver, call } => {

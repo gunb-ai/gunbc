@@ -1121,8 +1121,8 @@ mod tests {
             name: "Entry".to_string(),
             params: vec![],
             body: TypeBody::Record(vec![
-                Field { name: "id".into(), ty: TypeExpr::Named("EntryKind".into()), default: None, annotations: vec![], from_path: None },
-                Field { name: "label".into(), ty: TypeExpr::Named("String".into()), default: None, annotations: vec![], from_path: None },
+                Field { name: "id".into(), ty: TypeExpr::Named("EntryKind".into()), default: None, from_path: None },
+                Field { name: "label".into(), ty: TypeExpr::Named("String".into()), default: None, from_path: None },
             ]),
         };
         let dd = DataDef {
@@ -1255,8 +1255,8 @@ mod tests {
             name: "ColorMapping".to_string(),
             params: vec![],
             body: TypeBody::Record(vec![
-                Field { name: "color".into(), ty: TypeExpr::Named("Color".into()), default: None, annotations: vec![], from_path: None },
-                Field { name: "code".into(), ty: TypeExpr::Named("String".into()), default: None, annotations: vec![], from_path: None },
+                Field { name: "color".into(), ty: TypeExpr::Named("Color".into()), default: None, from_path: None },
+                Field { name: "code".into(), ty: TypeExpr::Named("String".into()), default: None, from_path: None },
             ]),
         };
         let dd = DataDef {

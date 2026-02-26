@@ -1670,6 +1670,23 @@ impl std::fmt::Display for LowerError {
 /// - `pipeline` declarations become opaque pipeline nodes
 /// - type/service/resource/interface declarations remain metadata and are not
 ///   lowered into executable graph nodes yet.
+
+fn collect_variant_names(project: &TypedProject) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for module in &project.modules {
+        for item in &module.ast.items {
+            if let Item::TypeDef(def) = &item.node {
+                if let daglang_syntax::ast::TypeBody::Sum(variants) = &def.body {
+                    for v in variants {
+                        names.insert(v.name.clone());
+                    }
+                }
+            }
+        }
+    }
+    names
+}
+
 pub fn lower_typed_project(project: &TypedProject) -> Result<Dag<LoweredOp>, LowerError> {
     lower_typed_project_with_callable_scope(project, None, false, None, None)
 }
@@ -1798,7 +1815,7 @@ fn lower_typed_project_with_callable_scope(
             .iter()
             .filter_map(|item| match &item.node {
                 Item::FnDef(def) if !def.body.lossy => {
-                    Some((def.name.as_str(), expr::lower_fn_body(&def.body)))
+                    Some((def.name.as_str(), expr::lower_fn_body(&def.body, &variant_names)))
                 }
                 _ => None,
             })
@@ -5171,7 +5188,7 @@ fn resolve_argv_exprs(exprs: &[Expr]) -> Vec<ArgvSegment> {
 }
 
 fn derive_shell_spec(
-    service: &ServiceDef,
+    _service: &ServiceDef,
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
 ) -> Option<ShellOperationSpec> {
@@ -5430,7 +5447,7 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
     outputs
         .iter()
         .map(|field| {
-            // Extract base type and type-level annotations from TypeExpr::Annotated.
+            // Extract base type and refinements from TypeExpr::Refined.
             let base_type_id = type_expr_to_string(&field.ty);
             // Check field annotations first, fall back to type annotations.
             let json_path = field
@@ -7418,7 +7435,7 @@ fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
     }
 }
 
-fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
+fn expr_to_json_literal(expr: &Expr, variant_names: &HashSet<String>) -> Option<serde_json::Value> {
     match expr {
         Expr::Literal(Literal::String(value)) => Some(serde_json::Value::String(value.clone())),
         Expr::Literal(Literal::Int(value)) => Some(serde_json::Value::Number((*value).into())),
@@ -7479,6 +7496,7 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
 /// Used to wire data declaration references as literal source nodes in fn call
 /// arguments. Only handles constant expressions (literals, lists, records).
 pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::Value> {
+    let variant_names = collect_variant_names(project);
     let mut values = HashMap::new();
     let mut unqualified_counts: HashMap<String, usize> = HashMap::new();
     for module in &project.modules {

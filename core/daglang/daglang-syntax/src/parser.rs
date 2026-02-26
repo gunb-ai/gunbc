@@ -2104,25 +2104,6 @@ impl Parser {
     }
 
 
-
-    fn parse_record_like_block(&mut self) -> Result<Expr, ParseError> {
-        let mut fields = Vec::new();
-        while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-            if Self::token_kind_as_ident(&self.peek().kind).is_some()
-                && self.peek2().kind == TokenKind::Colon
-            {
-                let k = self.expect_ident()?;
-                self.expect(&TokenKind::Colon)?;
-                let v = self.parse_expr(0)?;
-                fields.push((k, v));
-                self.eat(&TokenKind::Comma);
-                continue;
-            }
-            self.advance();
-        }
-        Ok(Expr::Record(None, fields))
-    }
-
     // ── bodies / statements ────────────────────────────────────────
 
     fn parse_fn_body(&mut self) -> Result<FnBody, ParseError> {

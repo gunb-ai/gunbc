@@ -20,7 +20,7 @@
 //! - `@contract` annotation validation (behavioral specs are well-typed)
 //! - Subtyping via the bounded lattice (§4.1.4 of dsl-design.md)
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
@@ -3376,48 +3376,6 @@ fn resolve_generic_arity(
     None
 }
 
-/// Extract a string value from an expression (string literal or identifier).
-fn expr_as_string(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Literal(Literal::String(s)) => Some(s.clone()),
-        Expr::Ident(name) => Some(name.clone()),
-        _ => None,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ProcessedAnnotation {
-    PredicateContent(String),
-    TypeOpBrand(String),
-    PredicateNonEmpty,
-    PredicateMatches(String),
-    FileTypes(BTreeMap<String, String>),
-}
-
-
-
-fn expr_as_string_list(expr: &Expr) -> Result<Vec<String>, String> {
-    let Expr::List(items) = expr else {
-        return Err("expected list of string extensions".to_string());
-    };
-    let mut out = Vec::with_capacity(items.len());
-    for item in items {
-        let value = expr_as_string(item)
-            .ok_or_else(|| "file extension list items must be strings/identifiers".to_string())?;
-        out.push(value);
-    }
-    Ok(out)
-}
-
-fn validate_file_extension(ext: &str) -> Result<(), String> {
-    if !ext.starts_with('.') || ext.trim().len() < 2 {
-        return Err(format!(
-            "invalid file extension `{ext}` — expected dot-prefixed suffix like `.rs`"
-        ));
-    }
-    Ok(())
-}
-
 fn canonical_content_encoding(raw: &str) -> Option<String> {
     match raw {
         "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown" => {
@@ -3465,85 +3423,6 @@ mod tests {
             })
             .collect();
         ModuleGraph { modules }
-    }
-
-    fn ann(name: &str, args: Vec<Expr>) -> Annotation {
-        Annotation {
-            name: name.to_string(),
-            args,
-        }
-    }
-
-    #[test]
-    fn process_supported_annotation_content_maps_to_predicate_content() {
-        let processed = process_supported_annotation(&ann("content", vec![Expr::Ident("UTF8".into())]))
-            .expect("content annotation should process");
-        assert_eq!(
-            processed,
-            ProcessedAnnotation::PredicateContent("UTF8".to_string())
-        );
-    }
-
-    #[test]
-    fn process_supported_annotation_brand_requires_name() {
-        let err = process_supported_annotation(&ann("brand", vec![]))
-            .expect_err("brand without name should fail");
-        assert!(err.contains("@brand requires exactly one name argument"));
-    }
-
-    #[test]
-    fn process_supported_annotation_non_empty_rejects_args() {
-        let err = process_supported_annotation(&ann(
-            "non_empty",
-            vec![Expr::Literal(Literal::String("oops".into()))],
-        ))
-        .expect_err("non_empty should reject arguments");
-        assert!(err.contains("@non_empty does not accept arguments"));
-    }
-
-    #[test]
-    fn process_supported_annotation_file_types_maps_extensions() {
-        let processed = process_supported_annotation(&ann(
-            "file_types",
-            vec![Expr::Record(
-                None,
-                vec![
-                    (
-                        "text".to_string(),
-                        Expr::List(vec![Expr::Literal(Literal::String(".rs".into()))]),
-                    ),
-                    (
-                        "binary".to_string(),
-                        Expr::List(vec![Expr::Literal(Literal::String(".png".into()))]),
-                    ),
-                    ("default".to_string(), Expr::Ident("Binary".into())),
-                ],
-            )],
-        ))
-        .expect("file_types should process");
-
-        let ProcessedAnnotation::FileTypes(mapping) = processed else {
-            panic!("expected file_types annotation mapping");
-        };
-        assert_eq!(mapping.get(".rs").map(String::as_str), Some("Text"));
-        assert_eq!(mapping.get(".png").map(String::as_str), Some("Binary"));
-        assert_eq!(mapping.get("*").map(String::as_str), Some("Binary"));
-    }
-
-    #[test]
-    fn process_supported_annotation_file_types_rejects_non_dot_extensions() {
-        let err = process_supported_annotation(&ann(
-            "file_types",
-            vec![Expr::Record(
-                None,
-                vec![(
-                    "text".to_string(),
-                    Expr::List(vec![Expr::Literal(Literal::String("rs".into()))]),
-                )],
-            )],
-        ))
-        .expect_err("invalid extension should fail");
-        assert!(err.contains("invalid file extension"));
     }
 
     // Test infrastructure: filesystem access for test fixtures
