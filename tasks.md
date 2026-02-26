@@ -209,9 +209,9 @@ Queue ordered by danger (silent failures first, then mechanical cleanup):
 
 | Order | ID | What | Size | Status | Deps |
 |-------|----|------|------|--------|------|
-| 1 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
-| 2 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
-| 3 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
+| 1 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | **Done** | — |
+| 2 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | **Done** | — |
+| 3 | RF-E4 | Fidelity classification smoke test. makegen callable→Unit/XS, gist module→Integration/L. | S | **Done** | — |
 | 4 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks (was RF-H1). | M | Pending | — |
 | 5 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
 | 6 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. R1-scoped (definition only). | M | Pending | — |
@@ -273,7 +273,10 @@ smell catalog above to classify. Include file path + line if possible.
 
 | Smell | Observation | File | Source | Date |
 |-------|-------------|------|--------|------|
-| *(empty — add observations here)* | | | | |
+| Static mapping table | Three functions (`transport_depth_ordinal`, `transport_depth_str`, `transport_is_hermetic`) encode the same semantic mapping for `ServiceTransportClass`. Adding a variant requires updating all three. Consolidate into a single `TransportClassMetadata` struct or const array. | `gunbc-dag/src/fidelity.rs:60-89` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `passthrough_fallback_value()` hard-codes a port alias table (`"result"→["input","value","content",...]`, `"return"→[11 aliases]`) to guess output port mappings. DSL callables should declare output port names explicitly; this table is a wiring-ambiguity bandaid. | `gunbc-dag/src/resolve.rs:95-162` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `looks_effectful_without_kind()` re-derives NodeKind from port type strings (`"TransportRequest"`, `"ToolHandle"`, `starts_with("res:")`) to validate the lowerer. Becomes dead code once RF-A1 makes `kind: NodeKind` non-Option. Track as RF-A1 follow-up. | `core/exec/src/execute.rs:2064-2092` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `classify_module()` aggregates ALL callables in the compiled output, including transitive auth callables from `std.patterns` (github_oidc, local_auth, metadata_oidc). Module-level classification is inflated beyond what the entry-point actually uses. Consider callable-scoped or entry-point-reachable classification. | `gunbc-dag/src/fidelity.rs:184-209` | RF-E4 impl | 2026-02-26 |
 
 ---
 
