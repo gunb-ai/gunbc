@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 #[test]
 fn test_makefile_help_exposes_entrypoints_without_direct_cli_wiring() {
     let registry = ToolRegistry::default_registry();
-    let makefile = render_makefile(&registry);
+    let makefile = render_makefile();
 
     for tool in &registry.tools {
         for param in &tool.entrypoints {
@@ -46,7 +46,7 @@ fn test_makefile_help_exposes_entrypoints_without_direct_cli_wiring() {
 #[test]
 fn test_makefile_help_repeatable_params() {
     let registry = ToolRegistry::default_registry();
-    let makefile = render_makefile(&registry);
+    let makefile = render_makefile();
 
     for tool in &registry.tools {
         for param in &tool.entrypoints {

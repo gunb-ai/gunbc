@@ -465,9 +465,8 @@ impl Executable for GenerateBootstrapMakefileOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         use gunbc_exec::optional_str_list_strict;
         let _ = optional_str_list_strict(&inputs, "crate_names")?;
-        use crate::makegen::{registry::ToolRegistry, render::render_makefile};
-        let registry = ToolRegistry::default_registry();
-        let makefile = render_makefile(&registry);
+        use crate::makegen::render::render_makefile;
+        let makefile = render_makefile();
         OutputMap::new()
             .str("makefile_content", makefile.clone())
             .str("return", makefile)
@@ -567,10 +566,8 @@ impl Executable for RenderMakefileCompiledOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        use crate::makegen::registry::ToolRegistry;
         use crate::makegen::render::render_makefile;
-        let registry = ToolRegistry::default_registry();
-        let content = render_makefile(&registry);
+        let content = render_makefile();
         OutputMap::new().str("return", content).ok()
     }
 }

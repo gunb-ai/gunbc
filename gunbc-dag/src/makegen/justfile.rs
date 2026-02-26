@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn test_justfile_target_graph_matches_makefile() {
         let registry = ToolRegistry::default_registry();
-        let makefile = render_makefile(&registry);
+        let makefile = render_makefile();
         let justfile = render_justfile(&registry);
 
         let make_graph = parse_target_graph(&makefile);
