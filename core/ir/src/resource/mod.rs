@@ -666,6 +666,8 @@ pub enum ResourceValidationMode {
 /// Classify a node's effect kind, if any.
 ///
 /// Returns `None` for pure nodes and nodes without a kind set.
+/// Nodes with `kind: None` are treated as non-effectful — callers must
+/// ensure all effectful nodes have `kind` set before reaching validation.
 pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
     match node.kind {
         Some(NodeKind::Pure) | None => None,

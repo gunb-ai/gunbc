@@ -74,8 +74,12 @@ pub struct Node<T> {
     ///
     /// Set by the lowerer from `ObligationCategory`. The executor reads this
     /// instead of re-deriving node kind from port type strings.
-    /// `None` means the node was built before `NodeKind` was introduced
-    /// (hand-built graphs, tests) — the executor falls back to port heuristics.
+    ///
+    /// `None` means the node has not yet been classified. The executor treats
+    /// `None` as non-effectful for interception purposes and the resource
+    /// validator skips it — so **all effectful nodes must have `kind` set**
+    /// before reaching the executor. Use [`with_kind`](Self::with_kind) for
+    /// hand-built DAGs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<NodeKind>,
 }
