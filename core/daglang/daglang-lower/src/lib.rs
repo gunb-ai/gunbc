@@ -19,19 +19,20 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use daglang_syntax::ast::{
-    Annotation, CapabilityDef, DataDef, Expr, Item, Literal, NodeStmt, OperationDef, ServiceDef,
-    Stmt, TransportBinding, TypeExpr,
+    CapabilityDef, DataDef, Expr, Item, Literal, NodeStmt, OperationDef, ServiceDef, Stmt,
+    TransportBinding,
 };
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name, resource_type_name,
-    service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
-    walk_stmts,
+    canonical_resource_type_name, resource_type_name, service_call_lookup_keys,
+    should_track_call_name as should_track_call, type_expr_to_string, walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
 use gunbc_ir::resource::AccessMode;
-use gunbc_ir::{Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, Port, PortName, Value};
+use gunbc_ir::{
+    Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, Port, PortName, Value,
+};
 use serde::Serialize;
 
 pub mod eval;
@@ -206,8 +207,13 @@ pub enum CallableKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrimitiveOpKind {
     FsEnv,
-    CallParamSource { callable: String, param: String },
-    CallLiteralSource { literal: PrimitiveLiteral },
+    CallParamSource {
+        callable: String,
+        param: String,
+    },
+    CallLiteralSource {
+        literal: PrimitiveLiteral,
+    },
     IoPrepareFileRead,
     IoExecuteFileRead,
     CompareEquality,
@@ -215,7 +221,9 @@ pub enum PrimitiveOpKind {
     IoExecuteFileWrite,
     /// FC-7: Explicit output path annotation for content_upsert patterns.
     /// Replaces the `content_upsert_path_` ID substring hack.
-    ContentUpsertOutputPath { path: String },
+    ContentUpsertOutputPath {
+        path: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -504,7 +512,7 @@ impl LoweredOp {
             | Self::BranchMerge { .. }
             | Self::UnsupportedPattern { .. }
             | Self::ExternCall { .. } => ObligationCategory::None,
-    }
+        }
     }
 
     pub fn service_call_metadata(&self) -> Option<&ServiceCallMetadata> {
@@ -623,9 +631,7 @@ impl<T: PartialEq> EndpointRegistry<T> {
     }
 
     fn get(&self, key: &str) -> Option<&T> {
-        self.by_key
-            .get(key)
-            .and_then(|entry| entry.as_ref())
+        self.by_key.get(key).and_then(|entry| entry.as_ref())
     }
 }
 
@@ -1216,8 +1222,8 @@ fn add_interface_stub_transport_triplets(
                     service: interface.name.clone(),
                     operation: capability.name.clone(),
                     transport: ServiceTransportClass::InterfaceStub,
-                    idempotent: capability.idempotent || has_annotation(&capability.annotations, "idempotent"),
-                    readonly: capability.readonly || has_annotation(&capability.annotations, "readonly"),
+                    idempotent: capability.idempotent,
+                    readonly: capability.readonly,
                     permissions: vec![],
                     spec: Some(ServiceOperationSpec::InterfaceStub {
                         interface: interface.name.clone(),
@@ -1337,12 +1343,7 @@ fn add_interface_stub_transport_triplets(
                     );
                 }
                 if capability.outputs.is_empty() {
-                    builder.add_edge(
-                        execute_id.as_str(),
-                        "result",
-                        parse_id.as_str(),
-                        "result",
-                    );
+                    builder.add_edge(execute_id.as_str(), "result", parse_id.as_str(), "result");
                 }
 
                 // Register endpoints under multiple keys for flexible resolution.
@@ -1364,10 +1365,7 @@ fn add_interface_stub_transport_triplets(
                 };
                 let cap_key = format!("{}.{}", interface.name, capability.name);
                 registry.register(cap_key.clone(), endpoint.clone());
-                registry.register(
-                    format!("{module_name}.{cap_key}"),
-                    endpoint,
-                );
+                registry.register(format!("{module_name}.{cap_key}"), endpoint);
             }
         }
     }
@@ -1928,9 +1926,15 @@ fn lower_typed_project_with_callable_scope(
         resolve_active_profile_bindings(&profile_registry, active_profile)?;
     let profile_bound_interfaces = collect_profile_bound_interface_names(&profile_registry);
     // IS-3: Collect interfaces needing stub transport.
-    let stub_interfaces = interfaces_needing_stubs(project, active_profile, &profile_bound_interfaces);
+    let stub_interfaces =
+        interfaces_needing_stubs(project, active_profile, &profile_bound_interfaces);
     // IS-4: Register stub transport triplets so resolve_service_call_source can find them.
-    add_interface_stub_transport_triplets(&mut builder, project, &stub_interfaces, &mut service_registry);
+    add_interface_stub_transport_triplets(
+        &mut builder,
+        project,
+        &stub_interfaces,
+        &mut service_registry,
+    );
     let known_interface_types = collect_interface_type_names(project);
     add_service_call_edges(
         &mut builder,
@@ -2422,7 +2426,6 @@ mod parity {
         })
     }
 
-
     fn normalize_gcp_credential_reference<T>(reference: &Dag<T>) -> Dag<()> {
         let reference_ids = reference
             .nodes
@@ -2778,18 +2781,13 @@ mod parity {
             ),
         ]
     }
-
 }
 
 /// Infer an obligation category for `fn` items based on name/output-type heuristics.
 ///
 /// Only applies to `CallableKind::Fn` (pure functions). `Func`/`Pattern` callables
 /// keep `ObligationCategory::None` (they are classified structurally elsewhere).
-fn infer_fn_obligation(
-    name: &str,
-    kind: CallableKind,
-    outputs: &[Port],
-) -> ObligationCategory {
+fn infer_fn_obligation(name: &str, kind: CallableKind, outputs: &[Port]) -> ObligationCategory {
     if kind != CallableKind::Fn {
         return ObligationCategory::None;
     }
@@ -2799,9 +2797,7 @@ fn infer_fn_obligation(
         ty.contains("Handle") || ty.contains("Env")
     });
     if has_handle_output
-        && (name.starts_with("load_")
-            || name == "fs_env"
-            || name.starts_with("env_"))
+        && (name.starts_with("load_") || name == "fs_env" || name.starts_with("env_"))
     {
         return ObligationCategory::ResourceProvide;
     }
@@ -3230,9 +3226,7 @@ fn make_loop_body_dag(
             .last()
             .expect("body_transports is non-empty")
             .parse_output;
-        let body_op_inputs = vec![
-            Port::scalar(last_parse_output.as_str(), "Any"),
-        ];
+        let body_op_inputs = vec![Port::scalar(last_parse_output.as_str(), "Any")];
         dag.add_node(Node::opaque(
             "body_op",
             body_op_inputs,
@@ -3317,8 +3311,18 @@ fn make_loop_body_dag(
             // Wire the transport triplet chain: prepare → execute → parse.
             // Prepare inputs matching element_var or passthrough are left as
             // entrypoints — the loop executor injects them via set_input.
-            dag.add_edge(Edge::new(prepare_id.as_str(), "request", execute_id.as_str(), "request"));
-            dag.add_edge(Edge::new(execute_id.as_str(), "response", parse_id.as_str(), "response"));
+            dag.add_edge(Edge::new(
+                prepare_id.as_str(),
+                "request",
+                execute_id.as_str(),
+                "request",
+            ));
+            dag.add_edge(Edge::new(
+                execute_id.as_str(),
+                "response",
+                parse_id.as_str(),
+                "response",
+            ));
             // Wire parse output to body_op as a DATA edge (not __deps) so
             // PassthroughOp forwards the transport result to body_op.result.
             dag.add_edge(Edge::new(
@@ -3485,7 +3489,6 @@ fn expand_content_upsert_patterns(
                 }
                 None
             }
-            Stmt::Annotation(_) => None,
             Stmt::Return(_) => None,
         };
 
@@ -3869,7 +3872,9 @@ struct ExpandablePattern<'a> {
 }
 
 /// Collect ALL pattern definitions from the project (generic and non-generic).
-fn collect_expandable_pattern_defs(project: &TypedProject) -> HashMap<String, ExpandablePattern<'_>> {
+fn collect_expandable_pattern_defs(
+    project: &TypedProject,
+) -> HashMap<String, ExpandablePattern<'_>> {
     let mut patterns = HashMap::new();
     for module in &project.modules {
         for item in &module.ast.items {
@@ -4177,10 +4182,7 @@ fn expand_single_pattern(
 /// If the expression is `Expr::Ident("Check")` and the type_param_map has
 /// `"Check" → Expr::Call("file_content_matches", ...)`, returns
 /// `Some(Expr::Call("file_content_matches", ...))`.
-fn substitute_type_param(
-    expr: &Expr,
-    type_param_map: &HashMap<String, &Expr>,
-) -> Option<Expr> {
+fn substitute_type_param(expr: &Expr, type_param_map: &HashMap<String, &Expr>) -> Option<Expr> {
     match expr {
         Expr::Ident(name) => type_param_map.get(name).map(|e| (*e).clone()),
         _ => None,
@@ -4340,46 +4342,42 @@ fn expand_pattern_body_node(
     depth: usize,
 ) -> Option<ExpandedNodeOutput> {
     match expr {
-        Expr::ServiceCall(path, args) => {
-            expand_service_call_node(
-                builder,
-                module_name,
-                item_name,
-                suffix,
-                node_name,
-                path,
-                args,
-                after_deps,
-                arg_map,
-                uses_binding_types,
-                node_outputs,
-                caller_param_types,
-                service_registry,
-                data_values,
-                target,
-                endpoints_by_name,
-                expanded_results,
-            )
-        }
-        Expr::Call(call_name, args) if call_name == "eq" => {
-            expand_eq_node(
-                builder,
-                module_name,
-                item_name,
-                suffix,
-                node_name,
-                args,
-                after_deps,
-                arg_map,
-                node_outputs,
-                caller_param_types,
-                service_registry,
-                data_values,
-                target,
-                endpoints_by_name,
-                expanded_results,
-            )
-        }
+        Expr::ServiceCall(path, args) => expand_service_call_node(
+            builder,
+            module_name,
+            item_name,
+            suffix,
+            node_name,
+            path,
+            args,
+            after_deps,
+            arg_map,
+            uses_binding_types,
+            node_outputs,
+            caller_param_types,
+            service_registry,
+            data_values,
+            target,
+            endpoints_by_name,
+            expanded_results,
+        ),
+        Expr::Call(call_name, args) if call_name == "eq" => expand_eq_node(
+            builder,
+            module_name,
+            item_name,
+            suffix,
+            node_name,
+            args,
+            after_deps,
+            arg_map,
+            node_outputs,
+            caller_param_types,
+            service_registry,
+            data_values,
+            target,
+            endpoints_by_name,
+            expanded_results,
+        ),
         Expr::Call(call_name, call_args) if all_patterns.contains_key(call_name.as_str()) => {
             // Recursive pattern expansion: this node calls another pattern.
             // e.g., `ensure(should_act: ..., check: fcm(...), action: fs.write(...))`
@@ -4432,10 +4430,13 @@ fn expand_pattern_body_node(
             // Convert PatternExpansionResult to ExpandedNodeOutput.
             // Use the first return output as the representative output.
             inner_result.and_then(|r| {
-                r.return_outputs.values().next().map(|o| ExpandedNodeOutput {
-                    node_id: o.node_id.clone(),
-                    output_port: o.output_port.clone(),
-                })
+                r.return_outputs
+                    .values()
+                    .next()
+                    .map(|o| ExpandedNodeOutput {
+                        node_id: o.node_id.clone(),
+                        output_port: o.output_port.clone(),
+                    })
             })
         }
         _ => None,
@@ -4679,7 +4680,12 @@ fn wire_pattern_arg_to_node(
                 );
             } else if let Some(output) = node_outputs.get(name.as_str()) {
                 // Case 2: Reference to an expanded node in the pattern body.
-                builder.add_edge(&output.node_id, &output.output_port, dest_node_id, dest_port);
+                builder.add_edge(
+                    &output.node_id,
+                    &output.output_port,
+                    dest_node_id,
+                    dest_port,
+                );
             }
         }
         Expr::FieldAccess(base, field) => {
@@ -4924,52 +4930,6 @@ fn add_makegen_scaffolding(
     }
 }
 
-fn has_annotation(annotations: &[Annotation], target: &str) -> bool {
-    annotations
-        .iter()
-        .any(|annotation| annotation.name == target)
-}
-
-fn annotation_transport_class(annotations: &[Annotation]) -> Option<ServiceTransportClass> {
-    if has_annotation(annotations, "shell") {
-        return Some(ServiceTransportClass::ShellLocal);
-    }
-    if has_annotation(annotations, "rest") {
-        return Some(ServiceTransportClass::RestNetwork);
-    }
-    if has_annotation(annotations, "file") {
-        return Some(ServiceTransportClass::FileBoundary);
-    }
-    if has_annotation(annotations, "local") {
-        return Some(ServiceTransportClass::LocalDirect);
-    }
-    None
-}
-
-fn annotation_permissions(annotations: &[Annotation], typed_permissions: &[String]) -> Vec<String> {
-    let mut permissions = BTreeSet::new();
-    for p in typed_permissions {
-        permissions.insert(p.clone());
-    }
-    for annotation in annotations
-        .iter()
-        .filter(|annotation| annotation.name == "permissions")
-    {
-        for arg in &annotation.args {
-            match arg {
-                Expr::Literal(Literal::String(value)) => {
-                    permissions.insert(value.clone());
-                }
-                Expr::Ident(path) => {
-                    permissions.insert(path.clone());
-                }
-                _ => {}
-            }
-        }
-    }
-    permissions.into_iter().collect::<Vec<_>>()
-}
-
 fn derive_service_call_metadata(
     service: &ServiceDef,
     operation: &OperationDef,
@@ -4980,12 +4940,9 @@ fn derive_service_call_metadata(
         Some(TransportBinding::Shell { .. }) => ServiceTransportClass::ShellLocal,
         Some(TransportBinding::File { .. }) => ServiceTransportClass::FileBoundary,
         Some(TransportBinding::Local) => ServiceTransportClass::LocalDirect,
-        None => annotation_transport_class(&operation.annotations)
-            .or_else(|| annotation_transport_class(&service.annotations))
-            .unwrap_or(ServiceTransportClass::Unknown),
+        None => ServiceTransportClass::Unknown,
     };
-    let mut permissions = annotation_permissions(&service.annotations, &[]);
-    permissions.extend(annotation_permissions(&operation.annotations, &operation.permissions));
+    let mut permissions = operation.permissions.clone();
     permissions.sort();
     permissions.dedup();
 
@@ -4995,12 +4952,8 @@ fn derive_service_call_metadata(
         service: service.name.clone(),
         operation: operation.name.clone(),
         transport,
-        idempotent: operation.idempotent
-            || has_annotation(&operation.annotations, "idempotent")
-            || has_annotation(&service.annotations, "idempotent"),
-        readonly: operation.readonly
-            || has_annotation(&operation.annotations, "readonly")
-            || has_annotation(&service.annotations, "readonly"),
+        idempotent: operation.idempotent,
+        readonly: operation.readonly,
         permissions,
         spec,
         retry_policy: None, // M22 Phase 3: populated when @retry extraction is wired
@@ -5123,24 +5076,46 @@ fn derive_operation_spec(
     }
 }
 
-fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
-    let endpoint = service.config.endpoint.clone()
-        .or_else(|| annotation_string_arg(&service.annotations, "endpoint"))
-        .unwrap_or_default();
-    let (method, path_template) =
-        annotation_rest_details(&operation.annotations, &service.annotations)?;
+fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
+    match expr {
+        Expr::Record(_, fields) => fields
+            .iter()
+            .filter_map(|(k, v)| {
+                if let Expr::Literal(daglang_syntax::ast::Literal::String(s)) = v {
+                    Some((k.clone(), s.clone()))
+                } else {
+                    Some((k.clone(), expr_to_default_string(v)))
+                }
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
 
-    let headers = annotation_headers(&operation.annotations, &service.annotations);
+fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
+    let endpoint = service.config.endpoint.clone().unwrap_or_default();
+    let (method, path_template) = match &operation.transport {
+        Some(TransportBinding::Rest { method, path, .. }) => (method.clone(), path.clone()),
+        _ => return None,
+    };
+
+    let headers = match &operation.transport {
+        Some(TransportBinding::Rest {
+            headers: Some(h), ..
+        }) => extract_headers_from_expr(h),
+        _ => Vec::new(),
+    };
     let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers);
     let output_fields = derive_output_fields(&operation.outputs);
-    let body_template = annotation_body_template(&operation.annotations);
-    let auth_scheme = service.config.auth.as_ref().map(|a| {
-        match a.as_str() {
-            "BearerToken" => "BearerToken".to_string(),
-            "Basic" => "Basic".to_string(),
-            other => other.to_string(),
-        }
-    }).or_else(|| annotation_auth_scheme(&operation.annotations, &service.annotations));
+    let body_template = match &operation.transport {
+        Some(TransportBinding::Rest { body: Some(b), .. }) => Some(expr_to_default_string(b)),
+        _ => None,
+    };
+    let auth_scheme = service.config.auth.as_ref().map(|a| match a.as_str() {
+        "BearerToken" => "BearerToken".to_string(),
+        "Basic" => "Basic".to_string(),
+        other => other.to_string(),
+    });
 
     Some(RestOperationSpec {
         endpoint,
@@ -5160,13 +5135,16 @@ fn derive_shell_spec(
     operation: &OperationDef,
     data_registry: &DataRegistry<'_>,
 ) -> Option<ShellOperationSpec> {
-    let argv_template = annotation_shell_argv(&operation.annotations, &service.annotations)?;
+    let argv_template = match &operation.transport {
+        Some(TransportBinding::Shell { argv }) => {
+            argv.iter().map(expr_to_default_string).collect::<Vec<_>>()
+        }
+        _ => return None,
+    };
 
     let input_fields = derive_input_fields_for_shell(&operation.inputs, &argv_template);
     let output_fields = derive_output_fields(&operation.outputs);
-    let output_parsing = annotation_shell_output_parsing(&operation.annotations)
-        .or_else(|| annotation_shell_output_parsing(&service.annotations))
-        .unwrap_or_else(|| infer_shell_output_parsing(&operation.outputs));
+    let output_parsing = infer_shell_output_parsing(&operation.outputs);
 
     // Extract env from `env: Map<String, String>` input default.
     let env = extract_env_from_inputs(&operation.inputs, data_registry);
@@ -5181,7 +5159,10 @@ fn derive_shell_spec(
 }
 
 fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
-    let (file_op, path_template) = annotation_file_details(&operation.annotations)?;
+    let (file_op, path_template) = match &operation.transport {
+        Some(TransportBinding::File { op, path }) => (op.clone(), path.clone()),
+        _ => return None,
+    };
     let input_fields = operation
         .inputs
         .iter()
@@ -5207,9 +5188,7 @@ fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
 }
 
 /// Also derive a file spec from a `CapabilityDef` (same shape as `OperationDef`).
-fn derive_file_spec_from_capability(
-    capability: &CapabilityDef,
-) -> Option<FileOperationSpec> {
+fn derive_file_spec_from_capability(capability: &CapabilityDef) -> Option<FileOperationSpec> {
     let (file_op, path_template) = annotation_file_details(&capability.annotations)?;
     let input_fields = capability
         .inputs
@@ -5258,124 +5237,15 @@ fn derive_local_spec(operation: &OperationDef) -> LocalOperationSpec {
 }
 
 /// Extract `@file(OP, "template")` → `(operation, path_template)`.
-fn annotation_file_details(annotations: &[Annotation]) -> Option<(String, String)> {
-    let ann = annotations.iter().find(|a| a.name == "file")?;
-    if ann.args.len() < 2 {
-        return None;
-    }
-    let operation = match &ann.args[0] {
-        Expr::Ident(op) => op.clone(),
-        Expr::Literal(Literal::String(op)) => op.clone(),
-        _ => return None,
-    };
-    let path_template = expr_to_template_string(&ann.args[1])?;
-    Some((operation, path_template))
-}
 
 /// Extract a string argument from a named annotation: `@name("value")`.
-fn annotation_string_arg(annotations: &[Annotation], name: &str) -> Option<String> {
-    annotations.iter().find(|a| a.name == name).and_then(|a| {
-        a.args.first().and_then(|arg| match arg {
-            Expr::Literal(Literal::String(s)) => Some(s.clone()),
-            _ => None,
-        })
-    })
-}
 
 /// Extract `(method, path_template)` from `@rest(METHOD, "/path/{param}")`.
 ///
 /// The path may be a plain string literal or a string interpolation. Interpolated
 /// expressions like `{project}` are converted back to template placeholders `{project}`.
-fn annotation_rest_details(
-    op_annotations: &[Annotation],
-    service_annotations: &[Annotation],
-) -> Option<(String, String)> {
-    let rest_ann = op_annotations
-        .iter()
-        .chain(service_annotations.iter())
-        .find(|a| a.name == "rest")?;
-
-    if rest_ann.args.len() < 2 {
-        return None;
-    }
-
-    let method = match &rest_ann.args[0] {
-        Expr::Ident(m) => m.clone(),
-        Expr::Literal(Literal::String(m)) => m.clone(),
-        _ => return None,
-    };
-
-    let path = expr_to_template_string(&rest_ann.args[1])?;
-
-    Some((method, path))
-}
 
 /// Extract argv template from `@shell(["cmd", "arg", "{param}"])`.
-fn annotation_shell_argv(
-    op_annotations: &[Annotation],
-    service_annotations: &[Annotation],
-) -> Option<Vec<ArgvSegment>> {
-    for shell_ann in op_annotations
-        .iter()
-        .chain(service_annotations.iter())
-        .filter(|a| a.name == "shell")
-    {
-        // @shell(["cmd", "arg1", "{param}", ...])
-        let Some(list) = shell_ann.args.first() else {
-            continue;
-        };
-        let items = match list {
-            Expr::List(items) => items,
-            _ => continue,
-        };
-
-        let mut segments = Vec::new();
-        for item in items {
-            match item {
-                Expr::Literal(Literal::String(s)) => {
-                    let maybe_single_ref = s
-                        .strip_prefix('{')
-                        .and_then(|inner| inner.strip_suffix('}'))
-                        .filter(|inner| {
-                            !inner.is_empty()
-                                && !inner.contains('{')
-                                && !inner.contains('}')
-                                && !inner.contains(' ')
-                        });
-                    if let Some(param) = maybe_single_ref {
-                        segments.push(ArgvSegment::InputRef(param.to_string()));
-                    } else {
-                        // Complex interpolation like "{base}...{head}" remains a literal template.
-                        segments.push(ArgvSegment::Literal(s.clone()));
-                    }
-                }
-                Expr::StringInterp(parts) => {
-                    // Handle string interpolation: `"{param}"` or `"{base}...{head}"`.
-                    use daglang_syntax::ast::StringPart;
-                    // Single-expr interpolation like `"{param}"` -> InputRef.
-                    if parts.len() == 1 {
-                        if let StringPart::Expr(Expr::Ident(name)) = &parts[0] {
-                            segments.push(ArgvSegment::InputRef(name.clone()));
-                            continue;
-                        }
-                    }
-                    // Multi-part interpolation -> reconstruct as Literal with {param} markers.
-                    let template = expr_to_template_string(item).unwrap_or_default();
-                    if !template.is_empty() {
-                        segments.push(ArgvSegment::Literal(template));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        if !segments.is_empty() {
-            return Some(segments);
-        }
-    }
-
-    None
-}
 
 /// Extract shell parse mode from `@parse(mode)`.
 ///
@@ -5384,32 +5254,6 @@ fn annotation_shell_argv(
 /// - split_lines / lines / line_list -> SplitLines
 /// - exit_code_bool / bool / success_bool -> ExitCodeBool
 /// - success_stdout_stderr / triple / result -> SuccessStdoutStderr
-fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOutputParsing> {
-    for ann in annotations.iter().filter(|a| a.name == "parse") {
-        let Some(mode_expr) = ann.args.first() else {
-            continue;
-        };
-        let mode_raw = match mode_expr {
-            Expr::Ident(mode) => mode.as_str(),
-            Expr::Literal(Literal::String(mode)) => mode.as_str(),
-            _ => continue,
-        };
-        let mode = mode_raw.trim().to_ascii_lowercase().replace('-', "_");
-        let parsing = match mode.as_str() {
-            "trim" | "trim_stdout" | "string" => Some(ShellOutputParsing::TrimStdout),
-            "split_lines" | "lines" | "line_list" => Some(ShellOutputParsing::SplitLines),
-            "exit_code_bool" | "bool" | "success_bool" => Some(ShellOutputParsing::ExitCodeBool),
-            "success_stdout_stderr" | "triple" | "result" => {
-                Some(ShellOutputParsing::SuccessStdoutStderr)
-            }
-            _ => None,
-        };
-        if parsing.is_some() {
-            return parsing;
-        }
-    }
-    None
-}
 
 /// Extract body template from `@body_template({ "key": value, ... })`.
 ///
@@ -5421,11 +5265,6 @@ fn annotation_shell_output_parsing(annotations: &[Annotation]) -> Option<ShellOu
 ///   public: public
 /// })
 /// ```
-fn annotation_body_template(annotations: &[Annotation]) -> Option<Vec<BodyEntry>> {
-    let ann = annotations.iter().find(|a| a.name == "body_template")?;
-    let record = ann.args.first()?;
-    body_template_entries_from_expr(record)
-}
 
 /// Recursively convert an expression (Record or Map) to body template entries.
 fn body_template_entries_from_expr(expr: &Expr) -> Option<Vec<BodyEntry>> {
@@ -5470,38 +5309,6 @@ fn body_template_entry(key: &str, value: &Expr) -> Option<BodyEntry> {
 /// Extract custom headers from `@headers({ "key": "value", ... })`.
 ///
 /// Handles both `Expr::Record` (unquoted keys) and `Expr::Map` (quoted keys).
-fn annotation_headers(
-    op_annotations: &[Annotation],
-    service_annotations: &[Annotation],
-) -> Vec<(String, String)> {
-    let mut headers = Vec::new();
-    for ann in op_annotations
-        .iter()
-        .chain(service_annotations.iter())
-        .filter(|a| a.name == "headers")
-    {
-        match ann.args.first() {
-            Some(Expr::Record(_, fields)) => {
-                for (key, value) in fields {
-                    if let Some(v) = expr_to_template_string(value) {
-                        headers.push((key.clone(), v));
-                    }
-                }
-            }
-            Some(Expr::Map(entries)) => {
-                for (key_expr, value) in entries {
-                    if let Expr::Literal(Literal::String(key)) = key_expr {
-                        if let Some(v) = expr_to_template_string(value) {
-                            headers.push((key.clone(), v));
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    headers
-}
 
 /// Extract the auth scheme string from `@auth(...)` annotations.
 ///
@@ -5513,30 +5320,6 @@ fn annotation_headers(
 /// The scheme is stored on `RestOperationSpec.auth_scheme` and drives
 /// `res:credential` wiring on the execute node. No `config.credential`
 /// header template is generated.
-fn annotation_auth_scheme(
-    op_annotations: &[Annotation],
-    service_annotations: &[Annotation],
-) -> Option<String> {
-    let auth = op_annotations
-        .iter()
-        .chain(service_annotations.iter())
-        .find(|annotation| annotation.name == "auth")?;
-    let scheme = auth.args.first()?;
-    match scheme {
-        Expr::Ident(value) if value == "BearerToken" => Some("BearerToken".to_string()),
-        Expr::Ident(value) if value == "Basic" => Some("Basic".to_string()),
-        Expr::Call(name, args) if name == "Header" => {
-            let header = match args.first() {
-                Some((None, Expr::Literal(Literal::String(value)))) if !value.is_empty() => {
-                    value.clone()
-                }
-                _ => return None,
-            };
-            Some(format!("Header:{header}"))
-        }
-        _ => None,
-    }
-}
 
 /// Derive input field specs from operation inputs.
 fn derive_input_fields(
@@ -5647,19 +5430,13 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
         .iter()
         .map(|field| {
             // Extract base type and type-level annotations from TypeExpr::Annotated.
-            let (base_type_id, type_annotations) = match &field.ty {
-                TypeExpr::Annotated(inner, annotations) => {
-                    (type_expr_to_string(inner), annotations.as_slice())
-                }
-                other => (type_expr_to_string(other), [].as_slice()),
-            };
+            let base_type_id = type_expr_to_string(&field.ty);
             // Check field annotations first, fall back to type annotations.
-            let json_path = field.from_path.clone()
-                .or_else(|| annotation_string_arg(&field.annotations, "json"))
-                .or_else(|| annotation_string_arg(type_annotations, "json"))
+            let json_path = field
+                .from_path
+                .clone()
                 .unwrap_or_else(|| field.name.clone());
-            let is_raw_body = has_annotation(&field.annotations, "raw_body")
-                || has_annotation(type_annotations, "raw_body");
+            let is_raw_body = false;
             OutputFieldSpec {
                 name: field.name.clone(),
                 type_id: base_type_id.clone(),
@@ -5824,7 +5601,10 @@ fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadat
         .collect()
 }
 
-fn capability_prepare_ports(capability: &CapabilityDef, metadata: &ServiceCallMetadata) -> Vec<Port> {
+fn capability_prepare_ports(
+    capability: &CapabilityDef,
+    metadata: &ServiceCallMetadata,
+) -> Vec<Port> {
     // When a spec with explicit input fields is available (e.g., File operations),
     // use the spec's field declarations. Otherwise fall back to the capability's
     // declared inputs from the interface definition.
@@ -6053,8 +5833,7 @@ fn add_service_transport_triplets(
                 }
                 let spec = match transport {
                     ServiceTransportClass::FileBoundary => {
-                        derive_file_spec_from_capability(capability)
-                            .map(ServiceOperationSpec::File)
+                        derive_file_spec_from_capability(capability).map(ServiceOperationSpec::File)
                     }
                     _ => None,
                 };
@@ -6182,10 +5961,7 @@ fn add_service_transport_triplets(
                     metadata: Some(metadata),
                 };
                 registry.register(cap_key.clone(), endpoint.clone());
-                registry.register(
-                    format!("{module_name}.{}", cap_key),
-                    endpoint,
-                );
+                registry.register(format!("{module_name}.{}", cap_key), endpoint);
             }
         }
     }
@@ -6305,10 +6081,8 @@ fn add_service_call_edges(
                     .or_insert(0);
                 *use_count += 1;
                 let effective_endpoint = if *use_count > 1 {
-                    builder.clone_transport_triplet(
-                        &source.endpoint,
-                        &format!("c{}", *use_count - 1),
-                    )
+                    builder
+                        .clone_transport_triplet(&source.endpoint, &format!("c{}", *use_count - 1))
                 } else {
                     source.endpoint.clone()
                 };
@@ -6662,7 +6436,13 @@ fn collect_bound_service_sources(
     let mut bound = HashMap::<String, ServiceTransportEndpoint>::new();
     for stmt in stmts {
         match stmt {
-            Stmt::Let(binding, expr) | Stmt::Assign(binding, expr) | Stmt::Node(NodeStmt { name: binding, expr, .. }) => match expr {
+            Stmt::Let(binding, expr)
+            | Stmt::Assign(binding, expr)
+            | Stmt::Node(NodeStmt {
+                name: binding,
+                expr,
+                ..
+            }) => match expr {
                 Expr::ServiceCall(path, _) => {
                     if let Some(source) = resolve_service_call_source(
                         caller,
@@ -6707,9 +6487,7 @@ fn wire_profile_binding_config_inputs(
         // the credential at execute time via `Credential::apply()`.
         if key == "credential" && source_endpoint.has_auth {
             let literal = match value {
-                ProfileConfigValue::Literal(value) => {
-                    ServiceCallArgLiteral::String(value.clone())
-                }
+                ProfileConfigValue::Literal(value) => ServiceCallArgLiteral::String(value.clone()),
                 ProfileConfigValue::SecretRef(name) => {
                     ServiceCallArgLiteral::String(format!("secret:{name}"))
                 }
@@ -7391,7 +7169,7 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
             if !matches_target {
                 continue;
             }
-            counts.push(interface.contracts.len() + interface.typed_contracts.len());
+            counts.push(interface.contracts.len() + interface.contracts.len());
         }
     }
     if counts.len() == 1 {
@@ -7473,7 +7251,9 @@ fn encode_literal_for_name(literal: &ServiceCallArgLiteral) -> String {
         ServiceCallArgLiteral::String(value) => format!("strhex:{}", hex_encode(value.as_bytes())),
         ServiceCallArgLiteral::Int(value) => format!("int:{value}"),
         ServiceCallArgLiteral::Bool(value) => format!("bool:{value}"),
-        ServiceCallArgLiteral::Json(value) => format!("jsonhex:{}", hex_encode(value.to_string().as_bytes())),
+        ServiceCallArgLiteral::Json(value) => {
+            format!("jsonhex:{}", hex_encode(value.to_string().as_bytes()))
+        }
         ServiceCallArgLiteral::None => "none".to_string(),
     }
 }
@@ -7525,10 +7305,7 @@ fn item_callable_body(item: &Item) -> Option<(&str, &[Stmt])> {
 fn item_callable_interactive_flag(item: &Item) -> Option<(&str, bool)> {
     match item {
         Item::FnDef(def) => Some((def.name.as_str(), false)),
-        Item::FuncDef(def) => Some((
-            def.name.as_str(),
-            has_annotation(&def.annotations, "interactive"),
-        )),
+        Item::FuncDef(def) => Some((def.name.as_str(), false)),
         Item::PatternDef(def) => Some((def.name.as_str(), false)),
         _ => None,
     }
@@ -7789,9 +7566,7 @@ fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
         Expr::Literal(Literal::Int(value)) => Some(ServiceCallArgLiteral::Int(*value)),
         Expr::Literal(Literal::Bool(value)) => Some(ServiceCallArgLiteral::Bool(*value)),
         Expr::Literal(Literal::None) => Some(ServiceCallArgLiteral::None),
-        Expr::StringInterp(_) => {
-            expr_to_template_string(arg).map(ServiceCallArgLiteral::String)
-        }
+        Expr::StringInterp(_) => expr_to_template_string(arg).map(ServiceCallArgLiteral::String),
         Expr::List(_) | Expr::Map(_) => expr_to_json_literal(arg).map(ServiceCallArgLiteral::Json),
         _ => None,
     }
@@ -7822,12 +7597,32 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
             }
             Some(serde_json::Value::Object(out))
         }
-        Expr::Record(_type_name, fields) => {
+        Expr::Record(type_name, fields) => {
             let mut out = serde_json::Map::new();
+            if let Some(variant) = type_name {
+                out.insert(
+                    "_variant".to_string(),
+                    serde_json::Value::String(variant.clone()),
+                );
+            }
             for (key, value) in fields {
                 out.insert(key.clone(), expr_to_json_literal(value)?);
             }
             Some(serde_json::Value::Object(out))
+        }
+        Expr::UnaryOp(daglang_syntax::ast::UnaryOp::Neg, inner) => {
+            match expr_to_json_literal(inner)? {
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        Some(serde_json::Value::Number((-i).into()))
+                    } else if let Some(f) = n.as_f64() {
+                        serde_json::Number::from_f64(-f).map(serde_json::Value::Number)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
         }
         _ => None,
     }
@@ -7839,13 +7634,22 @@ fn expr_to_json_literal(expr: &Expr) -> Option<serde_json::Value> {
 /// arguments. Only handles constant expressions (literals, lists, records).
 pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::Value> {
     let mut values = HashMap::new();
+    let mut unqualified_counts: HashMap<String, usize> = HashMap::new();
     for module in &project.modules {
         let module_name = module.module_path.join(".");
         for item in &module.ast.items {
             if let Item::DataDef(def) = &item.node {
                 if let Some(json) = expr_to_json_literal(&def.value) {
                     values.insert(format!("{module_name}.{}", def.name), json.clone());
-                    values.insert(def.name.clone(), json);
+
+                    let count = unqualified_counts.entry(def.name.clone()).or_insert(0);
+                    *count += 1;
+                    if *count == 1 {
+                        values.insert(def.name.clone(), json);
+                    } else {
+                        // Ambiguous — remove unqualified entry, keep only qualified
+                        values.remove(&def.name);
+                    }
                 }
             }
         }
@@ -7964,7 +7768,12 @@ fn wire_fn_call_arguments(
                     literal,
                     &format!("fn_{index}"),
                 );
-                builder.add_edge(src.as_str(), param_name, fn_endpoint.node_id.as_str(), param_name);
+                builder.add_edge(
+                    src.as_str(),
+                    param_name,
+                    fn_endpoint.node_id.as_str(),
+                    param_name,
+                );
             }
         }
     }
@@ -8014,7 +7823,7 @@ fn collect_return_bindings(
         for stmt in stmts {
             match stmt {
                 Stmt::Expr(expr) => trailing_expr = Some(expr),
-                Stmt::Let(..) | Stmt::Assign(..) | Stmt::Node(..) | Stmt::Annotation(_) | Stmt::Return(_) => {
+                Stmt::Let(..) | Stmt::Assign(..) | Stmt::Node(..) | Stmt::Return(_) => {
                     trailing_expr = None;
                 }
             }
@@ -8030,13 +7839,10 @@ fn collect_return_bindings(
 fn unwrap_return_expr(expr: &Expr) -> &Expr {
     match expr {
         Expr::After(inner, _) | Expr::Guarded(inner, _) => unwrap_return_expr(inner),
-        Expr::Call(name, args)
-            if matches!(name.as_str(), "as" | "with" | "<expr>" | "fn") =>
-        {
-            args.first()
-                .map(|(_, inner)| unwrap_return_expr(inner))
-                .unwrap_or(expr)
-        }
+        Expr::Call(name, args) if matches!(name.as_str(), "as" | "with" | "<expr>" | "fn") => args
+            .first()
+            .map(|(_, inner)| unwrap_return_expr(inner))
+            .unwrap_or(expr),
         _ => expr,
     }
 }
@@ -8108,10 +7914,7 @@ fn resolve_return_expr_source(
             .get(name)
             .and_then(|entry| entry.clone())
             .map(|source| (source.node_id, source.primary_output)),
-        Expr::Literal(_)
-        | Expr::StringInterp(_)
-        | Expr::List(_)
-        | Expr::Map(_) => {
+        Expr::Literal(_) | Expr::StringInterp(_) | Expr::List(_) | Expr::Map(_) => {
             let literal = return_literal_arg(expr)?;
             let src = ensure_literal_source_node(
                 builder,
@@ -8141,10 +7944,7 @@ fn wire_callable_return_outputs(
     module_name: &str,
     item_name: &str,
 ) {
-    let outputs = match builder
-        .dag
-        .get_node(&NodeId::new(target.node_id.clone()))
-    {
+    let outputs = match builder.dag.get_node(&NodeId::new(target.node_id.clone())) {
         Some(node) => node.outputs.clone(),
         None => return,
     };
@@ -8332,9 +8132,16 @@ fn collect_bound_callable_sources(
     let module_key = module_name.to_string();
     for stmt in stmts {
         match stmt {
-            Stmt::Let(binding, expr) | Stmt::Assign(binding, expr) | Stmt::Node(NodeStmt { name: binding, expr, .. }) => match expr {
+            Stmt::Let(binding, expr)
+            | Stmt::Assign(binding, expr)
+            | Stmt::Node(NodeStmt {
+                name: binding,
+                expr,
+                ..
+            }) => match expr {
                 Expr::Call(name, _) => {
-                    if let Some(endpoint) = endpoints_by_full.get(&(module_key.clone(), name.clone()))
+                    if let Some(endpoint) =
+                        endpoints_by_full.get(&(module_key.clone(), name.clone()))
                     {
                         bound.insert(binding.clone(), endpoint.clone());
                     } else if let Some(Some(endpoint)) = endpoints_by_name.get(name) {
@@ -8387,9 +8194,10 @@ fn collect_output_paths_recursive(
         // lowering paths use ContentUpsertOutputPath).
         else if node.id.0.contains("content_upsert_path_") {
             if let gunbc_ir::node::NodeBody::Opaque(LoweredOp::Primitive {
-                kind: PrimitiveOpKind::CallLiteralSource {
-                    literal: PrimitiveLiteral::String(path),
-                },
+                kind:
+                    PrimitiveOpKind::CallLiteralSource {
+                        literal: PrimitiveLiteral::String(path),
+                    },
                 ..
             }) = &node.body
             {
@@ -8497,15 +8305,6 @@ pub fn extract_outputs_annotation(project: &TypedProject) -> Vec<String> {
                 for s in &def.declared_outputs {
                     paths.insert(s.clone());
                 }
-                for ann in &def.annotations {
-                    if ann.name == "outputs" {
-                        for arg in &ann.args {
-                            if let Expr::Literal(Literal::String(s)) = arg {
-                                paths.insert(s.clone());
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -8518,11 +8317,8 @@ mod tests {
     use daglang_resolve::{ModuleGraph, ResolvedModule};
     use daglang_syntax::parser;
     use daglang_typecheck::typecheck_module_graph;
-    use gunbc_dag::{
-        build_bootstrap_graph, build_codegen_graph,
-        build_pragma_graph,
-    };
     use gunbc_dag::deps_tool::build_deps_graph;
+    use gunbc_dag::{build_bootstrap_graph, build_codegen_graph, build_pragma_graph};
     use gunbc_ir::node::NodeBody;
     use gunbc_ir::{Edge, Port};
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -8695,7 +8491,10 @@ fn run(values: List<String>) -> { out: String } {
         let mut sites = Vec::new();
         collect_collection_ops_from_stmts(&stmts, &mut sites);
         let kinds = sites.iter().map(|site| site.kind).collect::<Vec<_>>();
-        assert_eq!(kinds, vec![CollectionOpKind::Join, CollectionOpKind::FlatMap]);
+        assert_eq!(
+            kinds,
+            vec![CollectionOpKind::Join, CollectionOpKind::FlatMap]
+        );
     }
 
     #[test]
@@ -11236,18 +11035,13 @@ func beta(msg: String) -> { reply: String } {
         let prepare_nodes: Vec<_> = dag
             .nodes
             .iter()
-            .filter(|n| {
-                n.id.0.starts_with("prepare_transport_") && n.id.0.contains("Echo_Ping")
-            })
+            .filter(|n| n.id.0.starts_with("prepare_transport_") && n.id.0.contains("Echo_Ping"))
             .collect();
         assert!(
             prepare_nodes.len() >= 2,
             "expected at least 2 prepare nodes for Echo.Ping (original + clone), found {}: {:?}",
             prepare_nodes.len(),
-            prepare_nodes
-                .iter()
-                .map(|n| &n.id.0)
-                .collect::<Vec<_>>()
+            prepare_nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
         );
         // Verify no two edges target the same scalar (node, port) from
         // different sources — the original duplicate-edge bug.
@@ -11290,18 +11084,13 @@ func dual(msg: String) -> { reply: String } {
         let prepare_nodes: Vec<_> = dag
             .nodes
             .iter()
-            .filter(|n| {
-                n.id.0.starts_with("prepare_transport_") && n.id.0.contains("Echo_Ping")
-            })
+            .filter(|n| n.id.0.starts_with("prepare_transport_") && n.id.0.contains("Echo_Ping"))
             .collect();
         assert!(
             prepare_nodes.len() >= 2,
             "expected at least 2 prepare nodes (original + clone), found {}: {:?}",
             prepare_nodes.len(),
-            prepare_nodes
-                .iter()
-                .map(|n| &n.id.0)
-                .collect::<Vec<_>>()
+            prepare_nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
         );
     }
 
@@ -11347,9 +11136,12 @@ func dual(msg: String) -> { reply: String } {
         for module_index in 0..graph.modules.len() {
             let imports: Vec<String> = {
                 let module = &graph.modules[module_index];
-                module.ast.imports.iter().map(|import| {
-                    import.node.path.segments.join(".")
-                }).collect()
+                module
+                    .ast
+                    .imports
+                    .iter()
+                    .map(|import| import.node.path.segments.join("."))
+                    .collect()
             };
             let deps: Vec<usize> = imports
                 .iter()
@@ -11397,13 +11189,8 @@ func dual(msg: String) -> { reply: String } {
                 }
             }
         }
-        lower_typed_project_for_modules_with_entry(
-            &typed,
-            &scope,
-            None,
-            Some(target_module),
-        )
-        .expect("lowering should succeed")
+        lower_typed_project_for_modules_with_entry(&typed, &scope, None, Some(target_module))
+            .expect("lowering should succeed")
     }
 
     #[test]
@@ -11506,15 +11293,21 @@ func verify(path: String, expected: String) -> { ok: Bool }
         // Find the cloned triplet nodes.
         let prepare = node_ids
             .iter()
-            .find(|id| id.contains("prepare_transport_") && id.contains("read") && id.contains("verify"))
+            .find(|id| {
+                id.contains("prepare_transport_") && id.contains("read") && id.contains("verify")
+            })
             .expect("should have cloned prepare node");
         let execute = node_ids
             .iter()
-            .find(|id| id.contains("execute_transport_") && id.contains("read") && id.contains("verify"))
+            .find(|id| {
+                id.contains("execute_transport_") && id.contains("read") && id.contains("verify")
+            })
             .expect("should have cloned execute node");
         let parse = node_ids
             .iter()
-            .find(|id| id.contains("parse_transport_") && id.contains("read") && id.contains("verify"))
+            .find(|id| {
+                id.contains("parse_transport_") && id.contains("read") && id.contains("verify")
+            })
             .expect("should have cloned parse node");
         let compare = node_ids
             .iter()
@@ -11522,17 +11315,17 @@ func verify(path: String, expected: String) -> { ok: Bool }
             .expect("should have compare node");
 
         // Verify internal triplet edges: prepare→execute, execute→parse.
-        let has_prepare_to_execute = edges
-            .iter()
-            .any(|(from, fp, to, tp)| from == prepare && *fp == "request" && to == execute && *tp == "request");
+        let has_prepare_to_execute = edges.iter().any(|(from, fp, to, tp)| {
+            from == prepare && *fp == "request" && to == execute && *tp == "request"
+        });
         assert!(
             has_prepare_to_execute,
             "expected edge from prepare.request to execute.request; edges: {:?}",
             edges
         );
-        let has_execute_to_parse = edges
-            .iter()
-            .any(|(from, fp, to, tp)| from == execute && *fp == "response" && to == parse && *tp == "response");
+        let has_execute_to_parse = edges.iter().any(|(from, fp, to, tp)| {
+            from == execute && *fp == "response" && to == parse && *tp == "response"
+        });
         assert!(
             has_execute_to_parse,
             "expected edge from execute.response to parse.response; edges: {:?}",
@@ -11550,5 +11343,4 @@ func verify(path: String, expected: String) -> { ok: Bool }
             edges
         );
     }
-
 }

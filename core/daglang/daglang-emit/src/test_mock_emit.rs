@@ -41,7 +41,7 @@
 //! ```
 
 use daglang_syntax::ast::{
-    Annotation, ExpectStmt, Expr, FixtureDef, InputDecl, Item, Literal, MockDecl, SourceFile,
+    ExpectStmt, Expr, FixtureDef, InputDecl, Item, Literal, MockDecl, SourceFile,
     TestDef,
 };
 use std::collections::BTreeMap;
@@ -140,7 +140,7 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     let active_tests: Vec<&TestDef> = test_file
         .tests
         .iter()
-        .filter(|t| !t.skip && !find_annotation_bool(&t.annotations, "testgen_skip").unwrap_or(false))
+        .filter(|t| !t.skip && !t.skip)
         .collect();
 
     // Emit Rust mock helper annotations as documentation comments.
@@ -148,7 +148,7 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
         .iter()
         .filter_map(|t| {
             t.mock_helpers.clone()
-                .or_else(|| find_annotation_string(&t.annotations, "rust_mock_helpers"))
+                
         })
         .collect::<Vec<_>>()
         .into_iter()
@@ -202,11 +202,11 @@ fn emit_test_fn(
 
     // Prefer typed fields, fall back to annotations
     let tier = test.tier.clone()
-        .or_else(|| find_annotation_string(&test.annotations, "tier"));
+        ;
     let hermetic = if test.hermetic {
         Some(true)
     } else {
-        find_annotation_bool(&test.annotations, "hermetic")
+        Some(test.hermetic)
     };
 
     // Determine testgen flags
@@ -722,27 +722,8 @@ fn emit_inline_expr(expr: &Expr) -> String {
 }
 
 /// Find a string value for an annotation by name.
-fn find_annotation_string(annotations: &[Annotation], name: &str) -> Option<String> {
-    annotations.iter().find(|a| a.name == name).and_then(|a| {
-        a.args.first().and_then(|arg| match arg {
-            Expr::Ident(s) => Some(s.clone()),
-            Expr::Literal(Literal::String(s)) => Some(s.clone()),
-            _ => None,
-        })
-    })
-}
 
 /// Find a boolean value for an annotation by name.
-fn find_annotation_bool(annotations: &[Annotation], name: &str) -> Option<bool> {
-    annotations.iter().find(|a| a.name == name).and_then(|a| {
-        a.args.first().and_then(|arg| match arg {
-            Expr::Literal(Literal::Bool(b)) => Some(*b),
-            Expr::Ident(s) if s == "true" => Some(true),
-            Expr::Ident(s) if s == "false" => Some(false),
-            _ => None,
-        })
-    })
-}
 
 #[cfg(test)]
 mod tests {

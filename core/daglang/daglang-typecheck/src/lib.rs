@@ -25,7 +25,7 @@ use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Annotation, Expr, Field, Item, Literal, Param, ProvidesClause, Refinement, SourceFile, Stmt,
+    Expr, Field, Item, Literal, Param, ProvidesClause, Refinement, SourceFile, Stmt,
     TypeBody, TypeExpr, UsesClause, PipelineDef,
 };
 use daglang_syntax::ast_utils::{
@@ -263,11 +263,6 @@ pub enum TypeError {
         binding: String,
         resource_type: String,
     },
-    /// Unknown type-level annotation encountered during validation.
-    UnknownAnnotation {
-        context: String,
-        annotation: String,
-    },
 }
 
 impl std::fmt::Display for TypeError {
@@ -488,15 +483,7 @@ impl std::fmt::Display for TypeError {
             } => write!(
                 f,
                 "ambiguous provided resource type `{resource_type}` for binding `{binding}` in `{item}`"
-            ),
-            Self::UnknownAnnotation {
-                context,
-                annotation,
-            } => write!(
-                f,
-                "unknown type annotation `@{annotation}` in `{context}`"
-            ),
-        }
+            ),        }
     }
 }
 
@@ -2378,10 +2365,6 @@ fn validate_callable_body(
                 trailing_expr_type = None;
                 trailing_expr = None;
             }
-            Stmt::Annotation(_) => {
-                trailing_expr_type = None;
-                trailing_expr = None;
-            }
             Stmt::Expr(expr) => {
                 trailing_expr = Some(expr);
                 let (inferred, infer_errors) =
@@ -3306,26 +3289,6 @@ fn validate_type_expr(
                 context,
             ));
         }
-        TypeExpr::Annotated(inner, annotations) => {
-            errors.extend(validate_type_expr(
-                inner,
-                known_types,
-                generic_arity_registry,
-                context,
-            ));
-            for annotation in annotations {
-                match annotation.name.as_str() {
-                    "range" => {
-                        let (min, max) = extract_range_bounds(&annotation.args);
-                        if let (Some(min), Some(max)) = (min, max) {
-                            if min > max {
-                                errors.push(TypeError::UnsatisfiableRefinement {
-                                    ty: type_expr_to_string(inner),
-                                    constraint: format!("range min {min} exceeds max {max}"),
-                                });
-                            }
-                        }
-                    }
                     "content" | "brand" | "non_empty" | "pattern" | "file_types" => {
                         match process_supported_annotation(annotation) {
                             Ok(processed) => match processed {
@@ -3475,113 +3438,7 @@ enum ProcessedAnnotation {
     FileTypes(BTreeMap<String, String>),
 }
 
-fn process_supported_annotation(annotation: &Annotation) -> Result<ProcessedAnnotation, String> {
-    match annotation.name.as_str() {
-        "content" => {
-            if annotation.args.len() != 1 {
-                return Err("@content requires exactly one encoding argument".to_string());
-            }
-            let encoding_name = annotation
-                .args
-                .first()
-                .and_then(expr_as_string)
-                .ok_or_else(|| "@content encoding argument must be a string/identifier".to_string())?;
-            let canonical = canonical_content_encoding(&encoding_name).ok_or_else(|| {
-                format!(
-                    "unknown content encoding `{encoding_name}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
-                )
-            })?;
-            Ok(ProcessedAnnotation::PredicateContent(canonical))
-        }
-        "brand" => {
-            if annotation.args.len() != 1 {
-                return Err("@brand requires exactly one name argument".to_string());
-            }
-            let brand = annotation
-                .args
-                .first()
-                .and_then(expr_as_string)
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| "@brand requires a non-empty name argument".to_string())?;
-            Ok(ProcessedAnnotation::TypeOpBrand(brand))
-        }
-        "non_empty" => {
-            if !annotation.args.is_empty() {
-                return Err("@non_empty does not accept arguments".to_string());
-            }
-            Ok(ProcessedAnnotation::PredicateNonEmpty)
-        }
-        "pattern" => {
-            if annotation.args.len() != 1 {
-                return Err("@pattern requires exactly one regex argument".to_string());
-            }
-            let regex = annotation
-                .args
-                .first()
-                .and_then(expr_as_string)
-                .ok_or_else(|| "@pattern regex argument must be a string/identifier".to_string())?;
-            if regex.trim().is_empty() {
-                return Err("@pattern requires a non-empty regex".to_string());
-            }
-            Ok(ProcessedAnnotation::PredicateMatches(regex))
-        }
-        "file_types" => process_file_types_annotation(annotation),
-        _ => Err(format!(
-            "unsupported annotation processor `{}`",
-            annotation.name
-        )),
-    }
-}
 
-fn process_file_types_annotation(annotation: &Annotation) -> Result<ProcessedAnnotation, String> {
-    if annotation.args.len() != 1 {
-        return Err("@file_types requires exactly one record argument".to_string());
-    }
-    let record = annotation
-        .args
-        .first()
-        .ok_or_else(|| "@file_types requires one record argument".to_string())?;
-    let Expr::Record(_, fields) = record else {
-        return Err("@file_types argument must be a record".to_string());
-    };
-
-    let mut mapping: BTreeMap<String, String> = BTreeMap::new();
-    for (field_name, field_expr) in fields {
-        match field_name.as_str() {
-            "text" => {
-                for ext in expr_as_string_list(field_expr)? {
-                    validate_file_extension(&ext)?;
-                    mapping.insert(ext, "Text".to_string());
-                }
-            }
-            "binary" => {
-                for ext in expr_as_string_list(field_expr)? {
-                    validate_file_extension(&ext)?;
-                    mapping.insert(ext, "Binary".to_string());
-                }
-            }
-            "default" => {
-                let default_encoding = expr_as_string(field_expr).ok_or_else(|| {
-                    "@file_types.default must be a string/identifier encoding".to_string()
-                })?;
-                let canonical = canonical_content_encoding(&default_encoding).ok_or_else(|| {
-                    format!(
-                        "unknown @file_types.default encoding `{default_encoding}` — expected one of: Text, UTF8, ASCII, Latin1, Binary, Unknown"
-                    )
-                })?;
-                mapping.insert("*".to_string(), canonical);
-            }
-            other => {
-                return Err(format!(
-                    "@file_types field `{other}` is unsupported (expected text|binary|default)"
-                ));
-            }
-        }
-    }
-
-    Ok(ProcessedAnnotation::FileTypes(mapping))
-}
 
 fn expr_as_string_list(expr: &Expr) -> Result<Vec<String>, String> {
     let Expr::List(items) = expr else {
@@ -3614,31 +3471,6 @@ fn canonical_content_encoding(raw: &str) -> Option<String> {
     }
 }
 
-fn extract_range_bounds(args: &[Expr]) -> (Option<i64>, Option<i64>) {
-    let mut min = None;
-    let mut max = None;
-    for arg in args {
-        match arg {
-            Expr::Record(_, fields) => {
-                for (name, value) in fields {
-                    match name.as_str() {
-                        "min" => min = extract_int_literal(value),
-                        "max" => max = extract_int_literal(value),
-                        _ => {}
-                    }
-                }
-            }
-            _ => {
-                if min.is_none() {
-                    min = extract_int_literal(arg);
-                } else if max.is_none() {
-                    max = extract_int_literal(arg);
-                }
-            }
-        }
-    }
-    (min, max)
-}
 
 fn extract_int_literal(expr: &Expr) -> Option<i64> {
     match expr {

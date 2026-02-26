@@ -105,7 +105,6 @@ pub enum TokenKind {
     Ne,
     Le,
     Ge,
-    At,
     Question,
     NullCoalesce,
     // Strings
@@ -219,7 +218,6 @@ impl TokenKind {
             Self::Ne => "!=",
             Self::Le => "<=",
             Self::Ge => ">=",
-            Self::At => "@",
             Self::Question => "?",
             Self::NullCoalesce => "??",
             Self::Str(_) => "string",
@@ -479,10 +477,7 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 self.tok(TokenKind::Percent, start)
             }
-            b'@' => {
-                self.advance();
-                self.tok(TokenKind::At, start)
-            }
+            // b'@' — no longer valid syntax, falls through to error handler
             b'/' => {
                 self.advance();
                 self.tok(TokenKind::Slash, start)

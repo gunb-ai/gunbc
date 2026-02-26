@@ -169,15 +169,24 @@ fn lower_stmt(stmt: &ast::Stmt) -> LoweredStmt {
     match stmt {
         ast::Stmt::Let(name, expr) => LoweredStmt::Let(name.clone(), lower_expr(expr)),
         ast::Stmt::Assign(name, expr) => LoweredStmt::Let(name.clone(), lower_expr(expr)),
-        ast::Stmt::Node(ns) => LoweredStmt::Let(ns.name.clone(), lower_expr(&ns.expr)),
+        ast::Stmt::Node(ns) => {
+            let mut expr = lower_expr(&ns.expr);
+            if let Some(guard) = &ns.when_guard {
+                expr = LoweredExpr::IfElse {
+                    cond: Box::new(lower_expr(guard)),
+                    then_: Box::new(expr),
+                    else_: Some(Box::new(LoweredExpr::Literal(LoweredLiteral::None))),
+                };
+            }
+            LoweredStmt::Let(ns.name.clone(), expr)
+        }
         ast::Stmt::Expr(expr) => LoweredStmt::Expr(lower_expr(expr)),
-        ast::Stmt::Return(fields) => {
-            LoweredStmt::Return(fields.iter().map(|(k, v)| (k.clone(), lower_expr(v))).collect())
-        }
-        ast::Stmt::Annotation(_) => {
-            // Annotations in fn bodies are metadata — no runtime effect
-            LoweredStmt::Expr(LoweredExpr::Literal(LoweredLiteral::None))
-        }
+        ast::Stmt::Return(fields) => LoweredStmt::Return(
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), lower_expr(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -272,9 +281,12 @@ fn lower_expr(expr: &ast::Expr) -> LoweredExpr {
             // After deps are DAG scheduling concerns — evaluate the inner expr
             lower_expr(expr)
         }
-        ast::Expr::Return(fields) => {
-            LoweredExpr::Return(fields.iter().map(|(k, v)| (k.clone(), lower_expr(v))).collect())
-        }
+        ast::Expr::Return(fields) => LoweredExpr::Return(
+            fields
+                .iter()
+                .map(|(k, v)| (k.clone(), lower_expr(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -411,13 +423,11 @@ mod tests {
         };
         let lowered = lower_fn_body(&body);
         match &lowered.stmts[0] {
-            LoweredStmt::Expr(LoweredExpr::IfElse {
-                cond,
-                then_,
-                else_,
-            }) => {
+            LoweredStmt::Expr(LoweredExpr::IfElse { cond, then_, else_ }) => {
                 assert!(matches!(cond.as_ref(), LoweredExpr::Ident(n) if n == "flag"));
-                assert!(matches!(then_.as_ref(), LoweredExpr::Literal(LoweredLiteral::String(s)) if s == "yes"));
+                assert!(
+                    matches!(then_.as_ref(), LoweredExpr::Literal(LoweredLiteral::String(s)) if s == "yes")
+                );
                 assert!(else_.is_some());
             }
             other => panic!("expected IfElse, got: {other:?}"),
@@ -452,14 +462,8 @@ mod tests {
         let expr = ast::Expr::Call(
             "render_target".to_string(),
             vec![
-                (
-                    Some("name".to_string()),
-                    ast::Expr::Ident("n".to_string()),
-                ),
-                (
-                    Some("deps".to_string()),
-                    ast::Expr::List(vec![]),
-                ),
+                (Some("name".to_string()), ast::Expr::Ident("n".to_string())),
+                (Some("deps".to_string()), ast::Expr::List(vec![])),
             ],
         );
         let lowered = lower_expr(&expr);

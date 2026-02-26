@@ -119,7 +119,6 @@ pub mod ast {
         pub name: String,
         pub inputs: Vec<Field>,
         pub outputs: Vec<Field>,
-        pub annotations: Vec<Annotation>,
     }
 
     /// `extern asset name: Type`
@@ -127,7 +126,6 @@ pub mod ast {
     pub struct ExternAssetDecl {
         pub name: String,
         pub ty: TypeExpr,
-        pub annotations: Vec<Annotation>,
     }
 
     // ── Types ───────────────────────────────────────────────────────
@@ -154,7 +152,6 @@ pub mod ast {
         pub name: String,
         pub ty: TypeExpr,
         pub default: Option<Expr>,
-        pub annotations: Vec<Annotation>,
         pub from_path: Option<String>,
     }
 
@@ -169,7 +166,6 @@ pub mod ast {
         Named(String),
         Generic(String, Vec<TypeExpr>),
         Optional(Box<TypeExpr>),
-        Annotated(Box<TypeExpr>, Vec<Annotation>),
         /// Refined type: `Base where constraint1, constraint2`
         Refined(Box<TypeExpr>, Vec<Refinement>),
         /// Anonymous record return type: `-> { field: Type, ... }`
@@ -197,7 +193,6 @@ pub mod ast {
         pub outputs: Vec<Field>,
         pub uses: Vec<UsesClause>,
         pub provides: Vec<ProvidesClause>,
-        pub annotations: Vec<Annotation>,
         pub body: FuncBody,
         pub declared_outputs: Vec<String>,
     }
@@ -240,7 +235,6 @@ pub mod ast {
     pub struct ServiceDef {
         pub name: String,
         pub implements: Option<String>,
-        pub annotations: Vec<Annotation>,
         pub operations: Vec<OperationDef>,
         pub config: ServiceConfig,
     }
@@ -250,7 +244,6 @@ pub mod ast {
         pub name: String,
         pub inputs: Vec<Field>,
         pub outputs: Vec<Field>,
-        pub annotations: Vec<Annotation>,
         pub idempotent: bool,
         pub readonly: bool,
         pub hermetic: bool,
@@ -277,7 +270,6 @@ pub mod ast {
         pub name: String,
         pub inputs: Vec<Field>,
         pub outputs: Vec<Field>,
-        pub annotations: Vec<Annotation>,
         pub idempotent: bool,
         pub readonly: bool,
         pub mock_response: Vec<MockResponseDef>,
@@ -290,8 +282,7 @@ pub mod ast {
         pub name: String,
         pub type_params: Vec<String>,
         pub capabilities: Vec<CapabilityDef>,
-        pub contracts: Vec<Annotation>,
-        pub typed_contracts: Vec<ContractDef>,
+        pub contracts: Vec<ContractDef>,
     }
 
     // ── Pipelines ───────────────────────────────────────────────────
@@ -384,8 +375,8 @@ pub mod ast {
     ///
     /// ```dag
     /// test gist_snapshot_dryrun : cloud_env_fixture {
-    ///     @tier(Unit)
-    ///     @hermetic(true)
+    ///     tier: Unit
+    ///     hermetic
     ///
     ///     input render_snapshot.topology_json = "{}"
     ///
@@ -398,7 +389,6 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub struct TestDef {
         pub name: String,
-        pub annotations: Vec<Annotation>,
         /// Optional parent fixture name.
         pub fixture: Option<String>,
         /// Mock declarations local to this test.
@@ -563,15 +553,7 @@ pub mod ast {
         Literal(Literal),
     }
 
-    // ── Annotations ─────────────────────────────────────────────────
-
-    #[derive(Debug, Clone)]
-    pub struct Annotation {
-        pub name: String,
-        pub args: Vec<Expr>,
-    }
-
-    // ── Typed syntax (replacing annotations) ────────────────────────
+    // ── Typed syntax ────────────────────────────────────────────────
 
     #[derive(Debug, Clone, Default)]
     pub struct ServiceConfig {
@@ -642,7 +624,6 @@ pub mod ast {
     pub enum Stmt {
         Let(String, Expr),
         Assign(String, Expr),
-        Annotation(Annotation),
         Expr(Expr),
         Return(Vec<(String, Expr)>),
         Node(NodeStmt),

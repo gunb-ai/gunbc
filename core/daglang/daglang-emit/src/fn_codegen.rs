@@ -112,11 +112,7 @@ fn compile_stmt(stmt: &ast::Stmt, is_last: bool, ctx: &CompileContext) -> code_i
             name: ns.name.clone(),
             mutable: false,
             expr: compile_expr(&ns.expr, ctx),
-        },
-        ast::Stmt::Annotation(_) => {
-            if is_last {
-                code_ir::Stmt::TailExpr(code_ir::Expr::Tuple(vec![]))
-            } else {
+        }, else {
                 code_ir::Stmt::Expr(code_ir::Expr::Tuple(vec![]))
             }
         }

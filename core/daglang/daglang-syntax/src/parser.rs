@@ -313,31 +313,6 @@ impl Parser {
         }
     }
 
-    fn skip_annotation_value(&mut self) {
-        let mut depth: i32 = 0;
-        loop {
-            if self.at_eof() {
-                return;
-            }
-            match &self.peek().kind {
-                TokenKind::LBrace | TokenKind::LParen | TokenKind::LBracket => {
-                    depth += 1;
-                    self.advance();
-                }
-                TokenKind::RBrace | TokenKind::RParen | TokenKind::RBracket => {
-                    if depth <= 0 {
-                        return;
-                    }
-                    depth -= 1;
-                    self.advance();
-                }
-                TokenKind::At if depth == 0 => return,
-                _ => {
-                    self.advance();
-                }
-            }
-        }
-    }
 
     fn parse_service_config(&mut self) -> Result<ServiceConfig, ParseError> {
         let mut config = ServiceConfig::default();
@@ -532,20 +507,10 @@ impl Parser {
 
         let mut items = Vec::new();
         while !self.at_eof() {
-            let mut leading_anns = Vec::new();
-            while self.check(&TokenKind::At) {
-                match self.parse_annotation() {
-                    Ok(a) => leading_anns.push(a),
-                    Err(e) => {
-                        self.record_err(e);
-                        self.skip_annotation_value();
-                    }
-                }
-            }
             if self.at_eof() {
                 break;
             }
-            match self.parse_item(leading_anns) {
+            match self.parse_item() {
                 Ok(item) => items.push(item),
                 Err(e) => {
                     self.record_err(e);
@@ -613,19 +578,19 @@ impl Parser {
         })
     }
 
-    fn parse_item(&mut self, leading_anns: Vec<Annotation>) -> Result<Spanned<Item>, ParseError> {
+    fn parse_item(&mut self) -> Result<Spanned<Item>, ParseError> {
         let start = self.span();
         let item = match &self.peek().kind {
             TokenKind::Type => Item::TypeDef(self.parse_type_def()?),
             TokenKind::Fn => Item::FnDef(self.parse_fn_def()?),
-            TokenKind::Func => Item::FuncDef(self.parse_func_def(leading_anns)?),
+            TokenKind::Func => Item::FuncDef(self.parse_func_def()?),
             TokenKind::Pattern => Item::PatternDef(self.parse_pattern_def()?),
-            TokenKind::Service => Item::ServiceDef(self.parse_service_def(leading_anns)?),
+            TokenKind::Service => Item::ServiceDef(self.parse_service_def()?),
             TokenKind::Resource => Item::ResourceDef(self.parse_resource_def()?),
             TokenKind::Interface => Item::InterfaceDef(self.parse_interface_def()?),
             TokenKind::Pipeline => Item::PipelineDef(self.parse_pipeline_def()?),
             TokenKind::Profile => Item::ProfileDef(self.parse_profile_def()?),
-            TokenKind::Test => Item::TestDef(self.parse_test_def(leading_anns)?),
+            TokenKind::Test => Item::TestDef(self.parse_test_def()?),
             TokenKind::Fixture => Item::FixtureDef(self.parse_fixture_def()?),
             TokenKind::Project => Item::ProjectDef(self.parse_project_def()?),
             TokenKind::Feature => Item::FeatureDef(self.parse_feature_def()?),
@@ -635,7 +600,7 @@ impl Parser {
             TokenKind::Environment => Item::EnvironmentDef(self.parse_environment_def()?),
             TokenKind::ParamKw => Item::ParamDecl(self.parse_param_decl()?),
             TokenKind::DataKw => Item::DataDef(self.parse_data_def()?),
-            TokenKind::Extern => self.parse_extern_decl(leading_anns)?,
+            TokenKind::Extern => self.parse_extern_decl()?,
             _ => {
                 return Err(self.err(format!(
                     "expected item declaration, found {}",
@@ -678,21 +643,18 @@ impl Parser {
 
     // ── extern declarations ────────────────────────────────────────
 
-    fn parse_extern_decl(&mut self, leading: Vec<Annotation>) -> Result<Item, ParseError> {
+    fn parse_extern_decl(&mut self) -> Result<Item, ParseError> {
         self.expect(&TokenKind::Extern)?;
         match &self.peek().kind {
-            TokenKind::Func => Ok(Item::ExternFuncDecl(self.parse_extern_func_decl(leading)?)),
+            TokenKind::Func => Ok(Item::ExternFuncDecl(self.parse_extern_func_decl()?)),
             TokenKind::Ident(s) if s == "asset" => {
-                Ok(Item::ExternAssetDecl(self.parse_extern_asset_decl(leading)?))
+                Ok(Item::ExternAssetDecl(self.parse_extern_asset_decl()?))
             }
             _ => Err(self.err("expected `func` or `asset` after `extern`".to_string())),
         }
     }
 
-    fn parse_extern_func_decl(
-        &mut self,
-        annotations: Vec<Annotation>,
-    ) -> Result<ExternFuncDecl, ParseError> {
+    fn parse_extern_func_decl(&mut self) -> Result<ExternFuncDecl, ParseError> {
         self.expect(&TokenKind::Func)?;
         let name = self.expect_ident()?;
         self.expect(&TokenKind::LParen)?;
@@ -704,14 +666,10 @@ impl Parser {
             name,
             inputs,
             outputs,
-            annotations,
         })
     }
 
-    fn parse_extern_asset_decl(
-        &mut self,
-        annotations: Vec<Annotation>,
-    ) -> Result<ExternAssetDecl, ParseError> {
+    fn parse_extern_asset_decl(&mut self) -> Result<ExternAssetDecl, ParseError> {
         self.advance(); // consume "asset" identifier
         let name = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
@@ -719,7 +677,6 @@ impl Parser {
         Ok(ExternAssetDecl {
             name,
             ty,
-            annotations,
         })
     }
 
@@ -874,14 +831,6 @@ impl Parser {
             ty = TypeExpr::Optional(Box::new(ty));
         }
 
-        let mut anns = Vec::new();
-        while self.check(&TokenKind::At) {
-            anns.push(self.parse_annotation()?);
-        }
-        if !anns.is_empty() {
-            ty = TypeExpr::Annotated(Box::new(ty), anns);
-        }
-
         // Parse optional `where` clause for typed refinements
         if self.check(&TokenKind::Where) {
             self.advance();
@@ -968,24 +917,75 @@ impl Parser {
                 Ok(Refinement::Format(fmt))
             }
             "raw_body" => Ok(Refinement::RawBody),
+            "file_types" => {
+                self.expect(&TokenKind::LParen)?;
+                let mut exts = Vec::new();
+                while !self.check(&TokenKind::RParen) && !self.at_eof() {
+                    if let TokenKind::Str(s) = &self.peek().kind {
+                        exts.push(s.clone());
+                        self.advance();
+                    } else {
+                        return Err(self.err("expected string literal for file_types".into()));
+                    }
+                    if !self.eat(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+                self.expect(&TokenKind::RParen)?;
+                Ok(Refinement::FileTypes(exts))
+            }
             other => {
-                // Generic predicate — consume optional parens
+                // Generic predicate — consume optional parens, preserving arguments
+                let mut pred = other.to_string();
                 if self.check(&TokenKind::LParen) {
+                    pred.push('(');
                     self.advance();
                     let mut depth = 1usize;
                     while depth > 0 && !self.at_eof() {
-                        match self.peek().kind {
-                            TokenKind::LParen => { depth += 1; self.advance(); }
+                        match &self.peek().kind {
+                            TokenKind::LParen => {
+                                depth += 1;
+                                pred.push('(');
+                                self.advance();
+                            }
                             TokenKind::RParen => {
                                 depth -= 1;
-                                if depth > 0 { self.advance(); }
+                                if depth > 0 {
+                                    pred.push(')');
+                                    self.advance();
+                                }
                             }
-                            _ => { self.advance(); }
+                            TokenKind::Str(s) => {
+                                pred.push('"');
+                                pred.push_str(s);
+                                pred.push('"');
+                                self.advance();
+                            }
+                            TokenKind::Int(i) => {
+                                pred.push_str(&i.to_string());
+                                self.advance();
+                            }
+                            TokenKind::Float(f) => {
+                                pred.push_str(&f.to_string());
+                                self.advance();
+                            }
+                            TokenKind::Ident(id) => {
+                                pred.push_str(id);
+                                self.advance();
+                            }
+                            TokenKind::Comma => {
+                                pred.push_str(", ");
+                                self.advance();
+                            }
+                            _ => {
+                                self.advance();
+                            }
                         }
                     }
+                    pred.push(')');
                     self.expect(&TokenKind::RParen)?;
                 }
-                Ok(Refinement::Predicate(other.to_string()))
+                Ok(Refinement::Predicate(pred))
             }
         }
     }
@@ -1009,7 +1009,6 @@ impl Parser {
                     || self.check(&TokenKind::LBracket)
                     || self.check(&TokenKind::Eq)
                     || self.check(&TokenKind::Pipe)
-                    || self.check(&TokenKind::At)
                     || self.check(&TokenKind::Uses)
                     || self.check(&TokenKind::Provides));
             if stop {
@@ -1075,7 +1074,7 @@ impl Parser {
         })
     }
 
-    fn parse_func_def(&mut self, leading: Vec<Annotation>) -> Result<FuncDef, ParseError> {
+    fn parse_func_def(&mut self) -> Result<FuncDef, ParseError> {
         self.expect(&TokenKind::Func)?;
         let name = self.expect_ident()?;
         let type_params = self.parse_optional_type_params()?;
@@ -1085,10 +1084,6 @@ impl Parser {
         self.expect(&TokenKind::Arrow)?;
         let outputs = self.parse_output_fields()?;
         let (uses, provides) = self.parse_uses_provides()?;
-        let mut annotations = leading;
-        while self.check(&TokenKind::At) {
-            annotations.push(self.parse_annotation()?);
-        }
         self.expect(&TokenKind::LBrace)?;
         let body = self.parse_func_body_lossy()?;
         Ok(FuncDef {
@@ -1098,7 +1093,6 @@ impl Parser {
             outputs,
             uses,
             provides,
-            annotations,
             body,
             declared_outputs: Vec::new(),
         })
@@ -1140,7 +1134,6 @@ impl Parser {
                 name: "return".into(),
                 ty,
                 default: None,
-                annotations: Vec::new(),
                 from_path: None,
             }]);
         }
@@ -1207,7 +1200,7 @@ impl Parser {
 
     // ── service / resource / interface / pipeline ───────────────────
 
-    fn parse_service_def(&mut self, leading: Vec<Annotation>) -> Result<ServiceDef, ParseError> {
+    fn parse_service_def(&mut self) -> Result<ServiceDef, ParseError> {
         self.expect(&TokenKind::Service)?;
         let name = self.parse_dotted_ident()?;
         let implements = if self.eat(&TokenKind::Colon) || self.eat(&TokenKind::Implements) {
@@ -1216,13 +1209,10 @@ impl Parser {
             None
         };
         self.expect(&TokenKind::LBrace)?;
-        let mut annotations = leading;
         let mut operations = Vec::new();
         let mut config = ServiceConfig::default();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-            if self.check(&TokenKind::At) {
-                annotations.push(self.parse_annotation()?);
-            } else if self.check(&TokenKind::Operation) {
+            if self.check(&TokenKind::Operation) {
                 operations.push(self.parse_operation_def()?);
             } else if self.check(&TokenKind::Config) {
                 self.advance();
@@ -1237,7 +1227,6 @@ impl Parser {
         Ok(ServiceDef {
             name,
             implements,
-            annotations,
             operations,
             config,
         })
@@ -1248,7 +1237,6 @@ impl Parser {
         let name = self.expect_ident()?;
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
-        let mut annotations = Vec::new();
         let mut idempotent = false;
         let mut readonly = false;
         let mut hermetic = false;
@@ -1265,9 +1253,7 @@ impl Parser {
             self.expect(&TokenKind::RBrace)?;
         }
         loop {
-            if self.check(&TokenKind::At) {
-                annotations.push(self.parse_annotation()?);
-            } else if self.check(&TokenKind::Idempotent) {
+            if self.check(&TokenKind::Idempotent) {
                 self.advance(); idempotent = true;
             } else if self.check(&TokenKind::Readonly) {
                 self.advance(); readonly = true;
@@ -1279,9 +1265,7 @@ impl Parser {
         }
         if self.eat(&TokenKind::LBrace) {
             while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-                if self.check(&TokenKind::At) {
-                    annotations.push(self.parse_annotation()?);
-                } else if self.check(&TokenKind::Input) {
+                if self.check(&TokenKind::Input) {
                     self.advance();
                     self.expect(&TokenKind::LBrace)?;
                     inputs = self.parse_field_list_until_rbrace()?;
@@ -1309,7 +1293,6 @@ impl Parser {
             name,
             inputs,
             outputs,
-            annotations,
             idempotent,
             readonly,
             hermetic,
@@ -1363,9 +1346,6 @@ impl Parser {
                     let v = self.parse_expr(0)?;
                     properties.push((k, v));
                 }
-                TokenKind::At => {
-                    let _ = self.parse_annotation();
-                }
                 _ => {
                     self.advance();
                 }
@@ -1389,7 +1369,6 @@ impl Parser {
         self.expect(&TokenKind::LBrace)?;
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
-        let mut annotations = Vec::new();
         let mut idempotent = false;
         let mut readonly = false;
         let mock_response: Vec<MockResponseDef> = Vec::new();
@@ -1404,8 +1383,6 @@ impl Parser {
                 self.expect(&TokenKind::LBrace)?;
                 outputs = self.parse_field_list_until_rbrace()?;
                 self.expect(&TokenKind::RBrace)?;
-            } else if self.check(&TokenKind::At) {
-                annotations.push(self.parse_annotation()?);
             } else if self.check(&TokenKind::Idempotent) {
                 self.advance(); idempotent = true;
             } else if self.check(&TokenKind::Readonly) {
@@ -1419,7 +1396,6 @@ impl Parser {
             name,
             inputs,
             outputs,
-            annotations,
             idempotent,
             readonly,
             mock_response,
@@ -1435,8 +1411,7 @@ impl Parser {
         }
         self.expect(&TokenKind::LBrace)?;
         let mut capabilities = Vec::new();
-        let mut contracts = Vec::new();
-        let mut typed_contracts = Vec::new();
+        let mut typed_contracts: Vec<ContractDef> = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.check(&TokenKind::Operation) {
                 let op = self.parse_operation_def()?;
@@ -1444,7 +1419,6 @@ impl Parser {
                     name: op.name,
                     inputs: op.inputs,
                     outputs: op.outputs,
-                    annotations: op.annotations,
                     idempotent: op.idempotent,
                     readonly: op.readonly,
                     mock_response: op.mock_response,
@@ -1466,7 +1440,6 @@ impl Parser {
                     && !self.check(&TokenKind::Operation)
                     && !self.check(&TokenKind::Fn)
                     && !self.check(&TokenKind::Type)
-                    && !self.check(&TokenKind::At)
                     && !self.check(&TokenKind::Contract)
                 {
                     text_parts.push(format!("{:?}", self.peek().kind));
@@ -1475,9 +1448,6 @@ impl Parser {
                 typed_contracts.push(ContractDef {
                     text: text_parts.join(" "),
                 });
-            } else if self.check(&TokenKind::At) {
-                let ann = self.parse_annotation()?;
-                contracts.push(ann);
             } else {
                 self.advance();
             }
@@ -1487,8 +1457,7 @@ impl Parser {
             name,
             type_params,
             capabilities,
-            contracts,
-            typed_contracts,
+            contracts: typed_contracts,
         })
     }
 
@@ -1504,7 +1473,6 @@ impl Parser {
                 name: p.name,
                 ty: p.ty,
                 default: p.default,
-                annotations: Vec::new(),
                 from_path: None,
             })
             .collect();
@@ -1515,19 +1483,13 @@ impl Parser {
                 name: "return".into(),
                 ty: ret,
                 default: None,
-                annotations: Vec::new(),
                 from_path: None,
             });
-        }
-        let mut annotations = Vec::new();
-        while self.check(&TokenKind::At) && !self.next_annotation_is_contract() {
-            annotations.push(self.parse_annotation()?);
         }
         Ok(CapabilityDef {
             name,
             inputs,
             outputs,
-            annotations,
             idempotent: false,
             readonly: false,
             mock_response: Vec::new(),
@@ -1539,7 +1501,6 @@ impl Parser {
         let name = self.expect_ident()?;
         let mut inputs = Vec::new();
         let mut outputs = Vec::new();
-        let mut annotations = Vec::new();
         let mut idempotent = false;
         let mut readonly = false;
 
@@ -1552,9 +1513,7 @@ impl Parser {
             self.expect(&TokenKind::RBrace)?;
         }
         loop {
-            if self.check(&TokenKind::At) && !self.next_annotation_is_contract() {
-                annotations.push(self.parse_annotation()?);
-            } else if self.check(&TokenKind::Idempotent) {
+            if self.check(&TokenKind::Idempotent) {
                 self.advance(); idempotent = true;
             } else if self.check(&TokenKind::Readonly) {
                 self.advance(); readonly = true;
@@ -1575,8 +1534,6 @@ impl Parser {
                     self.expect(&TokenKind::LBrace)?;
                     outputs = self.parse_field_list_until_rbrace()?;
                     self.expect(&TokenKind::RBrace)?;
-                } else if self.check(&TokenKind::At) {
-                    annotations.push(self.parse_annotation()?);
                 } else if self.check(&TokenKind::Idempotent) {
                     self.advance(); idempotent = true;
                 } else if self.check(&TokenKind::Readonly) {
@@ -1592,22 +1549,12 @@ impl Parser {
             name,
             inputs,
             outputs,
-            annotations,
             idempotent,
             readonly,
             mock_response: Vec::new(),
         })
     }
 
-    fn next_annotation_is_contract(&self) -> bool {
-        if !self.check(&TokenKind::At) {
-            return false;
-        }
-        self.tokens
-            .get(self.pos + 1)
-            .and_then(|token| Self::token_kind_as_ident(&token.kind))
-            .is_some_and(|ident| ident == "contract")
-    }
 
     fn parse_return_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
         if self.eat(&TokenKind::LBrace) {
@@ -1806,7 +1753,7 @@ impl Parser {
 
     /// Parse a test definition:
     /// `test <name> [: <fixture>] { annotation* (mock | input | expect)* }`
-    fn parse_test_def(&mut self, leading_anns: Vec<Annotation>) -> Result<TestDef, ParseError> {
+    fn parse_test_def(&mut self) -> Result<TestDef, ParseError> {
         self.expect(&TokenKind::Test)?;
         let name = self.expect_ident()?;
         let fixture = if self.eat(&TokenKind::Colon) {
@@ -1815,18 +1762,6 @@ impl Parser {
             None
         };
         self.expect(&TokenKind::LBrace)?;
-
-        // Collect inline annotations at the top of the test body.
-        let mut annotations = leading_anns;
-        while self.check(&TokenKind::At) {
-            match self.parse_annotation() {
-                Ok(a) => annotations.push(a),
-                Err(e) => {
-                    self.record_err(e);
-                    self.skip_annotation_value();
-                }
-            }
-        }
 
         let mut tier = None;
         let mut hermetic = false;
@@ -1878,7 +1813,6 @@ impl Parser {
 
         Ok(TestDef {
             name,
-            annotations,
             fixture,
             mocks,
             inputs,
@@ -2078,10 +2012,6 @@ impl Parser {
     fn parse_field_list_until_rbrace(&mut self) -> Result<Vec<Field>, ParseError> {
         let mut fields = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
-            if self.check(&TokenKind::At) {
-                let _ = self.parse_annotation();
-                continue;
-            }
             fields.push(self.parse_field()?);
             self.eat(&TokenKind::Comma);
         }
@@ -2112,10 +2042,6 @@ impl Parser {
         } else {
             None
         };
-        let mut annotations = Vec::new();
-        while self.check(&TokenKind::At) {
-            annotations.push(self.parse_annotation()?);
-        }
         let from_path = if self.check(&TokenKind::From) {
             self.advance();
             if let TokenKind::Str(s) = &self.peek().kind {
@@ -2132,7 +2058,6 @@ impl Parser {
             name,
             ty,
             default,
-            annotations,
             from_path,
         })
     }
@@ -2178,67 +2103,7 @@ impl Parser {
         Ok(Param { name, ty, default })
     }
 
-    // ── annotations ────────────────────────────────────────────────
 
-    fn parse_annotation(&mut self) -> Result<Annotation, ParseError> {
-        self.expect(&TokenKind::At)?;
-        let name = self.expect_ident()?;
-        let mut args = Vec::new();
-
-        if self.eat(&TokenKind::LParen) {
-            if !self.check(&TokenKind::RParen) {
-                loop {
-                    if Self::token_kind_as_ident(&self.peek().kind).is_some()
-                        && self.peek2().kind == TokenKind::Colon
-                    {
-                        let k = self.expect_ident()?;
-                        self.expect(&TokenKind::Colon)?;
-                        let v = self.parse_expr(0)?;
-                        args.push(Expr::Record(None, vec![(k, v)]));
-                    } else {
-                        args.push(self.parse_expr(0)?);
-                    }
-                    if !self.eat(&TokenKind::Comma) {
-                        break;
-                    }
-                    if self.check(&TokenKind::RParen) {
-                        break;
-                    }
-                }
-            }
-            self.expect(&TokenKind::RParen)?;
-        }
-
-        if self.check(&TokenKind::LBrace) && self.annotation_block_follows() {
-            self.advance();
-            let rec = self.parse_record_like_block()?;
-            args.push(rec);
-            self.expect(&TokenKind::RBrace)?;
-        }
-
-        if self.eat(&TokenKind::Colon) {
-            if let Ok(e) = self.parse_expr(0) {
-                args.push(e);
-            }
-            self.skip_annotation_value();
-        }
-
-        Ok(Annotation { name, args })
-    }
-
-    fn annotation_block_follows(&self) -> bool {
-        if !self.check(&TokenKind::LBrace) {
-            return false;
-        }
-        let next = self.tokens.get(self.pos + 1).map(|t| &t.kind);
-        let next2 = self.tokens.get(self.pos + 2).map(|t| &t.kind);
-
-        matches!(next, Some(TokenKind::RBrace))
-            || (matches!(next, Some(TokenKind::Str(_)) | Some(TokenKind::StrBegin(_)))
-                && matches!(next2, Some(TokenKind::Colon)))
-            || (next.and_then(Self::token_kind_as_ident).is_some()
-                && matches!(next2, Some(TokenKind::Colon)))
-    }
 
     fn parse_record_like_block(&mut self) -> Result<Expr, ParseError> {
         let mut fields = Vec::new();
@@ -2302,10 +2167,6 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
-        if self.check(&TokenKind::At) {
-            let annotation = self.parse_annotation()?;
-            return Ok(Stmt::Annotation(annotation));
-        }
         if self.check(&TokenKind::Return) {
             return self.parse_return_stmt();
         }
@@ -2794,7 +2655,6 @@ impl Parser {
         if self.check(&TokenKind::Let)
             || self.check(&TokenKind::Return)
             || self.check(&TokenKind::Node)
-            || self.check(&TokenKind::At)
             || self.check(&TokenKind::Parallel)
         {
             return true;
@@ -3296,37 +3156,6 @@ data tool_registry: List<String> = ["makegen", "testgen"]
     }
 
     #[test]
-    fn parse_interface_contract_annotations_are_not_capability_annotations() {
-        let sf = parse_or_panic(
-            r#"module test
-interface Storage {
-  capability read(key: String) -> { value: String }
-    @readonly
-  @contract: read(k) => { value: "ok" }
-}
-"#,
-        );
-        match &sf.items[0].node {
-            Item::InterfaceDef(def) => {
-                assert_eq!(def.capabilities.len(), 1);
-                assert_eq!(
-                    def.capabilities[0].annotations.len(),
-                    1,
-                    "capability should keep only capability-scoped annotations"
-                );
-                assert_eq!(def.capabilities[0].annotations[0].name, "readonly");
-                assert_eq!(
-                    def.contracts.len(),
-                    1,
-                    "interface @contract annotations should be collected on interface"
-                );
-                assert_eq!(def.contracts[0].name, "contract");
-            }
-            other => panic!("expected InterfaceDef, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn parse_profile_definition_with_binds_and_config() {
         let sf = parse_or_panic(
             r#"module profiles.sdlc
@@ -3370,29 +3199,6 @@ pipeline gist {
                 assert!(matches!(
                     stage.when,
                     Some(Expr::BinOp(_, BinOp::Or, _))
-                ));
-            }
-            other => panic!("expected PipelineDef, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_stage_body_preserves_annotation_statements() {
-        let sf = parse_or_panic(
-            r#"module workflows.ci
-pipeline ci {
-  stage build {
-    @file(WRITE, "target")
-  }
-}"#,
-        );
-        match &sf.items[0].node {
-            Item::PipelineDef(def) => {
-                assert_eq!(def.stages.len(), 1);
-                let stage = &def.stages[0];
-                assert!(matches!(
-                    stage.body.stmts.first(),
-                    Some(Stmt::Annotation(annotation)) if annotation.name == "file"
                 ));
             }
             other => panic!("expected PipelineDef, got {other:?}"),
@@ -3549,22 +3355,4 @@ pipeline ci {
         }
     }
 
-    #[test]
-    fn parse_extern_func_with_annotations() {
-        let source = r#"
-            module test.extern_mod
-            @timeout(30)
-            extern func call_api(endpoint: String) -> { result: String }
-        "#;
-        let ast = parse_or_panic(source);
-        assert_eq!(ast.items.len(), 1);
-        match &ast.items[0].node {
-            Item::ExternFuncDecl(def) => {
-                assert_eq!(def.name, "call_api");
-                assert_eq!(def.annotations.len(), 1);
-                assert_eq!(def.annotations[0].name, "timeout");
-            }
-            other => panic!("expected ExternFuncDecl, got {other:?}"),
-        }
-    }
 }

@@ -72,7 +72,7 @@ mod backend_harness;
 
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
 use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
-pub use daglang_lower::{extract_output_paths, extract_outputs_annotation};
+pub use daglang_lower::extract_output_paths;
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag};
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
