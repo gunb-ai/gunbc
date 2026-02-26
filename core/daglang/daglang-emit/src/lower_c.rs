@@ -562,9 +562,7 @@ fn lower_expr(expr: &Expr, config: &CConfig) -> CExpr {
             // Complex blocks cannot be lowered to a C expression context.
             CExpr::Var("/* block expr */0".to_string())
         }
-        Expr::RawCode(code) => {
-            CExpr::Var(code.clone())
-        }
+        Expr::RawCode(code) => CExpr::Var(code.clone()),
     }
 }
 

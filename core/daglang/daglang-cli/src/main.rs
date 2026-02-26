@@ -870,9 +870,7 @@ pub(crate) struct GenTypesArgs {
     pub output: Option<String>,
 }
 
-pub(crate) fn parse_gen_types_args(
-    args: &[String],
-) -> Result<GenTypesArgs, String> {
+pub(crate) fn parse_gen_types_args(args: &[String]) -> Result<GenTypesArgs, String> {
     let usage = "gen-types [<dir>] [--module <module.path>]... [--output <path>]";
     if args.is_empty() || args.get(1).map(String::as_str) != Some("gen-types") {
         return Err(usage.to_string());
@@ -884,9 +882,7 @@ pub(crate) fn parse_gen_types_args(
     while i < args.len() {
         let token = &args[i];
         if token == "--module" {
-            let value = args
-                .get(i + 1)
-                .ok_or_else(|| usage.to_string())?;
+            let value = args.get(i + 1).ok_or_else(|| usage.to_string())?;
             if value.starts_with("--") || value.is_empty() {
                 return Err(usage.to_string());
             }
@@ -903,9 +899,7 @@ pub(crate) fn parse_gen_types_args(
             continue;
         }
         if token == "--output" {
-            let value = args
-                .get(i + 1)
-                .ok_or_else(|| usage.to_string())?;
+            let value = args.get(i + 1).ok_or_else(|| usage.to_string())?;
             output = Some(value.clone());
             i += 2;
             continue;
@@ -927,7 +921,11 @@ pub(crate) fn parse_gen_types_args(
         input = Some(token.clone());
         i += 1;
     }
-    Ok(GenTypesArgs { input, modules, output })
+    Ok(GenTypesArgs {
+        input,
+        modules,
+        output,
+    })
 }
 
 pub(crate) fn exit_usage(command: &str) -> ! {

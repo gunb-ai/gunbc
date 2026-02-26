@@ -110,7 +110,8 @@ fn extract_allowlist_entries(output: &str) -> Vec<AllowlistEntry> {
 
     for line in output.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("# Generated")
+        if trimmed.is_empty()
+            || trimmed.starts_with("# Generated")
             || trimmed.starts_with("# DO NOT")
             || trimmed.starts_with("# Allowed path")
             || trimmed.starts_with("# Format:")

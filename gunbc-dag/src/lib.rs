@@ -22,7 +22,6 @@ pub mod bootstrap;
 pub mod build;
 pub mod ci;
 pub mod codegen;
-pub mod extern_impls;
 pub mod deps_tool;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
@@ -30,6 +29,7 @@ pub mod dry_run;
 pub mod dsl_builder;
 pub mod dsl_registry;
 pub mod embedded_assets;
+pub mod extern_impls;
 pub mod fs_env;
 pub mod gist;
 pub mod infra;
@@ -49,16 +49,16 @@ pub use binaries::WorkspaceBinary;
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp};
 pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp};
-pub use gunbc_lib_cloud_ops::env_requirements::{
-    aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
-    gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
-    CLOUD_ENV_COMMON_OPTIONAL,
-};
 pub use codegen::{build_codegen_graph, codegen_signature, CodegenGraphOp};
 pub use docgen::{build_docgen_graph, DocgenGraphOp, DocgenReadTarget, DOCGEN_READ_TARGETS};
 pub use dry_run::wire_fs_env_write_mock;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
+pub use gunbc_lib_cloud_ops::env_requirements::{
+    aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
+    gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
+    CLOUD_ENV_COMMON_OPTIONAL,
+};
 pub use makegen::{
     build_makegen_graph, default_build_config, default_core_workflows, makegen_signature,
     render_github_actions_from_workflow_specs, render_gitignore,
@@ -72,39 +72,31 @@ pub use resources::{
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use tool_runner::{
-    freshness_steps_planned, print_tool_header, run_tool,
-    update_freshness_manifest_if_needed, RunToolOptions,
+    freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
+    RunToolOptions,
 };
 pub use workflow::{
-    all_tool_workflow_names,
-    bootstrap_workflow_spec, check_slo, ci_unit_commands, ci_workflow_spec,
-    claim_handle_type_id, codegen_key, compilation_key,
-    coordination_status, default_process_unit_registry,
-    default_slo_budgets, deps_workflow_spec,
-    execute_workflow_plan, explain_plan, gist_diff_workflow_spec,
-    gist_recent_workflow_spec, gist_workflow_spec,
-    has_required_unit_contract,
-    makegen_workflow_spec, plan_global_workflows,
-    plan_workflow, plan_workflow_with_mode, pragma_workflow_spec,
-    project_execute_set, prove_non_redundancy,
-    render_execution_report, required_input_contract,
-    required_output_contract,
-    test_all_unit_commands,
-    test_all_workflow_spec, tool_workflow_spec,
-    top_slow_units, validate_conflicting_claims, validate_effectful_claim_declarations,
+    all_tool_workflow_names, bootstrap_workflow_spec, check_slo, ci_unit_commands,
+    ci_workflow_spec, claim_handle_type_id, codegen_key, compilation_key, coordination_status,
+    default_process_unit_registry, default_slo_budgets, deps_workflow_spec, execute_workflow_plan,
+    explain_plan, gist_diff_workflow_spec, gist_recent_workflow_spec, gist_workflow_spec,
+    has_required_unit_contract, makegen_workflow_spec, plan_global_workflows, plan_workflow,
+    plan_workflow_with_mode, pragma_workflow_spec, project_execute_set, prove_non_redundancy,
+    render_execution_report, required_input_contract, required_output_contract,
+    test_all_unit_commands, test_all_workflow_spec, tool_workflow_spec, top_slow_units,
+    validate_conflicting_claims, validate_effectful_claim_declarations,
     validate_projection_equivalence, validate_required_claims, validate_workflow_admission,
-    workflow_unit_commands, AggregateSpec, BlockedReason,
-    CanonicalKeyPayload, CapabilityAction, CapabilityStatus, ClaimId, CodegenMissReason,
-    CompilationMissReason, CompilationPhase, CoordinationStatus, DryRunMode, ExecuteProjection,
-    ExecutionSummary, GlobalExecutionVertex, GlobalWorkflowPlan, InvariantViolation,
-    MaterializationDigest, MaterializationKey, MissReason, NodePlan, PlanAction, PlanExplain,
-    PlannerInputs, PlannerInputsByWorkflow, ProcessId, ProcessUnitRef, ProcessUnitRegistry,
-    ProcessUnitSpec, ProjectionDrift, ReportSpec, SloBudget, SloResult,
-    SlowUnit, UnitClaim, UnitCommand, UnitResult, WorkIdentity, WorkflowAdmissionError, WorkflowId,
-    WorkflowNodeRef, WorkflowOp, WorkflowPlan,
-    WorkflowPlannerError, WorkflowSpec as PlannerWorkflowSpec, WorkflowUnit, CODEGEN_ENSURE_UNIT,
-    CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID, PORT_AFTER, PORT_COMMIT,
-    PORT_RESULT, TYPE_WORKFLOW_RESULT,
+    workflow_unit_commands, AggregateSpec, BlockedReason, CanonicalKeyPayload, CapabilityAction,
+    CapabilityStatus, ClaimId, CodegenMissReason, CompilationMissReason, CompilationPhase,
+    CoordinationStatus, DryRunMode, ExecuteProjection, ExecutionSummary, GlobalExecutionVertex,
+    GlobalWorkflowPlan, InvariantViolation, MaterializationDigest, MaterializationKey, MissReason,
+    NodePlan, PlanAction, PlanExplain, PlannerInputs, PlannerInputsByWorkflow, ProcessId,
+    ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, ProjectionDrift, ReportSpec, SloBudget,
+    SloResult, SlowUnit, UnitClaim, UnitCommand, UnitResult, WorkIdentity, WorkflowAdmissionError,
+    WorkflowId, WorkflowNodeRef, WorkflowOp, WorkflowPlan, WorkflowPlannerError,
+    WorkflowSpec as PlannerWorkflowSpec, WorkflowUnit, CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID,
+    COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID, PORT_AFTER, PORT_COMMIT, PORT_RESULT,
+    TYPE_WORKFLOW_RESULT,
 };
 
 // ============================================================================

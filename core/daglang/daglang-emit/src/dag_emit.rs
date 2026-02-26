@@ -75,8 +75,7 @@ fn json_to_dag_literal(value: &JsonValue, indent: usize) -> String {
             }
             // Single-line for short lists of scalars
             if items.len() <= 3 && items.iter().all(is_scalar) {
-                let inner: Vec<String> =
-                    items.iter().map(|v| json_to_dag_literal(v, 0)).collect();
+                let inner: Vec<String> = items.iter().map(|v| json_to_dag_literal(v, 0)).collect();
                 return format!("[{}]", inner.join(", "));
             }
             let child_indent = indent + 2;
@@ -208,9 +207,6 @@ mod tests {
 
     #[test]
     fn emit_empty_object() {
-        assert_eq!(
-            json_to_dag_literal(&serde_json::json!({}), 0),
-            "{}"
-        );
+        assert_eq!(json_to_dag_literal(&serde_json::json!({}), 0), "{}");
     }
 }

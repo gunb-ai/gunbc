@@ -470,10 +470,7 @@ fn json_to_native_value_expr(value: &serde_json::Value) -> String {
                     )
                 })
                 .collect();
-            format!(
-                "Value::Map([{}].into_iter().collect())",
-                entries.join(", ")
-            )
+            format!("Value::Map([{}].into_iter().collect())", entries.join(", "))
         }
     }
 }
@@ -797,7 +794,9 @@ fn build_exec_runtime_source(
     use gunbc_ir::code_ir::{Import, Item, SourceFile};
 
     let mut items = Vec::new();
-    let needs_output_map = handler_kinds.iter().any(|kind| handler_uses_output_map(*kind));
+    let needs_output_map = handler_kinds
+        .iter()
+        .any(|kind| handler_uses_output_map(*kind));
     let has_classified_edges = emitted_dag_has_edges(dag, classified);
     let needs_transport = handler_kinds.iter().any(|k| {
         matches!(
@@ -1235,8 +1234,10 @@ fn handler_uses_output_map(kind: HandlerKind) -> bool {
 }
 
 fn emitted_dag_has_edges(dag: &Dag<LoweredOp>, classified: &[ClassifiedNode]) -> bool {
-    let classified_ids: std::collections::HashSet<&str> =
-        classified.iter().map(|node| node.node_id.as_str()).collect();
+    let classified_ids: std::collections::HashSet<&str> = classified
+        .iter()
+        .map(|node| node.node_id.as_str())
+        .collect();
 
     dag.edges.iter().any(|edge| {
         classified_ids.contains(edge.from_node.0.as_str())

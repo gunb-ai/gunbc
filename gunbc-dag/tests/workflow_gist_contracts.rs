@@ -13,8 +13,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use gunbc_dag::{
     default_process_unit_registry, explain_plan, gist_diff_workflow_spec,
-    gist_recent_workflow_spec, gist_workflow_spec, plan_global_workflows,
-    plan_workflow_with_mode, DryRunMode, PlanAction, PlannerInputs, PlannerInputsByWorkflow,
+    gist_recent_workflow_spec, gist_workflow_spec, plan_global_workflows, plan_workflow_with_mode,
+    DryRunMode, PlanAction, PlannerInputs, PlannerInputsByWorkflow,
 };
 
 fn temp_root() -> PathBuf {

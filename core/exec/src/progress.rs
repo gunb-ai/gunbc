@@ -402,7 +402,7 @@ impl PartialEq for DagPhase {
                     node: n2,
                     error: e2,
                 },
-            ) => n1 == n2 && e1.message == e2.message,
+            ) => n1 == n2 && e1 == e2,
             _ => false,
         }
     }

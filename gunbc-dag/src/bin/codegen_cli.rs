@@ -1107,9 +1107,8 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_codegen_tools, generate_github_actions_template,
-        generate_gitlab_ci_template, parse_command_arg,
-        validate_generated_ci_template, CiTemplateKind, WorkspaceBinary,
+        discover_codegen_tools, generate_github_actions_template, generate_gitlab_ci_template,
+        parse_command_arg, validate_generated_ci_template, CiTemplateKind, WorkspaceBinary,
     };
     use gunbc_ir::transport::ci::{CacheConfig, RenderConfig};
     use std::collections::BTreeSet;
@@ -1191,8 +1190,8 @@ mod tests {
             .parent()
             .expect("workspace root should exist")
             .to_path_buf();
-        let tools = discover_codegen_tools(&workspace_root)
-            .expect("DSL discovery should return tool defs");
+        let tools =
+            discover_codegen_tools(&workspace_root).expect("DSL discovery should return tool defs");
         let names: BTreeSet<String> = tools.iter().map(|t| t.meta.tool_name.to_string()).collect();
 
         for required in [

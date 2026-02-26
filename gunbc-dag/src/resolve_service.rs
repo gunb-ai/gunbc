@@ -12,8 +12,8 @@ use daglang_lower::{
     RestOperationSpec, ShellOperationSpec, ShellOutputParsing,
 };
 use gunbc_exec::{
-    ErrorLayer, ExecError, Executable, HttpErrorLayer, OutputMap, RestErrorLayer,
-    ServiceErrorLayer, ShellErrorLayer,
+    decorate_service_failure, AuthContext, ExecError, Executable, OutputMap, ServiceCallMetadata,
+    TransportContext,
 };
 use gunbc_ir::transport::{
     FileRequest, LocalRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
@@ -34,9 +34,7 @@ impl Executable for GenericRestPrepareOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // Propagate skip from upstream (e.g., non-selected match branches).
         if inputs.values().any(|v| matches!(v, Value::Skipped)) {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .ok();
+            return OutputMap::new().value("request", Value::Skipped).ok();
         }
 
         // Skip when required non-config inputs are missing (e.g., param_source
@@ -48,9 +46,7 @@ impl Executable for GenericRestPrepareOp {
                 && !inputs.contains_key(&field.name)
         });
         if has_missing_required {
-            return OutputMap::new()
-                .value("request", Value::Skipped)
-                .ok();
+            return OutputMap::new().value("request", Value::Skipped).ok();
         }
 
         ensure_required_profile_config_inputs(&self.spec, &inputs)?;
@@ -202,59 +198,47 @@ impl Executable for GenericRestParseOp {
                     } else {
                         infer_auth_from_headers(&self.spec.headers)
                     };
-                    let mut err = ExecError::new(detail)
-                        .with_layer(ErrorLayer::Service(ServiceErrorLayer {
+                    // Attach auth context when we have auth metadata OR when
+                    // the HTTP status implies auth failure.
+                    let is_auth_status = rest.status == 401 || rest.status == 403;
+                    let auth =
+                        if !scheme.is_empty() || is_auth_status || !self.permissions.is_empty() {
+                            Some(AuthContext {
+                                scheme: if scheme.is_empty() {
+                                    None
+                                } else {
+                                    Some(scheme)
+                                },
+                                credential_ref: cred_ref,
+                                required_permissions: self.permissions.clone(),
+                                lock_target: rest_lock_target(
+                                    &self.spec.method,
+                                    &self.spec.endpoint,
+                                    &self.spec.path_template,
+                                ),
+                            })
+                        } else {
+                            None
+                        };
+
+                    let err = decorate_service_failure(
+                        ExecError::new(detail),
+                        ServiceCallMetadata {
                             provider: self.service_name.clone(),
                             operation: self.operation_name.clone(),
-                        }))
-                        .with_layer(ErrorLayer::Http(HttpErrorLayer {
+                        },
+                        TransportContext::Rest {
+                            endpoint: self.spec.endpoint.clone(),
+                            method: self.spec.method.clone(),
                             status_code: rest.status,
                             reason: if body_excerpt.is_empty() {
                                 None
                             } else {
                                 Some(body_excerpt.clone())
                             },
-                        }))
-                        .with_layer(ErrorLayer::Rest(RestErrorLayer {
-                            endpoint: self.spec.endpoint.clone(),
-                            method: self.spec.method.clone(),
-                        }));
-                    // Attach Acquisition layer when we have auth context OR
-                    // when the HTTP status is 401/403 (auth failure regardless
-                    // of whether scheme inference succeeded).
-                    let is_auth_status = rest.status == 401 || rest.status == 403;
-                    if !scheme.is_empty() || is_auth_status || !self.permissions.is_empty() {
-                        let key = if !scheme.is_empty() {
-                            Some(gunbc_exec::KeyIdentity {
-                                scheme,
-                                hint: cred_ref
-                                    .as_deref()
-                                    .map(|c| format!("***{c}"))
-                                    .unwrap_or_else(|| "***".into()),
-                                source: cred_ref
-                                    .map(|c| format!("env:{c}"))
-                                    .unwrap_or_else(|| "static".into()),
-                            })
-                        } else {
-                            None
-                        };
-                        err = err.with_layer(ErrorLayer::Acquisition(
-                            gunbc_exec::AcquisitionErrorLayer {
-                                diagnostic: gunbc_exec::AcquisitionDiagnostic {
-                                    lock: gunbc_exec::LockIdentity {
-                                        resource: "AuthContext".into(),
-                                        mode: "Read".into(),
-                                        target: format!(
-                                            "{} {}",
-                                            self.spec.method, self.spec.endpoint
-                                        ),
-                                    },
-                                    key,
-                                },
-                                required_permissions: self.permissions.clone(),
-                            },
-                        ));
-                    }
+                        },
+                        auth,
+                    );
                     return Err(err);
                 }
 
@@ -402,9 +386,11 @@ impl Executable for GenericShellPrepareOp {
         }
 
         // Skip when required inputs are missing (non-taken branch param sources).
-        let has_missing_required = self.spec.input_fields.iter().any(|field| {
-            field.default.is_none() && !inputs.contains_key(&field.name)
-        });
+        let has_missing_required = self
+            .spec
+            .input_fields
+            .iter()
+            .any(|field| field.default.is_none() && !inputs.contains_key(&field.name));
         if has_missing_required {
             return OutputMap::new()
                 .value("request", Value::Skipped)
@@ -563,28 +549,31 @@ impl Executable for GenericShellParseOp {
                     }
                 }
             }
-            Some(other) => Err(ExecError::new(format!(
-                "expected Shell response for parse, got {:?}",
-                std::mem::discriminant(other)
-            ))
-            .with_layer(ErrorLayer::Service(ServiceErrorLayer {
-                provider: self.service_name.clone(),
-                operation: self.operation_name.clone(),
-            }))
-            .with_layer(ErrorLayer::Shell(ShellErrorLayer {
-                exit_code: Some(-1),
-                command: self
-                    .spec
-                    .argv_template
-                    .iter()
-                    .filter_map(|s| match s {
-                        ArgvSegment::Literal(l) => Some(l.as_str()),
-                        _ => None,
-                    })
-                    .next()
-                    .unwrap_or("unknown")
-                    .to_string(),
-            }))),
+            Some(other) => Err(decorate_service_failure(
+                ExecError::new(format!(
+                    "expected Shell response for parse, got {:?}",
+                    std::mem::discriminant(other)
+                )),
+                ServiceCallMetadata {
+                    provider: self.service_name.clone(),
+                    operation: self.operation_name.clone(),
+                },
+                TransportContext::Shell {
+                    exit_code: Some(-1),
+                    command: self
+                        .spec
+                        .argv_template
+                        .iter()
+                        .filter_map(|s| match s {
+                            ArgvSegment::Literal(l) => Some(l.as_str()),
+                            _ => None,
+                        })
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_string(),
+                },
+                None,
+            )),
         }
     }
 }
@@ -592,6 +581,26 @@ impl Executable for GenericShellParseOp {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/// Build a stable lock target for REST acquisition diagnostics.
+///
+/// Includes method + endpoint + path template so operations under a shared
+/// endpoint do not collapse into the same lock identity.
+fn rest_lock_target(method: &str, endpoint: &str, path_template: &str) -> String {
+    let endpoint = endpoint.trim_end_matches('/');
+    let path = path_template.trim();
+    if endpoint.is_empty() {
+        return format!("{method} {path}");
+    }
+    if path.is_empty() {
+        return format!("{method} {endpoint}");
+    }
+    if path.starts_with('/') {
+        format!("{method} {endpoint}{path}")
+    } else {
+        format!("{method} {endpoint}/{path}")
+    }
+}
 
 /// Infer auth scheme and credential reference from `@headers` annotation.
 ///
@@ -609,13 +618,11 @@ fn infer_auth_from_headers(headers: &[(String, String)]) -> (String, Option<Stri
                 "Header"
             };
             // Extract input name from template: "Bearer {auth_token}" → "auth_token"
-            let cred_ref = value
-                .find('{')
-                .and_then(|start| {
-                    value[start + 1..]
-                        .find('}')
-                        .map(|end| value[start + 1..start + 1 + end].to_string())
-                });
+            let cred_ref = value.find('{').and_then(|start| {
+                value[start + 1..]
+                    .find('}')
+                    .map(|end| value[start + 1..start + 1 + end].to_string())
+            });
             return (scheme.to_string(), cred_ref);
         }
     }
@@ -782,7 +789,8 @@ fn insert_value_as_json(
         Value::Str(s) => {
             map.insert(key.to_string(), serde_json::Value::String(s.clone()));
         }
-        #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret serialized for service request
+        #[allow(clippy::disallowed_methods)]
+        // Approved: transport boundary — secret serialized for service request
         Value::Secret(secret) => {
             map.insert(
                 key.to_string(),
@@ -799,10 +807,7 @@ fn insert_value_as_json(
             map.insert(key.to_string(), j.clone());
         }
         Value::List(items) => {
-            let arr: Vec<serde_json::Value> = items
-                .iter()
-                .filter_map(value_to_json)
-                .collect();
+            let arr: Vec<serde_json::Value> = items.iter().filter_map(value_to_json).collect();
             map.insert(key.to_string(), serde_json::Value::Array(arr));
         }
         Value::Map(entries) => {
@@ -922,12 +927,9 @@ impl Executable for GenericFilePrepareOp {
                 .bool("skip", true)
                 .ok();
         }
-        let path = inputs
-            .get("path")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
-            })?;
+        let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
+            ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
+        })?;
         let request = match self.spec.operation.as_str() {
             "READ" => FileRequest::read(path),
             "READ_BYTES" => FileRequest::read_bytes(path),
@@ -962,10 +964,7 @@ impl Executable for GenericFileParseOp {
         match inputs.get("response") {
             Some(Value::Response(TransportResponse::File(file_resp))) => {
                 if !file_resp.success {
-                    let err = file_resp
-                        .error
-                        .as_deref()
-                        .unwrap_or("unknown file error");
+                    let err = file_resp.error.as_deref().unwrap_or("unknown file error");
                     return Err(ExecError::new(format!(
                         "File operation failed on `{}`: {err}",
                         file_resp.path
@@ -1950,5 +1949,17 @@ mod tests {
             }
             other => panic!("expected Local request, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rest_lock_target_includes_path_template() {
+        let target = rest_lock_target("GET", "https://api.example.com", "/v1/items/{id}");
+        assert_eq!(target, "GET https://api.example.com/v1/items/{id}");
+    }
+
+    #[test]
+    fn rest_lock_target_supports_relative_path_templates() {
+        let target = rest_lock_target("POST", "https://api.example.com/", "v1/items");
+        assert_eq!(target, "POST https://api.example.com/v1/items");
     }
 }

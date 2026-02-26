@@ -269,11 +269,7 @@ mod tests {
     fn shape_of_coproduct() {
         let encoding_dag = type_lib::coproduct(
             "ContentEncoding",
-            vec![
-                ("UTF8", "String"),
-                ("ASCII", "String"),
-                ("Binary", "Bytes"),
-            ],
+            vec![("UTF8", "String"), ("ASCII", "String"), ("Binary", "Bytes")],
         );
         let shape = type_shape(&encoding_dag);
         match &shape {
@@ -296,8 +292,14 @@ mod tests {
         match &shape {
             TypeShape::Coproduct(variants) => {
                 assert_eq!(variants.len(), 2);
-                assert_eq!(variants[0], ("True".to_string(), TypeShape::Opaque("Unit".to_string())));
-                assert_eq!(variants[1], ("False".to_string(), TypeShape::Opaque("Unit".to_string())));
+                assert_eq!(
+                    variants[0],
+                    ("True".to_string(), TypeShape::Opaque("Unit".to_string()))
+                );
+                assert_eq!(
+                    variants[1],
+                    ("False".to_string(), TypeShape::Opaque("Unit".to_string()))
+                );
             }
             other => panic!("expected Coproduct, got {:?}", other),
         }
@@ -559,14 +561,12 @@ mod tests {
         let dag = type_lib::optional(type_lib::list(type_lib::string()));
         let shape = type_shape(&dag);
         match &shape {
-            TypeShape::Container(ContainerShape::Optional(inner)) => {
-                match inner.as_ref() {
-                    TypeShape::Container(ContainerShape::List(elem)) => {
-                        assert_eq!(**elem, TypeShape::Opaque("String".to_string()));
-                    }
-                    other => panic!("expected inner List, got {:?}", other),
+            TypeShape::Container(ContainerShape::Optional(inner)) => match inner.as_ref() {
+                TypeShape::Container(ContainerShape::List(elem)) => {
+                    assert_eq!(**elem, TypeShape::Opaque("String".to_string()));
                 }
-            }
+                other => panic!("expected inner List, got {:?}", other),
+            },
             other => panic!("expected Optional, got {:?}", other),
         }
     }

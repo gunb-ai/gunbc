@@ -1480,8 +1480,11 @@ mod tests {
     #[test]
     fn test_entailment_same_type() {
         let registry = TypeRegistry::with_core_types();
-        let status =
-            check_predicate_entailment(&TypeId("String".into()), &TypeId("String".into()), &registry);
+        let status = check_predicate_entailment(
+            &TypeId("String".into()),
+            &TypeId("String".into()),
+            &registry,
+        );
         assert!(matches!(status, EntailmentStatus::Verified));
     }
 
@@ -1489,7 +1492,8 @@ mod tests {
     fn test_entailment_target_any() {
         // Target is Any → verified (accepts anything)
         let registry = TypeRegistry::with_core_types();
-        let status = check_predicate_entailment(&TypeId("Url".into()), &TypeId("Any".into()), &registry);
+        let status =
+            check_predicate_entailment(&TypeId("Url".into()), &TypeId("Any".into()), &registry);
         assert!(matches!(status, EntailmentStatus::Verified));
     }
 
@@ -1497,7 +1501,8 @@ mod tests {
     fn test_entailment_source_any_target_specific() {
         // Source is Any, target is specific → Unknown (can't prove satisfaction)
         let registry = TypeRegistry::with_core_types();
-        let status = check_predicate_entailment(&TypeId("Any".into()), &TypeId("Url".into()), &registry);
+        let status =
+            check_predicate_entailment(&TypeId("Any".into()), &TypeId("Url".into()), &registry);
         assert!(matches!(status, EntailmentStatus::Unknown { .. }));
     }
 

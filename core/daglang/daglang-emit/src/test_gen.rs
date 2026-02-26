@@ -65,7 +65,10 @@ pub fn emit_dry_run_completion_test(
 /// instead of flat "mock-response" strings. Each transport node produces a
 /// mock value derived from its output port type (TransportResponse, FileResponse,
 /// RestResponse, ShellResponse).
-pub fn emit_transport_mock_tests(backend: &str, dag: &ReachableDag<LoweredOp>) -> Option<EmittedFile> {
+pub fn emit_transport_mock_tests(
+    backend: &str,
+    dag: &ReachableDag<LoweredOp>,
+) -> Option<EmittedFile> {
     let mut transport_entries: Vec<(String, String)> = dag
         .nodes
         .iter()

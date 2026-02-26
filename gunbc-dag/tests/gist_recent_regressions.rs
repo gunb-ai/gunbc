@@ -26,7 +26,9 @@ impl TransportBackend for GistRecentBackend {
             TransportRequest::Shell(shell) if shell.command == "git" => {
                 let args = shell.args.as_slice();
                 if args == ["rev-parse", "--abbrev-ref", "HEAD"] {
-                    return Ok(TransportResponse::Shell(ShellResponse::ok("feature/mock\n")));
+                    return Ok(TransportResponse::Shell(ShellResponse::ok(
+                        "feature/mock\n",
+                    )));
                 }
                 if args == ["diff", "oldest-commit...HEAD"] {
                     return Ok(TransportResponse::Shell(ShellResponse::ok(
@@ -91,11 +93,15 @@ fn gist_recent_graph_no_ls_files() {
 
 #[test]
 fn gist_recent_graph_wires_diff_base_input() {
-    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent").expect("gist-recent graph should build");
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+        .expect("gist-recent graph should build");
     let lowered = lower(&dag).expect("lowered gist-recent");
 
     let has_base_edge = lowered.dag.edges.iter().any(|edge| {
-        edge.to_node.0.starts_with("prepare_transport_services_git_git_Core_Diff") && edge.to_port.0 == "base"
+        edge.to_node
+            .0
+            .starts_with("prepare_transport_services_git_git_Core_Diff")
+            && edge.to_port.0 == "base"
     });
     assert!(
         has_base_edge,
@@ -105,7 +111,8 @@ fn gist_recent_graph_wires_diff_base_input() {
 
 #[test]
 fn gist_recent_end_to_end_emits_gist_url() {
-    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent").expect("gist-recent graph should build");
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+        .expect("gist-recent graph should build");
 
     let requests = Arc::new(Mutex::new(Vec::new()));
     let backend = Arc::new(GistRecentBackend {
@@ -117,8 +124,14 @@ fn gist_recent_end_to_end_emits_gist_url() {
     let entrypoints = detect_entrypoints(&dag);
     for (node_id, port_name, _) in entrypoints.entrypoint_ports {
         match port_name.0.as_str() {
-            "since" => input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Str("3.days.ago".into())),
-            "public" => input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Bool(false)),
+            "since" => input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str("3.days.ago".into()),
+            ),
+            "public" => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Bool(false))
+            }
             _ => {}
         }
     }
@@ -131,22 +144,38 @@ fn gist_recent_end_to_end_emits_gist_url() {
     let gist_parse = log
         .entries
         .iter()
-        .find(|entry| entry.node_id.starts_with("parse_transport_services_github_gist_github_Gist_Create"))
+        .find(|entry| {
+            entry
+                .node_id
+                .starts_with("parse_transport_services_github_gist_github_Gist_Create")
+        })
         .expect("gist parse node should be present");
     let gist_prepare = log
         .entries
         .iter()
-        .find(|entry| entry.node_id.starts_with("prepare_transport_services_github_gist_github_Gist_Create"))
+        .find(|entry| {
+            entry
+                .node_id
+                .starts_with("prepare_transport_services_github_gist_github_Gist_Create")
+        })
         .expect("gist prepare node should be present");
     let gist_execute = log
         .entries
         .iter()
-        .find(|entry| entry.node_id.starts_with("execute_transport_services_github_gist_github_Gist_Create"))
+        .find(|entry| {
+            entry
+                .node_id
+                .starts_with("execute_transport_services_github_gist_github_Gist_Create")
+        })
         .expect("gist execute node should be present");
     let diff_parse = log
         .entries
         .iter()
-        .find(|entry| entry.node_id.starts_with("parse_transport_services_git_git_Core_Diff"))
+        .find(|entry| {
+            entry
+                .node_id
+                .starts_with("parse_transport_services_git_git_Core_Diff")
+        })
         .expect("diff parse node should be present");
     let render = log
         .entries

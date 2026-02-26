@@ -481,7 +481,8 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
             .iter()
             .filter(|method| {
                 method.path == "gunbc_ir::value::SecretString::expose_plaintext_for_transport"
-                    || method.path == "gunbc_ir::transport::credential::Secret::expose_plaintext_for_transport"
+                    || method.path
+                        == "gunbc_ir::transport::credential::Secret::expose_plaintext_for_transport"
             })
             .copied()
             .collect();
@@ -489,7 +490,8 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
             .iter()
             .filter(|method| {
                 method.path != "gunbc_ir::value::SecretString::expose_plaintext_for_transport"
-                    && method.path != "gunbc_ir::transport::credential::Secret::expose_plaintext_for_transport"
+                    && method.path
+                        != "gunbc_ir::transport::credential::Secret::expose_plaintext_for_transport"
             })
             .copied()
             .collect();

@@ -88,9 +88,6 @@ mod tests {
     fn workflow_specs_are_deterministic() {
         let a = workflow_spec("gist").expect("a");
         let b = workflow_spec("gist").expect("b");
-        assert_eq!(
-            a.dag.to_ascii("gist"),
-            b.dag.to_ascii("gist")
-        );
+        assert_eq!(a.dag.to_ascii("gist"), b.dag.to_ascii("gist"));
     }
 }

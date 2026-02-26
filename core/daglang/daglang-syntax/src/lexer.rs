@@ -337,10 +337,15 @@ impl<'a> Lexer<'a> {
     /// Returns the character and the number of bytes it occupies.
     fn decode_utf8_char(&self) -> (char, usize) {
         let b0 = self.source[self.pos];
-        let seq_len = if b0 < 0x80 { 1 }
-            else if b0 < 0xE0 { 2 }
-            else if b0 < 0xF0 { 3 }
-            else { 4 };
+        let seq_len = if b0 < 0x80 {
+            1
+        } else if b0 < 0xE0 {
+            2
+        } else if b0 < 0xF0 {
+            3
+        } else {
+            4
+        };
         let end = (self.pos + seq_len).min(self.source.len());
         match std::str::from_utf8(&self.source[self.pos..end]) {
             Ok(s) => (s.chars().next().unwrap_or('\u{FFFD}'), seq_len),

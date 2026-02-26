@@ -227,9 +227,13 @@ pub fn execute_and_display<T: Executable + Clone + Send + 'static>(
                 process::exit(1);
             }
         }
-        Err(_) => {
-            // Error detail was already rendered by the observer (NonTty) or
-            // print_error_boxes (animated). Just exit with failure status.
+        Err(err) => {
+            // Node failures are already rendered by observers/error boxes.
+            // Pre-node failures (e.g., lowering) need a fallback attention
+            // block so users never get a silent exit.
+            if should_render_fallback_error(&err) {
+                print_attention(AttentionLevel::Error, "Execution failed", &err.to_string());
+            }
             process::exit(1);
         }
     }
@@ -732,20 +736,20 @@ impl ProgressObserver for NonTtyProgressObserver {
 
         // Summary line with classification tag and optional service label
         if let Some(svc) = error.service_label() {
-            eprintln!("✗ {} [{}] ({}): {}", label, classification, svc, msg);
+            eprintln!(
+                "✗ {} [{}] ({}): {}",
+                label,
+                classification.label(),
+                svc,
+                msg
+            );
         } else {
-            eprintln!("✗ {} [{}]: {}", label, classification, msg);
+            eprintln!("✗ {} [{}]: {}", label, classification.label(), msg);
         }
 
         // Print boxed failure detail, capped at FAILURE_DETAIL_LINES
-        let box_label = error
-            .service_label()
-            .unwrap_or_else(|| label.clone());
-        let box_tag = if classification != "UNKNOWN" {
-            format!("[{}]", classification.to_uppercase())
-        } else {
-            "[ERROR]".to_string()
-        };
+        let box_label = error.service_label().unwrap_or_else(|| label.clone());
+        let box_tag = classification.box_tag();
         eprintln!();
         eprintln!("  ┌─ {} {}", box_tag, box_label);
 
@@ -826,16 +830,10 @@ impl ProgressObserver for NonTtyProgressObserver {
         if !self.failures.is_empty() {
             eprintln!();
             for (label, detail) in &self.failures {
-                let first_line = detail
-                    .message
-                    .lines()
-                    .next()
-                    .unwrap_or(&detail.message);
+                let first_line = detail.message.lines().next().unwrap_or(&detail.message);
                 let tag = detail.classification();
-                let display_label = detail
-                    .service_label()
-                    .unwrap_or_else(|| label.clone());
-                eprintln!("  ┌─ [FAILED] {} [{}]", display_label, tag);
+                let display_label = detail.service_label().unwrap_or_else(|| label.clone());
+                eprintln!("  ┌─ [FAILED] {} [{}]", display_label, tag.label());
                 eprintln!("  │ {}", first_line);
                 eprintln!("  └─");
             }
@@ -997,11 +995,20 @@ fn success_port_failed(log: &crate::ExecutionLog, success_port: Option<&str>) ->
 
     log.entries.iter().any(|entry| {
         match entry.outputs.get(port) {
-            Some(Value::Bool(true)) => false,  // explicitly passed
-            Some(_) => true,                   // Bool(false), Skipped, or unexpected type
-            None => false,                     // port not on this node
+            Some(Value::Bool(true)) => false, // explicitly passed
+            Some(_) => true,                  // Bool(false), Skipped, or unexpected type
+            None => false,                    // port not on this node
         }
     })
+}
+
+/// Returns true when the caller should print an explicit fallback error block.
+///
+/// Node failures carry a NodeTrace layer and are rendered by progress observers
+/// (plain mode) or error boxes (animated mode). Errors without NodeTrace are
+/// typically pre-node failures and need explicit fallback rendering.
+fn should_render_fallback_error(err: &ExecError) -> bool {
+    err.node_trace().is_none()
 }
 
 /// Render error detail boxes for all failed nodes in the DAG.
@@ -1024,13 +1031,11 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
     for (label, detail) in &failures {
         // Build the box title: "[CLASSIFICATION] service → op" or "[CLASSIFICATION] node_label"
         let classification = detail.classification();
-        let display_label = detail
-            .service_label()
-            .unwrap_or_else(|| label.clone());
-        let box_label = if classification != "UNKNOWN" {
-            format!("[{}] {}", classification, display_label)
-        } else {
+        let display_label = detail.service_label().unwrap_or_else(|| label.clone());
+        let box_label = if classification == crate::ErrorClass::Unknown {
             display_label
+        } else {
+            format!("{} {}", classification.box_tag(), display_label)
         };
         let b = box_draw::error_box(&box_label, tier, use_color);
 
@@ -1049,35 +1054,30 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
         for layer in &detail.layers {
             match layer {
                 ErrorLayer::Service(s) => {
-                    content_lines
-                        .push(format!("Service:   {} → {}", s.provider, s.operation));
+                    content_lines.push(format!("Service:   {} → {}", s.provider, s.operation));
                 }
                 ErrorLayer::Http(h) => {
                     if let Some(ref reason) = h.reason {
-                        content_lines
-                            .push(format!("Http:      {} ({})", h.status_code, reason));
+                        content_lines.push(format!("Http:      {} ({})", h.status_code, reason));
                     } else {
                         content_lines.push(format!("Http:      {}", h.status_code));
                     }
                 }
                 ErrorLayer::Rest(r) => {
-                    content_lines
-                        .push(format!("Transport: {} {}", r.method, r.endpoint));
+                    content_lines.push(format!("Transport: {} {}", r.method, r.endpoint));
                 }
                 ErrorLayer::Acquisition(a) => {
                     content_lines.push(format!("Auth:      {}", a.diagnostic));
                 }
                 ErrorLayer::Shell(s) => {
                     if let Some(code) = s.exit_code {
-                        content_lines
-                            .push(format!("Shell:     {} (exit {})", s.command, code));
+                        content_lines.push(format!("Shell:     {} (exit {})", s.command, code));
                     } else {
                         content_lines.push(format!("Shell:     {}", s.command));
                     }
                 }
                 ErrorLayer::File(f) => {
-                    content_lines
-                        .push(format!("File:      {} ({})", f.path, f.operation));
+                    content_lines.push(format!("File:      {} ({})", f.path, f.operation));
                 }
                 ErrorLayer::NodeTrace(t) => {
                     let role_str = match t.role {
@@ -1086,8 +1086,7 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
                         NodeRole::ToolConsumer => "tool",
                         NodeRole::Pure => "pure",
                     };
-                    content_lines
-                        .push(format!("Node:      {} ({})", t.node_id, role_str));
+                    content_lines.push(format!("Node:      {} ({})", t.node_id, role_str));
                 }
             }
         }
@@ -1382,7 +1381,10 @@ mod tests {
         let mut observer = NonTtyProgressObserver::default();
         observer.on_dag_start(&snapshot);
         observer.on_node_start(&NodeId::from("a"));
-        observer.on_node_failed(&NodeId::from("a"), &ExecError::new("error line 1\nerror line 2"));
+        observer.on_node_failed(
+            &NodeId::from("a"),
+            &ExecError::new("error line 1\nerror line 2"),
+        );
 
         assert_eq!(observer.failures.len(), 1);
         assert_eq!(observer.failures[0].0, "A");
@@ -1487,5 +1489,22 @@ mod tests {
     fn success_port_failed_returns_false_when_no_success_port() {
         let log = log_with_output("overall_success", Value::Bool(false));
         assert!(!success_port_failed(&log, None));
+    }
+
+    #[test]
+    fn fallback_error_rendering_required_without_node_trace() {
+        let err = ExecError::new("lowering failed");
+        assert!(should_render_fallback_error(&err));
+    }
+
+    #[test]
+    fn fallback_error_rendering_not_required_with_node_trace() {
+        let err = ExecError::new("node failed").with_layer(ErrorLayer::NodeTrace(
+            crate::NodeTraceLayer {
+                node_id: "n1".to_string(),
+                role: NodeRole::Pure,
+            },
+        ));
+        assert!(!should_render_fallback_error(&err));
     }
 }

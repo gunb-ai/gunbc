@@ -14,6 +14,8 @@ pub use dag_test_discovery::{
     compile_dag_for_test, dag_builder_call_for_module, discover_compilable_modules,
     discover_dag_tests, AutoTestgenResult, CompilableModule, DagTestTarget,
 };
-pub use graph::{build_testgen_graph, build_testgen_graph_auto, build_testgen_graph_for_test, TestgenGraphOp};
+pub use graph::{
+    build_testgen_graph, build_testgen_graph_auto, build_testgen_graph_for_test, TestgenGraphOp,
+};
 pub use ops::TestgenOp;
 pub use profile_discovery::{discover_profiles, profiles_for_module, DiscoveredProfile};

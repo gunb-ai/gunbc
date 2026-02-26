@@ -159,16 +159,16 @@ fn empty(left: List<String>, right: List<Int>) -> { pairs: List<Map<String, Stri
 
     let mut inputs = HashMap::new();
     inputs.insert("left".to_string(), Value::List(vec![]));
-    inputs.insert(
-        "right".to_string(),
-        Value::List(vec![Value::Int(1)]),
-    );
+    inputs.insert("right".to_string(), Value::List(vec![Value::Int(1)]));
 
     let result = eval_fn(&fns, "empty", inputs);
     let pairs = result.get("pairs").expect("output 'pairs' should exist");
     match pairs {
         Value::List(items) => {
-            assert!(items.is_empty(), "zipping empty list should produce empty list");
+            assert!(
+                items.is_empty(),
+                "zipping empty list should produce empty list"
+            );
         }
         other => panic!("expected List, got {other:?}"),
     }
@@ -206,6 +206,12 @@ fn format_pairs(files: List<String>, contents: List<String>) -> { out: String } 
     let result = eval_fn(&fns, "format_pairs", inputs);
     let out = result.get("out").expect("output 'out' should exist");
     let s = out.as_str().expect("should be string");
-    assert!(s.contains("a.rs=fn a() {}"), "should contain first pair: {s}");
-    assert!(s.contains("b.rs=fn b() {}"), "should contain second pair: {s}");
+    assert!(
+        s.contains("a.rs=fn a() {}"),
+        "should contain first pair: {s}"
+    );
+    assert!(
+        s.contains("b.rs=fn b() {}"),
+        "should contain second pair: {s}"
+    );
 }

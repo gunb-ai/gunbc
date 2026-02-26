@@ -252,9 +252,12 @@ fn normalize_value_inner(value: &Value, home: &str, tmp: &str) -> Value {
             }
             Value::Str(normalized)
         }
-        Value::List(items) => {
-            Value::List(items.iter().map(|v| normalize_value_inner(v, home, tmp)).collect())
-        }
+        Value::List(items) => Value::List(
+            items
+                .iter()
+                .map(|v| normalize_value_inner(v, home, tmp))
+                .collect(),
+        ),
         Value::Map(map) => {
             let normalized: std::collections::BTreeMap<String, Value> = map
                 .iter()
@@ -396,7 +399,11 @@ mod tests {
         let input = Value::Str(format!("{}/project/file.rs", home));
         let normalized = normalize_value(&input);
         if let Value::Str(s) = normalized {
-            assert!(s.contains("<HOME>"), "expected <HOME> placeholder, got: {}", s);
+            assert!(
+                s.contains("<HOME>"),
+                "expected <HOME> placeholder, got: {}",
+                s
+            );
             assert!(!s.contains(&home));
         } else {
             panic!("expected Str");

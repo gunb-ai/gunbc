@@ -5,7 +5,7 @@
 //! [`classify_layers`] function scans **all** layers and returns a
 //! human-readable classification string by priority order.
 
-use crate::diagnostic::AcquisitionDiagnostic;
+use crate::diagnostic::{AcquisitionDiagnostic, KeyIdentity, LockIdentity};
 use std::fmt;
 
 // ---------------------------------------------------------------------------
@@ -117,7 +117,56 @@ pub enum NodeRole {
 // classify_layers — priority-based, full-scan
 // ---------------------------------------------------------------------------
 
-/// Scan **all** layers and return a classification string by priority.
+/// Normalized error classification used across display, CI, and tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorClass {
+    Auth,
+    Shell,
+    File,
+    RateLimit,
+    NotFound,
+    ServerError,
+    HttpError,
+    Unknown,
+}
+
+impl ErrorClass {
+    /// Stable uppercase label used in non-TTY output.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auth => "AUTH",
+            Self::Shell => "SHELL",
+            Self::File => "FILE",
+            Self::RateLimit => "RATE_LIMIT",
+            Self::NotFound => "NOT_FOUND",
+            Self::ServerError => "SERVER_ERROR",
+            Self::HttpError => "HTTP_ERROR",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
+
+    /// Box tag used in rich error boxes.
+    pub fn box_tag(self) -> &'static str {
+        match self {
+            Self::Auth => "[AUTH]",
+            Self::Shell => "[SHELL]",
+            Self::File => "[FILE]",
+            Self::RateLimit => "[RATE_LIMIT]",
+            Self::NotFound => "[NOT_FOUND]",
+            Self::ServerError => "[SERVER_ERROR]",
+            Self::HttpError => "[HTTP_ERROR]",
+            Self::Unknown => "[ERROR]",
+        }
+    }
+}
+
+impl fmt::Display for ErrorClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.label())
+    }
+}
+
+/// Scan **all** layers and return a normalized [`ErrorClass`] by priority.
 ///
 /// Priority order (highest first):
 /// 1. Acquisition (with or without key) → `"AUTH"`
@@ -131,7 +180,7 @@ pub enum NodeRole {
 ///
 /// The function scans every layer first (setting boolean flags), then returns
 /// by priority order — it does **not** short-circuit on the first match.
-pub fn classify_layers(layers: &[ErrorLayer]) -> &'static str {
+pub fn classify_layers(layers: &[ErrorLayer]) -> ErrorClass {
     let mut has_acquisition = false;
     let mut has_shell = false;
     let mut has_file = false;
@@ -152,24 +201,24 @@ pub fn classify_layers(layers: &[ErrorLayer]) -> &'static str {
 
     // Return by priority.
     if has_acquisition {
-        return "AUTH";
+        return ErrorClass::Auth;
     }
     if has_shell {
-        return "SHELL";
+        return ErrorClass::Shell;
     }
     if has_file {
-        return "FILE";
+        return ErrorClass::File;
     }
     if let Some(code) = http_status {
         return match code {
-            401 | 403 => "AUTH",
-            429 => "RATE_LIMIT",
-            404 => "NOT_FOUND",
-            c if c >= 500 => "SERVER_ERROR",
-            _ => "HTTP_ERROR",
+            401 | 403 => ErrorClass::Auth,
+            429 => ErrorClass::RateLimit,
+            404 => ErrorClass::NotFound,
+            c if c >= 500 => ErrorClass::ServerError,
+            _ => ErrorClass::HttpError,
         };
     }
-    "UNKNOWN"
+    ErrorClass::Unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -185,8 +234,13 @@ pub struct FailureDetail {
 
 impl FailureDetail {
     /// Human-readable classification derived from layers.
-    pub fn classification(&self) -> &'static str {
+    pub fn classification(&self) -> ErrorClass {
         classify_layers(&self.layers)
+    }
+
+    /// Stable uppercase classification label.
+    pub fn classification_label(&self) -> &'static str {
+        self.classification().label()
     }
 
     /// The `provider.operation` label from the first [`ServiceErrorLayer`], if any.
@@ -285,8 +339,13 @@ impl ExecError {
     }
 
     /// Human-readable classification derived from layers.
-    pub fn classification(&self) -> &'static str {
+    pub fn classification(&self) -> ErrorClass {
         classify_layers(&self.layers)
+    }
+
+    /// Stable uppercase classification label.
+    pub fn classification_label(&self) -> &'static str {
+        self.classification().label()
     }
 
     /// The `provider.operation` label from the first [`ServiceErrorLayer`], if any.
@@ -337,6 +396,106 @@ impl From<&str> for ExecError {
     fn from(s: &str) -> Self {
         Self::new(s)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Service failure decoration helpers
+// ---------------------------------------------------------------------------
+
+/// Service identity for structured failure decoration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceCallMetadata {
+    pub provider: String,
+    pub operation: String,
+}
+
+/// Transport-specific context for service failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransportContext {
+    Rest {
+        endpoint: String,
+        method: String,
+        status_code: u16,
+        reason: Option<String>,
+    },
+    Shell {
+        command: String,
+        exit_code: Option<i32>,
+    },
+}
+
+/// Optional auth/acquisition context for service failures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthContext {
+    pub scheme: Option<String>,
+    pub credential_ref: Option<String>,
+    pub required_permissions: Vec<String>,
+    pub lock_target: String,
+}
+
+/// Attach consistent service/transport/auth layers to an [`ExecError`].
+///
+/// Layer order is canonical and stable:
+/// 1. Service
+/// 2. Transport-specific layers (HTTP/REST or Shell)
+/// 3. Acquisition/auth context (when provided)
+pub fn decorate_service_failure(
+    mut err: ExecError,
+    service: ServiceCallMetadata,
+    transport: TransportContext,
+    auth: Option<AuthContext>,
+) -> ExecError {
+    err = err.with_layer(ErrorLayer::Service(ServiceErrorLayer {
+        provider: service.provider,
+        operation: service.operation,
+    }));
+
+    match transport {
+        TransportContext::Rest {
+            endpoint,
+            method,
+            status_code,
+            reason,
+        } => {
+            err = err
+                .with_layer(ErrorLayer::Http(HttpErrorLayer {
+                    status_code,
+                    reason,
+                }))
+                .with_layer(ErrorLayer::Rest(RestErrorLayer { endpoint, method }));
+        }
+        TransportContext::Shell { command, exit_code } => {
+            err = err.with_layer(ErrorLayer::Shell(ShellErrorLayer { command, exit_code }));
+        }
+    }
+
+    if let Some(auth) = auth {
+        let key = auth.scheme.map(|scheme| KeyIdentity {
+            scheme,
+            hint: auth
+                .credential_ref
+                .as_deref()
+                .map(|c| format!("***{c}"))
+                .unwrap_or_else(|| "***".into()),
+            source: auth
+                .credential_ref
+                .map(|c| format!("env:{c}"))
+                .unwrap_or_else(|| "static".into()),
+        });
+        err = err.with_layer(ErrorLayer::Acquisition(AcquisitionErrorLayer {
+            diagnostic: AcquisitionDiagnostic {
+                lock: LockIdentity {
+                    resource: "AuthContext".into(),
+                    mode: "Read".into(),
+                    target: auth.lock_target,
+                },
+                key,
+            },
+            required_permissions: auth.required_permissions,
+        }));
+    }
+
+    err
 }
 
 // ---------------------------------------------------------------------------
@@ -476,7 +635,7 @@ mod tests {
         let err = ExecError::new("forbidden")
             .with_layer(acquisition_layer("BearerToken", Some("GITHUB_TOKEN")));
 
-        assert_eq!(err.classification(), "AUTH");
+        assert_eq!(err.classification(), ErrorClass::Auth);
     }
 
     #[test]
@@ -499,7 +658,7 @@ mod tests {
             }))
             .with_layer(acquisition_layer("BearerToken", None));
 
-        assert_eq!(err.classification(), "AUTH");
+        assert_eq!(err.classification(), ErrorClass::Auth);
     }
 
     #[test]
@@ -509,35 +668,32 @@ mod tests {
             exit_code: Some(101),
         }));
 
-        assert_eq!(err.classification(), "SHELL");
+        assert_eq!(err.classification(), ErrorClass::Shell);
     }
 
     #[test]
     fn error_classification_http_specific() {
         // 429 → RATE_LIMIT
-        let rate_limit = ExecError::new("too many requests").with_layer(ErrorLayer::Http(
-            HttpErrorLayer {
+        let rate_limit =
+            ExecError::new("too many requests").with_layer(ErrorLayer::Http(HttpErrorLayer {
                 status_code: 429,
                 reason: None,
-            },
-        ));
-        assert_eq!(rate_limit.classification(), "RATE_LIMIT");
+            }));
+        assert_eq!(rate_limit.classification(), ErrorClass::RateLimit);
 
         // 404 → NOT_FOUND
-        let not_found =
-            ExecError::new("missing").with_layer(ErrorLayer::Http(HttpErrorLayer {
-                status_code: 404,
-                reason: None,
-            }));
-        assert_eq!(not_found.classification(), "NOT_FOUND");
+        let not_found = ExecError::new("missing").with_layer(ErrorLayer::Http(HttpErrorLayer {
+            status_code: 404,
+            reason: None,
+        }));
+        assert_eq!(not_found.classification(), ErrorClass::NotFound);
 
         // 500 → SERVER_ERROR
-        let server_err =
-            ExecError::new("kaboom").with_layer(ErrorLayer::Http(HttpErrorLayer {
-                status_code: 500,
-                reason: None,
-            }));
-        assert_eq!(server_err.classification(), "SERVER_ERROR");
+        let server_err = ExecError::new("kaboom").with_layer(ErrorLayer::Http(HttpErrorLayer {
+            status_code: 500,
+            reason: None,
+        }));
+        assert_eq!(server_err.classification(), ErrorClass::ServerError);
 
         // 502 → SERVER_ERROR (>= 500)
         let gateway_err =
@@ -545,7 +701,7 @@ mod tests {
                 status_code: 502,
                 reason: None,
             }));
-        assert_eq!(gateway_err.classification(), "SERVER_ERROR");
+        assert_eq!(gateway_err.classification(), ErrorClass::ServerError);
     }
 
     #[test]
@@ -559,7 +715,7 @@ mod tests {
 
         assert_eq!(err.to_string(), "calling GitHub API: timeout");
         assert_eq!(err.layers().len(), 1);
-        assert_eq!(err.classification(), "SERVER_ERROR");
+        assert_eq!(err.classification(), ErrorClass::ServerError);
     }
 
     #[test]
@@ -574,14 +730,14 @@ mod tests {
         let detail = err.to_failure_detail();
         assert_eq!(detail.message, "auth failed");
         assert_eq!(detail.layers.len(), 2);
-        assert_eq!(detail.classification(), "AUTH");
+        assert_eq!(detail.classification(), ErrorClass::Auth);
         assert_eq!(detail.service_label(), Some("gcp → upload".into()));
 
         // Round-trip back to ExecError.
         let roundtrip = ExecError::from_failure_detail(detail);
         assert_eq!(roundtrip.message(), "auth failed");
         assert_eq!(roundtrip.layers().len(), 2);
-        assert_eq!(roundtrip.classification(), "AUTH");
+        assert_eq!(roundtrip.classification(), ErrorClass::Auth);
     }
 
     #[test]
@@ -589,7 +745,7 @@ mod tests {
         let detail = FailureDetail::from("plain error".to_string());
         assert_eq!(detail.message, "plain error");
         assert!(detail.layers.is_empty());
-        assert_eq!(detail.classification(), "UNKNOWN");
+        assert_eq!(detail.classification(), ErrorClass::Unknown);
     }
 
     #[test]
@@ -662,7 +818,7 @@ mod tests {
     #[test]
     fn error_no_layers_classifies_unknown() {
         let err = ExecError::new("generic error");
-        assert_eq!(err.classification(), "UNKNOWN");
+        assert_eq!(err.classification(), ErrorClass::Unknown);
         assert_eq!(err.service_label(), None);
     }
 
@@ -679,7 +835,7 @@ mod tests {
             }));
 
         // 401 classifies as AUTH even without an Acquisition layer
-        assert_eq!(err.classification(), "AUTH");
+        assert_eq!(err.classification(), ErrorClass::Auth);
         let trace = err.node_trace().unwrap();
         assert_eq!(trace.node_id, "parse_transport_services_github_gist");
         assert_eq!(trace.role, NodeRole::Pure);
@@ -688,13 +844,12 @@ mod tests {
     #[test]
     fn node_trace_only_classifies_unknown() {
         // When the only layer is NodeTrace, classification falls through to UNKNOWN
-        let err = ExecError::new("something broke").with_layer(ErrorLayer::NodeTrace(
-            NodeTraceLayer {
+        let err =
+            ExecError::new("something broke").with_layer(ErrorLayer::NodeTrace(NodeTraceLayer {
                 node_id: "some_node".into(),
                 role: NodeRole::TransportExecutor,
-            },
-        ));
-        assert_eq!(err.classification(), "UNKNOWN");
+            }));
+        assert_eq!(err.classification(), ErrorClass::Unknown);
         assert!(err.node_trace().is_some());
     }
 
@@ -704,7 +859,7 @@ mod tests {
             path: "/tmp/data.json".into(),
             operation: "read".into(),
         }));
-        assert_eq!(err.classification(), "FILE");
+        assert_eq!(err.classification(), ErrorClass::File);
     }
 
     #[test]
@@ -737,7 +892,7 @@ mod tests {
             status_code: 401,
             reason: Some("Unauthorized".into()),
         }));
-        assert_eq!(err.classification(), "AUTH");
+        assert_eq!(err.classification(), ErrorClass::Auth);
     }
 
     #[test]
@@ -746,7 +901,7 @@ mod tests {
             status_code: 403,
             reason: Some("Forbidden".into()),
         }));
-        assert_eq!(err.classification(), "AUTH");
+        assert_eq!(err.classification(), ErrorClass::Auth);
     }
 
     #[test]
@@ -760,10 +915,7 @@ mod tests {
                 },
                 key: None,
             },
-            required_permissions: vec![
-                "storage.read".into(),
-                "storage.inspect".into(),
-            ],
+            required_permissions: vec!["storage.read".into(), "storage.inspect".into()],
         };
         assert_eq!(
             layer.required_permissions,
@@ -781,6 +933,57 @@ mod tests {
                 reason: None,
             }))
             .with_layer(acquisition_layer("Bearer", Some("GITHUB_TOKEN")));
-        assert_eq!(err.classification(), "AUTH");
+        assert_eq!(err.classification(), ErrorClass::Auth);
+    }
+
+    #[test]
+    fn decorate_service_failure_rest_layers_are_canonical() {
+        let err = decorate_service_failure(
+            ExecError::new("request failed"),
+            ServiceCallMetadata {
+                provider: "github".into(),
+                operation: "create_gist".into(),
+            },
+            TransportContext::Rest {
+                endpoint: "https://api.github.com".into(),
+                method: "POST".into(),
+                status_code: 401,
+                reason: Some("Unauthorized".into()),
+            },
+            Some(AuthContext {
+                scheme: Some("BearerToken".into()),
+                credential_ref: Some("GITHUB_TOKEN".into()),
+                required_permissions: vec!["gist:write".into()],
+                lock_target: "POST https://api.github.com/gists".into(),
+            }),
+        );
+
+        assert_eq!(err.classification(), ErrorClass::Auth);
+        assert_eq!(err.layers.len(), 4);
+        assert!(matches!(err.layers[0], ErrorLayer::Service(_)));
+        assert!(matches!(err.layers[1], ErrorLayer::Http(_)));
+        assert!(matches!(err.layers[2], ErrorLayer::Rest(_)));
+        assert!(matches!(err.layers[3], ErrorLayer::Acquisition(_)));
+    }
+
+    #[test]
+    fn decorate_service_failure_shell_layers_are_canonical() {
+        let err = decorate_service_failure(
+            ExecError::new("shell parse failed"),
+            ServiceCallMetadata {
+                provider: "git".into(),
+                operation: "status".into(),
+            },
+            TransportContext::Shell {
+                command: "git status".into(),
+                exit_code: Some(1),
+            },
+            None,
+        );
+
+        assert_eq!(err.classification(), ErrorClass::Shell);
+        assert_eq!(err.layers.len(), 2);
+        assert!(matches!(err.layers[0], ErrorLayer::Service(_)));
+        assert!(matches!(err.layers[1], ErrorLayer::Shell(_)));
     }
 }

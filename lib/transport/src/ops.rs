@@ -54,9 +54,7 @@ impl Executable for TransportOps {
                 }
 
                 if !inputs.contains_key("request") {
-                    return OutputMap::new()
-                        .value("response", Value::Skipped)
-                        .ok();
+                    return OutputMap::new().value("response", Value::Skipped).ok();
                 }
 
                 let mut request = require_request(&inputs, "request")?;
@@ -69,7 +67,8 @@ impl Executable for TransportOps {
                         match Credential::try_from(cred_value) {
                             Ok(cred) => cred.apply(r),
                             Err(_) => {
-                                #[allow(clippy::disallowed_methods)] // Approved: transport boundary — raw secret applied as Bearer token
+                                #[allow(clippy::disallowed_methods)]
+                                // Approved: transport boundary — raw secret applied as Bearer token
                                 let token = match cred_value {
                                     Value::Secret(s) => {
                                         s.expose_plaintext_for_transport().to_string()
@@ -275,7 +274,9 @@ mod tests {
     #[test]
     fn test_transport_ops_skips_when_request_missing() {
         let op = TransportOps::Execute;
-        let result = op.execute(HashMap::new()).expect("missing request should skip, not error");
+        let result = op
+            .execute(HashMap::new())
+            .expect("missing request should skip, not error");
         assert_eq!(result.get("response"), Some(&Value::Skipped));
     }
 

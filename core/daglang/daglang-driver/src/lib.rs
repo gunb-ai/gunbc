@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use daglang_derive::{derive_artifacts, DerivedArtifacts};
 use daglang_emit::rust_exec_runtime::emit_exec_runtime_with_output_dir;
 use daglang_emit::{
-    emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle, EmittedFile,
-    EmissionSummary,
+    emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
+    EmissionSummary, EmittedFile,
 };
-pub use daglang_lower::InferredEntrypoint;
 pub use daglang_lower::is_user_param_port;
+pub use daglang_lower::InferredEntrypoint;
 use daglang_lower::{
     lower_typed_project_for_modules_with_entry,
     lower_typed_project_for_modules_with_entry_and_collection_nodes,
@@ -316,26 +316,18 @@ pub fn compile_from_module_graph_with_options(
 
     let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
 
-    let target_module_name = context
-        .target_file
-        .as_ref()
-        .and_then(|tf| {
-            let canonical = {
-                #[allow(clippy::disallowed_methods)]
-                std::fs::canonicalize(tf).ok()
-            };
-            discover_module_graph_for_context(context)
-                .ok()?
-                .modules
-                .into_iter()
-                .find(|m| {
-                    m.path == *tf
-                        || canonical
-                            .as_ref()
-                            .is_some_and(|c| m.path == *c)
-                })
-                .map(|m| m.module_path.join("."))
-        });
+    let target_module_name = context.target_file.as_ref().and_then(|tf| {
+        let canonical = {
+            #[allow(clippy::disallowed_methods)]
+            std::fs::canonicalize(tf).ok()
+        };
+        discover_module_graph_for_context(context)
+            .ok()?
+            .modules
+            .into_iter()
+            .find(|m| m.path == *tf || canonical.as_ref().is_some_and(|c| m.path == *c))
+            .map(|m| m.module_path.join("."))
+    });
 
     let target = options.target;
     let layer = options.layer;
@@ -2156,7 +2148,10 @@ fn run() -> Bool {
         )
         .expect("compile should succeed for go native layer");
 
-        assert_eq!(output.emit_manifest_path, "target/generated/go/emit_manifest.json");
+        assert_eq!(
+            output.emit_manifest_path,
+            "target/generated/go/emit_manifest.json"
+        );
         let manifest = output
             .emitted
             .files
@@ -2273,8 +2268,7 @@ fn run() -> Bool {
             .iter()
             .filter(|n| matches!(n.body, gunbc_ir::node::NodeBody::Opaque(_)))
             .collect();
-        let opaque_ids: std::collections::HashSet<_> =
-            opaque_nodes.iter().map(|n| &n.id).collect();
+        let opaque_ids: std::collections::HashSet<_> = opaque_nodes.iter().map(|n| &n.id).collect();
         let expected_nodes = opaque_nodes.len();
         let actual_nodes = main_rs.matches("dag.add_node").count();
         assert_eq!(
@@ -2467,8 +2461,7 @@ fn run() -> Bool {
             .iter()
             .filter(|n| matches!(n.body, gunbc_ir::node::NodeBody::Opaque(_)))
             .collect();
-        let opaque_ids: std::collections::HashSet<_> =
-            opaque_nodes.iter().map(|n| &n.id).collect();
+        let opaque_ids: std::collections::HashSet<_> = opaque_nodes.iter().map(|n| &n.id).collect();
         let expected_nodes = opaque_nodes.len();
         let actual_nodes = main_rs.matches("dag.add_node").count();
         assert_eq!(
@@ -2526,8 +2519,8 @@ fn run() -> Bool {
             roots: vec![root.to_path_buf()],
             target_file: target_file.map(|p| p.to_path_buf()),
         };
-        let output = compile_from_context(&context)
-            .expect("compile should succeed for determinism test");
+        let output =
+            compile_from_context(&context).expect("compile should succeed for determinism test");
         output
             .receipt
             .expect("receipt should be computed for determinism test")

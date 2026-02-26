@@ -329,10 +329,7 @@ impl TypeRegistry {
         // Domain types for transport/infrastructure.
         self.register("TransportRequest", type_lib::identity("TransportRequest"));
         self.register("TransportResponse", type_lib::identity("TransportResponse"));
-        self.register(
-            "Credential",
-            type_lib::identity("Credential"),
-        );
+        self.register("Credential", type_lib::identity("Credential"));
         self.register("FilesystemHandle", type_lib::identity("FilesystemHandle"));
         self.register("NetworkHandle", type_lib::identity("NetworkHandle"));
         self.register(
@@ -755,10 +752,7 @@ impl TypeRegistry {
             ("Secret", ValueBacking::String),
         ];
         for &(prim, backing) in PRIMITIVE_BACKINGS {
-            if self
-                .coercion_path(type_id, &TypeId::from(prim))
-                .is_some()
-            {
+            if self.coercion_path(type_id, &TypeId::from(prim)).is_some() {
                 return backing;
             }
         }
@@ -1350,17 +1344,34 @@ mod tests {
 
         let cases = [
             // Primitives
-            "String", "Bool", "Int", "Float", "Bytes", "Json", "Secret",
+            "String",
+            "Bool",
+            "Int",
+            "Float",
+            "Bytes",
+            "Json",
+            "Secret",
             // Domain types (string-backed)
-            "FilePath", "Url", "Email", "NonEmptyString", "Platform",
-            "GcpProjectId", "GcpSecretId", "OidcAudience",
+            "FilePath",
+            "Url",
+            "Email",
+            "NonEmptyString",
+            "Platform",
+            "GcpProjectId",
+            "GcpSecretId",
+            "OidcAudience",
             // Domain types (other backings)
-            "Credential", "Timestamp",
+            "Credential",
+            "Timestamp",
             // Parametric
-            "List<String>", "Set<String>", "Map<String,Int>",
-            "Optional<String>", "Optional<Int>",
+            "List<String>",
+            "Set<String>",
+            "Map<String,Int>",
+            "Optional<String>",
+            "Optional<Int>",
             // Legacy aliases
-            "StringList", "UrlList",
+            "StringList",
+            "UrlList",
         ];
 
         for type_name in &cases {
@@ -1378,49 +1389,88 @@ mod tests {
     fn test_value_backing_regression_credential() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
-        assert_eq!(r.value_backing(&TypeId::from("Credential")), ValueBacking::Map);
+        assert_eq!(
+            r.value_backing(&TypeId::from("Credential")),
+            ValueBacking::Map
+        );
     }
 
     #[test]
     fn test_value_backing_regression_tool_handle() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
-        assert_eq!(r.value_backing(&TypeId::from("ToolHandle")), ValueBacking::Json);
+        assert_eq!(
+            r.value_backing(&TypeId::from("ToolHandle")),
+            ValueBacking::Json
+        );
     }
 
     #[test]
     fn test_value_backing_regression_platform() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
-        assert_eq!(r.value_backing(&TypeId::from("Platform")), ValueBacking::String);
+        assert_eq!(
+            r.value_backing(&TypeId::from("Platform")),
+            ValueBacking::String
+        );
     }
 
     #[test]
     fn test_value_backing_regression_timestamp() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
-        assert_eq!(r.value_backing(&TypeId::from("Timestamp")), ValueBacking::Int);
+        assert_eq!(
+            r.value_backing(&TypeId::from("Timestamp")),
+            ValueBacking::Int
+        );
     }
 
     #[test]
     fn test_value_backing_regression_parametric_types() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
-        assert_eq!(r.value_backing(&TypeId::from("List<String>")), ValueBacking::List);
-        assert_eq!(r.value_backing(&TypeId::from("Set<Int>")), ValueBacking::Set);
-        assert_eq!(r.value_backing(&TypeId::from("Map<String,Bool>")), ValueBacking::Map);
-        assert_eq!(r.value_backing(&TypeId::from("Optional<Float>")), ValueBacking::Float);
-        assert_eq!(r.value_backing(&TypeId::from("Optional<Credential>")), ValueBacking::Map);
+        assert_eq!(
+            r.value_backing(&TypeId::from("List<String>")),
+            ValueBacking::List
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("Set<Int>")),
+            ValueBacking::Set
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("Map<String,Bool>")),
+            ValueBacking::Map
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("Optional<Float>")),
+            ValueBacking::Float
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("Optional<Credential>")),
+            ValueBacking::Map
+        );
     }
 
     #[test]
     fn test_value_backing_regression_transport_types() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
-        assert_eq!(r.value_backing(&TypeId::from("TransportRequest")), ValueBacking::Json);
-        assert_eq!(r.value_backing(&TypeId::from("TransportResponse")), ValueBacking::Json);
-        assert_eq!(r.value_backing(&TypeId::from("FilesystemHandle")), ValueBacking::Json);
-        assert_eq!(r.value_backing(&TypeId::from("NetworkHandle")), ValueBacking::Json);
+        assert_eq!(
+            r.value_backing(&TypeId::from("TransportRequest")),
+            ValueBacking::Json
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("TransportResponse")),
+            ValueBacking::Json
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("FilesystemHandle")),
+            ValueBacking::Json
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("NetworkHandle")),
+            ValueBacking::Json
+        );
     }
 
     #[test]
@@ -1428,17 +1478,29 @@ mod tests {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
         // FilePath coerces to String via identity chain
-        assert_eq!(r.value_backing(&TypeId::from("FilePath")), ValueBacking::String);
+        assert_eq!(
+            r.value_backing(&TypeId::from("FilePath")),
+            ValueBacking::String
+        );
         assert_eq!(r.value_backing(&TypeId::from("Url")), ValueBacking::String);
-        assert_eq!(r.value_backing(&TypeId::from("Email")), ValueBacking::String);
-        assert_eq!(r.value_backing(&TypeId::from("NonEmptyString")), ValueBacking::String);
+        assert_eq!(
+            r.value_backing(&TypeId::from("Email")),
+            ValueBacking::String
+        );
+        assert_eq!(
+            r.value_backing(&TypeId::from("NonEmptyString")),
+            ValueBacking::String
+        );
     }
 
     #[test]
     fn test_value_backing_regression_secret() {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
-        assert_eq!(r.value_backing(&TypeId::from("Secret")), ValueBacking::String);
+        assert_eq!(
+            r.value_backing(&TypeId::from("Secret")),
+            ValueBacking::String
+        );
     }
 
     #[test]
@@ -1446,7 +1508,9 @@ mod tests {
         use crate::types::ValueBacking;
         let r = TypeRegistry::with_core_types();
         // Unknown types fall back to Json
-        assert_eq!(r.value_backing(&TypeId::from("CompletelyUnknownType")), ValueBacking::Json);
+        assert_eq!(
+            r.value_backing(&TypeId::from("CompletelyUnknownType")),
+            ValueBacking::Json
+        );
     }
-
 }

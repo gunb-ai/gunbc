@@ -38,9 +38,7 @@ pub use env_status::CloudEnvStatus;
 pub use health_status::{evaluate_health, HealthCheckItem, HealthCheckReport};
 pub use infra_bootstrap::{build_wif_bootstrap_dag, InfraBootstrapGraphOp, InfraBootstrapOps};
 pub use infra_graph::render_infra_spec_dot;
-pub use infra_plan_apply::{
-    build_infra_plan_dag, InfraApplyFilter, InfraPlanApplyOps,
-};
+pub use infra_plan_apply::{build_infra_plan_dag, InfraApplyFilter, InfraPlanApplyOps};
 pub use infra_spec::{EnvironmentConfig, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC};
 pub use login_flow::{inspect_login_flow, LoginDiagnostics};
 pub use project_registry::{

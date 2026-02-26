@@ -1171,8 +1171,7 @@ impl<T> ReachableDag<T> {
             .edges
             .iter()
             .filter(|e| {
-                reachable_ids.contains(&e.from_node.0)
-                    && reachable_ids.contains(&e.to_node.0)
+                reachable_ids.contains(&e.from_node.0) && reachable_ids.contains(&e.to_node.0)
             })
             .cloned()
             .collect();
@@ -1205,7 +1204,8 @@ mod reachable_dag_tests {
         dag.add_node(dummy_node("entry"));
         dag.add_node(dummy_node("downstream"));
         dag.add_node(dummy_node("orphan_with_incoming"));
-        dag.edges.push(Edge::new("entry", "out", "downstream", "in"));
+        dag.edges
+            .push(Edge::new("entry", "out", "downstream", "in"));
         // orphan_with_incoming has an incoming edge from a non-entrypoint source
         // that itself has no path from entry — but since "orphan_with_incoming"
         // has incoming edges, it's not an entrypoint. And it's not downstream
@@ -1214,8 +1214,12 @@ mod reachable_dag_tests {
         // Actually in this setup, orphan_with_incoming has no incoming edge
         // from any node in the graph. Let's make it have one:
         dag.add_node(dummy_node("island_source"));
-        dag.edges
-            .push(Edge::new("island_source", "out", "orphan_with_incoming", "in"));
+        dag.edges.push(Edge::new(
+            "island_source",
+            "out",
+            "orphan_with_incoming",
+            "in",
+        ));
 
         let reachable = ReachableDag::from_dag(&dag);
         let ids: Vec<&str> = reachable.nodes.iter().map(|n| n.id.0.as_str()).collect();

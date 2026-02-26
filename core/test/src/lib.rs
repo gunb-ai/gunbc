@@ -56,11 +56,11 @@ pub use corpus::{
     is_redacted_type, normalize_value, CorpusExample, EdgeExample, Expectation, MockCorpus,
     NodeIdentity, Provenance, SeedKind,
 };
-pub use fidelity::{
-    canonical_ladders, node_max_fidelity, FidelityLadder, FidelityLevel, FidelityRung,
-};
 pub use fermi::{
     guard, guard_test, guard_test_with_env, max_cost_from_env, FermiCost, TestClass, TestMeta,
+};
+pub use fidelity::{
+    canonical_ladders, node_max_fidelity, FidelityLadder, FidelityLevel, FidelityRung,
 };
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
 pub use mock_requirements::{

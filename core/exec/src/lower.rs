@@ -269,7 +269,10 @@ fn lower_with_log_detail<T: Clone>(
                     // Add internal edges from the sub-DAG with prefixed node IDs
                     for sub_edge in &lowered_sub.dag.edges {
                         let prefixed_edge = Edge {
-                            from_node: NodeId::new(format!("{}/{}", node.id.0, sub_edge.from_node.0)),
+                            from_node: NodeId::new(format!(
+                                "{}/{}",
+                                node.id.0, sub_edge.from_node.0
+                            )),
                             from_port: sub_edge.from_port.clone(),
                             to_node: NodeId::new(format!("{}/{}", node.id.0, sub_edge.to_node.0)),
                             to_port: sub_edge.to_port.clone(),

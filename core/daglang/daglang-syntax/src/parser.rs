@@ -313,7 +313,6 @@ impl Parser {
         }
     }
 
-
     fn parse_service_config(&mut self) -> Result<ServiceConfig, ParseError> {
         let mut config = ServiceConfig::default();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
@@ -336,7 +335,9 @@ impl Parser {
                                 self.advance();
                             }
                         }
-                        _ => { self.advance(); }
+                        _ => {
+                            self.advance();
+                        }
                     }
                 }
             } else {
@@ -362,7 +363,9 @@ impl Parser {
                         let field_name = self.expect_ident()?;
                         if self.eat(&TokenKind::Colon) {
                             match field_name.as_str() {
-                                "method" => { method = self.expect_ident()?; }
+                                "method" => {
+                                    method = self.expect_ident()?;
+                                }
                                 "path" => {
                                     if let TokenKind::Str(s) = &self.peek().kind {
                                         path = s.clone();
@@ -371,9 +374,15 @@ impl Parser {
                                         path = self.expect_ident()?;
                                     }
                                 }
-                                "body" => { body = Some(self.parse_expr(0)?); }
-                                "headers" => { headers = Some(self.parse_expr(0)?); }
-                                _ => { self.advance(); }
+                                "body" => {
+                                    body = Some(self.parse_expr(0)?);
+                                }
+                                "headers" => {
+                                    headers = Some(self.parse_expr(0)?);
+                                }
+                                _ => {
+                                    self.advance();
+                                }
                             }
                         }
                     } else {
@@ -381,7 +390,12 @@ impl Parser {
                     }
                     self.eat(&TokenKind::Comma);
                 }
-                TransportBinding::Rest { method, path, body, headers }
+                TransportBinding::Rest {
+                    method,
+                    path,
+                    body,
+                    headers,
+                }
             }
             "shell" => {
                 let mut argv = Vec::new();
@@ -414,7 +428,9 @@ impl Parser {
                         let field_name = self.expect_ident()?;
                         if self.eat(&TokenKind::Colon) {
                             match field_name.as_str() {
-                                "op" => { op = self.expect_ident()?; }
+                                "op" => {
+                                    op = self.expect_ident()?;
+                                }
                                 "path" => {
                                     if let TokenKind::Str(s) = &self.peek().kind {
                                         fpath = s.clone();
@@ -423,7 +439,9 @@ impl Parser {
                                         fpath = self.expect_ident()?;
                                     }
                                 }
-                                _ => { self.advance(); }
+                                _ => {
+                                    self.advance();
+                                }
                             }
                         }
                     } else {
@@ -674,10 +692,7 @@ impl Parser {
         let name = self.expect_ident()?;
         self.expect(&TokenKind::Colon)?;
         let ty = self.parse_type_expr()?;
-        Ok(ExternAssetDecl {
-            name,
-            ty,
-        })
+        Ok(ExternAssetDecl { name, ty })
     }
 
     // ── type definitions ───────────────────────────────────────────
@@ -837,9 +852,7 @@ impl Parser {
             let mut refinements = Vec::new();
             refinements.push(self.parse_refinement()?);
             while self.eat(&TokenKind::Comma) {
-                if self.check(&TokenKind::RBrace)
-                    || self.check(&TokenKind::RParen)
-                    || self.at_eof()
+                if self.check(&TokenKind::RBrace) || self.check(&TokenKind::RParen) || self.at_eof()
                 {
                     break;
                 }
@@ -857,7 +870,11 @@ impl Parser {
             "pattern" => {
                 self.expect(&TokenKind::LParen)?;
                 let s = match &self.peek().kind {
-                    TokenKind::Str(v) => { let r = v.clone(); self.advance(); r }
+                    TokenKind::Str(v) => {
+                        let r = v.clone();
+                        self.advance();
+                        r
+                    }
                     _ => return Err(self.err("expected string for pattern".into())),
                 };
                 self.expect(&TokenKind::RParen)?;
@@ -881,7 +898,9 @@ impl Parser {
                                 "max" => max = Some(val),
                                 _ => {}
                             }
-                            if !self.eat(&TokenKind::Comma) { break; }
+                            if !self.eat(&TokenKind::Comma) {
+                                break;
+                            }
                         }
                     } else {
                         // Positional: range(min, max)
@@ -897,7 +916,11 @@ impl Parser {
             "brand" => {
                 self.expect(&TokenKind::LParen)?;
                 let s = match &self.peek().kind {
-                    TokenKind::Str(v) => { let r = v.clone(); self.advance(); r }
+                    TokenKind::Str(v) => {
+                        let r = v.clone();
+                        self.advance();
+                        r
+                    }
                     _ => return Err(self.err("expected string for brand".into())),
                 };
                 self.expect(&TokenKind::RParen)?;
@@ -1254,11 +1277,14 @@ impl Parser {
         }
         loop {
             if self.check(&TokenKind::Idempotent) {
-                self.advance(); idempotent = true;
+                self.advance();
+                idempotent = true;
             } else if self.check(&TokenKind::Readonly) {
-                self.advance(); readonly = true;
+                self.advance();
+                readonly = true;
             } else if self.check(&TokenKind::Hermetic) {
-                self.advance(); hermetic = true;
+                self.advance();
+                hermetic = true;
             } else {
                 break;
             }
@@ -1276,11 +1302,14 @@ impl Parser {
                     outputs = self.parse_field_list_until_rbrace()?;
                     self.expect(&TokenKind::RBrace)?;
                 } else if self.check(&TokenKind::Idempotent) {
-                    self.advance(); idempotent = true;
+                    self.advance();
+                    idempotent = true;
                 } else if self.check(&TokenKind::Readonly) {
-                    self.advance(); readonly = true;
+                    self.advance();
+                    readonly = true;
                 } else if self.check(&TokenKind::Hermetic) {
-                    self.advance(); hermetic = true;
+                    self.advance();
+                    hermetic = true;
                 } else if self.check(&TokenKind::Transport) {
                     transport = Some(self.parse_transport_binding()?);
                 } else {
@@ -1384,9 +1413,11 @@ impl Parser {
                 outputs = self.parse_field_list_until_rbrace()?;
                 self.expect(&TokenKind::RBrace)?;
             } else if self.check(&TokenKind::Idempotent) {
-                self.advance(); idempotent = true;
+                self.advance();
+                idempotent = true;
             } else if self.check(&TokenKind::Readonly) {
-                self.advance(); readonly = true;
+                self.advance();
+                readonly = true;
             } else {
                 self.advance();
             }
@@ -1514,9 +1545,11 @@ impl Parser {
         }
         loop {
             if self.check(&TokenKind::Idempotent) {
-                self.advance(); idempotent = true;
+                self.advance();
+                idempotent = true;
             } else if self.check(&TokenKind::Readonly) {
-                self.advance(); readonly = true;
+                self.advance();
+                readonly = true;
             } else {
                 break;
             }
@@ -1535,9 +1568,11 @@ impl Parser {
                     outputs = self.parse_field_list_until_rbrace()?;
                     self.expect(&TokenKind::RBrace)?;
                 } else if self.check(&TokenKind::Idempotent) {
-                    self.advance(); idempotent = true;
+                    self.advance();
+                    idempotent = true;
                 } else if self.check(&TokenKind::Readonly) {
-                    self.advance(); readonly = true;
+                    self.advance();
+                    readonly = true;
                 } else {
                     self.advance();
                 }
@@ -1554,7 +1589,6 @@ impl Parser {
             mock_response: Vec::new(),
         })
     }
-
 
     fn parse_return_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
         if self.eat(&TokenKind::LBrace) {
@@ -2102,7 +2136,6 @@ impl Parser {
         };
         Ok(Param { name, ty, default })
     }
-
 
     // ── bodies / statements ────────────────────────────────────────
 
@@ -3177,10 +3210,7 @@ pipeline gist {
                 let stage = &def.stages[0];
                 assert_eq!(stage.name, "list_files");
                 assert_eq!(stage.after, vec!["codegen_ensure".to_string()]);
-                assert!(matches!(
-                    stage.when,
-                    Some(Expr::BinOp(_, BinOp::Or, _))
-                ));
+                assert!(matches!(stage.when, Some(Expr::BinOp(_, BinOp::Or, _))));
             }
             other => panic!("expected PipelineDef, got {other:?}"),
         }
@@ -3335,5 +3365,4 @@ pipeline gist {
             other => panic!("expected ExternAssetDecl, got {other:?}"),
         }
     }
-
 }

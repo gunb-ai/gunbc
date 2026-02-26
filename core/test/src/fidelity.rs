@@ -159,11 +159,18 @@ impl FidelityLadder {
             },
             TransportKind::LocalDirect => Self {
                 transport: kind,
-                rungs: vec![FidelityRung {
-                    cost: FermiCost::XS,
-                    level: FidelityLevel::PureMock,
-                    description: "DryRun local-direct intercept",
-                }],
+                rungs: vec![
+                    FidelityRung {
+                        cost: FermiCost::XS,
+                        level: FidelityLevel::PureMock,
+                        description: "DryRun local-direct intercept",
+                    },
+                    FidelityRung {
+                        cost: FermiCost::S,
+                        level: FidelityLevel::RealLocal,
+                        description: "Real in-process local execution",
+                    },
+                ],
             },
         }
     }
@@ -279,10 +286,10 @@ mod tests {
 
     #[test]
     fn node_max_fidelity_local_direct_constrains() {
-        // LocalDirect max = PureMock
+        // LocalDirect max = RealLocal; with Shell(RealLocal), meet stays RealLocal.
         assert_eq!(
             node_max_fidelity(&[TransportKind::Shell, TransportKind::LocalDirect]),
-            FidelityLevel::PureMock
+            FidelityLevel::RealLocal
         );
     }
 

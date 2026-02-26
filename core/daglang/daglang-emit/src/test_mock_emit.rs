@@ -41,8 +41,7 @@
 //! ```
 
 use daglang_syntax::ast::{
-    ExpectStmt, Expr, FixtureDef, InputDecl, Item, Literal, MockDecl, SourceFile,
-    TestDef,
+    ExpectStmt, Expr, FixtureDef, InputDecl, Item, Literal, MockDecl, SourceFile, TestDef,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -136,19 +135,12 @@ pub fn emit_test_mock_file(test_file: &TestFile, config: &TestEmitConfig) -> Str
     writeln!(out).unwrap();
 
     // Filter out tests marked with `skip`.
-    let active_tests: Vec<&TestDef> = test_file
-        .tests
-        .iter()
-        .filter(|t| !t.skip)
-        .collect();
+    let active_tests: Vec<&TestDef> = test_file.tests.iter().filter(|t| !t.skip).collect();
 
     // Emit Rust mock helper annotations as documentation comments.
     let rust_helpers: Vec<&str> = active_tests
         .iter()
-        .filter_map(|t| {
-            t.mock_helpers.clone()
-                
-        })
+        .filter_map(|t| t.mock_helpers.clone())
         .collect::<Vec<_>>()
         .into_iter()
         .map(|s| s.leak() as &str) // Static lifetime for dedup — emitter runs once.
@@ -200,8 +192,7 @@ fn emit_test_fn(
     let test_name = test.name.replace('_', "-");
 
     // Prefer typed fields, fall back to annotations
-    let tier = test.tier.clone()
-        ;
+    let tier = test.tier.clone();
     let hermetic = if test.hermetic {
         Some(true)
     } else {
@@ -886,7 +877,10 @@ test sentinel_check {
                 mocks: vec![MockDecl {
                     node_segments: vec!["execute".to_string()],
                     port: "data".to_string(),
-                    value: Expr::Record(None, vec![("ok".to_string(), Expr::Literal(Literal::Bool(true)))]),
+                    value: Expr::Record(
+                        None,
+                        vec![("ok".to_string(), Expr::Literal(Literal::Bool(true)))],
+                    ),
                 }],
                 inputs: vec![],
                 expects: vec![],

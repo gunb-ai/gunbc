@@ -76,9 +76,7 @@ fn extern_impl_count_ratchet() {
         panic!(
             "extern impl count decreased from {} to {} — update \
              EXTERN_IMPL_BASELINE in extern_ratchet.rs!\nRemaining: {:?}",
-            EXTERN_IMPL_BASELINE,
-            count,
-            symbols,
+            EXTERN_IMPL_BASELINE, count, symbols,
         );
     }
 }
@@ -89,7 +87,8 @@ fn extern_symbols_are_sorted() {
     let mut sorted = symbols.to_vec();
     sorted.sort();
     assert_eq!(
-        symbols, &sorted[..],
+        symbols,
+        &sorted[..],
         "all_extern_symbols() must be sorted for auditability"
     );
 }

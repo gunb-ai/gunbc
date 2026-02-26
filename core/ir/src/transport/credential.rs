@@ -426,7 +426,8 @@ impl TryFrom<&Value> for Credential {
 
         // Token
         let token = match map.get("token") {
-            #[allow(clippy::disallowed_methods)] // Approved: transport boundary — credential deserialization
+            #[allow(clippy::disallowed_methods)]
+            // Approved: transport boundary — credential deserialization
             Some(Value::Secret(s)) => s.expose_plaintext_for_transport().to_string(),
             _ => return Err("Credential missing 'token' secret".to_string()),
         };
@@ -528,8 +529,7 @@ mod tests {
     #[test]
     fn secret_hint_reveals_suffix() {
         // 40-char token → last 4 chars
-        let secret =
-            Secret::static_value("ghp_1234567890abcdef1234567890abcdef12345678");
+        let secret = Secret::static_value("ghp_1234567890abcdef1234567890abcdef12345678");
         assert_eq!(secret.hint(), "***5678");
 
         // 8-char token → last 2 chars (8/4 = 2)
@@ -774,5 +774,4 @@ mod tests {
             "serde should serialize plaintext for storage: {json}"
         );
     }
-
 }

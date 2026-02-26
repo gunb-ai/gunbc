@@ -58,7 +58,10 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
 }
 
 /// Compile `makegen.dag` and extract fn bodies + data declaration values.
-fn compile_makegen() -> (HashMap<String, LoweredFnBody>, HashMap<String, serde_json::Value>) {
+fn compile_makegen() -> (
+    HashMap<String, LoweredFnBody>,
+    HashMap<String, serde_json::Value>,
+) {
     let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
     let dag_file = dsl_root.join("tools/makegen.dag");
     let context = DriverContext {
@@ -156,7 +159,10 @@ fn registry_tools_to_value(registry: &ToolRegistry) -> Value {
                 .collect();
 
             let mut map = BTreeMap::new();
-            map.insert("short_name".to_string(), Value::Str(tool.short_name.clone()));
+            map.insert(
+                "short_name".to_string(),
+                Value::Str(tool.short_name.clone()),
+            );
             map.insert(
                 "description".to_string(),
                 Value::Str(tool.description.clone()),

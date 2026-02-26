@@ -50,20 +50,21 @@ pub mod topo;
 
 pub use box_draw::{error_box, info_box, preamble_box, BoxStyle, TermBox};
 pub use ci_context::CiContext;
+pub use diagnostic::{
+    credential_as_key, rest_acquisition_diagnostic, rest_request_as_lock, AcquisitionDiagnostic,
+    KeyIdentity, LockIdentity,
+};
 pub use display::{
     execute_and_display, execute_and_display_with_result, execute_and_display_with_result_config,
     print_attention, print_error_boxes, print_preamble, print_preamble_auto, print_value,
     AttentionLevel, DisplayConfig, DisplayMode, DisplayResult, DisplayVerbosity, Preamble,
 };
-pub use diagnostic::{
-    credential_as_key, rest_acquisition_diagnostic, rest_request_as_lock, AcquisitionDiagnostic,
-    KeyIdentity, LockIdentity,
-};
 pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{
-    classify_layers, AcquisitionErrorLayer, ErrorLayer, ExecError, FailureDetail,
-    FileErrorLayer, HttpErrorLayer, IntoExecResult, NodeRole, NodeTraceLayer, RestErrorLayer,
-    ResultExt, ServiceErrorLayer, ShellErrorLayer,
+    classify_layers, decorate_service_failure, AcquisitionErrorLayer, AuthContext, ErrorClass,
+    ErrorLayer, ExecError, FailureDetail, FileErrorLayer, HttpErrorLayer, IntoExecResult, NodeRole,
+    NodeTraceLayer, RestErrorLayer, ResultExt, ServiceCallMetadata, ServiceErrorLayer,
+    ShellErrorLayer, TransportContext,
 };
 pub use execute::{
     execute, execute_single_node, execute_with_mode, execute_with_mode_and_inputs,

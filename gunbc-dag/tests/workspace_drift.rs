@@ -66,8 +66,8 @@ fn workspace_crate_paths_match_cargo_toml() {
                     continue;
                 }
                 // Extract quoted path: "core/infra",
-                let path = trimmed
-                    .trim_matches(|c: char| c == '"' || c == ',' || c.is_whitespace());
+                let path =
+                    trimmed.trim_matches(|c: char| c == '"' || c == ',' || c.is_whitespace());
                 if !path.is_empty() {
                     members.insert(path.to_string());
                 }

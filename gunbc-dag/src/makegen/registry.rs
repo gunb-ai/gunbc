@@ -234,7 +234,6 @@ impl BuildConfig {
         config.check = sh(&["buck2", "build", "//..."]);
         config
     }
-
 }
 
 /// Get the default build config (cargo-based).
@@ -1291,8 +1290,7 @@ impl ToolRegistry {
         let tool_modules = discover_dsl_tool_modules();
         let pipeline_modules = discover_dsl_pipeline_modules();
         validate_required_manual_tool_modules(&tool_modules, &pipeline_modules);
-        for manual_tool in
-            manual_workspace_tools_from_dsl_modules(&tool_modules, &pipeline_modules)
+        for manual_tool in manual_workspace_tools_from_dsl_modules(&tool_modules, &pipeline_modules)
         {
             // Manual tools override DSL-discovered versions (e.g., to set
             // needs_generated_cli = false for hand-written binaries).
@@ -2051,9 +2049,7 @@ mod tests {
             );
 
             // Verify CLI flags match generated CLI flag names
-            for (info_param, dsl_ep) in
-                tool_info.entrypoints.iter().zip(dsl_make_params.iter())
-            {
+            for (info_param, dsl_ep) in tool_info.entrypoints.iter().zip(dsl_make_params.iter()) {
                 assert_eq!(
                     info_param.cli_flag,
                     format!("--{}", dsl_ep.flag_name()),
@@ -2149,13 +2145,11 @@ mod tests {
     fn test_dsl_build_targets_match_rust_declarations() {
         use daglang_syntax::ast::Item;
 
-        let dsl_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../dsl/config/build_targets.dag");
-        let source =
-            std::fs::read_to_string(&dsl_path).expect("failed to read build_targets.dag");
-        let ast = daglang_syntax::parser::parse(&source).unwrap_or_else(|errors| {
-            panic!("failed to parse build_targets.dag: {errors:?}")
-        });
+        let dsl_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl/config/build_targets.dag");
+        let source = std::fs::read_to_string(&dsl_path).expect("failed to read build_targets.dag");
+        let ast = daglang_syntax::parser::parse(&source)
+            .unwrap_or_else(|errors| panic!("failed to parse build_targets.dag: {errors:?}"));
 
         // Extract data declarations by name.
         let mut dsl_core_names: Option<Vec<String>> = None;
@@ -2173,10 +2167,14 @@ mod tests {
         let dsl_meta_names = dsl_meta_names.expect("missing 'meta_targets' data in DSL");
 
         // Compare against Rust sources.
-        let rust_core_names: Vec<String> =
-            default_core_workflows().iter().map(|w| w.name.clone()).collect();
-        let rust_meta_names: Vec<String> =
-            default_meta_targets().iter().map(|m| m.name.clone()).collect();
+        let rust_core_names: Vec<String> = default_core_workflows()
+            .iter()
+            .map(|w| w.name.clone())
+            .collect();
+        let rust_meta_names: Vec<String> = default_meta_targets()
+            .iter()
+            .map(|m| m.name.clone())
+            .collect();
 
         assert_eq!(
             dsl_core_names, rust_core_names,
@@ -2206,5 +2204,4 @@ mod tests {
             );
         }
     }
-
 }

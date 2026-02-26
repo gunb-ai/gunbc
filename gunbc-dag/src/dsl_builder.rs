@@ -157,9 +157,8 @@ fn slice_dag_from_entry<T>(mut dag: Dag<T>, entry_node_id: &str) -> Result<Dag<T
     }
 
     dag.nodes.retain(|node| include.contains(&node.id.0));
-    dag.edges.retain(|edge| {
-        include.contains(&edge.from_node.0) && include.contains(&edge.to_node.0)
-    });
+    dag.edges
+        .retain(|edge| include.contains(&edge.from_node.0) && include.contains(&edge.to_node.0));
     Ok(dag)
 }
 
@@ -294,43 +293,38 @@ mod tests {
 
     #[test]
     fn builds_bootstrap_dsl_graph() {
-        let dag = build_dsl_graph("tools/bootstrap.dag")
-            .expect("bootstrap DSL graph should resolve");
+        let dag =
+            build_dsl_graph("tools/bootstrap.dag").expect("bootstrap DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_codegen_dsl_graph() {
-        let dag = build_dsl_graph("tools/codegen.dag")
-            .expect("codegen DSL graph should resolve");
+        let dag = build_dsl_graph("tools/codegen.dag").expect("codegen DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_infra_dsl_graph() {
-        let dag = build_dsl_graph("tools/infra.dag")
-            .expect("infra DSL graph should resolve");
+        let dag = build_dsl_graph("tools/infra.dag").expect("infra DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_clippy_dsl_graph() {
-        let dag = build_dsl_graph("tools/clippy.dag")
-            .expect("clippy DSL graph should resolve");
+        let dag = build_dsl_graph("tools/clippy.dag").expect("clippy DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_deps_dsl_graph() {
-        let dag = build_dsl_graph("tools/deps.dag")
-            .expect("deps DSL graph should resolve");
+        let dag = build_dsl_graph("tools/deps.dag").expect("deps DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
     #[test]
     fn builds_review_dsl_graph() {
-        let dag = build_dsl_graph("tools/review.dag")
-            .expect("review DSL graph should resolve");
+        let dag = build_dsl_graph("tools/review.dag").expect("review DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
     }
 
@@ -350,8 +344,7 @@ mod tests {
 
     #[test]
     fn builds_ci_dsl_graph() {
-        let dag = build_dsl_graph("pipelines/ci.dag")
-            .expect("ci DSL graph should resolve");
+        let dag = build_dsl_graph("pipelines/ci.dag").expect("ci DSL graph should resolve");
         assert!(!dag.nodes.is_empty());
         assert!(
             !dag.nodes.iter().any(|node| node.id.0 == "pipelines.ci::ci"),

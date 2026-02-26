@@ -40,11 +40,9 @@ fn generated_types_are_not_stale() {
     );
 
     let fresh = String::from_utf8(output.stdout).expect("gen-types produced non-UTF-8");
-    let on_disk = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/generated/mod.rs"
-    ))
-    .expect("could not read generated/mod.rs");
+    let on_disk =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/generated/mod.rs"))
+            .expect("could not read generated/mod.rs");
 
     if fresh != on_disk {
         panic!(

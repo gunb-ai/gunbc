@@ -25,8 +25,8 @@ use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Literal, Param, ProvidesClause, Refinement, SourceFile, Stmt,
-    TypeBody, TypeExpr, UsesClause, PipelineDef,
+    Expr, Field, Item, Literal, Param, PipelineDef, ProvidesClause, Refinement, SourceFile, Stmt,
+    TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys,
@@ -1013,7 +1013,9 @@ fn validate_pipeline_def(
                 errors.push(TypeError::PipelineStageWhenTypeMismatch {
                     pipeline: pipeline_name.clone(),
                     stage: stage.name.clone(),
-                    got: inferred.display_name().unwrap_or_else(|| "Unknown".to_string()),
+                    got: inferred
+                        .display_name()
+                        .unwrap_or_else(|| "Unknown".to_string()),
                 });
             }
         }
@@ -2496,9 +2498,10 @@ fn infer_expr_type_for_expected_named_record(
             compatible = false;
             continue;
         };
-        if !gunbc_ir::type_registry::TypeRegistry::with_core_types()
-            .is_compatible(&normalize_type_id(&inferred_name), &normalize_type_id(expected_field_ty))
-        {
+        if !gunbc_ir::type_registry::TypeRegistry::with_core_types().is_compatible(
+            &normalize_type_id(&inferred_name),
+            &normalize_type_id(expected_field_ty),
+        ) {
             eprintln!("[DEBUG field_mismatch] expected_type={expected_type:?} field={name:?} expected_field_ty={expected_field_ty:?} inferred={inferred_name:?}");
             errors.push(TypeError::TypeMismatch {
                 expected: expected_field_ty.clone(),
@@ -3378,13 +3381,10 @@ fn resolve_generic_arity(
 
 fn canonical_content_encoding(raw: &str) -> Option<String> {
     match raw {
-        "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown" => {
-            Some(raw.to_string())
-        }
+        "Text" | "UTF8" | "ASCII" | "Latin1" | "Binary" | "Unknown" => Some(raw.to_string()),
         _ => None,
     }
 }
-
 
 fn extract_int_literal(expr: &Expr) -> Option<i64> {
     match expr {
@@ -5271,8 +5271,8 @@ pipeline ci {
   stage build [after missing] {}
 }"#,
         )]);
-        let errors =
-            typecheck_module_graph(graph).expect_err("unknown pipeline stage dependency should fail");
+        let errors = typecheck_module_graph(graph)
+            .expect_err("unknown pipeline stage dependency should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::UnknownPipelineStageDependency {
@@ -5293,7 +5293,8 @@ pipeline ci {
   stage build {}
 }"#,
         )]);
-        let errors = typecheck_module_graph(graph).expect_err("duplicate pipeline stage should fail");
+        let errors =
+            typecheck_module_graph(graph).expect_err("duplicate pipeline stage should fail");
         assert!(errors.iter().any(|error| matches!(
             error,
             TypeError::DuplicatePipelineStage { pipeline, stage }

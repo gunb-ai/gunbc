@@ -71,8 +71,8 @@ pub mod dag_emit;
 mod backend_harness;
 
 use daglang_derive::{DerivedArtifacts, ProgressManifest};
-use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
 pub use daglang_lower::extract_output_paths;
+use daglang_lower::{CallableKind, LoweredOp, ObligationCategory, ServiceOperationSpec};
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag};
 use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
@@ -416,7 +416,9 @@ pub fn emit_go_bundle(
 
     let main_go = if has_makegen_asset {
         let makefile_literal = escape_string_literal(
-            require_embedded_asset(embedded_data, "go", MAKEGEN_ASSET_KEY)?.content.as_str(),
+            require_embedded_asset(embedded_data, "go", MAKEGEN_ASSET_KEY)?
+                .content
+                .as_str(),
         );
         format!(
             "package main\n\n{imports}\nfunc cliEntrypoints() []string {{\n    return []string{{{entrypoint_lits}}}\n}}\n\n{symbol_funcs}\nfunc makegenContent() string {{\n    return \"{makefile_literal}\"\n}}\n\nfunc main() {{\n    if len(os.Args) > 1 {{\n        path := os.Args[1]\n        if err := os.WriteFile(path, []byte(makegenContent()), 0644); err != nil {{\n            fmt.Fprintf(os.Stderr, \"failed to write `%s`: %v\\n\", path, err)\n            os.Exit(1)\n        }}\n    }}\n    fmt.Println(\"daglang generated go backend\")\n}}\n"
@@ -515,7 +517,9 @@ pub fn emit_c_bundle(
 
     let main_c = if has_makegen_asset {
         let makefile_literal = escape_string_literal(
-            require_embedded_asset(embedded_data, "c", MAKEGEN_ASSET_KEY)?.content.as_str(),
+            require_embedded_asset(embedded_data, "c", MAKEGEN_ASSET_KEY)?
+                .content
+                .as_str(),
         );
         format!(
             "{includes}\nstatic const char* CLI_ENTRYPOINTS[] = {{{entrypoint_defs}}};\nstatic const char* MAKEGEN_CONTENT = \"{makefile_literal}\";\n\n{symbol_funcs}\nint main(int argc, char** argv) {{\n    (void)CLI_ENTRYPOINTS;\n    if (argc > 1) {{\n        const char* path = argv[1];\n        FILE* file = fopen(path, \"wb\");\n        if (!file) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n        size_t expected = strlen(MAKEGEN_CONTENT);\n        size_t written = fwrite(MAKEGEN_CONTENT, 1, expected, file);\n        fclose(file);\n        if (written != expected) {{\n            fprintf(stderr, \"failed to write `%s`\\n\", path);\n            return 1;\n        }}\n    }}\n    printf(\"daglang generated c backend\\n\");\n    return 0;\n}}\n"
@@ -581,8 +585,9 @@ pub fn emit_mips_bundle(
         .join("\n");
 
     let main_s = if has_makegen_asset {
-        let content =
-            require_embedded_asset(embedded_data, "mips", MAKEGEN_ASSET_KEY)?.content.clone();
+        let content = require_embedded_asset(embedded_data, "mips", MAKEGEN_ASSET_KEY)?
+            .content
+            .clone();
         let makefile_bytes = content
             .as_bytes()
             .iter()
@@ -710,7 +715,9 @@ fn service_transport_phase(
         ObligationCategory::ServiceTransportExecute => {
             Some(service_emit::ServiceTransportPhase::Execute)
         }
-        ObligationCategory::ServiceTransportParse => Some(service_emit::ServiceTransportPhase::Parse),
+        ObligationCategory::ServiceTransportParse => {
+            Some(service_emit::ServiceTransportPhase::Parse)
+        }
         _ => None,
     }
 }
@@ -726,10 +733,12 @@ fn require_embedded_asset<'a>(
     backend: &str,
     key: &str,
 ) -> Result<&'a EmbeddedData, EmitError> {
-    embedded_data.get(key).ok_or_else(|| EmitError::MissingEmbeddedAsset {
-        backend: backend.to_string(),
-        key: key.to_string(),
-    })
+    embedded_data
+        .get(key)
+        .ok_or_else(|| EmitError::MissingEmbeddedAsset {
+            backend: backend.to_string(),
+            key: key.to_string(),
+        })
 }
 
 fn escape_string_literal(input: &str) -> String {
@@ -1440,8 +1449,9 @@ mod tests {
             .expect("go emit");
         let c_bundle = emit_c_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
             .expect("c emit");
-        let mips_bundle = emit_mips_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
-            .expect("mips emit");
+        let mips_bundle =
+            emit_mips_bundle(&reachable, &artifacts, &BTreeSet::new(), &HashMap::new())
+                .expect("mips emit");
 
         // All should report the same callable count.
         assert_eq!(go_bundle.summary.callable_count, 5, "Go callable count");
@@ -1520,14 +1530,12 @@ mod tests {
                 fn_body: None,
             },
         ));
-        dag.edges.push(Edge::new("entry", "out", "downstream", "in"));
+        dag.edges
+            .push(Edge::new("entry", "out", "downstream", "in"));
 
         let reachable = compute_reachable_node_ids(&dag);
 
-        assert!(
-            reachable.contains("entry"),
-            "entry should be reachable"
-        );
+        assert!(reachable.contains("entry"), "entry should be reachable");
         assert!(
             reachable.contains("downstream"),
             "downstream of entry should be reachable"

@@ -50,9 +50,7 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
             Some(DynOp::new(RenderAllowlistOp))
         }
-        ("tools.pragma", "render_pragma_lint_policy") => {
-            Some(DynOp::new(RenderLintPolicyOp))
-        }
+        ("tools.pragma", "render_pragma_lint_policy") => Some(DynOp::new(RenderLintPolicyOp)),
 
         ("tools.bootstrap", "render_bootstrap_makefile") => {
             Some(DynOp::new(GenerateBootstrapMakefileOp))
@@ -118,9 +116,8 @@ impl Executable for BuildSnapshotContentOp {
 
         let tree = render_path_tree(&sorted_files.iter().map(String::as_str).collect::<Vec<_>>());
 
-        let mut content = format!(
-            "# Workspace Snapshot\n\nBranch: `{branch}`\n\n## Directory Tree\n\n{tree}\n"
-        );
+        let mut content =
+            format!("# Workspace Snapshot\n\nBranch: `{branch}`\n\n## Directory Tree\n\n{tree}\n");
 
         if !skipped.is_empty() {
             content.push_str("\n## Skipped Entries\n\n");
@@ -133,9 +130,7 @@ impl Executable for BuildSnapshotContentOp {
             content.push_str("\n## File Contents\n");
             for (path, file_content) in files.iter().zip(file_contents.iter()) {
                 let lang = lang_for_path(path);
-                content.push_str(&format!(
-                    "\n### {path}\n\n```{lang}\n{file_content}\n```\n"
-                ));
+                content.push_str(&format!("\n### {path}\n\n```{lang}\n{file_content}\n```\n"));
             }
         }
 
@@ -193,7 +188,10 @@ fn extract_file_contents(inputs: &HashMap<String, Value>) -> Result<Vec<String>,
 struct DiscoverToolsOp;
 
 impl Executable for DiscoverToolsOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         use crate::makegen::registry::{BuildConfig, ToolRegistry};
         use gunbc_ir::cargo::{CargoCommand, Subcommand};
 
@@ -269,7 +267,10 @@ impl Executable for DiscoverToolsOp {
                     .collect();
 
                 let mut map = BTreeMap::new();
-                map.insert("short_name".to_string(), Value::Str(tool.short_name.clone()));
+                map.insert(
+                    "short_name".to_string(),
+                    Value::Str(tool.short_name.clone()),
+                );
                 map.insert(
                     "description".to_string(),
                     Value::Str(tool.description.clone()),
@@ -288,9 +289,7 @@ impl Executable for DiscoverToolsOp {
             })
             .collect();
 
-        OutputMap::new()
-            .value("return", Value::List(tools))
-            .ok()
+        OutputMap::new().value("return", Value::List(tools)).ok()
     }
 }
 
@@ -302,7 +301,10 @@ impl Executable for DiscoverToolsOp {
 struct RenderClippyTomlOp;
 
 impl Executable for RenderClippyTomlOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         use crate::policy::pragma::clippy_renderer;
         let content = clippy_renderer().render();
         OutputMap::new()
@@ -318,7 +320,10 @@ impl Executable for RenderClippyTomlOp {
 struct RenderAllowlistOp;
 
 impl Executable for RenderAllowlistOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         let content = crate::pragma::dsl_render::render_allowlist_via_dsl();
         OutputMap::new()
             .str("content", content.clone())
@@ -333,7 +338,10 @@ impl Executable for RenderAllowlistOp {
 struct RenderLintPolicyOp;
 
 impl Executable for RenderLintPolicyOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         let content = crate::pragma::dsl_render::render_lint_policy_via_dsl();
         OutputMap::new()
             .str("content", content.clone())
@@ -495,10 +503,7 @@ mod tests {
     fn render_tree_produces_tree_characters() {
         let inputs = HashMap::from([(
             "paths".to_string(),
-            Value::str_list(vec![
-                "src/main.rs".to_string(),
-                "Cargo.toml".to_string(),
-            ]),
+            Value::str_list(vec!["src/main.rs".to_string(), "Cargo.toml".to_string()]),
         )]);
         let out = RenderTreeOp.execute(inputs).unwrap();
         let rendered = out["return"].as_str().unwrap();
@@ -515,10 +520,7 @@ mod tests {
             ("branch".to_string(), Value::Str("main".to_string())),
             (
                 "files".to_string(),
-                Value::str_list(vec![
-                    "src/main.rs".to_string(),
-                    "Cargo.toml".to_string(),
-                ]),
+                Value::str_list(vec!["src/main.rs".to_string(), "Cargo.toml".to_string()]),
             ),
             (
                 "file_contents".to_string(),
@@ -555,21 +557,30 @@ mod tests {
     #[test]
     fn test_render_clippy_toml() {
         let result = RenderClippyTomlOp.execute(HashMap::new()).unwrap();
-        let content = result.get("content").and_then(Value::as_str).expect("expected clippy content");
+        let content = result
+            .get("content")
+            .and_then(Value::as_str)
+            .expect("expected clippy content");
         assert!(content.contains("disallowed-methods"));
     }
 
     #[test]
     fn test_render_allowlist() {
         let result = RenderAllowlistOp.execute(HashMap::new()).unwrap();
-        let content = result.get("content").and_then(Value::as_str).expect("expected allowlist content");
+        let content = result
+            .get("content")
+            .and_then(Value::as_str)
+            .expect("expected allowlist content");
         assert!(content.contains("Generated by gunbc-pragma"));
     }
 
     #[test]
     fn test_render_lint_policy() {
         let result = RenderLintPolicyOp.execute(HashMap::new()).unwrap();
-        let content = result.get("content").and_then(Value::as_str).expect("expected lint policy content");
+        let content = result
+            .get("content")
+            .and_then(Value::as_str)
+            .expect("expected lint policy content");
         assert!(content.contains("Generated by gunbc-pragma"));
     }
 
@@ -579,12 +590,19 @@ mod tests {
         let tools = result.get("return").expect("expected return key");
         match tools {
             Value::List(items) => {
-                assert!(items.len() >= 5, "should discover at least 5 tools, got {}", items.len());
+                assert!(
+                    items.len() >= 5,
+                    "should discover at least 5 tools, got {}",
+                    items.len()
+                );
                 // Check first tool has expected fields
                 if let Value::Map(tool) = &items[0] {
                     assert!(tool.contains_key("short_name"), "tool missing short_name");
                     assert!(tool.contains_key("command"), "tool missing command");
-                    assert!(tool.contains_key("dry_run_command"), "tool missing dry_run_command");
+                    assert!(
+                        tool.contains_key("dry_run_command"),
+                        "tool missing dry_run_command"
+                    );
                     assert!(tool.contains_key("deps"), "tool missing deps");
                     assert!(tool.contains_key("entrypoints"), "tool missing entrypoints");
                 }
@@ -596,17 +614,24 @@ mod tests {
     #[test]
     fn test_generate_makefile() {
         let result = GenerateBootstrapMakefileOp.execute(HashMap::new()).unwrap();
-        let content = result.get("makefile_content").and_then(Value::as_str).expect("expected makefile content");
+        let content = result
+            .get("makefile_content")
+            .and_then(Value::as_str)
+            .expect("expected makefile content");
         assert!(content.contains("Generated by gunbc-makegen"));
         assert!(content.contains("build:"));
     }
 
     #[test]
     fn test_generate_gitignore() {
-        let result = GenerateBootstrapGitignoreOp.execute(HashMap::new()).unwrap();
-        let content = result.get("gitignore_content").and_then(Value::as_str).expect("expected gitignore content");
+        let result = GenerateBootstrapGitignoreOp
+            .execute(HashMap::new())
+            .unwrap();
+        let content = result
+            .get("gitignore_content")
+            .and_then(Value::as_str)
+            .expect("expected gitignore content");
         assert!(content.contains("Generated by gunbc-bootstrap"));
         assert!(content.contains("/target/"));
     }
-
 }

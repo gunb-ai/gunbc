@@ -422,5 +422,4 @@ mod tests {
         assert_eq!(gist.len(), snapshot.len());
         assert!(gist.contains_key(&NodeId::from("gist.gist_create")));
     }
-
 }

@@ -1463,10 +1463,7 @@ mod tests {
         let violations = validate_resource_completeness(&dag);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].node_id.0, "transport_no_res");
-        assert_eq!(
-            violations[0].effect_kind,
-            EffectKind::TransportExecution
-        );
+        assert_eq!(violations[0].effect_kind, EffectKind::TransportExecution);
     }
 
     #[test]
@@ -1480,7 +1477,10 @@ mod tests {
         ));
 
         let violations = validate_resource_completeness(&dag);
-        assert!(violations.is_empty(), "pure nodes should not require resource ports");
+        assert!(
+            violations.is_empty(),
+            "pure nodes should not require resource ports"
+        );
     }
 
     #[test]
@@ -1533,9 +1533,15 @@ mod tests {
 
     #[test]
     fn test_effect_kind_display() {
-        assert_eq!(EffectKind::TransportExecution.to_string(), "transport execution");
+        assert_eq!(
+            EffectKind::TransportExecution.to_string(),
+            "transport execution"
+        );
         assert_eq!(EffectKind::ToolEnvironment.to_string(), "tool environment");
-        assert_eq!(EffectKind::ResourceEnvironment.to_string(), "resource environment");
+        assert_eq!(
+            EffectKind::ResourceEnvironment.to_string(),
+            "resource environment"
+        );
         assert_eq!(EffectKind::ToolConsumption.to_string(), "tool consumption");
     }
 

@@ -15,7 +15,9 @@ use crate::symbols::{SemanticColor, SymbolSet, Tier};
 // Re-exports from generated code (DSL is the source of truth)
 // ---------------------------------------------------------------------------
 
-pub use crate::generated::{CursorAction, Frame, Line, RenderMode, Span, SpanStyle, Viewport, ViewportUnit};
+pub use crate::generated::{
+    CursorAction, Frame, Line, RenderMode, Span, SpanStyle, Viewport, ViewportUnit,
+};
 
 // ---------------------------------------------------------------------------
 // Constructors
@@ -245,9 +247,20 @@ pub struct RenderSurface {
 
 #[derive(Debug, Clone)]
 pub enum GraphicsElement {
-    Glyph { x: f64, y: f64, text: String },
-    Rect { x: f64, y: f64, width: f64, height: f64 },
-    Path { points: Vec<(f64, f64)> },
+    Glyph {
+        x: f64,
+        y: f64,
+        text: String,
+    },
+    Rect {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    },
+    Path {
+        points: Vec<(f64, f64)>,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -324,11 +337,23 @@ pub enum StructuredBlock {
 
 #[derive(Debug, Clone)]
 pub enum MarkupNode {
-    Heading { level: u8, text: String },
+    Heading {
+        level: u8,
+        text: String,
+    },
     Paragraph(Vec<Span>),
-    List { ordered: bool, items: Vec<Vec<Span>> },
-    CodeBlock { language: Option<String>, code: String },
-    Table { headers: Vec<String>, rows: Vec<Vec<String>> },
+    List {
+        ordered: bool,
+        items: Vec<Vec<Span>>,
+    },
+    CodeBlock {
+        language: Option<String>,
+        code: String,
+    },
+    Table {
+        headers: Vec<String>,
+        rows: Vec<Vec<String>>,
+    },
     ThematicBreak,
     BlockQuote(Vec<MarkupNode>),
 }

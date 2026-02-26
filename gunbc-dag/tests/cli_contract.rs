@@ -420,7 +420,10 @@ fn test_makefile_mode_args_only_target_mode_capable_binaries() {
         let binary = extract_binary_name(trimmed);
         if let Some(bin) = binary {
             if !MODE_CAPABLE_BINARIES.contains(&bin.as_str()) {
-                violations.push(format!("binary '{}' receives --mode but is not mode-capable: {}", bin, trimmed));
+                violations.push(format!(
+                    "binary '{}' receives --mode but is not mode-capable: {}",
+                    bin, trimmed
+                ));
             }
         }
     }

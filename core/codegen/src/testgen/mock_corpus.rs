@@ -13,6 +13,7 @@ use gunbc_test::{
     SeedKind,
 };
 use std::collections::HashMap;
+use std::fmt;
 
 // ---------------------------------------------------------------------------
 // WorkflowInfo
@@ -26,6 +27,43 @@ pub struct WorkflowInfo {
     /// Optional profile (e.g., "unit_test", "local").
     pub profile: Option<String>,
 }
+
+/// A workflow that failed during corpus construction.
+#[derive(Clone, Debug)]
+pub struct WorkflowFailure {
+    pub workflow: WorkflowInfo,
+    pub error: String,
+}
+
+/// Rich corpus-build output used by best-effort callers.
+#[derive(Debug, Default)]
+pub struct CorpusBuildReport {
+    pub corpus_map: HashMap<NodeIdentity, MockCorpus>,
+    pub edge_examples: Vec<EdgeExample>,
+    pub failures: Vec<WorkflowFailure>,
+}
+
+/// Strict corpus build failure (one or more workflows failed DryRun).
+#[derive(Debug, Clone)]
+pub struct CorpusBuildError {
+    pub failures: Vec<WorkflowFailure>,
+}
+
+impl fmt::Display for CorpusBuildError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "corpus build failed for {} workflow(s):",
+            self.failures.len()
+        )?;
+        for failure in &self.failures {
+            writeln!(f, "- {}: {}", failure.workflow.name, failure.error)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for CorpusBuildError {}
 
 // ---------------------------------------------------------------------------
 // build_corpus
@@ -47,9 +85,24 @@ pub struct WorkflowInfo {
 pub fn build_corpus<T: Executable + Clone + Send>(
     workflows: &[(WorkflowInfo, &Dag<T>, &MockSpec)],
     node_classifier: impl Fn(&str) -> bool,
-) -> (HashMap<NodeIdentity, MockCorpus>, Vec<EdgeExample>) {
+) -> Result<(HashMap<NodeIdentity, MockCorpus>, Vec<EdgeExample>), CorpusBuildError> {
+    let report = build_corpus_report(workflows, node_classifier);
+    if report.failures.is_empty() {
+        return Ok((report.corpus_map, report.edge_examples));
+    }
+    Err(CorpusBuildError {
+        failures: report.failures,
+    })
+}
+
+/// Best-effort corpus construction that records workflow DryRun failures.
+pub fn build_corpus_report<T: Executable + Clone + Send>(
+    workflows: &[(WorkflowInfo, &Dag<T>, &MockSpec)],
+    node_classifier: impl Fn(&str) -> bool,
+) -> CorpusBuildReport {
     let mut corpus_map: HashMap<NodeIdentity, MockCorpus> = HashMap::new();
     let mut edge_examples: Vec<EdgeExample> = Vec::new();
+    let mut failures: Vec<WorkflowFailure> = Vec::new();
 
     for (info, dag, mock_spec) in workflows {
         let boundary_mocks = mock_spec.to_boundary_mocks();
@@ -57,7 +110,13 @@ pub fn build_corpus<T: Executable + Clone + Send>(
 
         let log = match execute_with_mode(*dag, mode) {
             Ok(log) => log,
-            Err(_) => continue, // Skip workflows that fail DryRun
+            Err(err) => {
+                failures.push(WorkflowFailure {
+                    workflow: info.clone(),
+                    error: err.to_string(),
+                });
+                continue;
+            }
         };
 
         let analysis = analyze_dag(*dag);
@@ -81,7 +140,11 @@ pub fn build_corpus<T: Executable + Clone + Send>(
         corpus.dedup();
     }
 
-    (corpus_map, edge_examples)
+    CorpusBuildReport {
+        corpus_map,
+        edge_examples,
+        failures,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -126,10 +189,7 @@ fn extract_node_examples<T>(
             expectation,
         };
 
-        corpus_map
-            .entry(identity)
-            .or_default()
-            .add(example);
+        corpus_map.entry(identity).or_default().add(example);
     }
 }
 
@@ -140,7 +200,6 @@ fn extract_edge_examples<T>(
     log: &ExecutionLog,
     _analysis: &DagAnalysis,
     edge_examples: &mut Vec<EdgeExample>,
-
 ) {
     for edge in &dag.edges {
         let from_identity = match NodeIdentity::from_node_id(&edge.from_node.0) {
@@ -193,11 +252,7 @@ fn extract_edge_examples<T>(
 
 /// Extract input values from a log entry.
 fn extract_inputs(entry: &LogEntry) -> HashMap<String, Value> {
-    entry
-        .inputs
-        .as_ref()
-        .cloned()
-        .unwrap_or_default()
+    entry.inputs.as_ref().cloned().unwrap_or_default()
 }
 
 /// Classify what expectation to use for a node's outputs.
@@ -369,18 +424,16 @@ mod tests {
     #[test]
     fn single_workflow_produces_corpus() {
         let dag = make_simple_dag();
-        let spec = MockSpec::new("test")
-            .input_mock("mod_a::node_a", "in1", Value::Str("hello".into()));
+        let spec =
+            MockSpec::new("test").input_mock("mod_a::node_a", "in1", Value::Str("hello".into()));
 
         let info = WorkflowInfo {
             name: "test_wf".to_string(),
             profile: None,
         };
 
-        let (corpus_map, edge_examples) = build_corpus(
-            &[(info, &dag, &spec)],
-            |_| true, // all nodes are pure
-        );
+        let (corpus_map, edge_examples) = build_corpus(&[(info, &dag, &spec)], |_| true)
+            .expect("strict corpus build should succeed");
 
         // Should have entries for both nodes
         assert!(
@@ -399,10 +452,16 @@ mod tests {
     #[test]
     fn multi_workflow_accumulates() {
         let dag = make_simple_dag();
-        let spec1 = MockSpec::new("test1")
-            .input_mock("mod_a::node_a", "in1", Value::Str("from_wf1".into()));
-        let spec2 = MockSpec::new("test2")
-            .input_mock("mod_a::node_a", "in1", Value::Str("from_wf2".into()));
+        let spec1 = MockSpec::new("test1").input_mock(
+            "mod_a::node_a",
+            "in1",
+            Value::Str("from_wf1".into()),
+        );
+        let spec2 = MockSpec::new("test2").input_mock(
+            "mod_a::node_a",
+            "in1",
+            Value::Str("from_wf2".into()),
+        );
 
         let info1 = WorkflowInfo {
             name: "wf1".into(),
@@ -413,10 +472,9 @@ mod tests {
             profile: None,
         };
 
-        let (corpus_map, _edges) = build_corpus(
-            &[(info1, &dag, &spec1), (info2, &dag, &spec2)],
-            |_| true,
-        );
+        let (corpus_map, _edges) =
+            build_corpus(&[(info1, &dag, &spec1), (info2, &dag, &spec2)], |_| true)
+                .expect("strict corpus build should succeed");
 
         // node_a should have examples from both workflows
         let node_a_id = NodeIdentity::new("mod_a", "node_a");
@@ -433,24 +491,22 @@ mod tests {
     #[test]
     fn pure_nodes_get_exact_outputs() {
         let dag = make_simple_dag();
-        let spec = MockSpec::new("test")
-            .input_mock("mod_a::node_a", "in1", Value::Str("hello".into()));
+        let spec =
+            MockSpec::new("test").input_mock("mod_a::node_a", "in1", Value::Str("hello".into()));
 
         let info = WorkflowInfo {
             name: "test_wf".to_string(),
             profile: None,
         };
 
-        let (corpus_map, _) = build_corpus(
-            &[(info, &dag, &spec)],
-            |_| true,
-        );
+        let (corpus_map, _) = build_corpus(&[(info, &dag, &spec)], |_| true)
+            .expect("strict corpus build should succeed");
 
         // Pure non-intercepted nodes should get ExactOutputs
         for corpus in corpus_map.values() {
             for example in &corpus.examples {
                 match &example.expectation {
-                    Expectation::ExactOutputs(_) => {} // expected for pure
+                    Expectation::ExactOutputs(_) => {}  // expected for pure
                     Expectation::TypeContractOnly => {} // also ok if intercepted
                     other => panic!("unexpected expectation: {:?}", other),
                 }
@@ -461,18 +517,16 @@ mod tests {
     #[test]
     fn effectful_nodes_get_type_contract_only() {
         let dag = make_simple_dag();
-        let spec = MockSpec::new("test")
-            .input_mock("mod_a::node_a", "in1", Value::Str("hello".into()));
+        let spec =
+            MockSpec::new("test").input_mock("mod_a::node_a", "in1", Value::Str("hello".into()));
 
         let info = WorkflowInfo {
             name: "test_wf".to_string(),
             profile: None,
         };
 
-        let (corpus_map, _) = build_corpus(
-            &[(info, &dag, &spec)],
-            |_| false, // all nodes are effectful
-        );
+        let (corpus_map, _) = build_corpus(&[(info, &dag, &spec)], |_| false)
+            .expect("strict corpus build should succeed");
 
         for corpus in corpus_map.values() {
             for example in &corpus.examples {
@@ -487,24 +541,88 @@ mod tests {
     #[test]
     fn edge_examples_captured() {
         let dag = make_simple_dag();
-        let spec = MockSpec::new("test")
-            .input_mock("mod_a::node_a", "in1", Value::Str("hello".into()));
+        let spec =
+            MockSpec::new("test").input_mock("mod_a::node_a", "in1", Value::Str("hello".into()));
 
         let info = WorkflowInfo {
             name: "test_wf".to_string(),
             profile: None,
         };
 
-        let (_, edges) = build_corpus(
-            &[(info, &dag, &spec)],
-            |_| true,
-        );
+        let (_, edges) = build_corpus(&[(info, &dag, &spec)], |_| true)
+            .expect("strict corpus build should succeed");
 
-        assert!(!edges.is_empty(), "should capture at least one edge example");
+        assert!(
+            !edges.is_empty(),
+            "should capture at least one edge example"
+        );
 
         let edge = &edges[0];
         assert_eq!(edge.from_node, NodeIdentity::new("mod_a", "node_a"));
         assert_eq!(edge.to_node, NodeIdentity::new("mod_b", "node_b"));
         assert!(edge.edge_port_map.contains_key("out1"));
+    }
+
+    #[test]
+    fn build_corpus_is_strict_by_default() {
+        #[derive(Debug, Clone)]
+        struct FailingOp;
+        impl Executable for FailingOp {
+            fn execute(
+                &self,
+                _inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, gunbc_exec::ExecError> {
+                Err(gunbc_exec::ExecError::new("dry-run failure"))
+            }
+        }
+
+        let mut dag: Dag<FailingOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            NodeId("mod_a::node_a".into()),
+            vec![],
+            vec![Port::new("out", TypeId::new("String"))],
+            FailingOp,
+        ));
+        let info = WorkflowInfo {
+            name: "failing".into(),
+            profile: None,
+        };
+        let spec = MockSpec::new("failing");
+
+        let err = build_corpus(&[(info, &dag, &spec)], |_| true)
+            .expect_err("strict build should fail when any workflow fails");
+        assert_eq!(err.failures.len(), 1);
+    }
+
+    #[test]
+    fn build_corpus_report_records_failures_best_effort() {
+        #[derive(Debug, Clone)]
+        struct FailingOp;
+        impl Executable for FailingOp {
+            fn execute(
+                &self,
+                _inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, gunbc_exec::ExecError> {
+                Err(gunbc_exec::ExecError::new("dry-run failure"))
+            }
+        }
+
+        let mut dag: Dag<FailingOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            NodeId("mod_a::node_a".into()),
+            vec![],
+            vec![Port::new("out", TypeId::new("String"))],
+            FailingOp,
+        ));
+        let info = WorkflowInfo {
+            name: "failing".into(),
+            profile: None,
+        };
+        let spec = MockSpec::new("failing");
+
+        let report = build_corpus_report(&[(info, &dag, &spec)], |_| true);
+        assert_eq!(report.failures.len(), 1);
+        assert!(report.corpus_map.is_empty());
+        assert!(report.edge_examples.is_empty());
     }
 }

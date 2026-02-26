@@ -13,8 +13,10 @@ use gunbc_ir::node::NodeBody;
 use gunbc_ir::Value;
 
 /// Compile `config/clippy_policy.dag` and extract fn bodies + data values.
-fn compile_clippy_policy() -> (HashMap<String, LoweredFnBody>, HashMap<String, serde_json::Value>)
-{
+fn compile_clippy_policy() -> (
+    HashMap<String, LoweredFnBody>,
+    HashMap<String, serde_json::Value>,
+) {
     let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
     let dag_file = dsl_root.join("config/clippy_policy.dag");
     let context = DriverContext {

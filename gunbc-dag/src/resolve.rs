@@ -27,8 +27,8 @@
 use std::collections::HashMap;
 
 use daglang_lower::{
-    CallableKind, CollectionOpKind, LoweredOp, ObligationCategory,
-    PrimitiveLiteral, PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
+    CallableKind, CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral,
+    PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
@@ -573,20 +573,12 @@ fn resolve_node(node: &Node<LoweredOp>) -> Result<DynOp, ResolveError> {
 
 fn resolve_node_body(node: &Node<LoweredOp>) -> Result<NodeBody<DynOp>, ResolveError> {
     match &node.body {
-        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(
-            &node.id.0,
-            op,
-            &node.outputs,
-        )?)),
+        NodeBody::Opaque(op) => Ok(NodeBody::Opaque(resolve_op(&node.id.0, op, &node.outputs)?)),
         NodeBody::SubDag(inner) => Ok(NodeBody::SubDag(resolve_lowered_dag(inner)?)),
     }
 }
 
-fn resolve_op(
-    node_id: &str,
-    op: &LoweredOp,
-    outputs: &[Port],
-) -> Result<DynOp, ResolveError> {
+fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match op {
         LoweredOp::Collection { kind, .. } => resolve_collection(kind),
         LoweredOp::Pipeline {
@@ -631,7 +623,9 @@ fn resolve_op(
         })),
         LoweredOp::UnsupportedPattern { name } => Err(ResolveError {
             node_id: node_id.to_string(),
-            reason: format!("unsupported pattern `{name}` — not yet implemented in daglang lowering"),
+            reason: format!(
+                "unsupported pattern `{name}` — not yet implemented in daglang lowering"
+            ),
         }),
         LoweredOp::ExternCall { symbol } => resolve_extern_call(node_id, symbol),
     }
@@ -703,9 +697,7 @@ fn resolve_domain(
     //    specs (e.g., not-yet-implemented service operations) fall through to the
     //    passthrough default.
     if name.starts_with("service_transport::") {
-        let has_spec = service_metadata
-            .as_ref()
-            .is_some_and(|m| m.spec.is_some());
+        let has_spec = service_metadata.as_ref().is_some_and(|m| m.spec.is_some());
         let is_execute = name.starts_with("service_transport::execute::");
         if has_spec || is_execute {
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
@@ -778,12 +770,16 @@ impl Executable for InfraDispatchOp {
         let environment = inputs
             .get("environment")
             .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("missing required 'environment' input for tools.infra::infra"))?
+            .ok_or_else(|| {
+                ExecError::new("missing required 'environment' input for tools.infra::infra")
+            })?
             .to_string();
         let runtime = inputs
             .get("runtime")
             .and_then(Value::as_str)
-            .ok_or_else(|| ExecError::new("missing required 'runtime' input for tools.infra::infra"))?
+            .ok_or_else(|| {
+                ExecError::new("missing required 'runtime' input for tools.infra::infra")
+            })?
             .to_string();
         let spec_targets = inputs
             .get("spec_targets")
@@ -820,8 +816,9 @@ impl Executable for InfraDispatchOp {
         let target_count = planned_targets.len() as i64;
         let mode = if execute { "apply" } else { "plan" };
         let applied_count = if execute { target_count } else { 0 };
-        let report =
-            format!("infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)");
+        let report = format!(
+            "infra {mode} (env={environment}, runtime={runtime}): {target_count} target(s)"
+        );
 
         OutputMap::new()
             .str("environment", environment)
@@ -893,12 +890,10 @@ fn resolve_service_transport(
                 capability,
             }) = &metadata.spec
             {
-                return Ok(DynOp::new(
-                    crate::resolve_service::InterfaceStubExecuteOp {
-                        interface: interface.clone(),
-                        capability: capability.clone(),
-                    },
-                ));
+                return Ok(DynOp::new(crate::resolve_service::InterfaceStubExecuteOp {
+                    interface: interface.clone(),
+                    capability: capability.clone(),
+                }));
             }
         }
         return Ok(DynOp::new(TransportOps::Execute));
@@ -966,12 +961,10 @@ fn resolve_service_transport(
                     true,
                     _,
                 ) => {
-                    return Ok(DynOp::new(
-                        crate::resolve_service::InterfaceStubPrepareOp {
-                            interface: interface.clone(),
-                            capability: capability.clone(),
-                        },
-                    ));
+                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubPrepareOp {
+                        interface: interface.clone(),
+                        capability: capability.clone(),
+                    }));
                 }
                 (
                     ServiceOperationSpec::InterfaceStub {
@@ -981,12 +974,10 @@ fn resolve_service_transport(
                     _,
                     true,
                 ) => {
-                    return Ok(DynOp::new(
-                        crate::resolve_service::InterfaceStubParseOp {
-                            interface: interface.clone(),
-                            capability: capability.clone(),
-                        },
-                    ));
+                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubParseOp {
+                        interface: interface.clone(),
+                        capability: capability.clone(),
+                    }));
                 }
                 _ => {}
             }
@@ -1388,9 +1379,7 @@ mod tests {
             "current_stage".to_string(),
             Value::Str("design".to_string()),
         );
-        let outputs = op
-            .execute(inputs)
-            .expect("last stage should not error");
+        let outputs = op.execute(inputs).expect("last stage should not error");
         assert_eq!(
             outputs.get("next_stage"),
             Some(&Value::Str("design".to_string())),
@@ -1578,7 +1567,8 @@ mod tests {
             "codegen",
             ObligationCategory::None,
         );
-        let result = resolve_node(&node).expect("tools.codegen::codegen should resolve via passthrough");
+        let result =
+            resolve_node(&node).expect("tools.codegen::codegen should resolve via passthrough");
         let debug = format!("{result:?}");
         assert!(
             debug.contains("DeclaredOutputCallableOp"),
@@ -1926,8 +1916,7 @@ mod tests {
             "do_something",
             ObligationCategory::None,
         );
-        let result = resolve_node(&node)
-            .expect("unknown modules should resolve via passthrough");
+        let result = resolve_node(&node).expect("unknown modules should resolve via passthrough");
         let debug = format!("{result:?}");
         assert!(
             debug.contains("DeclaredOutputCallableOp"),
@@ -1943,8 +1932,7 @@ mod tests {
             "nonexistent_op",
             ObligationCategory::None,
         );
-        let result = resolve_node(&node)
-            .expect("unknown callable should resolve via passthrough");
+        let result = resolve_node(&node).expect("unknown callable should resolve via passthrough");
         let debug = format!("{result:?}");
         assert!(
             debug.contains("DeclaredOutputCallableOp"),

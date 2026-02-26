@@ -794,8 +794,8 @@ impl ShapeContract {
         if let Some(expected_card) = &self.expected_cardinality {
             if let Some(len) = collection_length(value) {
                 let len32 = len as u32;
-                let in_range = len32 >= expected_card.min
-                    && expected_card.max.is_none_or(|m| len32 <= m);
+                let in_range =
+                    len32 >= expected_card.min && expected_card.max.is_none_or(|m| len32 <= m);
                 if !in_range {
                     return Err(ShapeViolation {
                         contract: self.clone(),
@@ -1085,9 +1085,7 @@ pub enum ProtocolStackError {
         prev_kind: ProtocolLayerKind,
     },
     /// Two layers share the same ID.
-    DuplicateId {
-        id: String,
-    },
+    DuplicateId { id: String },
 }
 
 impl fmt::Display for ProtocolStackError {
@@ -1659,7 +1657,9 @@ pub enum CodegenTypeShape {
     /// A leaf scalar type (String, Integer, Float, Boolean, Bytes).
     Scalar(ScalarKind),
     /// A record / struct with named fields, each having its own shape.
-    Record { fields: Vec<(String, CodegenTypeShape)> },
+    Record {
+        fields: Vec<(String, CodegenTypeShape)>,
+    },
     /// An enum / tagged union with named variants (no payloads at this level).
     Enum { variants: Vec<String> },
     /// A list / array of elements with a uniform element shape.
@@ -1667,7 +1667,10 @@ pub enum CodegenTypeShape {
     /// An optional / nullable value.
     Optional(Box<CodegenTypeShape>),
     /// A map from keys to values, each with their own shape.
-    Map { key: Box<CodegenTypeShape>, value: Box<CodegenTypeShape> },
+    Map {
+        key: Box<CodegenTypeShape>,
+        value: Box<CodegenTypeShape>,
+    },
 }
 
 impl CodegenTypeShape {
@@ -1694,9 +1697,10 @@ impl CodegenTypeShape {
     pub fn leaf_scalars(&self) -> Vec<&ScalarKind> {
         match self {
             CodegenTypeShape::Scalar(kind) => vec![kind],
-            CodegenTypeShape::Record { fields } => {
-                fields.iter().flat_map(|(_, shape)| shape.leaf_scalars()).collect()
-            }
+            CodegenTypeShape::Record { fields } => fields
+                .iter()
+                .flat_map(|(_, shape)| shape.leaf_scalars())
+                .collect(),
             CodegenTypeShape::Enum { .. } => vec![],
             CodegenTypeShape::List(inner) => inner.leaf_scalars(),
             CodegenTypeShape::Optional(inner) => inner.leaf_scalars(),
@@ -2487,17 +2491,17 @@ mod tests {
     #[test]
     fn test_protocol_stack_effective_status_semantics_override() {
         let stack = ProtocolStack::new(vec![
-            ProtocolLayer::new("http", ProtocolLayerKind::Session)
-                .with_status_semantics(vec![
-                    StatusSemantic::new(200, "success"),
-                    StatusSemantic::new(304, "redirect"),
-                    StatusSemantic::new(503, "server_error"),
-                ]),
-            ProtocolLayer::new("rest", ProtocolLayerKind::Presentation)
-                .with_status_semantics(vec![
+            ProtocolLayer::new("http", ProtocolLayerKind::Session).with_status_semantics(vec![
+                StatusSemantic::new(200, "success"),
+                StatusSemantic::new(304, "redirect"),
+                StatusSemantic::new(503, "server_error"),
+            ]),
+            ProtocolLayer::new("rest", ProtocolLayerKind::Presentation).with_status_semantics(
+                vec![
                     // REST overrides: 304 is success, not redirect
                     StatusSemantic::new(304, "success"),
-                ]),
+                ],
+            ),
         ]);
 
         let semantics = stack.effective_status_semantics();
@@ -2523,9 +2527,8 @@ mod tests {
 
     #[test]
     fn test_protocol_stack_single_layer() {
-        let stack = ProtocolStack::new(vec![
-            ProtocolLayer::new("shell", ProtocolLayerKind::Socket),
-        ]);
+        let stack =
+            ProtocolStack::new(vec![ProtocolLayer::new("shell", ProtocolLayerKind::Socket)]);
         assert!(stack.validate().is_ok());
         assert_eq!(stack.depth(), 1);
         assert_eq!(stack.bottom(), stack.top());
@@ -2597,7 +2600,9 @@ mod tests {
         assert_eq!(stack.layers[2].kind, ProtocolLayerKind::Presentation);
 
         // REST layer should add JsonContentType
-        assert!(stack.all_properties().contains(&"JsonContentType".to_string()));
+        assert!(stack
+            .all_properties()
+            .contains(&"JsonContentType".to_string()));
 
         // REST overrides 304 to success
         let semantics = stack.effective_status_semantics();
@@ -2671,8 +2676,14 @@ mod tests {
     fn test_codegen_record_is_composite() {
         let shape = CodegenTypeShape::Record {
             fields: vec![
-                ("name".to_string(), CodegenTypeShape::Scalar(ScalarKind::String)),
-                ("age".to_string(), CodegenTypeShape::Scalar(ScalarKind::Integer)),
+                (
+                    "name".to_string(),
+                    CodegenTypeShape::Scalar(ScalarKind::String),
+                ),
+                (
+                    "age".to_string(),
+                    CodegenTypeShape::Scalar(ScalarKind::Integer),
+                ),
             ],
         };
         assert!(shape.is_composite());
@@ -2719,15 +2730,28 @@ mod tests {
     fn test_codegen_leaf_scalars_record() {
         let shape = CodegenTypeShape::Record {
             fields: vec![
-                ("name".to_string(), CodegenTypeShape::Scalar(ScalarKind::String)),
-                ("count".to_string(), CodegenTypeShape::Scalar(ScalarKind::Integer)),
-                ("active".to_string(), CodegenTypeShape::Scalar(ScalarKind::Boolean)),
+                (
+                    "name".to_string(),
+                    CodegenTypeShape::Scalar(ScalarKind::String),
+                ),
+                (
+                    "count".to_string(),
+                    CodegenTypeShape::Scalar(ScalarKind::Integer),
+                ),
+                (
+                    "active".to_string(),
+                    CodegenTypeShape::Scalar(ScalarKind::Boolean),
+                ),
             ],
         };
         let scalars = shape.leaf_scalars();
         assert_eq!(
             scalars,
-            vec![&ScalarKind::String, &ScalarKind::Integer, &ScalarKind::Boolean]
+            vec![
+                &ScalarKind::String,
+                &ScalarKind::Integer,
+                &ScalarKind::Boolean
+            ]
         );
     }
 
@@ -2745,8 +2769,14 @@ mod tests {
         // List<Record{name: String, data: Bytes}>
         let shape = CodegenTypeShape::List(Box::new(CodegenTypeShape::Record {
             fields: vec![
-                ("name".to_string(), CodegenTypeShape::Scalar(ScalarKind::String)),
-                ("data".to_string(), CodegenTypeShape::Scalar(ScalarKind::Bytes)),
+                (
+                    "name".to_string(),
+                    CodegenTypeShape::Scalar(ScalarKind::String),
+                ),
+                (
+                    "data".to_string(),
+                    CodegenTypeShape::Scalar(ScalarKind::Bytes),
+                ),
             ],
         }));
         let scalars = shape.leaf_scalars();

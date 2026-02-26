@@ -1814,9 +1814,10 @@ fn lower_typed_project_with_callable_scope(
             .items
             .iter()
             .filter_map(|item| match &item.node {
-                Item::FnDef(def) if !def.body.lossy => {
-                    Some((def.name.as_str(), expr::lower_fn_body(&def.body, &variant_names)))
-                }
+                Item::FnDef(def) if !def.body.lossy => Some((
+                    def.name.as_str(),
+                    expr::lower_fn_body(&def.body, &variant_names),
+                )),
                 _ => None,
             })
             .collect();
@@ -4322,10 +4323,9 @@ fn resolve_expr_idents(expr: &Expr, arg_map: &HashMap<String, &Expr>) -> Expr {
                 .map(|(n, e)| (n.clone(), resolve_expr_idents(e, arg_map)))
                 .collect(),
         ),
-        Expr::FieldAccess(base, field) => Expr::FieldAccess(
-            Box::new(resolve_expr_idents(base, arg_map)),
-            field.clone(),
-        ),
+        Expr::FieldAccess(base, field) => {
+            Expr::FieldAccess(Box::new(resolve_expr_idents(base, arg_map)), field.clone())
+        }
         _ => expr.clone(),
     }
 }
@@ -7391,7 +7391,9 @@ fn service_call_literal_arg(arg: &Expr) -> Option<ServiceCallArgLiteral> {
         Expr::Literal(Literal::Bool(value)) => Some(ServiceCallArgLiteral::Bool(*value)),
         Expr::Literal(Literal::None) => Some(ServiceCallArgLiteral::None),
         Expr::StringInterp(_) => expr_to_template_string(arg).map(ServiceCallArgLiteral::String),
-        Expr::List(_) | Expr::Map(_) => expr_to_json_literal(arg, &HashSet::new()).map(ServiceCallArgLiteral::Json),
+        Expr::List(_) | Expr::Map(_) => {
+            expr_to_json_literal(arg, &HashSet::new()).map(ServiceCallArgLiteral::Json)
+        }
         _ => None,
     }
 }
@@ -7424,7 +7426,10 @@ fn expr_to_json_literal(expr: &Expr, variant_names: &HashSet<String>) -> Option<
         // Unit variant ident in data declarations (e.g., `data x = Closed`)
         Expr::Ident(name) if variant_names.contains(name.as_str()) => {
             let mut out = serde_json::Map::new();
-            out.insert("_variant".to_string(), serde_json::Value::String(name.clone()));
+            out.insert(
+                "_variant".to_string(),
+                serde_json::Value::String(name.clone()),
+            );
             Some(serde_json::Value::Object(out))
         }
         Expr::Record(type_name, fields) => {
@@ -11172,9 +11177,7 @@ func verify(path: String, expected: String) -> { ok: Bool }
         );
 
         // The compare node should exist in the edge graph.
-        let compare_has_edges = edges
-            .iter()
-            .any(|(_, _, to, _)| to == compare);
+        let compare_has_edges = edges.iter().any(|(_, _, to, _)| to == compare);
         assert!(
             compare_has_edges,
             "expected edges wiring to compare node; edges: {:?}",

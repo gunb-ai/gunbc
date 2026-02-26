@@ -563,9 +563,19 @@ pub mod ast {
 
     #[derive(Debug, Clone)]
     pub enum TransportBinding {
-        Rest { method: String, path: String, body: Option<Expr>, headers: Option<Expr> },
-        Shell { argv: Vec<Expr> },
-        File { op: String, path: String },
+        Rest {
+            method: String,
+            path: String,
+            body: Option<Expr>,
+            headers: Option<Expr>,
+        },
+        Shell {
+            argv: Vec<Expr>,
+        },
+        File {
+            op: String,
+            path: String,
+        },
         Local,
     }
 
@@ -579,7 +589,10 @@ pub mod ast {
     #[derive(Debug, Clone)]
     pub enum Refinement {
         Pattern(String),
-        Range { min: Option<Expr>, max: Option<Expr> },
+        Range {
+            min: Option<Expr>,
+            max: Option<Expr>,
+        },
         Brand(String),
         NonEmpty,
         Content(String),

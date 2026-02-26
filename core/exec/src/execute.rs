@@ -74,10 +74,7 @@ pub enum ExecutionMode {
 
 impl ExecutionMode {
     /// Create a dry-run mode with the given mocks and strictness.
-    pub fn dry_run_with_strictness(
-        mocks: BoundaryMocks,
-        _strictness: DryRunStrictness,
-    ) -> Self {
+    pub fn dry_run_with_strictness(mocks: BoundaryMocks, _strictness: DryRunStrictness) -> Self {
         // Phase 1: strictness stored but behavior unchanged (always lenient).
         // Phase 2+3 will wire strictness into mock generation and poison values.
         ExecutionMode::DryRun(mocks)
@@ -822,11 +819,10 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             observer.on_node_start(node_id);
 
             let should_intercept = should_intercept_for_mode(node, mode);
-            // Allow input_mocks output mocks (set_value) to intercept in any
-            // mode.  This enables pre-computed content injection for callable
-            // nodes whose DSL fn bodies can't be evaluated at runtime (e.g.,
-            // render_makefile_content).
+            // Allow input_mocks output mocks (set_value) to intercept only in
+            // DryRun/Simulate. Real mode must never silently mask execution.
             let input_mock_intercept = !should_intercept
+                && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
                 && input_mocks
                     .map(|m| has_full_mock_for_node(node, m))
                     .unwrap_or(false);
@@ -1679,6 +1675,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 }
 
                 let input_mock_intercept = !should_intercept_for_mode(node, mode)
+                    && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
                     && input_mocks
                         .map(|m| has_full_mock_for_node(node, m))
                         .unwrap_or(false);
@@ -3828,6 +3825,27 @@ mod tests {
             log.entries[0].outputs.get("out"),
             Some(&Value::Str("hello".into()))
         );
+    }
+
+    #[test]
+    fn test_input_mocks_do_not_intercept_in_real_mode() {
+        // Real mode should never allow output interception from input_mocks.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "compute",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("real".into())),
+        ));
+
+        let mut input_mocks = BoundaryMocks::new();
+        input_mocks.set_value("compute", "out", Value::Str("mocked".into()));
+
+        let log =
+            execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks)).unwrap();
+        let entry = log.get("compute").expect("compute entry should exist");
+        assert!(!entry.was_intercepted);
+        assert_eq!(entry.outputs.get("out"), Some(&Value::Str("real".into())));
     }
 
     #[test]

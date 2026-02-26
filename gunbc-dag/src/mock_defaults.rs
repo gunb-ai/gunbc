@@ -243,11 +243,9 @@ fn response_candidate_satisfies_consumers<T: Executable + Clone + Send>(
             if !input.cardinality.requires_one() {
                 continue;
             }
-            probe_inputs
-                .entry(input.name.0.clone())
-                .or_insert_with(|| {
-                    default_value_for_port(input.type_id.0.as_str(), input.cardinality)
-                });
+            probe_inputs.entry(input.name.0.clone()).or_insert_with(|| {
+                default_value_for_port(input.type_id.0.as_str(), input.cardinality)
+            });
         }
 
         if execute_single_node(
@@ -407,9 +405,13 @@ pub fn auto_mock_spec<T: Executable + Clone + Send>(dag: &Dag<T>, name: &str) ->
             let value = if input_port.name.0 == "skip" && input_port.type_id.0 == "Bool" {
                 Value::Bool(false)
             } else {
-                gcp_field_value(input_port.type_id.0.as_str(), input_port.name.0.as_str()).unwrap_or_else(|| {
-                    default_value_for_port(input_port.type_id.0.as_str(), input_port.cardinality)
-                })
+                gcp_field_value(input_port.type_id.0.as_str(), input_port.name.0.as_str())
+                    .unwrap_or_else(|| {
+                        default_value_for_port(
+                            input_port.type_id.0.as_str(),
+                            input_port.cardinality,
+                        )
+                    })
             };
             required_inputs.insert(input_port.name.0.clone(), value);
         }

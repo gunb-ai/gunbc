@@ -33,7 +33,8 @@ pub struct CompileContext {
     /// Ambiguous variants (present in multiple enums) are excluded.
     pub variant_to_enum: std::collections::HashMap<String, String>,
     /// Map from struct name → (field name → field type name) for contextual resolution.
-    pub struct_field_types: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+    pub struct_field_types:
+        std::collections::HashMap<String, std::collections::HashMap<String, String>>,
     /// Map from enum name → set of variant names, for field-type-based disambiguation.
     pub enum_variants: std::collections::HashMap<String, HashSet<String>>,
 }
@@ -295,7 +296,11 @@ fn to_screaming_snake(name: &str) -> String {
 // Function calls
 // ---------------------------------------------------------------------------
 
-fn compile_call(name: &str, args: &[(Option<String>, ast::Expr)], ctx: &CompileContext) -> code_ir::Expr {
+fn compile_call(
+    name: &str,
+    args: &[(Option<String>, ast::Expr)],
+    ctx: &CompileContext,
+) -> code_ir::Expr {
     let ir_args: Vec<code_ir::Expr> = args.iter().map(|(_, e)| compile_expr(e, ctx)).collect();
     let rust_name = to_snake_case(name);
 
@@ -365,17 +370,31 @@ fn compile_unaryop(op: &ast::UnaryOp) -> String {
 // Match
 // ---------------------------------------------------------------------------
 
-fn compile_match(scrutinee: &ast::Expr, arms: &[ast::MatchArm], ctx: &CompileContext) -> code_ir::Expr {
+fn compile_match(
+    scrutinee: &ast::Expr,
+    arms: &[ast::MatchArm],
+    ctx: &CompileContext,
+) -> code_ir::Expr {
     let has_none_arm = arms.iter().any(|a| is_null_pattern(&a.pattern));
     code_ir::Expr::Match {
         expr: Box::new(compile_expr(scrutinee, ctx)),
-        arms: arms.iter().map(|a| compile_match_arm(a, has_none_arm, ctx)).collect(),
+        arms: arms
+            .iter()
+            .map(|a| compile_match_arm(a, has_none_arm, ctx))
+            .collect(),
     }
 }
 
-fn compile_match_arm(arm: &ast::MatchArm, option_context: bool, ctx: &CompileContext) -> code_ir::MatchArm {
+fn compile_match_arm(
+    arm: &ast::MatchArm,
+    option_context: bool,
+    ctx: &CompileContext,
+) -> code_ir::MatchArm {
     let mut pattern = compile_pattern(&arm.pattern, ctx);
-    if option_context && !is_null_pattern(&arm.pattern) && !matches!(arm.pattern, ast::Pattern::Wildcard) {
+    if option_context
+        && !is_null_pattern(&arm.pattern)
+        && !matches!(arm.pattern, ast::Pattern::Wildcard)
+    {
         pattern = format!("Some({pattern})");
     }
     code_ir::MatchArm {
@@ -401,7 +420,9 @@ fn compile_pattern(pat: &ast::Pattern, ctx: &CompileContext) -> String {
             }
         }
         ast::Pattern::Variant(name, fields) => {
-            let qualified = ctx.variant_to_enum.get(name.as_str())
+            let qualified = ctx
+                .variant_to_enum
+                .get(name.as_str())
                 .map(|e| format!("{e}::{name}"))
                 .unwrap_or_else(|| name.clone());
             if fields.is_empty() {
@@ -535,9 +556,7 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
 
         // list |> map(f) => for-loop building result
         ast::Expr::Call(name, args) if name == "map" => {
-            let mapper = args
-                .first()
-                .map(|(_, e)| e);
+            let mapper = args.first().map(|(_, e)| e);
             compile_map_pipe(&collection, mapper, ctx)
         }
 
@@ -725,9 +744,7 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
                 code_ir::Stmt::TailExpr(code_ir::Expr::MethodCall {
                     receiver: Box::new(collection),
                     method: "repeat".to_string(),
-                    args: vec![code_ir::Expr::RawCode(format!(
-                        "{n_var}.max(0) as usize"
-                    ))],
+                    args: vec![code_ir::Expr::RawCode(format!("{n_var}.max(0) as usize"))],
                 }),
             ])
         }
@@ -815,7 +832,11 @@ fn compile_pipe(left: &ast::Expr, right: &ast::Expr, ctx: &CompileContext) -> co
     }
 }
 
-fn compile_any_pipe(collection: &code_ir::Expr, predicate: Option<&ast::Expr>, ctx: &CompileContext) -> code_ir::Expr {
+fn compile_any_pipe(
+    collection: &code_ir::Expr,
+    predicate: Option<&ast::Expr>,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
     let result = fresh("any");
     let elem = fresh("elem");
 
@@ -857,7 +878,11 @@ fn compile_any_pipe(collection: &code_ir::Expr, predicate: Option<&ast::Expr>, c
     ])
 }
 
-fn compile_map_pipe(collection: &code_ir::Expr, mapper: Option<&ast::Expr>, ctx: &CompileContext) -> code_ir::Expr {
+fn compile_map_pipe(
+    collection: &code_ir::Expr,
+    mapper: Option<&ast::Expr>,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
     let result = fresh("mapped");
     let elem = fresh("elem");
 
@@ -879,10 +904,13 @@ fn compile_map_pipe(collection: &code_ir::Expr, mapper: Option<&ast::Expr>, ctx:
     };
 
     code_ir::Expr::Block(vec![
-        code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall {
-            name: "vec".to_string(),
-            args: vec![],
-        }),
+        code_ir::Stmt::let_mut(
+            &result,
+            code_ir::Expr::MacroCall {
+                name: "vec".to_string(),
+                args: vec![],
+            },
+        ),
         code_ir::Stmt::For {
             binding: elem,
             iter: make_owned_iter(collection.clone()),
@@ -896,7 +924,11 @@ fn compile_map_pipe(collection: &code_ir::Expr, mapper: Option<&ast::Expr>, ctx:
     ])
 }
 
-fn compile_filter_pipe(collection: &code_ir::Expr, predicate: Option<&ast::Expr>, ctx: &CompileContext) -> code_ir::Expr {
+fn compile_filter_pipe(
+    collection: &code_ir::Expr,
+    predicate: Option<&ast::Expr>,
+    ctx: &CompileContext,
+) -> code_ir::Expr {
     let result = fresh("filtered");
     let elem = fresh("elem");
 
@@ -918,10 +950,13 @@ fn compile_filter_pipe(collection: &code_ir::Expr, predicate: Option<&ast::Expr>
     };
 
     code_ir::Expr::Block(vec![
-        code_ir::Stmt::let_mut(&result, code_ir::Expr::MacroCall {
-            name: "vec".to_string(),
-            args: vec![],
-        }),
+        code_ir::Stmt::let_mut(
+            &result,
+            code_ir::Expr::MacroCall {
+                name: "vec".to_string(),
+                args: vec![],
+            },
+        ),
         code_ir::Stmt::For {
             binding: elem.clone(),
             iter: make_owned_iter(collection.clone()),
@@ -957,15 +992,10 @@ fn compile_fold_pipe(
             let compiled_body = compile_expr(body, ctx);
             let mut result = compiled_body;
             if let Some(acc_param) = params.first() {
-                result =
-                    substitute_var(&result, acc_param, &code_ir::Expr::Var(acc.clone()));
+                result = substitute_var(&result, acc_param, &code_ir::Expr::Var(acc.clone()));
             }
             if let Some(elem_param) = params.get(1) {
-                result = substitute_var(
-                    &result,
-                    elem_param,
-                    &code_ir::Expr::Var(elem.clone()),
-                );
+                result = substitute_var(&result, elem_param, &code_ir::Expr::Var(elem.clone()));
             }
             result
         }
@@ -1001,19 +1031,31 @@ fn compile_fold_pipe(
 fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_ir::Expr {
     match expr {
         code_ir::Expr::Var(name) if name == from => to.clone(),
-        code_ir::Expr::Var(_) | code_ir::Expr::Str(_) | code_ir::Expr::IntLit(_)
-        | code_ir::Expr::BoolLit(_) | code_ir::Expr::RawCode(_)
-        | code_ir::Expr::Value(_) | code_ir::Expr::Path(_) => expr.clone(),
+        code_ir::Expr::Var(_)
+        | code_ir::Expr::Str(_)
+        | code_ir::Expr::IntLit(_)
+        | code_ir::Expr::BoolLit(_)
+        | code_ir::Expr::RawCode(_)
+        | code_ir::Expr::Value(_)
+        | code_ir::Expr::Path(_) => expr.clone(),
 
         code_ir::Expr::Field(receiver, field) => {
             code_ir::Expr::Field(Box::new(substitute_var(receiver, from, to)), field.clone())
         }
-        code_ir::Expr::Call { func, args, obligation } => code_ir::Expr::Call {
+        code_ir::Expr::Call {
+            func,
+            args,
+            obligation,
+        } => code_ir::Expr::Call {
             func: Box::new(substitute_var(func, from, to)),
             args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
             obligation: *obligation,
         },
-        code_ir::Expr::MethodCall { receiver, method, args } => code_ir::Expr::MethodCall {
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } => code_ir::Expr::MethodCall {
             receiver: Box::new(substitute_var(receiver, from, to)),
             method: method.clone(),
             args: args.iter().map(|a| substitute_var(a, from, to)).collect(),
@@ -1044,15 +1086,20 @@ fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_
                 }
             }
         }
-        code_ir::Expr::If { cond, then_body, else_body } => code_ir::Expr::If {
+        code_ir::Expr::If {
+            cond,
+            then_body,
+            else_body,
+        } => code_ir::Expr::If {
             cond: Box::new(substitute_var(cond, from, to)),
             then_body: substitute_stmts(then_body, from, to),
             else_body: else_body.as_ref().map(|b| substitute_stmts(b, from, to)),
         },
-        code_ir::Expr::Block(stmts) => {
-            code_ir::Expr::Block(substitute_stmts(stmts, from, to))
-        }
-        code_ir::Expr::Match { expr: scrutinee, arms } => code_ir::Expr::Match {
+        code_ir::Expr::Block(stmts) => code_ir::Expr::Block(substitute_stmts(stmts, from, to)),
+        code_ir::Expr::Match {
+            expr: scrutinee,
+            arms,
+        } => code_ir::Expr::Match {
             expr: Box::new(substitute_var(scrutinee, from, to)),
             arms: arms
                 .iter()
@@ -1075,9 +1122,7 @@ fn substitute_var(expr: &code_ir::Expr, from: &str, to: &code_ir::Expr) -> code_
         code_ir::Expr::Deref(inner) => {
             code_ir::Expr::Deref(Box::new(substitute_var(inner, from, to)))
         }
-        code_ir::Expr::Ref(inner) => {
-            code_ir::Expr::Ref(Box::new(substitute_var(inner, from, to)))
-        }
+        code_ir::Expr::Ref(inner) => code_ir::Expr::Ref(Box::new(substitute_var(inner, from, to))),
         code_ir::Expr::RefMut(inner) => {
             code_ir::Expr::RefMut(Box::new(substitute_var(inner, from, to)))
         }
@@ -1097,7 +1142,11 @@ fn substitute_stmts(stmts: &[code_ir::Stmt], from: &str, to: &code_ir::Expr) -> 
 
 fn substitute_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) -> code_ir::Stmt {
     match stmt {
-        code_ir::Stmt::Let { name, mutable, expr } => {
+        code_ir::Stmt::Let {
+            name,
+            mutable,
+            expr,
+        } => {
             if name == from {
                 stmt.clone()
             } else {
@@ -1115,7 +1164,11 @@ fn substitute_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) -> code
         code_ir::Stmt::Expr(e) => code_ir::Stmt::Expr(substitute_var(e, from, to)),
         code_ir::Stmt::Return(e) => code_ir::Stmt::Return(substitute_var(e, from, to)),
         code_ir::Stmt::TailExpr(e) => code_ir::Stmt::TailExpr(substitute_var(e, from, to)),
-        code_ir::Stmt::For { binding, iter, body } => {
+        code_ir::Stmt::For {
+            binding,
+            iter,
+            body,
+        } => {
             if binding == from {
                 code_ir::Stmt::For {
                     binding: binding.clone(),
@@ -1150,19 +1203,19 @@ fn substitute_stmt(stmt: &code_ir::Stmt, from: &str, to: &code_ir::Expr) -> code
 /// the expression unchanged.
 fn make_owned_iter(collection: code_ir::Expr) -> code_ir::Expr {
     match &collection {
-        code_ir::Expr::MethodCall { receiver, method, args }
-            if method == "clone" && args.is_empty() =>
-        {
-            code_ir::Expr::MethodCall {
-                receiver: Box::new(code_ir::Expr::MethodCall {
-                    receiver: receiver.clone(),
-                    method: "iter".to_string(),
-                    args: vec![],
-                }),
-                method: "cloned".to_string(),
+        code_ir::Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } if method == "clone" && args.is_empty() => code_ir::Expr::MethodCall {
+            receiver: Box::new(code_ir::Expr::MethodCall {
+                receiver: receiver.clone(),
+                method: "iter".to_string(),
                 args: vec![],
-            }
-        }
+            }),
+            method: "cloned".to_string(),
+            args: vec![],
+        },
         _ => collection,
     }
 }
@@ -1213,9 +1266,15 @@ fn expr_has_empty(e: &code_ir::Expr) -> bool {
     match e {
         code_ir::Expr::Struct { name, fields } if name.is_empty() && fields.is_empty() => true,
         code_ir::Expr::Match { arms, .. } => arms.iter().any(|a| body_has_empty_construct(&a.body)),
-        code_ir::Expr::If { then_body, else_body, .. } => {
+        code_ir::Expr::If {
+            then_body,
+            else_body,
+            ..
+        } => {
             body_has_empty_construct(then_body)
-                || else_body.as_ref().is_some_and(|b| body_has_empty_construct(b))
+                || else_body
+                    .as_ref()
+                    .is_some_and(|b| body_has_empty_construct(b))
         }
         code_ir::Expr::Block(stmts) => body_has_empty_construct(stmts),
         _ => false,
@@ -1275,7 +1334,7 @@ fn compile_string_concat(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Exp
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_syntax::ast::{Expr, FnBody, Literal, Stmt, BinOp, MatchArm, Pattern};
+    use daglang_syntax::ast::{BinOp, Expr, FnBody, Literal, MatchArm, Pattern, Stmt};
 
     fn empty_ctx() -> CompileContext {
         CompileContext::new()
@@ -1306,17 +1365,17 @@ mod tests {
     #[test]
     fn compile_literal_string() {
         reset_tmp_counter();
-        let ir = compile_expr(&Expr::Literal(Literal::String("hello".into())), &empty_ctx());
+        let ir = compile_expr(
+            &Expr::Literal(Literal::String("hello".into())),
+            &empty_ctx(),
+        );
         assert!(matches!(ir, code_ir::Expr::Str(s) if s == "hello"));
     }
 
     #[test]
     fn compile_field_access() {
         reset_tmp_counter();
-        let expr = Expr::FieldAccess(
-            Box::new(Expr::Ident("block".into())),
-            "start".into(),
-        );
+        let expr = Expr::FieldAccess(Box::new(Expr::Ident("block".into())), "start".into());
         let ir = compile_expr(&expr, &empty_ctx());
         match ir {
             code_ir::Expr::Field(receiver, field) => {
@@ -1381,7 +1440,11 @@ mod tests {
         );
         let ir = compile_expr(&expr, &empty_ctx());
         match ir {
-            code_ir::Expr::If { then_body, else_body, .. } => {
+            code_ir::Expr::If {
+                then_body,
+                else_body,
+                ..
+            } => {
                 assert_eq!(then_body.len(), 1);
                 assert!(else_body.is_some());
             }
@@ -1518,9 +1581,13 @@ mod tests {
         let ctx = ctx_with_data(&["zero_width_blocks"]);
         let ir = compile_expr(&Expr::Ident("zero_width_blocks".into()), &ctx);
         match &ir {
-            code_ir::Expr::MethodCall { receiver, method, .. } => {
+            code_ir::Expr::MethodCall {
+                receiver, method, ..
+            } => {
                 assert_eq!(method, "clone");
-                assert!(matches!(receiver.as_ref(), code_ir::Expr::Var(ref n) if n == "ZERO_WIDTH_BLOCKS"));
+                assert!(
+                    matches!(receiver.as_ref(), code_ir::Expr::Var(ref n) if n == "ZERO_WIDTH_BLOCKS")
+                );
             }
             other => panic!("expected MethodCall(clone), got: {other:?}"),
         }
@@ -1603,11 +1670,15 @@ mod tests {
         );
         ctx.enum_variants.insert(
             "SemanticColor".to_string(),
-            ["Info".to_string(), "Error".to_string()].into_iter().collect(),
+            ["Info".to_string(), "Error".to_string()]
+                .into_iter()
+                .collect(),
         );
         ctx.enum_variants.insert(
             "SymbolId".to_string(),
-            ["Info".to_string(), "Error".to_string()].into_iter().collect(),
+            ["Info".to_string(), "Error".to_string()]
+                .into_iter()
+                .collect(),
         );
         let expr = Expr::Record(
             Some("BoxConfig".into()),
@@ -1630,10 +1701,7 @@ mod tests {
     fn unsupported_service_call_map_produces_compile_error() {
         reset_tmp_counter();
         let body = FnBody {
-            stmts: vec![Stmt::Expr(Expr::ServiceCall(
-                vec!["svc".into()],
-                vec![],
-            ))],
+            stmts: vec![Stmt::Expr(Expr::ServiceCall(vec!["svc".into()], vec![]))],
             lossy: false,
         };
         let ir = compile_fn_body(&body, &empty_ctx());

@@ -17,9 +17,7 @@ use gunbc_exec::{
 use gunbc_ir::transport::cloud::CloudRuntimeKind;
 use gunbc_ir::types::{value_backing_for_type_id, value_compatible_with_type_id, ValueBacking};
 use gunbc_ir::{detect_entrypoints, Dag, Value};
-use gunbc_lib_cloud_ops::project_spec::{
-    RotationHandler, SecretRequirement, SecretStatus,
-};
+use gunbc_lib_cloud_ops::project_spec::{RotationHandler, SecretRequirement, SecretStatus};
 use gunbc_lib_cloud_ops::{
     build_wif_bootstrap_dag, evaluate_health, inspect_login_flow, render_infra_spec_dot,
     InfraApplyFilter, InfraSpec, CI_SPEC, DEV_SPEC, PROD_SPEC, TEST_SPEC,
@@ -954,7 +952,11 @@ mod tests {
     #[test]
     fn internal_control_entrypoint_defaults_are_provided_for_cf_match_nodes() {
         assert_eq!(
-            internal_control_entrypoint_default("tools.infra::infra::cf_match_0", "condition", "Bool"),
+            internal_control_entrypoint_default(
+                "tools.infra::infra::cf_match_0",
+                "condition",
+                "Bool"
+            ),
             Some(Value::Bool(true))
         );
         assert_eq!(

@@ -296,7 +296,10 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                 options.layer
             );
             let manifest_path = if let Some(out_dir) = normalized_out_dir.as_ref() {
-                out_dir.join(&output.emit_manifest_path).display().to_string()
+                out_dir
+                    .join(&output.emit_manifest_path)
+                    .display()
+                    .to_string()
             } else {
                 output.emit_manifest_path.clone()
             };
@@ -407,8 +410,7 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
             );
         }
         "gen-types" => {
-            let gen_args = parse_gen_types_args(args)
-                .unwrap_or_else(|usage| exit_usage(&usage));
+            let gen_args = parse_gen_types_args(args).unwrap_or_else(|usage| exit_usage(&usage));
             let pipeline_ctx = match build_context(cwd, gen_args.input.as_ref()) {
                 Ok(ctx) => ctx,
                 Err(error) => {
@@ -428,7 +430,8 @@ pub(super) fn dispatch(args: &[String], cwd: &std::path::Path) {
                         std::process::exit(1);
                     }
                     if let Some(path) = &gen_args.output {
-                        #[allow(clippy::disallowed_methods)] // CLI tool: direct filesystem write for codegen output
+                        #[allow(clippy::disallowed_methods)]
+                        // CLI tool: direct filesystem write for codegen output
                         match std::fs::write(path, &output) {
                             Ok(()) => eprintln!("wrote {}", path),
                             Err(e) => {
@@ -474,9 +477,7 @@ fn embed_layer1_handler_data(
         let path = asset.path();
         let key = asset.key();
         let data = options.embedded_data.get(key).ok_or_else(|| {
-            format!(
-                "missing embedded asset `{key}` required by exec-runtime (path={path})"
-            )
+            format!("missing embedded asset `{key}` required by exec-runtime (path={path})")
         })?;
         if data.layer1_file_path != path {
             return Err(format!(

@@ -2263,10 +2263,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         NamingCase::SnakeCase.apply(variant_name),
                     );
 
-                    let mock_value =
-                        ValueExpr::Str(variant_name.clone());
-                    let mocks_expr =
-                        self.dryrun_mocks_expr(analysis, "variant coverage tests");
+                    let mock_value = ValueExpr::Str(variant_name.clone());
+                    let mocks_expr = self.dryrun_mocks_expr(analysis, "variant coverage tests");
 
                     let exec = Expr::call(
                         "execute_with_mode",
@@ -3984,8 +3982,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 let class_expr = Expr::path(&["TestClass", class_variant]);
                 let cost_expr = Expr::path(&["FermiCost", cost_variant]);
                 let required_expr = Self::slice_expr(&profile_test.required_env);
-                let required_any_of_expr =
-                    Self::slice_2d_expr(&profile_test.required_any_of);
+                let required_any_of_expr = Self::slice_2d_expr(&profile_test.required_any_of);
 
                 let guard_call = Expr::call(
                     "guard_test_with_env",
@@ -4017,10 +4014,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                             "execute_with_mode",
                             vec![
                                 Expr::var("dag").ref_of(),
-                                Expr::Path(vec![
-                                    "ExecutionMode".to_string(),
-                                    "Real".to_string(),
-                                ]),
+                                Expr::Path(vec!["ExecutionMode".to_string(), "Real".to_string()]),
                             ],
                         )
                         .method(
@@ -5291,10 +5285,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         .field("nodes")
                         .method("is_empty", vec![])
                         .logical_not(),
-                    message: format!(
-                        "DAG should have nodes for corpus test of '{}'",
-                        identity
-                    ),
+                    message: format!("DAG should have nodes for corpus test of '{}'", identity),
                 }),
                 Stmt::Expr(Expr::call(
                     "eprintln!",
@@ -5495,8 +5486,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             doc: vec![
                 "Fidelity XS: DryRun intercept (pure mock).".to_string(),
                 String::new(),
-                "This is the baseline tier — all transport nodes are intercepted."
-                    .to_string(),
+                "This is the baseline tier — all transport nodes are intercepted.".to_string(),
             ],
             body: vec![
                 Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
@@ -5916,11 +5906,7 @@ fn witness_value_for_count(
         let variant_values = contract::variant_witnesses(type_id, registry);
         let elements = if variant_values.len() > 1 {
             (0..count as usize)
-                .map(|i| {
-                    variant_values[i % variant_values.len()]
-                        .1
-                        .clone()
-                })
+                .map(|i| variant_values[i % variant_values.len()].1.clone())
                 .collect()
         } else {
             vec![elem; count as usize]
@@ -5975,10 +5961,7 @@ fn required_count_for_port(port: &gunbc_ir::Port) -> Option<u32> {
     Some(1)
 }
 
-fn candidate_values_for_guard(
-    port: &gunbc_ir::Port,
-    registry: &TypeRegistry,
-) -> Vec<Value> {
+fn candidate_values_for_guard(port: &gunbc_ir::Port, registry: &TypeRegistry) -> Vec<Value> {
     let Some(count) = required_count_for_port(port) else {
         return Vec::new();
     };
@@ -6015,10 +5998,7 @@ fn select_guard_value(port: &gunbc_ir::Port, registry: &TypeRegistry) -> Option<
         .find(|candidate| port.check_guard(candidate))
 }
 
-fn required_value_for_port(
-    port: &gunbc_ir::Port,
-    registry: &TypeRegistry,
-) -> Option<Value> {
+fn required_value_for_port(port: &gunbc_ir::Port, registry: &TypeRegistry) -> Option<Value> {
     let count = required_count_for_port(port)?;
     try_mock_value_for_count(port.type_id.0.as_str(), port.cardinality, count, registry)
 }
@@ -6727,8 +6707,7 @@ mod tests {
             ValueExpr::List(vec![ValueExpr::Str("example".to_string())])
         );
 
-        let opt_zero =
-            mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, &registry);
+        let opt_zero = mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, &registry);
         assert_eq!(opt_zero, ValueExpr::Unit);
     }
 

@@ -170,10 +170,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
 ///
 /// Pipeline: compile → auto_mock_spec → generate_target. Zero manual input.
 /// Returns `Skipped` if compilation fails (graceful degradation).
-pub fn auto_testgen_for_module(
-    module: &CompilableModule,
-    output_dir: &Path,
-) -> AutoTestgenResult {
+pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> AutoTestgenResult {
     // 1. Compile to Dag<DynOp> + DSL type registry
     let result = match build_dsl_graph_with_types(&module.dsl_path) {
         Ok(result) => result,
@@ -386,9 +383,7 @@ pub fn build_testgen_target_def(
     // mock_spec_path: use auto_mock_spec as the runtime function.
     // Test-specific overrides are baked into the MockSpec at generation time,
     // but flow tests calling this path will only get auto-mocked values.
-    let mock_spec_path = format!(
-        "crate::mock_defaults::auto_mock_spec(&dag, \"{test_name}\")"
-    );
+    let mock_spec_path = format!("crate::mock_defaults::auto_mock_spec(&dag, \"{test_name}\")");
 
     TestgenTargetDef {
         name: Cow::Owned(test_name),
@@ -402,8 +397,8 @@ pub fn build_testgen_target_def(
         flow_tests: true,
         live_flow_tests: false,
         window_max_nodes: None,
-        test_class: None,     // inferred from topology
-        fermi_cost: None,     // inferred from topology
+        test_class: None, // inferred from topology
+        fermi_cost: None, // inferred from topology
         requires: None,
         secrets: None,
         live_test_class: None,
@@ -436,8 +431,13 @@ pub fn dag_builder_call_for_module(dsl_module: &str) -> String {
         .unwrap_or(dsl_module);
 
     match stem {
-        "testgen" => "crate::testgen_dag::graph::build_testgen_graph_auto().expect(\"graph should build\")".to_string(),
-        _ => format!("crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")"),
+        "testgen" => {
+            "crate::testgen_dag::graph::build_testgen_graph_auto().expect(\"graph should build\")"
+                .to_string()
+        }
+        _ => format!(
+            "crate::dsl_builder::build_dsl_graph(\"{dsl_module}\").expect(\"graph should build\")"
+        ),
     }
 }
 
@@ -496,12 +496,7 @@ fn apply_mock<T>(
     }
 }
 
-fn apply_expect<T>(
-    spec: &mut MockSpec,
-    expect: &ExpectStmt,
-    module_prefix: &str,
-    dag: &Dag<T>,
-) {
+fn apply_expect<T>(spec: &mut MockSpec, expect: &ExpectStmt, module_prefix: &str, dag: &Dag<T>) {
     match expect {
         ExpectStmt::Eq(lhs, rhs) => {
             if let Some((node, port)) = extract_result_path(lhs) {
@@ -591,7 +586,6 @@ fn extract_result_path(expr: &Expr) -> Option<(String, String)> {
     }
 }
 
-
 fn expr_to_string(expr: &Expr) -> String {
     match expr {
         Expr::Literal(Literal::String(s)) => s.clone(),
@@ -620,13 +614,19 @@ mod tests {
 
         // All tools should be discovered
         let names: Vec<&str> = modules.iter().map(|m| m.module_name.as_str()).collect();
-        assert!(names.contains(&"tools.bootstrap"), "missing tools.bootstrap");
+        assert!(
+            names.contains(&"tools.bootstrap"),
+            "missing tools.bootstrap"
+        );
         assert!(names.contains(&"tools.makegen"), "missing tools.makegen");
         assert!(names.contains(&"tools.pragma"), "missing tools.pragma");
 
         // Non-tool compilable modules should be discovered (e.g., cloud credentials, funcs)
         let has_non_tools = names.iter().any(|n| !n.starts_with("tools."));
-        assert!(has_non_tools, "only tool modules discovered — should include cloud/funcs/etc");
+        assert!(
+            has_non_tools,
+            "only tool modules discovered — should include cloud/funcs/etc"
+        );
 
         // Pure library modules (std.types, std.symbols, etc.) should be excluded
         // because they have no func items
@@ -740,7 +740,10 @@ mod tests {
         for module in &modules {
             let result = auto_testgen_for_module(module, output_dir);
             match result {
-                AutoTestgenResult::Generated { test_code, target_def: _ } => {
+                AutoTestgenResult::Generated {
+                    test_code,
+                    target_def: _,
+                } => {
                     let test_fn_count = test_code.matches("#[test]").count();
                     generated.push((module.module_name.clone(), test_fn_count, test_code.len()));
                 }
@@ -779,7 +782,10 @@ mod tests {
         eprintln!("  Total skipped:      {}", total_skipped);
         eprintln!("  Total test fns:     {}", total_test_fns);
         eprintln!("  Total code bytes:   {}", total_code_bytes);
-        eprintln!("  Success rate:       {:.1}%", (total_generated as f64 / total_discovered as f64) * 100.0);
+        eprintln!(
+            "  Success rate:       {:.1}%",
+            (total_generated as f64 / total_discovered as f64) * 100.0
+        );
         eprintln!("\n========================================\n");
 
         // Assertions
@@ -794,11 +800,7 @@ mod tests {
         );
         // Every generated module should produce at least 1 #[test] fn
         for (name, count, _) in &generated {
-            assert!(
-                *count > 0,
-                "{} generated 0 test functions",
-                name
-            );
+            assert!(*count > 0, "{} generated 0 test functions", name);
         }
     }
 }

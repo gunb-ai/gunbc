@@ -345,12 +345,12 @@ pub fn classify_computation(node: &Node<LoweredOp>) -> Result<Computation, Class
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
-        LoweredOp::UnsupportedPattern { name } => Err(ClassifyError::SubDagNode(
-            format!("unsupported pattern: {name}"),
-        )),
-        LoweredOp::ExternCall { symbol } => Err(ClassifyError::SubDagNode(
-            format!("extern call: {symbol}"),
-        )),
+        LoweredOp::UnsupportedPattern { name } => Err(ClassifyError::SubDagNode(format!(
+            "unsupported pattern: {name}"
+        ))),
+        LoweredOp::ExternCall { symbol } => {
+            Err(ClassifyError::SubDagNode(format!("extern call: {symbol}")))
+        }
     }
 }
 

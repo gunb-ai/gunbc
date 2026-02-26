@@ -109,14 +109,12 @@ impl Executable for TestgenOp {
                 let spec = crate::mock_defaults::auto_mock_spec(&result.dag, &safe_name);
 
                 // 3. Build TestgenTargetDef
-                let module_test_name =
-                    format!("{}_generated_tests", module_name.replace('.', "_"));
+                let module_test_name = format!("{}_generated_tests", module_name.replace('.', "_"));
                 let dag_builder_call = format!(
                     "crate::dsl_builder::build_dsl_graph(\"{dsl_path}\").expect(\"graph should build\")"
                 );
-                let mock_spec_path = format!(
-                    "crate::mock_defaults::auto_mock_spec(&dag, \"{safe_name}\")"
-                );
+                let mock_spec_path =
+                    format!("crate::mock_defaults::auto_mock_spec(&dag, \"{safe_name}\")");
 
                 let target_def = TestgenTargetDef {
                     name: std::borrow::Cow::Owned(safe_name),
