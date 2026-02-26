@@ -132,7 +132,7 @@ Blue team promotes to backlog or lane queues during triage.
 
 | Observation | Source | Date |
 |-------------|--------|------|
-| *(empty — add observations here)* | | |
+| CI YAML generation (`generate_github_actions_template`, `generate_gitlab_ci_template`) is ~120 lines of hand-wired `push_str`/`write!` string concatenation in `codegen_cli.rs:503-609`. The DSL already has rendering infrastructure (`std/render.dag`, `std/markdown_render.dag`) and a proven code-generation pattern (`tools/makegen.dag`). CI YAML types (Workflow, Job, Step, Trigger, Permission, Cache) should be modeled in `.dag` with pure rendering functions, following the makegen pattern: discover via extern → render in pure DSL → `content_upsert`. Deletes both template functions + the validation functions (lines 450-500). See task breakdown below. | R1 scout | 2026-02-26 |
 
 ---
 
@@ -142,6 +142,11 @@ Triaged and sized. Promote to lane queues when horizon items are exhausted.
 
 | ID | Item | Size | Priority | Notes |
 |----|------|------|----------|-------|
+| CG-1 | DSL CI model types: `dsl/std/ci.dag` — `CiWorkflow`, `CiJob`, `CiStep` (Run/Uses/DagRun), `CiTrigger`, `CiPermission`, `CiCache`, `CiEnv`, plus provider sum type `CiProvider = GitHub \| GitLab`. Data declarations for shared configs (Rust cache paths, cargo env). | M | P1 | Layer 0 types — no rendering yet. Follow `std/languages.dag` pattern for tautological definitions. |
+| CG-2 | DSL CI rendering functions: `dsl/std/ci_render.dag` — `render_github_workflow(w: CiWorkflow) -> String`, `render_gitlab_workflow(w: CiWorkflow) -> String`, plus helpers (`render_step`, `render_job`, `render_permissions`, `render_env_block`, `render_cache`). Pure functions, string interpolation + join. | M | P1 | Follow `makegen.dag` rendering pattern: small composable fns, `\|> map` + `\|> join("\n")`. YAML indentation via string literals (no general YAML serializer needed). |
+| CG-3 | DSL cigen tool: `dsl/tools/cigen.dag` — single entrypoint `func cigen() -> { written: Bool }` that discovers CI config via extern (permissions, secrets, tool invocation, branches), constructs `CiWorkflow` records, renders both providers, calls `content_upsert` for each. Extern bridge: `discover_ci_config() -> CiConfig`. | M | P1 | Follow `makegen.dag` entrypoint pattern. Discovery extern returns structured config, all rendering is pure DSL. |
+| CG-4 | Delete Rust cigen code: remove `generate_github_actions_template()`, `generate_gitlab_ci_template()`, `validate_github_actions_template()`, `validate_gitlab_ci_template()` from `codegen_cli.rs`. Wire `cmd_cigen()` to the new DSL tool (same pattern as `cmd_codegen()` calling `build_dsl_graph_for_entrypoint`). | S | P1 | ~200 lines deleted from `codegen_cli.rs:450-609`. Validation moves to DSL-side (structural — if the types construct, the YAML is valid). |
+| CG-5 | Migrate `RenderConfig` builder + `SharedStep` + `yaml_block` from `core/ir/src/transport/ci/render.rs` — evaluate what remains needed as Rust runtime vs what becomes dead code after CG-1:4. Delete dead code, keep only provider detection (`detect_provider`, `is_ci`). | S | P1 | May keep `CiRenderer` trait for runtime step-level rendering (animated progress). CI YAML generation is a separate concern. |
 | H10 | Compute stack orchestration: Cloud Run/GCS/LB lifecycle DAG builder. | L | P2 | `docs/design/horizon/h10-compute-stack-services.md` |
 | S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS. DSL exists. Distinct from SDLC-CD5 (which stress-tests SignalStore/ArtifactStore). | M | P2 | Deferred until cloud_run profile needed |
 | H1 | Display reactive DSL: channel-driven event loop. | XL | P3 | No current use case. Review 2026-Q3, delete if not promoted. |
