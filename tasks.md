@@ -14,8 +14,8 @@ One blue lane (scenario-driven), two red lanes, never blocking each other.
   ────────────────────────────            ────────────────────────
   SDLC Activation (single lane):         Lane R1: Structural Correctness
     B-0 → B-1 → B-2 → B-3 →               RF-RG1 → RF-RG2 → RF-H4 →
-    B-4 → B-5 → B-6 → B-7 →               RF-H2 → RF-G-unblock → RF-A1 →
-    B-8:13 → ...cloud deployment            RF-A2a → RF-A4
+    B-TC → B-4 → B-5 → B-6 →              RF-H2 → RF-G-unblock → RF-A1 →
+    B-7 → B-8:13 → ...cloud                RF-A2a → RF-A4
 
                                           Lane R2: Testing + Foundation
                                             BB-2 → BB-3 → BB-5 →
@@ -98,8 +98,7 @@ A GitHub issue goes through the full lifecycle:
 - No CLI entrypoint (catalog is manual — Red RF-RG1 eliminates, or Blue wires inline)
 
 **Key dependency**: L0–L3 use stubs and don't need transport declarations.
-L4+ needs transport on GitHub services. Non-blocking protocol applies: Blue adds
-transport inline if Red hasn't completed RF-TC1.
+L4+ needs transport on GitHub + LLM services — B-TC handles this in the Blue queue.
 
 ### Queue
 
@@ -109,10 +108,11 @@ transport inline if Red hasn't completed RF-TC1.
 | 2 | B-1 | **Hermetic scenario test.** unit_test profile, DryRun, full idea→done with stubs. Assert: stage transitions correct, claims acquired/released, outcomes recorded, labels changed. | L1 | M | Pending | B-0 |
 | 3 | B-2 | **Per-stage handler tests.** Exercise all 8 handlers individually with mocked interfaces. Verify each handler's outputs, label transitions, service call arguments. | L2 | M | Pending | B-0 |
 | 4 | B-3 | **Worker dispatch loop test.** Full discover→claim→dispatch→record→release cycle. Test paths: happy path, replay-skip (prior SUCCESS), retry (prior FAILED), claim conflict (another worker holds it). | L3 | S | Pending | B-2 |
-| 5 | B-4 | **Local integration: single stage.** local profile, real GitHub API + file stores. Create a test issue with `sdlc:idea`, run worker, verify design comment posted and labels transitioned. Add transport declarations on GitHub services inline if RF-TC1 not done. | L4 | M | Pending | B-3 |
-| 6 | B-5 | **Full local scenario.** Complete idea→done lifecycle on a test repo. Multiple worker invocations drive the issue through all stages. Verify: PR created, code review posted, tests run, PR merged, issue closed. | L5 | L | Pending | B-4 |
-| 7 | B-6 | **Testgen integration.** Auto-generate per-node and per-pair tests for SDLC DAG nodes. Verify testgen handles profile-bound modules (interface→provider resolution). | L6 | M | Pending | B-0 |
-| 8 | B-7 | **CLI entrypoint.** However entrypoints work by this point (generated binary or catalog), make `gunbc sdlc` run the pipeline with `--profile` and `--repo` args. | L7 | S | Pending | B-5 |
+| 5 | B-TC | **Transport declarations: GitHub + LLM services.** Add `transport rest { ... }` blocks to `github/issues.dag` (7 ops), `github/pull_request.dag` (7 ops), `llm/openai.dag` (2 ops). Compositional service-layer modeling — not SDLC logic, but on the critical path for real execution. | — | M | Pending | — |
+| 6 | B-4 | **Local integration: single stage.** local profile, real GitHub API + file stores. Create a test issue with `sdlc:idea`, run worker, verify design comment posted and labels transitioned. | L4 | M | Pending | B-3, B-TC |
+| 7 | B-5 | **Full local scenario.** Complete idea→done lifecycle on a test repo. Multiple worker invocations drive the issue through all stages. Verify: PR created, code review posted, tests run, PR merged, issue closed. | L5 | L | Pending | B-4 |
+| 8 | B-6 | **Testgen integration.** Auto-generate per-node and per-pair tests for SDLC DAG nodes. Verify testgen handles profile-bound modules (interface→provider resolution). | L6 | M | Pending | B-0 |
+| 9 | B-7 | **CLI entrypoint.** However entrypoints work by this point (generated binary or catalog), make `gunbc sdlc` run the pipeline with `--profile` and `--repo` args. | L7 | S | Pending | B-5 |
 
 ### Horizon (after B-7)
 
@@ -302,10 +302,10 @@ The SDLC pipeline only sees interfaces. Each service operation needs a
 `transport rest { ... }` or `transport shell { ... }` block so the
 compiler can generate prepare→execute→parse triplets.
 
+GitHub + LLM transport (16 ops) moved to Blue queue as B-TC (critical path for L4+).
+
 | ID | Scope | Ops Missing | Notes |
 |----|-------|-------------|-------|
-| RF-TC1 | **GitHub services**: `github/issues.dag` (7 ops), `github/pull_request.dag` (7 ops) | 14 | REST transport. Blue B-4 depends on this (non-blocking: Blue adds inline if needed). |
-| RF-TC2 | **LLM service**: `llm/openai.dag` (2 ops) | 2 | REST transport. Needed for LLM-driven stages (design, review). |
 | RF-TC3 | **SDLC providers**: file stores (6), GCS stores (6), github_issue_provider (7), codex_agent (4), credential providers (4) | 27 | Mixed rest/shell/file. Needed for real (non-stub) execution. |
 | RF-TC4 | **Stub providers**: stub_providers.dag (26), stub_credential_provider.dag (2) | 28 | Intentional — unit_test profile stubs. Consider `transport stub {}` marker. |
 | RF-TC5 | **Infrastructure stubs**: azure (43), aws (38), gcp-infra (59) | 140 | Dormant — defer until infrastructure provisioning lane opens. |
