@@ -167,6 +167,7 @@ pub struct GenericRestParseOp {
     pub service_name: String,
     pub operation_name: String,
     pub auth_scheme: String,
+    pub permissions: Vec<String>,
 }
 
 impl Executable for GenericRestParseOp {
@@ -218,7 +219,25 @@ impl Executable for GenericRestParseOp {
                             endpoint: self.spec.endpoint.clone(),
                             method: self.spec.method.clone(),
                         }));
-                    if !scheme.is_empty() {
+                    // Attach Acquisition layer when we have auth context OR
+                    // when the HTTP status is 401/403 (auth failure regardless
+                    // of whether scheme inference succeeded).
+                    let is_auth_status = rest.status == 401 || rest.status == 403;
+                    if !scheme.is_empty() || is_auth_status || !self.permissions.is_empty() {
+                        let key = if !scheme.is_empty() {
+                            Some(gunbc_exec::KeyIdentity {
+                                scheme,
+                                hint: cred_ref
+                                    .as_deref()
+                                    .map(|c| format!("***{c}"))
+                                    .unwrap_or_else(|| "***".into()),
+                                source: cred_ref
+                                    .map(|c| format!("env:{c}"))
+                                    .unwrap_or_else(|| "static".into()),
+                            })
+                        } else {
+                            None
+                        };
                         err = err.with_layer(ErrorLayer::Acquisition(
                             gunbc_exec::AcquisitionErrorLayer {
                                 diagnostic: gunbc_exec::AcquisitionDiagnostic {
@@ -230,17 +249,9 @@ impl Executable for GenericRestParseOp {
                                             self.spec.method, self.spec.endpoint
                                         ),
                                     },
-                                    key: Some(gunbc_exec::KeyIdentity {
-                                        scheme,
-                                        hint: cred_ref
-                                            .as_deref()
-                                            .map(|c| format!("***{c}"))
-                                            .unwrap_or_else(|| "***".into()),
-                                        source: cred_ref
-                                            .map(|c| format!("env:{c}"))
-                                            .unwrap_or_else(|| "static".into()),
-                                    }),
+                                    key,
                                 },
+                                required_permissions: self.permissions.clone(),
                             },
                         ));
                     }
@@ -1366,6 +1377,7 @@ mod tests {
             service_name: String::new(),
             operation_name: String::new(),
             auth_scheme: String::new(),
+            permissions: vec![],
         };
         let response = RestResponse::ok(serde_json::json!({ "id": "abc-123" }));
         let mut inputs = HashMap::new();
@@ -1411,6 +1423,7 @@ mod tests {
             service_name: String::new(),
             operation_name: String::new(),
             auth_scheme: String::new(),
+            permissions: vec![],
         };
         let response = RestResponse::ok(serde_json::json!({
             "access_token": "ya29.secret-token",
@@ -1439,6 +1452,7 @@ mod tests {
             service_name: String::new(),
             operation_name: String::new(),
             auth_scheme: String::new(),
+            permissions: vec![],
         };
         let response = RestResponse::ok(serde_json::json!({
             "name": "projects/p/secrets/s/versions/1",

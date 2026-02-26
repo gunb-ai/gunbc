@@ -922,6 +922,7 @@ fn resolve_service_transport(
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
                         auth_scheme: rest_spec.auth_scheme.clone().unwrap_or_default(),
+                        permissions: metadata.permissions.clone(),
                     }));
                 }
                 (ServiceOperationSpec::Shell(shell_spec), true, _) => {

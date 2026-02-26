@@ -53,9 +53,14 @@ pub struct RestErrorLayer {
 /// The [`AcquisitionDiagnostic`] contains both the lock (what resource) and
 /// key (what credential) identity, so the error system delegates formatting
 /// to the types themselves.
+///
+/// `required_permissions` surfaces the scopes/permissions the operation
+/// requires (from `@permissions` or typed `permissions` fields). Empty when
+/// the operation declares no permission requirements.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcquisitionErrorLayer {
     pub diagnostic: AcquisitionDiagnostic,
+    pub required_permissions: Vec<String>,
 }
 
 /// Service-level failure information.
@@ -157,6 +162,7 @@ pub fn classify_layers(layers: &[ErrorLayer]) -> &'static str {
     }
     if let Some(code) = http_status {
         return match code {
+            401 | 403 => "AUTH",
             429 => "RATE_LIMIT",
             404 => "NOT_FOUND",
             c if c >= 500 => "SERVER_ERROR",
@@ -437,6 +443,7 @@ mod tests {
                         .unwrap_or_else(|| "static".into()),
                 }),
             },
+            required_permissions: vec![],
         })
     }
 
@@ -671,8 +678,8 @@ mod tests {
                 role: NodeRole::Pure,
             }));
 
-        // NodeTrace doesn't affect classification — domain layers win
-        assert_eq!(err.classification(), "HTTP_ERROR");
+        // 401 classifies as AUTH even without an Acquisition layer
+        assert_eq!(err.classification(), "AUTH");
         let trace = err.node_trace().unwrap();
         assert_eq!(trace.node_id, "parse_transport_services_github_gist");
         assert_eq!(trace.role, NodeRole::Pure);
@@ -715,10 +722,65 @@ mod tests {
                     source: "env:GITHUB_TOKEN".into(),
                 }),
             },
+            required_permissions: vec![],
         };
         assert_eq!(
             layer.diagnostic.to_string(),
             "AuthContext (Read): POST https://api.github.com/gists with Bearer (key: ***wxyz, source: env:GITHUB_TOKEN)"
         );
+    }
+
+    #[test]
+    fn http_401_classifies_as_auth_without_acquisition_layer() {
+        // A bare 401 response (no Acquisition layer) should still classify as AUTH.
+        let err = ExecError::new("Unauthorized").with_layer(ErrorLayer::Http(HttpErrorLayer {
+            status_code: 401,
+            reason: Some("Unauthorized".into()),
+        }));
+        assert_eq!(err.classification(), "AUTH");
+    }
+
+    #[test]
+    fn http_403_classifies_as_auth_without_acquisition_layer() {
+        let err = ExecError::new("Forbidden").with_layer(ErrorLayer::Http(HttpErrorLayer {
+            status_code: 403,
+            reason: Some("Forbidden".into()),
+        }));
+        assert_eq!(err.classification(), "AUTH");
+    }
+
+    #[test]
+    fn acquisition_layer_with_permissions() {
+        let layer = AcquisitionErrorLayer {
+            diagnostic: AcquisitionDiagnostic {
+                lock: LockIdentity {
+                    resource: "AuthContext".into(),
+                    mode: "Read".into(),
+                    target: "GET https://storage.googleapis.com/bucket".into(),
+                },
+                key: None,
+            },
+            required_permissions: vec![
+                "storage.read".into(),
+                "storage.inspect".into(),
+            ],
+        };
+        assert_eq!(
+            layer.required_permissions,
+            vec!["storage.read", "storage.inspect"]
+        );
+    }
+
+    #[test]
+    fn acquisition_layer_wins_over_401_http() {
+        // When both Acquisition and HTTP 401 are present, AUTH from Acquisition
+        // (higher priority) should still win.
+        let err = ExecError::new("auth failed")
+            .with_layer(ErrorLayer::Http(HttpErrorLayer {
+                status_code: 401,
+                reason: None,
+            }))
+            .with_layer(acquisition_layer("Bearer", Some("GITHUB_TOKEN")));
+        assert_eq!(err.classification(), "AUTH");
     }
 }
