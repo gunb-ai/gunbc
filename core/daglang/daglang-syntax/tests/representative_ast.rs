@@ -53,8 +53,8 @@ fn makegen_contains_fn_and_func_items() {
     let source = parse_dsl("tools/makegen.dag");
     assert_eq!(
         source.items.len(),
-        30,
-        "makegen should contain 30 top-level items (27 fn, 1 extern func, 1 func, 1 test)"
+        35,
+        "makegen should contain 35 top-level items (32 fn, 1 extern func, 1 func, 1 test)"
     );
     assert_eq!(
         source
@@ -117,21 +117,26 @@ fn makegen_contains_fn_and_func_items() {
             "fn render_meta_check_variant",
             "fn render_meta_target",
             "fn render_meta_targets",
+            "fn render_help_param",
             "fn render_help_params",
             "fn render_tool_target",
             "fn render_tool_targets",
             "fn render_help_core_lines",
+            "fn fix_description",
+            "fn render_help_meta_line",
             "fn render_help_meta_lines",
+            "fn render_help_tool_line",
             "fn render_help_tool_lines",
             "fn render_help_target",
             "fn collect_core_phony_str",
             "fn collect_meta_phony_str",
+            "fn tool_phony_names",
             "fn collect_tool_phony_str",
             "fn render_naming_convention",
             "fn render_makefile_body",
             "extern func discover_tools",
-            "fn render_makefile_content",
             "fn render_header",
+            "fn render_makefile_content",
             "func makegen",
             "test makegen_dryrun",
         ]

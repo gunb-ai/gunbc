@@ -27,7 +27,7 @@
 use std::collections::HashMap;
 
 use daglang_lower::{
-    CallableKind, CollectionOpKind, LoweredOp, ObligationCategory, PrimitiveLiteral,
+    CallableKind, CollectionOpKind, LoweredOp, PrimitiveLiteral,
     PrimitiveOpKind, ServiceCallMetadata, ServiceOperationSpec,
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
@@ -1122,7 +1122,7 @@ fn wire_missing_filesystem_resources(dag: &mut Dag<DynOp>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use daglang_lower::{CallableKind, PrimitiveLiteral, PrimitiveOpKind};
+    use daglang_lower::{CallableKind, ObligationCategory, PrimitiveLiteral, PrimitiveOpKind};
     use gunbc_ir::{Node, Port};
 
     fn callable_node(

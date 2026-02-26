@@ -1544,7 +1544,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_classify_effect_priority_transport_over_tool() {
         // A node that has both TransportRequest input AND ToolHandle input
         // should classify as TransportExecution — NodeKind is the sole authority.

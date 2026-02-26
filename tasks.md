@@ -13,9 +13,9 @@ Two teams, two lanes each, never blocking each other.
   BLUE TEAM — Advance                        RED TEAM — Harden
   ─────────────────────────                  ────────────────────────
   Lane B1: SDLC Pipeline                    Lane R1: Structural Correctness
-    RF-B1 → SDLC-1 → SDLC-2 →               RF-H1 → RF-H4 → RF-H2 →
-    SDLC-3 → SDLC-4 → ─┐                    RF-H3 → RF-G-unblock →
-                         ├→ SDLC-7 → 8        RF-A1 → RF-A2 → RF-A4
+    RF-B1 → SDLC-1 → SDLC-2 →               RF-H4 → RF-H2 → RF-E4 →
+    SDLC-3 → SDLC-4 → ─┐                    RF-G-unblock → RF-A1 →
+                         ├→ SDLC-7 → 8        RF-A2a → RF-A4
   Lane B2: SDLC Infra   │
     RF-B2 → SDLC-5 → ──┘                   Lane R2: Testing + Foundation
     SDLC-6 → ──────────┘                     BB-2 → BB-3 → BB-5 →
@@ -25,9 +25,10 @@ Two teams, two lanes each, never blocking each other.
     SDLC-CD1:6 → DG1
   Lane B2: Agent Integration                ─ then ─
     SDLC-AG1:3 → webhook-driven             Lane R1: Typed Dispatch
-    stage transitions                         RF-A5 → RF-A6 → RF-A8
+    stage transitions                         RF-A5 → RF-A6a → RF-A8
                                             Lane R2: Code Hygiene
-                                              RF-C1 → RF-C2 → RF-D eval
+                                              RF-A2b → RF-A6b → RF-C1 →
+                                              RF-C2 → RF-D eval
 ```
 
 ### Protocols
@@ -35,10 +36,10 @@ Two teams, two lanes each, never blocking each other.
 **Independence**: Lanes within a team touch different files. No merge
 conflicts between lanes. Each lane can be worked by a separate agent.
 
-**Scouting**: Every blue team PR includes a `Scouted:` line listing
-red team opportunities discovered during implementation. Examples:
-"string dispatch in catalog.rs" → RF-A10, "unwrap_or in provider
-wiring" → new RF-H item. Red team triages and queues.
+**Scouting**: Every PR includes a `Scouted:` line listing
+opportunities for the other team discovered during implementation.
+Add raw observations to the other team's **Unqueued** section — never
+directly into their lane queues. The owning team triages and promotes.
 
 **Refill**: When a lane has <3 pending items, the worker proposes
 new items from codebase observation or horizon scanning. Anemic
@@ -89,7 +90,7 @@ Registration, dispatch, validation, stage handlers. Touches
 | SDLC-CD2 | GCS ArtifactStore (GCS-backed, generation CAS). | M | Pending | SDLC-8 |
 | SDLC-CD3 | GCP credential chaining (WIF OIDC exchange). | L | Pending | SDLC-8 |
 | SDLC-CD4 | Cloud Run deployment DAG. | L | Pending | SDLC-CD1:3 |
-| SDLC-CD5 | Multi-worker CAS stress test (3 workers, exactly-once). | M | Pending | SDLC-CD4 |
+| SDLC-CD5 | Multi-worker CAS stress test (3 workers, exactly-once). Tests SDLC-CD1/CD2 stores, not S12-E. | M | Pending | SDLC-CD4 |
 | SDLC-CD6 | CI integration (hermetic + cloud smoke). | M | Pending | SDLC-CD5 |
 | DG1 | Daggen: re-enable `needs_daggen()` for dynamic DAG generation from git diffs. | L | Pending | SDLC-CD6 |
 
@@ -124,50 +125,108 @@ Providers, stores, resource implementations. Touches
 
 ---
 
+## Blue Unqueued
+
+Raw observations from any worker. Not triaged, not sized.
+Blue team promotes to backlog or lane queues during triage.
+
+| Observation | Source | Date |
+|-------------|--------|------|
+| *(empty — add observations here)* | | |
+
+---
+
 ## Blue Backlog
 
-Not scheduled. Promote when horizon items are exhausted.
+Triaged and sized. Promote to lane queues when horizon items are exhausted.
 
 | ID | Item | Size | Priority | Notes |
 |----|------|------|----------|-------|
 | H10 | Compute stack orchestration: Cloud Run/GCS/LB lifecycle DAG builder. | L | P2 | `docs/design/horizon/h10-compute-stack-services.md` |
-| S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS. DSL exists. | M | P2 | Deferred until cloud_run profile needed |
+| S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS. DSL exists. Distinct from SDLC-CD5 (which stress-tests SignalStore/ArtifactStore). | M | P2 | Deferred until cloud_run profile needed |
 | H1 | Display reactive DSL: channel-driven event loop. | XL | P3 | No current use case. Review 2026-Q3, delete if not promoted. |
 
 ---
 
 # RED TEAM — Harden
 
+### Philosophy: Eliminate, Don't Relocate
+
+The red team goal is **structural impossibility of defects**, not
+better error messages for them. Every fix should push the problem
+upstream — closer to the point of construction — so downstream code
+can't encounter the bad state at all.
+
+**Bad**: move a string match from file A to file B.
+**Better**: parse the string into an enum at the boundary, match exhaustively.
+**Best**: make the enum the only representation — no string ever exists.
+
+The test: *after your fix, can a future contributor reintroduce the
+same class of bug?* If yes, you relocated it. If no, you eliminated it.
+
+### Smell Catalog (what scouts look for)
+
+| Smell | Example | Typical Fix |
+|-------|---------|-------------|
+| **String dispatch** | `match kind_str { "shell" => ..., "rest" => ..., _ => ... }` | Parse once at boundary → enum. Exhaustive match, no fallback. |
+| **Validation at use site** | `parse().unwrap_or(default)`, `if x.is_none() { return fallback }` | Make the constructor enforce the invariant. Fields are non-Option if always populated. |
+| **Heuristic reimplementation** | Rust code that replicates logic the DSL already declares | Delete the Rust, call the DSL. If the evaluator can't handle the DSL construct yet, that's the real task (e.g., RF-G-unblock). |
+| **Static mapping table** | Hand-maintained `HashMap` or match arms mapping A→B | Derive from a single source (DSL data declaration, enum with `#[derive]`, or const array). |
+| **Option-that's-always-Some** | `field: Option<T>` where every construction site writes `Some(...)` | Make the field `T` with a `Default`. |
+| **Stringly-typed enum** | `String` field that only holds N known values | Dedicated enum. `FromStr` at boundary, `.as_str()` only for serialization. |
+| **Fallback arm** | `_ => default` or `other => ...` in a match on known variants | Exhaustive enum match. If a new variant appears, compilation forces handling it. |
+| **Duplicate filter logic** | Same `starts_with("res:")` / `"tool:"` check in 5 files | Central type (`PortCategory`) with one `from()` impl. Call sites use the type. |
+
+### Remediation Ladder
+
+When you find a smell, apply the **highest rung** that's feasible:
+
+1. **Eliminate the representation** — the bad state can't be constructed
+   (e.g., `NodeKind` required in constructor → no `Option` exists)
+2. **Parse at the boundary** — raw input becomes a typed value once,
+   all downstream code receives the type (e.g., `ResourceKind` enum
+   parsed in resolve step, never a `String` again)
+3. **Derive from source of truth** — delete the hand-maintained copy,
+   generate from DSL/enum/data declaration (e.g., RF-G-unblock deletes
+   6 Rust heuristic fns by calling DSL `classify_transports`)
+4. **Centralize** — if elimination isn't possible yet, at least have
+   one canonical impl that all call sites use (e.g., `PortCategory`
+   enum + methods, used everywhere instead of ad-hoc `starts_with`)
+
+Rung 4 is a **waypoint**, not a destination. If you centralize, file
+a follow-up to eliminate.
+
+---
+
 ## Lane R1: Structural Correctness
 
 Types over validation, enums over strings. Touches `core/ir/`,
 `core/test/`, `gunbc-dag/src/fidelity.rs`, `gunbc-dag/src/resolve.rs`.
-**No overlap with Lane R2 files.**
+**No overlap with Lane R2 files.** (RF-A2/RF-A6 split: R1 defines
+types in `core/ir/`, R2 migrates call sites in `core/daglang/` + `core/codegen/`.)
 
 Queue ordered by danger (silent failures first, then mechanical cleanup):
 
 | Order | ID | What | Size | Status | Deps |
 |-------|----|------|------|--------|------|
-| 1 | RF-H1 | Fidelity silent fallbacks → `.expect()` (short-term) or RF-G unblock (permanent). | S | Pending | — |
-| 2 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
-| 3 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
-| 4 | RF-H3 | TestClass/FermiCost parse → `FromStr` with `Result`. Overlaps RF-A8. | S | Pending | — |
-| 5 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
-| 6 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows. | M | Pending | — |
-| 7 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
-| 8 | RF-A2 | Port namespace typing. PortCategory enum + methods on PortName. | M | Pending | — |
-| 9 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
+| 1 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
+| 2 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
+| 3 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
+| 4 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks (was RF-H1). | M | Pending | — |
+| 5 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
+| 6 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. R1-scoped (definition only). | M | Pending | — |
+| 7 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
 
 ### R1 Horizon (after A4)
 
 | Order | ID | What | Size |
 |-------|----|------|------|
-| 10 | RF-A5 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
-| 11 | RF-A6 | String constants consolidation (__deps, __out:, res:file, tool:). | M |
-| 12 | RF-A8 | `#[derive(StringEnum)]` macro for 15 enums, ~60 match blocks. | M |
-| 13 | RF-A3 | ModulePath unification across 4 crates. | S |
-| 14 | RF-A9 | Shared DslTypeMapping table for emit backends. | S |
-| 15 | RF-A10 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
+| 8 | RF-A5 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
+| 9 | RF-A6a | String constants: define central consts in `core/ir/src/signature.rs`. R1-scoped (definition only). | S |
+| 10 | RF-A8 | `#[derive(StringEnum)]` macro for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr` (was RF-H3). | M |
+| 11 | RF-A3 | ModulePath unification across 4 crates. | S |
+| 12 | RF-A9 | Shared DslTypeMapping table for emit backends. | S |
+| 13 | RF-A10 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
 
 ---
 
@@ -196,19 +255,31 @@ Queue ordered by dependency chain:
 
 | Order | ID | What | Size |
 |-------|----|------|------|
-| 11 | RF-C1 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
-| 12 | RF-C2 | Unify passthrough op variants to single data-driven PassthroughOp. | S |
-| 13 | RF-C3 | Error type consolidation (6 types → layered like ExecError). | M |
-| 14 | RF-C4 | Test helper extraction (CompileTestHelper + MockFactory). | M |
-| 15 | RF-D-eval | Scaffolding decision: delete RetryPolicy/ErrorMapping/ContractObligation/ResourceRequirement or wire through DSL. | S |
-| 16 | RF-F-eval | Underused abstractions decision: delete algebra traits + render traits or find second consumer. | S |
+| 11 | RF-A2b | Port namespace typing: migrate `starts_with("res:")`/`"tool:"` call sites in `core/daglang/`, `core/codegen/testgen/` to `PortCategory`. | S |
+| 12 | RF-A6b | String constants: migrate `__deps`/`res:file`/`tool:` references in `core/daglang/`, `core/codegen/testgen/` to central consts. | M |
+| 13 | RF-C1 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
+| 14 | RF-C2 | Unify passthrough op variants to single data-driven PassthroughOp. | S |
+| 15 | RF-C3 | Error type consolidation (6 types → layered like ExecError). | M |
+| 16 | RF-C4 | Test helper extraction (CompileTestHelper + MockFactory). | M |
+| 17 | RF-D-eval | Scaffolding decision: delete RetryPolicy/ErrorMapping/ContractObligation/ResourceRequirement or wire through DSL. | S |
+| 18 | RF-F-eval | Underused abstractions decision: delete algebra traits + render traits or find second consumer. | S |
+
+---
+
+## Red Unqueued
+
+Raw observations from any worker. Not triaged, not sized. Use the
+smell catalog above to classify. Include file path + line if possible.
+
+| Smell | Observation | File | Source | Date |
+|-------|-------------|------|--------|------|
+| *(empty — add observations here)* | | | | |
 
 ---
 
 ## Red Backlog
 
-Tracked for completeness. Not in any lane queue. Promote on discovery
-of concrete business case or when horizon items are exhausted.
+Triaged and sized. Promote to lane queues when horizon items are exhausted.
 
 ### Theme B: Remaining Transport Gaps (non-blocking)
 
@@ -256,7 +327,7 @@ exist solely because `classify_transports` uses `fold` (via
 `fermi_max_of`), and the lowerer can't extract fn bodies containing
 `fold` for `evaluate_fn_body()`.
 
-**RF-G-unblock** (in R1 queue position 6): Implement `fold` aggregation
+**RF-G-unblock** (in R1 queue position 4): Implement `fold` aggregation
 in Rust's `evaluate_fn_body()` evaluator (it already handles other
 collection ops). This directly enables calling the existing DSL fns.
 Once done, delete:
@@ -266,29 +337,36 @@ Once done, delete:
 - `test_policy.dag::classify_from_facts()` (RF-G4)
 - `TestClass::parse()` / `FermiCost::parse()` round-trip (RF-G5)
 - `test_policy.dag` shadow fns (RF-G6)
+- Fidelity silent fallbacks `unwrap_or(Unit)` / `unwrap_or(XS)` (was RF-H1)
+
+Note: RF-A7 ("transport class heuristic shadows") was deleted as a
+standalone item — it is a deliverable of this task, not independent work.
 
 ### Theme H: Structural Enforcement (parse, don't validate)
 
 | ID | What | Current | Structural Fix |
 |----|------|---------|---------------|
-| RF-H1 | **Fidelity silent fallbacks**. `classify_callable()` parses DSL output strings into enums with `unwrap_or(Unit)` / `unwrap_or(XS)`. If DSL returns a typo or `None`, classification silently downgrades to Unit — tests are skipped at runtime with no error. | `TestClass::parse(str).unwrap_or(Unit)` in fidelity.rs:129 | **Eliminated by RF-G unblock**: `classify_transports()` returns typed `DerivedClassification`, no string round-trip. Short-term: change `unwrap_or` to `.expect("DSL classify_from_facts returned invalid tier")`. |
 | RF-H2 | **TestgenTargetDef Option fields always populated**. `test_class: Option<TestClass>`, `fermi_cost: Option<FermiCost>`, `requires: Option<Vec<String>>` — every auto-testgen call site now fills `Some(...)` from fidelity. The `Option` only exists for legacy `DagSpecDef` path (which also never overrides). `generate_target_with_types()` does `unwrap_or(Unit)` on every field. | 6 Option fields in registry.rs | Make fields non-Option with `Default` impl. Callers construct with values; no unwrapping. `DagSpecDef.to_def()` fills from fidelity instead of leaving `None`. |
-| RF-H3 | **TestClass/FermiCost parse returns Option not Result**. `parse(&str) -> Option<Self>` loses the invalid input. Callers chain `.unwrap_or(default)` which masks the error entirely. | fermi.rs:25-31, 56-64 | `FromStr` with `Result<Self, ParseError>`. Callers use `?` to propagate. Overlaps RF-A8 (derive macro). |
-| RF-H4 | **ResourceKind string dispatch**. `ResourceAcquireOp { resource_kind: String }` matched at runtime. Unknown kinds fall through to `Value::Str("resource:{other}")` — wrong type, silent. | resolve.rs:365-386 | `ResourceKind` enum parsed once at resolve time. Match is exhaustive, no fallback arm. Overlaps RF-A4. |
-| RF-H5 | **Port namespace string conventions**. ~30 `starts_with("res:")` / `"tool:"` / `"__deps"` checks across 8+ files. | Scattered | Already RF-A2 (`PortCategory` enum + methods on `PortName`). Listed for completeness. |
+| RF-H4 | **ResourceKind string dispatch**. `ResourceAcquireOp { resource_kind: String }` matched at runtime. Unknown kinds fall through to `Value::Str("resource:{other}")` — wrong type, silent. | resolve.rs:365-386 | `ResourceKind` enum parsed once at resolve time. Match is exhaustive, no fallback arm. |
+
+Deleted from this theme (subsumed by other tasks):
+- RF-H1 → subsumed by RF-G-unblock (fidelity silent fallbacks eliminated when classify_transports returns typed DerivedClassification)
+- RF-H3 → merged into RF-A8 (derive macro handles FromStr for all 15 enums including TestClass/FermiCost)
+- RF-H5 → duplicate of RF-A2a/RF-A2b (PortCategory enum)
 
 ### Theme A: Typed Dispatch (full detail)
 
 | ID | Pattern | Key Files | Notes |
 |----|---------|-----------|-------|
 | RF-A1 | **NodeKind on Node\<T\>**. `validate_node_kinds_for_interception()` is a runtime check that rejects `kind: None` nodes. Target: `Node::opaque()` requires `NodeKind`, eliminating `Option` and runtime check. | node.rs, execute.rs | Remove `Option<NodeKind>`, delete validation fn. |
-| RF-A2 | **Port namespace typing**. 18+ `starts_with("res:")` / `"tool:"` / `"__out:"` checks. `is_user_param_port()` reimplemented 3×. | 6 files | `PortCategory` enum + methods on `PortName`. |
+| RF-A2a | **Port namespace typing (definition)**. Define `PortCategory` enum + methods on `PortName` in `core/ir/`. | core/ir/ | R1 scope. |
+| RF-A2b | **Port namespace typing (migration)**. Migrate 18+ `starts_with("res:")`/`"tool:"`/`"__out:"` checks in `core/daglang/`, `core/codegen/testgen/`. | 4 R2 files | R2 scope. Depends on RF-A2a. |
 | RF-A3 | **Module path representation**. 4 crates use `Vec<String>` vs typed `ModulePath`. | 4 crates | Unify on `ModulePath`; add `From` impls. |
 | RF-A4 | **Stringly-typed dispatch in resolve.rs**. 10+ string prefix matches for module/callable routing. | resolve.rs | `CallableClass` enum parsed once. |
 | RF-A5 | **Transport node classification**. String-based prepare/execute/parse detection. | resolve.rs | `TransportNodeKind { Prepare, Execute, Parse }`. |
-| RF-A6 | **String constants consolidation**. `"__deps"` (45×), `"__out:"` (6×), `"res:file"` (8×), `"tool:"` (15×). | 74+ sites | Central consts in `core/ir/src/signature.rs`. |
-| RF-A7 | **Transport class heuristic shadows**. Rust replicas of DSL fns. | fidelity.rs | Delete via RF-G-unblock. |
-| RF-A8 | **`as_str`/`parse` boilerplate**. 15 enums × 4 methods = ~60 match blocks. | 12 files | `#[derive(StringEnum)]` macro. |
+| RF-A6a | **String constants (definition)**. Define central consts (`__deps`, `__out:`, `res:file`, `tool:`) in `core/ir/src/signature.rs`. | core/ir/ | R1 scope. |
+| RF-A6b | **String constants (migration)**. Migrate 141+ `__deps`, 7 `res:file`, 15 `tool:` references in `core/daglang/`, `core/codegen/testgen/`. | R2 files | R2 scope. Depends on RF-A6a. |
+| RF-A8 | **`as_str`/`parse` boilerplate**. `#[derive(StringEnum)]` for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr` (was RF-H3). | 12 files | |
 | RF-A9 | **Emit backend type-name tables**. Same type mapping in 3 backends. | daglang-emit | Shared `DslTypeMapping` table. |
 | RF-A10 | **String dispatch in DAG tooling**. 100+ match arms on string literals. | 5 files | Registry pattern or DSL data declarations. |
 

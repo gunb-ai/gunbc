@@ -320,6 +320,7 @@ fn testgen_tool_def() -> ToolDef {
 // ── Tests ──────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // Tests need filesystem access for scanning
 mod tests {
     use super::*;
     use std::fs;
