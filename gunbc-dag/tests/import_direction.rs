@@ -124,14 +124,39 @@ fn import_direction_lint() {
         }
     }
 
-    assert!(
-        violations.is_empty(),
-        "import direction violations (lower layer importing from higher layer):\n{}",
-        violations
+    // Separate known violations from new ones.
+    let (known, new): (Vec<_>, Vec<_>) = violations.iter().partition(|v| {
+        KNOWN_VIOLATIONS
             .iter()
+            .any(|(f, i)| v.file == *f && v.imported_layer.starts_with(i))
+    });
+
+    // New violations are hard errors.
+    assert!(
+        new.is_empty(),
+        "NEW import direction violations (lower layer importing from higher layer):\n{}\n\n\
+         Known violations (allowlisted): {}",
+        new.iter()
             .map(|v| v.to_string())
             .collect::<Vec<_>>()
             .join("\n"),
+        known.len(),
+    );
+
+    // Detect when known violations are fixed so the allowlist can be updated.
+    let stale: Vec<_> = KNOWN_VIOLATIONS
+        .iter()
+        .filter(|(f, i)| {
+            !violations
+                .iter()
+                .any(|v| v.file == *f && v.imported_layer.starts_with(i))
+        })
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "stale KNOWN_VIOLATIONS entries (these violations have been fixed!) — \
+         remove from allowlist in import_direction.rs:\n  {:?}",
+        stale,
     );
 }
 

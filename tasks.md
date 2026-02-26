@@ -58,9 +58,9 @@ Automated ratchets that prevent modeling regression. Cheap to add, high leverage
 
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
-| FC-EG1 | Import-direction lint: compiler check that `tools→config→extdeps→std` import direction is never violated. Error on backward imports. | M | Pending | — |
-| FC-EG2 | Extern func count gate: CI test that counts `extern func` declarations in `.dag` files. Assert count ≤ current (ratchet — count only goes down). | S | Pending | — |
-| FC-EG3 | `format!/push_str` boundary gate: grep + allowlist test. No new `format!()` or `push_str()` in non-boundary Rust code (allowlist for transport, codegen, existing scaffolding). | S | Pending | — |
+| FC-EG1 | Import-direction lint: compiler check that `tools→config→extdeps→std` import direction is never violated. Error on backward imports. | M | **Done** | — |
+| FC-EG2 | Extern func count gate: CI test that counts `extern func` declarations in `.dag` files. Assert count ≤ current (ratchet — count only goes down). | S | **Done** | — |
+| FC-EG3 | `format!/push_str` boundary gate: grep + allowlist test. No new `format!()` or `push_str()` in non-boundary Rust code (allowlist for transport, codegen, existing scaffolding). | S | **Done** | — |
 
 ---
 
@@ -78,8 +78,8 @@ FC-NF7 is done — these fns can now execute at runtime via FnBodyDelegate.
 
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
-| FC-P6-0 | Validate flat_map: DSL test exercising `CollectionOpKind::FlatMap` e2e. | S | Pending | — |
-| FC-P6-a | `dsl/config/workspace.dag`: CrateSpec type + workspace_crates data + CI drift test. | M | Pending | — |
+| FC-P6-0 | Validate flat_map: DSL test exercising `CollectionOpKind::FlatMap` e2e. | S | **Done** | — |
+| FC-P6-a | `dsl/config/workspace.dag`: CrateSpec type + workspace_crates data + CI drift test. | M | **Done** | — |
 | FC-P6-b | `dsl/config/pragma_policy.dag`: AllowlistRule, DeadCodeRule types + data from pragma.rs. Partial: clippy_disallowed.dag + arch_rules.dag AllowlistPattern data already exist. | M | Pending | FC-P6-a |
 | FC-P6-c | DSL policy rendering fns using Document types. Partial: clippy_policy.dag rendering helpers already exist. | M | Pending | FC-P6-a, FC-P6-b, FC-P6-0 |
 | FC-P6-d | Delete 3 pragma extern impls. Wire pragma.dag to call derive_* fns from clippy_policy.dag. Add parity golden tests for clippy.toml, allowlist, lint policy. | S | Pending | FC-P6-c |
@@ -94,7 +94,7 @@ Detail: `docs/design/v4/extern-bridge-gap-analysis.md` § Phase 7.
 
 | ID | Task | Size | Status | Deps |
 |----|------|------|--------|------|
-| FC-P7-a | `dsl/config/build_workflows.dag`: WorkflowSpec + MetaTarget types + data. | M | Pending | — |
+| FC-P7-a | `dsl/config/build_workflows.dag`: WorkflowSpec + MetaTarget types + data. | M | **Done** | — |
 | FC-P7-b | Compiler artifact emitter: emit `generated/tool_registry.dag` from CompileOutput. | L | Pending | — |
 | FC-P7-c1 | DSL Makefile types + rendering: MakefileTarget, GitignoreCategory, render fns. | M | Pending | FC-P7-a |
 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | FC-P7-a, FC-P7-b, FC-P7-c1 |

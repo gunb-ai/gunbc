@@ -117,12 +117,18 @@ fn build_dag_header(
             Line::new(spans)
         }
         DagPhase::Failed { node, error } => {
-            let label = progress
-                .snapshot
-                .labels
-                .get(node)
-                .map(|s| s.as_str())
-                .unwrap_or(&node.0);
+            // Prefer service label ("github.Gist → Create") over internal node ID
+            let label = error
+                .service_label()
+                .unwrap_or_else(|| {
+                    progress
+                        .snapshot
+                        .labels
+                        .get(node)
+                        .cloned()
+                        .unwrap_or_else(|| node.0.clone())
+                });
+            let classification = error.classification();
             let icon_spans = match tier {
                 Tier::Emoji => {
                     vec![Span::styled(
@@ -136,10 +142,17 @@ fn build_dag_header(
                 _ => vec![symbol_span(SymbolId::DagFailed, symbol_set, tier)],
             };
             let mut spans = icon_spans;
-            spans.push(Span::plain(format!(
-                " Failed at {}: {} [{}]",
-                label, error, elapsed
-            )));
+            if classification != "UNKNOWN" {
+                spans.push(Span::plain(format!(
+                    " Failed at {}: {} — {} [{}]",
+                    label, error.message, classification, elapsed
+                )));
+            } else {
+                spans.push(Span::plain(format!(
+                    " Failed at {}: {} [{}]",
+                    label, error.message, elapsed
+                )));
+            }
             Line::new(spans)
         }
     }

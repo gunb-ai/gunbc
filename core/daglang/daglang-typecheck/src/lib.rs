@@ -1363,6 +1363,14 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
             },
         ),
         (
+            "flat_map".to_string(),
+            CallableContract {
+                arity: 1,
+                params: HashSet::from(["f".to_string()]),
+                output: ValueType::Named("List".to_string()),
+            },
+        ),
+        (
             "max_by".to_string(),
             CallableContract {
                 arity: 1,

@@ -142,7 +142,7 @@ impl FailureDetail {
     /// The `provider.operation` label from the first [`ServiceErrorLayer`], if any.
     pub fn service_label(&self) -> Option<String> {
         self.layers.iter().find_map(|l| match l {
-            ErrorLayer::Service(s) => Some(format!("{}.{}", s.provider, s.operation)),
+            ErrorLayer::Service(s) => Some(format!("{} → {}", s.provider, s.operation)),
             _ => None,
         })
     }
@@ -234,7 +234,7 @@ impl ExecError {
     /// The `provider.operation` label from the first [`ServiceErrorLayer`], if any.
     pub fn service_label(&self) -> Option<String> {
         self.layers.iter().find_map(|l| match l {
-            ErrorLayer::Service(s) => Some(format!("{}.{}", s.provider, s.operation)),
+            ErrorLayer::Service(s) => Some(format!("{} → {}", s.provider, s.operation)),
             _ => None,
         })
     }
@@ -398,7 +398,7 @@ mod tests {
             operation: "get_gist".into(),
         }));
 
-        assert_eq!(err.service_label(), Some("github.get_gist".into()));
+        assert_eq!(err.service_label(), Some("github → get_gist".into()));
     }
 
     #[test]
@@ -493,7 +493,7 @@ mod tests {
         assert_eq!(detail.message, "auth failed");
         assert_eq!(detail.layers.len(), 2);
         assert_eq!(detail.classification(), "AUTH");
-        assert_eq!(detail.service_label(), Some("gcp.upload".into()));
+        assert_eq!(detail.service_label(), Some("gcp → upload".into()));
 
         // Round-trip back to ExecError.
         let roundtrip = ExecError::from_failure_detail(detail);

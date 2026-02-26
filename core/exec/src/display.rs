@@ -227,8 +227,9 @@ pub fn execute_and_display<T: Executable + Clone + Send + 'static>(
                 process::exit(1);
             }
         }
-        Err(e) => {
-            print_attention(AttentionLevel::Error, "Execution failed", &e.to_string());
+        Err(_) => {
+            // Error detail was already rendered by the observer (NonTty) or
+            // print_error_boxes (animated). Just exit with failure status.
             process::exit(1);
         }
     }
@@ -496,6 +497,12 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
     // This MUST happen before the `?` so the display is cleaned up even on failure.
     render_final_static_frame_seeded(&progress, &layout, &profile, last_lines);
 
+    // Render error detail boxes BEFORE propagating executor errors.
+    // Node failures produce structured ErrorLayers (service, auth, http context).
+    // If we `?` first, print_error_boxes is skipped and the caller only sees
+    // the flat error string via print_attention — losing all structured context.
+    print_error_boxes(&progress, profile.tier, profile.supports_color);
+
     let log = log_result?;
 
     // Check final node states for hard failures
@@ -504,9 +511,6 @@ fn run_with_progress<T: Executable + Clone + Send + 'static>(
         .values()
         .any(|np| np.state == NodeState::Failed);
     should_fail = should_fail || success_port_failed(&log, success_port);
-
-    // Render error detail boxes for failed nodes
-    print_error_boxes(&progress, profile.tier, profile.supports_color);
 
     // Surface boundary outputs after progress render so users see
     // the actual tool results (e.g., gist URL) instead of only the DAG view.
@@ -734,39 +738,51 @@ impl ProgressObserver for NonTtyProgressObserver {
         }
 
         // Print boxed failure detail, capped at FAILURE_DETAIL_LINES
+        let box_label = error
+            .service_label()
+            .unwrap_or_else(|| label.clone());
+        let box_tag = if classification != "UNKNOWN" {
+            format!("[{}]", classification.to_uppercase())
+        } else {
+            "[ERROR]".to_string()
+        };
         eprintln!();
-        eprintln!("  ┌─ [ERROR] {}", label);
+        eprintln!("  ┌─ {} {}", box_tag, box_label);
 
         // Render layer context lines
         for layer in error.layers() {
             match layer {
                 ErrorLayer::Service(s) => {
-                    eprintln!("  │ Service: {}.{}", s.provider, s.operation);
+                    eprintln!("  │ Service:   {} → {}", s.provider, s.operation);
                 }
                 ErrorLayer::Http(h) => {
-                    let reason = h.reason.as_deref().unwrap_or("");
-                    eprintln!("  │ Http: {} {}", h.status_code, reason);
+                    if let Some(ref reason) = h.reason {
+                        eprintln!("  │ Http:      {} ({})", h.status_code, reason);
+                    } else {
+                        eprintln!("  │ Http:      {}", h.status_code);
+                    }
                 }
                 ErrorLayer::Rest(r) => {
-                    eprintln!("  │ Rest: {} {}", r.method, r.endpoint);
+                    eprintln!("  │ Transport: {} {}", r.method, r.endpoint);
                 }
-                ErrorLayer::Auth(a) => {
+                ErrorLayer::Auth(a) if !a.scheme.is_empty() => {
                     if let Some(ref cred) = a.credential_ref {
-                        eprintln!("  │ Auth: {} (credential: {})", a.scheme, cred);
+                        eprintln!("  │ Auth:      {} (credential: {})", a.scheme, cred);
                     } else {
-                        eprintln!("  │ Auth: {}", a.scheme);
+                        eprintln!("  │ Auth:      {}", a.scheme);
                     }
                 }
                 ErrorLayer::Shell(s) => {
                     if let Some(code) = s.exit_code {
-                        eprintln!("  │ Shell: {} (exit {})", s.command, code);
+                        eprintln!("  │ Shell:     {} (exit {})", s.command, code);
                     } else {
-                        eprintln!("  │ Shell: {}", s.command);
+                        eprintln!("  │ Shell:     {}", s.command);
                     }
                 }
                 ErrorLayer::File(f) => {
-                    eprintln!("  │ File: {} ({})", f.path, f.operation);
+                    eprintln!("  │ File:      {} ({})", f.path, f.operation);
                 }
+                _ => {}
             }
         }
 
@@ -999,65 +1015,69 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
     let _ = writeln!(stderr);
 
     for (label, detail) in &failures {
-        // Build a label that includes service label and classification if available
-        let box_label = match detail.service_label() {
-            Some(svc) => format!("{} ({}) [{}]", label, svc, detail.classification()),
-            None => {
-                let tag = detail.classification();
-                if tag != "UNKNOWN" {
-                    format!("{} [{}]", label, tag)
-                } else {
-                    label.clone()
-                }
-            }
+        // Build the box title: "[CLASSIFICATION] service → op" or "[CLASSIFICATION] node_label"
+        let classification = detail.classification();
+        let display_label = detail
+            .service_label()
+            .unwrap_or_else(|| label.clone());
+        let box_label = if classification != "UNKNOWN" {
+            format!("[{}] {}", classification, display_label)
+        } else {
+            display_label
         };
         let b = box_draw::error_box(&box_label, tier, use_color);
 
-        // Build content lines: layer context first, then error message
+        // Build content lines: error message first, then layer context
         let mut content_lines: Vec<String> = Vec::new();
 
+        // Error message
+        for line in detail.message.lines() {
+            content_lines.push(line.to_string());
+        }
+
+        // Layer context (only if layers are present)
+        if !detail.layers.is_empty() {
+            content_lines.push(String::new()); // blank separator
+        }
         for layer in &detail.layers {
             match layer {
                 ErrorLayer::Service(s) => {
-                    content_lines.push(format!("Service: {}.{}", s.provider, s.operation));
+                    content_lines
+                        .push(format!("Service:   {} → {}", s.provider, s.operation));
                 }
                 ErrorLayer::Http(h) => {
-                    let reason = h.reason.as_deref().unwrap_or("");
-                    content_lines.push(format!("Http: {} {}", h.status_code, reason));
+                    if let Some(ref reason) = h.reason {
+                        content_lines
+                            .push(format!("Http:      {} ({})", h.status_code, reason));
+                    } else {
+                        content_lines.push(format!("Http:      {}", h.status_code));
+                    }
                 }
                 ErrorLayer::Rest(r) => {
-                    content_lines.push(format!("Rest: {} {}", r.method, r.endpoint));
+                    content_lines
+                        .push(format!("Transport: {} {}", r.method, r.endpoint));
                 }
                 ErrorLayer::Auth(a) => {
                     if let Some(ref cred) = a.credential_ref {
                         content_lines
-                            .push(format!("Auth: {} (credential: {})", a.scheme, cred));
-                    } else {
-                        content_lines.push(format!("Auth: {}", a.scheme));
+                            .push(format!("Auth:      {} (credential: {})", a.scheme, cred));
+                    } else if !a.scheme.is_empty() {
+                        content_lines.push(format!("Auth:      {}", a.scheme));
                     }
                 }
                 ErrorLayer::Shell(s) => {
                     if let Some(code) = s.exit_code {
-                        content_lines.push(format!("Shell: {} (exit {})", s.command, code));
+                        content_lines
+                            .push(format!("Shell:     {} (exit {})", s.command, code));
                     } else {
-                        content_lines.push(format!("Shell: {}", s.command));
+                        content_lines.push(format!("Shell:     {}", s.command));
                     }
                 }
                 ErrorLayer::File(f) => {
-                    content_lines.push(format!("File: {} ({})", f.path, f.operation));
+                    content_lines
+                        .push(format!("File:      {} ({})", f.path, f.operation));
                 }
             }
-        }
-
-        // Add separator between layers and message if layers are present
-        if !content_lines.is_empty() {
-            content_lines.push(String::new());
-        }
-
-        // Add error message lines
-        let msg_lines: Vec<&str> = detail.message.lines().collect();
-        for line in &msg_lines {
-            content_lines.push(line.to_string());
         }
 
         // Truncate to max lines
