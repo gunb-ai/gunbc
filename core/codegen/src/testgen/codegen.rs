@@ -1036,6 +1036,14 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             });
         }
 
+        // BB-2: Corpus type-contract tests need `value_compatible_with_type_id`.
+        if self.config.corpus_tests && self.corpus.is_some() {
+            file.imports.push(Import {
+                path: vec!["gunbc_ir".to_string()],
+                items: vec!["value_compatible_with_type_id".to_string()],
+            });
+        }
+
         // Helpers
         if let Some(mock_spec_fn) = &self.mock_spec_fn {
             file.helpers.push(HelperFn {
@@ -1257,7 +1265,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         // BB-2: Per-node corpus tests
         if self.config.corpus_tests {
-            if let Some(section) = self.build_corpus_section(graph_builder_fn) {
+            if let Some(section) = self.build_corpus_section(graph_builder_fn, analysis) {
                 file.sections.push(section);
             }
         }
@@ -5213,11 +5221,40 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     // =======================================================================
     // BB-2: Per-Node Corpus Tests
     // =======================================================================
+}
 
-    fn build_corpus_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+/// Shared context for a single corpus example, passed to body-generation helpers.
+struct CorpusExampleCtx<'a> {
+    graph_builder_fn: &'a str,
+    concrete_node_id: &'a str,
+    identity: &'a gunbc_test::NodeIdentity,
+    ex_idx: usize,
+    workflow: &'a str,
+    inputs: &'a HashMap<String, Value>,
+}
+
+impl<T: Clone> TestGenerator<'_, T> {
+
+    fn build_corpus_section(
+        &self,
+        graph_builder_fn: &str,
+        analysis: &DagAnalysis,
+    ) -> Option<TestSection> {
         let corpus = self.corpus.as_ref()?;
         if corpus.is_empty() {
             return None;
+        }
+
+        // Map NodeIdentity → concrete Node in this DAG.
+        // Corpus examples may come from foreign workflows; we only generate tests
+        // for identities that have a matching node in *this* DAG.
+        let mut identity_to_node: HashMap<gunbc_test::NodeIdentity, &gunbc_ir::Node<T>> =
+            HashMap::new();
+        for node in &self.dag.nodes {
+            if let Some(identity) = gunbc_test::NodeIdentity::from_node_id(&node.id.0) {
+                // First match wins (multiple sub-instances share the same identity).
+                identity_to_node.entry(identity).or_insert(node);
+            }
         }
 
         let mut tests = Vec::new();
@@ -5227,49 +5264,60 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 continue;
             }
 
-            let sanitized_id = sanitize_to_snake_case(&identity.to_string());
-            let test_name = format!("test_corpus_{}", sanitized_id);
+            // Find the matching node in this DAG.
+            let node = match identity_to_node.get(identity) {
+                Some(n) => *n,
+                None => continue, // Node not in this DAG — skip silently.
+            };
+            let concrete_node_id = &node.id.0;
 
-            let example_count = node_corpus.len();
-            let workflows = node_corpus.workflow_names();
+            for (ex_idx, example) in node_corpus.examples.iter().enumerate() {
+                let sanitized_id = sanitize_to_snake_case(&identity.to_string());
+                let test_name = format!("test_corpus_{}_{}", sanitized_id, ex_idx);
 
-            let doc = vec![
-                format!(
-                    "Corpus test for node '{}' ({} examples from workflows: {}).",
+                let ctx = CorpusExampleCtx {
+                    graph_builder_fn,
+                    concrete_node_id,
                     identity,
-                    example_count,
-                    workflows.join(", ")
-                ),
-                String::new(),
-                "Each example exercises the node with inputs observed from a workflow DryRun."
-                    .to_string(),
-                "Pure nodes assert exact output match; effectful nodes assert type contracts."
-                    .to_string(),
-            ];
+                    ex_idx,
+                    workflow: &example.provenance.workflow,
+                    inputs: &example.inputs,
+                };
 
-            let body = vec![
-                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
-                Stmt::Assert(Assert::True {
-                    expr: Expr::var("dag")
-                        .field("nodes")
-                        .method("is_empty", vec![])
-                        .logical_not(),
-                    message: format!("DAG should have nodes for corpus test of '{}'", identity),
-                }),
-                Stmt::Expr(Expr::call(
-                    "eprintln!",
-                    vec![Expr::Str(format!(
-                        "[corpus] {} examples for node '{}'",
-                        example_count, identity
-                    ))],
-                )),
-            ];
-
-            tests.push(TestFn {
-                name: test_name,
-                doc,
-                body,
-            });
+                match &example.expectation {
+                    gunbc_test::Expectation::ExactOutputs(expected_outputs) => {
+                        let (doc, body) =
+                            self.build_corpus_body_real(&ctx, expected_outputs);
+                        tests.push(TestFn {
+                            name: test_name,
+                            doc,
+                            body,
+                        });
+                    }
+                    gunbc_test::Expectation::TypeContractOnly => {
+                        let (doc, body) =
+                            self.build_corpus_body_dryrun(&ctx, analysis, node, None);
+                        tests.push(TestFn {
+                            name: test_name,
+                            doc,
+                            body,
+                        });
+                    }
+                    gunbc_test::Expectation::OutputMatchers(matchers) => {
+                        let (doc, body) =
+                            self.build_corpus_body_dryrun(&ctx, analysis, node, Some(matchers));
+                        tests.push(TestFn {
+                            name: test_name,
+                            doc,
+                            body,
+                        });
+                    }
+                    gunbc_test::Expectation::ExpectValidationError => {
+                        // BB-2 Level 2 scope — skip for now.
+                        continue;
+                    }
+                }
+            }
         }
 
         if tests.is_empty() {
@@ -5285,6 +5333,201 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             ],
             tests,
         })
+    }
+
+    /// Build test body for a pure node corpus example (Level 1a).
+    ///
+    /// Executes with `ExecutionMode::Real` and asserts exact output match.
+    fn build_corpus_body_real(
+        &self,
+        ctx: &CorpusExampleCtx<'_>,
+        expected_outputs: &HashMap<String, Value>,
+    ) -> (Vec<String>, Vec<Stmt>) {
+        let doc = vec![
+            format!(
+                "Corpus test for node '{}' (example {} from workflow '{}').",
+                ctx.identity, ctx.ex_idx, ctx.workflow,
+            ),
+            String::new(),
+            "Pure node: executes with Real mode, asserts exact output match.".to_string(),
+        ];
+
+        let mut body = Vec::new();
+        body.push(Stmt::let_bind("dag", Expr::var(ctx.graph_builder_fn)));
+
+        // Build inputs map from corpus example.
+        let sorted_inputs: BTreeMap<String, ValueExpr> = ctx
+            .inputs
+            .iter()
+            .map(|(k, v)| (k.clone(), ValueExpr::from(v)))
+            .collect();
+        body.extend(self.build_inputs_map_stmts(&sorted_inputs));
+
+        // Execute with Real mode.
+        let exec = Expr::call(
+            "gunbc_exec::execute_single_node",
+            vec![
+                Expr::var("dag").ref_of(),
+                Expr::Str(ctx.concrete_node_id.to_string()),
+                Expr::var("inputs"),
+                Expr::Path(vec![
+                    "gunbc_exec".to_string(),
+                    "ExecutionMode".to_string(),
+                    "Real".to_string(),
+                ]),
+            ],
+        )
+        .method(
+            "expect",
+            vec![Expr::Str(format!(
+                "corpus node '{}' should execute successfully (example {})",
+                ctx.identity, ctx.ex_idx
+            ))],
+        );
+        body.push(Stmt::let_bind("outputs", exec));
+        body.push(Stmt::Blank);
+
+        // Assert exact output match for each expected port.
+        let mut sorted_expected: Vec<_> = expected_outputs.iter().collect();
+        sorted_expected.sort_by_key(|(k, _)| k.as_str());
+        for (port, expected_value) in sorted_expected {
+            body.push(Stmt::Comment(format!("Check output port '{}'", port)));
+            let left = Expr::var("outputs")
+                .method("get", vec![Expr::Str(port.clone())])
+                .method(
+                    "expect",
+                    vec![Expr::Str(format!("output port '{}' should exist", port))],
+                );
+            let right = Expr::Value(ValueExpr::from(expected_value)).ref_of();
+            body.push(Stmt::Assert(Assert::Eq {
+                left,
+                right,
+                message: format!(
+                    "corpus node '{}' port '{}' should match expected value (example {})",
+                    ctx.identity, port, ctx.ex_idx
+                ),
+            }));
+        }
+
+        (doc, body)
+    }
+
+    /// Build test body for an effectful node corpus example (Level 1b).
+    ///
+    /// Executes with `ExecutionMode::DryRun` and asserts either type contract
+    /// compliance (when `matchers` is `None`) or output matchers (when present).
+    fn build_corpus_body_dryrun(
+        &self,
+        ctx: &CorpusExampleCtx<'_>,
+        analysis: &DagAnalysis,
+        node: &gunbc_ir::Node<T>,
+        matchers: Option<&HashMap<String, OutputMatcher>>,
+    ) -> (Vec<String>, Vec<Stmt>) {
+        let kind_label = if matchers.is_some() {
+            "Effectful node: executes with DryRun mode, asserts output matchers."
+        } else {
+            "Effectful node: executes with DryRun mode, asserts type contract compliance."
+        };
+
+        let doc = vec![
+            format!(
+                "Corpus test for node '{}' (example {} from workflow '{}').",
+                ctx.identity, ctx.ex_idx, ctx.workflow,
+            ),
+            String::new(),
+            kind_label.to_string(),
+        ];
+
+        let mut body = Vec::new();
+        body.push(Stmt::let_bind("dag", Expr::var(ctx.graph_builder_fn)));
+
+        // Build inputs map from corpus example.
+        let sorted_inputs: BTreeMap<String, ValueExpr> = ctx
+            .inputs
+            .iter()
+            .map(|(k, v)| (k.clone(), ValueExpr::from(v)))
+            .collect();
+        body.extend(self.build_inputs_map_stmts(&sorted_inputs));
+
+        // Build DryRun mocks.
+        let mocks_expr = self.dryrun_mocks_expr(analysis, "corpus type-contract tests");
+        body.push(Stmt::let_bind("mocks", mocks_expr));
+
+        // Execute with DryRun mode.
+        let exec = Expr::call(
+            "gunbc_exec::execute_single_node",
+            vec![
+                Expr::var("dag").ref_of(),
+                Expr::Str(ctx.concrete_node_id.to_string()),
+                Expr::var("inputs"),
+                Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+            ],
+        )
+        .method(
+            "expect",
+            vec![Expr::Str(format!(
+                "corpus node '{}' should execute in DryRun (example {})",
+                ctx.identity, ctx.ex_idx
+            ))],
+        );
+        body.push(Stmt::let_bind("outputs", exec));
+        body.push(Stmt::Blank);
+
+        if let Some(matchers) = matchers {
+            // Assert output matchers for each port.
+            let mut sorted_matchers: Vec<_> = matchers.iter().collect();
+            sorted_matchers.sort_by_key(|(k, _)| k.as_str());
+            for (port, matcher) in sorted_matchers {
+                let var_name = sanitize_to_snake_case(port);
+                body.push(Stmt::Comment(format!("Check output port '{}'", port)));
+                body.push(Stmt::let_bind(
+                    format!("output_{}", var_name),
+                    Expr::var("outputs")
+                        .method("get", vec![Expr::Str(port.clone())])
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!(
+                                "output port '{}' should exist",
+                                port
+                            ))],
+                        ),
+                ));
+                body.extend(render_output_matcher_check(matcher, &var_name));
+            }
+        } else {
+            // Assert type contract for each output port.
+            for port in &node.outputs {
+                let port_name = &port.name.0;
+                let type_id = &port.type_id.0;
+                body.push(Stmt::Comment(format!(
+                    "Type contract: port '{}' ({})",
+                    port_name, type_id
+                )));
+                body.push(Stmt::Assert(Assert::True {
+                    expr: Expr::call(
+                        "gunbc_ir::value_compatible_with_type_id",
+                        vec![
+                            Expr::Str(type_id.clone()),
+                            Expr::var("outputs")
+                                .method("get", vec![Expr::Str(port_name.clone())])
+                                .method(
+                                    "expect",
+                                    vec![Expr::Str(format!(
+                                        "output port '{}' should exist",
+                                        port_name
+                                    ))],
+                                ),
+                        ],
+                    ),
+                    message: format!(
+                        "corpus node '{}' port '{}' should be type-compatible with '{}' (example {})",
+                        ctx.identity, port_name, type_id, ctx.ex_idx
+                    ),
+                }));
+            }
+        }
+
+        (doc, body)
     }
 
     // =======================================================================
@@ -7618,6 +7861,291 @@ mod tests {
         assert!(
             code.contains("HELLO"),
             "should contain expected output value: {}",
+            code
+        );
+    }
+
+    // ===================================================================
+    // BB-2: Per-Node Corpus Tests
+    // ===================================================================
+
+    #[test]
+    fn test_corpus_section_empty_returns_none() {
+        let dag: Dag<()> = Dag::new();
+        let empty_corpus: HashMap<gunbc_test::NodeIdentity, gunbc_test::MockCorpus> =
+            HashMap::new();
+        let config = TestConfig {
+            corpus_tests: true,
+            ..TestConfig::default()
+        };
+        let generator = TestGenerator::new(&dag)
+            .with_config(config)
+            .with_corpus(empty_corpus);
+        let code = generator.generate_test_module("empty_corpus", "build_graph()");
+        assert!(
+            !code.contains("BB-2: Per-Node Corpus Tests"),
+            "empty corpus should not produce a section: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_corpus_section_pure_node_exact_match() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "mod_a::compute",
+            vec![port("x", "Int")],
+            vec![port("result", "Int")],
+            (),
+        ));
+
+        let identity = gunbc_test::NodeIdentity::new("mod_a", "compute");
+        let mut corpus_entry = gunbc_test::MockCorpus::new();
+        corpus_entry.add(gunbc_test::CorpusExample {
+            provenance: gunbc_test::Provenance {
+                workflow: "wf_alpha".to_string(),
+                profile: None,
+                node_instance: NodeId("mod_a::compute".into()),
+                subdag_path: vec![],
+                seed_kind: gunbc_test::SeedKind::WorkflowObserved,
+            },
+            inputs: HashMap::from([("x".to_string(), Value::Int(42))]),
+            expectation: gunbc_test::Expectation::ExactOutputs(HashMap::from([(
+                "result".to_string(),
+                Value::Int(84),
+            )])),
+        });
+
+        let mut corpus = HashMap::new();
+        corpus.insert(identity, corpus_entry);
+
+        let spec = MockSpec::new("corpus_pure")
+            .boundary("mod_a::compute", "result", Value::Int(84))
+            .skip_node_example("mod_a::compute");
+
+        let config = TestConfig {
+            corpus_tests: true,
+            ..TestConfig::default()
+        };
+        let generator = TestGenerator::new(&dag)
+            .with_config(config)
+            .with_corpus(corpus)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("corpus_pure", "build_graph()");
+
+        assert!(
+            code.contains("BB-2: Per-Node Corpus Tests"),
+            "should have corpus section: {}",
+            code
+        );
+        assert!(
+            code.contains("test_corpus_mod_a_compute_0"),
+            "should generate indexed test name: {}",
+            code
+        );
+        assert!(
+            code.contains("ExecutionMode::Real"),
+            "pure node should use Real mode: {}",
+            code
+        );
+        assert!(
+            code.contains("execute_single_node"),
+            "should call execute_single_node: {}",
+            code
+        );
+        assert!(
+            code.contains("assert_eq!"),
+            "exact outputs should use assert_eq!: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_corpus_section_effectful_node_type_contract() {
+        use gunbc_ir::NodeKind;
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "svc::fetch",
+                vec![port("url", "String")],
+                vec![port("body", "String")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+
+        let identity = gunbc_test::NodeIdentity::new("svc", "fetch");
+        let mut corpus_entry = gunbc_test::MockCorpus::new();
+        corpus_entry.add(gunbc_test::CorpusExample {
+            provenance: gunbc_test::Provenance {
+                workflow: "wf_beta".to_string(),
+                profile: None,
+                node_instance: NodeId("svc::fetch".into()),
+                subdag_path: vec![],
+                seed_kind: gunbc_test::SeedKind::WorkflowObserved,
+            },
+            inputs: HashMap::from([("url".to_string(), Value::Str("https://example.com".into()))]),
+            expectation: gunbc_test::Expectation::TypeContractOnly,
+        });
+
+        let mut corpus = HashMap::new();
+        corpus.insert(identity, corpus_entry);
+
+        let spec = MockSpec::new("corpus_effectful")
+            .boundary("svc::fetch", "body", Value::Str("<MOCK>".into()));
+
+        let config = TestConfig {
+            corpus_tests: true,
+            ..TestConfig::default()
+        };
+        let generator = TestGenerator::new(&dag)
+            .with_config(config)
+            .with_corpus(corpus)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("corpus_effectful", "build_graph()");
+
+        assert!(
+            code.contains("BB-2: Per-Node Corpus Tests"),
+            "should have corpus section: {}",
+            code
+        );
+        assert!(
+            code.contains("test_corpus_svc_fetch_0"),
+            "should generate indexed test name: {}",
+            code
+        );
+        assert!(
+            code.contains("DryRun"),
+            "effectful node should use DryRun mode: {}",
+            code
+        );
+        assert!(
+            code.contains("value_compatible_with_type_id"),
+            "type-contract should check type compatibility: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_corpus_section_skips_unknown_identity() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "known::node",
+            vec![port("in", "String")],
+            vec![port("out", "String")],
+            (),
+        ));
+
+        // Corpus entry for a node NOT in the DAG.
+        let unknown_identity = gunbc_test::NodeIdentity::new("unknown", "node");
+        let mut corpus_entry = gunbc_test::MockCorpus::new();
+        corpus_entry.add(gunbc_test::CorpusExample {
+            provenance: gunbc_test::Provenance {
+                workflow: "wf_gamma".to_string(),
+                profile: None,
+                node_instance: NodeId("unknown::node".into()),
+                subdag_path: vec![],
+                seed_kind: gunbc_test::SeedKind::WorkflowObserved,
+            },
+            inputs: HashMap::from([("in".to_string(), Value::Str("hello".into()))]),
+            expectation: gunbc_test::Expectation::ExactOutputs(HashMap::from([(
+                "out".to_string(),
+                Value::Str("world".into()),
+            )])),
+        });
+
+        let mut corpus = HashMap::new();
+        corpus.insert(unknown_identity, corpus_entry);
+
+        let spec = MockSpec::new("corpus_skip")
+            .boundary("known::node", "out", Value::Str("<MOCK>".into()))
+            .skip_node_example("known::node");
+
+        let config = TestConfig {
+            corpus_tests: true,
+            ..TestConfig::default()
+        };
+        let generator = TestGenerator::new(&dag)
+            .with_config(config)
+            .with_corpus(corpus)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("corpus_skip", "build_graph()");
+
+        // Unknown identity should be silently skipped — no corpus section at all.
+        assert!(
+            !code.contains("BB-2: Per-Node Corpus Tests"),
+            "unknown identity should not produce a section: {}",
+            code
+        );
+    }
+
+    #[test]
+    fn test_corpus_section_multiple_examples_per_node() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "math::add",
+            vec![port("a", "Int"), port("b", "Int")],
+            vec![port("sum", "Int")],
+            (),
+        ));
+
+        let identity = gunbc_test::NodeIdentity::new("math", "add");
+        let mut corpus_entry = gunbc_test::MockCorpus::new();
+        for (i, (a, b, s)) in [(1, 2, 3), (10, 20, 30), (0, 0, 0)].iter().enumerate() {
+            corpus_entry.add(gunbc_test::CorpusExample {
+                provenance: gunbc_test::Provenance {
+                    workflow: format!("wf_{}", i),
+                    profile: None,
+                    node_instance: NodeId("math::add".into()),
+                    subdag_path: vec![],
+                    seed_kind: gunbc_test::SeedKind::WorkflowObserved,
+                },
+                inputs: HashMap::from([
+                    ("a".to_string(), Value::Int(*a)),
+                    ("b".to_string(), Value::Int(*b)),
+                ]),
+                expectation: gunbc_test::Expectation::ExactOutputs(HashMap::from([(
+                    "sum".to_string(),
+                    Value::Int(*s),
+                )])),
+            });
+        }
+
+        let mut corpus = HashMap::new();
+        corpus.insert(identity, corpus_entry);
+
+        let spec = MockSpec::new("corpus_multi")
+            .boundary("math::add", "sum", Value::Int(0))
+            .skip_node_example("math::add");
+
+        let config = TestConfig {
+            corpus_tests: true,
+            ..TestConfig::default()
+        };
+        let generator = TestGenerator::new(&dag)
+            .with_config(config)
+            .with_corpus(corpus)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("corpus_multi", "build_graph()");
+
+        // Should generate 3 separate tests with indexed names.
+        assert!(
+            code.contains("test_corpus_math_add_0"),
+            "should have example 0: {}",
+            code
+        );
+        assert!(
+            code.contains("test_corpus_math_add_1"),
+            "should have example 1: {}",
+            code
+        );
+        assert!(
+            code.contains("test_corpus_math_add_2"),
+            "should have example 2: {}",
             code
         );
     }
