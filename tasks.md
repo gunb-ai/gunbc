@@ -291,7 +291,54 @@ smell catalog above to classify. Include file path + line if possible.
 
 | Smell | Observation | File | Source | Date |
 |-------|-------------|------|--------|------|
-| *(empty — add observations here)* | | | | |
+| **Broken credential wiring** | `make gist` 401 — see POSTMORTEM below | daglang-lower, resolve_service.rs | gist 401 investigation | 2026-02-26 |
+
+### POSTMORTEM: `make gist` 401 — Compounding Failures
+
+**Symptom**: `make gist` returns 401 Unauthorized. Diagnostic: `BearerToken (key: "", source: static)`.
+
+**Key evidence**: `shell.GCloud.SecretManagerAccessVersion` **succeeds** (token fetched), but the token arrives **empty** at `github.Gist.Create`. Five compounding failures:
+
+#### Failure 1: No credential wiring from operation inputs to execute node (ROOT CAUSE)
+
+The lowerer creates prepare→execute→parse triplets for service operations. When a service has `config { auth: BearerToken }` and an `auth_token: Secret` input field, **no code exists to wire the auth_token value from the prepare node to the execute node's `res:credential` port**.
+
+- `daglang-lower` lines ~5731-5741: execute node gets `res:credential` input IF `has_auth` is true
+- `daglang-lower` lines ~6367: profile-based auth IS explicitly wired to `res:credential`
+- **Gap**: operation-level `auth_token` input field has no automatic outlet to `res:credential`
+
+Before annotation deletion, `@headers({ "Authorization": "Bearer {auth_token}" })` explicitly wired the credential. After deletion, `config { auth: BearerToken }` was added but the corresponding wiring logic was never created.
+
+#### Failure 2: GenericRestPrepareOp doesn't propagate auth_token
+
+`GenericRestPrepareOp` builds the request URL, body, and headers from input fields. It does NOT:
+- Detect `auth_token` as a credential input
+- Set `RestRequest.auth` from the operation's auth scheme
+- Expose the token as an output port for the execute node
+
+The prepare node treats `auth_token` like any other input field — it may end up in the body but never in the auth header.
+
+#### Failure 3: Execute node falls through silently
+
+`TransportOps::Execute` (`lib/transport/src/ops.rs` lines 65-94) looks for `res:credential` input. If not provided, it uses whatever auth is already on the request (which is `None`). **No error** — it just sends an unauthenticated request.
+
+#### Failure 4: Diagnostic source is misleading
+
+`decorate_service_failure` in `error.rs` gets `credential_ref: None` because `infer_auth_from_headers` can't find an Authorization header (it was never set). This shows `source: static` — misleading because it implies a hardcoded credential when really there's NO credential.
+
+#### Failure 5: GenericShellParseOp was emitting Value::Str for Secret outputs (FIXED)
+
+`GenericShellParseOp.TrimStdout` always emitted `Value::Str`, ignoring `is_secret` flag. This meant the gcloud token flowed as `Value::Str` not `Value::Secret`. **Fixed in current session** — `shell_trim_value()` helper now respects `OutputFieldSpec.type_id == "Secret"`.
+
+#### Fix options (pick one)
+
+| Option | What | Scope | Risk |
+|--------|------|-------|------|
+| A | **Auto-bridge in lowerer**: when `auth_scheme.is_some()` on service config AND an input field is typed `Secret`, create edge from `prepare.{field}` → `execute.res:credential` with `Credential::new(Secret::static_value(token), AuthScheme::Bearer)` wrapping | daglang-lower + resolve_service.rs | Medium — heuristic, may mis-identify which Secret field is the credential |
+| B | **Explicit auth input declaration in DSL**: add `auth_input: "auth_token"` to `config { ... }` block, lowerer uses it to wire credential | daglang-lower + daglang-syntax | Low — explicit, no heuristic |
+| C | **RestPrepareOp sets auth on request**: when `auth_scheme` is in spec and `auth_token` is in inputs, set `req.auth = Some(...)` directly in prepare | resolve_service.rs only | Low — localized fix, but skips resource port pattern |
+
+Option C is the smallest fix that unblocks `make gist`. Options A/B are more principled for the long term.
 
 ---
 
