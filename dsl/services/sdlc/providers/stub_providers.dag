@@ -34,34 +34,11 @@ service stub.IssueProvider : IssueProvider {
   operation get {
     input { id: NonEmptyStr }
     output { issue: TrackedIssue, found: Bool }
-      "issue": {
-        "id": "{id}",
-        "title": "Stub issue",
-        "body": "Stub body",
-        "stage": "Idea",
-        "labels": ["sdlc:idea"],
-        "url": null,
-        "author": "stub",
-        "created_at": "2026-01-01T00:00:00Z",
-        "updated_at": "2026-01-01T00:00:00Z"
-      },
-      "found": true
-    })
   }
 
   operation create {
     input { title: NonEmptyStr, body: String, labels: List<String> }
     output { issue: TrackedIssue }
-      "issue": {
-        "id": "stub-1",
-        "title": "{title}",
-        "body": "{body}",
-        "stage": "Idea",
-        "labels": [],
-        "url": null,
-        "author": "stub"
-      }
-    })
   }
 
   operation comment {

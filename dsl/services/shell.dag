@@ -100,14 +100,6 @@ service shell.GCloud {
       version: NonEmptyStr = "latest"
     }
     output { secret_value: Secret }
-      "gcloud",
-      "secrets",
-      "versions",
-      "access",
-      "{version}",
-      "--secret={secret_name}",
-      "--project={project_id}"
-    ])
   }
 }
 

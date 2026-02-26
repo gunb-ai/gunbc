@@ -24,11 +24,6 @@ service review.Dimension {
       question: String
       system_prompt: String
     }
-      body: {
-        "question": "Review this code for quality issues.",
-        "system_prompt": "You are a code reviewer."
-      }
-    )
   }
 
   operation ParseDimensionResponse {
@@ -41,11 +36,6 @@ service review.Dimension {
       output: Json
       errors: Json
     }
-      body: {
-        "output": {"findings": [], "summary": "No issues found."},
-        "errors": {}
-      }
-    )
   }
 
   operation FormatDiffArtifact {
@@ -55,10 +45,6 @@ service review.Dimension {
     output {
       artifact: String
     }
-      body: {
-        "artifact": "--- a/file.rs\n+++ b/file.rs\n@@ -1 +1 @@\n-old\n+new"
-      }
-    )
   }
 
   operation FormatPriorFindings {
@@ -70,10 +56,6 @@ service review.Dimension {
     output {
       prior_findings: String
     }
-      body: {
-        "prior_findings": "Prior findings from coherence, quality, and requirements dimensions."
-      }
-    )
   }
 
   operation MergeDimensionOutputs {
@@ -87,10 +69,5 @@ service review.Dimension {
       output: Json
       summary: String
     }
-      body: {
-        "output": {"dimensions": {}},
-        "summary": "Review complete."
-      }
-    )
   }
 }
