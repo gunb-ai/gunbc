@@ -5259,6 +5259,23 @@ impl<T: Clone> TestGenerator<'_, T> {
 
         let mut tests = Vec::new();
 
+        // Surface unmatched corpus identities — violates the "errors are explicit,
+        // no silent fallbacks" invariant if we silently drop them.
+        let mut unmatched_identities = Vec::new();
+        for (identity, node_corpus) in corpus {
+            if !node_corpus.is_empty() && !identity_to_node.contains_key(identity) {
+                unmatched_identities.push(identity.to_string());
+            }
+        }
+        if !unmatched_identities.is_empty() {
+            eprintln!(
+                "[corpus] WARNING: {} corpus identit{} not found in DAG (corpus drift?): {}",
+                unmatched_identities.len(),
+                if unmatched_identities.len() == 1 { "y" } else { "ies" },
+                unmatched_identities.join(", "),
+            );
+        }
+
         for (identity, node_corpus) in corpus {
             if node_corpus.is_empty() {
                 continue;
@@ -5267,7 +5284,7 @@ impl<T: Clone> TestGenerator<'_, T> {
             // Find the matching node in this DAG.
             let node = match identity_to_node.get(identity) {
                 Some(n) => *n,
-                None => continue, // Node not in this DAG — skip silently.
+                None => continue, // Already surfaced as warning above.
             };
             let concrete_node_id = &node.id.0;
 
@@ -5287,8 +5304,19 @@ impl<T: Clone> TestGenerator<'_, T> {
 
                 match &example.expectation {
                     gunbc_test::Expectation::ExactOutputs(expected_outputs) => {
-                        let (doc, body) =
-                            self.build_corpus_body_real(&ctx, expected_outputs);
+                        // Gate on node purity: ExactOutputs assumes Real mode,
+                        // but effectful nodes must not execute Real (side effects).
+                        // Fall back to DryRun + type contract for effectful nodes.
+                        let (doc, body) = if is_pure_node(node) {
+                            self.build_corpus_body_real(&ctx, expected_outputs)
+                        } else {
+                            eprintln!(
+                                "[corpus] NOTE: Node '{}' has ExactOutputs expectation but is \
+                                 effectful — falling back to DryRun mode.",
+                                identity,
+                            );
+                            self.build_corpus_body_dryrun(&ctx, analysis, node, None)
+                        };
                         tests.push(TestFn {
                             name: test_name,
                             doc,

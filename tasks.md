@@ -243,26 +243,34 @@ Queue ordered by dependency chain:
 | 1 | BB-2 | Per-node test generation (Level 1a/1b). Pure nodes real exec, effectful DryRun. | M | Complete | BB-1 |
 | 2 | BB-3 | Adjacent pair test generation (Level 2). Window tests for wiring bugs. | M | Complete | BB-2 |
 | 3 | BB-5 | Cross-workflow consistency tests (Level 4). Same node, multiple workflows. | S | Complete | BB-2 |
-| 4 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | — |
-| 5 | FC-P7-d | Delete 2 bootstrap extern impls. Parity golden tests. | M | Pending | FC-P7-c2 |
-| 6 | FC-CF5 | Recursive types (self-referential type defs). | L | Pending | — |
-| 7 | FC-CF6 | Recursive functions (self-calls in fn bodies). | L | Pending | FC-CF5 |
-| 8 | FC-P8-a | Tree rendering in pure DSL. Delete RenderTreeOp. | L | Pending | FC-CF5, FC-CF6 |
-| 9 | FC-P8-b | Snapshot content as MarkdownDoc. Delete BuildSnapshotContentOp. | M | Pending | FC-P8-a |
-| 10 | FC-P8-c | Delete extern_impls.rs entirely. Zero extern func in any .dag file. | S | Pending | FC-P8-a, FC-P8-b |
+| 4 | VIO-1 | Virtual I/O DSL types (`dsl/std/virtual_io.dag`). VirtualFsSetup, ShellCassette, HttpStub, VirtualBackendConfig. | M | Pending | — |
+| 5 | VIO-3 | Shell cassette registry in VirtualTransportBackend. Lookup before hardcoded handlers. | S | Pending | — |
+| 6 | VIO-4 | REST/HTTP response registry in VirtualTransportBackend. In-process request→response matching (no real server). | S | Pending | — |
+| 7 | VIO-5 | TCP loopback registry in VirtualTransportBackend. | S | Pending | — |
+| 8 | VIO-2 | Derive mock registries from `@mock_response` annotations. Compiler auto-generates VirtualBackendConfig per workflow. | M | Pending | VIO-1 |
+| 9 | VIO-6 | S-tier codegen in `build_fidelity_ladder_section`. Real mode + virtual backends via TransportBackendGuard. | M | Pending | VIO-2:5 |
+| 10 | VIO-7 | M-tier codegen (sandboxed tempdir, `#[cfg(feature = "sandboxed_tests")]`). | M | Pending | VIO-6 |
+| 11 | VIO-8 | L/XL tier codegen (cost-gated real/remote, `GUNBC_TEST_MAX_COST` env check). | S | Pending | VIO-6 |
+| 12 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | — |
+| 13 | FC-P7-d | Delete 2 bootstrap extern impls. Parity golden tests. | M | Pending | FC-P7-c2 |
+| 14 | FC-CF5 | Recursive types (self-referential type defs). | L | Pending | — |
+| 15 | FC-CF6 | Recursive functions (self-calls in fn bodies). | L | Pending | FC-CF5 |
+| 16 | FC-P8-a | Tree rendering in pure DSL. Delete RenderTreeOp. | L | Pending | FC-CF5, FC-CF6 |
+| 17 | FC-P8-b | Snapshot content as MarkdownDoc. Delete BuildSnapshotContentOp. | M | Pending | FC-P8-a |
+| 18 | FC-P8-c | Delete extern_impls.rs entirely. Zero extern func in any .dag file. | S | Pending | FC-P8-a, FC-P8-b |
 
 ### R2 Horizon (after FC-P8-c)
 
 | Order | ID | What | Size |
 |-------|----|------|------|
-| 11 | RF-A2b | Port namespace typing: migrate `starts_with("res:")`/`"tool:"` call sites in `core/daglang/`, `core/codegen/testgen/` to `PortCategory`. | S |
-| 12 | RF-A6b | String constants: migrate `__deps`/`res:file`/`tool:` references in `core/daglang/`, `core/codegen/testgen/` to central consts. | M |
-| 13 | RF-C1 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
-| 14 | RF-C2 | Unify passthrough op variants to single data-driven PassthroughOp. | S |
-| 15 | RF-C3 | Error type consolidation (6 types → layered like ExecError). | M |
-| 16 | RF-C4 | Test helper extraction (CompileTestHelper + MockFactory). | M |
-| 17 | RF-D-eval | Scaffolding decision: delete RetryPolicy/ErrorMapping/ContractObligation/ResourceRequirement or wire through DSL. | S |
-| 18 | RF-F-eval | Underused abstractions decision: delete algebra traits + render traits or find second consumer. | S |
+| 19 | RF-A2b | Port namespace typing: migrate `starts_with("res:")`/`"tool:"` call sites in `core/daglang/`, `core/codegen/testgen/` to `PortCategory`. | S |
+| 20 | RF-A6b | String constants: migrate `__deps`/`res:file`/`tool:` references in `core/daglang/`, `core/codegen/testgen/` to central consts. | M |
+| 21 | RF-C1 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
+| 22 | RF-C2 | Unify passthrough op variants to single data-driven PassthroughOp. | S |
+| 23 | RF-C3 | Error type consolidation (6 types → layered like ExecError). | M |
+| 24 | RF-C4 | Test helper extraction (CompileTestHelper + MockFactory). | M |
+| 25 | RF-D-eval | Scaffolding decision: delete RetryPolicy/ErrorMapping/ContractObligation/ResourceRequirement or wire through DSL. | S |
+| 26 | RF-F-eval | Underused abstractions decision: delete algebra traits + render traits or find second consumer. | S |
 
 ---
 
@@ -369,6 +377,37 @@ Deleted from this theme (subsumed by other tasks):
 | RF-A8 | **`as_str`/`parse` boilerplate**. `#[derive(StringEnum)]` for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr` (was RF-H3). | 12 files | |
 | RF-A9 | **Emit backend type-name tables**. Same type mapping in 3 backends. | daglang-emit | Shared `DslTypeMapping` table. |
 | RF-A10 | **String dispatch in DAG tooling**. 100+ match arms on string literals. | 5 files | Registry pattern or DSL data declarations. |
+
+### Theme VIO: Virtual I/O Infrastructure (BB-6 S+ tiers)
+
+BB-6 XS tier (PureMock/DryRun) works. S+ tiers are stubs awaiting virtual I/O
+infrastructure. The design insight: **S-tier doesn't need real servers**. The
+`TransportBackend` trait intercepts at the `TransportRequest`/`TransportResponse`
+struct level. S-tier REST/HTTP/TCP is just a response registry inside
+`VirtualTransportBackend` — in-process request→response matching, no sockets.
+
+**Existing infrastructure**:
+- `VirtualTransportBackend` in `lib/transport/src/test_backend.rs`: handles File
+  ops (read/write/append/delete/exists/glob/metadata) and basic Shell (find,
+  printenv, test -f). REST/HTTP/TCP return error.
+- `TransportBackendGuard` in `lib/transport/src/backend.rs`: scoped backend
+  install/restore via RAII guard. Thread-safe global swap.
+- `FidelityLadder`/`FidelityLevel` in `core/test/src/fidelity.rs`: canonical
+  ladders for all 6 TransportKind variants. `node_max_fidelity()` transitive meet.
+
+**DSL-first approach**:
+- VIO-1 defines virtual backend configuration types in DSL (`dsl/std/virtual_io.dag`)
+- VIO-2 derives mock registries from existing `@mock_response` annotations on
+  service operations — zero hand-written mock data
+- VIO-3:5 add response registries to `VirtualTransportBackend` (shell cassettes,
+  HTTP stubs, TCP loopback) — same in-process interception pattern as File
+- VIO-6:8 wire virtual backends into testgen codegen per tier
+
+**Key files**:
+- `dsl/std/virtual_io.dag` (new, VIO-1)
+- `lib/transport/src/test_backend.rs` (VIO-3, VIO-4, VIO-5)
+- `core/codegen/src/testgen/mock_corpus.rs` (VIO-2)
+- `core/codegen/src/testgen/codegen.rs` (VIO-6, VIO-7, VIO-8)
 
 ---
 
