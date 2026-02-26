@@ -169,6 +169,7 @@ fn lower_stmt(stmt: &ast::Stmt) -> LoweredStmt {
     match stmt {
         ast::Stmt::Let(name, expr) => LoweredStmt::Let(name.clone(), lower_expr(expr)),
         ast::Stmt::Assign(name, expr) => LoweredStmt::Let(name.clone(), lower_expr(expr)),
+        ast::Stmt::Node(ns) => LoweredStmt::Let(ns.name.clone(), lower_expr(&ns.expr)),
         ast::Stmt::Expr(expr) => LoweredStmt::Expr(lower_expr(expr)),
         ast::Stmt::Return(fields) => {
             LoweredStmt::Return(fields.iter().map(|(k, v)| (k.clone(), lower_expr(v))).collect())

@@ -71,6 +71,12 @@ pub fn walk_stmts(stmts: &[Stmt], visitor: &mut impl FnMut(&Expr)) {
             Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
                 walk_expr(expr, visitor);
             }
+            Stmt::Node(ns) => {
+                walk_expr(&ns.expr, visitor);
+                if let Some(guard) = &ns.when_guard {
+                    walk_expr(guard, visitor);
+                }
+            }
             Stmt::Annotation(_) => {}
             Stmt::Return(fields) => {
                 for (_, expr) in fields {

@@ -567,6 +567,15 @@ pub mod ast {
         pub lossy: bool,
     }
 
+    /// A `node` statement with optional guards: `node name [after a, when cond]: expr`
+    #[derive(Debug, Clone)]
+    pub struct NodeStmt {
+        pub name: String,
+        pub expr: Expr,
+        pub after: Vec<String>,
+        pub when_guard: Option<Expr>,
+    }
+
     /// Statement in a function body.
     #[derive(Debug, Clone)]
     pub enum Stmt {
@@ -575,5 +584,6 @@ pub mod ast {
         Annotation(Annotation),
         Expr(Expr),
         Return(Vec<(String, Expr)>),
+        Node(NodeStmt),
     }
 }

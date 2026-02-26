@@ -5,6 +5,7 @@
 //! [`classify_layers`] function scans **all** layers and returns a
 //! human-readable classification string by priority order.
 
+use crate::diagnostic::AcquisitionDiagnostic;
 use std::fmt;
 
 // ---------------------------------------------------------------------------
@@ -13,7 +14,7 @@ use std::fmt;
 
 /// A single layer in the error's diagnostic stack.
 ///
-/// **Domain layers** (Http, Rest, Auth, Service, Shell, File) are pushed by
+/// **Domain layers** (Http, Rest, Acquisition, Service, Shell, File) are pushed by
 /// individual ops that understand their transport/protocol context.
 ///
 /// **NodeTrace** is pushed automatically by the executor for every node
@@ -23,7 +24,9 @@ use std::fmt;
 pub enum ErrorLayer {
     Http(HttpErrorLayer),
     Rest(RestErrorLayer),
-    Auth(AuthErrorLayer),
+    /// Resource acquisition diagnostic — replaces the old `Auth` variant.
+    /// Carries a self-describing [`AcquisitionDiagnostic`] with lock+key identity.
+    Acquisition(AcquisitionErrorLayer),
     Service(ServiceErrorLayer),
     Shell(ShellErrorLayer),
     File(FileErrorLayer),
@@ -45,11 +48,14 @@ pub struct RestErrorLayer {
     pub method: String,
 }
 
-/// Auth-level failure information.
+/// Resource acquisition failure — carries a self-describing diagnostic.
+///
+/// The [`AcquisitionDiagnostic`] contains both the lock (what resource) and
+/// key (what credential) identity, so the error system delegates formatting
+/// to the types themselves.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AuthErrorLayer {
-    pub scheme: String,
-    pub credential_ref: Option<String>,
+pub struct AcquisitionErrorLayer {
+    pub diagnostic: AcquisitionDiagnostic,
 }
 
 /// Service-level failure information.
@@ -109,7 +115,7 @@ pub enum NodeRole {
 /// Scan **all** layers and return a classification string by priority.
 ///
 /// Priority order (highest first):
-/// 1. Auth → `"AUTH"`
+/// 1. Acquisition (with or without key) → `"AUTH"`
 /// 2. Shell → `"SHELL"`
 /// 3. File → `"FILE"`
 /// 4. Http-specific:
@@ -121,14 +127,14 @@ pub enum NodeRole {
 /// The function scans every layer first (setting boolean flags), then returns
 /// by priority order — it does **not** short-circuit on the first match.
 pub fn classify_layers(layers: &[ErrorLayer]) -> &'static str {
-    let mut has_auth = false;
+    let mut has_acquisition = false;
     let mut has_shell = false;
     let mut has_file = false;
     let mut http_status: Option<u16> = None;
 
     for layer in layers {
         match layer {
-            ErrorLayer::Auth(_) => has_auth = true,
+            ErrorLayer::Acquisition(_) => has_acquisition = true,
             ErrorLayer::Shell(_) => has_shell = true,
             ErrorLayer::File(_) => has_file = true,
             ErrorLayer::Http(h) => {
@@ -140,7 +146,7 @@ pub fn classify_layers(layers: &[ErrorLayer]) -> &'static str {
     }
 
     // Return by priority.
-    if has_auth {
+    if has_acquisition {
         return "AUTH";
     }
     if has_shell {
@@ -410,6 +416,29 @@ impl<T, E: fmt::Display> IntoExecResult<T> for Result<T, E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagnostic::{KeyIdentity, LockIdentity};
+
+    /// Helper: build an Acquisition layer from scheme + optional credential ref.
+    fn acquisition_layer(scheme: &str, credential_ref: Option<&str>) -> ErrorLayer {
+        ErrorLayer::Acquisition(AcquisitionErrorLayer {
+            diagnostic: AcquisitionDiagnostic {
+                lock: LockIdentity {
+                    resource: "AuthContext".into(),
+                    mode: "Read".into(),
+                    target: "test".into(),
+                },
+                key: Some(KeyIdentity {
+                    scheme: scheme.into(),
+                    hint: credential_ref
+                        .map(|c| format!("***{c}"))
+                        .unwrap_or_else(|| "***".into()),
+                    source: credential_ref
+                        .map(|c| format!("env:{c}"))
+                        .unwrap_or_else(|| "static".into()),
+                }),
+            },
+        })
+    }
 
     #[test]
     fn basic_error_creation() {
@@ -437,10 +466,8 @@ mod tests {
 
     #[test]
     fn error_classification_auth() {
-        let err = ExecError::new("forbidden").with_layer(ErrorLayer::Auth(AuthErrorLayer {
-            scheme: "BearerToken".into(),
-            credential_ref: Some("GITHUB_TOKEN".into()),
-        }));
+        let err = ExecError::new("forbidden")
+            .with_layer(acquisition_layer("BearerToken", Some("GITHUB_TOKEN")));
 
         assert_eq!(err.classification(), "AUTH");
     }
@@ -457,16 +484,13 @@ mod tests {
 
     #[test]
     fn error_classification_priority() {
-        // Auth should win over Http 500.
+        // Acquisition should win over Http 500.
         let err = ExecError::new("multi-layer failure")
             .with_layer(ErrorLayer::Http(HttpErrorLayer {
                 status_code: 500,
                 reason: None,
             }))
-            .with_layer(ErrorLayer::Auth(AuthErrorLayer {
-                scheme: "BearerToken".into(),
-                credential_ref: None,
-            }));
+            .with_layer(acquisition_layer("BearerToken", None));
 
         assert_eq!(err.classification(), "AUTH");
     }
@@ -534,10 +558,7 @@ mod tests {
     #[test]
     fn failure_detail_conversion() {
         let err = ExecError::new("auth failed")
-            .with_layer(ErrorLayer::Auth(AuthErrorLayer {
-                scheme: "Header".into(),
-                credential_ref: Some("X-API-KEY".into()),
-            }))
+            .with_layer(acquisition_layer("Header", Some("X-API-KEY")))
             .with_layer(ErrorLayer::Service(ServiceErrorLayer {
                 provider: "gcp".into(),
                 operation: "upload".into(),
@@ -680,11 +701,24 @@ mod tests {
     }
 
     #[test]
-    fn auth_credential_ref() {
-        let layer = AuthErrorLayer {
-            scheme: "BearerToken".into(),
-            credential_ref: Some("GITHUB_TOKEN".into()),
+    fn acquisition_diagnostic_display() {
+        let layer = AcquisitionErrorLayer {
+            diagnostic: AcquisitionDiagnostic {
+                lock: LockIdentity {
+                    resource: "AuthContext".into(),
+                    mode: "Read".into(),
+                    target: "POST https://api.github.com/gists".into(),
+                },
+                key: Some(KeyIdentity {
+                    scheme: "Bearer".into(),
+                    hint: "***wxyz".into(),
+                    source: "env:GITHUB_TOKEN".into(),
+                }),
+            },
         };
-        assert_eq!(layer.credential_ref, Some("GITHUB_TOKEN".to_string()));
+        assert_eq!(
+            layer.diagnostic.to_string(),
+            "AuthContext (Read): POST https://api.github.com/gists with Bearer (key: ***wxyz, source: env:GITHUB_TOKEN)"
+        );
     }
 }

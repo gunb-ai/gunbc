@@ -2370,6 +2370,14 @@ fn validate_callable_body(
                 trailing_expr_type = None;
                 trailing_expr = None;
             }
+            Stmt::Node(ns) => {
+                let (inferred, infer_errors) =
+                    infer_expr_type(&ns.expr, &local_bindings, &infer_context);
+                errors.extend(infer_errors);
+                local_bindings.insert(ns.name.clone(), inferred);
+                trailing_expr_type = None;
+                trailing_expr = None;
+            }
             Stmt::Annotation(_) => {
                 trailing_expr_type = None;
                 trailing_expr = None;

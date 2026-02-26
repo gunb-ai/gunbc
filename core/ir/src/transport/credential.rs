@@ -145,6 +145,19 @@ impl Secret {
             None => true,
         }
     }
+
+    /// A redacted hint showing a small suffix of the secret value.
+    ///
+    /// Reveals `min(len/4, 4)` trailing characters — always <25% of the value,
+    /// capped at 4 chars. Mirrors the `SecretString::hint()` formula from `value.rs`.
+    pub fn hint(&self) -> String {
+        let reveal = (self.value.len() / 4).min(4);
+        if reveal == 0 {
+            "***".into()
+        } else {
+            format!("***{}", &self.value[self.value.len() - reveal..])
+        }
+    }
 }
 
 impl fmt::Debug for Secret {
@@ -510,6 +523,30 @@ mod tests {
             secret.expose_plaintext_for_transport(),
             "super-secret-token"
         );
+    }
+
+    #[test]
+    fn secret_hint_reveals_suffix() {
+        // 40-char token → last 4 chars
+        let secret =
+            Secret::static_value("ghp_1234567890abcdef1234567890abcdef12345678");
+        assert_eq!(secret.hint(), "***5678");
+
+        // 8-char token → last 2 chars (8/4 = 2)
+        let secret = Secret::static_value("abcdefgh");
+        assert_eq!(secret.hint(), "***gh");
+
+        // 3-char token → "***" (3/4 = 0)
+        let secret = Secret::static_value("abc");
+        assert_eq!(secret.hint(), "***");
+
+        // Empty → "***"
+        let secret = Secret::static_value("");
+        assert_eq!(secret.hint(), "***");
+
+        // 16-char token → last 4 chars (16/4 = 4)
+        let secret = Secret::static_value("0123456789abcdef");
+        assert_eq!(secret.hint(), "***cdef");
     }
 
     #[test]

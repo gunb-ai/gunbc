@@ -606,6 +606,9 @@ fn collect_stage_binding_producers(def: &PipelineDef) -> HashMap<String, String>
                 Stmt::Let(name, _) | Stmt::Assign(name, _) => {
                     by_binding.insert(name.clone(), stage.name.clone());
                 }
+                Stmt::Node(ns) => {
+                    by_binding.insert(ns.name.clone(), stage.name.clone());
+                }
                 Stmt::Annotation(_) | Stmt::Expr(_) | Stmt::Return(_) => {}
             }
         }
@@ -632,6 +635,9 @@ fn collect_covered_stages_from_stmt(
     match stmt {
         Stmt::Let(_, expr) | Stmt::Assign(_, expr) | Stmt::Expr(expr) => {
             collect_covered_stages_from_expr(expr, producer_by_binding, covered);
+        }
+        Stmt::Node(ns) => {
+            collect_covered_stages_from_expr(&ns.expr, producer_by_binding, covered);
         }
         Stmt::Return(fields) => {
             for (_name, expr) in fields {

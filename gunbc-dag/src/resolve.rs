@@ -921,7 +921,6 @@ fn resolve_service_transport(
                         spec: rest_spec.clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
-                        permissions: metadata.permissions.clone(),
                         auth_scheme: rest_spec.auth_scheme.clone().unwrap_or_default(),
                     }));
                 }

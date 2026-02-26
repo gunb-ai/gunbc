@@ -765,12 +765,8 @@ impl ProgressObserver for NonTtyProgressObserver {
                 ErrorLayer::Rest(r) => {
                     eprintln!("  │ Transport: {} {}", r.method, r.endpoint);
                 }
-                ErrorLayer::Auth(a) if !a.scheme.is_empty() => {
-                    if let Some(ref cred) = a.credential_ref {
-                        eprintln!("  │ Auth:      {} (credential: {})", a.scheme, cred);
-                    } else {
-                        eprintln!("  │ Auth:      {}", a.scheme);
-                    }
+                ErrorLayer::Acquisition(a) => {
+                    eprintln!("  │ Auth:      {}", a.diagnostic);
                 }
                 ErrorLayer::Shell(s) => {
                     if let Some(code) = s.exit_code {
@@ -791,7 +787,6 @@ impl ProgressObserver for NonTtyProgressObserver {
                     };
                     eprintln!("  │ Node:      {} ({})", t.node_id, role_str);
                 }
-                _ => {}
             }
         }
 
@@ -1069,13 +1064,8 @@ pub fn print_error_boxes(progress: &DagProgress, tier: Tier, use_color: bool) {
                     content_lines
                         .push(format!("Transport: {} {}", r.method, r.endpoint));
                 }
-                ErrorLayer::Auth(a) => {
-                    if let Some(ref cred) = a.credential_ref {
-                        content_lines
-                            .push(format!("Auth:      {} (credential: {})", a.scheme, cred));
-                    } else if !a.scheme.is_empty() {
-                        content_lines.push(format!("Auth:      {}", a.scheme));
-                    }
+                ErrorLayer::Acquisition(a) => {
+                    content_lines.push(format!("Auth:      {}", a.diagnostic));
                 }
                 ErrorLayer::Shell(s) => {
                     if let Some(code) = s.exit_code {

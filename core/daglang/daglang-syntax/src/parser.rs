@@ -1970,6 +1970,7 @@ impl Parser {
                     .into_iter()
                     .filter_map(|s| match s {
                         Stmt::Assign(n, e) | Stmt::Let(n, e) => Some((n, e)),
+                        Stmt::Node(ns) => Some((ns.name, ns.expr)),
                         _ => None,
                     })
                     .collect(),
@@ -2042,9 +2043,22 @@ impl Parser {
     fn parse_node_stmt(&mut self) -> Result<Stmt, ParseError> {
         self.expect(&TokenKind::Node)?;
         let name = self.expect_ident()?;
+        let mut after = Vec::new();
+        let mut when_guard = None;
         if self.eat(&TokenKind::LBracket) {
             while !self.check(&TokenKind::RBracket) && !self.at_eof() {
-                self.advance();
+                if self.check(&TokenKind::After) {
+                    self.advance(); // consume 'after'
+                    let dep = self.expect_ident()?;
+                    after.push(dep);
+                } else if self.check(&TokenKind::When) {
+                    self.advance(); // consume 'when'
+                    when_guard = Some(self.parse_expr(0)?);
+                } else if self.eat(&TokenKind::Comma) {
+                    continue;
+                } else {
+                    self.advance(); // skip unknown tokens in guard
+                }
             }
             self.eat(&TokenKind::RBracket);
         }
@@ -2056,7 +2070,12 @@ impl Parser {
                 }
                 self.eat(&TokenKind::RBrace);
             }
-            return Ok(Stmt::Assign(name, expr));
+            return Ok(Stmt::Node(NodeStmt {
+                name,
+                expr,
+                after,
+                when_guard,
+            }));
         }
         Err(self.err("expected : or = after node name".into()))
     }

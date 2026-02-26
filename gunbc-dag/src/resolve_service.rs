@@ -12,7 +12,7 @@ use daglang_lower::{
     RestOperationSpec, ShellOperationSpec, ShellOutputParsing,
 };
 use gunbc_exec::{
-    AuthErrorLayer, ErrorLayer, ExecError, Executable, HttpErrorLayer, OutputMap, RestErrorLayer,
+    ErrorLayer, ExecError, Executable, HttpErrorLayer, OutputMap, RestErrorLayer,
     ServiceErrorLayer, ShellErrorLayer,
 };
 use gunbc_ir::transport::{
@@ -166,7 +166,6 @@ pub struct GenericRestParseOp {
     pub spec: RestOperationSpec,
     pub service_name: String,
     pub operation_name: String,
-    pub permissions: Vec<String>,
     pub auth_scheme: String,
 }
 
@@ -220,10 +219,30 @@ impl Executable for GenericRestParseOp {
                             method: self.spec.method.clone(),
                         }));
                     if !scheme.is_empty() {
-                        err = err.with_layer(ErrorLayer::Auth(AuthErrorLayer {
-                            scheme,
-                            credential_ref: cred_ref,
-                        }));
+                        err = err.with_layer(ErrorLayer::Acquisition(
+                            gunbc_exec::AcquisitionErrorLayer {
+                                diagnostic: gunbc_exec::AcquisitionDiagnostic {
+                                    lock: gunbc_exec::LockIdentity {
+                                        resource: "AuthContext".into(),
+                                        mode: "Read".into(),
+                                        target: format!(
+                                            "{} {}",
+                                            self.spec.method, self.spec.endpoint
+                                        ),
+                                    },
+                                    key: Some(gunbc_exec::KeyIdentity {
+                                        scheme,
+                                        hint: cred_ref
+                                            .as_deref()
+                                            .map(|c| format!("***{c}"))
+                                            .unwrap_or_else(|| "***".into()),
+                                        source: cred_ref
+                                            .map(|c| format!("env:{c}"))
+                                            .unwrap_or_else(|| "static".into()),
+                                    }),
+                                },
+                            },
+                        ));
                     }
                     return Err(err);
                 }
@@ -1346,7 +1365,6 @@ mod tests {
             spec: rest_spec_simple(),
             service_name: String::new(),
             operation_name: String::new(),
-            permissions: vec![],
             auth_scheme: String::new(),
         };
         let response = RestResponse::ok(serde_json::json!({ "id": "abc-123" }));
@@ -1392,7 +1410,6 @@ mod tests {
             spec,
             service_name: String::new(),
             operation_name: String::new(),
-            permissions: vec![],
             auth_scheme: String::new(),
         };
         let response = RestResponse::ok(serde_json::json!({
@@ -1421,7 +1438,6 @@ mod tests {
             spec: rest_spec_with_path_params(),
             service_name: String::new(),
             operation_name: String::new(),
-            permissions: vec![],
             auth_scheme: String::new(),
         };
         let response = RestResponse::ok(serde_json::json!({
