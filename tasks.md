@@ -12,13 +12,14 @@ One blue lane (scenario-driven), two red lanes, never blocking each other.
 ```
   BLUE TEAM — Advance                     RED TEAM — Harden
   ────────────────────────────            ────────────────────────
-  SDLC Activation (single lane):         Lane R1: Structural Correctness
-    B-0 → B-PW → B-1 → B-2 →              RF-RG1 → RF-RG2 → RF-H4 →
-    B-3 → B-TC → B-4 → B-5 →              RF-H2 → RF-G-unblock → RF-A1 →
-    B-6 → B-7 → B-8:13 → ...cloud          RF-A2a → RF-A4
+  SDLC Activation (single lane):         Lane R1: Model Correctness + Structure
+    B-0 → B-PW → B-1 → B-2 →              RF-MC1 → RF-MC2 → RF-MC3 →
+    B-3 → B-TC → B-4 → B-5 →              RF-RG1 → RF-RG2 → RF-H4 →
+    B-6 → B-7 → B-8:13 → ...cloud          RF-H2 → RF-G-unblock → RF-A1 →
+                                            RF-A2a → RF-A4
 
                                           Lane R2: Testing + Foundation
-                                            BB-2 → BB-3 → BB-5 →
+                                            RF-TV1 → BB-2 → BB-3 → BB-5 →
                                             FC-P7-c2 → FC-P7-d →
                                             FC-CF5 → FC-CF6 →
                                             FC-P8-a → FC-P8-b → FC-P8-c
@@ -213,52 +214,61 @@ a follow-up to eliminate.
 
 ---
 
-## Lane R1: Structural Correctness
+## Lane R1: Model Correctness + Structure
 
-Types over validation, enums over strings. Touches `core/ir/`,
+**Model correctness first** — the compositional transport model is architecturally
+sound but has wiring and coverage gaps that cause silent failures. Fix these
+before anything else, since they affect all current and future services.
+
+Then: types over validation, enums over strings. Touches `core/ir/`,
 `core/test/`, `gunbc-dag/src/resolve.rs`, `gunbc-dag/src/binaries.rs`,
-`gunbc-dag/src/workflow/catalog.rs`.
-**No overlap with Lane R2 files.**
+`gunbc-dag/src/workflow/catalog.rs`, `core/daglang/` (lowerer).
+**No overlap with Lane R2 files** (except RF-MC1 touches lowerer — coordinate).
 
-Queue ordered by: manual registries first (pre-SDLC cleanup the user
-explicitly flagged), then danger (silent failures), then mechanical cleanup.
+Queue ordered by: model correctness (silent failures in the transport
+pipeline), then manual registries (pre-SDLC cleanup), then structural typing.
 
 | Order | ID | What | Size | Status | Deps |
 |-------|----|------|------|--------|------|
-| 1 | RF-RG1 | **Manual registry elimination.** `WorkspaceBinary` enum (13 entries, `binaries.rs`) is derivable from Cargo.toml `[[bin]]`. Workflow variant catalog (10 entries, `catalog.rs`) is derivable from DSL `pipeline` declarations + annotations for aliases/modes. Delete both manual tables, replace with auto-derivation. | M | Pending | — |
-| 2 | RF-RG2 | **Resolve generalization.** `resolve.rs` hardcodes 3 module paths (`std.resources`, `tools.infra`, prefix `services.*`). New DSL modules (SDLC, future tools) must work without touching resolve.rs. Replace with metadata-driven dispatch or convention-based fallthrough. | M | Pending | — |
-| 3 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
-| 4 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
-| 5 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
-| 6 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks. | M | Pending | — |
-| 7 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
-| 8 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
-| 9 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
+| 1 | RF-MC1 | **Credential wiring.** When a service has `config { auth: BearerToken }` and an `auth_token: Secret` input, nothing wires the token to the execute node's `res:credential` port. Requests go out unauthenticated, silently. **Fix**: Option B from postmortem — add explicit `auth_input` field to DSL service `config` block. Lowerer reads it and creates edge from prepare node's auth field → execute node's `res:credential` port with `Credential::new(Secret, AuthScheme)` wrapping. Touches: `daglang-syntax` (parser), `daglang-lower` (wiring), `resolve_service.rs` (wrapping). Test: `make gist` returns 200 with valid token. See POSTMORTEM below for full analysis. | M | Pending | — |
+| 2 | RF-MC2 | **Execute node silent fallthrough.** `TransportOps::Execute` sends unauthenticated requests when `res:credential` is missing — no error, no warning. Fix: when `ServiceOperationSpec` declares `auth_scheme`, require `res:credential` input. Error if absent (fail-closed). Touches: `lib/transport/src/ops.rs`. | S | Pending | — |
+| 3 | RF-MC3 | **File transport completeness.** `GenericFilePrepareOp` handles READ, READ_BYTES, WRITE only. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs at least EXISTS + CREATE_DIR for file-backed stores. Touches: `gunbc-dag/src/resolve_service.rs`. | M | Pending | — |
+| 4 | RF-RG1 | **Manual registry elimination.** `WorkspaceBinary` enum (13 entries, `binaries.rs`) is derivable from Cargo.toml `[[bin]]`. Workflow variant catalog (10 entries, `catalog.rs`) is derivable from DSL `pipeline` declarations + annotations for aliases/modes. Delete both manual tables, replace with auto-derivation. | M | Pending | — |
+| 5 | RF-RG2 | **Resolve generalization.** `resolve.rs` hardcodes 3 module paths (`std.resources`, `tools.infra`, prefix `services.*`). New DSL modules (SDLC, future tools) must work without touching resolve.rs. Replace with metadata-driven dispatch or convention-based fallthrough. | M | Pending | — |
+| 6 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
+| 7 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
+| 8 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
+| 9 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks. | M | Pending | — |
+| 10 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
+| 11 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
+| 12 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
 
 ### R1 Horizon (after A4)
 
 | Order | ID | What | Size |
 |-------|----|------|------|
-| 10 | RF-A5 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
-| 11 | RF-A6a | String constants: define central consts in `core/ir/src/signature.rs`. | S |
-| 12 | RF-A8 | `#[derive(StringEnum)]` macro for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr`. | M |
-| 13 | RF-A3 | ModulePath unification across 4 crates. | S |
-| 14 | RF-A9 | Shared DslTypeMapping table for emit backends. | S |
-| 15 | RF-A10 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
+| 13 | RF-A5 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
+| 14 | RF-A6a | String constants: define central consts in `core/ir/src/signature.rs`. | S |
+| 15 | RF-A8 | `#[derive(StringEnum)]` macro for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr`. | M |
+| 16 | RF-A3 | ModulePath unification across 4 crates. | S |
+| 17 | RF-A9 | Shared DslTypeMapping table for emit backends. | S |
+| 18 | RF-A10 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
 
 ---
 
 ## Lane R2: Testing + Foundation
 
-Black-box test generation, then extern bridge elimination. Touches
-`core/codegen/src/testgen/`, `core/daglang/`, `gunbc-dag/src/extern_impls.rs`.
+Model correctness (typecheck), then black-box test generation, then
+extern bridge elimination. Touches `core/codegen/src/testgen/`,
+`core/daglang/`, `gunbc-dag/src/extern_impls.rs`.
 **No overlap with Lane R1 files.**
 
-Queue ordered by dependency chain:
+Queue ordered by: model correctness (typecheck gap), then dependency chain.
 
 | Order | ID | What | Size | Status | Deps |
 |-------|----|------|------|--------|------|
-| 1 | BB-2 | Per-node test generation (Level 1a/1b). Pure nodes real exec, effectful DryRun. | M | Pending | BB-1 |
+| 1 | RF-TV1 | **Transport block validation in typecheck.** The typechecker completely ignores transport blocks — invalid contents compile silently and fail at resolve time with confusing errors. `LowerError::MissingTransport` is dead code (lowerer falls through to `ServiceOperationSpec::None` instead of erroring). **Fix**: (a) Validate transport block contents in typechecker: method/op field is required, path template variables match operation input fields, auth scheme matches service config. (b) Make the lowerer emit `LowerError::MissingTransport` instead of silently producing `ServiceOperationSpec::None`. Touches: `daglang-typecheck`, `daglang-lower`. | M | Pending | — |
+| 2 | BB-2 | Per-node test generation (Level 1a/1b). Pure nodes real exec, effectful DryRun. | M | Pending | BB-1 |
 | 2 | BB-3 | Adjacent pair test generation (Level 2). Window tests for wiring bugs. | M | Pending | BB-2 |
 | 3 | BB-5 | Cross-workflow consistency tests (Level 4). Same node, multiple workflows. | S | Pending | BB-2 |
 | 4 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | — |
@@ -291,7 +301,7 @@ smell catalog above to classify. Include file path + line if possible.
 
 | Smell | Observation | File | Source | Date |
 |-------|-------------|------|--------|------|
-| **Broken credential wiring** | `make gist` 401 — see POSTMORTEM below | daglang-lower, resolve_service.rs | gist 401 investigation | 2026-02-26 |
+| *(empty — credential wiring promoted to RF-MC1)* | | | | |
 
 ### POSTMORTEM: `make gist` 401 — Compounding Failures
 
@@ -383,6 +393,32 @@ Local-profile transport (26 ops) moved to Blue queue as B-TC (critical path for 
 Detailed descriptions for items in lane queues. Consult when picking
 up a task — the lane queue has the priority order, this section has
 the context.
+
+### Theme MC: Model Correctness (compositional transport pipeline)
+
+**Audit findings** (2026-02-26):
+
+The compositional model (transport → service → provider → interface → profile)
+is architecturally sound and proven end-to-end for 39 operations across 4
+transport types (shell, rest, file, local). But three infrastructure gaps
+cause **silent failures** — requests go out wrong without errors:
+
+| Gap | Symptom | Severity |
+|-----|---------|----------|
+| **RF-MC1: Credential wiring** | `config { auth: BearerToken }` + `auth_token: Secret` input → token never reaches execute node → unauthenticated request, silent | Critical — affects all authenticated REST services |
+| **RF-MC2: Execute silent fallthrough** | Missing `res:credential` → execute sends request without auth, no error | Critical — masks RF-MC1 |
+| **RF-MC3: File transport coverage** | Only READ/READ_BYTES/WRITE implemented → EXISTS/CREATE_DIR/DELETE/APPEND/GLOB operations fail at resolve | Blocking — SDLC local profile needs EXISTS + CREATE_DIR |
+| **RF-TV1: Typecheck validation** | Typechecker ignores transport blocks entirely → invalid contents compile silently | High — errors surface late at resolve time with confusing messages |
+
+RF-MC1 root cause analysis: See POSTMORTEM section below.
+RF-TV1 detail: `LowerError::MissingTransport` is dead code — the lowerer falls
+through to `ServiceOperationSpec::None` instead of erroring when transport is missing.
+
+**Coverage snapshot** (97 total operations across 28 services):
+- 39 ops (40%): transport blocks present, pipeline works end-to-end
+- 24 ops (25%): intentional stubs (unit_test profile, no transport needed)
+- 16 ops (16%): have `@rest` annotations but no `transport rest {}` block (github/issues, github/pull_request, llm/openai)
+- 18 ops (19%): SDLC providers needing transport for local/cloud profiles
 
 ### Theme RG: Manual Registry Elimination
 
