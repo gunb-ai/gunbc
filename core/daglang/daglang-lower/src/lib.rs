@@ -703,6 +703,11 @@ struct ServiceTransportEndpoint {
     prepare_node_id: String,
     execute_node_id: String,
     prepare_inputs: Vec<String>,
+    /// Full (unfiltered) operation input names for positional arg resolution.
+    /// `prepare_inputs` excludes `auth_input`, so positional indices shift.
+    /// Resolving against this list gives the correct field name, which the
+    /// downstream auth_input skip/wire logic then handles by name.
+    operation_inputs: Vec<String>,
     has_auth: bool,
     /// Service call metadata for this endpoint (carried for loop-body transport).
     metadata: Option<ServiceCallMetadata>,
@@ -1418,6 +1423,7 @@ fn add_interface_stub_transport_triplets(
                     },
                     prepare_node_id: prepare_id,
                     execute_node_id: execute_id,
+                    operation_inputs: prepare_inputs.clone(),
                     prepare_inputs,
                     has_auth: false,
                     metadata: Some(metadata),
@@ -1554,6 +1560,7 @@ impl DagBuilder {
             prepare_node_id: new_prepare_id,
             execute_node_id: new_execute_id,
             prepare_inputs: original.prepare_inputs.clone(),
+            operation_inputs: original.operation_inputs.clone(),
             has_auth: original.has_auth,
             metadata: original.metadata.clone(),
         }
@@ -5840,6 +5847,11 @@ fn add_service_transport_triplets(
                     .first()
                     .map(|field| field.name.clone())
                     .unwrap_or_else(|| "result".to_string());
+                let operation_inputs = operation
+                    .inputs
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect::<Vec<_>>();
                 let endpoint = ServiceTransportEndpoint {
                     parse: LoweredEndpoint {
                         node_id: parse_id,
@@ -5848,6 +5860,7 @@ fn add_service_transport_triplets(
                     prepare_node_id: prepare_id,
                     execute_node_id: execute_id,
                     prepare_inputs,
+                    operation_inputs,
                     has_auth,
                     metadata: Some(service_metadata),
                 };
@@ -6018,9 +6031,13 @@ fn add_service_call_edges(
                 });
                 let mut supplied_prepare_inputs = HashSet::<String>::new();
                 for (index, arg) in call.args.iter().enumerate() {
+                    // Resolve positional args against the full (unfiltered)
+                    // operation input list so that auth_input fields at any
+                    // position are correctly identified by name.  The
+                    // auth_input skip check below then handles them.
                     let Some(prepare_input) = arg.name.as_deref().or_else(|| {
                         effective_endpoint
-                            .prepare_inputs
+                            .operation_inputs
                             .get(index)
                             .map(String::as_str)
                     }) else {
@@ -6125,8 +6142,16 @@ fn add_service_call_edges(
                 // `res:credential` on the execute node, where the transport
                 // executor applies it as an authentication header.
                 if let Some(ref auth_input_name) = auth_input_field_name {
-                    for arg in &call.args {
-                        if arg.name.as_deref() != Some(auth_input_name.as_str()) {
+                    for (arg_index, arg) in call.args.iter().enumerate() {
+                        // Match by explicit name or by positional index into
+                        // the unfiltered operation input list.
+                        let resolved_name = arg.name.as_deref().or_else(|| {
+                            effective_endpoint
+                                .operation_inputs
+                                .get(arg_index)
+                                .map(String::as_str)
+                        });
+                        if resolved_name != Some(auth_input_name.as_str()) {
                             continue;
                         }
                         if let Some(arg_ident) = arg.ident.as_deref() {
@@ -9682,6 +9707,59 @@ func caller(name: String, token: Secret) -> { id: String } {
                 .iter()
                 .any(|port| port.name.0 == "auth_token"),
             "prepare node should NOT have auth_token input port (excluded by auth_input)"
+        );
+    }
+
+    #[test]
+    fn auth_input_positional_arg_wires_to_execute_res_credential() {
+        // When a service call uses positional arguments (no `name:` label),
+        // the auth_input argument must still be wired to res:credential on
+        // the execute node, and must NOT be wired to the prepare node.
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/auth_input_positional.dag",
+            r#"module sample.auth_positional
+service sample.Api {
+  config { endpoint: "https://api.example.com", auth: BearerToken, auth_input: auth_token }
+  operation Create {
+    input { name: String, auth_token: Secret }
+    output { id: String }
+    transport rest { method: POST, path: "/v1/things" }
+  }
+}
+func caller(name: String, token: Secret) -> { id: String } {
+  result = sample.Api.Create(name, token)
+  return { id: result.id }
+}"#,
+        )]);
+
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        let execute_node_id = "execute_transport_sample_auth_positional_sample_Api_Create";
+        let prepare_node_id = "prepare_transport_sample_auth_positional_sample_Api_Create";
+
+        // Positional auth_token should be wired to res:credential on execute node
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+            }),
+            "positional auth_input arg should be wired to execute node res:credential; edges to execute: {:?}",
+            dag.edges.iter().filter(|e| e.to_node.0 == execute_node_id).collect::<Vec<_>>()
+        );
+
+        // Positional auth_token should NOT be wired to prepare node
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.to_node.0 == prepare_node_id && edge.to_port.0 == "auth_token"
+            }),
+            "positional auth_input arg should NOT be wired to prepare node"
+        );
+
+        // Non-auth positional arg (name at index 0) should still be wired to prepare
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.to_node.0 == prepare_node_id && edge.to_port.0 == "name"
+            }),
+            "non-auth positional arg 'name' should be wired to prepare node"
         );
     }
 
