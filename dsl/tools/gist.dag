@@ -10,10 +10,10 @@ module tools.gist
 
 import services.git
 import services.github.gist
-import services.shell
+import cloud.gcp.credential { acquire_gcp_secret }
 import std.resources { Filesystem, Network }
 import std.patterns { read_text_files }
-import std.types { CommitSha, Url }
+import std.types { CloudRuntime, CommitSha, Url }
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -49,15 +49,20 @@ func gist(public: Bool = false) -> { url: Url }
     file_contents: result.files |> map(f => f.content),
     skipped: result.skipped
   )
-  secret = shell.GCloud.SecretManagerAccessVersion(
+  cred = acquire_gcp_secret(
+    runtime: LocalDev,
     project_id: "gunbai-secrets",
-    secret_name: "github-token"
+    secret_name: "github-token",
+    service_account: null,
+    header_name: null,
+    source_id: "gist",
+    required_scopes: ["https://www.googleapis.com/auth/cloud-platform"]
   )
   gist_result = github.Gist.Create(
     description: branch_info.branch,
     content: content,
     public: public,
-    auth_token: secret.secret_value
+    auth_token: cred.secret
   )
   return { url: gist_result.html_url as Url }
 }
@@ -69,15 +74,20 @@ func gist_diff(base_ref: CommitSha = "HEAD~1", public: Bool = false) -> { url: U
   current = git.Core.CurrentBranch()
   changes = git.Core.Diff(base: base_ref)
   markdown = render_diff_markdown(diff: changes.diff, branch: current.branch, base_ref: base_ref)
-  secret = shell.GCloud.SecretManagerAccessVersion(
+  cred = acquire_gcp_secret(
+    runtime: LocalDev,
     project_id: "gunbai-secrets",
-    secret_name: "github-token"
+    secret_name: "github-token",
+    service_account: null,
+    header_name: null,
+    source_id: "gist",
+    required_scopes: ["https://www.googleapis.com/auth/cloud-platform"]
   )
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
     public: public,
-    auth_token: secret.secret_value
+    auth_token: cred.secret
   )
   return { url: result.html_url as Url }
 }
@@ -94,15 +104,20 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
     branch: current.branch,
     base_ref: base.base_ref
   )
-  secret = shell.GCloud.SecretManagerAccessVersion(
+  cred = acquire_gcp_secret(
+    runtime: LocalDev,
     project_id: "gunbai-secrets",
-    secret_name: "github-token"
+    secret_name: "github-token",
+    service_account: null,
+    header_name: null,
+    source_id: "gist",
+    required_scopes: ["https://www.googleapis.com/auth/cloud-platform"]
   )
   result = github.Gist.Create(
     description: current.branch,
     content: markdown,
     public: public,
-    auth_token: secret.secret_value
+    auth_token: cred.secret
   )
   return { url: result.html_url as Url }
 }

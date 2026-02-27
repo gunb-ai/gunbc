@@ -5,11 +5,12 @@
 
 use crate::backend::TransportBackend;
 use crate::executor::TransportError;
+use gunbc_ir::transport::http::HttpMethod;
 use gunbc_ir::transport::{
-    FileOp, FileRequest, FileResponse, ShellRequest, ShellResponse, TransportRequest,
-    TransportResponse,
+    FileOp, FileRequest, FileResponse, HttpRequest, HttpResponse, RestRequest, RestResponse,
+    ShellRequest, ShellResponse, TcpRequest, TcpResponse, TransportRequest, TransportResponse,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -202,10 +203,104 @@ impl VirtualFilesystem {
     }
 }
 
+// ── Shell cassette registry (RT10) ────────────────────────────────────
+
+/// A pre-recorded shell command → response mapping.
+/// The virtual backend matches incoming `ShellRequest`s against cassettes
+/// by `(command, args)` tuple. First match wins; unmatched commands fall
+/// through to the built-in handlers (find, printenv, sh) or error.
+#[derive(Debug, Clone)]
+pub struct ShellCassette {
+    /// Executable name (e.g., "cargo", "git", "gcloud").
+    pub command: String,
+    /// Expected argument list. Matching modes:
+    /// - Non-empty: exact match on `request.args`
+    /// - Empty: matches any args for this command
+    pub args: Vec<String>,
+    /// Stdout to return.
+    pub stdout: String,
+    /// Stderr to return.
+    pub stderr: String,
+    /// Exit code to return.
+    pub exit_code: i32,
+}
+
+// ── HTTP/REST stub registry (RT11) ────────────────────────────────────
+
+/// A pre-recorded HTTP request → response mapping.
+/// The virtual backend matches incoming `RestRequest`s and `HttpRequest`s
+/// against stubs by `(method, url_path)`. First match wins.
+#[derive(Debug, Clone)]
+pub struct HttpStub {
+    /// HTTP method to match (None = match any method).
+    pub method: Option<HttpMethod>,
+    /// URL path prefix to match (e.g., "/gists").
+    /// Empty string matches all paths.
+    pub path_pattern: String,
+    /// When true, path must match exactly (not prefix).
+    pub exact_path: bool,
+    /// HTTP status code to return.
+    pub status: u16,
+    /// Response body (JSON string for REST, raw for HTTP).
+    pub response_body: String,
+    /// Response headers.
+    pub response_headers: HashMap<String, String>,
+}
+
+impl HttpStub {
+    /// Match this stub against a (method, url) pair.
+    fn matches(&self, method: &HttpMethod, url: &str) -> bool {
+        if let Some(ref m) = self.method {
+            if m != method {
+                return false;
+            }
+        }
+        // Extract path from URL (strip scheme + host).
+        let path = extract_url_path(url);
+        if self.exact_path {
+            path == self.path_pattern
+        } else {
+            path.starts_with(&self.path_pattern)
+        }
+    }
+}
+
+/// Extract the path component from a URL string (without query or fragment).
+fn extract_url_path(url: &str) -> &str {
+    // Strip "https://host" or "http://host" prefix.
+    let after_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+    // Find the first '/' after the host.
+    let path = after_scheme
+        .find('/')
+        .map(|i| &after_scheme[i..])
+        .unwrap_or("/");
+    // Strip query string and fragment.
+    let path = path.split('?').next().unwrap_or(path);
+    path.split('#').next().unwrap_or(path)
+}
+
+// ── TCP loopback registry (RT12) ──────────────────────────────────────
+
+/// A TCP loopback configuration for connection-level testing.
+/// Matches by port number and returns canned data.
+#[derive(Debug, Clone)]
+pub struct TcpLoopback {
+    /// Port number to match.
+    pub port: u16,
+    /// Data to return on connection.
+    pub response_data: String,
+}
+
 /// Virtual transport backend for deterministic, hermetic integration tests.
 #[derive(Debug, Default)]
 pub struct VirtualTransportBackend {
     fs: Mutex<VirtualFilesystem>,
+    shell_cassettes: Mutex<Vec<ShellCassette>>,
+    http_stubs: Mutex<Vec<HttpStub>>,
+    tcp_loopbacks: Mutex<Vec<TcpLoopback>>,
 }
 
 impl VirtualTransportBackend {
@@ -222,6 +317,30 @@ impl VirtualTransportBackend {
         let fs = self.fs.lock().expect("virtual fs lock poisoned");
         let norm = VirtualFilesystem::normalize_path(path);
         fs.files.get(&norm).map(|entry| entry.content.clone())
+    }
+
+    /// Register a shell cassette (pre-recorded command → response).
+    pub fn add_shell_cassette(&self, cassette: ShellCassette) {
+        self.shell_cassettes
+            .lock()
+            .expect("shell cassettes lock poisoned")
+            .push(cassette);
+    }
+
+    /// Register an HTTP stub (pre-recorded request → response).
+    pub fn add_http_stub(&self, stub: HttpStub) {
+        self.http_stubs
+            .lock()
+            .expect("http stubs lock poisoned")
+            .push(stub);
+    }
+
+    /// Register a TCP loopback (port → canned response).
+    pub fn add_tcp_loopback(&self, loopback: TcpLoopback) {
+        self.tcp_loopbacks
+            .lock()
+            .expect("tcp loopbacks lock poisoned")
+            .push(loopback);
     }
 
     fn execute_file(&self, request: &FileRequest) -> FileResponse {
@@ -273,6 +392,11 @@ impl VirtualTransportBackend {
     }
 
     fn execute_shell(&self, request: &ShellRequest) -> Result<ShellResponse, TransportError> {
+        // Check cassette registry first (RT10).
+        if let Some(response) = self.match_shell_cassette(request) {
+            return Ok(response);
+        }
+        // Fall through to built-in handlers.
         match request.command.as_str() {
             "find" => self.execute_find(request),
             "printenv" => self.execute_printenv(request),
@@ -282,6 +406,102 @@ impl VirtualTransportBackend {
                 other
             ))),
         }
+    }
+
+    /// Match a shell request against registered cassettes.
+    fn match_shell_cassette(&self, request: &ShellRequest) -> Option<ShellResponse> {
+        let cassettes = self
+            .shell_cassettes
+            .lock()
+            .expect("shell cassettes lock poisoned");
+        for cassette in cassettes.iter() {
+            if cassette.command != request.command {
+                continue;
+            }
+            // Empty args = match any args for this command.
+            if !cassette.args.is_empty() && cassette.args != request.args {
+                continue;
+            }
+            return Some(ShellResponse {
+                exit_code: cassette.exit_code,
+                stdout: cassette.stdout.clone(),
+                stderr: cassette.stderr.clone(),
+            });
+        }
+        None
+    }
+
+    /// Execute a REST request against the HTTP stub registry (RT11).
+    fn execute_rest(&self, request: &RestRequest) -> Result<RestResponse, TransportError> {
+        let stubs = self
+            .http_stubs
+            .lock()
+            .expect("http stubs lock poisoned");
+        for stub in stubs.iter() {
+            if stub.matches(&request.method, &request.url) {
+                let body: serde_json::Value = if stub.response_body.is_empty() {
+                    serde_json::json!({})
+                } else {
+                    serde_json::from_str(&stub.response_body).map_err(|e| {
+                        TransportError::new(format!(
+                            "virtual backend: invalid JSON in stub response body: {e}"
+                        ))
+                    })?
+                };
+                return Ok(RestResponse {
+                    status: stub.status,
+                    headers: stub.response_headers.clone(),
+                    body,
+                });
+            }
+        }
+        Err(TransportError::new(format!(
+            "virtual backend: no HTTP stub matches {} {}",
+            request.method, request.url
+        )))
+    }
+
+    /// Execute an HTTP request against the HTTP stub registry (RT11).
+    fn execute_http(&self, request: &HttpRequest) -> Result<HttpResponse, TransportError> {
+        let stubs = self
+            .http_stubs
+            .lock()
+            .expect("http stubs lock poisoned");
+        for stub in stubs.iter() {
+            if stub.matches(&request.method, &request.url) {
+                return Ok(HttpResponse {
+                    status: stub.status,
+                    headers: stub.response_headers.clone(),
+                    body: stub.response_body.clone(),
+                });
+            }
+        }
+        Err(TransportError::new(format!(
+            "virtual backend: no HTTP stub matches {} {}",
+            request.method, request.url
+        )))
+    }
+
+    /// Execute a TCP request against the loopback registry (RT12).
+    fn execute_tcp(&self, request: &TcpRequest) -> Result<TcpResponse, TransportError> {
+        let loopbacks = self
+            .tcp_loopbacks
+            .lock()
+            .expect("tcp loopbacks lock poisoned");
+        for loopback in loopbacks.iter() {
+            if loopback.port == request.port {
+                let bytes_sent = request.data.as_ref().map_or(0, |d| d.len());
+                return Ok(TcpResponse::ok(
+                    Some(loopback.response_data.clone()),
+                    bytes_sent,
+                    loopback.response_data.len(),
+                ));
+            }
+        }
+        Err(TransportError::new(format!(
+            "virtual backend: no TCP loopback on port {}",
+            request.port
+        )))
     }
 
     fn execute_find(&self, request: &ShellRequest) -> Result<ShellResponse, TransportError> {
@@ -374,15 +594,9 @@ impl TransportBackend for VirtualTransportBackend {
                     outputs: req.inputs.clone(),
                 },
             )),
-            TransportRequest::Rest(_) => Err(TransportError::new(
-                "virtual backend: REST transport unsupported",
-            )),
-            TransportRequest::Http(_) => Err(TransportError::new(
-                "virtual backend: HTTP transport unsupported",
-            )),
-            TransportRequest::Tcp(_) => Err(TransportError::new(
-                "virtual backend: TCP transport unsupported",
-            )),
+            TransportRequest::Rest(req) => self.execute_rest(req).map(TransportResponse::Rest),
+            TransportRequest::Http(req) => self.execute_http(req).map(TransportResponse::Http),
+            TransportRequest::Tcp(req) => self.execute_tcp(req).map(TransportResponse::Tcp),
         }
     }
 }
@@ -404,5 +618,78 @@ fn unquote(value: &str) -> &str {
         &trimmed[1..trimmed.len() - 1]
     } else {
         trimmed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_url_path_strips_query_and_fragment() {
+        assert_eq!(extract_url_path("https://api.example.com/v1/items"), "/v1/items");
+        assert_eq!(extract_url_path("https://api.example.com/v1/items?key=val"), "/v1/items");
+        assert_eq!(extract_url_path("https://api.example.com/v1/items#section"), "/v1/items");
+        assert_eq!(
+            extract_url_path("https://api.example.com/v1/items?key=val&b=2#frag"),
+            "/v1/items"
+        );
+        assert_eq!(extract_url_path("https://api.example.com/"), "/");
+        assert_eq!(extract_url_path("https://api.example.com"), "/");
+    }
+
+    #[test]
+    fn execute_rest_errors_on_invalid_stub_json() {
+        let backend = VirtualTransportBackend::new();
+        backend.add_http_stub(HttpStub {
+            method: Some(HttpMethod::Get),
+            path_pattern: "/test".to_string(),
+            exact_path: true,
+            status: 200,
+            response_body: "not valid json{".to_string(),
+            response_headers: Default::default(),
+        });
+        let request = RestRequest {
+            url: "https://api.example.com/test".to_string(),
+            method: HttpMethod::Get,
+            headers: Default::default(),
+            query: Default::default(),
+            body: None,
+            auth: None,
+            timeout_ms: None,
+            requires_auth: false,
+        };
+        let result = backend.execute_rest(&request);
+        assert!(result.is_err(), "invalid JSON in stub should produce an error");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("invalid JSON"),
+            "error should mention invalid JSON, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn execute_rest_empty_body_returns_empty_json_object() {
+        let backend = VirtualTransportBackend::new();
+        backend.add_http_stub(HttpStub {
+            method: Some(HttpMethod::Get),
+            path_pattern: "/test".to_string(),
+            exact_path: true,
+            status: 200,
+            response_body: String::new(),
+            response_headers: Default::default(),
+        });
+        let request = RestRequest {
+            url: "https://api.example.com/test".to_string(),
+            method: HttpMethod::Get,
+            headers: Default::default(),
+            query: Default::default(),
+            body: None,
+            auth: None,
+            timeout_ms: None,
+            requires_auth: false,
+        };
+        let result = backend.execute_rest(&request).expect("empty body should succeed");
+        assert_eq!(result.body, serde_json::json!({}));
     }
 }

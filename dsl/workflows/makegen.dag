@@ -1,31 +1,63 @@
 // workflows/makegen.dag
 //
-// Replaces WF19: tools.makegen workflow spec.
+// Makefile generation pipeline.
 //
-// Structure:
-// compilation_ensure -> codegen_ensure -> load_registry ->
-// render_makefile -> upsert_makefile -> report
+// Replaces the standalone `func makegen()` entry point with a staged
+// pipeline that makes each phase observable and testable:
+//
+//   compilation_ensure -> codegen_ensure -> load_registry ->
+//   render_makefile -> upsert_makefile -> report
+//
+// Data flow:
+//   load_registry: discover tools via Rust inventory introspection
+//   render_makefile: assemble Makefile content from data + tools
+//   upsert_makefile: write content to disk if changed
+//   report: emit success/failure result
 
 module workflows.makegen
 
 import shared.compilation { compilation_ensure }
 import tools.codegen { codegen_ensure }
+import tools.makegen {
+  discover_tools,
+  render_makefile_content
+}
+import config.build_targets {
+  core_workflows, meta_targets, resource_targets
+}
+import std.patterns { content_upsert }
 
 pipeline makegen {
 
-  stage compilation_ensure {    _ = compilation_ensure()
+  stage compilation_ensure {
+    _ = compilation_ensure()
   }
 
   stage codegen_ensure [after compilation_ensure] {
     _ = codegen_ensure()
   }
 
-  stage load_registry [after codegen_ensure] {}
-
-  stage render_makefile [after load_registry] {}
-
-  stage upsert_makefile [after render_makefile] {
+  // Discover tools from Rust inventory (extern func).
+  stage load_registry [after codegen_ensure] {
+    tools = discover_tools()
   }
 
-  stage report [after upsert_makefile] {}
+  // Render Makefile content from data declarations + discovered tools.
+  stage render_makefile [after load_registry] {
+    content = render_makefile_content(
+      workflows: core_workflows,
+      metas: meta_targets,
+      tools: tools,
+      res_targets: resource_targets
+    )
+  }
+
+  // Write rendered Makefile to disk (idempotent: skips if unchanged).
+  stage upsert_makefile [after render_makefile] {
+    result = content_upsert(content: content, path: "Makefile")
+  }
+
+  stage report [after upsert_makefile] {
+    success = result.written
+  }
 }

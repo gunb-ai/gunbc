@@ -16,7 +16,8 @@ use gunbc_exec::{
     TransportContext,
 };
 use gunbc_ir::transport::{
-    FileRequest, LocalRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
+    FileOp, FileRequest, LocalRequest, RestRequest, ShellRequest, ShellResponse, TransportRequest,
+    TransportResponse,
 };
 use gunbc_ir::{SecretString, Value};
 
@@ -56,7 +57,7 @@ impl Executable for GenericRestPrepareOp {
         for field in &self.spec.input_fields {
             if field.is_path_param {
                 let placeholder = format!("{{{}}}", field.name);
-                let value = input_as_string(&inputs, &field.name, field.default.as_deref());
+                let value = input_as_string(&inputs, &field.name, field.default.as_deref())?;
                 path = path.replace(&placeholder, &value);
             }
         }
@@ -75,7 +76,12 @@ impl Executable for GenericRestPrepareOp {
             "PUT" => RestRequest::put(&url),
             "PATCH" => RestRequest::patch(&url),
             "DELETE" => RestRequest::delete(&url),
-            _ => RestRequest::post(&url),
+            other => {
+                return Err(ExecError::new(format!(
+                    "unsupported HTTP method '{other}' for {} — expected GET, POST, PUT, PATCH, or DELETE",
+                    self.spec.path_template
+                )));
+            }
         };
 
         // 3b. Coerce List<String> → String when the declared field type is "String".
@@ -146,50 +152,14 @@ impl Executable for GenericRestPrepareOp {
 
         // 5. Add custom headers.
         for (key, value) in &self.spec.headers {
-            let header_value = interpolate_template(value, &inputs, &self.spec.input_fields);
+            let header_value = interpolate_template(value, &inputs, &self.spec.input_fields)?;
             request = request.header(key, header_value);
         }
 
-        // 6. Embed auth credential on the request when a Secret-typed input
-        //    matching the auth scheme is available. This is a fallback path:
-        //    the primary path is `res:credential` on the execute node. But when
-        //    credentials arrive via boundary injection or param_source wiring,
-        //    embedding them here ensures `request.auth.take()` applies them.
-        if self.spec.auth_scheme.is_some() && request.auth.is_none() {
-            let token_str = self
-                .spec
-                .input_fields
-                .iter()
-                .filter(|f| f.type_id == "Secret")
-                .find_map(|f| match inputs.get(&f.name) {
-                    Some(Value::Secret(s)) => {
-                        #[allow(clippy::disallowed_methods)]
-                        // Approved: transport boundary — credential embedded in outbound request
-                        let t = s.expose_plaintext_for_transport();
-                        if t.is_empty() {
-                            None
-                        } else {
-                            Some(t.to_string())
-                        }
-                    }
-                    Some(Value::Str(s)) if !s.is_empty() => Some(s.clone()),
-                    _ => None,
-                });
-            if let Some(token) = token_str {
-                use gunbc_ir::transport::credential::{AuthScheme, Credential, Secret};
-                let scheme = match self.spec.auth_scheme.as_deref() {
-                    Some("BearerToken") => AuthScheme::Bearer,
-                    Some(h) if h.starts_with("Header(") => {
-                        let name = h
-                            .trim_start_matches("Header(\"")
-                            .trim_end_matches("\")")
-                            .to_string();
-                        AuthScheme::Header { name }
-                    }
-                    _ => AuthScheme::Bearer,
-                };
-                request.auth = Some(Credential::new(Secret::static_value(token), scheme));
-            }
+        // 6. Mark request as requiring auth when scheme is declared.
+        // Execute handler will fail-closed if res:credential is missing.
+        if self.spec.auth_scheme.is_some() {
+            request.requires_auth = true;
         }
 
         OutputMap::new()
@@ -460,14 +430,14 @@ impl Executable for GenericShellPrepareOp {
                     // Handle complex interpolation: e.g., "{base}...{head}"
                     if s.contains('{') {
                         let interpolated =
-                            interpolate_template(s, &inputs, &self.spec.input_fields);
+                            interpolate_template(s, &inputs, &self.spec.input_fields)?;
                         argv.push(interpolated);
                     } else {
                         argv.push(s.clone());
                     }
                 }
                 ArgvSegment::InputRef(name) => {
-                    let value = input_as_string_for_shell(&inputs, name, &self.spec.input_fields);
+                    let value = input_as_string_for_shell(&inputs, name, &self.spec.input_fields)?;
                     argv.push(value);
                 }
             }
@@ -527,6 +497,24 @@ pub struct GenericShellParseOp {
     pub operation_name: String,
 }
 
+impl GenericShellParseOp {
+    fn shell_exit_error(&self, shell: &ShellResponse) -> ExecError {
+        let stderr = shell.stderr.trim();
+        let detail = if stderr.is_empty() {
+            String::new()
+        } else {
+            format!(" (stderr: {})", stderr)
+        };
+        ExecError::new(format!(
+            "{}.{}: shell command exited with code {}{}",
+            self.service_name,
+            self.operation_name,
+            shell.exit_code,
+            detail
+        ))
+    }
+}
+
 impl Executable for GenericShellParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match inputs.get("response") {
@@ -550,6 +538,22 @@ impl Executable for GenericShellParseOp {
                     }
 
                     ShellOutputParsing::SplitLines => {
+                        // On non-zero exit, return an empty list.
+                        // SplitLines is used for list-producing operations
+                        // (find, ls-files, etc.) where "nothing found" is a
+                        // valid result, and tools like `find` return exit 1
+                        // when the search path doesn't exist.
+                        if !shell.success() {
+                            let field_name = self
+                                .spec
+                                .output_fields
+                                .first()
+                                .map(|f| f.name.as_str())
+                                .unwrap_or("lines");
+                            return OutputMap::new()
+                                .str_list(field_name, Vec::new())
+                                .ok();
+                        }
                         let lines: Vec<String> = shell
                             .stdout
                             .lines()
@@ -569,6 +573,21 @@ impl Executable for GenericShellParseOp {
                     ShellOutputParsing::TrimStdout => {
                         let field = self.spec.output_fields.first();
                         let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
+                        // On non-zero exit: if output type is optional (T?),
+                        // return None (the command "didn't find" a value).
+                        // Otherwise fail — empty stdout from a failed command
+                        // must not propagate as a valid result.
+                        if !shell.success() {
+                            let is_optional = field
+                                .map(|f| f.type_id.ends_with('?'))
+                                .unwrap_or(false);
+                            if is_optional {
+                                return OutputMap::new()
+                                    .value(field_name, Value::Skipped)
+                                    .ok();
+                            }
+                            return Err(self.shell_exit_error(shell));
+                        }
                         let text = shell.stdout.trim().to_string();
                         OutputMap::new()
                             .value(field_name, shell_trim_value(field, text))
@@ -692,14 +711,34 @@ fn infer_auth_from_headers(headers: &[(String, String)]) -> (String, Option<Stri
 }
 
 /// Extract an input value as a string, handling Secret and defaults.
+///
+/// Returns `Err` when the input is missing and no default is provided — this
+/// prevents silent `"(unresolved)"` magic strings from leaking into HTTP
+/// requests and shell commands.
 #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret values marshalled into service requests
-fn input_as_string(inputs: &HashMap<String, Value>, name: &str, default: Option<&str>) -> String {
+fn input_as_string(
+    inputs: &HashMap<String, Value>,
+    name: &str,
+    default: Option<&str>,
+) -> Result<String, ExecError> {
     match inputs.get(name) {
-        Some(Value::Str(s)) => s.clone(),
-        Some(Value::Secret(secret)) => secret.expose_plaintext_for_transport().to_string(),
-        Some(Value::Int(n)) => n.to_string(),
-        Some(Value::Bool(b)) => b.to_string(),
-        _ => default.unwrap_or("(unresolved)").to_string(),
+        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Secret(secret)) => {
+            Ok(secret.expose_plaintext_for_transport().to_string())
+        }
+        Some(Value::Int(n)) => Ok(n.to_string()),
+        Some(Value::Bool(b)) => Ok(b.to_string()),
+        Some(Value::Float(f)) => Ok(f.to_string()),
+        Some(Value::Json(j)) => Ok(j.to_string()),
+        Some(other) => Err(ExecError::new(format!(
+            "input '{name}' has unsupported type for string conversion: {other:?}"
+        ))),
+        None => match default {
+            Some(d) => Ok(d.to_string()),
+            None => Err(ExecError::new(format!(
+                "required input '{name}' is missing and has no default"
+            ))),
+        },
     }
 }
 
@@ -708,7 +747,7 @@ fn input_as_string_for_shell(
     inputs: &HashMap<String, Value>,
     name: &str,
     fields: &[FieldSpec],
-) -> String {
+) -> Result<String, ExecError> {
     let default = fields
         .iter()
         .find(|f| f.name == name)
@@ -721,16 +760,16 @@ fn interpolate_template(
     template: &str,
     inputs: &HashMap<String, Value>,
     fields: &[FieldSpec],
-) -> String {
+) -> Result<String, ExecError> {
     let mut result = template.to_string();
     for field in fields {
         let placeholder = format!("{{{}}}", field.name);
         if result.contains(&placeholder) {
-            let value = input_as_string(inputs, &field.name, field.default.as_deref());
+            let value = input_as_string(inputs, &field.name, field.default.as_deref())?;
             result = result.replace(&placeholder, &value);
         }
     }
-    result
+    Ok(result)
 }
 
 fn ensure_required_profile_config_inputs(
@@ -992,21 +1031,28 @@ impl Executable for GenericFilePrepareOp {
         let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
             ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
         })?;
-        let request = match self.spec.operation.as_str() {
-            "READ" => FileRequest::read(path),
-            "READ_BYTES" => FileRequest::read_bytes(path),
-            "WRITE" => {
+        let request = match self.spec.operation {
+            FileOp::Read => FileRequest::read(path),
+            FileOp::ReadBytes => FileRequest::read_bytes(path),
+            FileOp::Write => {
                 let content = inputs
                     .get("content")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 FileRequest::write(path, content)
             }
-            other => {
-                return Err(ExecError::new(format!(
-                    "GenericFilePrepare: unknown file operation `{other}`"
-                )))
+            FileOp::Append => {
+                let content = inputs
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                FileRequest::append(path, content)
             }
+            FileOp::Delete => FileRequest::delete(path),
+            FileOp::Exists => FileRequest::exists(path),
+            FileOp::CreateDir => FileRequest::create_dir(path),
+            FileOp::Glob => FileRequest::glob(path),
+            FileOp::Metadata => FileRequest::metadata(path),
         };
         OutputMap::new()
             .request("request", TransportRequest::File(request))
@@ -1039,8 +1085,21 @@ impl Executable for GenericFileParseOp {
                             let content = file_resp.content.as_deref().unwrap_or_default();
                             out = out.str("content", content);
                         }
-                        "written" => {
-                            out = out.bool("written", file_resp.success);
+                        "written" | "deleted" | "created" => {
+                            out = out.bool(&field.name, file_resp.success);
+                        }
+                        "exists" => {
+                            out = out.bool("exists", file_resp.exists.unwrap_or(false));
+                        }
+                        "paths" => {
+                            // Glob results: newline-separated list → List<String>
+                            let content = file_resp.content.as_deref().unwrap_or_default();
+                            let paths: Vec<Value> = content
+                                .lines()
+                                .filter(|l| !l.is_empty())
+                                .map(|l| Value::Str(l.to_string()))
+                                .collect();
+                            out = out.value("paths", Value::List(paths));
                         }
                         other => {
                             let content = file_resp.content.as_deref().unwrap_or_default();
@@ -1260,7 +1319,8 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         }
     }
 
@@ -1312,7 +1372,8 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         }
     }
 
@@ -1417,7 +1478,8 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         };
         let op = GenericRestPrepareOp { spec };
         let error = op
@@ -1477,7 +1539,8 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         };
         let op = GenericRestParseOp {
             spec,
@@ -1769,7 +1832,8 @@ mod tests {
             ]),
             headers: vec![],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         };
 
         let op = GenericRestPrepareOp { spec };
@@ -1828,7 +1892,7 @@ mod tests {
 
     fn file_read_spec() -> FileOperationSpec {
         FileOperationSpec {
-            operation: "READ".to_string(),
+            operation: FileOp::Read,
             path_template: "{path}".to_string(),
             input_fields: vec![FieldSpec {
                 name: "path".to_string(),

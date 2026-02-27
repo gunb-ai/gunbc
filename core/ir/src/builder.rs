@@ -498,7 +498,7 @@ impl<T> DagBuilder<T> {
 
         // Enforce resource port naming convention: `res:*` reserved for inputs.
         for port in &node.outputs {
-            if port.name.0.starts_with("res:") {
+            if port.name.is_resource() {
                 return Err(BuilderError::InvalidResourceOutputPort {
                     node: node.id.clone(),
                     port: port.name.clone(),

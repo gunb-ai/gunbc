@@ -83,7 +83,7 @@ fn discovers_all_real_dsl_modules() {
     let mut module_names: Vec<String> = graph
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     module_names.sort();
     assert_eq!(module_names, expected);
@@ -98,12 +98,12 @@ fn real_corpus_module_order_is_stable_across_discovery_runs() {
     let first_order: Vec<String> = first
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     let second_order: Vec<String> = second
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     assert_eq!(first_order, second_order);
 }
@@ -118,7 +118,7 @@ fn discovered_module_paths_match_ast_module_declarations() {
             .ast
             .module_path
             .as_ref()
-            .map(|module| module.node.segments.clone())
+            .map(|module| module.node.clone())
             .expect("real corpus files should contain module declarations");
         assert_eq!(
             module.module_path,
@@ -137,7 +137,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
     let actual: BTreeMap<String, usize> = graph
         .modules
         .iter()
-        .map(|module| (module.module_path.join("."), module.dependencies.len()))
+        .map(|module| (module.module_path.as_dotted(), module.dependencies.len()))
         .collect();
     let expected: BTreeMap<String, usize> = BTreeMap::from([
         ("cloud.aws.credential".into(), 3),
@@ -239,6 +239,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("std.symbols".into(), 0),
         ("std.types".into(), 0),
         ("std.unicode".into(), 1),
+        ("std.virtual_io".into(), 1),
         ("std.width".into(), 2),
         ("tools.bootstrap".into(), 4),
         ("tools.build".into(), 3),
@@ -258,7 +259,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("workflows.ci".into(), 0),
         ("workflows.deps".into(), 2),
         ("workflows.gist".into(), 2),
-        ("workflows.makegen".into(), 2),
+        ("workflows.makegen".into(), 5),
         ("workflows.pragma".into(), 2),
         ("workflows.sdlc".into(), 5),
         ("workflows.test_all".into(), 0),
@@ -272,9 +273,9 @@ fn real_corpus_acyclic_dependencies_precede_dependents() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
     for (module_idx, module) in graph.modules.iter().enumerate() {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for dep_idx in &module.dependencies {
-            let dep_name = graph.modules[*dep_idx].module_path.join(".");
+            let dep_name = graph.modules[*dep_idx].module_path.as_dotted();
 
             assert!(
                 *dep_idx < module_idx,
@@ -295,7 +296,7 @@ fn real_corpus_dependency_indices_are_within_bounds() {
                 *dep_idx < graph.modules.len(),
                 "dependency index {} is out of bounds for module {}",
                 dep_idx,
-                module.module_path.join(".")
+                module.module_path.as_dotted()
             );
         }
     }
@@ -305,7 +306,8 @@ fn real_corpus_dependency_indices_are_within_bounds() {
 fn real_corpus_dependency_indices_match_declared_imports() {
     let dsl_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../dsl");
     let graph = ModuleGraph::discover(&[dsl_root]).expect("expected real dsl graph to parse");
-    let module_index: HashMap<Vec<String>, usize> = graph
+    use daglang_syntax::ast::ModulePath;
+    let module_index: HashMap<ModulePath, usize> = graph
         .modules
         .iter()
         .enumerate()
@@ -313,14 +315,14 @@ fn real_corpus_dependency_indices_match_declared_imports() {
         .collect();
 
     for module in &graph.modules {
-        let declared_imports: HashSet<Vec<String>> = module
+        let declared_imports: HashSet<ModulePath> = module
             .ast
             .imports
             .iter()
-            .map(|import| import.node.path.segments.clone())
+            .map(|import| import.node.path.clone())
             .collect();
 
-        let resolved_dependencies: HashSet<Vec<String>> = module
+        let resolved_dependencies: HashSet<ModulePath> = module
             .dependencies
             .iter()
             .map(|dep_idx| graph.modules[*dep_idx].module_path.clone())
@@ -330,8 +332,8 @@ fn real_corpus_dependency_indices_match_declared_imports() {
             assert!(
                 declared_imports.contains(dep_path),
                 "resolved dependency {} was not declared by module {}",
-                dep_path.join("."),
-                module.module_path.join(".")
+                dep_path.as_dotted(),
+                module.module_path.as_dotted()
             );
         }
 
@@ -340,8 +342,8 @@ fn real_corpus_dependency_indices_match_declared_imports() {
                 assert!(
                     resolved_dependencies.contains(import),
                     "declared import {} should resolve as dependency for module {}",
-                    import.join("."),
-                    module.module_path.join(".")
+                    import.as_dotted(),
+                    module.module_path.as_dotted()
                 );
             }
         }
@@ -374,7 +376,7 @@ fn duplicate_module_paths_are_rejected() {
         .expect_err("expected duplicate module error");
     match err {
         ResolveError::DuplicateModule(path) => {
-            assert_eq!(path.join("."), "dup.mod");
+            assert_eq!(path.as_dotted(), "dup.mod");
         }
         other => panic!("expected DuplicateModule, got {other:?}"),
     }
@@ -493,7 +495,7 @@ fn unresolved_imports_are_tolerated_for_phase_zero_discovery() {
     let graph = ModuleGraph::discover(std::slice::from_ref(&root))
         .expect("expected graph discovery success");
     assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.join("."), "a.main");
+    assert_eq!(graph.modules[0].module_path.as_dotted(), "a.main");
     assert!(
         graph.modules[0].dependencies.is_empty(),
         "unresolved imports should be ignored in phase-0 graph construction"
@@ -520,7 +522,7 @@ fn cyclic_dependencies_are_reported_as_resolve_errors() {
         ResolveError::CyclicDependency(cycle) => {
             let module_names = cycle
                 .iter()
-                .map(|module| module.join("."))
+                .map(|module| module.as_dotted())
                 .collect::<Vec<_>>();
             assert!(module_names.iter().any(|name| name == "cycle.a"));
             assert!(module_names.iter().any(|name| name == "cycle.b"));
@@ -808,12 +810,12 @@ fn discovery_order_is_deterministic_across_runs() {
     let order_a: Vec<String> = graph_a
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     let order_b: Vec<String> = graph_b
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
 
     assert_eq!(order_a, order_b, "module discovery order should be stable");
@@ -847,12 +849,12 @@ fn discovery_is_independent_of_root_argument_order() {
     let order_ab: Vec<String> = graph_ab
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     let order_ba: Vec<String> = graph_ba
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     assert_eq!(order_ab, order_ba);
     assert_eq!(graph_ab.display_tree(), graph_ba.display_tree());
@@ -892,7 +894,7 @@ fn discovery_ignores_non_dag_files() {
     let graph =
         ModuleGraph::discover(std::slice::from_ref(&root)).expect("discover should ignore non-dag");
     assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+    assert_eq!(graph.modules[0].module_path.as_dotted(), "sample.main");
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
@@ -909,7 +911,7 @@ fn discovery_deduplicates_files_from_overlapping_roots() {
     let graph =
         ModuleGraph::discover(&[root.clone(), nested]).expect("discover should dedupe file paths");
     assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+    assert_eq!(graph.modules[0].module_path.as_dotted(), "sample.main");
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
@@ -925,7 +927,7 @@ fn discovery_deduplicates_files_from_duplicate_roots() {
     let graph = ModuleGraph::discover(&[root.clone(), root.clone()])
         .expect("discover should dedupe duplicate root entries");
     assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+    assert_eq!(graph.modules[0].module_path.as_dotted(), "sample.main");
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
@@ -941,7 +943,7 @@ fn discovery_deduplicates_files_from_equivalent_curdir_suffix_roots() {
     let graph = ModuleGraph::discover(&[root.clone(), root.join(".")])
         .expect("discover should dedupe equivalent root entries");
     assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+    assert_eq!(graph.modules[0].module_path.as_dotted(), "sample.main");
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
@@ -1010,12 +1012,12 @@ fn discovery_is_independent_of_equivalent_curdir_suffix_root_order() {
     let first_paths: Vec<String> = first
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     let second_paths: Vec<String> = second
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     assert_eq!(first_paths, second_paths);
     assert_eq!(first.display_tree(), second.display_tree());
@@ -1060,7 +1062,7 @@ fn discovery_deduplicates_files_from_symlink_and_real_roots() {
     let graph = ModuleGraph::discover(&[real.clone(), link])
         .expect("symlink+real roots should deduplicate discovered files");
     assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+    assert_eq!(graph.modules[0].module_path.as_dotted(), "sample.main");
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
@@ -1085,12 +1087,12 @@ fn discovery_is_independent_of_symlink_alias_root_order() {
     let first_paths: Vec<String> = first
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     let second_paths: Vec<String> = second
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     assert_eq!(first_paths, second_paths);
     assert_eq!(first.display_tree(), second.display_tree());
@@ -1143,12 +1145,12 @@ fn discovery_fallback_module_path_is_independent_of_symlink_alias_root_order() {
     let first_paths: Vec<String> = first
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     let second_paths: Vec<String> = second
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     assert_eq!(first_paths, second_paths);
     assert_eq!(first_paths, vec!["nested.no_module".to_string()]);
@@ -1168,12 +1170,12 @@ fn discovery_fallback_module_path_is_independent_of_overlapping_root_order() {
     let first_paths: Vec<String> = first
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     let second_paths: Vec<String> = second
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect();
     assert_eq!(first_paths, second_paths);
     assert_eq!(first_paths, vec!["no_module".to_string()]);
@@ -1197,7 +1199,7 @@ fn discovery_handles_directory_symlink_cycle_without_recursing_forever() {
     let graph = ModuleGraph::discover(std::slice::from_ref(&root))
         .expect("discover should handle directory cycle symlink");
     assert_eq!(graph.modules.len(), 1);
-    assert_eq!(graph.modules[0].module_path.join("."), "sample.main");
+    assert_eq!(graph.modules[0].module_path.as_dotted(), "sample.main");
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");
 }
@@ -1305,7 +1307,7 @@ fn discovery_derives_module_path_for_symlink_root_without_module_decl() {
     assert_eq!(graph.modules.len(), 1);
     assert_eq!(
         graph.modules[0].module_path,
-        vec!["nested".to_string(), "no_module".to_string()]
+        daglang_syntax::ast::ModulePath::new(vec!["nested".to_string(), "no_module".to_string()])
     );
 
     fs::remove_dir_all(root).expect("failed to clean temp directory");

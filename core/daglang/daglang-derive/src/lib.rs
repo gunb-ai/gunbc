@@ -505,9 +505,7 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {
                     format!("{module}.{name}")
                 }
-                gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopUnpack { .. })
-                | gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopPack { .. })
-                | gunbc_ir::node::NodeBody::Opaque(LoweredOp::BranchMerge { .. }) => {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pattern(_)) => {
                     "pattern_internal".to_string()
                 }
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::UnsupportedPattern { name }) => {
@@ -622,9 +620,7 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
             | LoweredOp::Primitive { module, .. }
             | LoweredOp::Collection { module, .. } => (module, false),
             LoweredOp::Pipeline { module, .. } => (module, true),
-            LoweredOp::LoopUnpack { .. }
-            | LoweredOp::LoopPack { .. }
-            | LoweredOp::BranchMerge { .. }
+            LoweredOp::Pattern(_)
             | LoweredOp::UnsupportedPattern { .. }
             | LoweredOp::ExternCall { .. } => continue,
         };
@@ -666,7 +662,7 @@ struct ObligationCounts {
 fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
     let mut counts = ObligationCounts::default();
     for node in nodes {
-        if node.kind == Some(NodeKind::TransportExecute) {
+        if node.kind == NodeKind::TransportExecute {
             counts.transport_execution_targets += 1;
         } else {
             counts.pure_node_determinism_targets += 1;
@@ -1355,7 +1351,7 @@ mod tests {
                         readonly: true,
                         permissions: vec![],
                         spec: None,
-                        retry_policy: None,
+
                     })),
                     is_interactive: false,
                     resource_target: None,
@@ -1382,7 +1378,7 @@ mod tests {
                         readonly: false,
                         permissions: vec!["gist.write".to_string()],
                         spec: None,
-                        retry_policy: None,
+
                     })),
                     is_interactive: false,
                     resource_target: None,

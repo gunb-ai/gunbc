@@ -93,7 +93,7 @@ pub fn assert_typed_builder_rejects_invalid_slot<T: Clone>(dag: &gunbc_ir::Dag<T
     );
 }
 pub mod temp;
-pub use temp::unique_temp_dir;
+pub use temp::{unique_temp_dir, unique_temp_file};
 
 pub mod json;
 pub use json::ParseJsonOutput;

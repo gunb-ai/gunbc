@@ -335,6 +335,13 @@ impl Parser {
                                 self.advance();
                             }
                         }
+                        "auth_input" => {
+                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                config.auth_input = Some(self.expect_ident()?);
+                            } else {
+                                self.advance();
+                            }
+                        }
                         _ => {
                             self.advance();
                         }
@@ -2578,9 +2585,56 @@ impl Parser {
                     self.advance();
                     return Ok(Expr::Record(None, Vec::new()));
                 }
-                let expr = self.parse_expr(0)?;
-                self.expect(&TokenKind::RParen)?;
-                Ok(expr)
+                // Try multi-param lambda: (a, b) => body
+                // Speculatively collect ident-comma sequences. If we see
+                // `)` followed by `=>`, it's a lambda; otherwise backtrack.
+                let save_pos = self.pos;
+                let save_errors = self.errors.len();
+                let mut params = Vec::new();
+                let mut is_lambda = false;
+                if let Some(first) = Self::token_kind_as_ident(&self.peek().kind) {
+                    let mut speculative_pos = self.pos;
+                    params.push(first);
+                    speculative_pos += 1; // skip first ident
+                    // Check for comma-separated idents
+                    while speculative_pos < self.tokens.len()
+                        && self.tokens[speculative_pos].kind == TokenKind::Comma
+                    {
+                        speculative_pos += 1; // skip comma
+                        if speculative_pos < self.tokens.len() {
+                            if let Some(name) =
+                                Self::token_kind_as_ident(&self.tokens[speculative_pos].kind)
+                            {
+                                params.push(name);
+                                speculative_pos += 1; // skip ident
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    // Check for ) => pattern
+                    if params.len() >= 2
+                        && speculative_pos < self.tokens.len()
+                        && self.tokens[speculative_pos].kind == TokenKind::RParen
+                        && speculative_pos + 1 < self.tokens.len()
+                        && self.tokens[speculative_pos + 1].kind == TokenKind::FatArrow
+                    {
+                        // Commit: advance past all params, commas, ), =>
+                        self.pos = speculative_pos + 2;
+                        is_lambda = true;
+                    }
+                }
+                if is_lambda {
+                    let body = self.parse_expr(0)?;
+                    Ok(Expr::Lambda(params, Box::new(body)))
+                } else {
+                    // Reset and parse as parenthesized expression
+                    self.pos = save_pos;
+                    self.errors.truncate(save_errors);
+                    let expr = self.parse_expr(0)?;
+                    self.expect(&TokenKind::RParen)?;
+                    Ok(expr)
+                }
             }
             TokenKind::LBracket => {
                 self.advance();
@@ -3096,6 +3150,88 @@ fn choose(mode: String) -> Int {
                     def.body.stmts.first(),
                     Some(Stmt::Let(_, Expr::Match(_, _)))
                 ));
+            }
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_fold_pipe_in_fn_body_is_not_lossy() {
+        let sf = parse_or_panic(
+            r#"module test
+type FermiDepth = Xs | S | M | L | Xl
+fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+  lhs
+}
+fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
+  depths |> fold(init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+}"#,
+        );
+        // fermi_max_of should be the third item (after module, type, fermi_max)
+        let fn_item = sf
+            .items
+            .iter()
+            .find(|item| matches!(&item.node, Item::FnDef(def) if def.name == "fermi_max_of"))
+            .expect("fermi_max_of fn should exist");
+        match &fn_item.node {
+            Item::FnDef(def) => {
+                assert!(
+                    !def.body.lossy,
+                    "fold pipe expression in fn body should NOT be lossy"
+                );
+            }
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_classify_transports_body_is_not_lossy() {
+        let sf = parse_or_panic(
+            r#"module test
+type FermiDepth = Xs | S | M | L | Xl
+type TransportClass = LocalDirect | ShellLocal | FileBoundary | RestNetwork | InterfaceStub | Unknown
+type TestClass = Unit | Hermetic | Integration
+type DerivedClassification { test_class: TestClass, depth: FermiDepth, hermetic: Bool }
+fn transport_depth(tc: TransportClass) -> FermiDepth {
+  match tc { LocalDirect => Xs, InterfaceStub => Xs, ShellLocal => S, FileBoundary => S, RestNetwork => L, Unknown => Xl }
+}
+fn transport_hermetic(tc: TransportClass) -> Bool {
+  match tc { LocalDirect => true, InterfaceStub => true, ShellLocal => true, FileBoundary => true, RestNetwork => false, Unknown => false }
+}
+fn fermi_ordinal(depth: FermiDepth) -> Int {
+  match depth { Xs => 0, S => 1, M => 2, L => 3, Xl => 4 }
+}
+fn fermi_gt(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
+  fermi_ordinal(depth: lhs) > fermi_ordinal(depth: rhs)
+}
+fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+  if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
+}
+fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
+  depths |> fold(init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+}
+fn classify_transports(transports: List<TransportClass>) -> DerivedClassification {
+  let depths = transports |> map(tc => transport_depth(tc: tc))
+  let max_depth = fermi_max_of(depths: depths)
+  let all_hermetic = transports |> all(tc => transport_hermetic(tc: tc))
+  let n = transports |> count()
+  let test_class = if n == 0 { Unit } else { if all_hermetic { Hermetic } else { Integration } }
+  let depth = if n == 0 { Xs } else { max_depth }
+  let hermetic = if n == 0 { true } else { all_hermetic }
+  DerivedClassification { test_class: test_class, depth: depth, hermetic: hermetic }
+}"#,
+        );
+        let fn_item = sf
+            .items
+            .iter()
+            .find(|item| matches!(&item.node, Item::FnDef(def) if def.name == "classify_transports"))
+            .expect("classify_transports fn should exist");
+        match &fn_item.node {
+            Item::FnDef(def) => {
+                assert!(
+                    !def.body.lossy,
+                    "classify_transports fn body should NOT be lossy"
+                );
             }
             other => panic!("expected FnDef, got {other:?}"),
         }

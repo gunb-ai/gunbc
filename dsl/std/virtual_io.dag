@@ -1,0 +1,132 @@
+// std/virtual_io.dag -- Virtual I/O types for hermetic test backends.
+//
+// These types configure the VirtualTransportBackend (lib/transport/src/test_backend.rs)
+// for deterministic, hermetic integration tests. Every transport class
+// (file, shell, REST, HTTP, TCP) has a virtual equivalent:
+//
+//   Real I/O            Virtual equivalent
+//   ─────────────────   ────────────────────
+//   Filesystem read     VirtualFile lookup
+//   Shell command       ShellCassette replay
+//   REST API call       HttpStub response
+//   HTTP request        HttpStub response
+//   TCP connection      TcpLoopback echo
+//
+// The VirtualBackendConfig composes all per-transport registries into a
+// single test fixture. Testgen (RT13) derives these from @mock_response
+// annotations on service operations — zero hand-written mock data.
+//
+// Tier mapping:
+//   XS (PureMock/DryRun) — no backend needed, all nodes intercepted
+//   S  (Virtual)         — VirtualTransportBackend with this config
+//   M  (Sandboxed)       — real FS in tempdir, virtual network
+//   L  (Local)           — real local I/O, sandboxed network
+//   XL (Remote)          — real everything, cost-gated
+//
+// See tasks.md Theme VIO for the full design.
+
+module std.virtual_io
+
+import std.types { HttpStatus, Url }
+
+// ── Filesystem ────────────────────────────────────────────────────────
+
+// A pre-populated file in the virtual filesystem.
+type VirtualFile {
+  path: String              // Absolute path (normalized by VirtualFilesystem)
+  content: String           // UTF-8 content
+  is_dir: Bool = false      // true for directory entries (content ignored)
+}
+
+// Complete filesystem state for a test run.
+// The backend initializes its VirtualFilesystem from this setup.
+type VirtualFsSetup {
+  files: List<VirtualFile>
+}
+
+// ── Shell ─────────────────────────────────────────────────────────────
+
+// A pre-recorded shell command → response mapping.
+// The virtual backend matches incoming ShellRequests against cassettes
+// by (command, args) tuple. First match wins; unmatched commands error.
+//
+// Named "cassette" after the VCR testing pattern: record once, replay
+// deterministically. Unlike VCR, these are declared in DSL, not captured
+// from live runs.
+type ShellCassette {
+  command: String             // Executable name (e.g., "cargo", "git", "gcloud")
+  args: List<String>          // Expected argument list (exact match)
+  stdout: String = ""         // Stdout to return
+  stderr: String = ""         // Stderr to return
+  exit_code: Int = 0          // Exit code to return
+}
+
+// Complete shell mock registry for a test run.
+type ShellCassetteRegistry {
+  cassettes: List<ShellCassette>
+  // When true, unmatched commands return exit 127 instead of erroring.
+  // Useful for tests where only some commands matter.
+  allow_unmatched: Bool = false
+}
+
+// ── HTTP / REST ───────────────────────────────────────────────────────
+
+// HTTP method for request matching.
+type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
+
+// A pre-recorded HTTP request → response mapping.
+// The virtual backend matches incoming RestRequests against stubs
+// by (method, path_pattern). First match wins.
+//
+// path_pattern supports simple prefix matching: "/gists" matches
+// "/gists" and "/gists/abc123". For exact matching, set exact_path = true.
+type HttpStub {
+  method: HttpMethod
+  path_pattern: String        // URL path prefix (or exact if exact_path = true)
+  exact_path: Bool = false    // When true, path must match exactly
+
+  // Response to return when matched:
+  status: HttpStatus          // HTTP status code (100-599)
+  response_body: String = ""  // Response body (JSON string for REST)
+  response_headers: Map<String, String>?  // Optional response headers
+}
+
+// Complete HTTP mock registry for a test run.
+type HttpStubRegistry {
+  stubs: List<HttpStub>
+  // Default response for unmatched requests.
+  // When null, unmatched requests return a hard error.
+  default_status: HttpStatus?
+}
+
+// ── TCP ───────────────────────────────────────────────────────────────
+
+// A TCP loopback configuration for connection-level testing.
+// The virtual backend binds an in-process listener that echoes or
+// replays canned data. No real sockets are created.
+type TcpLoopback {
+  port: Int                   // Virtual port number
+  response_bytes: String = "" // Data to send back on connection (as UTF-8)
+  close_after_send: Bool = true  // Close connection after sending response
+}
+
+// Complete TCP mock registry.
+type TcpLoopbackRegistry {
+  loopbacks: List<TcpLoopback>
+}
+
+// ── Composite config ──────────────────────────────────────────────────
+
+// Complete virtual backend configuration for a test run.
+// Composes all per-transport registries into a single fixture.
+// Testgen generates one VirtualBackendConfig per workflow × test tier.
+type VirtualBackendConfig {
+  // Human-readable name for this test fixture (e.g., "gist_recent_happy_path").
+  name: String
+
+  // Per-transport registries (all optional — omitted transports error on use).
+  fs: VirtualFsSetup?
+  shell: ShellCassetteRegistry?
+  http: HttpStubRegistry?
+  tcp: TcpLoopbackRegistry?
+}

@@ -692,7 +692,7 @@ pub(crate) fn render_modules_result_json(result: &PipelineResult) -> String {
     let module_order = graph
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect::<Vec<_>>();
     let modules = graph
         .modules
@@ -702,10 +702,10 @@ pub(crate) fn render_modules_result_json(result: &PipelineResult) -> String {
                 .dependencies
                 .iter()
                 .filter_map(|dep| graph.modules.get(*dep))
-                .map(|dependency| dependency.module_path.join("."))
+                .map(|dependency| dependency.module_path.as_dotted())
                 .collect::<Vec<_>>();
             json!({
-                "module": module.module_path.join("."),
+                "module": module.module_path.as_dotted(),
                 "path": module.path.display().to_string(),
                 "items": module.ast.items.len(),
                 "dependencies": dependencies,
@@ -937,23 +937,11 @@ pub(crate) fn exit_usage(command: &str) -> ! {
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use crate::path_utils::{has_dag_extension, normalize_path_components, resolve_default_root};
+    use gunbc_test::unique_temp_dir;
     use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn root_path() -> PathBuf {
         PathBuf::from(Path::new(std::path::MAIN_SEPARATOR_STR))
-    }
-
-    fn unique_temp_dir(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "daglang_cli_main_{label}_{}_{}",
-            std::process::id(),
-            nanos
-        ))
     }
 
     #[test]

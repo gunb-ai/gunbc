@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use daglang_resolve::{self, ModuleGraph, ResolvedModule};
-use daglang_syntax::ast::SourceFile;
+use daglang_syntax::ast::{ModulePath, SourceFile};
 use daglang_syntax::diagnostic::{self, Diagnostic, DiagnosticKind};
 use daglang_syntax::parser;
 use gunbc_ir::types::Cardinality;
@@ -194,8 +194,8 @@ pub struct FileSource {
 #[derive(Debug)]
 pub struct ParsedModule {
     pub path: PathBuf,
-    pub module_path: Vec<String>,
-    pub imports: Vec<Vec<String>>,
+    pub module_path: ModulePath,
+    pub imports: Vec<ModulePath>,
     pub ast: SourceFile,
 }
 
@@ -501,14 +501,14 @@ fn parse_files(files: Vec<FileSource>, roots: &[PathBuf]) -> (Vec<ParsedModule>,
                 let module_path = ast
                     .module_path
                     .as_ref()
-                    .map(|module| module.node.segments.clone())
+                    .map(|module| module.node.clone())
                     .unwrap_or_else(|| {
                         daglang_resolve::path_to_module_path(&file.path, roots, &canonical_roots)
                     });
-                let imports = ast
+                let imports: Vec<ModulePath> = ast
                     .imports
                     .iter()
-                    .map(|import| import.node.path.segments.clone())
+                    .map(|import| import.node.path.clone())
                     .collect();
                 parsed_modules.push(ParsedModule {
                     path: file.path,
@@ -591,17 +591,17 @@ fn build_module_graph(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ModuleGraph {
     let mut unique_modules: Vec<ParsedModule> = Vec::new();
-    let mut module_index: HashMap<Vec<String>, usize> = HashMap::new();
+    let mut module_index: HashMap<ModulePath, usize> = HashMap::new();
     let mut seen_duplicates = HashSet::new();
 
     for module in parsed_modules {
         match module_index.get(&module.module_path).copied() {
             Some(_) => {
-                if seen_duplicates.insert(module.module_path.join(".")) {
+                if seen_duplicates.insert(module.module_path.as_dotted()) {
                     diagnostics.push(
                         Diagnostic::new(
                             DiagnosticKind::Resolve,
-                            format!("duplicate module path {}", module.module_path.join(".")),
+                            format!("duplicate module path {}", module.module_path.as_dotted()),
                         )
                         .with_file(&module.path),
                     );
@@ -627,8 +627,8 @@ fn build_module_graph(
                         DiagnosticKind::Resolve,
                         format!(
                             "unresolved import: {} -> {}",
-                            module.module_path.join("."),
-                            import.join(".")
+                            module.module_path.as_dotted(),
+                            import.as_dotted()
                         ),
                     )
                     .with_file(&module.path),
@@ -660,7 +660,7 @@ fn build_module_graph(
                 "cyclic dependencies detected among modules: {}",
                 cycle_modules
                     .into_iter()
-                    .map(|module| module.join("."))
+                    .map(|module| module.as_dotted())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -669,7 +669,7 @@ fn build_module_graph(
     ModuleGraph { modules }
 }
 
-fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Result<Vec<Vec<String>>, String> {
+fn topo_sort_modules(modules: &mut Vec<ResolvedModule>) -> Result<Vec<ModulePath>, String> {
     let n = modules.len();
     let mut in_degree = vec![0usize; n];
     let mut adjacency = vec![Vec::new(); n];
@@ -937,20 +937,8 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 mod tests {
     use super::*;
+    use gunbc_test::unique_temp_dir;
     use std::collections::BTreeMap;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn unique_temp_dir(name: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "daglang_cli_pipeline_{name}_{}_{}",
-            std::process::id(),
-            nanos
-        ))
-    }
 
     /// Discover expected module IDs from the filesystem instead of a hardcoded list.
     /// Globs `dsl/**/*.dag`, converts paths to module IDs, and returns a sorted set.
@@ -962,7 +950,7 @@ mod tests {
             .filter_map(|path| {
                 let rel = path.strip_prefix(dsl_root).ok()?;
                 let segments = daglang_resolve::relative_path_to_module_path(rel);
-                Some(segments.join("."))
+                Some(segments.as_dotted())
             })
             .collect();
         module_ids.sort();
@@ -1106,28 +1094,28 @@ mod tests {
             ResolvedModule {
                 path: PathBuf::from("a.dag"),
                 ast: ast_a,
-                module_path: vec!["a".into()],
+                module_path: ModulePath::new(vec!["a".into()]),
                 dependencies: vec![2],
             },
             ResolvedModule {
                 path: PathBuf::from("b.dag"),
                 ast: ast_b,
-                module_path: vec!["b".into()],
+                module_path: ModulePath::new(vec!["b".into()]),
                 dependencies: vec![],
             },
             ResolvedModule {
                 path: PathBuf::from("c.dag"),
                 ast: ast_c,
-                module_path: vec!["c".into()],
+                module_path: ModulePath::new(vec!["c".into()]),
                 dependencies: vec![],
             },
         ];
 
         let cycle_modules = topo_sort_modules(&mut modules).expect("topo sort should succeed");
         assert!(cycle_modules.is_empty(), "expected acyclic ordering");
-        assert_eq!(modules[0].module_path, vec!["b".to_string()]);
-        assert_eq!(modules[1].module_path, vec!["c".to_string()]);
-        assert_eq!(modules[2].module_path, vec!["a".to_string()]);
+        assert_eq!(modules[0].module_path, ModulePath::new(vec!["b".into()]));
+        assert_eq!(modules[1].module_path, ModulePath::new(vec!["c".into()]));
+        assert_eq!(modules[2].module_path, ModulePath::new(vec!["a".into()]));
         assert_eq!(
             modules[2].dependencies,
             vec![1],
@@ -1140,20 +1128,20 @@ mod tests {
         let parsed_modules = vec![
             ParsedModule {
                 path: PathBuf::from("a.dag"),
-                module_path: vec!["a".into()],
-                imports: vec![vec!["c".into()]],
+                module_path: ModulePath::new(vec!["a".into()]),
+                imports: vec![ModulePath::new(vec!["c".into()])],
                 ast: parser::parse("module a\nimport c\nfn ok() -> Unit {}")
                     .expect("parse should succeed"),
             },
             ParsedModule {
                 path: PathBuf::from("b.dag"),
-                module_path: vec!["b".into()],
+                module_path: ModulePath::new(vec!["b".into()]),
                 imports: vec![],
                 ast: parser::parse("module b\nfn ok() -> Unit {}").expect("parse should succeed"),
             },
             ParsedModule {
                 path: PathBuf::from("c.dag"),
-                module_path: vec!["c".into()],
+                module_path: ModulePath::new(vec!["c".into()]),
                 imports: vec![],
                 ast: parser::parse("module c\nfn ok() -> Unit {}").expect("parse should succeed"),
             },
@@ -1166,9 +1154,9 @@ mod tests {
             "unexpected diagnostics: {diagnostics:?}"
         );
         assert_eq!(graph.modules.len(), 3);
-        assert_eq!(graph.modules[0].module_path, vec!["b".to_string()]);
-        assert_eq!(graph.modules[1].module_path, vec!["c".to_string()]);
-        assert_eq!(graph.modules[2].module_path, vec!["a".to_string()]);
+        assert_eq!(graph.modules[0].module_path, ModulePath::new(vec!["b".into()]));
+        assert_eq!(graph.modules[1].module_path, ModulePath::new(vec!["c".into()]));
+        assert_eq!(graph.modules[2].module_path, ModulePath::new(vec!["a".into()]));
         assert_eq!(
             graph.modules[2].dependencies,
             vec![1],
@@ -1306,7 +1294,7 @@ mod tests {
             diagnostics
         );
 
-        let module_index: HashMap<Vec<String>, usize> = graph
+        let module_index: HashMap<ModulePath, usize> = graph
             .modules
             .iter()
             .enumerate()
@@ -1314,13 +1302,13 @@ mod tests {
             .collect();
 
         for module in &graph.modules {
-            let declared_imports: HashSet<Vec<String>> = module
+            let declared_imports: HashSet<ModulePath> = module
                 .ast
                 .imports
                 .iter()
-                .map(|import| import.node.path.segments.clone())
+                .map(|import| import.node.path.clone())
                 .collect();
-            let resolved_dependencies: HashSet<Vec<String>> = module
+            let resolved_dependencies: HashSet<ModulePath> = module
                 .dependencies
                 .iter()
                 .map(|dep_idx| graph.modules[*dep_idx].module_path.clone())
@@ -1330,8 +1318,8 @@ mod tests {
                 assert!(
                     declared_imports.contains(dep_path),
                     "resolved dependency {} was not declared by module {}",
-                    dep_path.join("."),
-                    module.module_path.join(".")
+                    dep_path.as_dotted(),
+                    module.module_path.as_dotted()
                 );
             }
             for import in &declared_imports {
@@ -1339,8 +1327,8 @@ mod tests {
                     assert!(
                         resolved_dependencies.contains(import),
                         "declared import {} should resolve as dependency for module {}",
-                        import.join("."),
-                        module.module_path.join(".")
+                        import.as_dotted(),
+                        module.module_path.as_dotted()
                     );
                 }
             }
@@ -1361,12 +1349,12 @@ mod tests {
         let pipeline_counts: BTreeMap<String, usize> = pipeline_graph
             .modules
             .iter()
-            .map(|module| (module.module_path.join("."), module.dependencies.len()))
+            .map(|module| (module.module_path.as_dotted(), module.dependencies.len()))
             .collect();
         let resolve_counts: BTreeMap<String, usize> = resolve_graph
             .modules
             .iter()
-            .map(|module| (module.module_path.join("."), module.dependencies.len()))
+            .map(|module| (module.module_path.as_dotted(), module.dependencies.len()))
             .collect();
 
         assert_eq!(pipeline_counts, resolve_counts);
@@ -1386,12 +1374,12 @@ mod tests {
         let pipeline_order: Vec<String> = pipeline_graph
             .modules
             .iter()
-            .map(|module| module.module_path.join("."))
+            .map(|module| module.module_path.as_dotted())
             .collect();
         let resolve_order: Vec<String> = resolve_graph
             .modules
             .iter()
-            .map(|module| module.module_path.join("."))
+            .map(|module| module.module_path.as_dotted())
             .collect();
         assert_eq!(pipeline_order, resolve_order);
 
@@ -1402,10 +1390,10 @@ mod tests {
                 let mut deps: Vec<String> = module
                     .dependencies
                     .iter()
-                    .map(|dep_idx| pipeline_graph.modules[*dep_idx].module_path.join("."))
+                    .map(|dep_idx| pipeline_graph.modules[*dep_idx].module_path.as_dotted())
                     .collect();
                 deps.sort();
-                (module.module_path.join("."), deps)
+                (module.module_path.as_dotted(), deps)
             })
             .collect();
         let resolve_deps: BTreeMap<String, Vec<String>> = resolve_graph
@@ -1415,10 +1403,10 @@ mod tests {
                 let mut deps: Vec<String> = module
                     .dependencies
                     .iter()
-                    .map(|dep_idx| resolve_graph.modules[*dep_idx].module_path.join("."))
+                    .map(|dep_idx| resolve_graph.modules[*dep_idx].module_path.as_dotted())
                     .collect();
                 deps.sort();
-                (module.module_path.join("."), deps)
+                (module.module_path.as_dotted(), deps)
             })
             .collect();
         assert_eq!(pipeline_deps, resolve_deps);

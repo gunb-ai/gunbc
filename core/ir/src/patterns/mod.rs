@@ -38,6 +38,7 @@ pub mod transaction;
 pub mod transport_triplet;
 pub mod upsert;
 
+use crate::types::PortName;
 pub use atomic::AtomicBuilder;
 pub use authenticate::{
     canonical_authenticate_chain, validate_authenticate_bindings, validate_authenticate_chain,
@@ -80,7 +81,7 @@ impl ResourceInput {
     pub fn new(port_name: impl Into<String>, type_id: impl Into<String>) -> Self {
         let port_name = port_name.into();
         assert!(
-            port_name.starts_with("res:"),
+            PortName::from(port_name.as_str()).is_resource(),
             "ResourceInput port_name must start with 'res:', got '{}'",
             port_name
         );

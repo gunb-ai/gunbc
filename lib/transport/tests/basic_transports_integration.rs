@@ -93,20 +93,191 @@ fn virtual_backend_dispatch_rejects_network_transports() {
         shell_response
     );
 
+    // Without stubs registered, REST/HTTP/TCP still error (no matching stub).
     let rest_err = execute_transport_with_backend(&TransportRequest::Rest(RestRequest::get(
         "https://example.invalid",
     )))
-    .expect_err("virtual backend should reject REST");
-    assert!(rest_err.to_string().contains("REST transport unsupported"));
+    .expect_err("virtual backend should reject unmatched REST");
+    assert!(rest_err.to_string().contains("no HTTP stub matches"));
 
     let http_err = execute_transport_with_backend(&TransportRequest::Http(HttpRequest::get(
         "https://example.invalid",
     )))
-    .expect_err("virtual backend should reject HTTP");
-    assert!(http_err.to_string().contains("HTTP transport unsupported"));
+    .expect_err("virtual backend should reject unmatched HTTP");
+    assert!(http_err.to_string().contains("no HTTP stub matches"));
 
     let tcp_err =
         execute_transport_with_backend(&TransportRequest::Tcp(TcpRequest::new("localhost", 7)))
-            .expect_err("virtual backend should reject TCP");
-    assert!(tcp_err.to_string().contains("TCP transport unsupported"));
+            .expect_err("virtual backend should reject unmatched TCP");
+    assert!(tcp_err.to_string().contains("no TCP loopback on port"));
+}
+
+// ── Shell cassette tests (RT10) ──────────────────────────────────────
+
+#[test]
+fn shell_cassette_matches_exact_command_args() {
+    use gunbc_lib_transport::test_backend::ShellCassette;
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_shell_cassette(ShellCassette {
+        command: "cargo".to_string(),
+        args: vec!["build".to_string(), "--release".to_string()],
+        stdout: "Compiling...\n".to_string(),
+        stderr: String::new(),
+        exit_code: 0,
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let resp = execute_transport_with_backend(&TransportRequest::Shell(
+        ShellRequest::new("cargo").arg("build").arg("--release"),
+    ))
+    .expect("cassette should match");
+    match resp {
+        TransportResponse::Shell(shell) => {
+            assert_eq!(shell.exit_code, 0);
+            assert_eq!(shell.stdout, "Compiling...\n");
+        }
+        other => panic!("expected Shell response, got {other:?}"),
+    }
+}
+
+#[test]
+fn shell_cassette_wildcard_args_matches_any() {
+    use gunbc_lib_transport::test_backend::ShellCassette;
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_shell_cassette(ShellCassette {
+        command: "git".to_string(),
+        args: vec![], // wildcard: matches any args
+        stdout: "abc123\n".to_string(),
+        stderr: String::new(),
+        exit_code: 0,
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let resp = execute_transport_with_backend(&TransportRequest::Shell(
+        ShellRequest::new("git").arg("rev-parse").arg("HEAD"),
+    ))
+    .expect("wildcard cassette should match");
+    match resp {
+        TransportResponse::Shell(shell) => {
+            assert_eq!(shell.stdout, "abc123\n");
+        }
+        other => panic!("expected Shell response, got {other:?}"),
+    }
+}
+
+#[test]
+fn shell_cassette_nonzero_exit_code() {
+    use gunbc_lib_transport::test_backend::ShellCassette;
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_shell_cassette(ShellCassette {
+        command: "cargo".to_string(),
+        args: vec!["test".to_string()],
+        stdout: String::new(),
+        stderr: "test failed\n".to_string(),
+        exit_code: 101,
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let resp = execute_transport_with_backend(&TransportRequest::Shell(
+        ShellRequest::new("cargo").arg("test"),
+    ))
+    .expect("cassette should match even with non-zero exit");
+    match resp {
+        TransportResponse::Shell(shell) => {
+            assert_eq!(shell.exit_code, 101);
+            assert_eq!(shell.stderr, "test failed\n");
+        }
+        other => panic!("expected Shell response, got {other:?}"),
+    }
+}
+
+// ── HTTP stub tests (RT11) ───────────────────────────────────────────
+
+#[test]
+fn http_stub_matches_rest_request() {
+    use gunbc_lib_transport::test_backend::HttpStub;
+    use std::collections::HashMap;
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_http_stub(HttpStub {
+        method: Some(gunbc_ir::transport::http::HttpMethod::Post),
+        path_pattern: "/gists".to_string(),
+        exact_path: false,
+        status: 201,
+        response_body: r#"{"id":"abc","html_url":"https://gist.github.com/abc"}"#.to_string(),
+        response_headers: HashMap::new(),
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let resp = execute_transport_with_backend(&TransportRequest::Rest(
+        RestRequest::post("https://api.github.com/gists"),
+    ))
+    .expect("HTTP stub should match REST request");
+    match resp {
+        TransportResponse::Rest(rest) => {
+            assert_eq!(rest.status, 201);
+            assert_eq!(rest.body["id"], "abc");
+        }
+        other => panic!("expected Rest response, got {other:?}"),
+    }
+}
+
+#[test]
+fn http_stub_matches_raw_http_request() {
+    use gunbc_lib_transport::test_backend::HttpStub;
+    use std::collections::HashMap;
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_http_stub(HttpStub {
+        method: None, // any method
+        path_pattern: "/health".to_string(),
+        exact_path: true,
+        status: 200,
+        response_body: "OK".to_string(),
+        response_headers: HashMap::new(),
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let resp = execute_transport_with_backend(&TransportRequest::Http(HttpRequest::get(
+        "https://example.com/health",
+    )))
+    .expect("HTTP stub should match raw HTTP request");
+    match resp {
+        TransportResponse::Http(http) => {
+            assert_eq!(http.status, 200);
+            assert_eq!(http.body, "OK");
+        }
+        other => panic!("expected Http response, got {other:?}"),
+    }
+}
+
+// ── TCP loopback tests (RT12) ────────────────────────────────────────
+
+#[test]
+fn tcp_loopback_returns_canned_data() {
+    use gunbc_lib_transport::test_backend::TcpLoopback;
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_tcp_loopback(TcpLoopback {
+        port: 8080,
+        response_data: "PONG\n".to_string(),
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let resp = execute_transport_with_backend(&TransportRequest::Tcp(
+        TcpRequest::new("localhost", 8080).data("PING\n"),
+    ))
+    .expect("TCP loopback should respond");
+    match resp {
+        TransportResponse::Tcp(tcp) => {
+            assert!(tcp.connected);
+            assert_eq!(tcp.data, Some("PONG\n".to_string()));
+            assert_eq!(tcp.bytes_sent, 5);
+            assert_eq!(tcp.bytes_received, 5);
+        }
+        other => panic!("expected Tcp response, got {other:?}"),
+    }
 }

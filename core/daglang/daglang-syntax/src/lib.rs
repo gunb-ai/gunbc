@@ -59,9 +59,47 @@ pub mod ast {
         pub items: Vec<Spanned<Item>>,
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct ModulePath {
         pub segments: Vec<String>,
+    }
+
+    impl ModulePath {
+        /// Create a `ModulePath` from segments.
+        pub fn new(segments: Vec<String>) -> Self {
+            Self { segments }
+        }
+
+        /// Dot-joined string representation (e.g., `"std.render"`).
+        pub fn as_dotted(&self) -> String {
+            self.segments.join(".")
+        }
+    }
+
+    impl std::fmt::Display for ModulePath {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut first = true;
+            for seg in &self.segments {
+                if !first {
+                    f.write_str(".")?;
+                }
+                f.write_str(seg)?;
+                first = false;
+            }
+            Ok(())
+        }
+    }
+
+    impl From<Vec<String>> for ModulePath {
+        fn from(segments: Vec<String>) -> Self {
+            Self { segments }
+        }
+    }
+
+    impl From<ModulePath> for Vec<String> {
+        fn from(mp: ModulePath) -> Self {
+            mp.segments
+        }
     }
 
     #[derive(Debug, Clone)]
@@ -558,6 +596,10 @@ pub mod ast {
     pub struct ServiceConfig {
         pub endpoint: Option<String>,
         pub auth: Option<String>,
+        /// Name of the input field that carries the authentication credential.
+        /// When set, the lowerer wires this argument to `res:credential` on the
+        /// execute node instead of including it in the prepare body.
+        pub auth_input: Option<String>,
     }
 
     #[derive(Debug, Clone)]

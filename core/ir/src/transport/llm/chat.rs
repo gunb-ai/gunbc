@@ -255,7 +255,7 @@ impl ThinkingConfig {
 ///
 /// Controls the trade-off between reasoning depth and speed/cost.
 /// Default is `Medium`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
     Low,
@@ -263,20 +263,10 @@ pub enum ReasoningEffort {
     High,
 }
 
-impl ReasoningEffort {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ReasoningEffort::Low => "low",
-            ReasoningEffort::Medium => "medium",
-            ReasoningEffort::High => "high",
-        }
-    }
-}
-
 /// Reasoning summary verbosity for OpenAI models.
 ///
 /// Controls how much of the model's reasoning is returned.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningSummary {
     /// Brief summary of the reasoning process.
@@ -285,21 +275,12 @@ pub enum ReasoningSummary {
     Detailed,
 }
 
-impl ReasoningSummary {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ReasoningSummary::Concise => "concise",
-            ReasoningSummary::Detailed => "detailed",
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Roles and messages
 // ---------------------------------------------------------------------------
 
 /// Role in a chat conversation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     /// System instructions that guide the model's behavior.
@@ -308,33 +289,6 @@ pub enum Role {
     User,
     /// Assistant (model) response.
     Assistant,
-}
-
-impl Role {
-    /// Parse a role from a string.
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "system" => Some(Role::System),
-            "user" => Some(Role::User),
-            "assistant" => Some(Role::Assistant),
-            _ => None,
-        }
-    }
-
-    /// Get the role as a string.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Role::System => "system",
-            Role::User => "user",
-            Role::Assistant => "assistant",
-        }
-    }
-}
-
-impl std::fmt::Display for Role {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
 }
 
 /// A single message in a chat conversation.

@@ -747,7 +747,8 @@ mod tests {
             body_template: None,
             headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         }
     }
 
@@ -795,7 +796,8 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         }
     }
 
@@ -840,7 +842,8 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         }
     }
 

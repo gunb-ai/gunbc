@@ -707,12 +707,12 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
     fn lowered_intercept_kind(node: &gunbc_ir::Node<T>) -> Option<&'static str> {
         match node.kind {
-            Some(NodeKind::TransportExecute) => Some("transport executor"),
-            Some(NodeKind::ToolEnvironment) => Some("tool environment"),
-            Some(NodeKind::ResourceEnvironment | NodeKind::ResourceAcquire) => {
+            NodeKind::TransportExecute => Some("transport executor"),
+            NodeKind::ToolEnvironment => Some("tool environment"),
+            NodeKind::ResourceEnvironment | NodeKind::ResourceAcquire => {
                 Some("resource environment")
             }
-            Some(NodeKind::ToolConsumer) => Some("tool consumer"),
+            NodeKind::ToolConsumer => Some("tool consumer"),
             _ => None,
         }
     }
@@ -6943,7 +6943,7 @@ fn collect_pure_nodes<T>(dag: &Dag<T>) -> HashSet<NodeId> {
 fn is_pure_node<T>(node: &gunbc_ir::Node<T>) -> bool {
     matches!(
         node.kind,
-        Some(NodeKind::Pure | NodeKind::TransportPrepare | NodeKind::TransportParse) | None
+        NodeKind::Pure | NodeKind::TransportPrepare | NodeKind::TransportParse
     )
 }
 

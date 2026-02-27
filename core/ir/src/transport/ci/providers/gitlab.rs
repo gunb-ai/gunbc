@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn test_gitlab_render_ci() {
         use crate::build::{edge, port};
-        use crate::{Node, NodeBody};
+        use crate::{Node, NodeBody, NodeKind};
 
         #[derive(Debug, Clone)]
         struct DummyOp;
@@ -456,7 +456,7 @@ mod tests {
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         });
         dag.add_node(Node {
             id: "test".into(),
@@ -465,7 +465,7 @@ mod tests {
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         });
         dag.add_edge(edge("build", "success", "test", "build_success"));
 

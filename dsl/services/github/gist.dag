@@ -5,7 +5,7 @@
 module services.github.gist
 
 service github.Gist {
-  config { endpoint: "https://api.github.com", auth: BearerToken }
+  config { endpoint: "https://api.github.com", auth: BearerToken, auth_input: auth_token }
 
   operation Create {
     input {

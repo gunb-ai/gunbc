@@ -243,7 +243,7 @@ pub fn validate_resource_wiring<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
     detect_entrypoints(dag)
         .entrypoint_ports
         .iter()
-        .filter(|(_, port_name, _)| port_name.0.starts_with("res:"))
+        .filter(|(_, port_name, _)| port_name.is_resource())
         .map(|(node_id, port_name, _)| UnwiredResource {
             node: node_id.clone(),
             port: port_name.clone(),
@@ -283,7 +283,7 @@ fn validate_resource_wiring_recursive_impl<T>(
         if let NodeBody::SubDag(ref inner) = node.body {
             let mut next_inherited = inherited_resources.clone();
             for port in &node.inputs {
-                if port.name.0.starts_with("res:") {
+                if port.name.is_resource() {
                     next_inherited.insert(port.name.0.clone());
                 }
             }
@@ -493,7 +493,7 @@ fn find_output_port<'a, T>(node: &'a Node<T>, port_name: &PortName) -> Option<&'
 mod tests {
     use super::*;
     use crate::dag::{build::*, Dag, Edge};
-    use crate::node::NodeBody;
+    use crate::node::{NodeBody, NodeKind};
 
     #[test]
     fn test_valid_subdag_passes() {
@@ -555,7 +555,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -588,7 +588,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -621,7 +621,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -656,7 +656,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -692,7 +692,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -806,7 +806,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -852,7 +852,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -885,7 +885,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -925,7 +925,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -1033,7 +1033,7 @@ mod tests {
         // data is not a resource port, so no unwired resources
         let resource_unwired: Vec<_> = unwired
             .iter()
-            .filter(|u| u.port.0.starts_with("res:"))
+            .filter(|u| u.port.is_resource())
             .collect();
         assert!(resource_unwired.is_empty());
     }

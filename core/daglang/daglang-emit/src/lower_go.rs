@@ -520,42 +520,10 @@ fn expr_uses_json(expr: &Expr) -> bool {
 
 /// Map an abstract type name to its Go equivalent.
 fn map_to_go_type(abstract_type: &str) -> String {
-    match abstract_type {
-        "String" | "Path" => "string".to_string(),
-        "Bool" | "bool" => "bool".to_string(),
-        "Int" | "i64" | "I64" => "int64".to_string(),
-        "Float" | "f64" => "float64".to_string(),
-        "ToolRegistry" => "interface{}".to_string(),
-        "TransportRequest" => "transport.Request".to_string(),
-        "TransportResponse" => "transport.Response".to_string(),
-        "FilesystemHandle" => "string".to_string(),
-        other => {
-            if let Some(inner) = other
-                .strip_prefix("List<")
-                .and_then(|rest| rest.strip_suffix('>'))
-            {
-                return format!("[]{}", map_to_go_type(inner));
-            }
-            if let Some(inner) = other
-                .strip_prefix("Optional<")
-                .and_then(|rest| rest.strip_suffix('>'))
-            {
-                return format!("*{}", map_to_go_type(inner));
-            }
-            if let Some(inner) = other
-                .strip_prefix("Map<")
-                .and_then(|rest| rest.strip_suffix('>'))
-            {
-                if let Some(comma_pos) = inner.find(',') {
-                    let key = inner[..comma_pos].trim();
-                    let val = inner[comma_pos + 1..].trim();
-                    return format!("map[{}]{}", map_to_go_type(key), map_to_go_type(val));
-                }
-            }
-            // Default: treat as interface{}.
-            "interface{}".to_string()
-        }
-    }
+    crate::type_mapping::map_abstract_type(
+        &crate::type_mapping::GO_TYPE_MAPPING,
+        abstract_type,
+    )
 }
 
 // ===========================================================================

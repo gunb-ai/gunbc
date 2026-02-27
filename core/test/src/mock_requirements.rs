@@ -490,7 +490,7 @@ pub fn extract_mock_requirements<T: Clone>(dag: &gunbc_ir::Dag<T>, name: &str) -
     let transport_nodes: HashSet<&str> = dag
         .nodes
         .iter()
-        .filter(|n| n.kind == Some(NodeKind::TransportExecute))
+        .filter(|n| n.kind == NodeKind::TransportExecute)
         .map(|n| n.id.0.as_str())
         .collect();
 
@@ -501,11 +501,9 @@ pub fn extract_mock_requirements<T: Clone>(dag: &gunbc_ir::Dag<T>, name: &str) -
         .filter(|n| {
             matches!(
                 n.kind,
-                Some(
-                    NodeKind::ToolEnvironment
-                        | NodeKind::ResourceEnvironment
-                        | NodeKind::ResourceAcquire
-                )
+                NodeKind::ToolEnvironment
+                    | NodeKind::ResourceEnvironment
+                    | NodeKind::ResourceAcquire
             )
         })
         .map(|n| n.id.0.as_str())
@@ -516,7 +514,7 @@ pub fn extract_mock_requirements<T: Clone>(dag: &gunbc_ir::Dag<T>, name: &str) -
         .nodes
         .iter()
         .filter(|n| {
-            n.kind == Some(NodeKind::ToolConsumer)
+            n.kind == NodeKind::ToolConsumer
                 && !resource_nodes.contains(n.id.0.as_str())
                 && !transport_nodes.contains(n.id.0.as_str())
         })
