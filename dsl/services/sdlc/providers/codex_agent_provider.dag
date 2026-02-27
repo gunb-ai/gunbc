@@ -37,20 +37,24 @@ service codex.AgentProvider : AgentProvider {
       status: AgentStatus
       started: Bool
     }
+    transport shell { argv: ["codex", "--model", "\{model\}", "--approval-mode", "\{approval_mode\}", "-C", "\{repo_path\}", "\{prompt\}"] }
   }
 
   operation poll {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, finished: Bool, exit_code: Int?, error: String? }
+    transport shell { argv: ["codex", "status", "\{run_id\}"] }
   }
 
   operation cancel {
     input { run_id: NonEmptyStr, reason: String? }
     output { cancelled: Bool, final_status: AgentStatus }
+    transport shell { argv: ["codex", "cancel", "\{run_id\}"] }
   }
 
   operation get_result {
     input { run_id: NonEmptyStr }
     output { status: AgentStatus, exit_code: Int?, stdout: String?, stderr: String?, files_changed: List<String> }
+    transport shell { argv: ["codex", "result", "\{run_id\}"] }
   }
 }

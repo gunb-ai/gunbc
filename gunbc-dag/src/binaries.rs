@@ -149,6 +149,7 @@ mod tests {
             "docgen",
             "review",
             "pipeline",
+            "sdlc",
             "workflow",
         ]);
 
