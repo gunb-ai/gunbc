@@ -358,4 +358,11 @@ mod tests {
             "runtime CI graph should not include pipeline metadata nodes"
         );
     }
+
+    #[test]
+    fn builds_sdlc_pipeline_with_unit_test_profile() {
+        let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")
+            .expect("SDLC pipeline should compile with unit_test profile");
+        assert!(!dag.nodes.is_empty());
+    }
 }

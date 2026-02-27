@@ -101,7 +101,7 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 
 | # | ID | Task | Level | Size | Status | Deps |
 |---|-----|------|-------|------|--------|------|
-| 1 | BT1 | **Compile SDLC pipeline.** `build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")` succeeds. Fix any resolve.rs gaps inline. | L0 | S | Pending | — |
+| 1 | BT1 | **Compile SDLC pipeline.** `build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")` succeeds. Fix any resolve.rs gaps inline. | L0 | S | Done | — |
 | 2 | BT2 | **Pipeline wiring.** Fill 3 empty stages in `workflows/sdlc.dag`: wire `intake`, `worker`, `report`. Decide: delete `sdlc_dispatch_runtime.dag` or fill with real policy. | L0 | M | Pending | BT1 |
 | 3 | BT3 | **Hermetic scenario test.** unit_test profile, DryRun, full idea→done with stubs. | L1 | M | Pending | BT2 |
 | 4 | BT4 | **Per-stage handler tests.** 8 handlers individually with mocked interfaces. | L2 | M | Pending | BT2 |

@@ -263,7 +263,11 @@ pub fn compile_from_module_graph_with_options(
     mut module_graph: ModuleGraph,
     options: CompileOptions,
 ) -> Result<CompileOutput, CompileError> {
-    include_profile_modules(&mut module_graph, &context.roots, options.profile.is_some())?;
+    include_profile_modules(
+        &mut module_graph,
+        &context.roots,
+        options.profile.as_deref(),
+    )?;
     let callable_scope_result = callable_scope_for_context(context, &module_graph)?;
     let (callable_scope, entry_module_name) = match callable_scope_result {
         Some((scope, entry)) => (Some(scope), Some(entry)),
@@ -1092,7 +1096,7 @@ fn discover_target_module_graph_for_context(
 fn include_profile_modules(
     module_graph: &mut ModuleGraph,
     roots: &[PathBuf],
-    include_bound_services: bool,
+    active_profile: Option<&str>,
 ) -> Result<(), CompileError> {
     let mut seed_files = Vec::<PathBuf>::new();
     for root in roots {
@@ -1110,7 +1114,7 @@ fn include_profile_modules(
         return Ok(());
     }
 
-    if include_bound_services {
+    if active_profile.is_some() {
         let canonical_roots = daglang_resolve::canonicalize_roots(roots);
         let mut implementation_modules = Vec::<PathBuf>::new();
         for profile_file in &seed_files {
@@ -1120,6 +1124,12 @@ fn include_profile_modules(
                 let Item::ProfileDef(def) = &item.node else {
                     continue;
                 };
+                // Only include implementation modules for the active profile,
+                // not all profiles. This avoids loading transport-incomplete
+                // providers that aren't used by the active profile.
+                if active_profile != Some(def.name.as_str()) {
+                    continue;
+                }
                 for bind in &def.binds {
                     if let Some(path) = resolve_profile_bind_implementation_module_path(
                         roots,
