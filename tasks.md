@@ -283,6 +283,15 @@ correctness, then testing + foundation.
 | 36 | RT36 | Test helper extraction (CompileTestHelper + MockFactory). | M |
 | 37 | RT37 | Scaffolding decision: delete or wire RetryPolicy/ErrorMapping/etc. | S |
 | 38 | RT38 | Underused abstractions: delete algebra/render traits or find second consumer. | S |
+| 39 | RT39 | **`@contract` executable predicates.** Upgrade `ContractDef.text: String` to executable predicate language → `ContractObligation` IR in type registry. Currently scaffolding only (2 uses in `infra/core.dag`, label string, no assertions). Phase 1 of CT-1→CT-3. | L |
+| 40 | RT40 | **Contract test suite generation (CT-2).** Generate parameterized compliance suites from `ContractObligation` IR. Each obligation → test case with typed assertion. Requires CT-1 (RT39). | L |
+| 41 | RT41 | **Provider compliance instantiation (CT-3).** For each (profile, interface, provider) triple, instantiate contract suite. Hermetic profiles run stubs always; integration profiles env-gated with real I/O. Requires CT-2 (RT40). RT24 provides the profile-binding substrate. | L |
+| 42 | RT42 | **Auto-derive fixture blocks.** Wire `auto_mock_spec` as the default DSL test executor mock strategy so `fixture` blocks become unnecessary. Requires DSL test runtime changes. | M |
+| 43 | RT43 | **Status-code-variant test derivation.** `response` blocks on operations auto-generate per-status-code mock+assertion pairs. 13 manual tests could be eliminated. Requires response block design (see `docs/design/response-blocks.md`). | M |
+| 44 | RT44 | **Pipeline-derived state machine.** Compiler reads `pipeline sdlc { stage X [after Y] }` topology and derives `validate_transition()`, `stage_ordinal()`, etc. from graph edges automatically. `std/state_machines.dag` becomes a pure library of budget validation. | M |
+| 45 | RT45 | **Transport cost model on `ServiceTransportClass`.** Move `transport_depth`/`transport_hermetic` tables from `test_policy.dag` into the Rust type. Reduces DSL policy to 2 budget constants. | S |
+| 46 | RT46 | **Deterministic profile selection policy.** Replace "first hermetic profile" heuristic in `auto_testgen_for_module()` with explicit policy (e.g., `unit_test` always unless overridden). `gunbc-dag/src/bin/sdlc.rs` + testgen. | S |
+| 47 | RT47 | **Remove TestgenOp compilation fallback.** `TestgenOp::AutoGenerate` tries profileless compile, then retries with "first hermetic profile". Replace with: `requires_profile` → select by deterministic policy (RT46), no retry loop. | S |
 
 ---
 

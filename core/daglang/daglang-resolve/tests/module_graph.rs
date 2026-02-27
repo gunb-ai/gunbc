@@ -164,7 +164,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("extdeps.make".into(), 0),
         ("funcs.review_pipeline".into(), 4),
         ("funcs.sdlc_dispatch_runtime".into(), 0),
-        ("funcs.sdlc_stages".into(), 9),
+        ("funcs.sdlc_stages".into(), 10),
         ("funcs.sdlc_validation_runtime".into(), 0),
         ("funcs.sdlc_worker".into(), 7),
         ("funcs.test_control_flow".into(), 1),
