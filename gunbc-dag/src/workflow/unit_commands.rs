@@ -297,14 +297,22 @@ fn build_all_unit_commands() -> BTreeMap<NodeId, UnitCommand> {
 }
 
 /// Build command map for a supported workflow name.
+///
+/// Name resolution uses the workflow catalog (handles aliases like
+/// "gist_snapshot" → "gist" and normalization like "test_all" → "test-all").
 pub fn workflow_unit_commands(
     workflow_name: &str,
 ) -> Result<BTreeMap<NodeId, UnitCommand>, String> {
-    let normalized = workflow_name.replace('_', "-");
-    let commands = match normalized.as_str() {
+    let variant = super::catalog::resolve_workflow_variant(workflow_name).ok_or_else(|| {
+        format!(
+            "workflow '{}' does not support execution mode; use --plan",
+            workflow_name
+        )
+    })?;
+    let commands = match variant.canonical_name {
         "ci" => ci_unit_commands(),
         "test-all" => test_all_unit_commands(),
-        "gist" | "gist-snapshot" => gist_unit_commands(),
+        "gist" => gist_unit_commands(),
         "gist-diff" => gist_diff_unit_commands(),
         "gist-recent" => gist_recent_unit_commands(),
         "bootstrap" => bootstrap_unit_commands(),

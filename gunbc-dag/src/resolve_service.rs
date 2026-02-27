@@ -299,21 +299,22 @@ fn extract_output_field(
     // Navigate JSON path (supports dot-separated nested paths like "payload.data").
     let json_val = navigate_json_path(body, &field.json_path);
 
-    // Type-specific conversion.
-    match field.type_id.as_str() {
-        "Secret" => {
+    // Type-specific conversion via OutputValueKind (single dispatch point).
+    use daglang_lower::spec::OutputValueKind;
+    match field.value_kind() {
+        OutputValueKind::Secret => {
             let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
             Ok(Value::Secret(SecretString::new(s)))
         }
-        "Int" => {
+        OutputValueKind::Int => {
             let n = json_val.and_then(|v| v.as_i64()).unwrap_or(0);
             Ok(Value::Int(n))
         }
-        "Bool" => {
+        OutputValueKind::Bool => {
             let b = json_val.and_then(|v| v.as_bool()).unwrap_or(false);
             Ok(Value::Bool(b))
         }
-        "Bytes" => {
+        OutputValueKind::Bytes => {
             // Base64-encoded payload (e.g., GCP SecretManager).
             // Tries direct field first, then nested .data path.
             let b64 = json_val
@@ -331,12 +332,11 @@ fn extract_output_field(
                 bytes.into_iter().map(|b| Value::Int(b as i64)).collect(),
             ))
         }
-        "Json" => {
+        OutputValueKind::Json => {
             let v = json_val.cloned().unwrap_or(serde_json::Value::Null);
             Ok(Value::Json(v))
         }
-        // String, Url, GistId, NonEmptyStr, etc. → all as String.
-        _ => {
+        OutputValueKind::Str => {
             let s = json_val.and_then(|v| v.as_str()).unwrap_or("");
             if field.is_secret {
                 Ok(Value::Secret(SecretString::new(s)))
@@ -361,13 +361,14 @@ fn navigate_json_path<'a>(
 
 /// Produce a default/empty value for an output field (used for skipped responses).
 fn default_output_value(field: &OutputFieldSpec) -> Value {
-    match field.type_id.as_str() {
-        "Secret" => Value::Secret(SecretString::new("")),
-        "Int" => Value::Int(0),
-        "Bool" => Value::Bool(false),
-        "Bytes" => Value::List(Vec::new()),
-        "Json" => Value::Json(serde_json::Value::Null),
-        _ => {
+    use daglang_lower::spec::OutputValueKind;
+    match field.value_kind() {
+        OutputValueKind::Secret => Value::Secret(SecretString::new("")),
+        OutputValueKind::Int => Value::Int(0),
+        OutputValueKind::Bool => Value::Bool(false),
+        OutputValueKind::Bytes => Value::List(Vec::new()),
+        OutputValueKind::Json => Value::Json(serde_json::Value::Null),
+        OutputValueKind::Str => {
             if field.is_secret {
                 Value::Secret(SecretString::new(""))
             } else {

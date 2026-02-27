@@ -336,10 +336,10 @@ smell catalog above to classify. Include file path + line if possible.
 | Heuristic reimplementation | `looks_effectful_without_kind()` re-derives NodeKind from port type strings. Dead code after RT6 (NodeKind). | `core/exec/src/execute.rs:2064-2092` | RF-H4 PR scout | 2026-02-26 |
 | Heuristic reimplementation | `classify_module()` inflated by transitive auth callables. | `gunbc-dag/src/fidelity.rs:184-209` | RF-E4 impl | 2026-02-26 |
 | ~~Fallback arm~~ | ~~HTTP method fallback now returns `ExecError` instead of silently falling back to POST.~~ | ~~`gunbc-dag/src/resolve_service.rs:73-85`~~ | R1 scout | **Done** |
-| String dispatch | `match field.type_id.as_str()` for JSON→Value appears twice. | `gunbc-dag/src/resolve_service.rs:291-335, 352-366` | R1 scout | 2026-02-26 |
+| ~~String dispatch~~ | ~~`match field.type_id.as_str()` for JSON→Value appeared twice.~~ Consolidated into `OutputValueKind` enum on `OutputFieldSpec` with `value_kind()` method. Both `extract_output_field()` and `default_output_value()` now use exhaustive match. | ~~`gunbc-dag/src/resolve_service.rs:291-335, 352-366`~~ | R1 scout | **Done** |
 | ~~Validation at use site~~ | ~~`input_as_string()` now returns `Result<String, ExecError>` — missing inputs fail-closed instead of leaking `"(unresolved)"`.~~ | ~~`gunbc-dag/src/resolve_service.rs:703-733`~~ | R1 scout | **Done** |
 | ~~String dispatch~~ | ~~`FileOperationSpec.operation` now uses `FileOp` enum — parsed at boundary in `derive_file_spec()`, exhaustive match in `GenericFilePrepareOp`.~~ | ~~`gunbc-dag/src/resolve_service.rs`~~ | R1 scout | **Done** |
-| String dispatch | `workflow_unit_commands()` matches workflow name strings. | `gunbc-dag/src/workflow/unit_commands.rs:300-323` | R1 scout | 2026-02-26 |
+| ~~String dispatch~~ | ~~`workflow_unit_commands()` matches workflow name strings.~~ Replaced manual `replace('_', '-')` normalization with `catalog::resolve_workflow_variant()` — name resolution centralized in catalog (handles aliases + normalization). | ~~`gunbc-dag/src/workflow/unit_commands.rs:300-323`~~ | R1 scout | **Done** |
 | Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets. See Theme INV below. | `gunbc-dag/src/ci/mod.rs:56-77` | lane-2 merge | 2026-02-26 |
 | *(success_port workaround promoted to RT4a:c)* | | | | |
 

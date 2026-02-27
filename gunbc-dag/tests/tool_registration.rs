@@ -586,6 +586,8 @@ fn is_passthrough_callable(module: &str, name: &str, has_service_metadata: bool)
 // Callables with fn_body (fn items) are evaluated by FnBodyDelegate, not passthrough.
 // Only func/pattern items without fn_body appear here.
 const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
+    "cloud.gcp.credential::acquire_gcp_secret",
+    "cloud.gcp.credential::resource_provide::acquire_gcp_secret::auth",
     "std.filesystem::is_text_readable",
     "std.patterns::acquire_subject_token",
     "std.patterns::classify_files",

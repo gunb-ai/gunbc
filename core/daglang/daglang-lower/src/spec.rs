@@ -145,6 +145,35 @@ pub struct OutputFieldSpec {
     pub is_optional: bool,
 }
 
+/// The DSL primitive kind that determines JSON→Value conversion and default values.
+///
+/// Parsed from `OutputFieldSpec.type_id` — single canonical dispatch point
+/// replacing duplicate `match type_id.as_str()` blocks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputValueKind {
+    Secret,
+    Int,
+    Bool,
+    Bytes,
+    Json,
+    /// Default for all other types (String, Url, GistId, NonEmptyStr, etc.)
+    Str,
+}
+
+impl OutputFieldSpec {
+    /// Derive the value kind from the DSL type identifier.
+    pub fn value_kind(&self) -> OutputValueKind {
+        match self.type_id.as_str() {
+            "Secret" => OutputValueKind::Secret,
+            "Int" => OutputValueKind::Int,
+            "Bool" => OutputValueKind::Bool,
+            "Bytes" => OutputValueKind::Bytes,
+            "Json" => OutputValueKind::Json,
+            _ => OutputValueKind::Str,
+        }
+    }
+}
+
 /// Body template entry: a literal constant, an input field reference, or nested entries.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum BodyEntry {
