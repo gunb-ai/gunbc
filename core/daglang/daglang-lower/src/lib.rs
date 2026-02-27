@@ -8287,10 +8287,8 @@ pub struct InferredEntrypoint {
 /// Use this filter consistently in entrypoint inference, CLI parameter
 /// extraction, and any future exposure mapping (REST, Lambda, etc.).
 pub fn is_user_param_port(port_name: &str) -> bool {
-    port_name != "__deps"
-        && !port_name.starts_with("tool:")
-        && !port_name.starts_with("res:")
-        && !is_output_passthrough_input(port_name)
+    let pn = PortName::from(port_name);
+    !pn.is_internal() && !pn.is_tool() && !pn.is_resource() && !is_output_passthrough_input(port_name)
 }
 
 /// Infer entrypoints from graph structure.

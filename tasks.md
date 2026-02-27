@@ -239,7 +239,7 @@ correctness, then testing + foundation.
 | 15 | RT15 | **M-tier codegen** (sandboxed tempdir, `#[cfg(feature = "sandboxed_tests")]`). | M | Pending | RT14 |
 | 16 | RT16 | **L/XL tier codegen** (cost-gated real/remote, `GUNBC_TEST_MAX_COST` env check). | S | Pending | RT14 |
 | 17 | RT17 | **DSL Makefile assembly**: populated all 4 empty pipeline stages in `workflows/makegen.dag`. `load_registry` calls `discover_tools()`, `render_makefile` calls `render_makefile_content()` with data + tools, `upsert_makefile` calls `content_upsert()`, `report` emits success. Pipeline imports data from `config.build_targets` and functions from `tools.makegen`. | M | Done | — |
-| 18 | RT18 | **Delete bootstrap externs**. Parity golden tests. | M | Pending | RT17 |
+| 18 | RT18 | **Delete bootstrap externs**. Parity golden tests. Blocked: DSL bodies produce simple output; Rust externs produce full output (Makefile via ToolRegistry, gitignore via BuildConfig categories). Needs DSL port of gitignore category system + makegen delegation. | M | Blocked | RT17, DSL gitignore port |
 | 19 | RT19 | **Recursive types** (self-referential type defs). | L | Pending | — |
 | 20 | RT20 | **Recursive functions** (self-calls in fn bodies). | L | Pending | RT19 |
 | 21 | RT21 | **Tree rendering in pure DSL**. Delete RenderTreeOp. | L | Pending | RT19, RT20 |
@@ -284,7 +284,7 @@ correctness, then testing + foundation.
 | 27 | RT27 | ModulePath unification across 4 crates. | S |
 | 28 | RT28 | Shared DslTypeMapping table for emit backends. | S |
 | 29 | RT29 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
-| 30 | RT30 | Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortCategory`. | S |
+| 30 | RT30 | ✅ Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortName` methods. 3 sites migrated (lower `is_user_param_port`, emit `is_user_input_port`, patterns `ResourceInput::new`). `process_registry.rs` skipped (uses `ClaimId`, not `PortName`). | S |
 | 31 | RT31 | String constants migration: `__deps`/`res:file`/`tool:` → central consts. | M |
 | 32 | RT32 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
 | 33 | RT33 | Unify passthrough op variants → single data-driven PassthroughOp. | S |
