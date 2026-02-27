@@ -57,7 +57,7 @@ impl Executable for GenericRestPrepareOp {
         for field in &self.spec.input_fields {
             if field.is_path_param {
                 let placeholder = format!("{{{}}}", field.name);
-                let value = input_as_string(&inputs, &field.name, field.default.as_deref());
+                let value = input_as_string(&inputs, &field.name, field.default.as_deref())?;
                 path = path.replace(&placeholder, &value);
             }
         }
@@ -76,7 +76,12 @@ impl Executable for GenericRestPrepareOp {
             "PUT" => RestRequest::put(&url),
             "PATCH" => RestRequest::patch(&url),
             "DELETE" => RestRequest::delete(&url),
-            _ => RestRequest::post(&url),
+            other => {
+                return Err(ExecError::new(format!(
+                    "unsupported HTTP method '{other}' for {} — expected GET, POST, PUT, PATCH, or DELETE",
+                    self.spec.path_template
+                )));
+            }
         };
 
         // 3b. Coerce List<String> → String when the declared field type is "String".
@@ -147,7 +152,7 @@ impl Executable for GenericRestPrepareOp {
 
         // 5. Add custom headers.
         for (key, value) in &self.spec.headers {
-            let header_value = interpolate_template(value, &inputs, &self.spec.input_fields);
+            let header_value = interpolate_template(value, &inputs, &self.spec.input_fields)?;
             request = request.header(key, header_value);
         }
 
@@ -413,14 +418,14 @@ impl Executable for GenericShellPrepareOp {
                     // Handle complex interpolation: e.g., "{base}...{head}"
                     if s.contains('{') {
                         let interpolated =
-                            interpolate_template(s, &inputs, &self.spec.input_fields);
+                            interpolate_template(s, &inputs, &self.spec.input_fields)?;
                         argv.push(interpolated);
                     } else {
                         argv.push(s.clone());
                     }
                 }
                 ArgvSegment::InputRef(name) => {
-                    let value = input_as_string_for_shell(&inputs, name, &self.spec.input_fields);
+                    let value = input_as_string_for_shell(&inputs, name, &self.spec.input_fields)?;
                     argv.push(value);
                 }
             }
@@ -694,14 +699,34 @@ fn infer_auth_from_headers(headers: &[(String, String)]) -> (String, Option<Stri
 }
 
 /// Extract an input value as a string, handling Secret and defaults.
+///
+/// Returns `Err` when the input is missing and no default is provided — this
+/// prevents silent `"(unresolved)"` magic strings from leaking into HTTP
+/// requests and shell commands.
 #[allow(clippy::disallowed_methods)] // Approved: transport boundary — secret values marshalled into service requests
-fn input_as_string(inputs: &HashMap<String, Value>, name: &str, default: Option<&str>) -> String {
+fn input_as_string(
+    inputs: &HashMap<String, Value>,
+    name: &str,
+    default: Option<&str>,
+) -> Result<String, ExecError> {
     match inputs.get(name) {
-        Some(Value::Str(s)) => s.clone(),
-        Some(Value::Secret(secret)) => secret.expose_plaintext_for_transport().to_string(),
-        Some(Value::Int(n)) => n.to_string(),
-        Some(Value::Bool(b)) => b.to_string(),
-        _ => default.unwrap_or("(unresolved)").to_string(),
+        Some(Value::Str(s)) => Ok(s.clone()),
+        Some(Value::Secret(secret)) => {
+            Ok(secret.expose_plaintext_for_transport().to_string())
+        }
+        Some(Value::Int(n)) => Ok(n.to_string()),
+        Some(Value::Bool(b)) => Ok(b.to_string()),
+        Some(Value::Float(f)) => Ok(f.to_string()),
+        Some(Value::Json(j)) => Ok(j.to_string()),
+        Some(other) => Err(ExecError::new(format!(
+            "input '{name}' has unsupported type for string conversion: {other:?}"
+        ))),
+        None => match default {
+            Some(d) => Ok(d.to_string()),
+            None => Err(ExecError::new(format!(
+                "required input '{name}' is missing and has no default"
+            ))),
+        },
     }
 }
 
@@ -710,7 +735,7 @@ fn input_as_string_for_shell(
     inputs: &HashMap<String, Value>,
     name: &str,
     fields: &[FieldSpec],
-) -> String {
+) -> Result<String, ExecError> {
     let default = fields
         .iter()
         .find(|f| f.name == name)
@@ -723,16 +748,16 @@ fn interpolate_template(
     template: &str,
     inputs: &HashMap<String, Value>,
     fields: &[FieldSpec],
-) -> String {
+) -> Result<String, ExecError> {
     let mut result = template.to_string();
     for field in fields {
         let placeholder = format!("{{{}}}", field.name);
         if result.contains(&placeholder) {
-            let value = input_as_string(inputs, &field.name, field.default.as_deref());
+            let value = input_as_string(inputs, &field.name, field.default.as_deref())?;
             result = result.replace(&placeholder, &value);
         }
     }
-    result
+    Ok(result)
 }
 
 fn ensure_required_profile_config_inputs(
