@@ -3,8 +3,8 @@
 > **Status**: Design
 > **Author**: Red team
 > **Date**: 2026-02-27
-> **Depends on**: RT-I1, RT-I2, RT-A2 (findings)
-> **Supersedes**: RT-I1 (scope expanded from "add @mock_response" to "model provider contracts")
+> **Depends on**: RT-A2 (findings), `annotation-to-dag-modeling.md` Phase 2
+> **Supersedes**: RT-I1, RT-I2
 
 ---
 
@@ -26,16 +26,23 @@ a model that guarantees we only handle the happy path.
 |--------|-------|
 | REST operations across all services | 29 |
 | Operations with error response declarations | 0 |
-| Operations with `@mock_response` annotations | 0 |
-| `@mock_response` parser implementation | Stub (returns `Vec::new()`) |
+| `MockResponseDef` parser implementation | Stub (returns `Vec::new()`) |
 | `error_cases()` trait implementations | 0 (all return default empty) |
 | Testgen error-case obligations | 0 |
 | Status code checks in `GenericRestParseOp` | 0 |
+| `ErrorMapping` in lowered IR | Struct exists, always `vec![]` |
 
 **Consequence**: The gist 401 bug lived in production because no test ever
 ran the flow with a non-200 response. Five compounding failures (see
 `TODO/gist-auth-postmortem.md`) were all downstream of the fact that the
 service model didn't declare that 401 is a thing that can happen.
+
+### Existing infrastructure (unused)
+
+The lowerer already has `error_mappings: Vec<ErrorMapping>` on
+`ServiceOperationSpec` (`daglang-lower/src/lib.rs:387-390`) with a TODO:
+"extract from DSL error_map block when implemented." The slot exists. Nothing
+fills it.
 
 ---
 
@@ -46,31 +53,26 @@ models what the provider documents: endpoints, methods, request shapes,
 response shapes, authentication requirements, error codes, rate limits,
 idempotency guarantees.
 
-This model will always have some lag/skew relative to the real API — we are
-not the provider, we are modeling their docs. But the model should be
-**structurally complete**: if the provider documents a response code, we
-declare it. If they document an error body shape, we type it.
-
-The model then creates **mandatory obligations**:
-- If a service declares `@response(401, ...)`, testgen **must** generate a
-  test that exercises code handling a 401.
+The model creates **mandatory obligations**:
+- If a service declares an error response, testgen **must** generate a
+  test that exercises code handling it.
 - If an interface declares a capability, every implementor inherits the
   response contract obligations.
 - If a workflow calls an operation, it inherits the obligation to handle
   every declared response.
 
-This moves testing from "optional coverage we might add" to "structural
-requirement imposed by the model." You can't use an API without handling
-its documented failure modes, and the compiler enforces this.
+This is not metadata — it's **structure in the DAG**. Per the compositional
+modeling philosophy and `annotation-to-dag-modeling.md` Phase 2, error
+classification is a node in the transport DAG, not an inert annotation.
 
 ---
 
 ## Design
 
-### 1. `@response` annotation on operations
+### 1. `response` block on operations
 
-New annotation on service operations. Not `@mock_response` — that's a test
-utility. `@response` is a **declaration about what the provider returns**.
+A structural block inside the operation — the same pattern as `transport`,
+`input`, and `output`. Not an `@` annotation.
 
 ```dag
 service github.Gist {
@@ -90,42 +92,109 @@ service github.Gist {
     transport rest { method: POST, path: "/gists" }
 
     // Provider contract: what GitHub actually returns
-    @response(201, output)  // success — maps to the output type
-    @response(401, Unauthorized { message: String })
-    @response(403, Forbidden { message: String })
-    @response(404, NotFound { message: String })
-    @response(422, ValidationFailed { message: String, errors: List<ValidationError>? })
-    @response(429, RateLimited { message: String, retry_after: Int? })
-    @response(500, ServerError { message: String })
+    response {
+      201 => output                                          // success case
+      401 => Unauthorized { message: String }
+      403 => Forbidden { message: String }
+      404 => NotFound { message: String }
+      422 => ValidationFailed { message: String, errors: List<ValidationError>? }
+      429 => RateLimited { message: String, retry_after: Int? }
+      500 => ServerError { message: String }
+    }
 
     // Optional: link to provider documentation
-    @doc("https://docs.github.com/en/rest/gists/gists#create-a-gist")
+    doc "https://docs.github.com/en/rest/gists/gists#create-a-gist"
   }
 }
 ```
 
 **Semantics**:
-- `@response(STATUS, TYPE)` declares "this operation can return HTTP status
-  STATUS with a body matching TYPE."
-- `@response(STATUS, output)` (keyword) means "this status code produces the
-  declared output type" — i.e., the success case.
-- Every operation with `transport rest {}` MUST have at least one success
-  `@response` and one error `@response`. The compiler errors if missing.
+- `response { STATUS => TYPE }` declares "this operation can return HTTP
+  status STATUS with a body matching TYPE."
+- `STATUS => output` (keyword) means "this status code produces the declared
+  output type" — the success case.
+- The `response` block is **mandatory** on every operation with
+  `transport rest { ... }`. At least one success and one error entry
+  are required. The compiler errors if missing.
 - Response types can be inline records or references to named types.
 
-**For shell operations**: The equivalent is `@exit(CODE, TYPE)`:
+**For shell operations**: The equivalent is an `exit` block:
 ```dag
 operation Build {
-  @exit(0, output)  // success
-  @exit(1, BuildFailed { stderr: String })
-  @exit(101, CompilerIce { stderr: String })
+  exit {
+    0 => output
+    1 => BuildFailed { stderr: String }
+    101 => CompilerIce { stderr: String }
+  }
 }
 ```
 
-### 2. Standard error types
+**Parser representation** (replaces the unused `MockResponseDef`):
 
-Define common error shapes in `dsl/std/errors.dag` so services don't
-repeat themselves:
+```rust
+pub struct OperationDef {
+    pub name: String,
+    pub inputs: Vec<Field>,
+    pub outputs: Vec<Field>,
+    pub idempotent: bool,
+    pub readonly: bool,
+    pub hermetic: bool,
+    pub permissions: Vec<String>,
+    pub transport: Option<TransportBinding>,
+    pub response_map: Vec<ResponseEntry>,  // NEW — replaces mock_response
+}
+
+pub struct ResponseEntry {
+    pub status: u16,        // HTTP status code or exit code
+    pub is_output: bool,    // true if `=> output` (success case)
+    pub response_type: Option<TypeRef>,  // None if is_output=true
+}
+```
+
+### 2. How it composes into the transport DAG
+
+Per `annotation-to-dag-modeling.md` Phase 2, the lowerer generates an
+**error classification node** from the `response` block:
+
+```
+prepare → execute → classify_response → parse_output
+                         │
+                    (201 → route to parse_output)
+                    (401 → route to error: Unauthorized)
+                    (404 → route to error: NotFound)
+                    (412 → route to error: PreconditionFailed)
+                    (5xx → route to error: ServerError)  ← protocol stack default
+```
+
+The classification node is a real node in the DAG. It:
+1. Reads the HTTP status code from the execute node's output
+2. Routes success statuses to the existing parse node
+3. Routes error statuses to typed error outputs
+4. Hard-fails on undeclared status codes (no silent swallowing)
+
+This composes with protocol stack defaults (M16): the HTTP layer
+contributes default 4xx/5xx classification, and the service-level
+`response` block overrides specific codes. This is the same layered
+composition as `transport rest { ... }` composing with `config { auth: ... }`.
+
+### 3. Populating `ErrorMapping` in the lowered IR
+
+The lowerer already has the slot. Wire it:
+
+```rust
+// daglang-lower/src/lib.rs — in build_service_op_spec()
+error_mappings: op.response_map.iter()
+    .filter(|r| !r.is_output)
+    .map(|r| ErrorMapping {
+        status: r.status,
+        body_pattern: r.response_type.as_ref().map(|t| t.name.clone()),
+    })
+    .collect(),
+```
+
+### 4. Standard error types
+
+Define common error shapes in `dsl/std/errors.dag`:
 
 ```dag
 module std.errors
@@ -135,9 +204,11 @@ type HttpError { message: String, documentation_url: String? }
 type ValidationError { resource: String?, field: String?, code: String? }
 type RateLimitInfo { message: String, retry_after: Int? }
 
-// GitHub-specific (inherits from HttpError pattern)
+// GitHub-specific
 type GitHubError { message: String, documentation_url: String? }
-type GitHubValidationError : HttpError {
+type GitHubValidationError {
+  message: String
+  documentation_url: String?
   errors: List<ValidationError>?
 }
 
@@ -147,28 +218,32 @@ type GcpErrorDetail { code: Int, message: String, status: String, errors: List<G
 type GcpErrorItem { reason: String, domain: String?, message: String? }
 ```
 
-### 3. Response contract on interfaces
+### 5. Response contracts on interfaces
 
-Interfaces declare response contracts that all implementors must handle:
+Interfaces declare response contracts. All implementors inherit them.
 
 ```dag
 interface IssueProvider {
   capability get(id: NonEmptyStr) -> { issue: TrackedIssue, found: Bool }
+  capability create(title: String, body: String) -> { issue: TrackedIssue }
 
-  // Provider-agnostic contract: these responses are possible
-  @response get(200, output)
-  @response get(404, { found: false })
-  @response get(401, Unauthorized)
+  // Response contract — implementors must handle these
+  response get {
+    200 => output
+    404 => { found: false }
+    401 => HttpError
+  }
 
   // Behavioral contracts (existing)
-  @contract: get(id) after create(title, body, labels) => { found: true }
+  contract get(id) after create(title, body, labels) => { found: true }
 }
 ```
 
-When `github.Issues : IssueProvider`, the compiler checks that github.Issues
-handles (or at least declares) the response codes from the interface.
+When `github.Issues : IssueProvider`, the compiler checks that
+`github.Issues.get` declares at least the response codes from the interface.
+Provider-specific codes (301, 410) can be added on top.
 
-### 4. New obligation: `ProviderResponseContract`
+### 6. New obligation: `ProviderResponseContract`
 
 Add to Bucket C in `obligation.rs`:
 
@@ -180,17 +255,15 @@ ProviderResponseContract {
     operation: String,
     status_code: u16,
     response_type: TypeId,
-    /// Whether this is the success response or an error response
     is_error: bool,
 },
 ```
 
 **Generation rule**: For every transport execute node whose service operation
-declares `@response` annotations, emit one `ProviderResponseContract`
-obligation per declared response. These are `RuntimeOnly` — can never be
-statically discharged because they test real behavior.
+has a `response` block, emit one `ProviderResponseContract` obligation per
+entry. These are `RuntimeOnly` — can never be statically discharged.
 
-**Test shape**: For each error `@response`, the generated test:
+**Test shape**: For each error entry, the generated test:
 1. Sets up the workflow with valid happy-path inputs
 2. Mocks the transport execute node to return `rest_response(STATUS, BODY)`
    where BODY matches the declared response type
@@ -199,7 +272,7 @@ statically discharged because they test real behavior.
 This replaces `SingleTransportFailure`'s blunt `"<TRANSPORT_FAILURE>"` sentinel
 with **realistic, provider-documented error responses**.
 
-### 5. `GenericRestParseOp` status code checking
+### 7. `GenericRestParseOp` status code checking
 
 Currently `GenericRestParseOp` ignores the HTTP status code and just tries
 to extract fields from the body. Fix:
@@ -208,10 +281,8 @@ to extract fields from the body. Fix:
 // In GenericRestParseOp::execute():
 let status = response.status;
 if status < 200 || status >= 300 {
-    // Check if service declares a handler for this status
-    if let Some(error_type) = self.spec.error_responses.get(&status) {
-        // Parse error body according to declared type
-        return parse_error_response(status, &response.body, error_type);
+    if let Some(error_mapping) = self.spec.error_mappings.iter().find(|m| m.status == status) {
+        return parse_error_response(status, &response.body, error_mapping);
     }
     // Undeclared error status → hard failure with diagnostic
     return Err(TransportError::UnexpectedStatus {
@@ -222,152 +293,135 @@ if status < 200 || status >= 300 {
 }
 ```
 
-### 6. `@mock_response` becomes derivable
+### 8. Mock responses are derived
 
-Once `@response` annotations exist, `@mock_response` becomes **derivable**:
-the compiler can generate mock responses from the declared response types.
-A `@response(401, Unauthorized { message: String })` automatically produces
-a mock `rest_response(401, { "message": "Unauthorized" })` with
-type-derived example values.
+Once `response` blocks exist, mock responses are **derived** from the
+declared response types. A `401 => Unauthorized { message: String }` entry
+automatically produces mock data `rest_response(401, { "message": "..." })`
+with type-derived example values. No manual `@mock_response` authoring.
 
 This means RT-I1 ("add @mock_response on all service operations") is
-**superseded** — we add `@response` annotations instead, and mock data
-is derived.
-
-### 7. Documentation references
-
-Each service should reference the provider's API documentation:
-
-```dag
-service github.Gist {
-  @doc("https://docs.github.com/en/rest/gists/gists")
-
-  operation Create {
-    @doc("https://docs.github.com/en/rest/gists/gists#create-a-gist")
-    // ...
-  }
-}
-```
-
-This is metadata, not enforced by the compiler, but it creates a traceable
-link from our model to the source of truth. When GitHub changes their API,
-we can trace which `.dag` files need updating.
+**superseded** — we add `response` blocks instead, and mock data is derived.
 
 ---
 
 ## Implementation Sequence
 
-This is a vertical slice through parser → lowerer → obligation → codegen.
+Vertical slice through parser → lowerer → obligation → codegen.
 
 | # | ID | What | Size | Deps |
 |---|-----|------|------|------|
-| 1 | PC-1 | **`@response` annotation parsing.** Add to `daglang-syntax` parser. Response type can be inline record, named type reference, or `output` keyword. Store as `Vec<ResponseDecl>` on `OperationDef`. | M | — |
+| 1 | PC-1 | **`response` block parsing.** Add to `daglang-syntax` parser. Store as `Vec<ResponseEntry>` on `OperationDef` (replaces `mock_response`). | M | — |
 | 2 | PC-2 | **Standard error types.** `dsl/std/errors.dag` with common HTTP, GitHub, GCP error shapes. | S | — |
-| 3 | PC-3 | **`@response` on all REST services.** Add response declarations to all 29 REST operations in `dsl/services/`. Include `@doc` references to provider API docs. | L | PC-1, PC-2 |
-| 4 | PC-4 | **`@exit` on all shell services.** Same for shell operations (exit code → output type mapping). | M | PC-1 |
-| 5 | PC-5 | **Lowerer propagation.** `@response` declarations flow to `ServiceOperationSpec` in the lowered IR. Parse nodes get access to declared error types. | M | PC-1 |
-| 6 | PC-6 | **`GenericRestParseOp` status checking.** Check HTTP status before field extraction. Route to error type if declared, hard-fail if undeclared non-2xx. | M | PC-5 |
-| 7 | PC-7 | **`ProviderResponseContract` obligation.** New obligation kind in Bucket C. Collector emits one per declared `@response` per transport node. | M | PC-5 |
-| 8 | PC-8 | **Testgen codegen for response contracts.** Generate per-status-code tests from `ProviderResponseContract` obligations. Mock body derived from response type. | L | PC-7 |
-| 9 | PC-9 | **Interface response contract inheritance.** Interfaces declare response contracts; implementors inherit obligations. Compiler warns on unhandled responses. | M | PC-7 |
-| 10 | PC-10 | **Completeness enforcement.** Compiler requires at least one success `@response` and one error `@response` on every operation with `transport rest {}`. | S | PC-1 |
-
-**Total estimated effort**: ~L (3-5 days for the full vertical slice)
+| 3 | PC-3 | **`response` blocks on all REST services.** Add to all 29 REST operations. Include `doc` references. | L | PC-1, PC-2 |
+| 4 | PC-4 | **`exit` blocks on all shell services.** Exit code → output type mapping. | M | PC-1 |
+| 5 | PC-5 | **Lowerer: populate `error_mappings`.** Wire `response` block entries to the existing `ErrorMapping` slot on `ServiceOperationSpec`. Generate classify_response node in transport DAG. | M | PC-1 |
+| 6 | PC-6 | **`GenericRestParseOp` status checking.** Route on status code before field extraction. Hard-fail on undeclared non-2xx. | M | PC-5 |
+| 7 | PC-7 | **`ProviderResponseContract` obligation.** New Bucket C obligation, one per `response` entry. | M | PC-5 |
+| 8 | PC-8 | **Testgen codegen for response contracts.** Per-status-code tests, mock body derived from response type. | L | PC-7 |
+| 9 | PC-9 | **Interface response contract inheritance.** Implementors inherit obligations from interface `response` declarations. | M | PC-7 |
+| 10 | PC-10 | **Completeness enforcement.** Compiler requires ≥1 success + ≥1 error entry in `response` block on every `transport rest {}` operation. | S | PC-1 |
 
 ### Relationship to existing tasks
 
 | Existing | Disposition |
 |----------|------------|
-| RT-I1 (`@mock_response` on all ops) | **Superseded** by PC-3. We add `@response` instead; mock data is derived. |
+| RT-I1 (`@mock_response` on all ops) | **Superseded** by PC-3. Mock data is derived from `response` blocks. |
 | RT-I2 (testgen error-status obligations) | **Subsumed** by PC-7 + PC-8. Same goal, better mechanism. |
-| RT-A2 findings (parser not implemented) | **Input** to PC-1. We implement a new annotation rather than fixing the old one. |
-| RT9 (Virtual I/O DSL types) | **Orthogonal**. VirtualBackend is the runtime mechanism; `@response` is the declaration. |
+| RT-A2 findings (parser not implemented) | **Input** to PC-1. We implement a structural block, not an annotation. |
+| `annotation-to-dag-modeling.md` Phase 2 | **Aligned**. This design doc specifies the DSL surface for what Phase 2 describes architecturally. |
+| M16 (protocol stack) | **Composes**. Protocol stack provides default HTTP error classification; `response` block overrides at service level. |
 
 ---
 
 ## Design Decisions
 
-### Why `@response` not `@mock_response`?
+### Why a structural block, not an annotation?
 
-`@mock_response` conflates two concerns:
-1. **What the provider does** (contract) — this is a fact about the external system
-2. **What to use in tests** (fixture) — this is a test-engineering choice
+Per `docs/design/modeling/annotation-to-dag-modeling.md`, annotations like
+`@error_map(404 => NotFound)` are **Category 2: declared intent with no
+enforcement**. The annotation-to-DAG migration explicitly calls for these
+to become structural concerns that compose into the transport DAG.
 
-Separating them means:
-- `@response(401, Unauthorized { message: String })` = "GitHub returns this"
-- The compiler derives mock data from the response type automatically
-- You can still write manual `mock ... -> rest_response(401, ...)` in test blocks for specific scenarios
+The DSL already models transport as a block (`transport rest { method: POST,
+path: "/gists" }`), auth as a config field (`config { auth: BearerToken }`),
+and behavioral properties as keywords (`readonly`, `idempotent`). None of
+these are `@` annotations. `response` follows the same pattern.
+
+The `@` annotation syntax in CLAUDE.md's reference was **stale documentation**
+that didn't match actual DSL syntax. Annotations exist only for type refinement
+(`@pattern`, `@range`, `@non_empty`, `@brand`) and a few test config markers.
+Everything structural is a block or keyword.
 
 ### Why not `Result<T, E>` return types?
 
-Sum type returns (`type GistResult = Ok { id: GistId } | Err { message: String }`)
-would work for pure DSL functions but don't fit transport operations:
-- Transport operations have a structural success/error split at the HTTP level
-- The parse node needs to route on status code BEFORE constructing the output
-- Error handling is at the transport layer, not the type layer
-
-`@response` keeps the split at the transport annotation layer where it belongs.
+Sum type returns would work for pure DSL functions but don't fit transport
+operations. The response routing happens at the HTTP protocol layer — the
+classify_response node routes on status code **before** constructing typed
+output. This is a transport concern, not a type-system concern.
 
 ### Why mandatory?
 
-If `@response` declarations are optional, they won't get written. The gist 401
-bug happened precisely because error handling was optional. Making the compiler
-require at least one error `@response` on every REST operation means you can't
-define a service without thinking about what happens when it fails.
+If `response` blocks are optional, they won't get written. The gist 401
+bug happened precisely because error handling was optional. Making the
+compiler require them means you can't define a REST service without
+thinking about what happens when it fails.
 
 ---
 
-## Example: GitHub Issues after migration
+## Example: GCS ClaimStore after migration
+
+The GCS claim store already handles 412 in tests, but the mapping is
+implicit. With `response` blocks it becomes explicit:
 
 ```dag
-service github.Issues : IssueProvider {
+service gcs.ClaimStore : ClaimStore {
+  config { bucket: NonEmptyStr, project_id: NonEmptyStr }
 
-  operation get {
-    input { id: NonEmptyStr }
-    output {
-      issue: TrackedIssue from "."
-      found: Bool from "status == 200"
+  operation acquire {
+    input {
+      issue_id: NonEmptyStr
+      stage: NonEmptyStr
+      owner: NonEmptyStr
+      lease_ttl_ms: Int
+      expected_generation: Int = 0
     }
-    transport rest { method: GET, path: "/repos/{owner}/{repo}/issues/{id}" }
+    output {
+      acquired: Bool
+      conflict: Bool
+      lease_generation: Int
+    }
 
-    @response(200, output)
-    @response(301, MovedPermanently { url: Url })
-    @response(404, GitHubError)
-    @response(410, GitHubError)  // gone (transferred)
-    @response(401, GitHubError)
-    @response(403, GitHubError)
-    @response(429, RateLimitInfo)
-    @response(500, GitHubError)
-
-    @doc("https://docs.github.com/en/rest/issues/issues#get-an-issue")
+    response {
+      200 => output
+      412 => GcpError    // precondition failed → conflict: true
+      401 => GcpError
+      403 => GcpError
+      500 => GcpError
+    }
   }
 }
 ```
 
-**What testgen produces from this** (8 tests for this one operation):
-1. `test_get_status_200` — happy path, extract TrackedIssue
-2. `test_get_status_301` — redirect, verify handling
-3. `test_get_status_404` — not found, verify `found: false`
-4. `test_get_status_410` — gone, verify handling
-5. `test_get_status_401` — unauthorized, verify error propagation
-6. `test_get_status_403` — forbidden, verify error propagation
-7. `test_get_status_429` — rate limited, verify retry or error
-8. `test_get_status_500` — server error, verify error propagation
-
-Each test mocks the transport execute node with a response matching the
-declared type and verifies the workflow handles it correctly.
+The lowerer generates a classify_response node that routes 412 to the
+error path. The parse node for the 412 case sets `conflict: true`,
+`acquired: false`. Testgen generates tests for 200, 412, 401, 403, 500
+automatically.
 
 ---
 
 ## Open Questions
 
-1. **Granularity of enforcement**: Should every declared `@response` require
-   explicit handling in the consuming workflow, or is "propagate error" sufficient?
-   (Recommendation: propagate is sufficient for v1; explicit handling is a v2 feature.)
+1. **Status-to-output-field mapping**: For operations like `acquire` where
+   412 maps to `conflict: true` in the *output type* (not a separate error
+   type), should the `response` block express this mapping explicitly?
+   E.g., `412 => output { acquired: false, conflict: true }`. Or should
+   the parse node handle this implicitly via the `from` path extraction?
 
-2. **Rate limit handling**: Should `@response(429, ...)` compose with `@retry`
-   to auto-generate retry-after logic? (Recommendation: yes, but v2.)
+2. **Protocol stack defaults**: Should the HTTP layer contribute default
+   `response` entries (5xx → ServerError) that the service layer can
+   override? This avoids repeating `500 => ServerError` on every operation.
 
-3. **Versioning**: Should `@response` declarations be version-scoped
-   (`@response(404, NotFound) @since("2022-11-28")`)? (Recommendation: defer
-   until we have a concrete use case for version-aware modeling.)
+3. **Rate limit composition**: Should `429 => RateLimited` entries compose
+   with a `retry` block (when implemented per Phase 3 of
+   `annotation-to-dag-modeling.md`) to auto-generate retry-after logic?

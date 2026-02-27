@@ -421,24 +421,27 @@ secrets and not regenerated on every codegen pass.
 ### Theme PC: Provider Response Contracts (mandatory error modeling)
 
 > Design doc: `docs/design/provider-contracts.md`
+> Aligns with: `docs/design/modeling/annotation-to-dag-modeling.md` Phase 2
 
 Services must model the actual provider API contract — not just the happy
 path. Every documented response code, error body shape, and failure mode
-gets declared via `@response` annotations. Testgen generates **mandatory**
-per-status-code test obligations. Supersedes RT-I1 and RT-I2.
+gets declared via structural `response { ... }` blocks on operations.
+The lowerer compiles these into classify_response nodes in the transport
+DAG. Testgen generates **mandatory** per-status-code test obligations.
+Supersedes RT-I1 and RT-I2.
 
 | ID | What | Size | Deps |
 |----|------|------|------|
-| PC-1 | **`@response` annotation parsing.** Add to `daglang-syntax`. `Vec<ResponseDecl>` on `OperationDef`. | M | — |
+| PC-1 | **`response` block parsing.** Add to `daglang-syntax`. `Vec<ResponseEntry>` on `OperationDef` (replaces `mock_response`). | M | — |
 | PC-2 | **Standard error types.** `dsl/std/errors.dag` — common HTTP, GitHub, GCP error shapes. | S | — |
-| PC-3 | **`@response` on all REST services.** 29 operations, provider doc references via `@doc`. | L | PC-1, PC-2 |
-| PC-4 | **`@exit` on all shell services.** Exit code → output type mapping. | M | PC-1 |
-| PC-5 | **Lowerer propagation.** `@response` → `ServiceOperationSpec` in lowered IR. | M | PC-1 |
+| PC-3 | **`response` blocks on all REST services.** 29 operations, `doc` references to provider API docs. | L | PC-1, PC-2 |
+| PC-4 | **`exit` blocks on all shell services.** Exit code → output type mapping. | M | PC-1 |
+| PC-5 | **Lowerer: populate `error_mappings` + classify_response node.** Wire `response` entries to existing `ErrorMapping` on `ServiceOperationSpec`. Generate classify_response node in transport DAG. | M | PC-1 |
 | PC-6 | **`GenericRestParseOp` status checking.** Route on status code before field extraction. Hard-fail on undeclared non-2xx. | M | PC-5 |
-| PC-7 | **`ProviderResponseContract` obligation.** New Bucket C obligation, one per declared `@response`. | M | PC-5 |
+| PC-7 | **`ProviderResponseContract` obligation.** New Bucket C obligation, one per `response` entry. | M | PC-5 |
 | PC-8 | **Testgen codegen for response contracts.** Per-status-code tests, mock body derived from response type. | L | PC-7 |
-| PC-9 | **Interface response contract inheritance.** Implementors inherit obligations from interface declarations. | M | PC-7 |
-| PC-10 | **Completeness enforcement.** Compiler requires ≥1 success + ≥1 error `@response` on every `transport rest {}` operation. | S | PC-1 |
+| PC-9 | **Interface response contract inheritance.** Implementors inherit obligations from interface `response` declarations. | M | PC-7 |
+| PC-10 | **Completeness enforcement.** Compiler requires ≥1 success + ≥1 error entry in `response` block on every `transport rest {}` operation. | S | PC-1 |
 
 ### Compiler Features (low priority)
 
