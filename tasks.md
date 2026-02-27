@@ -296,6 +296,26 @@ correctness, then testing + foundation.
 | 36 | RT36 | ✅ Deleted unused scaffolding: `RetryPolicy`, `ErrorMapping`, `BackoffStrategy` structs from lowerer, removed `retry_policy` field from `ServiceCallMetadata`, removed `error_mappings` field from `RestOperationSpec`, cleaned up 30+ `None`/`vec![]` initializations across 8 files. | S |
 | 37 | RT37 | ✅ Deleted underused abstractions: `Semiring` trait + impl + 5 tests (zero production consumers), `GraphicsMedium` trait (zero impls), `MarkupRenderer` trait (zero impls), `DocumentRenderer` trait (zero impls). Kept `PartialOrder`, `JoinSemilattice`, `MeetSemilattice`, `BoundedLattice`, `Lattice` (2+ production consumers each). | S |
 
+### Hack Deletion Queue (review-driven)
+
+Hacks, silent fallbacks, and missing-language-feature workarounds identified
+by code review. Each has a verified codebase location. Ordered: panics/safety
+first, then stringly-typed hacks, then language-feature gaps.
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 38 | RT38 | **No panics in lowering for user-authored DSL.** `derive_file_spec()` calls `FileOp::from_dsl_str(..).unwrap_or_else(\|\| panic!(...))` (`daglang-lower/src/lib.rs:5051-5052`). Replace with `LowerError::InvalidTransportSpec` (or similar) including service/op context + bad string. Add test: unknown file op → clean error message. | S | Pending | — |
+| 39 | RT39 | **`auth_input` must parse or error.** Parser at `daglang-syntax/src/parser.rs:338-343` silently advances on non-ident `auth_input` values (e.g. string literal → becomes `None`, changes semantics). Same pattern for `auth` at lines 331-336. Replace `else { self.advance(); }` with parse error "expected identifier for auth_input". Add test for non-ident value. | S | Pending | — |
+| 40 | RT40 | **Structural optionality for shell TrimStdout.** `resolve_service.rs:570` detects optional output via `f.type_id.ends_with('?')` — stringly-typed. Replace with structured optionality flag or port cardinality from IR/spec. Non-zero→Skipped should only apply when the operation explicitly declares that mapping, not for all optional outputs. | S | Pending | — |
+| 41 | RT41 | **Explicit exit mapping for shell SplitLines.** RT-I4 kept "non-zero → empty list" for SplitLines (`resolve_service.rs:529-537`). This conflates "command failed" with "no results" for non-`find` operations. Replace with explicit per-operation "acceptable non-zero exits" declaration (aligns with PC-4 `exit` blocks). Add test: exit=1 + non-empty stderr should error unless explicitly allowed. | S | Pending | PC-4 |
+| 42 | RT42 | **Pipe methods first-class in AST.** `should_track_call_name()` in `ast_utils.rs:42-76` hard-codes 20+ pipe method names as a string allowlist shared between typechecker and lowerer. Introduce `PipeMethod` enum (or similar) in AST/IR — single authoritative registry. Acceptance: delete the allowlist and still typecheck/evaluate same corpus. | M | Pending | — |
+| 43 | RT43 | **Nested field access in lowerer.** Lowerer only supports single-level field access for auth_input wiring. Workaround: `extract_secret` fn + alias `secret: Secret` output on `acquire_gcp_secret` (`dsl/cloud/gcp/credential.dag:28-31`). Implement `x.y` (and `x.y.z`) field access in lowerer/evaluator, then delete `extract_secret` and alias outputs. | M | Pending | — |
+| 44 | RT44 | **Expand `evaluate_fn_body` coverage.** `local_auth()` func is too complex for fn_body extraction — returns Skipped in Real mode (`gist_recent_regressions.rs:73-74`). Either (a) teach `evaluate_fn_body` to support effectful conditionals used in `local_auth()`, or (b) restructure `local_auth()` into extractable pieces. Regression test: Real mode must not silently return Skipped for credential chain. | M | Pending | — |
+| 45 | RT45 | **Typed enum values from `evaluate_fn_body`.** Fidelity classifier results come back as `Value::Str` requiring `TestClass::parse()` / `FermiCost::parse()` round-trips (`fidelity.rs:93-100`). Add `Value::Enum { ty, variant }` (or tagged union encoding) so evaluator returns structured enums. Delete parse round-trips. | M | Pending | — |
+| 46 | RT46 | **Delete fidelity silent fallbacks.** `unwrap_or(TestClass::Unit)` and `unwrap_or(FermiCost::XS)` in `fidelity.rs:95,100` silently default on classification failure. Replace with explicit error (or force explicit "unknown" classification). Add CI guard: grep for these patterns outside tests → fail. | S | Pending | RT45 |
+| 47 | RT47 | **Proper multi-param lambda parsing.** Speculative/backtracking parse at `parser.rs:2590-2628` manually manages `speculative_pos` index. Add a lookahead routine that decides "this is a lambda" without mutating parser state (or a formal backtracking helper). Test matrix: `(a,b)=>`, `(a, b) =>`, `(a,b,) =>` (if allowed), `(a) =>`, `(a,b)` (non-lambda). | M | Pending | — |
+| 48 | RT48 | **Ship PC-1 + PC-4 early.** `response { STATUS => TYPE }` and `exit { CODE => BEHAVIOR }` structural blocks replace `@mock_response` stub (`MockResponseDef` parser always returns empty Vec per `parser.rs:1275,1410`) and implicit shell exit semantics. Priority: PC-1 (parse response blocks) → PC-4 (parse exit blocks) → remove implicit SplitLines/TrimStdout fallbacks. | L | Pending | — |
+
 ---
 
 ## Red Unqueued
