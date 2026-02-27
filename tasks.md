@@ -231,9 +231,9 @@ correctness, then testing + foundation.
 | 7 | RT7 | **Port namespace typing**: `PortCategory` enum (Resource/Tool/Internal/User) + methods on `PortName` (`is_resource()`, `is_tool()`, `is_internal()`, `is_user()`, `bare_name()`, `category()`). Migrated 14 string-match sites across 12 files. | M | Done | — |
 | 8 | RT8 | **TransportRole enum** in resolve.rs. `TransportRole::from_name()` parses `service_transport::{prepare/execute/parse}::` once, replaces 6 `starts_with()` checks in `resolve_domain()` and `resolve_service_transport()`. Match dispatch uses `(spec, role)` tuple instead of `(spec, is_prepare, is_parse)` booleans. | M | Done | — |
 | 9 | RT9 | **Virtual I/O DSL types** (`dsl/std/virtual_io.dag`). VirtualFsSetup, ShellCassette, HttpStub, VirtualBackendConfig, ShellCassetteRegistry, HttpStubRegistry, TcpLoopback, TcpLoopbackRegistry. HttpMethod enum for request matching. VirtualBackendConfig composes all registries. | M | Done | — |
-| 10 | RT10 | **Shell cassette registry** in VirtualTransportBackend. | S | Pending | — |
-| 11 | RT11 | **HTTP response registry** in VirtualTransportBackend. In-process request→response matching. | S | Pending | — |
-| 12 | RT12 | **TCP loopback registry** in VirtualTransportBackend. | S | Pending | — |
+| 10 | RT10 | **Shell cassette registry** in VirtualTransportBackend. `ShellCassette` struct, `add_shell_cassette()`, `match_shell_cassette()`. Exact (command, args) matching with wildcard (empty args). Cassettes checked before built-in handlers (find, printenv, sh). 3 tests. | S | Done | — |
+| 11 | RT11 | **HTTP response registry** in VirtualTransportBackend. `HttpStub` struct with method/path matching, `add_http_stub()`. `execute_rest()` and `execute_http()` dispatch to stub registry. Path prefix and exact matching. JSON body parsing for REST, raw for HTTP. 2 tests. | S | Done | — |
+| 12 | RT12 | **TCP loopback registry** in VirtualTransportBackend. `TcpLoopback` struct, `add_tcp_loopback()`, `execute_tcp()`. Port-based matching, canned response data. 1 test. | S | Done | — |
 | 13 | RT13 | **Derive mock registries** from `@mock_response` annotations. Auto-generate VirtualBackendConfig per workflow. | M | Pending | RT9 |
 | 14 | RT14 | **S-tier codegen** in `build_fidelity_ladder_section`. Real mode + virtual backends via TransportBackendGuard. | M | Pending | RT10:13 |
 | 15 | RT15 | **M-tier codegen** (sandboxed tempdir, `#[cfg(feature = "sandboxed_tests")]`). | M | Pending | RT14 |
