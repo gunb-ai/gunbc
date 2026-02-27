@@ -51,6 +51,8 @@ pub fn execute_transport(request: &TransportRequest) -> Result<TransportResponse
 /// Uses the HTTP executor and parses JSON responses.
 fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
     // Apply credential (if any) to headers before conversion.
+    // When called through TransportOps::Execute, auth is already applied
+    // and request.auth is None. This path exists for standalone callers.
     let mut request = request.clone();
     if let Some(cred) = request.auth.take() {
         cred.apply(&mut request);

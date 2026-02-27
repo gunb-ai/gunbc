@@ -17,7 +17,7 @@ use gunbc_exec::{
 };
 use gunbc_ir::transport::{
     AuthScheme, Credential, FileRequest, LocalRequest, RestRequest, Secret, ShellRequest,
-    TransportRequest, TransportResponse,
+    ShellResponse, TransportRequest, TransportResponse,
 };
 use gunbc_ir::{SecretString, Value};
 
@@ -168,8 +168,8 @@ impl Executable for GenericRestPrepareOp {
 
         // 6. Wire credential to request.auth when auth_scheme is declared.
         // The transport executor's fallback path (`r.auth.take()`) applies it.
-        #[allow(clippy::disallowed_methods)] // Approved: transport boundary — credential applied to outbound request
         if let Some(ref cred_field) = credential_field {
+            #[allow(clippy::disallowed_methods)] // Approved: transport boundary — credential applied to outbound request
             if let Some(cred_value) = inputs.get(cred_field) {
                 let token = match cred_value {
                     Value::Secret(s) => s.expose_plaintext_for_transport().to_string(),
@@ -552,6 +552,17 @@ impl Executable for GenericShellParseOp {
                     }
 
                     ShellOutputParsing::TrimStdout => {
+                        // Fail on non-zero exit when the output is a Secret — an empty
+                        // token from a failed credential fetch must not propagate silently.
+                        let is_secret_output = self
+                            .spec
+                            .output_fields
+                            .first()
+                            .map(|f| f.type_id == "Secret" || f.is_secret)
+                            .unwrap_or(false);
+                        if !shell.success() && is_secret_output {
+                            return Err(self.shell_exit_error(shell));
+                        }
                         let field = self.spec.output_fields.first();
                         let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
                         let text = shell.stdout.trim().to_string();
@@ -622,6 +633,43 @@ impl Executable for GenericShellParseOp {
                 None,
             )),
         }
+    }
+}
+
+impl GenericShellParseOp {
+    /// Build an error for a non-zero shell exit code.
+    fn shell_exit_error(&self, shell: &ShellResponse) -> ExecError {
+        let stderr_excerpt = shell
+            .stderr
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("(no stderr)")
+            .to_string();
+        let command = self
+            .spec
+            .argv_template
+            .iter()
+            .filter_map(|s| match s {
+                ArgvSegment::Literal(l) => Some(l.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        decorate_service_failure(
+            ExecError::new(format!(
+                "shell command failed (exit {}): {}",
+                shell.exit_code, stderr_excerpt,
+            )),
+            ServiceCallMetadata {
+                provider: self.service_name.clone(),
+                operation: self.operation_name.clone(),
+            },
+            TransportContext::Shell {
+                exit_code: Some(shell.exit_code),
+                command,
+            },
+            None,
+        )
     }
 }
 

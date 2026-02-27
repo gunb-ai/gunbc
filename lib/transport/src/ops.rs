@@ -59,9 +59,15 @@ impl Executable for TransportOps {
 
                 let mut request = require_request(&inputs, "request")?;
 
-                // Apply credentials if provided via `res:credential`.
-                // Accepts either a full Credential map or a raw Secret/String
-                // (from profile bindings), defaulting to Bearer scheme.
+                // Apply credentials. Two sources, checked in order:
+                //
+                // 1. `res:credential` port — profile-binding auth (from `provides auth`).
+                // 2. `request.auth` field — operation-level auth (from `auth_token: Secret`
+                //    input, set by GenericRestPrepareOp when the service has `config { auth }`).
+                //
+                // Note: executor.rs::execute_rest() also applies `request.auth` for standalone
+                // transport calls that bypass the DAG executor. When called from here, that
+                // path is a no-op since we already take auth below.
                 if let TransportRequest::Rest(ref mut r) = request {
                     if let Some(cred_value) = inputs.get("res:credential") {
                         match Credential::try_from(cred_value) {

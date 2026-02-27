@@ -248,3 +248,76 @@ fn gist_recent_end_to_end_emits_gist_url() {
         "gist-recent should diff from the oldest commit in the recent window"
     );
 }
+
+#[test]
+fn gist_recent_auth_token_reaches_prepare_node() {
+    let dag = build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist_recent")
+        .expect("gist-recent graph should build");
+
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let backend = Arc::new(GistRecentBackend {
+        requests: requests.clone(),
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let mut input_mocks = BoundaryMocks::new();
+    let entrypoints = detect_entrypoints(&dag);
+    for (node_id, port_name, _) in entrypoints.entrypoint_ports {
+        match port_name.0.as_str() {
+            "since" => input_mocks.set_input(
+                node_id.0.clone(),
+                port_name.0.clone(),
+                Value::Str("3.days.ago".into()),
+            ),
+            "public" => {
+                input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), Value::Bool(false))
+            }
+            _ => {}
+        }
+    }
+
+    let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))
+        .expect("gist-recent execution should succeed with mocked backend");
+
+    let gist_prepare = log
+        .entries
+        .iter()
+        .find(|entry| {
+            entry
+                .node_id
+                .starts_with("prepare_transport_services_github_gist_github_Gist_Create")
+        })
+        .expect("gist prepare node should be present");
+
+    // Verify that auth_token input was present on the prepare node
+    let input_keys: Vec<&String> = gist_prepare
+        .inputs
+        .as_ref()
+        .map(|m| m.keys().collect::<Vec<_>>())
+        .unwrap_or_default();
+    assert!(
+        gist_prepare
+            .inputs
+            .as_ref()
+            .is_some_and(|m| m.contains_key("auth_token")),
+        "gist prepare node must receive auth_token input. Got inputs: {input_keys:?}",
+    );
+
+    // Verify the REST request has a valid Authorization: Bearer header
+    let captured = requests.lock().expect("capture lock");
+    let gist_request = captured.iter().find(|r| {
+        matches!(r, TransportRequest::Rest(rest) if rest.url.ends_with("/gists"))
+    });
+    let gist_rest = match gist_request {
+        Some(TransportRequest::Rest(rest)) => rest,
+        _ => panic!("no REST request to /gists was captured"),
+    };
+    let auth_header = gist_rest
+        .headers
+        .get("Authorization")
+        .expect("REST request to /gists must include Authorization header");
+    assert!(
+        auth_header.starts_with("Bearer "),
+        "Authorization header must be Bearer token, got: {auth_header:?}",
+    );
+}
