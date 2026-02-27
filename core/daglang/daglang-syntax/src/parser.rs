@@ -328,6 +328,14 @@ impl Parser {
                                 self.advance();
                             }
                         }
+                        "base_path" => {
+                            if let TokenKind::Str(s) = &self.peek().kind {
+                                config.base_path = Some(s.clone());
+                                self.advance();
+                            } else {
+                                self.advance();
+                            }
+                        }
                         "auth" => {
                             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                                 config.auth = Some(self.expect_ident()?);

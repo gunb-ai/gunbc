@@ -559,6 +559,7 @@ pub mod ast {
     pub struct ServiceConfig {
         pub endpoint: Option<String>,
         pub auth: Option<String>,
+        pub base_path: Option<String>,
     }
 
     #[derive(Debug, Clone)]

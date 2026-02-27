@@ -10,7 +10,11 @@
 module services.github.pull_request
 
 service github.PullRequest {
-  config { endpoint: "https://api.github.com", auth: BearerToken }
+  config {
+    endpoint: "https://api.github.com"
+    auth: BearerToken
+    base_path: "/repos/\{owner\}/\{repo\}"
+  }
 
   operation Create {
     input {
@@ -29,7 +33,7 @@ service github.PullRequest {
       node_id: String from "node_id"
       head_sha: String from "head.sha"
     }
-    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls" }
+    transport rest { method: POST, path: "/pulls" }
   }
 
   operation Get {
@@ -49,7 +53,7 @@ service github.PullRequest {
       mergeable: Bool? from "mergeable"
       merged: Bool from "merged"
     }
-    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}" }
+    transport rest { method: GET, path: "/pulls/\{number\}" }
   }
 
   operation AddComment {
@@ -63,7 +67,7 @@ service github.PullRequest {
       id: Int from "id"
       url: String from "html_url"
     }
-    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{number\}/comments" }
+    transport rest { method: POST, path: "/issues/\{number\}/comments" }
   }
 
   operation Merge {
@@ -80,7 +84,7 @@ service github.PullRequest {
       sha: String from "sha"
       message: String from "message"
     }
-    transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/merge" }
+    transport rest { method: PUT, path: "/pulls/\{number\}/merge" }
   }
 
   operation ListFiles {
@@ -93,7 +97,7 @@ service github.PullRequest {
     output {
       files: Json
     }
-    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/files" }
+    transport rest { method: GET, path: "/pulls/\{number\}/files" }
   }
 
   operation RequestReview {
@@ -107,7 +111,7 @@ service github.PullRequest {
     output {
       url: String from "html_url"
     }
-    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/requested_reviewers" }
+    transport rest { method: POST, path: "/pulls/\{number\}/requested_reviewers" }
   }
 
   operation ListReviews {
@@ -119,7 +123,7 @@ service github.PullRequest {
     output {
       reviews: Json
     }
-    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/reviews" }
+    transport rest { method: GET, path: "/pulls/\{number\}/reviews" }
   }
 }
 

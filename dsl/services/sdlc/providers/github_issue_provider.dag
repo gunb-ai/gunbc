@@ -25,6 +25,7 @@ service github.IssueProvider : IssueProvider {
   config {
     endpoint: String = "https://api.github.com"
     auth: BearerToken
+    base_path: "/repos/\{owner\}/\{repo\}"
     owner: NonEmptyStr                 // GitHub org or user
     repo: NonEmptyStr                  // Repository name
   }
@@ -39,7 +40,7 @@ service github.IssueProvider : IssueProvider {
     output {
       issues: List<TrackedIssue>
     }
-    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues" }
+    transport rest { method: GET, path: "/issues" }
   }
 
   // --- Single issue ------------------------------------------------------
@@ -50,7 +51,7 @@ service github.IssueProvider : IssueProvider {
       issue: TrackedIssue
       found: Bool
     }
-    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
+    transport rest { method: GET, path: "/issues/\{id\}" }
   }
 
   // --- Create ------------------------------------------------------------
@@ -64,7 +65,7 @@ service github.IssueProvider : IssueProvider {
     output {
       issue: TrackedIssue
     }
-    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues" }
+    transport rest { method: POST, path: "/issues" }
   }
 
   // --- Comment (idempotent via marker) -----------------------------------
@@ -79,7 +80,7 @@ service github.IssueProvider : IssueProvider {
       comment_id: NonEmptyStr
       ok: Bool
     }
-    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/comments" }
+    transport rest { method: POST, path: "/issues/\{id\}/comments" }
   }
 
   // --- Set labels (replace full set) ------------------------------------
@@ -90,7 +91,7 @@ service github.IssueProvider : IssueProvider {
       labels: List<String>
     }
     output { ok: Bool }
-    transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/labels" }
+    transport rest { method: PUT, path: "/issues/\{id\}/labels" }
   }
 
   // --- Close (idempotent) ------------------------------------------------
@@ -98,7 +99,7 @@ service github.IssueProvider : IssueProvider {
   operation close {
     input { id: NonEmptyStr }
     output { ok: Bool }
-    transport rest { method: PATCH, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
+    transport rest { method: PATCH, path: "/issues/\{id\}" }
   }
 
   // --- List events -------------------------------------------------------
@@ -109,7 +110,7 @@ service github.IssueProvider : IssueProvider {
       since: String?
     }
     output { events: List<IssueEvent> }
-    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/events" }
+    transport rest { method: GET, path: "/issues/\{id\}/events" }
   }
 }
 
