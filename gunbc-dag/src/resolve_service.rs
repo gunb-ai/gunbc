@@ -18,7 +18,7 @@ use gunbc_exec::{
 use gunbc_ir::transport::{
     FileRequest, LocalRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
 };
-use gunbc_ir::{SecretString, Value};
+use gunbc_ir::{AuthScheme, Credential, Secret, SecretString, Value};
 
 // ============================================================================
 // REST
@@ -50,6 +50,19 @@ impl Executable for GenericRestPrepareOp {
         }
 
         ensure_required_profile_config_inputs(&self.spec, &inputs)?;
+
+        // 0. Identify the credential field when auth_scheme is configured.
+        // When a service declares `config { auth: BearerToken }`, the Secret-typed
+        // input field is the credential. We extract it here so it can be:
+        //   (a) excluded from the JSON body (it's not payload data), and
+        //   (b) attached to `request.auth` for the execute node to apply.
+        let credential_field_name: Option<String> = self.spec.auth_scheme.as_ref().and_then(|_| {
+            self.spec
+                .input_fields
+                .iter()
+                .find(|f| f.is_secret)
+                .map(|f| f.name.clone())
+        });
 
         // 1. Interpolate path parameters.
         let mut path = self.spec.path_template.clone();
@@ -123,6 +136,10 @@ impl Executable for GenericRestPrepareOp {
                     if field.is_path_param || header_fields.contains(&field.name) {
                         continue;
                     }
+                    // Credential fields are wired to request.auth, not the body.
+                    if credential_field_name.as_deref() == Some(&field.name) {
+                        continue;
+                    }
                     if let Some(value) = inputs.get(&field.name) {
                         insert_value_as_json(&mut map, &field.name, value);
                     } else if let Some(default) = &field.default {
@@ -148,6 +165,44 @@ impl Executable for GenericRestPrepareOp {
         for (key, value) in &self.spec.headers {
             let header_value = interpolate_template(value, &inputs, &self.spec.input_fields);
             request = request.header(key, header_value);
+        }
+
+        // 6. Attach credential to request when auth_scheme is configured.
+        // The execute node's fallback path (`r.auth.take()`) applies the
+        // credential at transport boundary time via `Credential::apply()`.
+        //
+        // RT2: fail-closed — when auth_scheme is declared, a missing or empty
+        // credential is a hard error, not a silent unauthenticated request.
+        if let (Some(scheme_str), Some(cred_field)) =
+            (&self.spec.auth_scheme, &credential_field_name)
+        {
+            let token_value = inputs.get(cred_field);
+            #[allow(clippy::disallowed_methods)]
+            // Approved: transport boundary — credential extracted for auth header
+            let token = match token_value {
+                Some(Value::Secret(s)) => s.expose_plaintext_for_transport().to_string(),
+                Some(Value::Str(s)) => s.clone(),
+                Some(_) => String::new(),
+                None => String::new(),
+            };
+            if token.is_empty() {
+                return Err(ExecError::new(format!(
+                    "service requires authentication (auth_scheme: {scheme_str}) \
+                     but credential field `{cred_field}` is empty or missing. \
+                     Refusing to send unauthenticated request to {}{}",
+                    self.spec.endpoint, self.spec.path_template,
+                )));
+            }
+            let scheme = match scheme_str.as_str() {
+                "BearerToken" | "Bearer" => AuthScheme::Bearer,
+                "Basic" => AuthScheme::Basic {
+                    username: String::new(),
+                },
+                other => AuthScheme::Header {
+                    name: other.to_string(),
+                },
+            };
+            request.auth = Some(Credential::new(Secret::static_value(token), scheme));
         }
 
         OutputMap::new()
@@ -948,6 +1003,18 @@ impl Executable for GenericFilePrepareOp {
                     .unwrap_or_default();
                 FileRequest::write(path, content)
             }
+            "APPEND" => {
+                let content = inputs
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                FileRequest::append(path, content)
+            }
+            "DELETE" => FileRequest::delete(path),
+            "EXISTS" => FileRequest::exists(path),
+            "CREATE_DIR" => FileRequest::create_dir(path),
+            "GLOB" => FileRequest::glob(path),
+            "METADATA" => FileRequest::metadata(path),
             other => {
                 return Err(ExecError::new(format!(
                     "GenericFilePrepare: unknown file operation `{other}`"
@@ -985,8 +1052,34 @@ impl Executable for GenericFileParseOp {
                             let content = file_resp.content.as_deref().unwrap_or_default();
                             out = out.str("content", content);
                         }
-                        "written" => {
-                            out = out.bool("written", file_resp.success);
+                        "written" | "deleted" | "created" | "appended" => {
+                            out = out.bool(&field.name, file_resp.success);
+                        }
+                        "exists" => {
+                            let exists = file_resp.exists.unwrap_or(false);
+                            out = out.bool("exists", exists);
+                        }
+                        "paths" => {
+                            // Glob results: content is newline-separated paths.
+                            let paths: Vec<Value> = file_resp
+                                .content
+                                .as_deref()
+                                .unwrap_or_default()
+                                .lines()
+                                .filter(|l| !l.is_empty())
+                                .map(|l| Value::Str(l.to_string()))
+                                .collect();
+                            out = out.value("paths", Value::List(paths));
+                        }
+                        "modified_ms" => {
+                            // Metadata results: content is millis since epoch.
+                            let ms: i64 = file_resp
+                                .content
+                                .as_deref()
+                                .unwrap_or("0")
+                                .parse()
+                                .unwrap_or(0);
+                            out = out.int("modified_ms", ms);
                         }
                         other => {
                             let content = file_resp.content.as_deref().unwrap_or_default();
@@ -1858,6 +1951,252 @@ mod tests {
         assert_eq!(outputs.get("content"), Some(&Value::Skipped));
     }
 
+    // ── RT3: File transport completeness ───────────────────────────
+
+    #[test]
+    fn file_prepare_exists() {
+        let spec = FileOperationSpec {
+            operation: "EXISTS".to_string(),
+            path_template: "{path}".to_string(),
+            input_fields: vec![FieldSpec {
+                name: "path".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: true,
+            }],
+            output_fields: vec![OutputFieldSpec {
+                name: "exists".to_string(),
+                type_id: "Bool".to_string(),
+                json_path: "exists".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+        };
+        let op = GenericFilePrepareOp { spec };
+        let mut inputs = HashMap::new();
+        inputs.insert("path".to_string(), Value::Str("/tmp/check.txt".to_string()));
+
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("request").unwrap() {
+            Value::Request(TransportRequest::File(r)) => {
+                assert_eq!(r.operation, gunbc_ir::transport::FileOp::Exists);
+                assert_eq!(r.path, "/tmp/check.txt");
+            }
+            other => panic!("expected File request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_prepare_create_dir() {
+        let spec = FileOperationSpec {
+            operation: "CREATE_DIR".to_string(),
+            path_template: "{path}".to_string(),
+            input_fields: vec![FieldSpec {
+                name: "path".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: true,
+            }],
+            output_fields: vec![OutputFieldSpec {
+                name: "created".to_string(),
+                type_id: "Bool".to_string(),
+                json_path: "created".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+        };
+        let op = GenericFilePrepareOp { spec };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "path".to_string(),
+            Value::Str("/tmp/new_dir".to_string()),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("request").unwrap() {
+            Value::Request(TransportRequest::File(r)) => {
+                assert_eq!(r.operation, gunbc_ir::transport::FileOp::CreateDir);
+            }
+            other => panic!("expected File request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_prepare_delete() {
+        let spec = FileOperationSpec {
+            operation: "DELETE".to_string(),
+            path_template: "{path}".to_string(),
+            input_fields: vec![FieldSpec {
+                name: "path".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: true,
+            }],
+            output_fields: vec![OutputFieldSpec {
+                name: "deleted".to_string(),
+                type_id: "Bool".to_string(),
+                json_path: "deleted".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+        };
+        let op = GenericFilePrepareOp { spec };
+        let mut inputs = HashMap::new();
+        inputs.insert("path".to_string(), Value::Str("/tmp/old.txt".to_string()));
+
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("request").unwrap() {
+            Value::Request(TransportRequest::File(r)) => {
+                assert_eq!(r.operation, gunbc_ir::transport::FileOp::Delete);
+            }
+            other => panic!("expected File request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_prepare_append() {
+        let spec = FileOperationSpec {
+            operation: "APPEND".to_string(),
+            path_template: "{path}".to_string(),
+            input_fields: vec![
+                FieldSpec {
+                    name: "path".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: true,
+                },
+                FieldSpec {
+                    name: "content".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: false,
+                },
+            ],
+            output_fields: vec![OutputFieldSpec {
+                name: "appended".to_string(),
+                type_id: "Bool".to_string(),
+                json_path: "appended".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+        };
+        let op = GenericFilePrepareOp { spec };
+        let mut inputs = HashMap::new();
+        inputs.insert("path".to_string(), Value::Str("/tmp/log.txt".to_string()));
+        inputs.insert(
+            "content".to_string(),
+            Value::Str("new line\n".to_string()),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("request").unwrap() {
+            Value::Request(TransportRequest::File(r)) => {
+                assert_eq!(r.operation, gunbc_ir::transport::FileOp::Append);
+                assert_eq!(r.content.as_deref(), Some("new line\n"));
+            }
+            other => panic!("expected File request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_prepare_glob() {
+        let spec = FileOperationSpec {
+            operation: "GLOB".to_string(),
+            path_template: "{path}".to_string(),
+            input_fields: vec![FieldSpec {
+                name: "path".to_string(),
+                type_id: "String".to_string(),
+                default: None,
+                is_secret: false,
+                is_path_param: true,
+            }],
+            output_fields: vec![OutputFieldSpec {
+                name: "paths".to_string(),
+                type_id: "List<String>".to_string(),
+                json_path: "paths".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+        };
+        let op = GenericFilePrepareOp { spec };
+        let mut inputs = HashMap::new();
+        inputs.insert("path".to_string(), Value::Str("src/**/*.rs".to_string()));
+
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("request").unwrap() {
+            Value::Request(TransportRequest::File(r)) => {
+                assert_eq!(r.operation, gunbc_ir::transport::FileOp::Glob);
+            }
+            other => panic!("expected File request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn file_parse_exists_result() {
+        use gunbc_ir::transport::file::FileResponse;
+        let spec = FileOperationSpec {
+            operation: "EXISTS".to_string(),
+            path_template: "{path}".to_string(),
+            input_fields: vec![],
+            output_fields: vec![OutputFieldSpec {
+                name: "exists".to_string(),
+                type_id: "Bool".to_string(),
+                json_path: "exists".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+        };
+        let op = GenericFileParseOp { spec };
+        let resp = FileResponse::exists_result("/tmp/check.txt", true);
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(resp)),
+        );
+        let outputs = op.execute(inputs).unwrap();
+        assert_eq!(outputs.get("exists"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn file_parse_glob_result() {
+        use gunbc_ir::transport::file::FileResponse;
+        let spec = FileOperationSpec {
+            operation: "GLOB".to_string(),
+            path_template: "{path}".to_string(),
+            input_fields: vec![],
+            output_fields: vec![OutputFieldSpec {
+                name: "paths".to_string(),
+                type_id: "List<String>".to_string(),
+                json_path: "paths".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+        };
+        let op = GenericFileParseOp { spec };
+        let resp = FileResponse::glob_result(
+            "src/**/*.rs",
+            vec!["src/lib.rs".to_string(), "src/main.rs".to_string()],
+        );
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(resp)),
+        );
+        let outputs = op.execute(inputs).unwrap();
+        match outputs.get("paths") {
+            Some(Value::List(items)) => {
+                let strs: Vec<&str> = items.iter().filter_map(Value::as_str).collect();
+                assert_eq!(strs, vec!["src/lib.rs", "src/main.rs"]);
+            }
+            other => panic!("expected List, got {other:?}"),
+        }
+    }
+
     // ── InterfaceStub ops (IS-6 / IS-8) ──────────────────────────────
 
     #[test]
@@ -2042,6 +2381,180 @@ mod tests {
                 assert!(s.is_empty(), "empty stdout should produce empty secret");
             }
             other => panic!("expected Secret, got {other:?}"),
+        }
+    }
+
+    // ── RT1: Credential wiring ─────────────────────────────────────
+
+    /// Helper: gist-like spec with `config { auth: BearerToken }` and
+    /// an `auth_token: Secret` input field.
+    fn rest_spec_with_bearer_auth() -> RestOperationSpec {
+        RestOperationSpec {
+            endpoint: "https://api.github.com".to_string(),
+            method: "POST".to_string(),
+            path_template: "/gists".to_string(),
+            input_fields: vec![
+                FieldSpec {
+                    name: "description".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: false,
+                },
+                FieldSpec {
+                    name: "content".to_string(),
+                    type_id: "String".to_string(),
+                    default: None,
+                    is_secret: false,
+                    is_path_param: false,
+                },
+                FieldSpec {
+                    name: "auth_token".to_string(),
+                    type_id: "Secret".to_string(),
+                    default: None,
+                    is_secret: true,
+                    is_path_param: false,
+                },
+            ],
+            output_fields: vec![OutputFieldSpec {
+                name: "id".to_string(),
+                type_id: "String".to_string(),
+                json_path: "id".to_string(),
+                is_secret: false,
+                is_raw_body: false,
+            }],
+            body_template: None,
+            headers: vec![],
+            auth_scheme: Some("BearerToken".to_string()),
+            error_mappings: vec![],
+        }
+    }
+
+    #[test]
+    fn rest_prepare_wires_credential_to_request_auth() {
+        let op = GenericRestPrepareOp {
+            spec: rest_spec_with_bearer_auth(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "description".to_string(),
+            Value::Str("test gist".to_string()),
+        );
+        inputs.insert(
+            "content".to_string(),
+            Value::Str("hello world".to_string()),
+        );
+        inputs.insert(
+            "auth_token".to_string(),
+            Value::Secret(SecretString::new("ghp_test_token_123")),
+        );
+
+        let outputs = op.execute(inputs).unwrap();
+        let req = outputs.get("request").unwrap();
+        match req {
+            Value::Request(TransportRequest::Rest(r)) => {
+                // Credential must be set on request.auth
+                let cred = r.auth.as_ref().expect("request.auth should be set");
+                assert_eq!(
+                    cred.secret().expose_plaintext_for_transport(),
+                    "ghp_test_token_123"
+                );
+                assert!(
+                    matches!(cred.scheme(), &AuthScheme::Bearer),
+                    "scheme should be Bearer"
+                );
+                // auth_token must NOT leak into the JSON body
+                let body = r.body.as_ref().expect("body should be present");
+                assert!(
+                    body.get("auth_token").is_none(),
+                    "auth_token must not appear in request body"
+                );
+                // Non-auth fields should still be in the body
+                assert_eq!(body["description"], "test gist");
+                assert_eq!(body["content"], "hello world");
+            }
+            other => panic!("expected REST request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rest_prepare_fails_closed_on_empty_credential() {
+        let op = GenericRestPrepareOp {
+            spec: rest_spec_with_bearer_auth(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "description".to_string(),
+            Value::Str("test gist".to_string()),
+        );
+        inputs.insert(
+            "content".to_string(),
+            Value::Str("hello world".to_string()),
+        );
+        // Empty secret — should fail, not send unauthenticated
+        inputs.insert(
+            "auth_token".to_string(),
+            Value::Secret(SecretString::new("")),
+        );
+
+        let err = op
+            .execute(inputs)
+            .expect_err("empty credential with auth_scheme should fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("credential field `auth_token` is empty or missing"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn rest_prepare_fails_closed_on_missing_credential() {
+        let op = GenericRestPrepareOp {
+            spec: rest_spec_with_bearer_auth(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "description".to_string(),
+            Value::Str("test gist".to_string()),
+        );
+        inputs.insert(
+            "content".to_string(),
+            Value::Str("hello world".to_string()),
+        );
+        // auth_token completely missing — should fail
+        // (Note: auth_token is required so the has_missing_required check fires first,
+        // but this test verifies the auth_scheme check is also correct.)
+
+        // Since auth_token has no default and is not a config field, the missing-required
+        // check will skip. So we need to provide it as a non-secret empty value to reach
+        // the auth check.
+        inputs.insert("auth_token".to_string(), Value::Str(String::new()));
+
+        let err = op
+            .execute(inputs)
+            .expect_err("missing credential with auth_scheme should fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Refusing to send unauthenticated request"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn rest_prepare_no_auth_when_scheme_absent() {
+        let op = GenericRestPrepareOp {
+            spec: rest_spec_simple(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("name".to_string(), Value::Str("hello".to_string()));
+
+        let outputs = op.execute(inputs).unwrap();
+        let req = outputs.get("request").unwrap();
+        match req {
+            Value::Request(TransportRequest::Rest(r)) => {
+                assert!(r.auth.is_none(), "no auth when auth_scheme is not set");
+            }
+            other => panic!("expected REST request, got {other:?}"),
         }
     }
 

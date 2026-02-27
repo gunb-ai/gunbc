@@ -1977,9 +1977,9 @@ fn lower_typed_project_with_callable_scope(
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
     let mut service_registry = if callable_modules.is_some() && active_profile.is_none() {
         let required_service_calls = collect_required_service_call_keys(project, callable_modules);
-        add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))
+        add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))?
     } else {
-        add_service_transport_triplets(&mut builder, project, None)
+        add_service_transport_triplets(&mut builder, project, None)?
     };
     let data_values = build_data_values(project);
     add_dependency_edges(
@@ -5012,6 +5012,9 @@ fn derive_service_call_metadata(
         Some(TransportBinding::Shell { .. }) => ServiceTransportClass::ShellLocal,
         Some(TransportBinding::File { .. }) => ServiceTransportClass::FileBoundary,
         Some(TransportBinding::Local) => ServiceTransportClass::LocalDirect,
+        // RT4: Interface-implementing services use InterfaceStub when transport
+        // is absent — their transport is provided by profile bindings at deploy time.
+        None if service.implements.is_some() => ServiceTransportClass::InterfaceStub,
         None => ServiceTransportClass::Unknown,
     };
     let mut permissions = operation.permissions.clone();
@@ -5667,7 +5670,7 @@ fn add_service_transport_triplets(
     builder: &mut DagBuilder,
     project: &TypedProject,
     required_calls: Option<&HashSet<String>>,
-) -> ServiceEndpointRegistry {
+) -> Result<ServiceEndpointRegistry, LowerError> {
     let data_registry = build_data_registry(project);
     let mut registry = ServiceEndpointRegistry::default();
     for module in &project.modules {
@@ -5697,6 +5700,18 @@ fn add_service_transport_triplets(
                 }
                 let service_metadata =
                     derive_service_call_metadata(service, operation, &data_registry);
+
+                // RT4: fail on missing transport for non-interface services.
+                if matches!(
+                    service_metadata.transport,
+                    ServiceTransportClass::Unknown
+                ) {
+                    return Err(LowerError::MissingTransport {
+                        service: service.name.clone(),
+                        operation: operation.name.clone(),
+                    });
+                }
+
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
                     service.name, operation.name
@@ -5844,7 +5859,7 @@ fn add_service_transport_triplets(
             }
         }
     }
-    registry
+    Ok(registry)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -8787,11 +8802,17 @@ service FsStorage implements Storage {
 
     #[test]
     fn concrete_service_without_interface_lowers_transport_triplet_nodes() {
+        // RT4: service without interface AND without transport now requires
+        // a transport block. Use shell transport to make it concrete.
         let typed = typed_project_from_sources(&[(
             "dsl/services/shell.dag",
             r#"module sample.services
 service shell.Tools {
-  operation Echo(message: String) -> { output: String }
+  operation Echo {
+    input { message: String }
+    output { output: String }
+    transport shell { argv: ["echo", "{message}"] }
+  }
 }
 func run() -> { output: String } {
   result = shell.Tools.Echo(message: "hello")
@@ -8817,6 +8838,29 @@ func run() -> { output: String } {
                 && edge.to_node.0 == "sample.services::run"
                 && edge.to_port.0 == "__deps"
         }));
+    }
+
+    #[test]
+    fn rt4_missing_transport_on_non_interface_service_errors() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/shell.dag",
+            r#"module sample.services
+service shell.Tools {
+  operation Echo(message: String) -> { output: String }
+}
+func run() -> { output: String } {
+  result = shell.Tools.Echo(message: "hello")
+  return { output: result.output }
+}"#,
+        )]);
+        let err = lower_typed_project(&typed).expect_err("should fail on missing transport");
+        match err {
+            LowerError::MissingTransport { service, operation } => {
+                assert_eq!(service, "shell.Tools");
+                assert_eq!(operation, "Echo");
+            }
+            other => panic!("expected MissingTransport, got: {other}"),
+        }
     }
 
     #[test]
@@ -10903,7 +10947,11 @@ func prompt() -> { ok: Bool } {
             "dsl/services/dedup_cross.dag",
             r#"module sample.dedup
 service Echo {
-  operation Ping(message: String) -> { reply: String }
+  operation Ping {
+    input { message: String }
+    output { reply: String }
+    transport shell { argv: ["echo", "{message}"] }
+  }
 }
 func alpha(msg: String) -> { reply: String } {
   result = Echo.Ping(message: msg)
@@ -10955,7 +11003,11 @@ func beta(msg: String) -> { reply: String } {
             "dsl/services/dedup_same.dag",
             r#"module sample.dedup_same
 service Echo {
-  operation Ping(message: String) -> { reply: String }
+  operation Ping {
+    input { message: String }
+    output { reply: String }
+    transport shell { argv: ["echo", "{message}"] }
+  }
 }
 func dual(msg: String) -> { reply: String } {
   first = Echo.Ping(message: msg)

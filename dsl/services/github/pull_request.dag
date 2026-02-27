@@ -10,6 +10,7 @@
 module services.github.pull_request
 
 service github.PullRequest {
+  config { endpoint: "https://api.github.com", auth: BearerToken }
 
   operation Create {
     input {
@@ -20,6 +21,7 @@ service github.PullRequest {
       head: String
       base: String = "main"
       draft: Bool = false
+
     }
     output {
       number: Int from "number"
@@ -28,6 +30,7 @@ service github.PullRequest {
       node_id: String from "node_id"
       head_sha: String from "head.sha"
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls" }
   }
 
   operation Get {
@@ -35,6 +38,7 @@ service github.PullRequest {
       owner: String
       repo: String
       number: Int
+
     }
     output {
       number: Int from "number"
@@ -47,6 +51,7 @@ service github.PullRequest {
       mergeable: Bool? from "mergeable"
       merged: Bool from "merged"
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}" }
   }
 
   operation AddComment {
@@ -55,11 +60,13 @@ service github.PullRequest {
       repo: String
       number: Int
       body: String
+
     }
     output {
       id: Int from "id"
       url: String from "html_url"
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{number\}/comments" }
   }
 
   operation Merge {
@@ -70,12 +77,14 @@ service github.PullRequest {
       merge_method: String = "squash"
       commit_title: String?
       commit_message: String?
+
     }
     output {
       merged: Bool from "merged"
       sha: String from "sha"
       message: String from "message"
     }
+    transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/merge" }
   }
 
   operation ListFiles {
@@ -84,10 +93,12 @@ service github.PullRequest {
       repo: String
       number: Int
       per_page: Int = 100
+
     }
     output {
       files: Json
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/files" }
   }
 
   operation RequestReview {
@@ -97,10 +108,12 @@ service github.PullRequest {
       number: Int
       reviewers: List<String>?
       team_reviewers: List<String>?
+
     }
     output {
       url: String from "html_url"
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/requested_reviewers" }
   }
 
   operation ListReviews {
@@ -108,10 +121,12 @@ service github.PullRequest {
       owner: String
       repo: String
       number: Int
+
     }
     output {
       reviews: Json
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{number\}/reviews" }
   }
 }
 

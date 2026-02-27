@@ -6,6 +6,7 @@
 module services.llm.openai
 
 service llm.OpenAI {
+  config { endpoint: "https://api.openai.com/v1", auth: BearerToken }
 
   operation ChatCompletion {
     input {
@@ -13,6 +14,7 @@ service llm.OpenAI {
       messages: Json
       temperature: Float?
       max_tokens: Int?
+
     }
     output {
       content: String from "choices/0/message/content"
@@ -21,6 +23,7 @@ service llm.OpenAI {
       prompt_tokens: Int from "usage/prompt_tokens"
       completion_tokens: Int from "usage/completion_tokens"
     }
+    transport rest { method: POST, path: "/chat/completions" }
   }
 
   operation Responses {
@@ -29,6 +32,7 @@ service llm.OpenAI {
       input: Json
       instructions: String?
       max_output_tokens: Int?
+
     }
     output {
       content: String from "output/0/content/0/text"
@@ -36,6 +40,7 @@ service llm.OpenAI {
       output_tokens: Int from "usage/output_tokens"
       input_tokens: Int from "usage/input_tokens"
     }
+    transport rest { method: POST, path: "/responses" }
   }
 }
 
