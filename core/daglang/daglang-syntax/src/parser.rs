@@ -2587,9 +2587,56 @@ impl Parser {
                     self.advance();
                     return Ok(Expr::Record(None, Vec::new()));
                 }
-                let expr = self.parse_expr(0)?;
-                self.expect(&TokenKind::RParen)?;
-                Ok(expr)
+                // Try multi-param lambda: (a, b) => body
+                // Speculatively collect ident-comma sequences. If we see
+                // `)` followed by `=>`, it's a lambda; otherwise backtrack.
+                let save_pos = self.pos;
+                let save_errors = self.errors.len();
+                let mut params = Vec::new();
+                let mut is_lambda = false;
+                if let Some(first) = Self::token_kind_as_ident(&self.peek().kind) {
+                    let mut speculative_pos = self.pos;
+                    params.push(first);
+                    speculative_pos += 1; // skip first ident
+                    // Check for comma-separated idents
+                    while speculative_pos < self.tokens.len()
+                        && self.tokens[speculative_pos].kind == TokenKind::Comma
+                    {
+                        speculative_pos += 1; // skip comma
+                        if speculative_pos < self.tokens.len() {
+                            if let Some(name) =
+                                Self::token_kind_as_ident(&self.tokens[speculative_pos].kind)
+                            {
+                                params.push(name);
+                                speculative_pos += 1; // skip ident
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    // Check for ) => pattern
+                    if params.len() >= 2
+                        && speculative_pos < self.tokens.len()
+                        && self.tokens[speculative_pos].kind == TokenKind::RParen
+                        && speculative_pos + 1 < self.tokens.len()
+                        && self.tokens[speculative_pos + 1].kind == TokenKind::FatArrow
+                    {
+                        // Commit: advance past all params, commas, ), =>
+                        self.pos = speculative_pos + 2;
+                        is_lambda = true;
+                    }
+                }
+                if is_lambda {
+                    let body = self.parse_expr(0)?;
+                    Ok(Expr::Lambda(params, Box::new(body)))
+                } else {
+                    // Reset and parse as parenthesized expression
+                    self.pos = save_pos;
+                    self.errors.truncate(save_errors);
+                    let expr = self.parse_expr(0)?;
+                    self.expect(&TokenKind::RParen)?;
+                    Ok(expr)
+                }
             }
             TokenKind::LBracket => {
                 self.advance();
@@ -3105,6 +3152,35 @@ fn choose(mode: String) -> Int {
                     def.body.stmts.first(),
                     Some(Stmt::Let(_, Expr::Match(_, _)))
                 ));
+            }
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_fold_pipe_in_fn_body_is_not_lossy() {
+        let sf = parse_or_panic(
+            r#"module test
+type FermiDepth = Xs | S | M | L | Xl
+fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+  lhs
+}
+fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
+  depths |> fold(init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+}"#,
+        );
+        // fermi_max_of should be the third item (after module, type, fermi_max)
+        let fn_item = sf
+            .items
+            .iter()
+            .find(|item| matches!(&item.node, Item::FnDef(def) if def.name == "fermi_max_of"))
+            .expect("fermi_max_of fn should exist");
+        match &fn_item.node {
+            Item::FnDef(def) => {
+                assert!(
+                    !def.body.lossy,
+                    "fold pipe expression in fn body should NOT be lossy"
+                );
             }
             other => panic!("expected FnDef, got {other:?}"),
         }
