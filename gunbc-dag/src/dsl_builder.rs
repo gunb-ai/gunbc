@@ -372,4 +372,5 @@ mod tests {
             .expect("SDLC workflow should compile with unit_test profile");
         assert!(!dag.nodes.is_empty());
     }
+
 }

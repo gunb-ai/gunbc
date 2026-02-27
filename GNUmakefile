@@ -7,7 +7,7 @@
 # We include the generated Makefile to make all its targets available.
 #
 # To regenerate this file manually:
-#   cargo run -p gunbc-dag --bin gunbc-bootstrap -- --mode=ensure
+#   cargo run -p gunbc-dag --bin gunbc-bootstrap
 #
 # Or after initial bootstrap, use:
 #   make bootstrap
@@ -23,7 +23,7 @@ install:
 	cargo run -p gunbc-dag --bin gunbc-codegen -- codegen
 	@echo ""
 	@echo "Step 2/2: Generating Makefile and .gitignore..."
-	cargo run -p gunbc-dag --bin gunbc-bootstrap -- --mode=ensure
+	cargo run -p gunbc-dag --bin gunbc-bootstrap
 	@echo ""
 	@echo "Bootstrap complete. Run 'make help' to see available targets."
 

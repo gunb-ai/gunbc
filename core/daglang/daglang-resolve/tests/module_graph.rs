@@ -256,7 +256,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("workflows.gist".into(), 2),
         ("workflows.makegen".into(), 2),
         ("workflows.pragma".into(), 2),
-        ("workflows.sdlc".into(), 2),
+        ("workflows.sdlc".into(), 5),
         ("workflows.test_all".into(), 0),
     ]);
 

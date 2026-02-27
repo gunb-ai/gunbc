@@ -5184,15 +5184,9 @@ fn extract_headers_from_expr(expr: &Expr) -> Vec<(String, String)> {
 
 fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<RestOperationSpec> {
     let endpoint = service.config.endpoint.clone().unwrap_or_default();
-    let (method, raw_path) = match &operation.transport {
+    let (method, path_template) = match &operation.transport {
         Some(TransportBinding::Rest { method, path, .. }) => (method.clone(), path.clone()),
         _ => return None,
-    };
-
-    // Compose base_path + operation path when config.base_path is present.
-    let path_template = match &service.config.base_path {
-        Some(base) => format!("{base}{raw_path}"),
-        None => raw_path,
     };
 
     let headers = match &operation.transport {
