@@ -2861,14 +2861,12 @@ fn infer_fn_obligation(name: &str, kind: CallableKind, outputs: &[Port]) -> Obli
     ObligationCategory::PureGeneric
 }
 
-const OUTPUT_PASSTHROUGH_PREFIX: &str = "__out:";
-
 fn output_passthrough_input_name(output_name: &str) -> String {
-    format!("{OUTPUT_PASSTHROUGH_PREFIX}{output_name}")
+    format!("{}{output_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX)
 }
 
 fn is_output_passthrough_input(port_name: &str) -> bool {
-    port_name.starts_with(OUTPUT_PASSTHROUGH_PREFIX)
+    port_name.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX)
 }
 
 fn lower_callable(

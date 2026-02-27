@@ -105,6 +105,8 @@ pub const RESOURCE_API_NETWORK: &str = "res:api:network";
 pub const RESOURCE_REPO: &str = "res:repo";
 /// Canonical coarse target resource port.
 pub const RESOURCE_TARGET: &str = "res:target";
+/// Canonical credential resource port (wired by `auth_input`).
+pub const RESOURCE_CREDENTIAL: &str = "res:credential";
 /// Canonical environment output port for read filesystem handles.
 pub const FILE_HANDLE_READ_PORT: &str = "file:read";
 /// Canonical environment output port for write filesystem handles.

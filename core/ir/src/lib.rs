@@ -169,7 +169,8 @@ pub use resource::{
     resource_file_port, resource_port, resource_target_port, AccessMode, DagResource, Resource,
     ResourceAccess, ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
     API_NETWORK_HANDLE_PORT, FILE_HANDLE_READ_PORT, FILE_HANDLE_WRITE_PORT, RESOURCE_API_NETWORK,
-    RESOURCE_FILE, RESOURCE_FILE_PREFIX, RESOURCE_PORT_PREFIX, RESOURCE_REPO, RESOURCE_TARGET,
+    RESOURCE_CREDENTIAL, RESOURCE_FILE, RESOURCE_FILE_PREFIX, RESOURCE_PORT_PREFIX, RESOURCE_REPO,
+    RESOURCE_TARGET,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbol::ProgramSymbolId;

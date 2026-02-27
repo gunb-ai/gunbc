@@ -279,7 +279,7 @@ correctness, then testing + foundation.
 | # | ID | What | Size |
 |---|-----|------|------|
 | 24 | RT24 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
-| 25 | RT25 | String constants: central consts in `core/ir/src/signature.rs`. | S |
+| 25 | RT25 | ✅ String constants centralized: `PortName::{RESOURCE_PREFIX, TOOL_PREFIX, INTERNAL_PREFIX, OUTPUT_PASSTHROUGH_PREFIX, DEPS, RESOURCE_CREDENTIAL}` on `PortName` in `types.rs`. Added `RESOURCE_CREDENTIAL` to `resource/mod.rs`. Updated `bare_name()`/`category()` to use constants. Migrated lowerer's private `OUTPUT_PASSTHROUGH_PREFIX` to use `PortName::OUTPUT_PASSTHROUGH_PREFIX`. | S |
 | 26 | RT26 | `#[derive(StringEnum)]` for 15 enums (~60 match blocks). | M |
 | 27 | RT27 | ModulePath unification across 4 crates. | S |
 | 28 | RT28 | Shared DslTypeMapping table for emit backends. | S |
