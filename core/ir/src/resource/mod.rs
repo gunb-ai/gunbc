@@ -677,7 +677,7 @@ pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
 fn has_resource_port<T>(node: &Node<T>) -> bool {
     node.inputs
         .iter()
-        .any(|p| p.name.0.starts_with(RESOURCE_PORT_PREFIX))
+        .any(|p| p.name.is_resource())
 }
 
 /// Validate that all effectful nodes declare resource ports.

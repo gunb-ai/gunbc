@@ -994,7 +994,7 @@ fn derive_node_resource_requirements<T>(
                 .inputs
                 .iter()
                 .filter_map(|port| {
-                    if !port.name.0.starts_with("res:") {
+                    if !port.name.is_resource() {
                         return None;
                     }
                     port.resource_access
@@ -2067,7 +2067,7 @@ fn looks_effectful_without_kind<T>(node: &Node<T>) -> Option<&'static str> {
         if p.type_id.0 == "ToolHandle" {
             return Some("has ToolHandle input (tool consumer)");
         }
-        if p.name.0.starts_with("res:") {
+        if p.name.is_resource() {
             return Some("has res:* input port (resource consumer)");
         }
     }

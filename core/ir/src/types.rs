@@ -547,6 +547,25 @@ impl std::fmt::Display for NodeId {
     }
 }
 
+/// Structural classification of a port's namespace.
+///
+/// Port names use prefixes to encode their role:
+/// - `res:` — resource ports (credentials, filesystem handles, etc.)
+/// - `tool:` — tool handle ports (CLI tools, capabilities)
+/// - `__deps` / `__out:` — internal wiring (ordering, passthrough)
+/// - everything else — user-visible data ports
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PortCategory {
+    /// Resource port (`res:credential`, `res:file:data`, etc.)
+    Resource,
+    /// Tool handle port (`tool:clippy`, `tool:cargo`, etc.)
+    Tool,
+    /// Internal wiring port (`__deps`, `__out:result`, etc.)
+    Internal,
+    /// User-visible data port (everything else)
+    User,
+}
+
 /// Name of a port on a node.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PortName(pub String);
@@ -554,6 +573,57 @@ pub struct PortName(pub String);
 impl PortName {
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
+    }
+
+    /// Classify this port by its namespace prefix.
+    pub fn category(&self) -> PortCategory {
+        if self.0.starts_with("res:") {
+            PortCategory::Resource
+        } else if self.0.starts_with("tool:") {
+            PortCategory::Tool
+        } else if self.0.starts_with("__") {
+            PortCategory::Internal
+        } else {
+            PortCategory::User
+        }
+    }
+
+    /// Whether this is a resource port (`res:*`).
+    pub fn is_resource(&self) -> bool {
+        self.category() == PortCategory::Resource
+    }
+
+    /// Whether this is a tool handle port (`tool:*`).
+    pub fn is_tool(&self) -> bool {
+        self.category() == PortCategory::Tool
+    }
+
+    /// Whether this is an internal wiring port (`__*`).
+    pub fn is_internal(&self) -> bool {
+        self.category() == PortCategory::Internal
+    }
+
+    /// Whether this is a user-visible data port.
+    pub fn is_user(&self) -> bool {
+        self.category() == PortCategory::User
+    }
+
+    /// Strip the namespace prefix and return the bare name.
+    ///
+    /// `"res:credential"` → `"credential"`, `"tool:clippy"` → `"clippy"`,
+    /// `"__out:result"` → `"result"`, `"data"` → `"data"`.
+    pub fn bare_name(&self) -> &str {
+        if let Some(rest) = self.0.strip_prefix("res:") {
+            rest
+        } else if let Some(rest) = self.0.strip_prefix("tool:") {
+            rest
+        } else if let Some(rest) = self.0.strip_prefix("__out:") {
+            rest
+        } else if let Some(rest) = self.0.strip_prefix("__") {
+            rest
+        } else {
+            &self.0
+        }
     }
 }
 

@@ -204,7 +204,8 @@ pub use types::{
     semantic_carrier_class_for_type_id, semantic_carrier_compatible,
     semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
-    PortName, SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind, TypeId,
+    PortCategory, PortName, SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind,
+    TypeId,
     ValueBacking,
 };
 pub use validate::{

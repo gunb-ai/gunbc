@@ -1109,7 +1109,7 @@ fn build_main_raw(dag: &Dag<LoweredOp>) -> gunbc_ir::code_ir::Item {
             continue;
         }
         for port in &node.inputs {
-            if port.name.0.starts_with("res:") || port.name.0.starts_with("__") {
+            if port.name.is_resource() || port.name.is_internal() {
                 continue;
             }
             let key = (node.id.0.clone(), port.name.0.clone());

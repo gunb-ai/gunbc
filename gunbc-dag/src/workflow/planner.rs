@@ -259,9 +259,7 @@ fn validate_strict_dry_run_inputs(
             .unwrap_or_default();
 
         for input in &node.inputs {
-            if input.name.0 == PORT_AFTER
-                || input.name.0.starts_with(gunbc_ir::RESOURCE_PORT_PREFIX)
-            {
+            if input.name.0 == PORT_AFTER || input.name.is_resource() {
                 continue;
             }
             if !input.cardinality.requires_one() {

@@ -914,9 +914,9 @@ fn is_resource_type(type_id: &TypeId) -> bool {
 /// Whether a port is a resource port (by name prefix or type).
 fn is_resource_port(port: &gunbc_ir::dag::Port) -> bool {
     port.resource_access.is_some()
-        || port.name.0.starts_with("res:")
+        || port.name.is_resource()
         || port.name.0.starts_with("resource:")
-        || port.name.0.starts_with("tool:")
+        || port.name.is_tool()
         || is_resource_type(&port.type_id)
 }
 
