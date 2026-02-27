@@ -3,7 +3,7 @@ name = "gunbc-delegate-macros"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Derive macros for delegating Executable/Mockable enum wrappers"
+description = "Derive macros: DelegateExecutable, DelegateMockable, StringEnum"
 
 [lib]
 proc-macro = true

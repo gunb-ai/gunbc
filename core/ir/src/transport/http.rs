@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// HTTP method.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
+#[string_enum(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
     Get,
     Post,
@@ -13,41 +14,6 @@ pub enum HttpMethod {
     Delete,
     Head,
     Options,
-}
-
-impl HttpMethod {
-    /// Parse from string.
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.to_uppercase().as_str() {
-            "GET" => Some(HttpMethod::Get),
-            "POST" => Some(HttpMethod::Post),
-            "PUT" => Some(HttpMethod::Put),
-            "PATCH" => Some(HttpMethod::Patch),
-            "DELETE" => Some(HttpMethod::Delete),
-            "HEAD" => Some(HttpMethod::Head),
-            "OPTIONS" => Some(HttpMethod::Options),
-            _ => None,
-        }
-    }
-
-    /// Get the method name as a string.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            HttpMethod::Get => "GET",
-            HttpMethod::Post => "POST",
-            HttpMethod::Put => "PUT",
-            HttpMethod::Patch => "PATCH",
-            HttpMethod::Delete => "DELETE",
-            HttpMethod::Head => "HEAD",
-            HttpMethod::Options => "OPTIONS",
-        }
-    }
-}
-
-impl std::fmt::Display for HttpMethod {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
 }
 
 /// Raw HTTP request.

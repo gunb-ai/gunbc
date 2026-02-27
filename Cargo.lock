@@ -156,6 +156,7 @@ dependencies = [
  "gunbc-dag",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-test",
  "serde",
  "serde_json",
  "toml",
@@ -189,6 +190,7 @@ dependencies = [
  "daglang-syntax",
  "daglang-typecheck",
  "gunbc-ir",
+ "gunbc-test",
  "hex",
  "serde",
  "serde_json",
@@ -459,6 +461,7 @@ name = "gunbc-ir"
 version = "0.1.0"
 dependencies = [
  "glob",
+ "gunbc-delegate-macros",
  "gunbc-infra",
  "inventory",
  "proptest",
