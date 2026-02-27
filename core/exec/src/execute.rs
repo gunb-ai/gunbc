@@ -15,9 +15,9 @@
 //!
 //! Interception is driven by `NodeKind` (set by the lowerer's
 //! `stamp_node_kinds`). The executor does **not** fall back to port-type
-//! heuristics — nodes with `kind: None` are treated as pure. A pre-flight
-//! check (`validate_node_kinds_for_interception`) errors if any `kind: None`
-//! node has port patterns that indicate it should have been classified.
+//! heuristics — nodes with `kind: Pure` (the default) are treated as pure.
+//! A pre-flight check (`validate_node_kinds_for_interception`) errors if any
+//! `Pure` node has port patterns that indicate it should have been classified.
 //! Hand-built DAGs must call `Node::with_kind()` to set the kind explicitly.
 //!
 //! Boundary detection (`BoundaryInfo`) is still used for signature inference
@@ -1865,7 +1865,7 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
 
     let mut augmented = existing.clone();
     for node in &body_dag.nodes {
-        if node.kind == Some(NodeKind::TransportExecute) {
+        if node.kind == NodeKind::TransportExecute {
             // Only add default mocks for outputs that don't already have one
             for port in &node.outputs {
                 if !existing.has_mock(&node.id, &port.name) {
@@ -2040,23 +2040,21 @@ fn has_full_mock_for_node<T>(node: &Node<T>, mocks: &BoundaryMocks) -> bool {
 /// based on its structural kind.
 ///
 /// Only nodes with an explicit effectful `NodeKind` are intercepted.
-/// Nodes with `kind: None` are **not** intercepted — callers must ensure
+/// Nodes with `kind: Pure` are **not** intercepted — callers must ensure
 /// all effectful nodes have `kind` set before execution. See
 /// [`validate_node_kinds_for_interception`] for the pre-flight check.
 fn should_intercept_by_kind<T>(node: &Node<T>) -> bool {
     matches!(
         node.kind,
-        Some(
-            NodeKind::TransportExecute
-                | NodeKind::ToolEnvironment
-                | NodeKind::ToolConsumer
-                | NodeKind::ResourceEnvironment
-                | NodeKind::ResourceAcquire
-        )
+        NodeKind::TransportExecute
+            | NodeKind::ToolEnvironment
+            | NodeKind::ToolConsumer
+            | NodeKind::ResourceEnvironment
+            | NodeKind::ResourceAcquire
     )
 }
 
-/// Port-level heuristic: does this node look effectful despite `kind: None`?
+/// Port-level heuristic: does this node look effectful despite `kind: Pure`?
 ///
 /// Returns a human-readable reason string if the node has port patterns that
 /// indicate it should have been classified (transport request inputs,
@@ -2091,20 +2089,21 @@ fn looks_effectful_without_kind<T>(node: &Node<T>) -> Option<&'static str> {
     None
 }
 
-/// Pre-flight check: error if any node with `kind: None` has effectful port patterns.
+/// Pre-flight check: error if any `Pure` node has effectful port patterns.
 ///
 /// Called before DryRun/Simulate execution to ensure no effectful node slips
-/// through interception due to a missing `NodeKind`. This enforces the
-/// "no silent fallback" invariant — either the lowerer stamps `kind`, or
-/// the hand-built DAG sets it explicitly via [`Node::with_kind`].
+/// through interception due to a missing or incorrect `NodeKind`. This enforces
+/// the "no silent fallback" invariant — either the lowerer stamps `kind` via
+/// `stamp_node_kinds()`, or the hand-built DAG sets it explicitly via
+/// [`Node::with_kind`].
 fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError> {
     for node in &dag.nodes {
-        if node.kind.is_some() {
+        if node.kind != NodeKind::Pure {
             continue;
         }
         if let Some(reason) = looks_effectful_without_kind(node) {
             return Err(ExecError::new(format!(
-                "node '{}' has kind: None but {reason}. \
+                "node '{}' has kind: Pure but {reason}. \
                  Set NodeKind via Node::with_kind() or the lowerer's stamp_node_kinds() \
                  so DryRun/Simulate can intercept it correctly.",
                 node.id.0,
@@ -2117,14 +2116,12 @@ fn validate_node_kinds_for_interception<T>(dag: &Dag<T>) -> Result<(), ExecError
 /// Classify a node's structural role for error reporting.
 fn classify_node_role<T>(node: &Node<T>) -> NodeRole {
     match node.kind {
-        Some(NodeKind::TransportExecute) => NodeRole::TransportExecutor,
-        Some(NodeKind::ToolConsumer) => NodeRole::ToolConsumer,
-        Some(
-            NodeKind::ToolEnvironment
-            | NodeKind::ResourceEnvironment
-            | NodeKind::ResourceAcquire
-            | NodeKind::ResourceRelease,
-        ) => NodeRole::ResourceProvider,
+        NodeKind::TransportExecute => NodeRole::TransportExecutor,
+        NodeKind::ToolConsumer => NodeRole::ToolConsumer,
+        NodeKind::ToolEnvironment
+        | NodeKind::ResourceEnvironment
+        | NodeKind::ResourceAcquire
+        | NodeKind::ResourceRelease => NodeRole::ResourceProvider,
         _ => NodeRole::Pure,
     }
 }
@@ -4248,7 +4245,7 @@ mod tests {
         assert!(err.is_err());
         let msg = err.unwrap_err().to_string();
         assert!(msg.contains("transport"), "expected transport mention: {msg}");
-        assert!(msg.contains("kind: None"), "expected kind: None mention: {msg}");
+        assert!(msg.contains("kind: Pure"), "expected kind: None mention: {msg}");
     }
 
     #[test]
@@ -4334,6 +4331,6 @@ mod tests {
         let mocks = BoundaryMocks::new();
         let result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("kind: None"));
+        assert!(result.unwrap_err().to_string().contains("kind: Pure"));
     }
 }

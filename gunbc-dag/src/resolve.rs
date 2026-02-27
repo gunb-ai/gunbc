@@ -1061,7 +1061,7 @@ fn needs_transport_resource(
             kind: PrimitiveOpKind::IoExecuteFileRead,
             ..
         }) => AccessMode::Read,
-        _ if lowered.kind == Some(gunbc_ir::NodeKind::TransportExecute) => {
+        _ if lowered.kind == gunbc_ir::NodeKind::TransportExecute => {
             // Service transport execute nodes need filesystem access.
             AccessMode::Read
         }

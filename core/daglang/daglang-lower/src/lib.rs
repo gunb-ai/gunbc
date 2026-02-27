@@ -607,7 +607,7 @@ pub fn obligation_to_node_kind(node: &Node<LoweredOp>) -> NodeKind {
 /// `node.kind` from `obligation_to_node_kind`.
 pub fn stamp_node_kinds(dag: &mut Dag<LoweredOp>) {
     for node in &mut dag.nodes {
-        node.kind = Some(obligation_to_node_kind(node));
+        node.kind = obligation_to_node_kind(node);
         if let gunbc_ir::NodeBody::SubDag(ref mut inner) = node.body {
             stamp_node_kinds(inner);
         }

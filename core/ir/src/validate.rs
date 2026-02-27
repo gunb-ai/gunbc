@@ -493,7 +493,7 @@ fn find_output_port<'a, T>(node: &'a Node<T>, port_name: &PortName) -> Option<&'
 mod tests {
     use super::*;
     use crate::dag::{build::*, Dag, Edge};
-    use crate::node::NodeBody;
+    use crate::node::{NodeBody, NodeKind};
 
     #[test]
     fn test_valid_subdag_passes() {
@@ -555,7 +555,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -588,7 +588,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -621,7 +621,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -656,7 +656,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -692,7 +692,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -806,7 +806,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -852,7 +852,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -885,7 +885,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -925,7 +925,7 @@ mod tests {
             body: NodeBody::SubDag(inner),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         };
 
         let mut dag: Dag<()> = Dag::new();

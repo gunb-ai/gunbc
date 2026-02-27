@@ -666,7 +666,7 @@ struct ObligationCounts {
 fn derive_obligation_counts(nodes: &[Node<LoweredOp>]) -> ObligationCounts {
     let mut counts = ObligationCounts::default();
     for node in nodes {
-        if node.kind == Some(NodeKind::TransportExecute) {
+        if node.kind == NodeKind::TransportExecute {
             counts.transport_execution_targets += 1;
         } else {
             counts.pure_node_determinism_targets += 1;

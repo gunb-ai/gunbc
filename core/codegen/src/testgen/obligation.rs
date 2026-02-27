@@ -558,7 +558,7 @@ fn collect_execution_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObl
 
     // A.2: Transport interception — one per transport executor
     for node in &dag.nodes {
-        if node.kind == Some(NodeKind::TransportExecute) {
+        if node.kind == NodeKind::TransportExecute {
             obligations.push(ProofObligation::runtime(
                 Obligation::TransportInterceptable {
                     node_id: node.id.clone(),
@@ -576,13 +576,11 @@ fn collect_execution_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObl
     for node in &dag.nodes {
         let is_effectful = matches!(
             node.kind,
-            Some(
-                NodeKind::TransportExecute
-                    | NodeKind::ToolEnvironment
-                    | NodeKind::ToolConsumer
-                    | NodeKind::ResourceEnvironment
-                    | NodeKind::ResourceAcquire
-            )
+            NodeKind::TransportExecute
+                | NodeKind::ToolEnvironment
+                | NodeKind::ToolConsumer
+                | NodeKind::ResourceEnvironment
+                | NodeKind::ResourceAcquire
         );
 
         if !is_effectful {
@@ -832,7 +830,7 @@ fn collect_scenario_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObli
     let transport_executors: Vec<&NodeId> = dag
         .nodes
         .iter()
-        .filter(|n| n.kind == Some(NodeKind::TransportExecute))
+        .filter(|n| n.kind == NodeKind::TransportExecute)
         .map(|n| &n.id)
         .collect();
 
@@ -930,7 +928,7 @@ fn collect_resource_obligations<T>(
 ) {
     // D.0: Transport nodes must declare at least one resource input
     for node in &dag.nodes {
-        if node.kind != Some(NodeKind::TransportExecute) {
+        if node.kind != NodeKind::TransportExecute {
             continue;
         }
 
@@ -1133,7 +1131,7 @@ fn collect_resource_obligations<T>(
     // declare an auth scheme MUST have res:credential connected.
     // Without this, requests are sent unauthenticated (the silent 401 bug).
     for node in &dag.nodes {
-        if node.kind != Some(NodeKind::TransportExecute) {
+        if node.kind != NodeKind::TransportExecute {
             continue;
         }
 

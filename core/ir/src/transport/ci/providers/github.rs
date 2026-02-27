@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn test_github_render_workflow() {
         use crate::build::{edge, port};
-        use crate::{Node, NodeBody};
+        use crate::{Node, NodeBody, NodeKind};
 
         #[derive(Debug, Clone)]
         struct DummyOp;
@@ -353,7 +353,7 @@ mod tests {
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         });
         dag.add_node(Node {
             id: "test".into(),
@@ -362,7 +362,7 @@ mod tests {
             body: NodeBody::Opaque(DummyOp),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         });
         dag.add_edge(edge("build", "success", "test", "build_success"));
 

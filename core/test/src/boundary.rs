@@ -35,7 +35,7 @@ impl BoundaryTestResult {
 fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
     dag.nodes
         .iter()
-        .filter(|node| node.kind == Some(NodeKind::TransportExecute))
+        .filter(|node| node.kind == NodeKind::TransportExecute)
         .map(|node| node.id.0.clone())
         .collect()
 }
