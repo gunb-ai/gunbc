@@ -238,7 +238,7 @@ correctness, then testing + foundation.
 | 14 | RT14 | **S-tier codegen** in `build_fidelity_ladder_section`. Real mode + virtual backends via TransportBackendGuard. | M | Pending | RT10:13 |
 | 15 | RT15 | **M-tier codegen** (sandboxed tempdir, `#[cfg(feature = "sandboxed_tests")]`). | M | Pending | RT14 |
 | 16 | RT16 | **L/XL tier codegen** (cost-gated real/remote, `GUNBC_TEST_MAX_COST` env check). | S | Pending | RT14 |
-| 17 | RT17 | **DSL Makefile assembly**: import data, produce targets, wire to makegen output. | M | Pending | — |
+| 17 | RT17 | **DSL Makefile assembly**: populated all 4 empty pipeline stages in `workflows/makegen.dag`. `load_registry` calls `discover_tools()`, `render_makefile` calls `render_makefile_content()` with data + tools, `upsert_makefile` calls `content_upsert()`, `report` emits success. Pipeline imports data from `config.build_targets` and functions from `tools.makegen`. | M | Done | — |
 | 18 | RT18 | **Delete bootstrap externs**. Parity golden tests. | M | Pending | RT17 |
 | 19 | RT19 | **Recursive types** (self-referential type defs). | L | Pending | — |
 | 20 | RT20 | **Recursive functions** (self-calls in fn bodies). | L | Pending | RT19 |
