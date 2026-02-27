@@ -35,6 +35,9 @@ pub mod rust_exec_runtime; // Task 3: Exec-runtime fast path
 // Wave 2
 pub mod plan; // Task 4: EmitPlan builder
 
+// Shared type mapping tables (RT28).
+pub mod type_mapping;
+
 // Wave 3 (Tasks 8-11): AbstractIR lowering pipeline.
 pub mod lower_c;
 pub mod lower_go;
