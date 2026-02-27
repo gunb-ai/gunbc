@@ -137,6 +137,7 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 | `docs/design/sdlc/domain-modeling-comprehensive.md` | All domain objects, state machines, invariants |
 | `docs/design/sdlc/e2e-gap-analysis.md` | Gap tracking (A–J). Header says "all resolved" but means DSL files exist — Rust can't execute them yet. Gaps C, F genuinely done in Rust. Gaps A, B, D, E, H, I, J resolved at DSL level only. Gap G (worker invokes compiled DAG) not done at all. |
 | `docs/design/sdlc/implementation-roadmap.md` | Task breakdown and dependency graph |
+| `docs/design/provider-contracts.md` | Provider response contracts: `@response` annotation, mandatory error modeling, testgen obligations, interface inheritance. Supersedes RT-I1/RT-I2. |
 
 ---
 
@@ -266,8 +267,8 @@ correctness, then testing + foundation.
 
 | # | ID | What | Size | Status | Deps |
 |---|-----|------|------|--------|------|
-| I1 | RT-I1 | **`@mock_response` on all service operations.** Add success + error variants (401, 500 minimum). Feed into testgen Bucket C scenarios. | L | Pending | RT-A2 |
-| I2 | RT-I2 | **Testgen error-status obligations.** Extend Bucket C: inject error status codes per REST operation, not just `Value::Skipped`. Refs: `core/codegen/src/testgen/obligation.rs` (`SingleTransportFailure`), `gunbc-dag/src/mock_defaults.rs` (`default_rest_response`). | L | Pending | RT-I1, RT9 |
+| I1 | RT-I1 | **Superseded by PC-3.** ~~`@mock_response` on all service operations.~~ → `@response` annotations with provider contract semantics. See `docs/design/provider-contracts.md`. | — | Superseded | — |
+| I2 | RT-I2 | **Superseded by PC-7 + PC-8.** ~~Testgen error-status obligations.~~ → `ProviderResponseContract` obligation kind with per-status-code tests derived from `@response` annotations. See `docs/design/provider-contracts.md`. | — | Superseded | — |
 | I3 | RT-I3 | **`CredentialChainIntegrity` testgen obligation.** For every service with `config { auth }`, trace backwards to credential source, assert edge exists. Ref: `res:credential` port at `daglang-lower/src/lib.rs:5731`. | M | Pending | RT-A3 |
 | I4 | RT-I4 | **Shell exit code enforcement.** TrimStdout: fails on non-zero exit unless output is optional `T?` (returns `Value::Skipped`). SplitLines: returns empty list on non-zero (list-producing ops like `find` legitimately return exit 1 for missing paths). `shell_exit_error()` helper for clear diagnostics. Proof tests in `gunbc-dag/tests/shell_exit_enforcement_proof.rs`. Analysis report: `TODO/testgen-proof-analysis.md`. | S | **Done** | RT-A1 |
 | I5 | RT-I5 | **Wire `credential_chain` into gist.** Replace raw `shell.GCloud.SecretManagerAccessVersion` with `credential_chain(runtime: LocalDev, ...)` in all three gist entrypoints. | M | Pending | RT-A4 |
@@ -416,6 +417,28 @@ secrets and not regenerated on every codegen pass.
 |----|-----|------|-------|
 | RF-INV1 | **Force-link inventory crates in codegen binary.** Add explicit `use` references or `extern crate` for crates that register `DagSpecDef` with `live_required` secrets. Simplest fix, but fragile — adding a new crate with secrets requires updating codegen_cli.rs. | S | Quick fix. |
 | RF-INV2 | **DSL-derive CI secrets from service annotations.** Instead of inventory, derive `live_required` from `@auth` + `@endpoint` annotations on service operations in `.dag` files. The DSL already declares auth schemes — the compiler can extract which env vars are needed. Eliminates the inventory linkage problem entirely. | M | DSL-first fix. Aligns with RT13 (derive mock registries from `@mock_response`). |
+
+### Theme PC: Provider Response Contracts (mandatory error modeling)
+
+> Design doc: `docs/design/provider-contracts.md`
+
+Services must model the actual provider API contract — not just the happy
+path. Every documented response code, error body shape, and failure mode
+gets declared via `@response` annotations. Testgen generates **mandatory**
+per-status-code test obligations. Supersedes RT-I1 and RT-I2.
+
+| ID | What | Size | Deps |
+|----|------|------|------|
+| PC-1 | **`@response` annotation parsing.** Add to `daglang-syntax`. `Vec<ResponseDecl>` on `OperationDef`. | M | — |
+| PC-2 | **Standard error types.** `dsl/std/errors.dag` — common HTTP, GitHub, GCP error shapes. | S | — |
+| PC-3 | **`@response` on all REST services.** 29 operations, provider doc references via `@doc`. | L | PC-1, PC-2 |
+| PC-4 | **`@exit` on all shell services.** Exit code → output type mapping. | M | PC-1 |
+| PC-5 | **Lowerer propagation.** `@response` → `ServiceOperationSpec` in lowered IR. | M | PC-1 |
+| PC-6 | **`GenericRestParseOp` status checking.** Route on status code before field extraction. Hard-fail on undeclared non-2xx. | M | PC-5 |
+| PC-7 | **`ProviderResponseContract` obligation.** New Bucket C obligation, one per declared `@response`. | M | PC-5 |
+| PC-8 | **Testgen codegen for response contracts.** Per-status-code tests, mock body derived from response type. | L | PC-7 |
+| PC-9 | **Interface response contract inheritance.** Implementors inherit obligations from interface declarations. | M | PC-7 |
+| PC-10 | **Completeness enforcement.** Compiler requires ≥1 success + ≥1 error `@response` on every `transport rest {}` operation. | S | PC-1 |
 
 ### Compiler Features (low priority)
 
