@@ -434,6 +434,13 @@ fn classify_primitive(
             outputs,
             body: PureBody::Literal(serde_json::Value::Null),
         }),
+        // RT4a: Return expression compute nodes are resolved at runtime
+        // by the DAG executor, not by the emit pipeline.
+        PrimitiveOpKind::ReturnExprCompute { .. } => Ok(Computation::Pure {
+            inputs,
+            outputs,
+            body: PureBody::Literal(serde_json::Value::Null),
+        }),
     }
 }
 

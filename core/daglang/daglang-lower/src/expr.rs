@@ -205,7 +205,8 @@ fn lower_stmt(stmt: &ast::Stmt, variant_names: &HashSet<String>) -> LoweredStmt 
     }
 }
 
-fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr {
+/// Lower a single AST expression to the compiler's expression IR.
+pub fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr {
     match expr {
         ast::Expr::Literal(lit) => LoweredExpr::Literal(lower_literal(lit)),
         // Bare unit variant (e.g., `Closed`)

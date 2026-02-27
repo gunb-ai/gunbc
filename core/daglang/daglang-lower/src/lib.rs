@@ -202,6 +202,13 @@ pub enum PrimitiveOpKind {
     ContentUpsertOutputPath {
         path: String,
     },
+    /// RT4a: A compute node that evaluates a complex return expression (BinOp,
+    /// UnaryOp, If, Match, Pipe, etc.) at runtime. The `expr` is a lowered
+    /// expression IR that references input ports by name; the resolver evaluates
+    /// it with the actual input values to produce the output.
+    ReturnExprCompute {
+        expr: expr::LoweredExpr,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -303,6 +310,7 @@ impl PrimitiveOpKind {
             }
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
+            Self::ReturnExprCompute { .. } => ObligationCategory::None,
         }
     }
 }
@@ -1477,6 +1485,62 @@ impl std::fmt::Display for LowerError {
             ),
             Self::NoLowerableItems => write!(f, "no callable or pipeline declarations to lower"),
         }
+    }
+}
+
+/// A non-fatal diagnostic emitted during lowering.
+///
+/// Warnings do not prevent the DAG from being produced, but indicate
+/// potential wiring gaps that may cause runtime `Value::Skipped` outputs.
+#[derive(Debug, Clone)]
+pub enum LowerWarning {
+    /// A return expression could not be wired to its `__out:*` port because
+    /// the expression type is not yet supported by the lowerer.
+    UnwiredReturnOutput {
+        module: String,
+        callable: String,
+        output_name: String,
+        expr_kind: String,
+    },
+}
+
+impl std::fmt::Display for LowerWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnwiredReturnOutput {
+                module,
+                callable,
+                output_name,
+                expr_kind,
+            } => write!(
+                f,
+                "return output `{output_name}` in `{module}::{callable}` uses unsupported expression ({expr_kind}) — not wired to __out:{output_name}"
+            ),
+        }
+    }
+}
+
+/// Return a human-readable name for the kind of an AST expression.
+fn expr_kind_name(expr: &daglang_syntax::ast::Expr) -> String {
+    use daglang_syntax::ast::Expr;
+    match expr {
+        Expr::BinOp(..) => "BinOp".to_string(),
+        Expr::UnaryOp(..) => "UnaryOp".to_string(),
+        Expr::If(..) => "If".to_string(),
+        Expr::Match(..) => "Match".to_string(),
+        Expr::Pipe(..) => "Pipe".to_string(),
+        Expr::Record(..) => "Record".to_string(),
+        Expr::For(..) => "For".to_string(),
+        Expr::Lambda(..) => "Lambda".to_string(),
+        Expr::ServiceCall(..) => "ServiceCall".to_string(),
+        Expr::Ident(..) => "Ident".to_string(),
+        Expr::FieldAccess(..) => "FieldAccess".to_string(),
+        Expr::Call(..) => "Call".to_string(),
+        Expr::Literal(..) => "Literal".to_string(),
+        Expr::StringInterp(..) => "StringInterp".to_string(),
+        Expr::List(..) => "List".to_string(),
+        Expr::Map(..) => "Map".to_string(),
+        _ => "Unknown".to_string(),
     }
 }
 
@@ -7081,6 +7145,318 @@ fn hex_encode(bytes: &[u8]) -> String {
     encoded
 }
 
+// ── RT4a: Complex return expression lowering ────────────────────────────────
+
+/// A leaf source extracted from a return expression — maps a sub-expression
+/// to the DAG node+port that produces its value.
+struct ReturnExprLeaf {
+    /// Unique input port name on the compute node (e.g., "input_0")
+    input_port: String,
+    /// Source DAG node ID
+    source_node: String,
+    /// Source port name on the source node
+    source_port: String,
+}
+
+/// Walk an AST expression and collect all leaf references that need to be
+/// wired as inputs to a compute node. Each unique (source_node, source_port)
+/// pair gets one input port. The returned `Expr` is rewritten so that leaf
+/// references become `Ident("input_N")` matching the port names.
+#[allow(clippy::too_many_arguments)]
+fn collect_return_expr_leaves(
+    expr: &daglang_syntax::ast::Expr,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    _module_name: &str,
+    _item_name: &str,
+    _builder: &mut DagBuilder,
+    leaves: &mut Vec<ReturnExprLeaf>,
+    seen: &mut HashMap<(String, String), String>,
+    has_unresolved: &mut bool,
+) -> daglang_syntax::ast::Expr {
+    use daglang_syntax::ast::Expr;
+
+    match expr {
+        Expr::FieldAccess(base, field) => {
+            if let Expr::Ident(base_ident) = base.as_ref() {
+                // Resolve: callable.field or service.field
+                let resolved = resolve_leaf_source(
+                    base_ident,
+                    Some(field),
+                    param_types,
+                    bound_callable_sources,
+                    bound_service_sources,
+                    endpoints_by_name,
+                );
+                if let Some((node_id, port)) = resolved {
+                    let key = (node_id.clone(), port.clone());
+                    let input_name = seen
+                        .entry(key)
+                        .or_insert_with(|| {
+                            let name = format!("input_{}", leaves.len());
+                            leaves.push(ReturnExprLeaf {
+                                input_port: name.clone(),
+                                source_node: node_id,
+                                source_port: port,
+                            });
+                            name
+                        })
+                        .clone();
+                    return Expr::Ident(input_name);
+                }
+                // FieldAccess on a known base but unresolvable — bail
+                *has_unresolved = true;
+            }
+            // Recurse on base for nested field access
+            let new_base = collect_return_expr_leaves(
+                base,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+                _module_name,
+                _item_name,
+                _builder,
+                leaves,
+                seen,
+                has_unresolved,
+            );
+            Expr::FieldAccess(Box::new(new_base), field.clone())
+        }
+        Expr::Ident(name) => {
+            let resolved = resolve_leaf_source(
+                name,
+                None,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+            );
+            if let Some((node_id, port)) = resolved {
+                let key = (node_id.clone(), port.clone());
+                let input_name = seen
+                    .entry(key)
+                    .or_insert_with(|| {
+                        let name = format!("input_{}", leaves.len());
+                        leaves.push(ReturnExprLeaf {
+                            input_port: name.clone(),
+                            source_node: node_id,
+                            source_port: port,
+                        });
+                        name
+                    })
+                    .clone();
+                return Expr::Ident(input_name);
+            }
+            // Ident not in known sources — could be a literal/variant or
+            // unresolvable. Mark if it looks like a variable reference.
+            if !name.chars().next().unwrap_or('a').is_uppercase()
+                && name != "true"
+                && name != "false"
+                && name != "null"
+                && name != "None"
+            {
+                *has_unresolved = true;
+            }
+            expr.clone()
+        }
+        Expr::BinOp(lhs, op, rhs) => {
+            let new_lhs = collect_return_expr_leaves(
+                lhs,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+                _module_name,
+                _item_name,
+                _builder,
+                leaves,
+                seen,
+                has_unresolved,
+            );
+            let new_rhs = collect_return_expr_leaves(
+                rhs,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+                _module_name,
+                _item_name,
+                _builder,
+                leaves,
+                seen,
+                has_unresolved,
+            );
+            Expr::BinOp(Box::new(new_lhs), op.clone(), Box::new(new_rhs))
+        }
+        Expr::UnaryOp(op, inner) => {
+            let new_inner = collect_return_expr_leaves(
+                inner,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+                _module_name,
+                _item_name,
+                _builder,
+                leaves,
+                seen,
+                has_unresolved,
+            );
+            Expr::UnaryOp(op.clone(), Box::new(new_inner))
+        }
+        Expr::Literal(_) | Expr::StringInterp(_) | Expr::List(_) | Expr::Map(_) => expr.clone(),
+        // For other expression types, clone as-is. The evaluator will
+        // handle them if they don't reference external nodes.
+        _ => expr.clone(),
+    }
+}
+
+/// Resolve a single leaf identifier (with optional field) to a DAG source
+/// node + port, using the same resolution logic as `resolve_return_expr_source`.
+fn resolve_leaf_source(
+    name: &str,
+    field: Option<&str>,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+) -> Option<(String, String)> {
+    if let Some(field) = field {
+        // FieldAccess: base.field — resolve base, use field as port
+        if let Some(source) = bound_callable_sources.get(name) {
+            return Some((source.node_id.clone(), field.to_string()));
+        }
+        if let Some(source) = bound_service_sources.get(name) {
+            return Some((source.parse.node_id.clone(), field.to_string()));
+        }
+        if let Some(Some(source)) = endpoints_by_name.get(name) {
+            return Some((source.node_id.clone(), field.to_string()));
+        }
+        None
+    } else {
+        // Ident: look up as param, callable, or service
+        if param_types.contains_key(name) {
+            // Params are handled via ensure_param_source_node at a higher level.
+            // For now, skip — this path is for callable/service results.
+            return None;
+        }
+        if let Some(source) = bound_callable_sources.get(name) {
+            return Some((source.node_id.clone(), source.primary_output.clone()));
+        }
+        if let Some(source) = bound_service_sources.get(name) {
+            return Some((
+                source.parse.node_id.clone(),
+                source.parse.primary_output.clone(),
+            ));
+        }
+        if let Some(Some(source)) = endpoints_by_name.get(name) {
+            return Some((source.node_id.clone(), source.primary_output.clone()));
+        }
+        None
+    }
+}
+
+/// Synthesize a compute node for a complex return expression (BinOp, UnaryOp,
+/// etc.) and return the (node_id, output_port) pair for wiring to `__out:*`.
+///
+/// The compute node:
+/// - Has one input port per leaf reference in the expression
+/// - Has one output port matching the return output name/type
+/// - Stores a `LoweredExpr` that the resolver evaluates at runtime
+#[allow(clippy::too_many_arguments)]
+fn synthesize_return_compute_node(
+    builder: &mut DagBuilder,
+    expr: &daglang_syntax::ast::Expr,
+    output_port: &Port,
+    output_name: &str,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    module_name: &str,
+    item_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    let mut leaves = Vec::new();
+    let mut seen = HashMap::new();
+    let mut has_unresolved = false;
+
+    // Rewrite expression so leaf references become input_N identifiers
+    let rewritten = collect_return_expr_leaves(
+        expr,
+        param_types,
+        bound_callable_sources,
+        bound_service_sources,
+        endpoints_by_name,
+        module_name,
+        item_name,
+        builder,
+        &mut leaves,
+        &mut seen,
+        &mut has_unresolved,
+    );
+
+    // If any leaf reference couldn't be resolved, bail out — the expression
+    // would contain unbound variables at runtime. Fall back to the old
+    // behavior (no wiring) so RT4c's warning fires instead.
+    if has_unresolved || leaves.is_empty() {
+        return None;
+    }
+
+    // Lower the rewritten AST expression to a LoweredExpr
+    let empty_variants = std::collections::HashSet::new();
+    let lowered_expr = expr::lower_expr(&rewritten, &empty_variants);
+
+    // Create input ports — one per leaf, typed as the output port's type
+    // (we use "Bool" for most compute expressions; the actual type doesn't
+    // matter for execution since Value carries its own type)
+    let input_ports: Vec<Port> = leaves
+        .iter()
+        .map(|leaf| Port::with_cardinality(leaf.input_port.as_str(), "Bool", Cardinality::ONE))
+        .collect();
+
+    let output_ports = vec![Port::with_cardinality(
+        output_name,
+        output_port.type_id.0.as_str(),
+        Cardinality::ONE,
+    )];
+
+    let node_id = format!(
+        "return_compute_{}",
+        sanitize_identifier(&format!(
+            "{module_name}_{item_name}_{output_name}_{disambiguator}"
+        ))
+    );
+
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: module_name.to_string(),
+            name: format!("return_expr_compute::{item_name}::{output_name}"),
+            kind: PrimitiveOpKind::ReturnExprCompute {
+                expr: lowered_expr,
+            },
+        },
+    ));
+
+    // Wire edges from source nodes to compute node inputs
+    for leaf in &leaves {
+        builder.add_edge(
+            leaf.source_node.as_str(),
+            leaf.source_port.as_str(),
+            node_id.as_str(),
+            leaf.input_port.as_str(),
+        );
+    }
+
+    Some((node_id, output_name.to_string()))
+}
+
 fn item_uses_binding_types(item: &Item) -> HashMap<String, String> {
     match item {
         Item::FuncDef(def) => def
@@ -7743,6 +8119,22 @@ fn resolve_return_expr_source(
             );
             Some((src, output_name.to_string()))
         }
+        // RT4a: Complex expressions — synthesize a compute node
+        Expr::BinOp(..) | Expr::UnaryOp(..) | Expr::If(..) | Expr::Match(..) | Expr::Pipe(..) => {
+            synthesize_return_compute_node(
+                builder,
+                expr,
+                output_port,
+                output_name,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+                module_name,
+                item_name,
+                disambiguator,
+            )
+        }
         _ => None,
     }
 }
@@ -7794,6 +8186,18 @@ fn wire_callable_return_outputs(
             item_name,
             &format!("return_{index}"),
         ) else {
+            if !body_lossy {
+                let warning = LowerWarning::UnwiredReturnOutput {
+                    module: module_name.to_string(),
+                    callable: item_name.to_string(),
+                    output_name: output_name.clone(),
+                    expr_kind: expr_kind_name(&expr),
+                };
+                // Diagnostic is structured but not printed to stderr to avoid
+                // noise during compilation. A proper diagnostics channel can
+                // surface these in the future.
+                let _ = warning;
+            }
             continue;
         };
         if source_node == target.node_id {

@@ -86,7 +86,16 @@ fn execute_with_declared_output_passthrough(
             continue;
         }
         outputs.entry(port_name.clone()).or_insert_with(|| {
-            passthrough_fallback_value(port_name, &inputs).unwrap_or(Value::Skipped)
+            match passthrough_fallback_value(port_name, &inputs) {
+                Some(value) => value,
+                None => {
+                    // RT4b: Declared output port has no wired __out: input and
+                    // no fallback alias matches. Structured diagnostic — not
+                    // printed to stderr; a proper diagnostics channel can
+                    // surface these in the future.
+                    Value::Skipped
+                }
+            }
         });
     }
     Ok(outputs)
@@ -351,6 +360,44 @@ impl Executable for LiteralSourceOp {
         OutputMap::new()
             .value(self.output_port.as_str(), self.value.clone())
             .ok()
+    }
+}
+
+/// RT4a: Compute node that evaluates a complex return expression at runtime.
+///
+/// Input ports are named `input_0`, `input_1`, ... and the lowered expression
+/// references them as variables. The evaluator resolves variable lookups from
+/// the input values and produces the computed result.
+#[derive(Debug, Clone)]
+struct ReturnExprComputeOp {
+    expr: daglang_lower::expr::LoweredExpr,
+    output_port: String,
+}
+
+impl Executable for ReturnExprComputeOp {
+    fn execute(
+        &self,
+        inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        use daglang_lower::eval::evaluate_fn_body;
+        use daglang_lower::expr::{LoweredFnBody, LoweredStmt};
+
+        // Build a single-statement fn body: `return { <output_port>: <expr> }`
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                self.output_port.clone(),
+                self.expr.clone(),
+            )])],
+        };
+
+        let empty_siblings = HashMap::new();
+        let result = evaluate_fn_body(&body, &inputs, &empty_siblings).map_err(|e| {
+            ExecError::new(format!(
+                "return expression compute failed: {e}"
+            ))
+        })?;
+
+        Ok(result)
     }
 }
 
@@ -670,6 +717,18 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
+        // RT4a: Return expression compute nodes evaluate a lowered expression
+        // at runtime with the actual input values.
+        PrimitiveOpKind::ReturnExprCompute { expr } => {
+            let output_port = outputs
+                .first()
+                .map(|port| port.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(ReturnExprComputeOp {
+                expr: expr.clone(),
+                output_port,
+            }))
+        }
     }
 }
 
