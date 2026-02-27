@@ -47,7 +47,14 @@ jobs:
             cargo-${{ runner.os }}-
 
       - name: Verify Bootstrap Invariants
-        run: rm -rf target/codegen && cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci
+        run: |
+          rm -rf target/codegen
+          # Cargo validates all [[bin]] paths even with --bin filter.
+          # Create minimal stubs so the manifest parses, then check only bootstrap binaries.
+          for dir in $(grep 'path = "../target/codegen/' gunbc-dag/Cargo.toml | sed 's|.*"../\(.*\)/main.rs"|\1|'); do
+            mkdir -p "$dir" && echo 'fn main() {}' > "$dir/main.rs"
+          done
+          cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci
 
       - name: Run CI Pipeline
         run: cargo run -p gunbc-dag --bin gunbc-ci

@@ -21,7 +21,8 @@ use gunbc_codegen::registry::TestgenTargetDef;
 use gunbc_exec::DynOp;
 use gunbc_ir::{BuilderError, Dag};
 use gunbc_test::{
-    BoundaryMock, ExpectedOutput, LiveExpectedOutput, MockSpec, OutputMatcher, TransportMock,
+    BoundaryMock, ExpectedOutput, FermiCost, LiveExpectedOutput, MockSpec, OutputMatcher, TestClass,
+    TransportMock,
 };
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashSet};
@@ -222,9 +223,9 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
         flow_tests: true,
         live_flow_tests: false,
         window_max_nodes: None,
-        test_class: Some(classification.test_class),
-        fermi_cost: Some(classification.fermi_cost),
-        requires: Some(requires),
+        test_class: classification.test_class,
+        fermi_cost: classification.fermi_cost,
+        requires,
         secrets: None,
         live_test_class: None,
         live_fermi_cost: None,
@@ -406,9 +407,9 @@ pub fn build_testgen_target_def(
         flow_tests: true,
         live_flow_tests: false,
         window_max_nodes: None,
-        test_class: None, // inferred from topology
-        fermi_cost: None, // inferred from topology
-        requires: None,
+        test_class: TestClass::Unit,
+        fermi_cost: FermiCost::XS,
+        requires: Vec::new(),
         secrets: None,
         live_test_class: None,
         live_fermi_cost: None,

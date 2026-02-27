@@ -12,17 +12,10 @@ One blue lane (scenario-driven), two red lanes, never blocking each other.
 ```
   BLUE TEAM — Advance                     RED TEAM — Harden
   ────────────────────────────            ────────────────────────
-  SDLC Activation (single lane):         Lane R1: Model Correctness + Structure
-    B-0 → B-PW → B-1 → B-2 →              RF-MC1 → RF-MC2 → RF-MC3 →
-    B-3 → B-TC → B-4 → B-5 →              RF-RG1 → RF-RG2 → RF-H4 →
-    B-6 → B-7 → B-8:13 → ...cloud          RF-H2 → RF-G-unblock → RF-A1 →
-                                            RF-A2a → RF-A4
-
-                                          Lane R2: Testing + Foundation
-                                            RF-TV1 → BB-2 → BB-3 → BB-5 →
-                                            FC-P7-c2 → FC-P7-d →
-                                            FC-CF5 → FC-CF6 →
-                                            FC-P8-a → FC-P8-b → FC-P8-c
+  SDLC Activation (single queue):         Single queue:
+    BT1 → BT2 → BT3 → BT4 →               RT1 → RT2 → RT3 → RT4 →
+    BT5 → BT6 → BT7 → BT8 →               RT5 → RT6 → RT7 → RT8 →
+    BT9 → BT10 → BT11:19 → ...cloud        RT9:12 → RT13:16 → RT17:23
 ```
 
 ### Protocols
@@ -97,41 +90,41 @@ A GitHub issue goes through the full lifecycle:
 - Profile-aware compilation **works** — `build_dsl_graph_with_profile()` exists, generated tests pass with all 3 profiles for other modules.
 - SubDag/Pipeline execution **works** — `SubDagDispatchOp`, `PipelineDispatchOp` are real implementations.
 - Interface stub resolution **works** — unbound interfaces get stub transport, bound interfaces wire to providers.
-- resolve.rs may need minimal wiring for SDLC module paths (Red RF-RG2 generalizes this).
+- resolve.rs may need minimal wiring for SDLC module paths (Red backlog RF-RG2 generalizes this).
 - No file transport resolver exists in Rust (`@file` annotation has no backend).
-- No CLI entrypoint (catalog is manual — Red RF-RG1).
+- No CLI entrypoint (catalog is manual — Red backlog RF-RG1).
 
 **Key dependency**: L0–L3 use unit_test profile (all stubs, no transport needed).
-L4+ needs transport on all services the local profile touches — B-TC handles this.
+L4+ needs transport on all services the local profile touches — BT6 handles this.
 
 ### Queue
 
-| Order | ID | Task | Level | Size | Status | Deps |
-|-------|----|------|-------|------|--------|------|
-| 1 | B-0 | **Compile SDLC pipeline.** `build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")` succeeds. Profile compilation infrastructure exists — this task verifies SDLC modules specifically resolve and lower. Fix any resolve.rs gaps inline. | L0 | S | Pending | — |
-| 2 | B-PW | **Pipeline wiring.** Fill the 3 empty stages in `workflows/sdlc.dag`: wire `intake` to issue discovery, `worker` to `dispatch_sdlc()`, `report` to result aggregation. Decide: delete `sdlc_dispatch_runtime.dag` (6 stub fns, all hardcoded returns — `execute_stage()` in `sdlc_stages.dag` already routes correctly) or fill with real pre-check policy. | L0 | M | Pending | B-0 |
-| 3 | B-1 | **Hermetic scenario test.** unit_test profile, DryRun, full idea→done with stubs. Assert: stage transitions correct, claims acquired/released, outcomes recorded, labels changed. | L1 | M | Pending | B-PW |
-| 4 | B-2 | **Per-stage handler tests.** Exercise all 8 handlers individually with mocked interfaces. Verify each handler's outputs, label transitions, service call arguments. | L2 | M | Pending | B-PW |
-| 5 | B-3 | **Worker dispatch loop test.** Full discover→claim→dispatch→record→release cycle. Test paths: happy path, replay-skip (prior SUCCESS), retry (prior FAILED), claim conflict (another worker holds it). | L3 | S | Pending | B-2 |
-| 6 | B-TC | **Transport declarations for local profile.** All services the local profile touches need `transport` blocks: `github/issues.dag` (7 ops, REST), `github/pull_request.dag` (7 ops, REST), `llm/openai.dag` (2 ops, REST), `file_claim_store.dag` (3 ops, file), `file_outcome_ledger.dag` (3 ops, file), `codex_agent_provider.dag` (4 ops, shell). 26 ops total. Also: Rust-side file transport resolver (`@file` annotation has no backend — needs `FileTransportOp` or equivalent). | — | L | Pending | — |
-| 7 | B-4 | **Local integration: single stage.** local profile, real GitHub API + file stores. Create a test issue with `sdlc:idea`, run worker, verify design comment posted and labels transitioned. | L4 | M | Pending | B-3, B-TC |
-| 8 | B-5 | **Full local scenario.** Complete idea→done lifecycle on a test repo. Multiple worker invocations drive the issue through all stages. Verify: PR created, code review posted, tests run, PR merged, issue closed. | L5 | L | Pending | B-4 |
-| 9 | B-6 | **Testgen integration.** Auto-generate per-node and per-pair tests for SDLC DAG nodes. Verify testgen handles profile-bound modules (interface→provider resolution). | L6 | M | Pending | B-PW |
-| 10 | B-7 | **CLI entrypoint.** However entrypoints work by this point (generated binary or catalog), make `gunbc sdlc` run the pipeline with `--profile` and `--repo` args. | L7 | S | Pending | B-5 |
+| # | ID | Task | Level | Size | Status | Deps |
+|---|-----|------|-------|------|--------|------|
+| 1 | BT1 | **Compile SDLC pipeline.** `build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")` succeeds. Fix any resolve.rs gaps inline. | L0 | S | Pending | — |
+| 2 | BT2 | **Pipeline wiring.** Fill 3 empty stages in `workflows/sdlc.dag`: wire `intake`, `worker`, `report`. Decide: delete `sdlc_dispatch_runtime.dag` or fill with real policy. | L0 | M | Pending | BT1 |
+| 3 | BT3 | **Hermetic scenario test.** unit_test profile, DryRun, full idea→done with stubs. | L1 | M | Pending | BT2 |
+| 4 | BT4 | **Per-stage handler tests.** 8 handlers individually with mocked interfaces. | L2 | M | Pending | BT2 |
+| 5 | BT5 | **Worker dispatch loop test.** discover→claim→dispatch→record→release. Happy path + replay-skip + retry + claim conflict. | L3 | S | Pending | BT4 |
+| 6 | BT6 | **Transport declarations for local profile.** 26 ops: github (14 REST), llm (2 REST), file stores (6 file), codex agent (4 shell). Plus Rust-side `@file` backend. | — | L | Pending | — |
+| 7 | BT7 | **Local integration: single stage.** Real GitHub API + file stores. Test issue idea→design. | L4 | M | Pending | BT5, BT6 |
+| 8 | BT8 | **Full local scenario.** Complete idea→done lifecycle on test repo. | L5 | L | Pending | BT7 |
+| 9 | BT9 | **Testgen integration.** Auto-generate per-node/per-pair tests for SDLC DAGs. | L6 | M | Pending | BT2 |
+| 10 | BT10 | **CLI entrypoint.** `gunbc sdlc --profile --repo`. | L7 | S | Pending | BT8 |
 
-### Horizon (after B-7)
+### Horizon (after BT10)
 
 | ID | Task | Level | Size | Deps |
 |----|------|-------|------|------|
-| B-8 | GCS SignalStore (PubSub-backed, at-least-once) | L8 | M | B-7 |
-| B-9 | GCS ArtifactStore (content-hash, generation CAS) | L8 | M | B-7 |
-| B-10 | GCP credential chaining (WIF OIDC exchange) | L8 | L | B-7 |
-| B-11 | Cloud Run deployment DAG | L8 | L | B-8:10 |
-| B-12 | Multi-worker CAS stress test (3 workers, exactly-once) | L8 | M | B-11 |
-| B-13 | CI integration (hermetic + cloud smoke) | L8 | M | B-12 |
-| B-AG1 | Agent provider: wire codex_agent.dag to real LLM | L5 | M | B-5 |
-| B-AG2 | Credential provider: local keychain for tokens | L5 | M | B-5 |
-| B-AG3 | Webhook-driven stage transitions | L8 | L | B-AG1 |
+| BT11 | GCS SignalStore (PubSub-backed, at-least-once) | L8 | M | BT10 |
+| BT12 | GCS ArtifactStore (content-hash, generation CAS) | L8 | M | BT10 |
+| BT13 | GCP credential chaining (WIF OIDC exchange) | L8 | L | BT10 |
+| BT14 | Cloud Run deployment DAG | L8 | L | BT11:13 |
+| BT15 | Multi-worker CAS stress test (3 workers, exactly-once) | L8 | M | BT14 |
+| BT16 | CI integration (hermetic + cloud smoke) | L8 | M | BT15 |
+| BT17 | Agent provider: wire codex_agent.dag to real LLM | L5 | M | BT8 |
+| BT18 | Credential provider: local keychain for tokens | L5 | M | BT8 |
+| BT19 | Webhook-driven stage transitions | L8 | L | BT17 |
 
 **Deliverable**: `gunbc sdlc --profile local --repo owner/name` runs full lifecycle.
 **Endstate**: SDLC on Cloud Run with GCS stores, PubSub signals, multi-worker CAS.
@@ -154,7 +147,7 @@ Blue team promotes to backlog or lane queues during triage.
 
 | Observation | Source | Date |
 |-------------|--------|------|
-| *(empty — add observations here)* | | |
+| CI YAML generation (`generate_github_actions_template`, `generate_gitlab_ci_template`) is ~120 lines of hand-wired `push_str`/`write!` string concatenation in `codegen_cli.rs:503-609`. The DSL already has rendering infrastructure (`std/render.dag`, `std/markdown_render.dag`) and a proven code-generation pattern (`tools/makegen.dag`). CI YAML types (Workflow, Job, Step, Trigger, Permission, Cache) should be modeled in `.dag` with pure rendering functions, following the makegen pattern: discover via extern → render in pure DSL → `content_upsert`. Deletes both template functions + the validation functions (lines 450-500). See task breakdown below. | R1 scout | 2026-02-26 |
 
 ---
 
@@ -164,6 +157,11 @@ Triaged and sized. Promote to lane queues when horizon items are exhausted.
 
 | ID | Item | Size | Priority | Notes |
 |----|------|------|----------|-------|
+| CG-1 | DSL CI model types: `dsl/std/ci.dag` — `CiWorkflow`, `CiJob`, `CiStep` (Run/Uses/DagRun), `CiTrigger`, `CiPermission`, `CiCache`, `CiEnv`, plus provider sum type `CiProvider = GitHub \| GitLab`. Data declarations for shared configs (Rust cache paths, cargo env). | M | P1 | Layer 0 types — no rendering yet. Follow `std/languages.dag` pattern for tautological definitions. |
+| CG-2 | DSL CI rendering functions: `dsl/std/ci_render.dag` — `render_github_workflow(w: CiWorkflow) -> String`, `render_gitlab_workflow(w: CiWorkflow) -> String`, plus helpers (`render_step`, `render_job`, `render_permissions`, `render_env_block`, `render_cache`). Pure functions, string interpolation + join. | M | P1 | Follow `makegen.dag` rendering pattern: small composable fns, `\|> map` + `\|> join("\n")`. YAML indentation via string literals (no general YAML serializer needed). |
+| CG-3 | DSL cigen tool: `dsl/tools/cigen.dag` — single entrypoint `func cigen() -> { written: Bool }` that discovers CI config via extern (permissions, secrets, tool invocation, branches), constructs `CiWorkflow` records, renders both providers, calls `content_upsert` for each. Extern bridge: `discover_ci_config() -> CiConfig`. | M | P1 | Follow `makegen.dag` entrypoint pattern. Discovery extern returns structured config, all rendering is pure DSL. |
+| CG-4 | Delete Rust cigen code: remove `generate_github_actions_template()`, `generate_gitlab_ci_template()`, `validate_github_actions_template()`, `validate_gitlab_ci_template()` from `codegen_cli.rs`. Wire `cmd_cigen()` to the new DSL tool (same pattern as `cmd_codegen()` calling `build_dsl_graph_for_entrypoint`). | S | P1 | ~200 lines deleted from `codegen_cli.rs:450-609`. Validation moves to DSL-side (structural — if the types construct, the YAML is valid). |
+| CG-5 | Migrate `RenderConfig` builder + `SharedStep` + `yaml_block` from `core/ir/src/transport/ci/render.rs` — evaluate what remains needed as Rust runtime vs what becomes dead code after CG-1:4. Delete dead code, keep only provider detection (`detect_provider`, `is_ci`). | S | P1 | May keep `CiRenderer` trait for runtime step-level rendering (animated progress). CI YAML generation is a separate concern. |
 | H10 | Compute stack orchestration: Cloud Run/GCS/LB lifecycle DAG builder. | L | P2 | `docs/design/horizon/h10-compute-stack-services.md` |
 | S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS. DSL exists. Distinct from B-12 (which stress-tests SignalStore/ArtifactStore). | M | P2 | Deferred until cloud_run profile needed |
 | H1 | Display reactive DSL: channel-driven event loop. | XL | P3 | No current use case. Review 2026-Q3, delete if not promoted. |
@@ -214,83 +212,55 @@ a follow-up to eliminate.
 
 ---
 
-## Lane R1: Model Correctness + Structure
+## Red Team Queue
 
-**Model correctness first** — the compositional transport model is architecturally
-sound but has wiring and coverage gaps that cause silent failures. Fix these
-before anything else, since they affect all current and future services.
+Single queue. Model correctness first (silent failures), then structural
+correctness, then testing + foundation.
 
-Then: types over validation, enums over strings. Touches `core/ir/`,
-`core/test/`, `gunbc-dag/src/resolve.rs`, `gunbc-dag/src/binaries.rs`,
-`gunbc-dag/src/workflow/catalog.rs`, `core/daglang/` (lowerer).
-**No overlap with Lane R2 files** (except RF-MC1 touches lowerer — coordinate).
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | RT1 | **Credential wiring.** `config { auth: BearerToken }` + `auth_token: Secret` → token never reaches execute node → unauthenticated request, silent. Fix: explicit `auth_input` in DSL config, lowerer wires to `res:credential`. Touches: daglang-syntax, daglang-lower, resolve_service.rs. Test: `make gist` returns 200. See POSTMORTEM below. | M | Pending | — |
+| 2 | RT2 | **Execute node silent fallthrough.** Missing `res:credential` → sends unauthenticated, no error. Fix: fail-closed when `auth_scheme` declared. Touches: `lib/transport/src/ops.rs`. | S | Pending | — |
+| 3 | RT3 | **File transport completeness.** Only READ/READ_BYTES/WRITE. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs EXISTS + CREATE_DIR. Touches: resolve_service.rs. | M | Pending | — |
+| 4 | RT4 | **Transport block validation in typecheck.** Typechecker ignores transport blocks. `LowerError::MissingTransport` is dead code. Fix: validate in typechecker + error in lowerer. Touches: daglang-typecheck, daglang-lower. | M | Pending | — |
+| 5 | RT5 | **`fold` extraction** in evaluate_fn_body() — enables DSL classify_transports(). Deletes fidelity shadows + silent fallbacks. | M | Pending | — |
+| 6 | RT6 | **NodeKind required** on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
+| 7 | RT7 | **Port namespace typing**: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
+| 8 | RT8 | **CallableClass enum** in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
+| 9 | RT9 | **Virtual I/O DSL types** (`dsl/std/virtual_io.dag`). VirtualFsSetup, ShellCassette, HttpStub, VirtualBackendConfig. | M | Pending | — |
+| 10 | RT10 | **Shell cassette registry** in VirtualTransportBackend. | S | Pending | — |
+| 11 | RT11 | **HTTP response registry** in VirtualTransportBackend. In-process request→response matching. | S | Pending | — |
+| 12 | RT12 | **TCP loopback registry** in VirtualTransportBackend. | S | Pending | — |
+| 13 | RT13 | **Derive mock registries** from `@mock_response` annotations. Auto-generate VirtualBackendConfig per workflow. | M | Pending | RT9 |
+| 14 | RT14 | **S-tier codegen** in `build_fidelity_ladder_section`. Real mode + virtual backends via TransportBackendGuard. | M | Pending | RT10:13 |
+| 15 | RT15 | **M-tier codegen** (sandboxed tempdir, `#[cfg(feature = "sandboxed_tests")]`). | M | Pending | RT14 |
+| 16 | RT16 | **L/XL tier codegen** (cost-gated real/remote, `GUNBC_TEST_MAX_COST` env check). | S | Pending | RT14 |
+| 17 | RT17 | **DSL Makefile assembly**: import data, produce targets, wire to makegen output. | M | Pending | — |
+| 18 | RT18 | **Delete bootstrap externs**. Parity golden tests. | M | Pending | RT17 |
+| 19 | RT19 | **Recursive types** (self-referential type defs). | L | Pending | — |
+| 20 | RT20 | **Recursive functions** (self-calls in fn bodies). | L | Pending | RT19 |
+| 21 | RT21 | **Tree rendering in pure DSL**. Delete RenderTreeOp. | L | Pending | RT19, RT20 |
+| 22 | RT22 | **Snapshot content DSL**. Delete BuildSnapshotContentOp. | M | Pending | RT21 |
+| 23 | RT23 | **Delete extern_impls.rs** entirely. Zero extern func in any .dag file. | S | Pending | RT21, RT22 |
 
-Queue ordered by: model correctness (silent failures in the transport
-pipeline), then manual registries (pre-SDLC cleanup), then structural typing.
+### Horizon (after RT23)
 
-| Order | ID | What | Size | Status | Deps |
-|-------|----|------|------|--------|------|
-| 1 | RF-MC1 | **Credential wiring.** When a service has `config { auth: BearerToken }` and an `auth_token: Secret` input, nothing wires the token to the execute node's `res:credential` port. Requests go out unauthenticated, silently. **Fix**: Option B from postmortem — add explicit `auth_input` field to DSL service `config` block. Lowerer reads it and creates edge from prepare node's auth field → execute node's `res:credential` port with `Credential::new(Secret, AuthScheme)` wrapping. Touches: `daglang-syntax` (parser), `daglang-lower` (wiring), `resolve_service.rs` (wrapping). Test: `make gist` returns 200 with valid token. See POSTMORTEM below for full analysis. | M | Pending | — |
-| 2 | RF-MC2 | **Execute node silent fallthrough.** `TransportOps::Execute` sends unauthenticated requests when `res:credential` is missing — no error, no warning. Fix: when `ServiceOperationSpec` declares `auth_scheme`, require `res:credential` input. Error if absent (fail-closed). Touches: `lib/transport/src/ops.rs`. | S | Pending | — |
-| 3 | RF-MC3 | **File transport completeness.** `GenericFilePrepareOp` handles READ, READ_BYTES, WRITE only. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs at least EXISTS + CREATE_DIR for file-backed stores. Touches: `gunbc-dag/src/resolve_service.rs`. | M | Pending | — |
-| 4 | RF-RG1 | **Manual registry elimination.** `WorkspaceBinary` enum (13 entries, `binaries.rs`) is derivable from Cargo.toml `[[bin]]`. Workflow variant catalog (10 entries, `catalog.rs`) is derivable from DSL `pipeline` declarations + annotations for aliases/modes. Delete both manual tables, replace with auto-derivation. | M | Pending | — |
-| 5 | RF-RG2 | **Resolve generalization.** `resolve.rs` hardcodes 3 module paths (`std.resources`, `tools.infra`, prefix `services.*`). New DSL modules (SDLC, future tools) must work without touching resolve.rs. Replace with metadata-driven dispatch or convention-based fallthrough. | M | Pending | — |
-| 6 | RF-H4 | ResourceKind string dispatch → enum. Easiest win, local to resolve.rs. | S | Pending | — |
-| 7 | RF-H2 | TestgenTargetDef Option fields → non-Option with defaults. | S | Pending | — |
-| 8 | RF-E4 | Fidelity classification smoke test. Assert makegen→Hermetic/S, gist→Integration/L. | S | Pending | — |
-| 9 | RF-G-unblock | `fold` extraction in evaluate_fn_body() — enables calling DSL classify_transports(). Deletes all RF-G1:6 shadows + fidelity silent fallbacks. | M | Pending | — |
-| 10 | RF-A1 | NodeKind required on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
-| 11 | RF-A2a | Port namespace typing: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
-| 12 | RF-A4 | CallableClass enum in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
-
-### R1 Horizon (after A4)
-
-| Order | ID | What | Size |
-|-------|----|------|------|
-| 13 | RF-A5 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
-| 14 | RF-A6a | String constants: define central consts in `core/ir/src/signature.rs`. | S |
-| 15 | RF-A8 | `#[derive(StringEnum)]` macro for 15 enums (~60 match blocks). Includes TestClass/FermiCost `FromStr`. | M |
-| 16 | RF-A3 | ModulePath unification across 4 crates. | S |
-| 17 | RF-A9 | Shared DslTypeMapping table for emit backends. | S |
-| 18 | RF-A10 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
-
----
-
-## Lane R2: Testing + Foundation
-
-Model correctness (typecheck), then black-box test generation, then
-extern bridge elimination. Touches `core/codegen/src/testgen/`,
-`core/daglang/`, `gunbc-dag/src/extern_impls.rs`.
-**No overlap with Lane R1 files.**
-
-Queue ordered by: model correctness (typecheck gap), then dependency chain.
-
-| Order | ID | What | Size | Status | Deps |
-|-------|----|------|------|--------|------|
-| 1 | RF-TV1 | **Transport block validation in typecheck.** The typechecker completely ignores transport blocks — invalid contents compile silently and fail at resolve time with confusing errors. `LowerError::MissingTransport` is dead code (lowerer falls through to `ServiceOperationSpec::None` instead of erroring). **Fix**: (a) Validate transport block contents in typechecker: method/op field is required, path template variables match operation input fields, auth scheme matches service config. (b) Make the lowerer emit `LowerError::MissingTransport` instead of silently producing `ServiceOperationSpec::None`. Touches: `daglang-typecheck`, `daglang-lower`. | M | Pending | — |
-| 2 | BB-2 | Per-node test generation (Level 1a/1b). Pure nodes real exec, effectful DryRun. | M | Pending | BB-1 |
-| 3 | BB-3 | Adjacent pair test generation (Level 2). Window tests for wiring bugs. | M | Pending | BB-2 |
-| 4 | BB-5 | Cross-workflow consistency tests (Level 4). Same node, multiple workflows. | S | Pending | BB-2 |
-| 5 | FC-P7-c2 | DSL Makefile assembly: import data, produce targets, wire to makegen output. | M | Pending | — |
-| 6 | FC-P7-d | Delete 2 bootstrap extern impls. Parity golden tests. | M | Pending | FC-P7-c2 |
-| 7 | FC-CF5 | Recursive types (self-referential type defs). | L | Pending | — |
-| 8 | FC-CF6 | Recursive functions (self-calls in fn bodies). | L | Pending | FC-CF5 |
-| 9 | FC-P8-a | Tree rendering in pure DSL. Delete RenderTreeOp. | L | Pending | FC-CF5, FC-CF6 |
-| 10 | FC-P8-b | Snapshot content as MarkdownDoc. Delete BuildSnapshotContentOp. | M | Pending | FC-P8-a |
-| 11 | FC-P8-c | Delete extern_impls.rs entirely. Zero extern func in any .dag file. | S | Pending | FC-P8-a, FC-P8-b |
-
-### R2 Horizon (after FC-P8-c)
-
-| Order | ID | What | Size |
-|-------|----|------|------|
-| 11 | RF-A2b | Port namespace typing: migrate `starts_with("res:")`/`"tool:"` call sites to `PortCategory`. | S |
-| 12 | RF-A6b | String constants: migrate `__deps`/`res:file`/`tool:` references to central consts. | M |
-| 13 | RF-C1 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
-| 14 | RF-C2 | Unify passthrough op variants to single data-driven PassthroughOp. | S |
-| 15 | RF-C3 | Error type consolidation (6 types → layered like ExecError). | M |
-| 16 | RF-C4 | Test helper extraction (CompileTestHelper + MockFactory). | M |
-| 17 | RF-D-eval | Scaffolding decision: delete RetryPolicy/ErrorMapping/ContractObligation/ResourceRequirement or wire through DSL. | S |
-| 18 | RF-F-eval | Underused abstractions decision: delete algebra traits + render traits or find second consumer. | S |
+| # | ID | What | Size |
+|---|-----|------|------|
+| 24 | RT24 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
+| 25 | RT25 | String constants: central consts in `core/ir/src/signature.rs`. | S |
+| 26 | RT26 | `#[derive(StringEnum)]` for 15 enums (~60 match blocks). | M |
+| 27 | RT27 | ModulePath unification across 4 crates. | S |
+| 28 | RT28 | Shared DslTypeMapping table for emit backends. | S |
+| 29 | RT29 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
+| 30 | RT30 | Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortCategory`. | S |
+| 31 | RT31 | String constants migration: `__deps`/`res:file`/`tool:` → central consts. | M |
+| 32 | RT32 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
+| 33 | RT33 | Unify passthrough op variants → single data-driven PassthroughOp. | S |
+| 34 | RT34 | Error type consolidation (6 types → layered). | M |
+| 35 | RT35 | Test helper extraction (CompileTestHelper + MockFactory). | M |
+| 36 | RT36 | Scaffolding decision: delete or wire RetryPolicy/ErrorMapping/etc. | S |
+| 37 | RT37 | Underused abstractions: delete algebra/render traits or find second consumer. | S |
 
 ---
 
@@ -301,7 +271,17 @@ smell catalog above to classify. Include file path + line if possible.
 
 | Smell | Observation | File | Source | Date |
 |-------|-------------|------|--------|------|
-| *(empty — credential wiring promoted to RF-MC1)* | | | | |
+| *(credential wiring promoted to RT1)* | | | | |
+| Static mapping table | Three functions (`transport_depth_ordinal`, `transport_depth_str`, `transport_is_hermetic`) encode the same semantic mapping for `ServiceTransportClass`. | `gunbc-dag/src/fidelity.rs:60-89` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `passthrough_fallback_value()` hard-codes a port alias table. | `gunbc-dag/src/resolve.rs:95-162` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `looks_effectful_without_kind()` re-derives NodeKind from port type strings. Dead code after RT6 (NodeKind). | `core/exec/src/execute.rs:2064-2092` | RF-H4 PR scout | 2026-02-26 |
+| Heuristic reimplementation | `classify_module()` inflated by transitive auth callables. | `gunbc-dag/src/fidelity.rs:184-209` | RF-E4 impl | 2026-02-26 |
+| Fallback arm | HTTP method `_ => RestRequest::post(&url)` — typo silently becomes POST. | `gunbc-dag/src/resolve_service.rs:72-79` | R1 scout | 2026-02-26 |
+| String dispatch | `match field.type_id.as_str()` for JSON→Value appears twice. | `gunbc-dag/src/resolve_service.rs:291-335, 352-366` | R1 scout | 2026-02-26 |
+| Validation at use site | `input_as_string()` returns `"(unresolved)"` magic string. | `gunbc-dag/src/resolve_service.rs:634-641` | R1 scout | 2026-02-26 |
+| String dispatch | `match self.spec.operation.as_str()` for file operations. | `gunbc-dag/src/resolve_service.rs:933-948` | R1 scout | 2026-02-26 |
+| String dispatch | `workflow_unit_commands()` matches workflow name strings. | `gunbc-dag/src/workflow/unit_commands.rs:300-323` | R1 scout | 2026-02-26 |
+| Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets. See Theme INV below. | `gunbc-dag/src/ci/mod.rs:56-77` | lane-2 merge | 2026-02-26 |
 
 ### POSTMORTEM: `make gist` 401 — Compounding Failures
 
@@ -363,11 +343,11 @@ The SDLC pipeline only sees interfaces. Each service operation needs a
 `transport rest { ... }` or `transport shell { ... }` block so the
 compiler can generate prepare→execute→parse triplets.
 
-Local-profile transport (26 ops) moved to Blue queue as B-TC (critical path for L4+).
+Local-profile transport (26 ops) moved to Blue queue as BT6 (critical path for L4+).
 
 | ID | Scope | Ops Missing | Notes |
 |----|-------|-------------|-------|
-| RF-TC3 | **Remaining providers**: GCS stores (6), github_issue_provider (7), credential providers (4) | 17 | Needed for cloud_run profile. Some overlap with B-TC (github_issue_provider delegates to github/issues.dag which B-TC covers). |
+| RF-TC3 | **Remaining providers**: GCS stores (6), github_issue_provider (7), credential providers (4) | 17 | Needed for cloud_run profile. Some overlap with BT6 (github_issue_provider delegates to github/issues.dag which BT6 covers). |
 | RF-TC4 | **Stub providers**: stub_providers.dag (26), stub_credential_provider.dag (2) | 28 | Intentional — unit_test profile stubs. Consider `transport stub {}` marker. |
 | RF-TC5 | **Infrastructure stubs**: azure (43), aws (38), gcp-infra (59) | 140 | Dormant — defer until infrastructure provisioning lane opens. |
 
@@ -377,7 +357,30 @@ Local-profile transport (26 ops) moved to Blue queue as B-TC (critical path for 
 |----|---------------|-----------|---------|
 | RF-E5 | `makegen_runtime_differential_interpreter_vs_generated_rust_layer1` (codegen_parity.rs) | FnBodyDelegate gap: interpreter produces raw `{header}{body}`, fn body evaluation only works via `shared.rs` direct path. | Interpreter needs fn body evaluation support. |
 | RF-E6 | `makegen_exec_runtime_e2e_structural_verification` (daglang-driver), `pragma_exec_runtime_e2e_structural_verification` (daglang-driver), `makegen_e2e_generated_binary_produces_correct_makefile` (cli_commands), `pragma_e2e_generated_binary_produces_correct_config_files` (cli_commands) | Exec-runtime emitter missing: `LoadRegistry` handler, `PureRender` fn classification, `ContentUpsertOutputPath` classification. | `daglang-emit` exec-runtime backend needs node classification for all makegen/pragma node kinds. |
-| — | `clippy_toml_dsl_produces_valid_output` (pragma_parity.rs) | Sum type variant tags lost during `build_data_values()` JSON serialization. | FC-CF5 (recursive types). Already tracked in R2 queue. |
+| — | `clippy_toml_dsl_produces_valid_output` (pragma_parity.rs) | Sum type variant tags lost during `build_data_values()` JSON serialization. | RT19 (recursive types). |
+
+### Theme INV: Inventory Linkage (cigen secrets gap)
+
+`gunbc-codegen cigen` silently drops secrets from CI YAML because the
+`inventory` crate's `submit!` registrations are discarded by the linker
+when no symbols from the submitting crate are directly referenced.
+
+**Root cause**: `ci_live_test_secrets()` calls `iter_dag_specs()` which
+collects `DagSpecDef` entries via `inventory`. Entries with `live_required`
+secrets are registered in `lib/gcp-ops`, `lib/review`, etc. The
+`gunbc-codegen` binary (`codegen_cli.rs`) doesn't reference those crates'
+symbols, so the linker drops them and their inventory registrations.
+Meanwhile `gunbc-ci` (`ci.rs`) transitively references them through
+`build_build_graph()`, so it sees the full inventory.
+
+**Impact**: Running `gunbc-codegen cigen` produces a ci.yml missing 5
+GCP secret env vars. Current workaround: ci.yml is committed with
+secrets and not regenerated on every codegen pass.
+
+| ID | Fix | Size | Notes |
+|----|-----|------|-------|
+| RF-INV1 | **Force-link inventory crates in codegen binary.** Add explicit `use` references or `extern crate` for crates that register `DagSpecDef` with `live_required` secrets. Simplest fix, but fragile — adding a new crate with secrets requires updating codegen_cli.rs. | S | Quick fix. |
+| RF-INV2 | **DSL-derive CI secrets from service annotations.** Instead of inventory, derive `live_required` from `@auth` + `@endpoint` annotations on service operations in `.dag` files. The DSL already declares auth schemes — the compiler can extract which env vars are needed. Eliminates the inventory linkage problem entirely. | M | DSL-first fix. Aligns with RT13 (derive mock registries from `@mock_response`). |
 
 ### Compiler Features (low priority)
 
@@ -390,9 +393,17 @@ Local-profile transport (26 ops) moved to Blue queue as B-TC (critical path for 
 
 ## Reference: Theme Details
 
-Detailed descriptions for items in lane queues. Consult when picking
-up a task — the lane queue has the priority order, this section has
-the context.
+Detailed descriptions for queue items. The queue has priority order,
+this section has context.
+
+**ID mapping** (old → new):
+RT1:4 = new (RF-MC1→RT1, RF-MC2→RT2, RF-MC3→RT3, RF-TV1→RT4).
+RF-G-unblock→RT5, RF-A1→RT6, RF-A2a→RT7, RF-A4→RT8,
+VIO-1→RT9, VIO-3→RT10, VIO-4→RT11, VIO-5→RT12, VIO-2→RT13,
+VIO-6→RT14, VIO-7→RT15, VIO-8→RT16, FC-P7-c2→RT17, FC-P7-d→RT18,
+FC-CF5→RT19, FC-CF6→RT20, FC-P8-a→RT21, FC-P8-b→RT22, FC-P8-c→RT23.
+B-0→BT1, B-PW→BT2, B-1→BT3, B-2→BT4, B-3→BT5, B-TC→BT6, B-4→BT7,
+B-5→BT8, B-6→BT9, B-7→BT10.
 
 ### Theme MC: Model Correctness (compositional transport pipeline)
 
@@ -405,13 +416,13 @@ cause **silent failures** — requests go out wrong without errors:
 
 | Gap | Symptom | Severity |
 |-----|---------|----------|
-| **RF-MC1: Credential wiring** | `config { auth: BearerToken }` + `auth_token: Secret` input → token never reaches execute node → unauthenticated request, silent | Critical — affects all authenticated REST services |
-| **RF-MC2: Execute silent fallthrough** | Missing `res:credential` → execute sends request without auth, no error | Critical — masks RF-MC1 |
-| **RF-MC3: File transport coverage** | Only READ/READ_BYTES/WRITE implemented → EXISTS/CREATE_DIR/DELETE/APPEND/GLOB operations fail at resolve | Blocking — SDLC local profile needs EXISTS + CREATE_DIR |
-| **RF-TV1: Typecheck validation** | Typechecker ignores transport blocks entirely → invalid contents compile silently | High — errors surface late at resolve time with confusing messages |
+| **RT1: Credential wiring** | `config { auth: BearerToken }` + `auth_token: Secret` input → token never reaches execute node → unauthenticated request, silent | Critical — affects all authenticated REST services |
+| **RT2: Execute silent fallthrough** | Missing `res:credential` → execute sends request without auth, no error | Critical — masks RT1 |
+| **RT3: File transport coverage** | Only READ/READ_BYTES/WRITE implemented → EXISTS/CREATE_DIR/DELETE/APPEND/GLOB operations fail at resolve | Blocking — SDLC local profile needs EXISTS + CREATE_DIR |
+| **RT4: Typecheck validation** | Typechecker ignores transport blocks entirely → invalid contents compile silently | High — errors surface late at resolve time with confusing messages |
 
-RF-MC1 root cause analysis: See POSTMORTEM section below.
-RF-TV1 detail: `LowerError::MissingTransport` is dead code — the lowerer falls
+RT1 root cause analysis: See POSTMORTEM section below.
+RT4 detail: `LowerError::MissingTransport` is dead code — the lowerer falls
 through to `ServiceOperationSpec::None` instead of erroring when transport is missing.
 
 **Coverage snapshot** (97 total operations across 28 services):
@@ -461,7 +472,7 @@ exist solely because `classify_transports` uses `fold` (via
 `fermi_max_of`), and the lowerer can't extract fn bodies containing
 `fold` for `evaluate_fn_body()`.
 
-**RF-G-unblock** (in R1 queue position 6): Implement `fold` aggregation
+**RT5** (was RF-G-unblock): Implement `fold` aggregation
 in Rust's `evaluate_fn_body()` evaluator (it already handles other
 collection ops). This directly enables calling the existing DSL fns.
 Once done, delete:
@@ -496,20 +507,59 @@ Once done, delete:
 | RF-A9 | **Emit backend type-name tables**. Same type mapping in 3 backends. | daglang-emit | Shared `DslTypeMapping` table. |
 | RF-A10 | **String dispatch in DAG tooling**. 100+ match arms on string literals. | 5 files | Registry pattern or DSL data declarations. |
 
+### Theme VIO: Virtual I/O Infrastructure (BB-6 S+ tiers)
+
+BB-6 XS tier (PureMock/DryRun) works. S+ tiers are stubs awaiting virtual I/O
+infrastructure. The design insight: **S-tier doesn't need real servers**. The
+`TransportBackend` trait intercepts at the `TransportRequest`/`TransportResponse`
+struct level. S-tier REST/HTTP/TCP is just a response registry inside
+`VirtualTransportBackend` — in-process request→response matching, no sockets.
+
+**Existing infrastructure**:
+- `VirtualTransportBackend` in `lib/transport/src/test_backend.rs`: handles File
+  ops (read/write/append/delete/exists/glob/metadata) and basic Shell (find,
+  printenv, test -f). REST/HTTP/TCP return error.
+- `TransportBackendGuard` in `lib/transport/src/backend.rs`: scoped backend
+  install/restore via RAII guard. Thread-safe global swap.
+- `FidelityLadder`/`FidelityLevel` in `core/test/src/fidelity.rs`: canonical
+  ladders for all 6 TransportKind variants. `node_max_fidelity()` transitive meet.
+
+**DSL-first approach**:
+- RT9 defines virtual backend configuration types in DSL (`dsl/std/virtual_io.dag`)
+- RT13 derives mock registries from existing `@mock_response` annotations —
+  zero hand-written mock data
+- RT10:12 add response registries to `VirtualTransportBackend` (shell cassettes,
+  HTTP stubs, TCP loopback) — same in-process interception pattern as File
+- RT14:16 wire virtual backends into testgen codegen per tier
+
+**Key files**:
+- `dsl/std/virtual_io.dag` (new, RT9)
+- `lib/transport/src/test_backend.rs` (RT10, RT11, RT12)
+- `core/codegen/src/testgen/mock_corpus.rs` (RT13)
+- `core/codegen/src/testgen/codegen.rs` (RT14, RT15, RT16)
+
 ---
 
 ## Archive
 
-NF-1 through NF-6 (compile+link hardening): complete 2026-02-25. Detail: `TODO/TODONE/tasks-completed.md`.
-FC-NF7 (fn-level evaluation): complete 2026-02-25. `expr.rs` IR + `eval.rs` evaluator + `FnBodyDelegate`. `makegen/render.rs` deleted (~1200 lines). Makegen rendering is pure DSL.
-FC-CL (dead code cleanup): complete 2026-02-25. Deleted `core/tool-registry` + `core/tool-registry-macros`, 14 orphaned spec builder fns, stale rules/comments.
-FC-EG (enforcement gates): complete 2026-02-25. Import-direction lint, extern func count gate, format!/push_str boundary gate — all 3 automated ratchets in CI.
-FC-P6-a:d (policy migration): complete 2026-02-26. `dsl_render.rs` evaluates `derive_*` DSL fns via `evaluate_fn_body()`. Allowlist + lint_policy migrated; clippy_toml blocked on FC-CF5. `all_extern_symbols()` 8→6.
-FC-CF1 + FC-CF7 (split + zip): complete 2026-02-26. Both pipe methods across 4 compiler stages (typecheck, lower, eval, emit). 9 e2e tests.
-FC-P7-a (build_workflows.dag): complete 2026-02-26. WorkflowSpec + MetaTarget types + data.
-FC-P7-b (artifact emitter): complete 2026-02-26. `dag_emit.rs` emits valid `.dag` syntax. `CompileOutput::emit_artifact_dag()` for downstream introspection.
-FC-P7-c1 (Makefile DSL types): complete 2026-02-26. Types already existed in `extdeps/make.dag`.
-BB-0 (compositional type modeling): complete. All types in `core/test/src/corpus.rs` and `core/test/src/fidelity.rs`. 23 integration tests.
-BB-1 (mock corpus builder): complete. `build_corpus()` in `core/codegen/src/testgen/mock_corpus.rs`. DryRun extraction + cross-workflow accumulation.
-BB-4 (type-derived boundary values): complete. `enrich_corpus_with_type_witnesses()` with anchored mutation. MAX_EXAMPLES_PER_NODE=50.
-BB-6 (transport fidelity ladders): complete. Canonical ladders for all 6 TransportKind variants. `node_max_fidelity()` transitive meet inference.
+Completed items. RF-H4, RF-H2, RF-E4, BB-2, BB-3, BB-5 completed 2026-02-26.
+
+NF-1:6 (compile+link hardening): 2026-02-25. Detail: `TODO/TODONE/tasks-completed.md`.
+FC-NF7 (fn-level evaluation): 2026-02-25. `expr.rs` IR + `eval.rs` evaluator + `FnBodyDelegate`.
+FC-CL (dead code cleanup): 2026-02-25. Deleted `core/tool-registry` + macros, 14 orphaned fns.
+FC-EG (enforcement gates): 2026-02-25. Import-direction lint, extern count gate, format!/push_str gate.
+FC-P6-a:d (policy migration): 2026-02-26. `dsl_render.rs` evaluates `derive_*` DSL fns.
+FC-CF1 + FC-CF7 (split + zip): 2026-02-26. Both pipe methods, 4 compiler stages, 9 tests.
+FC-P7-a (build_workflows.dag): 2026-02-26. WorkflowSpec + MetaTarget types + data.
+FC-P7-b (artifact emitter): 2026-02-26. `dag_emit.rs` emits valid `.dag` syntax.
+FC-P7-c1 (Makefile DSL types): 2026-02-26. Types in `extdeps/make.dag`.
+BB-0 (compositional type modeling): complete. Types in `corpus.rs` + `fidelity.rs`. 23 tests.
+BB-1 (mock corpus builder): complete. `build_corpus()` in `mock_corpus.rs`.
+BB-4 (type-derived boundary values): complete. `enrich_corpus_with_type_witnesses()`.
+BB-6 (transport fidelity ladders): complete. Canonical ladders, `node_max_fidelity()`.
+RF-H4 (ResourceKind enum): 2026-02-26. String dispatch → enum in resolve.rs.
+RF-H2 (TestgenTargetDef non-Option): 2026-02-26. Option fields → defaults.
+RF-E4 (fidelity smoke test): 2026-02-26. makegen→Unit/XS, gist→Integration/L.
+BB-2 (per-node corpus tests): 2026-02-26. `build_corpus_section()`. Pure→Real, effectful→DryRun.
+BB-3 (adjacent pair tests): 2026-02-26. `build_adjacent_pair_section()`. Edge wiring verification.
+BB-5 (cross-workflow consistency): 2026-02-26. `build_cross_workflow_section()`. Multi-workflow nodes.

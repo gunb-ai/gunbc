@@ -86,12 +86,13 @@ impl DagSpecDef {
         def.flow_tests = self.testgen.flow_tests;
         def.live_flow_tests = self.testgen.live_flow_tests;
         def.window_max_nodes = self.testgen.window_max_nodes;
-        def.test_class = self.testgen.test_class;
-        def.fermi_cost = self.testgen.fermi_cost;
+        def.test_class = self.testgen.test_class.unwrap_or(TestClass::Unit);
+        def.fermi_cost = self.testgen.fermi_cost.unwrap_or(FermiCost::XS);
         def.requires = self
             .testgen
             .requires
-            .map(|items| items.iter().map(|s| s.to_string()).collect());
+            .map(|items| items.iter().map(|s| s.to_string()).collect())
+            .unwrap_or_default();
         def.secrets = self
             .testgen
             .secrets
@@ -167,9 +168,9 @@ pub fn generate_target_with_types<T: Executable + Clone>(
 ) -> String {
     // Classification is now provided by callers via fidelity::classify_module().
     // Simple defaults for the rare case a caller doesn't provide them.
-    let test_class = config.test_class.unwrap_or(TestClass::Unit);
-    let fermi_cost = config.fermi_cost.unwrap_or(FermiCost::XS);
-    let requires = config.requires.clone().unwrap_or_default();
+    let test_class = config.test_class;
+    let fermi_cost = config.fermi_cost;
+    let requires = config.requires.clone();
     let secrets = config.secrets.clone().unwrap_or_default();
     let live_test_class = config.live_test_class.unwrap_or(TestClass::Integration);
     let live_requires = config.live_requires.clone().unwrap_or_default();

@@ -51,12 +51,12 @@ pub struct TestgenTargetDef {
     pub live_flow_tests: bool,
     /// Max window size for windowed tests (None = no limit)
     pub window_max_nodes: Option<usize>,
-    /// Test class override (unit/hermetic/integration)
-    pub test_class: Option<TestClass>,
-    /// Fermi cost override
-    pub fermi_cost: Option<FermiCost>,
-    /// External requirements override
-    pub requires: Option<Vec<String>>,
+    /// Test class (unit/hermetic/integration). Default: Unit.
+    pub test_class: TestClass,
+    /// Fermi cost bucket. Default: XS.
+    pub fermi_cost: FermiCost,
+    /// External requirements. Default: empty.
+    pub requires: Vec<String>,
     /// Required secrets override (env vars)
     pub secrets: Option<Vec<String>>,
     /// Live test class override
@@ -118,9 +118,9 @@ impl TestgenTargetDef {
             flow_tests: false,
             live_flow_tests: false,
             window_max_nodes: None, // Deprecated: use probe_observer_tests instead
-            test_class: None,
-            fermi_cost: None,
-            requires: None,
+            test_class: TestClass::Unit,
+            fermi_cost: FermiCost::XS,
+            requires: Vec::new(),
             secrets: None,
             live_test_class: None,
             live_fermi_cost: None,
