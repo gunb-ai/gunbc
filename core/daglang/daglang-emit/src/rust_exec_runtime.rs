@@ -327,9 +327,7 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
             return Some(HandlerKind::Passthrough);
         }
         LoweredOp::Callable { .. } => {}
-        LoweredOp::LoopUnpack { .. }
-        | LoweredOp::LoopPack { .. }
-        | LoweredOp::BranchMerge { .. }
+        LoweredOp::Pattern(_)
         | LoweredOp::UnsupportedPattern { .. }
         | LoweredOp::ExternCall { .. } => return None,
         // FC-7: Output path annotation nodes are metadata-only.

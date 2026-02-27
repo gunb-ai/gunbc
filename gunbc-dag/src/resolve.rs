@@ -32,7 +32,6 @@ use daglang_lower::{
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
-use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
@@ -629,19 +628,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             outputs,
             service_metadata.as_deref(),
         ),
-        LoweredOp::LoopUnpack {
-            input_port,
-            element_port,
-        } => Ok(DynOp::new(PatternOp::LoopUnpack {
-            input_port: input_port.clone(),
-            element_port: element_port.clone(),
-        })),
-        LoweredOp::LoopPack { output_port } => Ok(DynOp::new(PatternOp::LoopPack {
-            output_port: output_port.clone(),
-        })),
-        LoweredOp::BranchMerge { output_port } => Ok(DynOp::new(PatternOp::BranchMerge {
-            output_port: output_port.clone(),
-        })),
+        LoweredOp::Pattern(pattern_op) => Ok(DynOp::new(pattern_op.clone())),
         LoweredOp::UnsupportedPattern { name } => Err(ResolveError {
             node_id: node_id.to_string(),
             reason: format!(

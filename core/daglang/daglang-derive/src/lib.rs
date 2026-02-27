@@ -505,9 +505,7 @@ fn derive_node_labels(nodes: &[Node<LoweredOp>]) -> BTreeMap<String, String> {
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pipeline { module, name, .. }) => {
                     format!("{module}.{name}")
                 }
-                gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopUnpack { .. })
-                | gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopPack { .. })
-                | gunbc_ir::node::NodeBody::Opaque(LoweredOp::BranchMerge { .. }) => {
+                gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pattern(_)) => {
                     "pattern_internal".to_string()
                 }
                 gunbc_ir::node::NodeBody::Opaque(LoweredOp::UnsupportedPattern { name }) => {
@@ -622,9 +620,7 @@ fn derive_module_metadata(nodes: &[Node<LoweredOp>]) -> Vec<ModuleMetadata> {
             | LoweredOp::Primitive { module, .. }
             | LoweredOp::Collection { module, .. } => (module, false),
             LoweredOp::Pipeline { module, .. } => (module, true),
-            LoweredOp::LoopUnpack { .. }
-            | LoweredOp::LoopPack { .. }
-            | LoweredOp::BranchMerge { .. }
+            LoweredOp::Pattern(_)
             | LoweredOp::UnsupportedPattern { .. }
             | LoweredOp::ExternCall { .. } => continue,
         };

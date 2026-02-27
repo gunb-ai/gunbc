@@ -312,9 +312,7 @@ pub fn emit_rust_bundle(
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));
                 emitted_functions.push(backend.emit_func(&fn_name));
             }
-            LoweredOp::LoopUnpack { .. }
-            | LoweredOp::LoopPack { .. }
-            | LoweredOp::BranchMerge { .. }
+            LoweredOp::Pattern(_)
             | LoweredOp::UnsupportedPattern { .. }
             | LoweredOp::ExternCall { .. } => {}
         }
@@ -694,9 +692,7 @@ fn collect_symbols_with_metadata(
                     service_phase: None,
                 });
             }
-            LoweredOp::LoopUnpack { .. }
-            | LoweredOp::LoopPack { .. }
-            | LoweredOp::BranchMerge { .. }
+            LoweredOp::Pattern(_)
             | LoweredOp::UnsupportedPattern { .. }
             | LoweredOp::ExternCall { .. } => {}
         }

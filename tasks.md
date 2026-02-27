@@ -287,7 +287,7 @@ correctness, then testing + foundation.
 | 30 | RT30 | ✅ Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortName` methods. 3 sites migrated (lower `is_user_param_port`, emit `is_user_input_port`, patterns `ResourceInput::new`). `process_registry.rs` skipped (uses `ClaimId`, not `PortName`). | S |
 | 31 | RT31 | String constants migration: `__deps`/`res:file`/`tool:` → central consts. | M |
 | 32 | RT32 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
-| 33 | RT33 | Unify passthrough op variants → single data-driven PassthroughOp. | S |
+| 33 | RT33 | ✅ Unified passthrough op variants: replaced 3 `LoweredOp` variants (`LoopUnpack`, `LoopPack`, `BranchMerge`) with single `Pattern(PatternOp)`. Added `kind_name()` to `PatternOp`. Simplified 10 match sites across lowerer, emit, derive, resolver, and CLI render. | S |
 | 34 | RT34 | Error type consolidation (6 types → layered). | M |
 | 35 | RT35 | Test helper extraction (CompileTestHelper + MockFactory). | M |
 | 36 | RT36 | Scaffolding decision: delete or wire RetryPolicy/ErrorMapping/etc. | S |

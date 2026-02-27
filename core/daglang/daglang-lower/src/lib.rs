@@ -42,7 +42,7 @@ pub mod expr;
 pub use expr::LoweredFnBody;
 
 /// Lowered operation payload for daglang graph nodes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum LoweredOp {
     Callable {
         module: String,
@@ -72,16 +72,9 @@ pub enum LoweredOp {
         stages: usize,
         stage_names: Vec<String>,
     },
-    LoopUnpack {
-        input_port: String,
-        element_port: String,
-    },
-    LoopPack {
-        output_port: String,
-    },
-    BranchMerge {
-        output_port: String,
-    },
+    /// A pattern-internal operation (LoopUnpack, LoopPack, BranchMerge, etc.).
+    /// Wraps `PatternOp` directly — no round-trip conversion needed at resolve time.
+    Pattern(PatternOp),
     /// A pattern operation that is not yet supported in daglang lowering.
     /// Produces a structured error at resolution time instead of panicking.
     UnsupportedPattern {
@@ -96,36 +89,14 @@ pub enum LoweredOp {
 impl From<PatternOp> for LoweredOp {
     fn from(op: PatternOp) -> Self {
         match op {
-            PatternOp::LoopUnpack {
-                input_port,
-                element_port,
-            } => LoweredOp::LoopUnpack {
-                input_port,
-                element_port,
-            },
-            PatternOp::LoopPack { output_port } => LoweredOp::LoopPack { output_port },
-            PatternOp::BranchMerge { output_port } => LoweredOp::BranchMerge { output_port },
-            // Exhaustive arms for patterns not yet supported in daglang lowering.
+            // Supported pattern ops: wrap directly.
+            PatternOp::LoopUnpack { .. }
+            | PatternOp::LoopPack { .. }
+            | PatternOp::BranchMerge { .. } => LoweredOp::Pattern(op),
+            // Patterns not yet supported in daglang lowering.
             // Explicit match ensures compile-time failure when new variants are added.
-            // Each produces a structured `UnsupportedPattern` node that errors at
-            // resolution time instead of panicking at lowering time.
-            PatternOp::RetryController { .. } => LoweredOp::UnsupportedPattern {
-                name: "RetryController".to_string(),
-            },
-            PatternOp::RetryCollector { .. } => LoweredOp::UnsupportedPattern {
-                name: "RetryCollector".to_string(),
-            },
-            PatternOp::WhileInit { .. } => LoweredOp::UnsupportedPattern {
-                name: "WhileInit".to_string(),
-            },
-            PatternOp::WhileController { .. } => LoweredOp::UnsupportedPattern {
-                name: "WhileController".to_string(),
-            },
-            PatternOp::PollTimer { .. } => LoweredOp::UnsupportedPattern {
-                name: "PollTimer".to_string(),
-            },
-            PatternOp::PollCollector { .. } => LoweredOp::UnsupportedPattern {
-                name: "PollCollector".to_string(),
+            other => LoweredOp::UnsupportedPattern {
+                name: other.kind_name().to_string(),
             },
         }
     }
@@ -514,9 +485,7 @@ impl LoweredOp {
             Self::Primitive { kind, .. } => kind.obligation_category(),
             Self::Collection { .. }
             | Self::Pipeline { .. }
-            | Self::LoopUnpack { .. }
-            | Self::LoopPack { .. }
-            | Self::BranchMerge { .. }
+            | Self::Pattern(_)
             | Self::UnsupportedPattern { .. }
             | Self::ExternCall { .. } => ObligationCategory::None,
         }
@@ -530,9 +499,7 @@ impl LoweredOp {
             Self::Primitive { .. }
             | Self::Collection { .. }
             | Self::Pipeline { .. }
-            | Self::LoopUnpack { .. }
-            | Self::LoopPack { .. }
-            | Self::BranchMerge { .. }
+            | Self::Pattern(_)
             | Self::UnsupportedPattern { .. }
             | Self::ExternCall { .. } => None,
         }
@@ -2376,9 +2343,7 @@ mod parity {
                     Some(kind.obligation_category()),
                 )
             }
-            gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopUnpack { .. })
-            | gunbc_ir::node::NodeBody::Opaque(LoweredOp::LoopPack { .. })
-            | gunbc_ir::node::NodeBody::Opaque(LoweredOp::BranchMerge { .. }) => {
+            gunbc_ir::node::NodeBody::Opaque(LoweredOp::Pattern(_)) => {
                 "pattern_internal".to_string()
             }
             gunbc_ir::node::NodeBody::Opaque(LoweredOp::UnsupportedPattern { name }) => {
