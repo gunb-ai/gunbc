@@ -16,7 +16,8 @@ use gunbc_exec::{
     TransportContext,
 };
 use gunbc_ir::transport::{
-    FileRequest, LocalRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
+    AuthScheme, Credential, FileRequest, LocalRequest, RestRequest, Secret, ShellRequest,
+    TransportRequest, TransportResponse,
 };
 use gunbc_ir::{SecretString, Value};
 
@@ -104,6 +105,17 @@ impl Executable for GenericRestPrepareOp {
             inputs.insert(name, Value::Str(joined));
         }
 
+        // 3c. Identify credential field: when the service declares an auth scheme,
+        // the input field typed `Secret` carries the credential. We exclude it from
+        // the request body and set it on `request.auth` instead.
+        let credential_field = self.spec.auth_scheme.as_ref().and_then(|_| {
+            self.spec
+                .input_fields
+                .iter()
+                .find(|f| f.type_id == "Secret")
+                .map(|f| f.name.clone())
+        });
+
         // 4. Build JSON body.
         if self.spec.method != "GET" {
             let body = if let Some(template) = &self.spec.body_template {
@@ -121,6 +133,10 @@ impl Executable for GenericRestPrepareOp {
                 let mut map = serde_json::Map::new();
                 for field in &self.spec.input_fields {
                     if field.is_path_param || header_fields.contains(&field.name) {
+                        continue;
+                    }
+                    // Exclude credential field from body — it's wired to auth below.
+                    if credential_field.as_deref() == Some(&field.name) {
                         continue;
                     }
                     if let Some(value) = inputs.get(&field.name) {
@@ -148,6 +164,29 @@ impl Executable for GenericRestPrepareOp {
         for (key, value) in &self.spec.headers {
             let header_value = interpolate_template(value, &inputs, &self.spec.input_fields);
             request = request.header(key, header_value);
+        }
+
+        // 6. Wire credential to request.auth when auth_scheme is declared.
+        // The transport executor's fallback path (`r.auth.take()`) applies it.
+        #[allow(clippy::disallowed_methods)] // Approved: transport boundary — credential applied to outbound request
+        if let Some(ref cred_field) = credential_field {
+            if let Some(cred_value) = inputs.get(cred_field) {
+                let token = match cred_value {
+                    Value::Secret(s) => s.expose_plaintext_for_transport().to_string(),
+                    Value::Str(s) => s.clone(),
+                    _ => String::new(),
+                };
+                if !token.is_empty() {
+                    let scheme = match self.spec.auth_scheme.as_deref() {
+                        Some("BearerToken") => AuthScheme::Bearer,
+                        Some(other) => AuthScheme::Header {
+                            name: other.to_string(),
+                        },
+                        None => AuthScheme::Bearer,
+                    };
+                    request.auth = Some(Credential::new(Secret::static_value(token), scheme));
+                }
+            }
         }
 
         OutputMap::new()
