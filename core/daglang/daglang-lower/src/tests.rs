@@ -1453,6 +1453,58 @@ func caller(id: String) -> { ok: Bool } {
 }
 
 #[test]
+fn auth_input_literal_arg_wires_to_execute_res_credential() {
+    // When auth_input is supplied as a string literal (not a variable), the
+    // literal source node's output port must NOT use the `res:` prefix
+    // (reserved for inputs). The literal flows through a safe port name
+    // into res:credential on the execute node.
+    let typed = typed_project_from_sources(&[(
+        "dsl/services/auth_input_literal.dag",
+        r#"module sample.auth_literal
+service sample.Api {
+  config { endpoint: "https://api.example.com", auth: BearerToken, auth_input: auth_token }
+  operation Create {
+input { name: String, auth_token: Secret }
+output { id: String }
+transport rest { method: POST, path: "/v1/things" }
+  }
+}
+func caller(name: String) -> { id: String } {
+  result = sample.Api.Create(name: name, auth_token: "hardcoded-token")
+  return { id: result.id }
+}"#,
+    )]);
+
+    let dag = lower_typed_project(&typed).expect("literal auth_input should lower without error");
+
+    let execute_node_id = "execute_transport_sample_auth_literal_sample_Api_Create";
+
+    // Literal auth_token should be wired to res:credential on execute node
+    assert!(
+        dag.edges.iter().any(|edge| {
+            edge.to_node.0 == execute_node_id && edge.to_port.0 == PortName::RESOURCE_CREDENTIAL
+        }),
+        "literal auth_input arg should be wired to execute node res:credential"
+    );
+
+    // The literal source node should NOT have a res: output port
+    let literal_nodes: Vec<_> = dag
+        .nodes
+        .iter()
+        .filter(|n| n.id.0.starts_with("literal_source_"))
+        .collect();
+    for node in &literal_nodes {
+        for port in &node.outputs {
+            assert!(
+                !port.name.is_resource(),
+                "literal source node '{}' has res: output port '{}' — res: prefix is reserved for inputs",
+                node.id.0, port.name.0
+            );
+        }
+    }
+}
+
+#[test]
 /// IS-3: Pipeline compilation without --profile now succeeds with stub interfaces.
 fn pipeline_stage_bound_service_call_requires_active_profile() {
     let typed = typed_project_from_sources(&[(

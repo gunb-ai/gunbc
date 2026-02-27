@@ -30,19 +30,20 @@ a model that guarantees we only handle the happy path.
 | `error_cases()` trait implementations | 0 (all return default empty) |
 | Testgen error-case obligations | 0 |
 | Status code checks in `GenericRestParseOp` | 0 |
-| `ErrorMapping` in lowered IR | Struct exists, always `vec![]` |
+| Error mapping infrastructure in lowered IR | None (deleted in RT36) |
 
 **Consequence**: The gist 401 bug lived in production because no test ever
 ran the flow with a non-200 response. Five compounding failures (see
 `TODO/gist-auth-postmortem.md`) were all downstream of the fact that the
 service model didn't declare that 401 is a thing that can happen.
 
-### Existing infrastructure (unused)
+### Prior infrastructure (deleted)
 
-The lowerer already has `error_mappings: Vec<ErrorMapping>` on
-`ServiceOperationSpec` (`daglang-lower/src/lib.rs:387-390`) with a TODO:
-"extract from DSL error_map block when implemented." The slot exists. Nothing
-fills it.
+The lowerer previously had `error_mappings: Vec<ErrorMapping>` on
+`ServiceOperationSpec` and an `ErrorMapping` struct, but these were always
+empty (`vec![]`) with a TODO that was never implemented. They were deleted
+in RT36 as unused scaffolding. The `response` block design (below) replaces
+this with a properly designed mechanism.
 
 ---
 
@@ -177,20 +178,26 @@ contributes default 4xx/5xx classification, and the service-level
 `response` block overrides specific codes. This is the same layered
 composition as `transport rest { ... }` composing with `config { auth: ... }`.
 
-### 3. Populating `ErrorMapping` in the lowered IR
+### 3. Error mapping in the lowered IR
 
-The lowerer already has the slot. Wire it:
+The prior `ErrorMapping` struct and `error_mappings` field were deleted in
+RT36 (unused scaffolding). When implementing PC-5, introduce a new
+`ResponseMapping` struct on `RestOperationSpec` populated from the parsed
+`response` block:
 
 ```rust
-// daglang-lower/src/lib.rs — in build_service_op_spec()
-error_mappings: op.response_map.iter()
-    .filter(|r| !r.is_output)
-    .map(|r| ErrorMapping {
-        status: r.status,
-        body_pattern: r.response_type.as_ref().map(|t| t.name.clone()),
-    })
-    .collect(),
+// daglang-lower/src/spec.rs — new field on RestOperationSpec
+pub response_mappings: Vec<ResponseMapping>,
+
+pub struct ResponseMapping {
+    pub status: u16,
+    pub is_success: bool,
+    pub response_type: Option<String>,
+}
 ```
+
+The lowerer populates this from `op.response_map` entries during
+`derive_rest_spec()`.
 
 ### 4. Standard error types
 
@@ -281,8 +288,8 @@ to extract fields from the body. Fix:
 // In GenericRestParseOp::execute():
 let status = response.status;
 if status < 200 || status >= 300 {
-    if let Some(error_mapping) = self.spec.error_mappings.iter().find(|m| m.status == status) {
-        return parse_error_response(status, &response.body, error_mapping);
+    if let Some(mapping) = self.spec.response_mappings.iter().find(|m| m.status == status) {
+        return parse_error_response(status, &response.body, mapping);
     }
     // Undeclared error status → hard failure with diagnostic
     return Err(TransportError::UnexpectedStatus {
@@ -315,7 +322,7 @@ Vertical slice through parser → lowerer → obligation → codegen.
 | 2 | PC-2 | **Standard error types.** `dsl/std/errors.dag` with common HTTP, GitHub, GCP error shapes. | S | — |
 | 3 | PC-3 | **`response` blocks on all REST services.** Add to all 29 REST operations. Include `doc` references. | L | PC-1, PC-2 |
 | 4 | PC-4 | **`exit` blocks on all shell services.** Exit code → output type mapping. | M | PC-1 |
-| 5 | PC-5 | **Lowerer: populate `error_mappings`.** Wire `response` block entries to the existing `ErrorMapping` slot on `ServiceOperationSpec`. Generate classify_response node in transport DAG. | M | PC-1 |
+| 5 | PC-5 | **Lowerer: populate response mappings.** Add `ResponseMapping` struct and `response_mappings` field on `RestOperationSpec`. Wire `response` block entries from parsed AST. Generate classify_response node in transport DAG. | M | PC-1 |
 | 6 | PC-6 | **`GenericRestParseOp` status checking.** Route on status code before field extraction. Hard-fail on undeclared non-2xx. | M | PC-5 |
 | 7 | PC-7 | **`ProviderResponseContract` obligation.** New Bucket C obligation, one per `response` entry. | M | PC-5 |
 | 8 | PC-8 | **Testgen codegen for response contracts.** Per-status-code tests, mock body derived from response type. | L | PC-7 |

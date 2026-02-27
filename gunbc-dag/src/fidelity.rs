@@ -154,6 +154,7 @@ pub fn classify_module(
     for props in callable_properties.values() {
         all_classes.extend(props.transport_classes.iter().cloned());
     }
+    all_classes.sort();
     all_classes.dedup();
 
     let aggregate = CallableProperties {

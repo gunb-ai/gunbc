@@ -265,7 +265,7 @@ impl HttpStub {
     }
 }
 
-/// Extract the path component from a URL string.
+/// Extract the path component from a URL string (without query or fragment).
 fn extract_url_path(url: &str) -> &str {
     // Strip "https://host" or "http://host" prefix.
     let after_scheme = url
@@ -273,10 +273,13 @@ fn extract_url_path(url: &str) -> &str {
         .or_else(|| url.strip_prefix("http://"))
         .unwrap_or(url);
     // Find the first '/' after the host.
-    after_scheme
+    let path = after_scheme
         .find('/')
         .map(|i| &after_scheme[i..])
-        .unwrap_or("/")
+        .unwrap_or("/");
+    // Strip query string and fragment.
+    let path = path.split('?').next().unwrap_or(path);
+    path.split('#').next().unwrap_or(path)
 }
 
 // ── TCP loopback registry (RT12) ──────────────────────────────────────
@@ -436,10 +439,15 @@ impl VirtualTransportBackend {
             .expect("http stubs lock poisoned");
         for stub in stubs.iter() {
             if stub.matches(&request.method, &request.url) {
-                let body: serde_json::Value =
-                    serde_json::from_str(&stub.response_body).unwrap_or_else(|_| {
-                        serde_json::Value::String(stub.response_body.clone())
-                    });
+                let body: serde_json::Value = if stub.response_body.is_empty() {
+                    serde_json::json!({})
+                } else {
+                    serde_json::from_str(&stub.response_body).map_err(|e| {
+                        TransportError::new(format!(
+                            "virtual backend: invalid JSON in stub response body: {e}"
+                        ))
+                    })?
+                };
                 return Ok(RestResponse {
                     status: stub.status,
                     headers: stub.response_headers.clone(),
@@ -610,5 +618,78 @@ fn unquote(value: &str) -> &str {
         &trimmed[1..trimmed.len() - 1]
     } else {
         trimmed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_url_path_strips_query_and_fragment() {
+        assert_eq!(extract_url_path("https://api.example.com/v1/items"), "/v1/items");
+        assert_eq!(extract_url_path("https://api.example.com/v1/items?key=val"), "/v1/items");
+        assert_eq!(extract_url_path("https://api.example.com/v1/items#section"), "/v1/items");
+        assert_eq!(
+            extract_url_path("https://api.example.com/v1/items?key=val&b=2#frag"),
+            "/v1/items"
+        );
+        assert_eq!(extract_url_path("https://api.example.com/"), "/");
+        assert_eq!(extract_url_path("https://api.example.com"), "/");
+    }
+
+    #[test]
+    fn execute_rest_errors_on_invalid_stub_json() {
+        let backend = VirtualTransportBackend::new();
+        backend.add_http_stub(HttpStub {
+            method: Some(HttpMethod::Get),
+            path_pattern: "/test".to_string(),
+            exact_path: true,
+            status: 200,
+            response_body: "not valid json{".to_string(),
+            response_headers: Default::default(),
+        });
+        let request = RestRequest {
+            url: "https://api.example.com/test".to_string(),
+            method: HttpMethod::Get,
+            headers: Default::default(),
+            query: Default::default(),
+            body: None,
+            auth: None,
+            timeout_ms: None,
+            requires_auth: false,
+        };
+        let result = backend.execute_rest(&request);
+        assert!(result.is_err(), "invalid JSON in stub should produce an error");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("invalid JSON"),
+            "error should mention invalid JSON, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn execute_rest_empty_body_returns_empty_json_object() {
+        let backend = VirtualTransportBackend::new();
+        backend.add_http_stub(HttpStub {
+            method: Some(HttpMethod::Get),
+            path_pattern: "/test".to_string(),
+            exact_path: true,
+            status: 200,
+            response_body: String::new(),
+            response_headers: Default::default(),
+        });
+        let request = RestRequest {
+            url: "https://api.example.com/test".to_string(),
+            method: HttpMethod::Get,
+            headers: Default::default(),
+            query: Default::default(),
+            body: None,
+            auth: None,
+            timeout_ms: None,
+            requires_auth: false,
+        };
+        let result = backend.execute_rest(&request).expect("empty body should succeed");
+        assert_eq!(result.body, serde_json::json!({}));
     }
 }

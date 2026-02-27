@@ -5954,18 +5954,20 @@ fn add_service_call_edges(
                                 );
                             }
                         } else if let Some(literal) = arg.literal.as_ref() {
+                            // Use "credential" (not "res:credential") as the literal
+                            // node's output port — res: prefix is reserved for inputs.
                             let literal_source = ensure_literal_source_node(
                                 builder,
                                 module_name.as_str(),
                                 item_name,
-                                PortName::RESOURCE_CREDENTIAL,
+                                "credential",
                                 "Secret",
                                 literal,
                                 format!("{call_index}_auth_input").as_str(),
                             );
                             builder.add_edge(
                                 literal_source.as_str(),
-                                PortName::RESOURCE_CREDENTIAL,
+                                "credential",
                                 effective_endpoint.execute_node_id.as_str(),
                                 PortName::RESOURCE_CREDENTIAL,
                             );
