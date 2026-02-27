@@ -365,4 +365,11 @@ mod tests {
             .expect("SDLC pipeline should compile with unit_test profile");
         assert!(!dag.nodes.is_empty());
     }
+
+    #[test]
+    fn builds_sdlc_workflow_with_unit_test_profile() {
+        let dag = build_dsl_graph_with_profile("workflows/sdlc.dag", "unit_test")
+            .expect("SDLC workflow should compile with unit_test profile");
+        assert!(!dag.nodes.is_empty());
+    }
 }

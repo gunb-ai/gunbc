@@ -37,7 +37,9 @@ service codex.AgentProvider : AgentProvider {
       status: AgentStatus
       started: Bool
     }
-    transport shell { argv: ["codex", "--model", "\{model\}", "--approval-mode", "\{approval_mode\}", "-C", "\{repo_path\}", "\{prompt\}"] }
+    // Only required args in base argv; optional --model and --approval-mode
+    // are resolved by the executor when the optional inputs are present.
+    transport shell { argv: ["codex", "-C", "\{repo_path\}", "\{prompt\}"] }
   }
 
   operation poll {

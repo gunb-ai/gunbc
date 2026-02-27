@@ -3,7 +3,10 @@
 //! BT7 (L4): Single stage transition (idea→design) with real GitHub API + file stores.
 //! BT8 (L5): Full idea→done lifecycle on test repo.
 //!
-//! These tests require real credentials and are `#[ignore]`-gated.
+//! These tests compile `workflows/sdlc.dag` (worker-dispatch DAG that calls
+//! `dispatch_sdlc()`) — the same DAG the `gunbc-sdlc` CLI uses.
+//!
+//! Tests are `#[ignore]`-gated for real credentials.
 //! To run: `cargo test -p gunbc-dag --test sdlc_integration -- --ignored`
 //!
 //! Required environment:
@@ -27,32 +30,32 @@ fn github_token_available() -> bool {
 
 // ── BT7: Single stage integration (L4) ─────────────────────────────
 
-/// Local profile compiles the SDLC pipeline.
+/// Local profile compiles the SDLC worker-dispatch workflow.
 ///
 /// This validates that the local profile bindings (real GitHub API, file
 /// stores, Codex agent) resolve correctly at compile time.
 #[test]
 #[ignore]
 fn sdlc_local_profile_compiles() {
-    let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "local")
-        .expect("SDLC pipeline should compile with local profile");
+    let dag = build_dsl_graph_with_profile("workflows/sdlc.dag", "local")
+        .expect("SDLC workflow should compile with local profile");
 
     assert!(
         dag.nodes.len() > 10,
-        "SDLC pipeline with local profile should have significant node count. Got: {}",
+        "SDLC workflow with local profile should have significant node count. Got: {}",
         dag.nodes.len()
     );
 }
 
 /// DryRun execution with local profile.
 ///
-/// Validates the pipeline structure is executable even with local bindings,
+/// Validates the workflow structure is executable even with local bindings,
 /// using DryRun to avoid actual I/O.
 #[test]
 #[ignore]
 fn sdlc_local_profile_dry_run() {
-    let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "local")
-        .expect("SDLC pipeline should compile with local profile");
+    let dag = build_dsl_graph_with_profile("workflows/sdlc.dag", "local")
+        .expect("SDLC workflow should compile with local profile");
 
     let spec = auto_mock_spec(&dag, "sdlc-local");
     let dry_run_mocks = spec.to_dry_run_mocks();
@@ -96,9 +99,9 @@ fn sdlc_local_idea_to_design() {
         return;
     }
 
-    // Compile with local profile (real GitHub provider, file stores)
-    let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "local")
-        .expect("SDLC pipeline should compile with local profile");
+    // Compile the worker-dispatch workflow with local profile
+    let dag = build_dsl_graph_with_profile("workflows/sdlc.dag", "local")
+        .expect("SDLC workflow should compile with local profile");
 
     let _owner =
         std::env::var("SDLC_TEST_OWNER").unwrap_or_else(|_| "gunb-ai".to_string());
@@ -142,8 +145,8 @@ fn sdlc_local_idea_to_design() {
 /// Full idea→done lifecycle with real services.
 ///
 /// Requires: GITHUB_TOKEN, SDLC_TEST_OWNER, SDLC_TEST_REPO
-/// This test runs the complete SDLC pipeline through all 8 stage
-/// transitions on a test repository.
+/// This test runs the complete SDLC worker-dispatch workflow through
+/// multiple worker invocations on a test repository.
 #[test]
 #[ignore]
 fn sdlc_local_full_lifecycle() {
@@ -157,9 +160,9 @@ fn sdlc_local_full_lifecycle() {
     let _repo =
         std::env::var("SDLC_TEST_REPO").unwrap_or_else(|_| "gunbc".to_string());
 
-    // Compile with local profile
-    let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "local")
-        .expect("SDLC pipeline should compile with local profile");
+    // Compile worker-dispatch workflow with local profile
+    let dag = build_dsl_graph_with_profile("workflows/sdlc.dag", "local")
+        .expect("SDLC workflow should compile with local profile");
 
     // Full lifecycle would require multiple worker invocations (one per stage).
     // For now, validate compilation + DryRun. Real execution requires:
@@ -190,7 +193,7 @@ fn sdlc_local_full_lifecycle() {
     )
     .expect("SDLC full lifecycle DryRun should succeed");
 
-    // Verify execution produced entries covering multiple pipeline stages
+    // Verify execution produced entries covering multiple workflow stages
     assert!(
         log.entries.len() > 5,
         "full lifecycle should execute many nodes. Got: {}",

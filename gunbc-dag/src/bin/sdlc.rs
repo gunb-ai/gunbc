@@ -1,12 +1,15 @@
 //! gunbc-sdlc main entry point (BT10).
 //!
-//! Runs the SDLC pipeline: discovers issues, dispatches stage handlers,
-//! and drives issues through the full lifecycle (idea → done).
+//! Runs the SDLC worker-dispatch workflow: discovers issues labeled `sdlc:*`,
+//! acquires claims, dispatches per-stage handlers, and records outcomes.
+//!
+//! This compiles `workflows/sdlc.dag` (the worker-dispatch DAG that calls
+//! `dispatch_sdlc()`), NOT `pipelines/sdlc.dag` (the issue-centric pipeline).
 //!
 //! # Examples
 //!
 //! ```text
-//! gunbc-sdlc --profile unit_test --dry-run      # Validate pipeline structure
+//! gunbc-sdlc --profile unit_test --dry-run      # Validate workflow structure
 //! gunbc-sdlc --profile local --repo gunb-ai/gunbc  # Real execution
 //! gunbc-sdlc --profile local --issue 42          # Process specific issue
 //! ```
@@ -87,15 +90,15 @@ fn main() {
     };
 
     // ========================================================================
-    // Build SDLC pipeline DAG with profile
+    // Build SDLC worker-dispatch workflow DAG with profile
     // ========================================================================
 
-    let dag = match build_dsl_graph_with_profile("pipelines/sdlc.dag", &profile) {
+    let dag = match build_dsl_graph_with_profile("workflows/sdlc.dag", &profile) {
         Ok(d) => d,
         Err(e) => {
             print_attention(
                 AttentionLevel::Error,
-                "SDLC pipeline build failed",
+                "SDLC workflow build failed",
                 &e.to_string(),
             );
             process::exit(1);
@@ -113,7 +116,7 @@ fn main() {
         Err(e) => {
             print_attention(
                 AttentionLevel::Error,
-                "SDLC pipeline lower failed",
+                "SDLC workflow lower failed",
                 &e.to_string(),
             );
             process::exit(1);
@@ -195,7 +198,7 @@ fn main() {
 
 fn print_help() {
     let name = gunbc_ir::cargo::name("sdlc");
-    println!("{name} - SDLC pipeline: idea → design → review → implement → test → done");
+    println!("{name} - SDLC worker-dispatch: discover → claim → dispatch → record → release");
     println!();
     println!("USAGE:");
     println!("    {name} [OPTIONS]");
