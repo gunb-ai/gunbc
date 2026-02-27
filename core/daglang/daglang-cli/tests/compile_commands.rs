@@ -2,11 +2,11 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use gunbc_ir::WorkspaceLayout;
+use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
     static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
@@ -54,41 +54,10 @@ fn expected_makegen_expand_snapshot() -> String {
     )
 }
 
-fn unique_temp_file(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "daglang_cli_compile_cmd_{name}_{}_{}.dag",
-        std::process::id(),
-        nanos
-    ))
-}
-
-fn unique_temp_dir(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "daglang_cli_compile_cmd_dir_{name}_{}_{}",
-        std::process::id(),
-        nanos
-    ))
-}
-
 fn unique_temp_output_file(name: &str, extension: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "daglang_cli_compile_cmd_output_{name}_{}_{}.{}",
-        std::process::id(),
-        nanos,
-        extension
-    ))
+    let root = unique_temp_dir(name);
+    std::fs::create_dir_all(&root).expect("failed to create temp output dir");
+    root.join(format!("{name}.{extension}"))
 }
 
 fn write_minimal_directory_compile_fixture(root: &Path) {

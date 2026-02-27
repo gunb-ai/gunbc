@@ -1593,19 +1593,8 @@ pub fn extract_inline_tests(
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
+    use gunbc_test::unique_temp_dir;
     use std::collections::HashSet;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn unique_temp_dir(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "daglang_driver_{label}_{}_{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system clock should be after unix epoch")
-                .as_nanos()
-        ))
-    }
 
     #[test]
     fn compile_directory_reports_module_path_mismatch() {

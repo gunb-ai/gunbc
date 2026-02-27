@@ -937,20 +937,8 @@ fn validate_pipeline_semantics(dag: &Dag<CompilerOp>) -> Result<(), String> {
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 mod tests {
     use super::*;
+    use gunbc_test::unique_temp_dir;
     use std::collections::BTreeMap;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn unique_temp_dir(name: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "daglang_cli_pipeline_{name}_{}_{}",
-            std::process::id(),
-            nanos
-        ))
-    }
 
     /// Discover expected module IDs from the filesystem instead of a hardcoded list.
     /// Globs `dsl/**/*.dag`, converts paths to module IDs, and returns a sorted set.
