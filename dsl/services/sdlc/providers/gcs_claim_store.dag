@@ -42,6 +42,8 @@ service gcs.ClaimStore : ClaimStore {
   config {
     bucket: NonEmptyStr
     project_id: NonEmptyStr
+    endpoint: String = "https://storage.googleapis.com"
+    auth: BearerToken
   }
 
   operation acquire {
@@ -57,6 +59,7 @@ service gcs.ClaimStore : ClaimStore {
       conflict: Bool
       lease_generation: Int
     }
+    transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=claims/\{issue_id\}/\{stage\}.json" }
   }
 
   operation heartbeat {
@@ -67,6 +70,7 @@ service gcs.ClaimStore : ClaimStore {
       generation: Int
     }
     output { accepted: Bool }
+    transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=claims/\{issue_id\}/\{stage\}.json" }
   }
 
   operation release {
@@ -77,6 +81,7 @@ service gcs.ClaimStore : ClaimStore {
       generation: Int
     }
     output { released: Bool }
+    transport rest { method: DELETE, path: "/storage/v1/b/\{bucket\}/o/claims%2F\{issue_id\}%2F\{stage\}.json" }
   }
 }
 

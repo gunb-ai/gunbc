@@ -1,0 +1,83 @@
+// services/sdlc/providers/inline_artifact_store.dag
+//
+// Layer 3 concrete implementation: InlineArtifactStore implements ArtifactStore.
+//
+// Stores small artifacts as local JSON files. For local development only;
+// cloud_run uses GcsArtifactStore for durable storage.
+//
+// File layout:
+//   {dir}/artifacts/{artifact_id}.json        — artifact content
+//   {dir}/markers/{run_key}/{type}/{kind}.json — lifecycle markers
+//
+// Profile binding: local
+
+module services.sdlc.providers.inline_artifact_store
+
+import interfaces.artifact_store { ArtifactStore }
+import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }
+
+// =========================================================================
+// InlineArtifactStore : ArtifactStore
+// =========================================================================
+//
+// Profile binding: local
+// Storage: Local JSON files in {dir}/artifacts/ and {dir}/markers/
+
+service file.ArtifactStore : ArtifactStore {
+
+  config {
+    dir: String = "target/sdlc/artifacts"
+  }
+
+  operation store {
+    input { artifact_id: NonEmptyStr, payload: ArtifactPayload, content_hash: NonEmptyStr }
+    output { stored: Bool, conflict: Bool }
+    transport file { op: WRITE, path: "\{dir\}/artifacts/\{artifact_id\}.json" }
+  }
+
+  operation retrieve {
+    input { artifact_id: NonEmptyStr }
+    output { found: Bool, payload: ArtifactPayload?, content_hash: NonEmptyStr? }
+    transport file { op: READ, path: "\{dir\}/artifacts/\{artifact_id\}.json" }
+  }
+
+  operation store_marker {
+    input { marker: ArtifactMarker }
+    output { stored: Bool }
+    transport file { op: WRITE, path: "\{dir\}/markers/\{marker.run_key\}/\{marker.artifact_type\}/\{marker.kind\}.json" }
+  }
+
+  operation get_canonical_marker {
+    input { run_key: NonEmptyStr, artifact_type: ArtifactType }
+    output { found: Bool, marker: ArtifactMarker? }
+    transport file { op: READ, path: "\{dir\}/markers/\{run_key\}/\{artifact_type\}/Canonical.json" }
+  }
+}
+
+// -- Tests ──────────────────────────────────────────────────────────
+
+test inline_artifact_store {
+
+    input store/prepare.artifact_id -> "art-001"
+    input store/prepare.content_hash -> "sha256:abc123"
+
+    mock store/execute.response -> file_response(0, {
+        stored: true,
+        conflict: false
+    })
+
+    expect result.stored == true
+}
+
+test inline_artifact_retrieve {
+
+    input retrieve/prepare.artifact_id -> "art-001"
+
+    mock retrieve/execute.response -> file_response(0, {
+        found: true,
+        payload: { content: "artifact content" },
+        content_hash: "sha256:abc123"
+    })
+
+    expect result.found == true
+}

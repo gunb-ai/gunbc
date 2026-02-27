@@ -3,8 +3,9 @@
 //! Two discovery modes:
 //!
 //! 1. **Auto-discovery** (`discover_compilable_modules`): Scans all of `dsl/`
-//!    recursively for `.dag` files with `func` items. Every compilable module
-//!    gets full testgen treatment via `auto_mock_spec()` — zero manual input.
+//!    recursively for `.dag` files with callable items (`func`, `fn`, `pattern`,
+//!    `pipeline`). Every compilable module gets full testgen treatment via
+//!    `auto_mock_spec()` — zero manual input.
 //!
 //! 2. **Test-block discovery** (`discover_dag_tests`): Legacy path that scans
 //!    `dsl/tools/*.dag` for inline `test` blocks. Provides fixture overrides
@@ -39,8 +40,12 @@ pub struct CompilableModule {
     pub dsl_path: String,
     /// Dot-separated module name (e.g., "tools.bootstrap").
     pub module_name: String,
-    /// Number of `func` items in the module.
-    pub func_count: usize,
+    /// Number of callable items in the module (func, fn, pattern, pipeline).
+    ///
+    /// Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs` —
+    /// the canonical set of item types that produce executable DAGs.
+    /// If a new callable item type is added to the AST, both must be updated.
+    pub callable_count: usize,
     /// Whether the module has inline `test` blocks.
     pub has_test_blocks: bool,
     /// Interface type names imported via `import interfaces.*`.
@@ -64,10 +69,10 @@ pub enum AutoTestgenResult {
 
 /// Discover all compilable `.dag` modules under `dsl_root`.
 ///
-/// Scans recursively for `.dag` files that contain `func` items (compilation
-/// units that produce DAGs with nodes). Pure-library modules with only
-/// types/data/services are excluded — they're tested transitively when
-/// imported by a compilable module.
+/// Scans recursively for `.dag` files containing callable items — `fn`, `func`,
+/// `pattern`, or `pipeline` — that produce executable DAGs with nodes.
+/// Pure-library modules with only types/data/services are excluded since
+/// they're tested transitively when imported by a compilable module.
 #[allow(clippy::disallowed_methods)] // Needs fs access for recursive .dag discovery
 pub fn discover_compilable_modules(dsl_root: &Path) -> Vec<CompilableModule> {
     let mut modules = Vec::new();
@@ -103,14 +108,21 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             Err(_) => continue,
         };
 
-        // Count func items — only modules with funcs are compilable units
-        let func_count = ast
+        // Count callable items — these are the item types that produce executable DAGs.
+        // Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs`.
+        use daglang_syntax::ast::Item;
+        let callable_count = ast
             .items
             .iter()
-            .filter(|item| matches!(item.node, daglang_syntax::ast::Item::FuncDef(_)))
+            .filter(|item| {
+                matches!(
+                    item.node,
+                    Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
+                )
+            })
             .count();
 
-        if func_count == 0 {
+        if callable_count == 0 {
             continue;
         }
 
@@ -159,7 +171,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
         out.push(CompilableModule {
             dsl_path: rel_path,
             module_name,
-            func_count,
+            callable_count,
             has_test_blocks,
             interface_imports,
             requires_profile,
@@ -645,14 +657,20 @@ mod tests {
             "std.types should be excluded (no func items)"
         );
 
-        // Every module should have func_count > 0
+        // Every module should have callable_count > 0
         for module in &modules {
             assert!(
-                module.func_count > 0,
-                "{} has func_count=0",
+                module.callable_count > 0,
+                "{} has callable_count=0",
                 module.module_name
             );
         }
+
+        // Pipelines and workflows should now be discovered
+        assert!(
+            names.iter().any(|n| n.starts_with("pipelines.") || n.starts_with("workflows.")),
+            "pipeline/workflow modules should be discovered"
+        );
     }
 
     #[test]
@@ -660,7 +678,7 @@ mod tests {
         let module = CompilableModule {
             dsl_path: "tools/makegen.dag".to_string(),
             module_name: "tools.makegen".to_string(),
-            func_count: 1,
+            callable_count: 1,
             has_test_blocks: true,
             interface_imports: HashSet::new(),
             requires_profile: false,
@@ -689,7 +707,7 @@ mod tests {
         let module = CompilableModule {
             dsl_path: "nonexistent/fake.dag".to_string(),
             module_name: "nonexistent.fake".to_string(),
-            func_count: 1,
+            callable_count: 1,
             has_test_blocks: false,
             interface_imports: HashSet::new(),
             requires_profile: false,
@@ -735,10 +753,10 @@ mod tests {
 
         for (i, m) in modules.iter().enumerate() {
             eprintln!(
-                "  {:>2}. {:<40} funcs={} tests={}",
+                "  {:>2}. {:<40} callables={} tests={}",
                 i + 1,
                 m.module_name,
-                m.func_count,
+                m.callable_count,
                 if m.has_test_blocks { "yes" } else { "no" }
             );
         }

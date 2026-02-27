@@ -47,8 +47,8 @@ import interfaces.credential_provider { CredentialProvider }
 //   ClaimStore      -> file_claims.file.ClaimStore
 //   OutcomeLedger   -> file_outcomes.file.OutcomeLedger
 //   AgentProvider   -> codex_agent.codex.AgentProvider
-//   SignalStore     -> stubs.stub.SignalStore
-//   ArtifactStore   -> stubs.stub.ArtifactStore
+//   SignalStore     -> file_signal_store.file.SignalStore
+//   ArtifactStore   -> inline_artifact_store.file.ArtifactStore
 //
 // ── cloud_run ───────────────────────────────────────────────────────
 // GCS-based ledgers with generation-based CAS, real GitHub API,
@@ -57,8 +57,8 @@ import interfaces.credential_provider { CredentialProvider }
 //   ClaimStore      -> gcs_claims.gcs.ClaimStore
 //   OutcomeLedger   -> gcs_outcomes.gcs.OutcomeLedger
 //   AgentProvider   -> codex_agent.codex.AgentProvider
-//   SignalStore     -> stubs.stub.SignalStore   (TODO: pubsub)
-//   ArtifactStore   -> stubs.stub.ArtifactStore (TODO: gcs)
+//   SignalStore     -> pubsub_signal_store.pubsub.SignalStore
+//   ArtifactStore   -> gcs_artifact_store.gcs.ArtifactStore
 
 profile unit_test {
   bind IssueProvider -> services.sdlc.providers.stub_providers.stub.IssueProvider
@@ -81,8 +81,8 @@ profile local {
   bind AgentProvider -> services.sdlc.providers.codex_agent_provider.codex.AgentProvider {
     credential: env("CODEX_API_KEY")
   }
-  bind SignalStore -> profiles.local.FileSignalStore
-  bind ArtifactStore -> profiles.local.InlineArtifactStore
+  bind SignalStore -> services.sdlc.providers.file_signal_store.file.SignalStore
+  bind ArtifactStore -> services.sdlc.providers.inline_artifact_store.file.ArtifactStore
   bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
     runtime: LocalDev,
     project_id: "gunbai-auto"
@@ -100,8 +100,15 @@ profile cloud_run {
   bind AgentProvider -> services.sdlc.providers.codex_agent_provider.codex.AgentProvider {
     credential: secret("codex-api-key")
   }
-  bind SignalStore -> profiles.cloud_run.PubSubSignalStore
-  bind ArtifactStore -> profiles.cloud_run.GcsArtifactStore
+  bind SignalStore -> services.sdlc.providers.pubsub_signal_store.pubsub.SignalStore {
+    topic: "sdlc-signals",
+    subscription: "sdlc-worker",
+    project_id: "gunbai-auto"
+  }
+  bind ArtifactStore -> services.sdlc.providers.gcs_artifact_store.gcs.ArtifactStore {
+    bucket: "gunbai-auto-sdlc-artifacts",
+    project_id: "gunbai-auto"
+  }
   bind CredentialProvider -> services.sdlc.providers.gcp_credential_provider.GcpWifCredentialProvider {
     runtime: GitHubActions,
     project_id: "gunbai-auto"

@@ -40,6 +40,16 @@ fn sdlc_modules_are_auto_discovered() {
         module_names.contains(&"funcs.sdlc_validation_runtime"),
         "missing funcs.sdlc_validation_runtime. Got: {module_names:?}"
     );
+
+    // Pipeline and workflow modules should also be discovered (callable_count fix)
+    assert!(
+        module_names.contains(&"pipelines.sdlc"),
+        "missing pipelines.sdlc. Got: {module_names:?}"
+    );
+    assert!(
+        module_names.contains(&"workflows.sdlc"),
+        "missing workflows.sdlc. Got: {module_names:?}"
+    );
 }
 
 /// SDLC func modules with interfaces are flagged as requiring profile.

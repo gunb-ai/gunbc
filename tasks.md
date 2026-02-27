@@ -111,13 +111,27 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 | 8 | BT8 | **Full local scenario.** `#[ignore]` test: full lifecycle DryRun with local profile. Real execution needs RT3 (@file backend). | L5 | L | Done | BT7 |
 | 9 | BT9 | **Testgen integration.** Auto-discovery verified: 5 SDLC modules discovered, 1400+ test fns generated. Verification test in `sdlc_testgen.rs`. | L6 | M | Done | BT2 |
 | 10 | BT10 | **CLI entrypoint.** `gunbc-sdlc --profile --repo --issue --dry-run`. Binary registered in Cargo.toml, help + DryRun working. | L7 | S | Done | BT8 |
+| 11 | BT-R1 | **SDLC review: testgen discovery fix.** `callable_count` replaces `func_count` — discovery now mirrors `module_has_callable_items()` canonical predicate. 59 modules discovered (up from ~29), 9,710 test fns generated. Deleted 493 lines of hand-written compensating tests (sdlc_handlers, sdlc_worker, sdlc_integration, sdlc_scenario). | — | M | Done | BT9 |
+| 12 | BT11 | **SignalStore providers.** `pubsub_signal_store.dag` (cloud_run) + `file_signal_store.dag` (local). Transport blocks, test blocks, profile bindings. | L8 | M | Done | BT10 |
+| 13 | BT12 | **ArtifactStore providers.** `gcs_artifact_store.dag` (cloud_run) + `inline_artifact_store.dag` (local). Transport blocks, test blocks, profile bindings. | L8 | M | Done | BT10 |
+| 14 | BT-R2 | **SDLC review: provider completion.** Transport blocks on gcs_claim_store + gcs_outcome_ledger. Inline definitions extracted to provider files. Dead code deleted from pipelines/sdlc.dag. deploy.dag variable naming fixed. Profile bindings updated in sdlc.dag. | — | M | Done | BT11, BT12 |
+
+### Postmortem: Testgen Discovery Bug (BT-R1)
+
+**Root cause**: `discover_compilable_modules()` in `dag_test_discovery.rs` used `func_count == 0` as a pre-filter, counting only `Item::FuncDef`. This silently dropped all modules that produce graphs via `pipeline`, `pattern`, or `fn` items.
+
+**Impact**: 12+ modules invisible to testgen (all `dsl/workflows/*.dag`, all `dsl/pipelines/*.dag`). This forced 493 lines of compensating hand-written Rust tests across 4 files. The tests were structurally correct but redundant — they tested exactly what testgen would have auto-generated.
+
+**Fix**: Renamed `func_count` to `callable_count`, broadened filter to match all 4 callable item types (`FnDef | FuncDef | PatternDef | PipelineDef`), mirroring the canonical `module_has_callable_items()` in `daglang-driver/src/lib.rs`. Cross-reference comment added to both locations.
+
+**Prevention**: Comment in discovery code references `module_has_callable_items` as canonical source of truth. If a new callable item type is added to the AST, both must be updated. This postmortem documents the pattern for future audits.
+
+**Audit result**: All other `Item::FuncDef`-specific filters in the codebase (20+ locations) were verified correct for their specific use cases (CLI param extraction, `declared_outputs` field access, etc.).
 
 ### Horizon (after BT10)
 
 | ID | Task | Level | Size | Deps |
 |----|------|-------|------|------|
-| BT11 | GCS SignalStore (PubSub-backed, at-least-once) | L8 | M | BT10 |
-| BT12 | GCS ArtifactStore (content-hash, generation CAS) | L8 | M | BT10 |
 | BT13 | GCP credential chaining (WIF OIDC exchange) | L8 | L | BT10 |
 | BT14 | Cloud Run deployment DAG | L8 | L | BT11:13 |
 | BT15 | Multi-worker CAS stress test (3 workers, exactly-once) | L8 | M | BT14 |
@@ -125,6 +139,10 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 | BT17 | Agent provider: wire codex_agent.dag to real LLM | L5 | M | BT8 |
 | BT18 | Credential provider: local keychain for tokens | L5 | M | BT8 |
 | BT19 | Webhook-driven stage transitions | L8 | L | BT17 |
+| CT-1 | **Contract IR.** Parse `@contract` annotations into `ContractObligation` structs in lowerer. Sequence/idempotency/destructive obligation types. Store in type registry alongside interface capabilities. Design: `docs/design/contract-testing.md` §Phase 1. | — | L | BT-R1 |
+| CT-2 | **Contract test generation.** For each interface with `@contract`, testgen emits parameterized test suite. Suite takes `ServiceBinding` as input. Each obligation becomes a test case: setup → execute sequence → assert postcondition. | — | L | CT-1 |
+| CT-3 | **Provider compliance wiring.** For each (profile, interface, provider) triple, instantiate CT-2 suite. Stub providers: fast/hermetic/always-run. Real providers: env-gated/integration profiles. Wire into existing PT-* infrastructure. | — | M | CT-2 |
+| CT-4 | **Annotation cleanup (Category 3).** Delete metadata noise annotations (`@network`, `@credential`, `@external`, `@derived_from`, `@ledger`, ~30 uses) per `docs/design/modeling/annotation-to-dag-modeling.md` Category 3. | — | S | — |
 
 **Deliverable**: `gunbc sdlc --profile local --repo owner/name` runs full lifecycle.
 **Endstate**: SDLC on Cloud Run with GCS stores, PubSub signals, multi-worker CAS.
@@ -599,6 +617,7 @@ struct level. S-tier REST/HTTP/TCP is just a response registry inside
 ## Archive
 
 Completed items. RF-H4, RF-H2, RF-E4, BB-2, BB-3, BB-5 completed 2026-02-26.
+BT-R1 (testgen discovery fix), BT-R2 (provider completion), BT11, BT12 completed 2026-02-27.
 
 NF-1:6 (compile+link hardening): 2026-02-25. Detail: `TODO/TODONE/tasks-completed.md`.
 FC-NF7 (fn-level evaluation): 2026-02-25. `expr.rs` IR + `eval.rs` evaluator + `FnBodyDelegate`.
