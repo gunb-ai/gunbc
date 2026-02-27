@@ -229,7 +229,7 @@ correctness, then testing + foundation.
 | 5 | RT5 | **`fold` extraction** in evaluate_fn_body() — enables DSL classify_transports(). Deletes fidelity shadows + silent fallbacks. Multi-param lambda parsing, pipe method typechecker exclusion, fidelity.rs rewrite to call DSL classify_transports directly. test_policy.dag shadow functions removed. | M | Done | — |
 | 6 | RT6 | **NodeKind required** on Node\<T\>. Removed `Option<NodeKind>` — `kind` is now `NodeKind` with `#[serde(default)]` to `Pure`. Updated constructors, 27 test sites, and 14 comparison sites across 12 files. `validate_node_kinds_for_interception` checks `Pure` nodes instead of `None`. | M | Done | — |
 | 7 | RT7 | **Port namespace typing**: `PortCategory` enum (Resource/Tool/Internal/User) + methods on `PortName` (`is_resource()`, `is_tool()`, `is_internal()`, `is_user()`, `bare_name()`, `category()`). Migrated 14 string-match sites across 12 files. | M | Done | — |
-| 8 | RT8 | **CallableClass enum** in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
+| 8 | RT8 | **TransportRole enum** in resolve.rs. `TransportRole::from_name()` parses `service_transport::{prepare/execute/parse}::` once, replaces 6 `starts_with()` checks in `resolve_domain()` and `resolve_service_transport()`. Match dispatch uses `(spec, role)` tuple instead of `(spec, is_prepare, is_parse)` booleans. | M | Done | — |
 | 9 | RT9 | **Virtual I/O DSL types** (`dsl/std/virtual_io.dag`). VirtualFsSetup, ShellCassette, HttpStub, VirtualBackendConfig. | M | Pending | — |
 | 10 | RT10 | **Shell cassette registry** in VirtualTransportBackend. | S | Pending | — |
 | 11 | RT11 | **HTTP response registry** in VirtualTransportBackend. In-process request→response matching. | S | Pending | — |

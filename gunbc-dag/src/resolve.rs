@@ -719,10 +719,9 @@ fn resolve_domain(
     //    Only route when the metadata has a concrete operation spec; nodes without
     //    specs (e.g., not-yet-implemented service operations) fall through to the
     //    passthrough default.
-    if name.starts_with("service_transport::") {
+    if let Some(transport_role) = TransportRole::from_name(name) {
         let has_spec = service_metadata.as_ref().is_some_and(|m| m.spec.is_some());
-        let is_execute = name.starts_with("service_transport::execute::");
-        if has_spec || is_execute {
+        if has_spec || transport_role == TransportRole::Execute {
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
         }
     }
@@ -900,6 +899,34 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
 // Service transport resolution
 // ============================================================================
 
+/// Structural classification of a service transport node's role.
+///
+/// Parsed once from the `service_transport::{role}::` name prefix, then
+/// dispatched on. Eliminates repeated `starts_with()` string checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportRole {
+    Prepare,
+    Execute,
+    Parse,
+}
+
+impl TransportRole {
+    /// Parse the transport role from a node name.
+    ///
+    /// Returns `None` for names that don't start with `service_transport::`.
+    fn from_name(name: &str) -> Option<Self> {
+        if name.starts_with("service_transport::execute::") {
+            Some(Self::Execute)
+        } else if name.starts_with("service_transport::prepare::") {
+            Some(Self::Prepare)
+        } else if name.starts_with("service_transport::parse::") {
+            Some(Self::Parse)
+        } else {
+            None
+        }
+    }
+}
+
 fn resolve_service_transport(
     node_id: &str,
     module: &str,
@@ -907,10 +934,12 @@ fn resolve_service_transport(
     _outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
+    let role = TransportRole::from_name(name);
+
     // Execute nodes: for InterfaceStub specs, use the stub execute op
     // (errors in Real mode, auto-mocked in DryRun). All others use the
     // standard transport executor.
-    if name.starts_with("service_transport::execute::") {
+    if role == Some(TransportRole::Execute) {
         if let Some(metadata) = service_metadata {
             if let Some(ServiceOperationSpec::InterfaceStub {
                 interface,
@@ -929,16 +958,13 @@ fn resolve_service_transport(
     // Generic dispatch: use the spec from service_metadata to select interpreter.
     if let Some(metadata) = service_metadata {
         if let Some(spec) = &metadata.spec {
-            let is_prepare = name.starts_with("service_transport::prepare::");
-            let is_parse = name.starts_with("service_transport::parse::");
-
-            match (spec, is_prepare, is_parse) {
-                (ServiceOperationSpec::Rest(rest_spec), true, _) => {
+            match (spec, role) {
+                (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericRestPrepareOp {
                         spec: rest_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Rest(rest_spec), _, true) => {
+                (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericRestParseOp {
                         spec: rest_spec.clone(),
                         service_name: metadata.service.clone(),
@@ -947,34 +973,34 @@ fn resolve_service_transport(
                         permissions: metadata.permissions.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Shell(shell_spec), true, _) => {
+                (ServiceOperationSpec::Shell(shell_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericShellPrepareOp {
                         spec: shell_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Shell(shell_spec), _, true) => {
+                (ServiceOperationSpec::Shell(shell_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericShellParseOp {
                         spec: shell_spec.clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
                     }));
                 }
-                (ServiceOperationSpec::File(file_spec), true, _) => {
+                (ServiceOperationSpec::File(file_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericFilePrepareOp {
                         spec: file_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::File(file_spec), _, true) => {
+                (ServiceOperationSpec::File(file_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericFileParseOp {
                         spec: file_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Local(local_spec), true, _) => {
+                (ServiceOperationSpec::Local(local_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericLocalPrepareOp {
                         spec: local_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Local(local_spec), _, true) => {
+                (ServiceOperationSpec::Local(local_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericLocalParseOp {
                         spec: local_spec.clone(),
                     }));
@@ -985,8 +1011,7 @@ fn resolve_service_transport(
                         interface,
                         capability,
                     },
-                    true,
-                    _,
+                    Some(TransportRole::Prepare),
                 ) => {
                     return Ok(DynOp::new(crate::resolve_service::InterfaceStubPrepareOp {
                         interface: interface.clone(),
@@ -998,8 +1023,7 @@ fn resolve_service_transport(
                         interface,
                         capability,
                     },
-                    _,
-                    true,
+                    Some(TransportRole::Parse),
                 ) => {
                     return Ok(DynOp::new(crate::resolve_service::InterfaceStubParseOp {
                         interface: interface.clone(),
