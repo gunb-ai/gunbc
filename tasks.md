@@ -230,7 +230,7 @@ correctness, then testing + foundation.
 | 6 | RT6 | **NodeKind required** on Node\<T\>. Removed `Option<NodeKind>` — `kind` is now `NodeKind` with `#[serde(default)]` to `Pure`. Updated constructors, 27 test sites, and 14 comparison sites across 12 files. `validate_node_kinds_for_interception` checks `Pure` nodes instead of `None`. | M | Done | — |
 | 7 | RT7 | **Port namespace typing**: `PortCategory` enum (Resource/Tool/Internal/User) + methods on `PortName` (`is_resource()`, `is_tool()`, `is_internal()`, `is_user()`, `bare_name()`, `category()`). Migrated 14 string-match sites across 12 files. | M | Done | — |
 | 8 | RT8 | **TransportRole enum** in resolve.rs. `TransportRole::from_name()` parses `service_transport::{prepare/execute/parse}::` once, replaces 6 `starts_with()` checks in `resolve_domain()` and `resolve_service_transport()`. Match dispatch uses `(spec, role)` tuple instead of `(spec, is_prepare, is_parse)` booleans. | M | Done | — |
-| 9 | RT9 | **Virtual I/O DSL types** (`dsl/std/virtual_io.dag`). VirtualFsSetup, ShellCassette, HttpStub, VirtualBackendConfig. | M | Pending | — |
+| 9 | RT9 | **Virtual I/O DSL types** (`dsl/std/virtual_io.dag`). VirtualFsSetup, ShellCassette, HttpStub, VirtualBackendConfig, ShellCassetteRegistry, HttpStubRegistry, TcpLoopback, TcpLoopbackRegistry. HttpMethod enum for request matching. VirtualBackendConfig composes all registries. | M | Done | — |
 | 10 | RT10 | **Shell cassette registry** in VirtualTransportBackend. | S | Pending | — |
 | 11 | RT11 | **HTTP response registry** in VirtualTransportBackend. In-process request→response matching. | S | Pending | — |
 | 12 | RT12 | **TCP loopback registry** in VirtualTransportBackend. | S | Pending | — |
@@ -315,7 +315,7 @@ smell catalog above to classify. Include file path + line if possible.
 | ~~Fallback arm~~ | ~~HTTP method fallback now returns `ExecError` instead of silently falling back to POST.~~ | ~~`gunbc-dag/src/resolve_service.rs:73-85`~~ | R1 scout | **Done** |
 | String dispatch | `match field.type_id.as_str()` for JSON→Value appears twice. | `gunbc-dag/src/resolve_service.rs:291-335, 352-366` | R1 scout | 2026-02-26 |
 | ~~Validation at use site~~ | ~~`input_as_string()` now returns `Result<String, ExecError>` — missing inputs fail-closed instead of leaking `"(unresolved)"`.~~ | ~~`gunbc-dag/src/resolve_service.rs:703-733`~~ | R1 scout | **Done** |
-| String dispatch | `match self.spec.operation.as_str()` for file operations. | `gunbc-dag/src/resolve_service.rs:933-948` | R1 scout | 2026-02-26 |
+| ~~String dispatch~~ | ~~`FileOperationSpec.operation` now uses `FileOp` enum — parsed at boundary in `derive_file_spec()`, exhaustive match in `GenericFilePrepareOp`.~~ | ~~`gunbc-dag/src/resolve_service.rs`~~ | R1 scout | **Done** |
 | String dispatch | `workflow_unit_commands()` matches workflow name strings. | `gunbc-dag/src/workflow/unit_commands.rs:300-323` | R1 scout | 2026-02-26 |
 | Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets. See Theme INV below. | `gunbc-dag/src/ci/mod.rs:56-77` | lane-2 merge | 2026-02-26 |
 
