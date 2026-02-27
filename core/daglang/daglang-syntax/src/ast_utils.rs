@@ -1,4 +1,5 @@
 use crate::ast::{Expr, Stmt, TypeExpr};
+use crate::PipeMethod;
 
 pub fn type_expr_to_string(expr: &TypeExpr) -> String {
     match expr {
@@ -40,40 +41,16 @@ pub fn resource_type_name(resource_type: &TypeExpr) -> String {
 }
 
 pub fn should_track_call_name(name: &str) -> bool {
-    !matches!(
-        name,
-        "<expr>"
-            | "as"
-            | "with"
-            | "fn"
-            // Built-in pipe methods — resolved by the evaluator, not as
-            // callable targets. Adding new pipe methods here keeps the
-            // typechecker from rejecting non-lossy fn bodies that use them.
-            | "map"
-            | "filter"
-            | "filter_map"
-            | "flat_map"
-            | "fold"
-            | "join"
-            | "count"
-            | "sum"
-            | "first"
-            | "last"
-            | "any"
-            | "all"
-            | "contains"
-            | "sort_by"
-            | "max_by"
-            | "append"
-            | "starts_with"
-            | "ends_with"
-            | "repeat"
-            | "replace_section"
-            | "to_bytes"
-            | "to_json"
-            | "hash"
-            | "chars"
-    )
+    // Synthetic/keyword call names that are never callable targets.
+    if matches!(name, "<expr>" | "as" | "with" | "fn") {
+        return false;
+    }
+    // Built-in pipe methods — resolved by the evaluator, not as
+    // callable targets. The authoritative list lives in PipeMethod.
+    if PipeMethod::from_name(name).is_some() {
+        return false;
+    }
+    true
 }
 
 pub fn service_call_lookup_keys(call_path: &[String]) -> Option<[String; 3]> {

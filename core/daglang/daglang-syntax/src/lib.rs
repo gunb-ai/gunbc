@@ -28,6 +28,103 @@ pub mod diagnostic;
 pub mod lexer;
 pub mod parser;
 
+/// Built-in pipe methods recognized by the DSL.
+///
+/// This enum is the single authoritative list of pipe methods. The typechecker,
+/// lowerer, and evaluator all reference this list (directly or indirectly) to
+/// determine whether a call name is a built-in pipe method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PipeMethod {
+    Map,
+    Filter,
+    FilterMap,
+    FlatMap,
+    Fold,
+    Join,
+    Count,
+    Sum,
+    First,
+    Last,
+    Any,
+    All,
+    Contains,
+    SortBy,
+    MaxBy,
+    Append,
+    StartsWith,
+    EndsWith,
+    Repeat,
+    ReplaceSection,
+    ToBytes,
+    ToJson,
+    Hash,
+    Chars,
+}
+
+impl PipeMethod {
+    /// Parse a pipe method name from its DSL string representation.
+    /// Returns `None` if the name is not a recognized pipe method.
+    pub fn from_name(name: &str) -> Option<PipeMethod> {
+        match name {
+            "map" => Some(PipeMethod::Map),
+            "filter" => Some(PipeMethod::Filter),
+            "filter_map" => Some(PipeMethod::FilterMap),
+            "flat_map" => Some(PipeMethod::FlatMap),
+            "fold" => Some(PipeMethod::Fold),
+            "join" => Some(PipeMethod::Join),
+            "count" => Some(PipeMethod::Count),
+            "sum" => Some(PipeMethod::Sum),
+            "first" => Some(PipeMethod::First),
+            "last" => Some(PipeMethod::Last),
+            "any" => Some(PipeMethod::Any),
+            "all" => Some(PipeMethod::All),
+            "contains" => Some(PipeMethod::Contains),
+            "sort_by" => Some(PipeMethod::SortBy),
+            "max_by" => Some(PipeMethod::MaxBy),
+            "append" => Some(PipeMethod::Append),
+            "starts_with" => Some(PipeMethod::StartsWith),
+            "ends_with" => Some(PipeMethod::EndsWith),
+            "repeat" => Some(PipeMethod::Repeat),
+            "replace_section" => Some(PipeMethod::ReplaceSection),
+            "to_bytes" => Some(PipeMethod::ToBytes),
+            "to_json" => Some(PipeMethod::ToJson),
+            "hash" => Some(PipeMethod::Hash),
+            "chars" => Some(PipeMethod::Chars),
+            _ => None,
+        }
+    }
+
+    /// Returns the DSL string name for this pipe method.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PipeMethod::Map => "map",
+            PipeMethod::Filter => "filter",
+            PipeMethod::FilterMap => "filter_map",
+            PipeMethod::FlatMap => "flat_map",
+            PipeMethod::Fold => "fold",
+            PipeMethod::Join => "join",
+            PipeMethod::Count => "count",
+            PipeMethod::Sum => "sum",
+            PipeMethod::First => "first",
+            PipeMethod::Last => "last",
+            PipeMethod::Any => "any",
+            PipeMethod::All => "all",
+            PipeMethod::Contains => "contains",
+            PipeMethod::SortBy => "sort_by",
+            PipeMethod::MaxBy => "max_by",
+            PipeMethod::Append => "append",
+            PipeMethod::StartsWith => "starts_with",
+            PipeMethod::EndsWith => "ends_with",
+            PipeMethod::Repeat => "repeat",
+            PipeMethod::ReplaceSection => "replace_section",
+            PipeMethod::ToBytes => "to_bytes",
+            PipeMethod::ToJson => "to_json",
+            PipeMethod::Hash => "hash",
+            PipeMethod::Chars => "chars",
+        }
+    }
+}
+
 /// Source location tracking for error messages.
 pub mod span {
     /// Byte offset range in the source file.

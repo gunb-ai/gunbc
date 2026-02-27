@@ -90,21 +90,36 @@ pub fn classify_callable(props: &CallableProperties) -> FidelityClassification {
 
     let test_class = result
         .get("test_class")
-        .and_then(Value::as_str)
+        .and_then(Value::as_enum_variant)
         .and_then(TestClass::parse)
-        .unwrap_or(TestClass::Unit);
+        .unwrap_or_else(|| {
+            panic!(
+                "classify_transports returned unexpected test_class: {:?}",
+                result.get("test_class")
+            )
+        });
     let fermi_cost = result
         .get("depth")
-        .and_then(Value::as_str)
+        .and_then(Value::as_enum_variant)
         .and_then(FermiCost::parse)
-        .unwrap_or(FermiCost::XS);
+        .unwrap_or_else(|| {
+            panic!(
+                "classify_transports returned unexpected depth: {:?}",
+                result.get("depth")
+            )
+        });
     let hermetic = result
         .get("hermetic")
         .and_then(|v| match v {
             Value::Bool(b) => Some(*b),
             _ => None,
         })
-        .unwrap_or(true);
+        .unwrap_or_else(|| {
+            panic!(
+                "classify_transports returned unexpected hermetic: {:?}",
+                result.get("hermetic")
+            )
+        });
 
     FidelityClassification {
         test_class,

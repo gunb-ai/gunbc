@@ -257,8 +257,8 @@ fn eval_expr(
 
         LoweredExpr::VariantConstruct { tag, fields } => {
             if fields.is_empty() {
-                // Unit variant: `Closed` → Value::Str("Closed")
-                Ok(Value::Str(tag.clone()))
+                // Unit variant: `Closed` → Value::Enum { variant: "Closed" }
+                Ok(Value::Enum { variant: tag.clone() })
             } else {
                 // Payload variant: `Ok { value: x }` → Map with _variant tag
                 let mut map = BTreeMap::new();
@@ -487,14 +487,19 @@ fn eval_call(
             }
         }
         _ if name.chars().next().unwrap_or('a').is_uppercase() => {
-            // Generic variant constructor (e.g. `Ok { value: "x" }`, `Closed`)
-            let mut map = BTreeMap::new();
-            map.insert("_variant".to_string(), Value::Str(name.to_string()));
-            for (idx, (arg_name, arg_expr)) in args.iter().enumerate() {
-                let field_name = arg_name.clone().unwrap_or_else(|| format!("_{idx}"));
-                map.insert(field_name, eval_expr(arg_expr, env, sibling_fns)?);
+            if args.is_empty() {
+                // Unit variant: `Closed` → Value::Enum
+                Ok(Value::Enum { variant: name.to_string() })
+            } else {
+                // Payload variant/record constructor: `Ok { value: x }` → Map with _variant tag
+                let mut map = BTreeMap::new();
+                map.insert("_variant".to_string(), Value::Str(name.to_string()));
+                for (idx, (arg_name, arg_expr)) in args.iter().enumerate() {
+                    let field_name = arg_name.clone().unwrap_or_else(|| format!("_{idx}"));
+                    map.insert(field_name, eval_expr(arg_expr, env, sibling_fns)?);
+                }
+                Ok(Value::Map(map))
             }
-            Ok(Value::Map(map))
         }
         _ => Err(EvalError::new(format!("unknown function: {name}"))),
     }
@@ -586,7 +591,9 @@ fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String,
                         None
                     }
                 }
-                // Unit variants match by string equality
+                // Unit variants match by enum variant name
+                Value::Enum { variant } if variant == variant_name => Some(vec![]),
+                // Legacy: also match plain strings for backwards compatibility
                 Value::Str(s) if s == variant_name => Some(vec![]),
                 _ => None,
             }
@@ -963,6 +970,29 @@ fn eval_pipe_method(
             }
         }
 
+        "max_by" => {
+            let lambda = args.first().map(|(_, e)| e);
+            match (receiver, lambda) {
+                (Value::List(items), Some(LoweredExpr::Lambda { params, body })) => {
+                    let param = params.first().cloned().unwrap_or_else(|| "_".to_string());
+                    let mut best: Option<(String, Value)> = None;
+                    for item in items {
+                        let mut child_env = env.child();
+                        child_env.bind(param.clone(), item.clone());
+                        let key = eval_expr(body, &child_env, sibling_fns)
+                            .map(|v| value_to_string(&v))
+                            .unwrap_or_default();
+                        if best.as_ref().is_none_or(|(k, _)| key > *k) {
+                            best = Some((key, item));
+                        }
+                    }
+                    Ok(best.map(|(_, v)| v).unwrap_or(Value::Unit))
+                }
+                (Value::List(_), _) => Ok(Value::Unit),
+                _ => Err(EvalError::new("max_by requires a list")),
+            }
+        }
+
         // Passthrough for unknown pipe methods — try as sibling fn call
         _ => {
             if let Some(fn_body) = sibling_fns.get(method) {
@@ -1006,6 +1036,7 @@ pub fn sort_key(value: &Value) -> String {
         Value::Secret(secret) => format!("secret:{}", secret.len()),
         Value::Float(f) => format!("f:{f}"),
         Value::Bytes(b) => format!("bytes:{}", b.len()),
+        Value::Enum { variant } => format!("enum:{variant}"),
         Value::Skipped => "skipped".to_string(),
         Value::Unit => "unit".to_string(),
     }
@@ -1031,6 +1062,7 @@ pub fn value_to_string(value: &Value) -> String {
         Value::Secret(secret) => format!("secret({})", secret.len()),
         Value::Float(f) => f.to_string(),
         Value::Bytes(b) => format!("<{} bytes>", b.len()),
+        Value::Enum { variant } => variant.clone(),
     }
 }
 
@@ -1046,6 +1078,7 @@ pub fn value_truthy(value: &Value) -> bool {
         Value::Json(json) => !json.is_null(),
         Value::Secret(secret) => !secret.is_empty(),
         Value::Bytes(b) => !b.is_empty(),
+        Value::Enum { .. } => true,
         Value::Skipped | Value::Unit => false,
         Value::Request(_) | Value::Response(_) => true,
     }
@@ -1283,5 +1316,380 @@ mod tests {
             [("rec".to_string(), Value::Map(map))].into_iter().collect();
         let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
         assert_eq!(result["return"], Value::Str("test".to_string()));
+    }
+
+    #[test]
+    fn eval_null_coalesce_non_null() {
+        // x ?? "fallback" where x = "present" → "present"
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::BinOp {
+                    left: Box::new(LoweredExpr::Ident("x".to_string())),
+                    op: LoweredBinOp::NullCoalesce,
+                    right: Box::new(LoweredExpr::Literal(LoweredLiteral::String(
+                        "fallback".to_string(),
+                    ))),
+                },
+            )])],
+        };
+        let inputs: HashMap<String, Value> =
+            [("x".to_string(), Value::Str("present".to_string()))]
+                .into_iter()
+                .collect();
+        let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
+        assert_eq!(result["return"], Value::Str("present".to_string()));
+    }
+
+    #[test]
+    fn eval_null_coalesce_null() {
+        // x ?? "fallback" where x = Unit → "fallback"
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::BinOp {
+                    left: Box::new(LoweredExpr::Ident("x".to_string())),
+                    op: LoweredBinOp::NullCoalesce,
+                    right: Box::new(LoweredExpr::Literal(LoweredLiteral::String(
+                        "fallback".to_string(),
+                    ))),
+                },
+            )])],
+        };
+        let inputs: HashMap<String, Value> =
+            [("x".to_string(), Value::Unit)].into_iter().collect();
+        let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
+        assert_eq!(result["return"], Value::Str("fallback".to_string()));
+    }
+
+    #[test]
+    fn eval_variant_construct_unit() {
+        // return { return: Closed }
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::VariantConstruct {
+                    tag: "Closed".to_string(),
+                    fields: vec![],
+                },
+            )])],
+        };
+        let result = evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
+        assert_eq!(
+            result["return"],
+            Value::Enum {
+                variant: "Closed".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn eval_variant_construct_payload() {
+        // return { return: Ok { value: "hello" } }
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::VariantConstruct {
+                    tag: "Ok".to_string(),
+                    fields: vec![(
+                        "value".to_string(),
+                        LoweredExpr::Literal(LoweredLiteral::String("hello".to_string())),
+                    )],
+                },
+            )])],
+        };
+        let result = evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
+        match &result["return"] {
+            Value::Map(map) => {
+                assert_eq!(map["_variant"], Value::Str("Ok".to_string()));
+                assert_eq!(map["value"], Value::Str("hello".to_string()));
+            }
+            other => panic!("expected Map, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn eval_match_on_enum_variant() {
+        // match x { Closed => "c", Open => "o", _ => "?" }
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Match {
+                    expr: Box::new(LoweredExpr::Ident("x".to_string())),
+                    arms: vec![
+                        LoweredMatchArm {
+                            pattern: LoweredPattern::Variant("Closed".to_string(), vec![]),
+                            guard: None,
+                            body: LoweredExpr::Literal(LoweredLiteral::String("c".to_string())),
+                        },
+                        LoweredMatchArm {
+                            pattern: LoweredPattern::Variant("Open".to_string(), vec![]),
+                            guard: None,
+                            body: LoweredExpr::Literal(LoweredLiteral::String("o".to_string())),
+                        },
+                        LoweredMatchArm {
+                            pattern: LoweredPattern::Wildcard,
+                            guard: None,
+                            body: LoweredExpr::Literal(LoweredLiteral::String("?".to_string())),
+                        },
+                    ],
+                },
+            )])],
+        };
+        let inputs: HashMap<String, Value> = [(
+            "x".to_string(),
+            Value::Enum {
+                variant: "Closed".to_string(),
+            },
+        )]
+        .into_iter()
+        .collect();
+        let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
+        assert_eq!(result["return"], Value::Str("c".to_string()));
+    }
+
+    #[test]
+    fn eval_record_update_with() {
+        // let base = { a: 1, b: 2 }; return { return: base with { b: 99 } }
+        let body = LoweredFnBody {
+            stmts: vec![
+                LoweredStmt::Let(
+                    "base".to_string(),
+                    LoweredExpr::Record {
+                        type_name: None,
+                        fields: vec![
+                            ("a".to_string(), LoweredExpr::Literal(LoweredLiteral::Int(1))),
+                            ("b".to_string(), LoweredExpr::Literal(LoweredLiteral::Int(2))),
+                        ],
+                    },
+                ),
+                LoweredStmt::Return(vec![(
+                    "return".to_string(),
+                    LoweredExpr::Call {
+                        name: "with".to_string(),
+                        args: vec![
+                            (None, LoweredExpr::Ident("base".to_string())),
+                            (
+                                None,
+                                LoweredExpr::Record {
+                                    type_name: None,
+                                    fields: vec![(
+                                        "b".to_string(),
+                                        LoweredExpr::Literal(LoweredLiteral::Int(99)),
+                                    )],
+                                },
+                            ),
+                        ],
+                    },
+                )]),
+            ],
+        };
+        let result = evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
+        match &result["return"] {
+            Value::Map(map) => {
+                assert_eq!(map["a"], Value::Int(1));
+                assert_eq!(map["b"], Value::Int(99));
+            }
+            other => panic!("expected Map, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn eval_for_expression() {
+        // for item in items { item + "!" }
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::For {
+                    binding: "item".to_string(),
+                    iterable: Box::new(LoweredExpr::Ident("items".to_string())),
+                    body: Box::new(LoweredExpr::BinOp {
+                        left: Box::new(LoweredExpr::Ident("item".to_string())),
+                        op: LoweredBinOp::Add,
+                        right: Box::new(LoweredExpr::Literal(LoweredLiteral::String(
+                            "!".to_string(),
+                        ))),
+                    }),
+                },
+            )])],
+        };
+        let inputs: HashMap<String, Value> = [(
+            "items".to_string(),
+            Value::List(vec![
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string()),
+            ]),
+        )]
+        .into_iter()
+        .collect();
+        let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
+        assert_eq!(
+            result["return"],
+            Value::List(vec![
+                Value::Str("a!".to_string()),
+                Value::Str("b!".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn eval_nested_field_access() {
+        // rec.inner.name
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::FieldAccess {
+                    expr: Box::new(LoweredExpr::FieldAccess {
+                        expr: Box::new(LoweredExpr::Ident("rec".to_string())),
+                        field: "inner".to_string(),
+                    }),
+                    field: "name".to_string(),
+                },
+            )])],
+        };
+        let mut inner = BTreeMap::new();
+        inner.insert("name".to_string(), Value::Str("deep".to_string()));
+        let mut outer = BTreeMap::new();
+        outer.insert("inner".to_string(), Value::Map(inner));
+        let inputs: HashMap<String, Value> =
+            [("rec".to_string(), Value::Map(outer))].into_iter().collect();
+        let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
+        assert_eq!(result["return"], Value::Str("deep".to_string()));
+    }
+
+    #[test]
+    fn eval_field_access_on_unit_returns_unit() {
+        // x.field where x = Unit → Unit (null propagation)
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::FieldAccess {
+                    expr: Box::new(LoweredExpr::Ident("x".to_string())),
+                    field: "anything".to_string(),
+                },
+            )])],
+        };
+        let inputs: HashMap<String, Value> =
+            [("x".to_string(), Value::Unit)].into_iter().collect();
+        let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
+        assert_eq!(result["return"], Value::Unit);
+    }
+
+    #[test]
+    fn eval_unknown_function_error() {
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Call {
+                    name: "nonexistent".to_string(),
+                    args: vec![],
+                },
+            )])],
+        };
+        let result = evaluate_fn_body(&body, &HashMap::new(), &empty_siblings());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("unknown function"));
+    }
+
+    #[test]
+    fn eval_max_by() {
+        // [3, 1, 2] |> max_by(x => x) → 3
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Pipe {
+                    receiver: Box::new(LoweredExpr::Ident("items".to_string())),
+                    call: Box::new(LoweredExpr::Call {
+                        name: "max_by".to_string(),
+                        args: vec![(
+                            None,
+                            LoweredExpr::Lambda {
+                                params: vec!["x".to_string()],
+                                body: Box::new(LoweredExpr::Ident("x".to_string())),
+                            },
+                        )],
+                    }),
+                },
+            )])],
+        };
+        let inputs: HashMap<String, Value> = [(
+            "items".to_string(),
+            Value::List(vec![Value::Int(3), Value::Int(1), Value::Int(2)]),
+        )]
+        .into_iter()
+        .collect();
+        let result = evaluate_fn_body(&body, &inputs, &empty_siblings()).unwrap();
+        assert_eq!(result["return"], Value::Int(3));
+    }
+
+    #[test]
+    fn eval_list_literal() {
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::List(vec![
+                    LoweredExpr::Literal(LoweredLiteral::Int(1)),
+                    LoweredExpr::Literal(LoweredLiteral::Int(2)),
+                    LoweredExpr::Literal(LoweredLiteral::Int(3)),
+                ]),
+            )])],
+        };
+        let result = evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
+        assert_eq!(
+            result["return"],
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
+    }
+
+    #[test]
+    fn eval_unary_not() {
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::UnaryOp {
+                    op: LoweredUnaryOp::Not,
+                    expr: Box::new(LoweredExpr::Literal(LoweredLiteral::Bool(false))),
+                },
+            )])],
+        };
+        let result = evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
+        assert_eq!(result["return"], Value::Bool(true));
+    }
+
+    #[test]
+    fn eval_pipe_filter_with_lambda() {
+        // [1, 2, 3, 4] |> filter(x => x > 2) → [3, 4]
+        let body = LoweredFnBody {
+            stmts: vec![LoweredStmt::Return(vec![(
+                "return".to_string(),
+                LoweredExpr::Pipe {
+                    receiver: Box::new(LoweredExpr::List(vec![
+                        LoweredExpr::Literal(LoweredLiteral::Int(1)),
+                        LoweredExpr::Literal(LoweredLiteral::Int(2)),
+                        LoweredExpr::Literal(LoweredLiteral::Int(3)),
+                        LoweredExpr::Literal(LoweredLiteral::Int(4)),
+                    ])),
+                    call: Box::new(LoweredExpr::Call {
+                        name: "filter".to_string(),
+                        args: vec![(
+                            None,
+                            LoweredExpr::Lambda {
+                                params: vec!["x".to_string()],
+                                body: Box::new(LoweredExpr::BinOp {
+                                    left: Box::new(LoweredExpr::Ident("x".to_string())),
+                                    op: LoweredBinOp::Gt,
+                                    right: Box::new(LoweredExpr::Literal(LoweredLiteral::Int(2))),
+                                }),
+                            },
+                        )],
+                    }),
+                },
+            )])],
+        };
+        let result = evaluate_fn_body(&body, &HashMap::new(), &empty_siblings()).unwrap();
+        assert_eq!(
+            result["return"],
+            Value::List(vec![Value::Int(3), Value::Int(4)])
+        );
     }
 }

@@ -5112,8 +5112,16 @@ fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
         Some(TransportBinding::File { op, path }) => (op.clone(), path.clone()),
         _ => return None,
     };
-    let file_op = gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str)
-        .unwrap_or_else(|| panic!("unknown file operation `{file_op_str}`"));
+    let file_op = match gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str) {
+        Some(op) => op,
+        None => {
+            eprintln!(
+                "warning: unknown file operation `{file_op_str}` in transport file block — \
+                 valid operations: READ, READ_BYTES, WRITE, APPEND, DELETE, EXISTS, CREATE_DIR, GLOB, METADATA"
+            );
+            return None;
+        }
+    };
     let input_fields = operation
         .inputs
         .iter()
@@ -5322,12 +5330,14 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
                 .clone()
                 .unwrap_or_else(|| field.name.clone());
             let is_raw_body = false;
+            let is_optional = matches!(&field.ty, daglang_syntax::ast::TypeExpr::Optional(_));
             OutputFieldSpec {
                 name: field.name.clone(),
                 type_id: base_type_id.clone(),
                 json_path,
                 is_secret: base_type_id == "Secret",
                 is_raw_body,
+                is_optional,
             }
         })
         .collect()
@@ -8089,6 +8099,7 @@ fn resolve_return_expr_source(
             None
         }
         Expr::FieldAccess(base, field) => {
+            // Single-level: `cred.token` → (node_for_cred, "token")
             if let Expr::Ident(base_ident) = base.as_ref() {
                 if let Some(source) = bound_callable_sources.get(base_ident) {
                     return Some((source.node_id.clone(), field.clone()));
@@ -8100,7 +8111,22 @@ fn resolve_return_expr_source(
                     return Some((source.node_id.clone(), field.clone()));
                 }
             }
-            None
+            // Nested field access (e.g., `cred.token.token`): fall through to
+            // the ReturnExprCompute path via synthesize_return_compute_node,
+            // which handles this correctly via collect_return_expr_leaves.
+            synthesize_return_compute_node(
+                builder,
+                expr,
+                output_port,
+                output_name,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+                module_name,
+                item_name,
+                disambiguator,
+            )
         }
         Expr::Call(name, _) => endpoints_by_name
             .get(name)

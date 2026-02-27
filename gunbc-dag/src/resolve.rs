@@ -146,6 +146,7 @@ fn passthrough_fallback_value(port_name: &str, inputs: &HashMap<String, Value>) 
         Value::Secret(secret) => Value::Str(secret.to_string()),
         Value::Request(request) => Value::Str(format!("{request:?}")),
         Value::Response(response) => Value::Str(format!("{response:?}")),
+        Value::Enum { variant } => Value::Str(variant),
         Value::Skipped => Value::Skipped,
     })
 }
@@ -165,6 +166,7 @@ fn passthrough_value_to_text(value: &Value) -> String {
         Value::Response(value) => format!("{value:?}"),
         Value::List(values) => format!("{values:?}"),
         Value::Set(values) => format!("{values:?}"),
+        Value::Enum { variant } => variant.clone(),
         Value::Skipped => String::new(),
     }
 }
@@ -1554,6 +1556,7 @@ mod tests {
                     json_path: "needed".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 }],
                 output_parsing: ShellOutputParsing::ExitCodeBool,
                 env: vec![],
@@ -1590,6 +1593,7 @@ mod tests {
                         json_path: "success".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "stdout".to_string(),
@@ -1597,6 +1601,7 @@ mod tests {
                         json_path: "stdout".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "stderr".to_string(),
@@ -1604,6 +1609,7 @@ mod tests {
                         json_path: "stderr".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
@@ -1827,6 +1833,7 @@ mod tests {
                         json_path: "access_token".to_string(),
                         is_secret: true,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "expires_in".to_string(),
@@ -1834,6 +1841,7 @@ mod tests {
                         json_path: "expires_in".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 body_template: None,
@@ -1890,6 +1898,7 @@ mod tests {
                         json_path: "payload".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "name".to_string(),
@@ -1897,6 +1906,7 @@ mod tests {
                         json_path: "name".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 body_template: None,

@@ -1083,6 +1083,7 @@ mod tests {
                     json_path: "content/0/text".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 },
                 OutputFieldSpec {
                     name: "model".to_string(),
@@ -1090,6 +1091,7 @@ mod tests {
                     json_path: "model".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 },
             ],
             body_template: None,

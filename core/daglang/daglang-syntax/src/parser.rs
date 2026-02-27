@@ -332,6 +332,9 @@ impl Parser {
                             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                                 config.auth = Some(self.expect_ident()?);
                             } else {
+                                self.record_err(self.err(
+                                    "expected identifier for `auth` (e.g., BearerToken)".to_string(),
+                                ));
                                 self.advance();
                             }
                         }
@@ -339,6 +342,9 @@ impl Parser {
                             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                                 config.auth_input = Some(self.expect_ident()?);
                             } else {
+                                self.record_err(self.err(
+                                    "expected identifier for `auth_input` (e.g., auth_token)".to_string(),
+                                ));
                                 self.advance();
                             }
                         }
@@ -2529,6 +2535,46 @@ impl Parser {
         }
     }
 
+    /// Try to parse a multi-param lambda: `(ident, ident, ...) => body`.
+    ///
+    /// Called after `(` has been consumed. Uses two-phase approach:
+    /// 1. **Lookahead**: scan tokens without mutating parser state to detect
+    ///    the `ident, ident, ...) =>` pattern.
+    /// 2. **Commit**: if the pattern matches (>= 2 params), advance `self.pos`
+    ///    past the params, commas, `)`, and `=>`.
+    ///
+    /// Returns `Some(params)` on success, `None` if no lambda pattern detected
+    /// (parser state unchanged in that case).
+    fn try_parse_multi_param_lambda(&mut self) -> Option<Vec<String>> {
+        // Phase 1: Lookahead — read-only scan from current position.
+        let mut scan = self.pos;
+        let first = Self::token_kind_as_ident(&self.tokens.get(scan)?.kind)?;
+        let mut params = vec![first];
+        scan += 1;
+
+        while scan < self.tokens.len() && self.tokens[scan].kind == TokenKind::Comma {
+            scan += 1; // skip comma
+            let name = Self::token_kind_as_ident(&self.tokens.get(scan)?.kind)?;
+            params.push(name);
+            scan += 1; // skip ident
+        }
+
+        // Require >= 2 params, followed by `) =>`
+        if params.len() < 2 {
+            return None;
+        }
+        if scan >= self.tokens.len() || self.tokens[scan].kind != TokenKind::RParen {
+            return None;
+        }
+        if scan + 1 >= self.tokens.len() || self.tokens[scan + 1].kind != TokenKind::FatArrow {
+            return None;
+        }
+
+        // Phase 2: Commit — advance past `) =>`
+        self.pos = scan + 2;
+        Some(params)
+    }
+
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.peek().kind.clone() {
             TokenKind::True => {
@@ -2587,52 +2633,10 @@ impl Parser {
                     self.advance();
                     return Ok(Expr::Record(None, Vec::new()));
                 }
-                // Try multi-param lambda: (a, b) => body
-                // Speculatively collect ident-comma sequences. If we see
-                // `)` followed by `=>`, it's a lambda; otherwise backtrack.
-                let save_pos = self.pos;
-                let save_errors = self.errors.len();
-                let mut params = Vec::new();
-                let mut is_lambda = false;
-                if let Some(first) = Self::token_kind_as_ident(&self.peek().kind) {
-                    let mut speculative_pos = self.pos;
-                    params.push(first);
-                    speculative_pos += 1; // skip first ident
-                    // Check for comma-separated idents
-                    while speculative_pos < self.tokens.len()
-                        && self.tokens[speculative_pos].kind == TokenKind::Comma
-                    {
-                        speculative_pos += 1; // skip comma
-                        if speculative_pos < self.tokens.len() {
-                            if let Some(name) =
-                                Self::token_kind_as_ident(&self.tokens[speculative_pos].kind)
-                            {
-                                params.push(name);
-                                speculative_pos += 1; // skip ident
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                    // Check for ) => pattern
-                    if params.len() >= 2
-                        && speculative_pos < self.tokens.len()
-                        && self.tokens[speculative_pos].kind == TokenKind::RParen
-                        && speculative_pos + 1 < self.tokens.len()
-                        && self.tokens[speculative_pos + 1].kind == TokenKind::FatArrow
-                    {
-                        // Commit: advance past all params, commas, ), =>
-                        self.pos = speculative_pos + 2;
-                        is_lambda = true;
-                    }
-                }
-                if is_lambda {
+                if let Some(params) = self.try_parse_multi_param_lambda() {
                     let body = self.parse_expr(0)?;
                     Ok(Expr::Lambda(params, Box::new(body)))
                 } else {
-                    // Reset and parse as parenthesized expression
-                    self.pos = save_pos;
-                    self.errors.truncate(save_errors);
                     let expr = self.parse_expr(0)?;
                     self.expect(&TokenKind::RParen)?;
                     Ok(expr)

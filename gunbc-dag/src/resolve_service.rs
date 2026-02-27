@@ -567,7 +567,7 @@ impl Executable for GenericShellParseOp {
                         // must not propagate as a valid result.
                         if !shell.success() {
                             let is_optional = field
-                                .map(|f| f.type_id.ends_with('?'))
+                                .map(|f| f.is_optional)
                                 .unwrap_or(false);
                             if is_optional {
                                 return OutputMap::new()
@@ -1303,6 +1303,7 @@ mod tests {
                 json_path: "id".to_string(),
                 is_secret: false,
                 is_raw_body: false,
+                is_optional: false,
             }],
             body_template: None,
             headers: vec![],
@@ -1348,6 +1349,7 @@ mod tests {
                     json_path: "payload".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 },
                 OutputFieldSpec {
                     name: "name".to_string(),
@@ -1355,6 +1357,7 @@ mod tests {
                     json_path: "name".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 },
             ],
             body_template: None,
@@ -1380,6 +1383,7 @@ mod tests {
                 json_path: "branch".to_string(),
                 is_secret: false,
                 is_raw_body: false,
+                is_optional: false,
             }],
             output_parsing: ShellOutputParsing::TrimStdout,
             env: vec![],
@@ -1400,6 +1404,7 @@ mod tests {
                 json_path: "needed".to_string(),
                 is_secret: false,
                 is_raw_body: false,
+                is_optional: false,
             }],
             output_parsing: ShellOutputParsing::ExitCodeBool,
             env: vec![],
@@ -1515,6 +1520,7 @@ mod tests {
                     json_path: "access_token".to_string(),
                     is_secret: true,
                     is_raw_body: false,
+                    is_optional: false,
                 },
                 OutputFieldSpec {
                     name: "expires_in".to_string(),
@@ -1522,6 +1528,7 @@ mod tests {
                     json_path: "expires_in".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 },
             ],
             body_template: None,
@@ -1702,6 +1709,7 @@ mod tests {
                 json_path: "branches".to_string(),
                 is_secret: false,
                 is_raw_body: false,
+                is_optional: false,
             }],
             output_parsing: ShellOutputParsing::SplitLines,
             env: vec![],
@@ -1743,6 +1751,7 @@ mod tests {
                     json_path: "success".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 },
                 OutputFieldSpec {
                     name: "stdout".to_string(),
@@ -1750,6 +1759,7 @@ mod tests {
                     json_path: "stdout".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 },
                 OutputFieldSpec {
                     name: "stderr".to_string(),
@@ -1757,6 +1767,7 @@ mod tests {
                     json_path: "stderr".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 },
             ],
             output_parsing: ShellOutputParsing::SuccessStdoutStderr,
@@ -1895,6 +1906,7 @@ mod tests {
                 json_path: "content".to_string(),
                 is_secret: false,
                 is_raw_body: false,
+                is_optional: false,
             }],
         }
     }
@@ -2079,6 +2091,7 @@ mod tests {
                 json_path: "access_token".to_string(),
                 is_secret: true,
                 is_raw_body: false,
+                is_optional: false,
             }],
             output_parsing: ShellOutputParsing::TrimStdout,
             env: vec![],

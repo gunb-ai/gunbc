@@ -47,7 +47,8 @@ pub fn classify_value(value: &Value) -> ValueCategory {
         Value::Json(_) | Value::Secret(_) | Value::Float(_) | Value::Bytes(_) => {
             ValueCategory::Shared
         }
-        Value::Map(_) | Value::Set(_) | Value::Request(_) | Value::Response(_) | Value::Skipped => {
+        Value::Map(_) | Value::Set(_) | Value::Request(_) | Value::Response(_)
+        | Value::Enum { .. } | Value::Skipped => {
             ValueCategory::GunbcOnly
         }
     }
@@ -90,6 +91,7 @@ pub fn to_bridge_json(value: &Value) -> Option<serde_json::Value> {
             "__bytes": b.len(),
         })),
         Value::Secret(_) => Some(serde_json::Value::String("***".to_string())),
+        Value::Enum { variant } => Some(serde_json::Value::String(variant.clone())),
         Value::Request(_) | Value::Response(_) | Value::Skipped => None,
     }
 }

@@ -169,6 +169,13 @@ pub enum Value {
     Response(TransportResponse),
     /// Secret value (redacted in logs/display, exposed only at I/O boundaries)
     Secret(SecretString),
+    /// Enumeration variant with no payload.
+    ///
+    /// Distinct from `Str` to prevent accidental string/enum confusion.
+    /// Constructed by the evaluator for unit sum-type variants (e.g., `Unit`,
+    /// `Hermetic`, `Xs`). Payload variants are represented as `Map` with a
+    /// `_variant` key.
+    Enum { variant: String },
     /// Node was skipped (guard evaluated to false)
     Skipped,
 }
@@ -192,6 +199,7 @@ pub enum ValueKind {
     TransportRequest,
     TransportResponse,
     Secret,
+    Enum,
     Skipped,
 }
 
@@ -212,6 +220,7 @@ impl ValueKind {
             ValueKind::TransportRequest => "TransportRequest",
             ValueKind::TransportResponse => "TransportResponse",
             ValueKind::Secret => "Secret",
+            ValueKind::Enum => "Enum",
             ValueKind::Skipped => "Skipped",
         }
     }
@@ -240,6 +249,7 @@ impl Value {
             Value::Request(_) => ValueKind::TransportRequest,
             Value::Response(_) => ValueKind::TransportResponse,
             Value::Secret(_) => ValueKind::Secret,
+            Value::Enum { .. } => ValueKind::Enum,
             Value::Skipped => ValueKind::Skipped,
         }
     }
@@ -413,7 +423,8 @@ impl Value {
             | Value::Float(_)
             | Value::Json(_)
             | Value::Request(_)
-            | Value::Response(_) => false,
+            | Value::Response(_)
+            | Value::Enum { .. } => false,
         }
     }
 
@@ -470,6 +481,18 @@ impl Value {
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Try to extract an enum variant name.
+    ///
+    /// Returns `Some(variant_name)` for `Value::Enum { variant }`, `None` for
+    /// all other variants. Use this instead of `as_str()` when the value is
+    /// known to be a DSL enumeration variant.
+    pub fn as_enum_variant(&self) -> Option<&str> {
+        match self {
+            Value::Enum { variant } => Some(variant),
             _ => None,
         }
     }
@@ -705,6 +728,10 @@ impl PartialEq for Value {
             (Value::Request(a), Value::Request(b)) => a == b,
             (Value::Response(a), Value::Response(b)) => a == b,
             (Value::Secret(a), Value::Secret(b)) => a == b,
+            (
+                Value::Enum { variant: a },
+                Value::Enum { variant: b },
+            ) => a == b,
             (Value::Skipped, Value::Skipped) => true,
             _ => false,
         }
@@ -727,6 +754,7 @@ impl fmt::Display for Value {
             Value::Request(r) => write!(f, "<Request: {:?}>", std::mem::discriminant(r)),
             Value::Response(r) => write!(f, "<Response: {:?}>", std::mem::discriminant(r)),
             Value::Secret(_) => write!(f, "***"),
+            Value::Enum { variant } => write!(f, "{variant}"),
             Value::Skipped => write!(f, "<SKIPPED>"),
         }
     }
