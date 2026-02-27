@@ -6,6 +6,7 @@
 module services.llm.openai
 
 service llm.OpenAI {
+  config { endpoint: "https://api.openai.com", auth: BearerToken }
 
   operation ChatCompletion {
     input {
@@ -21,6 +22,7 @@ service llm.OpenAI {
       prompt_tokens: Int from "usage/prompt_tokens"
       completion_tokens: Int from "usage/completion_tokens"
     }
+    transport rest { method: POST, path: "/v1/chat/completions" }
   }
 
   operation Responses {
@@ -36,6 +38,7 @@ service llm.OpenAI {
       output_tokens: Int from "usage/output_tokens"
       input_tokens: Int from "usage/input_tokens"
     }
+    transport rest { method: POST, path: "/v1/responses" }
   }
 }
 
