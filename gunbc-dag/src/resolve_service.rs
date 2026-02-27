@@ -16,7 +16,8 @@ use gunbc_exec::{
     TransportContext,
 };
 use gunbc_ir::transport::{
-    FileRequest, LocalRequest, RestRequest, ShellRequest, TransportRequest, TransportResponse,
+    FileRequest, LocalRequest, RestRequest, ShellRequest, ShellResponse, TransportRequest,
+    TransportResponse,
 };
 use gunbc_ir::{SecretString, Value};
 
@@ -479,6 +480,24 @@ pub struct GenericShellParseOp {
     pub operation_name: String,
 }
 
+impl GenericShellParseOp {
+    fn shell_exit_error(&self, shell: &ShellResponse) -> ExecError {
+        let stderr = shell.stderr.trim();
+        let detail = if stderr.is_empty() {
+            String::new()
+        } else {
+            format!(" (stderr: {})", stderr)
+        };
+        ExecError::new(format!(
+            "{}.{}: shell command exited with code {}{}",
+            self.service_name,
+            self.operation_name,
+            shell.exit_code,
+            detail
+        ))
+    }
+}
+
 impl Executable for GenericShellParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match inputs.get("response") {
@@ -502,6 +521,11 @@ impl Executable for GenericShellParseOp {
                     }
 
                     ShellOutputParsing::SplitLines => {
+                        // Fail on non-zero exit — SplitLines callers expect
+                        // valid multi-line output (e.g. `find` directory listings).
+                        if !shell.success() {
+                            return Err(self.shell_exit_error(shell));
+                        }
                         let lines: Vec<String> = shell
                             .stdout
                             .lines()
@@ -521,6 +545,21 @@ impl Executable for GenericShellParseOp {
                     ShellOutputParsing::TrimStdout => {
                         let field = self.spec.output_fields.first();
                         let field_name = field.map(|f| f.name.as_str()).unwrap_or("output");
+                        // On non-zero exit: if output type is optional (T?),
+                        // return None (the command "didn't find" a value).
+                        // Otherwise fail — empty stdout from a failed command
+                        // must not propagate as a valid result.
+                        if !shell.success() {
+                            let is_optional = field
+                                .map(|f| f.type_id.ends_with('?'))
+                                .unwrap_or(false);
+                            if is_optional {
+                                return OutputMap::new()
+                                    .value(field_name, Value::Skipped)
+                                    .ok();
+                            }
+                            return Err(self.shell_exit_error(shell));
+                        }
                         let text = shell.stdout.trim().to_string();
                         OutputMap::new()
                             .value(field_name, shell_trim_value(field, text))
