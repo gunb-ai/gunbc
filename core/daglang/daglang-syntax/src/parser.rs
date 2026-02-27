@@ -2337,8 +2337,28 @@ impl Parser {
                 break;
             }
             if self.check(&TokenKind::Question) {
+                // Optional chaining: `expr?.field` desugars to
+                // `if expr != None { expr.field } else { None }`
+                if self.peek2().kind == TokenKind::Dot {
+                    if 21u8 < min_bp {
+                        break;
+                    }
+                    self.advance(); // consume `?`
+                    self.advance(); // consume `.`
+                    let field = self.expect_ident()?;
+                    lhs = Expr::If(
+                        Box::new(Expr::BinOp(
+                            Box::new(lhs.clone()),
+                            BinOp::Ne,
+                            Box::new(Expr::Ident("None".into())),
+                        )),
+                        Box::new(Expr::FieldAccess(Box::new(lhs), field)),
+                        Some(Box::new(Expr::Ident("None".into()))),
+                    );
+                    continue;
+                }
                 return Err(self.err(
-                    "ternary operator is not supported; did you mean an optional type?".into(),
+                    "ternary operator is not supported; did you mean an optional type or `?.` optional chaining?".into(),
                 ));
             }
             if self.allow_named_record_suffix && self.check(&TokenKind::LBrace) {
@@ -3503,6 +3523,64 @@ pipeline gist {
                 assert!(matches!(def.ty, TypeExpr::Named(ref n) if n == "Config"));
             }
             other => panic!("expected ExternAssetDecl, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_optional_chaining_desugars_to_if() {
+        let sf = parse_or_panic(
+            r#"module test
+fn get_name(rec: Record?) -> String {
+  rec?.name
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::FnDef(def) => {
+                assert!(!def.body.lossy, "optional chaining should not make body lossy");
+                // Desugared to: if rec != None { rec.name } else { None }
+                match def.body.stmts.first() {
+                    Some(Stmt::Expr(Expr::If(cond, then_, Some(else_)))) => {
+                        assert!(
+                            matches!(cond.as_ref(), Expr::BinOp(_, BinOp::Ne, _)),
+                            "condition should be != None"
+                        );
+                        assert!(
+                            matches!(then_.as_ref(), Expr::FieldAccess(_, field) if field == "name"),
+                            "then branch should be field access"
+                        );
+                        assert!(
+                            matches!(else_.as_ref(), Expr::Ident(n) if n == "None"),
+                            "else branch should be None"
+                        );
+                    }
+                    other => panic!("expected If expression from ?. desugaring, got {other:?}"),
+                }
+            }
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_optional_chaining_in_func_body_is_not_lossy() {
+        let sf = parse_or_panic(
+            r#"module test
+func check(x: Record?) -> { valid: Bool } {
+  result = if x?.valid != true {
+    { valid: false }
+  } else {
+    { valid: true }
+  }
+  return { valid: result.valid }
+}"#,
+        );
+        match &sf.items[0].node {
+            Item::FuncDef(def) => {
+                assert!(
+                    !def.body.lossy,
+                    "func body with ?. should NOT be lossy"
+                );
+            }
+            other => panic!("expected FuncDef, got {other:?}"),
         }
     }
 }
