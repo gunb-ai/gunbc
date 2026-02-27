@@ -853,7 +853,7 @@ fn collect_profile_binding_registry(
     let mut service_registry = NameAliasRegistry::default();
 
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             match &item.node {
                 Item::InterfaceDef(def) => {
@@ -877,7 +877,7 @@ fn collect_profile_binding_registry(
 
     let mut registry = ProfileBindingRegistry::default();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ProfileDef(def) = &item.node else {
                 continue;
@@ -1094,7 +1094,7 @@ fn collect_profile_bound_interface_names(registry: &ProfileBindingRegistry) -> H
 fn collect_interface_type_names(project: &TypedProject) -> HashSet<String> {
     let mut names = HashSet::new();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::InterfaceDef(def) = &item.node else {
                 continue;
@@ -1186,7 +1186,7 @@ fn add_interface_stub_transport_triplets(
     }
 
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::InterfaceDef(interface) = &item.node else {
                 continue;
@@ -1777,7 +1777,7 @@ fn lower_typed_project_with_callable_scope(
     let variant_names = collect_variant_names(project);
 
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         let include_callables = callable_modules
             .map(|scope| scope.contains(&module_name))
             .unwrap_or(true);
@@ -2921,7 +2921,7 @@ fn add_dependency_edges(
     data_values: &HashMap<String, serde_json::Value>,
 ) {
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         let param_types_by_callable = module
             .signatures
             .iter()
@@ -4966,7 +4966,7 @@ type DataRegistry<'a> = HashMap<String, &'a DataDef>;
 fn build_data_registry(project: &TypedProject) -> DataRegistry<'_> {
     let mut registry = DataRegistry::new();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             if let Item::DataDef(def) = &item.node {
                 registry.insert(format!("{module_name}.{}", def.name), def);
@@ -5511,7 +5511,7 @@ fn collect_required_service_call_keys(
 ) -> HashSet<String> {
     let mut required = HashSet::new();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         if callable_modules
             .map(|scope| !scope.contains(&module_name))
             .unwrap_or(false)
@@ -5606,7 +5606,7 @@ fn add_service_transport_triplets(
     let data_registry = build_data_registry(project);
     let mut registry = ServiceEndpointRegistry::default();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ServiceDef(service) = &item.node else {
                 continue;
@@ -5819,7 +5819,7 @@ fn add_service_call_edges(
     data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         // Track transport endpoint usage across ALL callables in the module so
         // that the second callable to reference the same service operation gets
         // a cloned triplet (_c1, _c2, …) instead of wiring duplicate scalar
@@ -6191,7 +6191,7 @@ fn add_service_call_edges(
         }
     }
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::PipelineDef(def) = &item.node else {
                 continue;
@@ -6495,7 +6495,7 @@ fn wire_profile_binding_config_inputs(
 fn collect_auth_provider_names(project: &TypedProject) -> HashSet<String> {
     let mut providers = HashSet::new();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Some((item_name, provides)) = item_callable_provides(&item.node) else {
                 continue;
@@ -6529,7 +6529,7 @@ fn wire_auth_credential_edges(
     auth_provider_names: &HashSet<String>,
 ) {
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let stmts = match &item.node {
                 Item::FuncDef(def) => def.body.stmts.as_slice(),
@@ -6647,7 +6647,7 @@ fn add_used_resource_edges(
     known_uses_types: &HashSet<String>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Some((item_name, uses)) = item_callable_uses(&item.node) else {
                 continue;
@@ -6720,7 +6720,7 @@ fn add_provided_resource_nodes(
     wired_release_targets: &mut HashSet<(String, String)>,
 ) -> Result<(), LowerError> {
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Some((item_name, provides)) = item_callable_provides(&item.node) else {
                 continue;
@@ -6851,7 +6851,7 @@ fn resolve_interface_resource_endpoint(
     let mut candidates = Vec::<(Option<ProviderHint>, ResourceLifecycleEndpoint)>::new();
 
     for module in &project.modules {
-        let candidate_module_name = module.module_path.join(".");
+        let candidate_module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ResourceDef(resource) = &item.node else {
                 continue;
@@ -6911,7 +6911,7 @@ fn collect_known_uses_types(project: &TypedProject) -> HashSet<String> {
     let mut known = HashSet::new();
     insert_default_known_resource_types(&mut known);
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             match &item.node {
                 Item::InterfaceDef(def) => {
@@ -6953,7 +6953,7 @@ fn add_resource_lifecycle_nodes(
 ) -> ResourceLifecycleRegistry {
     let mut registry = ResourceLifecycleRegistry::default();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         if callable_modules
             .map(|scope| !scope.contains(&module_name))
             .unwrap_or(false)
@@ -7031,7 +7031,7 @@ fn add_interface_contract_verification_nodes(
     resource_registry: &ResourceLifecycleRegistry,
 ) {
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ResourceDef(resource) = &item.node else {
                 continue;
@@ -7099,7 +7099,7 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
     let target_short = target.rsplit('.').next().unwrap_or(target.as_str());
     let mut counts = Vec::new();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::InterfaceDef(interface) = &item.node else {
                 continue;
@@ -7598,7 +7598,7 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
     let mut values = HashMap::new();
     let mut unqualified_counts: HashMap<String, usize> = HashMap::new();
     for module in &project.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             if let Item::DataDef(def) = &item.node {
                 if let Some(json) = expr_to_json_literal(&def.value, &variant_names) {
@@ -8291,7 +8291,7 @@ mod tests {
                 let module_path = ast
                     .module_path
                     .as_ref()
-                    .map(|module| module.node.segments.clone())
+                    .map(|module| module.node.clone())
                     .expect("module declaration is required");
                 ResolvedModule {
                     path: PathBuf::from(path),
@@ -8324,7 +8324,7 @@ mod tests {
         let target_index = graph
             .modules
             .iter()
-            .position(|module| module.module_path.join(".") == module_name)
+            .position(|module| module.module_path.as_dotted() == module_name)
             .expect("target module should exist in graph");
 
         let mut required_indices = HashSet::<usize>::new();
@@ -8378,12 +8378,12 @@ mod tests {
             .modules
             .iter()
             .enumerate()
-            .map(|(index, module)| (module.module_path.join("."), index))
+            .map(|(index, module)| (module.module_path.as_dotted(), index))
             .collect::<HashMap<_, _>>();
         let target_index = typed
             .modules
             .iter()
-            .position(|module| module.module_path.join(".") == module_name)
+            .position(|module| module.module_path.as_dotted() == module_name)
             .expect("target module should exist in typed project");
         let mut scope = HashSet::new();
         let mut visited = HashSet::new();
@@ -8395,9 +8395,9 @@ mod tests {
             let Some(module) = typed.modules.get(module_index) else {
                 continue;
             };
-            scope.insert(module.module_path.join("."));
+            scope.insert(module.module_path.as_dotted());
             for import in &module.imports {
-                let import_name = import.join(".");
+                let import_name = import.as_dotted();
                 if let Some(import_index) = module_lookup.get(&import_name) {
                     queue.push_back(*import_index);
                 }
@@ -10353,7 +10353,7 @@ func cross_provider_auth() -> { ok: Bool } {
         let object_storage_contracts = typed
             .modules
             .iter()
-            .find(|module| module.module_path.join(".") == "infra.core")
+            .find(|module| module.module_path.as_dotted() == "infra.core")
             .and_then(|module| {
                 module.ast.items.iter().find_map(|item| match &item.node {
                     Item::InterfaceDef(interface) if interface.name == "ObjectStorage" => {
@@ -11214,7 +11214,7 @@ func dual(msg: String) -> { reply: String } {
             let module_path = ast
                 .module_path
                 .as_ref()
-                .map(|module| module.node.segments.clone())
+                .map(|module| module.node.clone())
                 .expect("module declaration is required");
             let module = ResolvedModule {
                 path: PathBuf::from(path),
@@ -11230,7 +11230,7 @@ func dual(msg: String) -> { reply: String } {
             .modules
             .iter()
             .enumerate()
-            .map(|(index, module)| (module.module_path.join("."), index))
+            .map(|(index, module)| (module.module_path.as_dotted(), index))
             .collect();
         // For each module, resolve its import paths to dependency indices.
         for module_index in 0..graph.modules.len() {
@@ -11264,12 +11264,12 @@ func dual(msg: String) -> { reply: String } {
             .modules
             .iter()
             .enumerate()
-            .map(|(index, module)| (module.module_path.join("."), index))
+            .map(|(index, module)| (module.module_path.as_dotted(), index))
             .collect();
         let target_index = typed
             .modules
             .iter()
-            .position(|module| module.module_path.join(".") == target_module)
+            .position(|module| module.module_path.as_dotted() == target_module)
             .unwrap_or_else(|| panic!("target module {target_module} should exist"));
         let mut scope = HashSet::new();
         let mut visited = HashSet::new();
@@ -11281,9 +11281,9 @@ func dual(msg: String) -> { reply: String } {
             let Some(module) = typed.modules.get(module_index) else {
                 continue;
             };
-            scope.insert(module.module_path.join("."));
+            scope.insert(module.module_path.as_dotted());
             for import in &module.imports {
-                let import_name = import.join(".");
+                let import_name = import.as_dotted();
                 if let Some(import_index) = module_lookup.get(&import_name) {
                     queue.push_back(*import_index);
                 }

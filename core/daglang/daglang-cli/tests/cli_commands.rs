@@ -269,7 +269,7 @@ fn resolve_discovered_module_order() -> Vec<String> {
         .expect("resolve discovery should succeed for real corpus")
         .modules
         .into_iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect()
 }
 
@@ -280,7 +280,7 @@ fn resolve_discovered_module_summary() -> BTreeMap<String, (usize, usize)> {
         .into_iter()
         .map(|module| {
             (
-                module.module_path.join("."),
+                module.module_path.as_dotted(),
                 (module.ast.items.len(), module.dependencies.len()),
             )
         })

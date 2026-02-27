@@ -692,7 +692,7 @@ pub(crate) fn render_modules_result_json(result: &PipelineResult) -> String {
     let module_order = graph
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect::<Vec<_>>();
     let modules = graph
         .modules
@@ -702,10 +702,10 @@ pub(crate) fn render_modules_result_json(result: &PipelineResult) -> String {
                 .dependencies
                 .iter()
                 .filter_map(|dep| graph.modules.get(*dep))
-                .map(|dependency| dependency.module_path.join("."))
+                .map(|dependency| dependency.module_path.as_dotted())
                 .collect::<Vec<_>>();
             json!({
-                "module": module.module_path.join("."),
+                "module": module.module_path.as_dotted(),
                 "path": module.path.display().to_string(),
                 "items": module.ast.items.len(),
                 "dependencies": dependencies,

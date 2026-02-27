@@ -281,7 +281,7 @@ correctness, then testing + foundation.
 | 24 | RT24 | ✅ `NodeKind` already has `TransportPrepare`/`TransportExecute`/`TransportParse` variants (added earlier). Added `NodeKind::is_transport()` convenience method for callers that need to check transport-phase membership. 13 files use these variants across lowerer, executor, codegen, testgen, and derive. | S |
 | 25 | RT25 | ✅ String constants centralized: `PortName::{RESOURCE_PREFIX, TOOL_PREFIX, INTERNAL_PREFIX, OUTPUT_PASSTHROUGH_PREFIX, DEPS, RESOURCE_CREDENTIAL}` on `PortName` in `types.rs`. Added `RESOURCE_CREDENTIAL` to `resource/mod.rs`. Updated `bare_name()`/`category()` to use constants. Migrated lowerer's private `OUTPUT_PASSTHROUGH_PREFIX` to use `PortName::OUTPUT_PASSTHROUGH_PREFIX`. | S |
 | 26 | RT26 | `#[derive(StringEnum)]` for 15 enums (~60 match blocks). | M |
-| 27 | RT27 | ModulePath unification across 4 crates. | S |
+| 27 | RT27 | ✅ ModulePath unification across 4 crates. Replaced `Vec<String>` module paths with canonical `ModulePath` struct from daglang-syntax across resolve, typecheck, lower, emit, driver, cli. Added `new()`, `as_dotted()`, `Display`, `From<Vec<String>>`, `Hash`/`Eq` derives. | S |
 | 28 | RT28 | Shared DslTypeMapping table for emit backends. | S |
 | 29 | RT29 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
 | 30 | RT30 | ✅ Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortName` methods. 3 sites migrated (lower `is_user_param_port`, emit `is_user_input_port`, patterns `ResourceInput::new`). `process_registry.rs` skipped (uses `ClaimId`, not `PortName`). | S |

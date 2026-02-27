@@ -17,7 +17,7 @@ use daglang_lower::{
     LoweredOp,
 };
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
-use daglang_syntax::ast::{Expr, Item, Literal, PipelineDef, StageDef, Stmt, TypeBody};
+use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt, TypeBody};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
@@ -326,7 +326,7 @@ pub fn compile_from_module_graph_with_options(
             .modules
             .into_iter()
             .find(|m| m.path == *tf || canonical.as_ref().is_some_and(|c| m.path == *c))
-            .map(|m| m.module_path.join("."))
+            .map(|m| m.module_path.as_dotted())
     });
 
     let target = options.target;
@@ -366,7 +366,7 @@ pub fn compile_from_module_graph_with_options(
 fn collect_extern_assets(typed: &TypedProject) -> BTreeSet<ProgramSymbolId> {
     let mut assets = BTreeSet::new();
     for module in &typed.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             if let Item::ExternAssetDecl(def) = &item.node {
                 assets.insert(ProgramSymbolId::from_parts(&module_name, &def.name));
@@ -542,7 +542,7 @@ fn lint_report_coverage(typed: &TypedProject) -> Vec<ReportCoverageIssue> {
     let mut issues = Vec::new();
 
     for module in &typed.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::PipelineDef(def) = &item.node else {
                 continue;
@@ -1022,9 +1022,9 @@ fn discover_target_module_graph_for_context(
 ) -> Result<ModuleGraph, CompileError> {
     let canonical_roots = daglang_resolve::canonicalize_roots(&context.roots);
     let mut modules: Vec<ResolvedModule> = Vec::new();
-    let mut imports_by_index: Vec<Vec<Vec<String>>> = Vec::new();
+    let mut imports_by_index: Vec<Vec<ModulePath>> = Vec::new();
     let mut module_index_by_path: HashMap<PathBuf, usize> = HashMap::new();
-    let mut module_index_by_decl: HashMap<Vec<String>, usize> = HashMap::new();
+    let mut module_index_by_decl: HashMap<ModulePath, usize> = HashMap::new();
 
     let Some((target_index, _)) = add_target_module_if_applicable(
         target_file,
@@ -1201,7 +1201,7 @@ fn include_profile_modules(
             .iter()
             .filter_map(|import| {
                 module_index_by_decl
-                    .get(&import.node.path.segments)
+                    .get(&import.node.path)
                     .copied()
             })
             .collect::<Vec<_>>();
@@ -1217,16 +1217,17 @@ fn resolve_profile_bind_implementation_module_path(
     roots: &[PathBuf],
     implementation_type: &str,
 ) -> Option<PathBuf> {
-    let segments = implementation_type
+    let segments: Vec<String> = implementation_type
         .split('.')
         .filter(|segment| !segment.is_empty())
         .map(|segment| segment.to_string())
-        .collect::<Vec<_>>();
+        .collect();
     if segments.len() < 2 {
         return None;
     }
     for end in (1..segments.len()).rev() {
-        if let Some(path) = resolve_import_file_path(roots, &segments[..end]) {
+        let prefix = ModulePath::new(segments[..end].to_vec());
+        if let Some(path) = resolve_import_file_path(roots, &prefix) {
             return Some(path);
         }
     }
@@ -1236,13 +1237,13 @@ fn resolve_profile_bind_implementation_module_path(
 #[allow(clippy::too_many_arguments)]
 fn add_target_module_if_applicable(
     path: &Path,
-    expected_module_path: Option<&[String]>,
+    expected_module_path: Option<&ModulePath>,
     roots: &[PathBuf],
     canonical_roots: &[PathBuf],
     modules: &mut Vec<ResolvedModule>,
-    imports_by_index: &mut Vec<Vec<Vec<String>>>,
+    imports_by_index: &mut Vec<Vec<ModulePath>>,
     module_index_by_path: &mut HashMap<PathBuf, usize>,
-    module_index_by_decl: &mut HashMap<Vec<String>, usize>,
+    module_index_by_decl: &mut HashMap<ModulePath, usize>,
 ) -> Result<Option<(usize, bool)>, CompileError> {
     let canonical_path = {
         #[allow(clippy::disallowed_methods)]
@@ -1256,7 +1257,7 @@ fn add_target_module_if_applicable(
 
     let (mut module, imports) = parse_target_module_file(path, roots, canonical_roots)?;
     if let Some(expected) = expected_module_path {
-        if module.module_path.as_slice() != expected {
+        if &module.module_path != expected {
             return Ok(None);
         }
     }
@@ -1297,7 +1298,7 @@ fn parse_target_module_file(
     path: &Path,
     roots: &[PathBuf],
     canonical_roots: &[PathBuf],
-) -> Result<(ResolvedModule, Vec<Vec<String>>), CompileError> {
+) -> Result<(ResolvedModule, Vec<ModulePath>), CompileError> {
     if path.is_dir() {
         return Err(format!(
             "failed to read {}: target is a directory; `.dag` paths are treated as single-file targets. Use `daglang check <dir>` or `daglang modules <dir>`, or pass the directory path without the `.dag` suffix.",
@@ -1319,13 +1320,13 @@ fn parse_target_module_file(
     let module_path = ast
         .module_path
         .as_ref()
-        .map(|module| module.node.segments.clone())
+        .map(|module| module.node.clone())
         .unwrap_or_else(|| daglang_resolve::path_to_module_path(path, roots, canonical_roots));
-    let imports = ast
+    let imports: Vec<ModulePath> = ast
         .imports
         .iter()
-        .map(|import| import.node.path.segments.clone())
-        .collect::<Vec<_>>();
+        .map(|import| import.node.path.clone())
+        .collect();
     Ok((
         ResolvedModule {
             path: path.to_path_buf(),
@@ -1337,9 +1338,9 @@ fn parse_target_module_file(
     ))
 }
 
-fn resolve_import_file_path(roots: &[PathBuf], import_path: &[String]) -> Option<PathBuf> {
+fn resolve_import_file_path(roots: &[PathBuf], import_path: &ModulePath) -> Option<PathBuf> {
     let mut relative = PathBuf::new();
-    for segment in import_path {
+    for segment in &import_path.segments {
         relative.push(segment);
     }
     relative.set_extension("dag");
@@ -1384,7 +1385,7 @@ fn callable_scope_for_context(
     if !has_callable_items {
         return Ok(None);
     }
-    let entry_module_name = target_module.module_path.join(".");
+    let entry_module_name = target_module.module_path.as_dotted();
     let mut scope = HashSet::new();
     let mut visited = HashSet::new();
     let mut queue = VecDeque::from([target_index]);
@@ -1395,7 +1396,7 @@ fn callable_scope_for_context(
         let Some(module) = module_graph.modules.get(module_index) else {
             continue;
         };
-        scope.insert(module.module_path.join("."));
+        scope.insert(module.module_path.as_dotted());
         for dependency in &module.dependencies {
             queue.push_back(*dependency);
         }
@@ -1467,7 +1468,7 @@ fn validate_module_path_consistency(
             {
                 return None;
             }
-            let declared = module.module_path.join(".");
+            let declared = module.module_path.as_dotted();
             let relative = root_prefixes
                 .iter()
                 .find_map(|root| module.path.strip_prefix(root).ok().map(PathBuf::from))?;
@@ -1528,7 +1529,7 @@ pub struct TestEmitOutput {
 /// `TestEmitConfig` when the module has a registered test target.
 pub fn extract_inline_tests(
     graph: &daglang_resolve::ModuleGraph,
-    config_resolver: impl Fn(&[String], &Path) -> Option<daglang_emit::test_mock_emit::TestEmitConfig>,
+    config_resolver: impl Fn(&ModulePath, &Path) -> Option<daglang_emit::test_mock_emit::TestEmitConfig>,
 ) -> Result<TestEmitOutput, CompileError> {
     let mut generated = Vec::new();
 
@@ -1542,7 +1543,7 @@ pub fn extract_inline_tests(
         let config = config_resolver(&module.module_path, &module.path).ok_or_else(|| {
             format!(
                 "no test emit config for module `{}`",
-                module.module_path.join(".")
+                module.module_path.as_dotted()
             )
         })?;
 

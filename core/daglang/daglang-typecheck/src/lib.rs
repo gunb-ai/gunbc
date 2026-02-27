@@ -25,8 +25,8 @@ use std::path::PathBuf;
 
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::ast::{
-    Expr, Field, Item, Literal, Param, PipelineDef, ProvidesClause, Refinement, SourceFile, Stmt,
-    TypeBody, TypeExpr, UsesClause,
+    Expr, Field, Item, Literal, ModulePath, Param, PipelineDef, ProvidesClause, Refinement,
+    SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
     resource_type_name, service_call_lookup_keys,
@@ -56,8 +56,8 @@ impl Default for TypecheckOptions {
 #[derive(Debug)]
 pub struct TypedModule {
     pub path: PathBuf,
-    pub module_path: Vec<String>,
-    pub imports: Vec<Vec<String>>,
+    pub module_path: ModulePath,
+    pub imports: Vec<ModulePath>,
     pub ast: SourceFile,
     pub signatures: Vec<TypedItemSignature>,
 }
@@ -509,7 +509,7 @@ pub fn typecheck_module_graph_with_options(
     let available_modules = graph
         .modules
         .iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect::<HashSet<_>>();
     let mut errors = Vec::new();
     let mut typed_modules = Vec::with_capacity(graph.modules.len());
@@ -527,16 +527,16 @@ pub fn typecheck_module_graph_with_options(
     };
 
     for module in graph.modules {
-        let imports = module
+        let imports: Vec<ModulePath> = module
             .ast
             .imports
             .iter()
-            .map(|import| import.node.path.segments.clone())
-            .collect::<Vec<_>>();
-        let module_name = module.module_path.join(".");
+            .map(|import| import.node.path.clone())
+            .collect();
+        let module_name = module.module_path.as_dotted();
         if !options.allow_unresolved_imports {
             for import in &imports {
-                let target = import.join(".");
+                let target = import.as_dotted();
                 if !available_modules.contains(&target) {
                     errors.push(TypeError::UnresolvedImport {
                         module: module_name.clone(),
@@ -1033,7 +1033,7 @@ fn extend_known_types(base: &HashSet<String>, additional: &[String]) -> HashSet<
 fn collect_known_types(modules: &[ResolvedModule]) -> HashSet<String> {
     let mut known = builtin_type_names();
     for module in modules {
-        let module_prefix = module.module_path.join(".");
+        let module_prefix = module.module_path.as_dotted();
         for item in &module.ast.items {
             match &item.node {
                 Item::TypeDef(def) => {
@@ -1060,7 +1060,7 @@ fn collect_generic_arities(modules: &[ResolvedModule]) -> GenericArityRegistry {
     }
 
     for module in modules {
-        let module_prefix = module.module_path.join(".");
+        let module_prefix = module.module_path.as_dotted();
         for item in &module.ast.items {
             let (name, arity) = match &item.node {
                 Item::TypeDef(def) => (&def.name, def.params.len()),
@@ -1105,7 +1105,7 @@ fn collect_generic_arities(modules: &[ResolvedModule]) -> GenericArityRegistry {
 fn collect_record_types(modules: &[ResolvedModule]) -> RecordTypeRegistry {
     let mut registry = RecordTypeRegistry::default();
     for module in modules {
-        let module_prefix = module.module_path.join(".");
+        let module_prefix = module.module_path.as_dotted();
         for item in &module.ast.items {
             match &item.node {
                 Item::TypeDef(def) => {
@@ -1647,7 +1647,7 @@ fn builtin_callable_contracts() -> Vec<(String, CallableContract)> {
 fn collect_service_call_contracts(modules: &[ResolvedModule]) -> ServiceCallRegistry {
     let mut registry = ServiceCallRegistry::default();
     for module in modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ServiceDef(service) = &item.node else {
                 continue;
@@ -1794,7 +1794,7 @@ struct CallableBodyRef<'a> {
 fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
     let mut registry = InterfaceRegistry::default();
     for module in modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::InterfaceDef(interface) = &item.node else {
                 continue;
@@ -1833,7 +1833,7 @@ fn collect_interfaces(modules: &[ResolvedModule]) -> InterfaceRegistry {
 fn collect_resource_types(modules: &[ResolvedModule]) -> ResourceTypeRegistry {
     let mut registry = ResourceTypeRegistry::default();
     for module in modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let name = match &item.node {
                 Item::InterfaceDef(interface) => interface.name.as_str(),
@@ -1859,7 +1859,7 @@ fn collect_resource_types(modules: &[ResolvedModule]) -> ResourceTypeRegistry {
 fn collect_resource_capabilities(modules: &[ResolvedModule]) -> ResourceCapabilityRegistry {
     let mut registry = ResourceCapabilityRegistry::default();
     for module in modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         for item in &module.ast.items {
             let Item::ResourceDef(resource) = &item.node else {
                 continue;
@@ -3412,7 +3412,7 @@ mod tests {
                 let module_path = ast
                     .module_path
                     .as_ref()
-                    .map(|module| module.node.segments.clone())
+                    .map(|module| module.node.clone())
                     .expect("module declarations are required in tests");
                 ResolvedModule {
                     path: PathBuf::from(path),
@@ -3435,7 +3435,7 @@ mod tests {
         let typed = typecheck_module_graph(graph).expect("makegen should typecheck");
 
         assert_eq!(typed.modules.len(), 1);
-        assert_eq!(typed.modules[0].module_path.join("."), "tools.makegen");
+        assert_eq!(typed.modules[0].module_path.as_dotted(), "tools.makegen");
         assert!(typed.modules[0]
             .signatures
             .iter()
