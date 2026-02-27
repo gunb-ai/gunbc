@@ -278,7 +278,7 @@ correctness, then testing + foundation.
 
 | # | ID | What | Size |
 |---|-----|------|------|
-| 24 | RT24 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
+| 24 | RT24 | ✅ `NodeKind` already has `TransportPrepare`/`TransportExecute`/`TransportParse` variants (added earlier). Added `NodeKind::is_transport()` convenience method for callers that need to check transport-phase membership. 13 files use these variants across lowerer, executor, codegen, testgen, and derive. | S |
 | 25 | RT25 | ✅ String constants centralized: `PortName::{RESOURCE_PREFIX, TOOL_PREFIX, INTERNAL_PREFIX, OUTPUT_PASSTHROUGH_PREFIX, DEPS, RESOURCE_CREDENTIAL}` on `PortName` in `types.rs`. Added `RESOURCE_CREDENTIAL` to `resource/mod.rs`. Updated `bare_name()`/`category()` to use constants. Migrated lowerer's private `OUTPUT_PASSTHROUGH_PREFIX` to use `PortName::OUTPUT_PASSTHROUGH_PREFIX`. | S |
 | 26 | RT26 | `#[derive(StringEnum)]` for 15 enums (~60 match blocks). | M |
 | 27 | RT27 | ModulePath unification across 4 crates. | S |

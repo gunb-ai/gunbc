@@ -37,6 +37,16 @@ pub enum NodeKind {
     Pure,
 }
 
+impl NodeKind {
+    /// Whether this node participates in a transport triplet (prepare/execute/parse).
+    pub fn is_transport(&self) -> bool {
+        matches!(
+            self,
+            NodeKind::TransportPrepare | NodeKind::TransportExecute | NodeKind::TransportParse
+        )
+    }
+}
+
 /// A node in the DAG, generic over its operation type.
 ///
 /// Nodes are pure transformations of inputs to outputs.
