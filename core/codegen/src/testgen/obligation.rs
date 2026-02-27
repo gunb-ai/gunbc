@@ -285,6 +285,16 @@ pub enum Obligation {
 
     /// Resource contention handling: consumer handles failed acquisition.
     ResourceContentionHandling { resource_port: String },
+
+    /// Credential chain integrity: transport execute nodes with an auth scheme
+    /// must have a `res:credential` input port that is connected to a credential
+    /// source. If `res:credential` is missing or disconnected, the request will
+    /// be sent unauthenticated (silent failure).
+    CredentialChainIntegrity {
+        node_id: NodeId,
+        /// Whether the port exists and is connected.
+        connected: bool,
+    },
     // NOTE: ResourceSimulation removed — resource simulation tests are
     // generated directly from MockSpec resource mocks in codegen, not from
     // obligations. Will be re-added if resource simulation needs obligation tracking.
@@ -1118,6 +1128,69 @@ fn collect_resource_obligations<T>(
             }
         }
     }
+
+    // D.6: Credential chain integrity — transport execute nodes that
+    // declare an auth scheme MUST have res:credential connected.
+    // Without this, requests are sent unauthenticated (the silent 401 bug).
+    for node in &dag.nodes {
+        if node.kind != Some(NodeKind::TransportExecute) {
+            continue;
+        }
+
+        let cred_port = node
+            .inputs
+            .iter()
+            .find(|p| p.name.0 == "res:credential");
+
+        let Some(port) = cred_port else {
+            // No res:credential port — not an authenticated endpoint.
+            continue;
+        };
+
+        let has_edge = dag
+            .edges
+            .iter()
+            .any(|e| e.to_node == node.id && e.to_port == port.name);
+
+        if has_edge {
+            obligations.push(
+                ProofObligation::new(
+                    Obligation::CredentialChainIntegrity {
+                        node_id: node.id.clone(),
+                        connected: true,
+                    },
+                    format!(
+                        "Transport '{}': res:credential is connected to credential source",
+                        node.id.0
+                    ),
+                    ObligationSource::ResourceModel,
+                )
+                .discharge("Credential edge exists from source to transport execute node"),
+            );
+        } else {
+            // res:credential port exists but no edge — unauthenticated request.
+            // This is the exact pattern that caused the gist 401 bug.
+            obligations.push(
+                ProofObligation::new(
+                    Obligation::CredentialChainIntegrity {
+                        node_id: node.id.clone(),
+                        connected: false,
+                    },
+                    format!(
+                        "Transport '{}': res:credential port exists but has NO incoming edge — \
+                         service declares auth but credential is never wired (request will be unauthenticated)",
+                        node.id.0
+                    ),
+                    ObligationSource::ResourceModel,
+                )
+                .invalidate(format!(
+                    "Transport '{}': credential not wired — service has config {{ auth }} \
+                     but auth_input is missing or not connected",
+                    node.id.0
+                )),
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1468,6 +1541,79 @@ mod tests {
             !conflict.needs_test(),
             "Invalid obligations don't need runtime tests"
         );
+    }
+
+    #[test]
+    fn test_credential_chain_integrity_connected() {
+        // Transport execute node with res:credential that IS connected
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "cred_source",
+                vec![],
+                vec![Port::scalar("token", "Secret")],
+                (),
+            )
+            .with_kind(NodeKind::Pure),
+        );
+        dag.add_node(
+            Node::opaque(
+                "execute_rest",
+                vec![
+                    Port::scalar("request", "TransportRequest"),
+                    Port::with_cardinality("res:credential", "Credential", Cardinality::ZERO_OR_ONE),
+                ],
+                vec![Port::scalar("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        dag.add_edge(edge("cred_source", "token", "execute_rest", "res:credential"));
+
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
+
+        let cred_obligation = obligations.all.iter().find(|o| {
+            matches!(
+                &o.kind,
+                Obligation::CredentialChainIntegrity { node_id, connected }
+                    if node_id.0 == "execute_rest" && *connected
+            )
+        });
+        assert!(cred_obligation.is_some(), "connected credential should generate discharged obligation");
+        assert!(!cred_obligation.unwrap().needs_test(), "connected credential should be discharged");
+    }
+
+    #[test]
+    fn test_credential_chain_integrity_disconnected_is_invalid() {
+        // Transport execute node with res:credential but NO edge — the 401 bug pattern
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "execute_rest",
+                vec![
+                    Port::scalar("request", "TransportRequest"),
+                    Port::with_cardinality("res:credential", "Credential", Cardinality::ZERO_OR_ONE),
+                ],
+                vec![Port::scalar("response", "TransportResponse")],
+                (),
+            )
+            .with_kind(NodeKind::TransportExecute),
+        );
+        // No edge to res:credential!
+
+        let registry = TypeRegistry::with_core_types();
+        let obligations = collect_obligations(&dag, &registry, None);
+
+        let cred_obligation = obligations.all.iter().find(|o| {
+            matches!(
+                &o.kind,
+                Obligation::CredentialChainIntegrity { node_id, connected }
+                    if node_id.0 == "execute_rest" && !*connected
+            )
+        });
+        assert!(cred_obligation.is_some(), "disconnected credential should be invalid");
+        assert!(cred_obligation.unwrap().is_invalid(), "disconnected credential is a structural error");
     }
 
     #[test]

@@ -6656,6 +6656,17 @@ fn wire_auth_credential_edges(
                 if !endpoint.has_auth {
                     continue;
                 }
+                // Skip endpoints with auth_input — they wire res:credential
+                // explicitly via add_service_call_edges (from the named arg).
+                let has_auth_input = endpoint.metadata.as_ref().is_some_and(|m| {
+                    m.spec.as_ref().is_some_and(|s| match s {
+                        ServiceOperationSpec::Rest(spec) => spec.auth_input.is_some(),
+                        _ => false,
+                    })
+                });
+                if has_auth_input {
+                    continue;
+                }
                 // Wire the first available credential source to the execute node.
                 if let Some(cred_source) = credential_sources.first() {
                     builder.add_edge(
