@@ -44,6 +44,7 @@ service file.ClaimStore : ClaimStore {
       conflict: Bool
       lease_generation: Int
     }
+    transport file { op: WRITE, path: "\{dir\}/claims/\{issue_id\}/\{stage\}.json" }
   }
 
   operation heartbeat {
@@ -54,6 +55,7 @@ service file.ClaimStore : ClaimStore {
       generation: Int
     }
     output { accepted: Bool }
+    transport file { op: WRITE, path: "\{dir\}/claims/\{issue_id\}/\{stage\}.json" }
   }
 
   operation release {
@@ -64,6 +66,7 @@ service file.ClaimStore : ClaimStore {
       generation: Int
     }
     output { released: Bool }
+    transport file { op: DELETE, path: "\{dir\}/claims/\{issue_id\}/\{stage\}.json" }
   }
 }
 

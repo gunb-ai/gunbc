@@ -23,6 +23,8 @@ import std.types { TrackedIssue, IssueState, NonEmptyStr, Url }
 service github.IssueProvider : IssueProvider {
 
   config {
+    endpoint: String = "https://api.github.com"
+    auth: BearerToken
     owner: NonEmptyStr                 // GitHub org or user
     repo: NonEmptyStr                  // Repository name
   }
@@ -35,8 +37,9 @@ service github.IssueProvider : IssueProvider {
       state: IssueState?
     }
     output {
-      issues: List<TrackedIssue>                     // List<TrackedIssue> (provider transforms)
+      issues: List<TrackedIssue>
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues" }
   }
 
   // --- Single issue ------------------------------------------------------
@@ -44,9 +47,10 @@ service github.IssueProvider : IssueProvider {
   operation get {
     input { id: NonEmptyStr }
     output {
-      issue: TrackedIssue                      // TrackedIssue shape
+      issue: TrackedIssue
       found: Bool
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
   }
 
   // --- Create ------------------------------------------------------------
@@ -58,8 +62,9 @@ service github.IssueProvider : IssueProvider {
       labels: List<String>
     }
     output {
-      issue: TrackedIssue                      // TrackedIssue shape
+      issue: TrackedIssue
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues" }
   }
 
   // --- Comment (idempotent via marker) -----------------------------------
@@ -74,6 +79,7 @@ service github.IssueProvider : IssueProvider {
       comment_id: NonEmptyStr
       ok: Bool
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/comments" }
   }
 
   // --- Set labels (replace full set) ------------------------------------
@@ -84,6 +90,7 @@ service github.IssueProvider : IssueProvider {
       labels: List<String>
     }
     output { ok: Bool }
+    transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/labels" }
   }
 
   // --- Close (idempotent) ------------------------------------------------
@@ -91,6 +98,7 @@ service github.IssueProvider : IssueProvider {
   operation close {
     input { id: NonEmptyStr }
     output { ok: Bool }
+    transport rest { method: PATCH, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
   }
 
   // --- List events -------------------------------------------------------
@@ -101,6 +109,7 @@ service github.IssueProvider : IssueProvider {
       since: String?
     }
     output { events: List<IssueEvent> }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/events" }
   }
 }
 

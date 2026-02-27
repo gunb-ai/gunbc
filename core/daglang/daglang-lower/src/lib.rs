@@ -921,7 +921,7 @@ enum ProfileConfigValue {
 
 fn collect_profile_binding_registry(
     project: &TypedProject,
-    require_implementation_resolution: bool,
+    active_profile: Option<&str>,
 ) -> Result<ProfileBindingRegistry, LowerError> {
     let mut interface_registry = NameAliasRegistry::default();
     let mut service_registry = NameAliasRegistry::default();
@@ -986,7 +986,10 @@ fn collect_profile_binding_registry(
                         })
                     }
                     NameResolution::Missing => {
-                        if require_implementation_resolution {
+                        // Only require implementation resolution for the active profile.
+                        // Non-active profiles may reference modules that weren't loaded.
+                        let is_active = active_profile == Some(def.name.as_str());
+                        if is_active {
                             return Err(LowerError::InvalidProfileBinding {
                                 profile: profile_full.clone(),
                                 detail: format!(
@@ -1992,7 +1995,7 @@ fn lower_typed_project_with_callable_scope(
         entry_module,
         &data_values,
     );
-    let profile_registry = collect_profile_binding_registry(project, active_profile.is_some())?;
+    let profile_registry = collect_profile_binding_registry(project, active_profile)?;
     let active_profile_bindings =
         resolve_active_profile_bindings(&profile_registry, active_profile)?;
     let profile_bound_interfaces = collect_profile_bound_interface_names(&profile_registry);
@@ -5012,6 +5015,10 @@ fn derive_service_call_metadata(
         Some(TransportBinding::Shell { .. }) => ServiceTransportClass::ShellLocal,
         Some(TransportBinding::File { .. }) => ServiceTransportClass::FileBoundary,
         Some(TransportBinding::Local) => ServiceTransportClass::LocalDirect,
+        // Services implementing interfaces that have no transport block get
+        // InterfaceStub transport. This allows stub providers (unit_test profile)
+        // to compile without explicit transport declarations.
+        None if service.implements.is_some() => ServiceTransportClass::InterfaceStub,
         None => ServiceTransportClass::Unknown,
     };
     let mut permissions = operation.permissions.clone();
@@ -5143,6 +5150,17 @@ fn derive_operation_spec(
         }
         ServiceTransportClass::LocalDirect => {
             Some(ServiceOperationSpec::Local(derive_local_spec(operation)))
+        }
+        ServiceTransportClass::InterfaceStub => {
+            // Services implementing interfaces with no transport block.
+            // Use the service name as the interface name (from `: InterfaceName` syntax).
+            Some(ServiceOperationSpec::InterfaceStub {
+                interface: service
+                    .implements
+                    .clone()
+                    .unwrap_or_else(|| service.name.clone()),
+                capability: operation.name.clone(),
+            })
         }
         _ => None,
     }
@@ -5615,12 +5633,12 @@ fn collect_required_service_call_keys(
 
 fn service_prepare_ports(operation: &OperationDef, metadata: &ServiceCallMetadata) -> Vec<Port> {
     let declared_inputs = match metadata.spec.as_ref() {
-        Some(spec) => spec
+        Some(spec) if !spec.input_fields().is_empty() => spec
             .input_fields()
             .iter()
             .map(|field| (field.name.clone(), field.type_id.clone()))
             .collect::<Vec<_>>(),
-        None => operation
+        _ => operation
             .inputs
             .iter()
             .map(|field| {

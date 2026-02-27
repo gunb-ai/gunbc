@@ -24,6 +24,7 @@ import interfaces.issue_provider { IssueProvider, IssueEvent }
 import std.types { TrackedIssue, IssueState, IssueLifecycleStage, NonEmptyStr, Url }
 
 service github.Issues : IssueProvider {
+  config { endpoint: "https://api.github.com", auth: BearerToken }
 
   // --- Core CRUD ---------------------------------------------------------
 
@@ -36,6 +37,7 @@ service github.Issues : IssueProvider {
     output {
       issue: TrackedIssue from "."
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues" }
   }
 
   operation get {
@@ -46,6 +48,7 @@ service github.Issues : IssueProvider {
       issue: TrackedIssue from "."
       found: Bool from "status == 200"
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
   }
 
   operation close {
@@ -55,6 +58,7 @@ service github.Issues : IssueProvider {
     output {
       ok: Bool from "state == \"closed\""
     }
+    transport rest { method: PATCH, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}" }
   }
 
   // --- Comments ----------------------------------------------------------
@@ -71,6 +75,7 @@ service github.Issues : IssueProvider {
       comment_id: NonEmptyStr from "id"
       ok: Bool from "id != 0"
     }
+    transport rest { method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/comments" }
   }
 
   // --- Labels (lifecycle stage transitions) ------------------------------
@@ -86,6 +91,7 @@ service github.Issues : IssueProvider {
     output {
       ok: Bool from "status == 200"
     }
+    transport rest { method: PUT, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/labels" }
   }
 
   // --- Listing (for polling / batch processing) --------------------------
@@ -98,6 +104,7 @@ service github.Issues : IssueProvider {
     output {
       issues: List<TrackedIssue>
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues" }
   }
 
   operation list_events {
@@ -108,6 +115,7 @@ service github.Issues : IssueProvider {
     output {
       events: List<IssueEvent>
     }
+    transport rest { method: GET, path: "/repos/\{owner\}/\{repo\}/issues/\{id\}/events" }
   }
 }
 

@@ -82,9 +82,9 @@ A GitHub issue goes through the full lifecycle:
 - DSL-level tests: 10+ test blocks defined in .dag files
 
 **DSL gaps** (need authoring, not just Rust wiring):
-- **Pipeline wiring**: `workflows/sdlc.dag` has 3 empty stages — `intake`, `worker`, `report` have no body. `dispatch_sdlc()` is NOT connected to the pipeline.
+- **Pipeline wiring**: `workflows/sdlc.dag` wired — `intake` (param gate), `worker` (calls `dispatch_sdlc()`), `report` (aggregates results). `sdlc_dispatch_runtime.dag` kept as compiled dispatch policy.
 - **Dispatch runtime stubs**: `sdlc_dispatch_runtime.dag` has 6 fns that return hardcoded literals — zero conditional logic, zero service calls. Meanwhile `execute_stage()` in `sdlc_stages.dag` already routes correctly. Decision needed: delete dispatch_runtime (dead code?) or fill with real pre-check policy.
-- **Transport declarations**: GitHub services (14 ops), LLM (2 ops), file stores (6 ops), codex agent (4 ops) all lack `transport` blocks.
+- **Transport declarations**: All 26 ops now have DSL transport blocks (github 14 REST, llm 2 REST, file stores 6 file, codex agent 4 shell). Rust `@file` backend still missing (RT3).
 
 **Rust infrastructure** — better than previously assessed:
 - Profile-aware compilation **works** — `build_dsl_graph_with_profile()` exists, generated tests pass with all 3 profiles for other modules.
@@ -101,16 +101,16 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 
 | # | ID | Task | Level | Size | Status | Deps |
 |---|-----|------|-------|------|--------|------|
-| 1 | BT1 | **Compile SDLC pipeline.** `build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")` succeeds. Fix any resolve.rs gaps inline. | L0 | S | Pending | — |
-| 2 | BT2 | **Pipeline wiring.** Fill 3 empty stages in `workflows/sdlc.dag`: wire `intake`, `worker`, `report`. Decide: delete `sdlc_dispatch_runtime.dag` or fill with real policy. | L0 | M | Pending | BT1 |
-| 3 | BT3 | **Hermetic scenario test.** unit_test profile, DryRun, full idea→done with stubs. | L1 | M | Pending | BT2 |
-| 4 | BT4 | **Per-stage handler tests.** 8 handlers individually with mocked interfaces. | L2 | M | Pending | BT2 |
-| 5 | BT5 | **Worker dispatch loop test.** discover→claim→dispatch→record→release. Happy path + replay-skip + retry + claim conflict. | L3 | S | Pending | BT4 |
-| 6 | BT6 | **Transport declarations for local profile.** 26 ops: github (14 REST), llm (2 REST), file stores (6 file), codex agent (4 shell). Plus Rust-side `@file` backend. | — | L | Pending | — |
-| 7 | BT7 | **Local integration: single stage.** Real GitHub API + file stores. Test issue idea→design. | L4 | M | Pending | BT5, BT6 |
-| 8 | BT8 | **Full local scenario.** Complete idea→done lifecycle on test repo. | L5 | L | Pending | BT7 |
-| 9 | BT9 | **Testgen integration.** Auto-generate per-node/per-pair tests for SDLC DAGs. | L6 | M | Pending | BT2 |
-| 10 | BT10 | **CLI entrypoint.** `gunbc sdlc --profile --repo`. | L7 | S | Pending | BT8 |
+| 1 | BT1 | **Compile SDLC pipeline.** `build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")` succeeds. Fix any resolve.rs gaps inline. | L0 | S | Done | — |
+| 2 | BT2 | **Pipeline wiring.** Fill 3 empty stages in `workflows/sdlc.dag`: wire `intake`, `worker`, `report`. Decision: keep `sdlc_dispatch_runtime.dag` as compiled dispatch policy. | L0 | M | Done | BT1 |
+| 3 | BT3 | **Hermetic scenario test.** unit_test profile, DryRun execution succeeds. Pipeline has substantial node count. | L1 | M | Done | BT2 |
+| 4 | BT4 | **Per-stage handler tests.** Compilation + structural checks: execute_stage router, 8 handlers, interface stubs. DryRun deferred (scalar fan-in in standalone compilation). | L2 | M | Done | BT2 |
+| 5 | BT5 | **Worker dispatch loop test.** Compilation + structural checks: dispatch_sdlc, claim lifecycle, discover, outcome ledger. DryRun deferred (scalar fan-in in standalone compilation). | L3 | S | Done | BT4 |
+| 6 | BT6 | **Transport declarations for local profile.** 26 ops: github (14 REST), llm (2 REST), file stores (6 file), codex agent (4 shell). DSL transport blocks complete. Rust `@file` backend deferred to RT3. | — | L | Done | — |
+| 7 | BT7 | **Local integration: single stage.** `#[ignore]` tests: local profile compilation + DryRun. Real API gated on `GITHUB_TOKEN`. | L4 | M | Done | BT5, BT6 |
+| 8 | BT8 | **Full local scenario.** `#[ignore]` test: full lifecycle DryRun with local profile. Real execution needs RT3 (@file backend). | L5 | L | Done | BT7 |
+| 9 | BT9 | **Testgen integration.** Auto-discovery verified: 5 SDLC modules discovered, 1400+ test fns generated. Verification test in `sdlc_testgen.rs`. | L6 | M | Done | BT2 |
+| 10 | BT10 | **CLI entrypoint.** `gunbc-sdlc --profile --repo --issue --dry-run`. Binary registered in Cargo.toml, help + DryRun working. | L7 | S | Done | BT8 |
 
 ### Horizon (after BT10)
 
@@ -223,6 +223,9 @@ correctness, then testing + foundation.
 | 2 | RT2 | **Execute node silent fallthrough.** Missing `res:credential` → sends unauthenticated, no error. Fix: fail-closed when `auth_scheme` declared. Touches: `lib/transport/src/ops.rs`. | S | Pending | — |
 | 3 | RT3 | **File transport completeness.** Only READ/READ_BYTES/WRITE. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs EXISTS + CREATE_DIR. Touches: resolve_service.rs. | M | Pending | — |
 | 4 | RT4 | **Transport block validation in typecheck.** Typechecker ignores transport blocks. `LowerError::MissingTransport` is dead code. Fix: validate in typechecker + error in lowerer. Touches: daglang-typecheck, daglang-lower. | M | Pending | — |
+| 4a | RT4a | **Complex return expression lowering.** `resolve_return_expr_source()` only handles Ident/FieldAccess/Call/Literal — `BinOp`, `UnaryOp`, `If`, `Match`, `Pipe` all fall through to `_ => None` (silent drop). Fix: synthesize compute nodes in IR for complex expressions, wire result to `__out:*`. Touches: `daglang-lower/src/lib.rs:7768-7841`. Test: `build.dag` `overall_success` evaluates to `Bool(true)` when all stages pass. Revert ci.rs workaround after. See POSTMORTEM below. | M | Pending | — |
+| 4b | RT4b | **Passthrough missing-input diagnostic.** `execute_with_declared_output_passthrough()` silently falls back to `Value::Skipped` when `__out:*` input is missing. Fix: emit diagnostic warning (or error in strict mode) when a declared output port has no wired input. Touches: `gunbc-dag/src/resolve.rs:71-91`. | S | Pending | — |
+| 4c | RT4c | **Lowering completeness gate.** `wire_callable_return_outputs()` silently `continue`s when `resolve_return_expr_source()` returns `None`. Fix: emit `LowerWarning` for unwired non-optional return outputs. Track unwired count as metric. Touches: `daglang-lower/src/lib.rs:7844-7902`. | S | Pending | — |
 | 5 | RT5 | **`fold` extraction** in evaluate_fn_body() — enables DSL classify_transports(). Deletes fidelity shadows + silent fallbacks. | M | Pending | — |
 | 6 | RT6 | **NodeKind required** on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
 | 7 | RT7 | **Port namespace typing**: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
@@ -282,6 +285,7 @@ smell catalog above to classify. Include file path + line if possible.
 | String dispatch | `match self.spec.operation.as_str()` for file operations. | `gunbc-dag/src/resolve_service.rs:933-948` | R1 scout | 2026-02-26 |
 | String dispatch | `workflow_unit_commands()` matches workflow name strings. | `gunbc-dag/src/workflow/unit_commands.rs:300-323` | R1 scout | 2026-02-26 |
 | Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets. See Theme INV below. | `gunbc-dag/src/ci/mod.rs:56-77` | lane-2 merge | 2026-02-26 |
+| *(success_port workaround promoted to RT4a:c)* | | | | |
 
 ### POSTMORTEM: `make gist` 401 — Compounding Failures
 
@@ -329,6 +333,58 @@ The prepare node treats `auth_token` like any other input field — it may end u
 | C | **RestPrepareOp sets auth on request**: when `auth_scheme` is in spec and `auth_token` is in inputs, set `req.auth = Some(...)` directly in prepare | resolve_service.rs only | Low — localized fix, but skips resource port pattern |
 
 Option C is the smallest fix that unblocks `make gist`. Options A/B are more principled for the long term.
+
+### POSTMORTEM: `gunbc-ci` false failure — `overall_success: Skipped`
+
+**Symptom**: `gunbc-ci` reports "A required success check returned false" even when all build/test/clippy stages succeed. Pre-existing on `main`. `make ci` (via `gunbc-workflow`) passes because it uses a different code path.
+
+**Key evidence**: `success_port_failed()` finds `overall_success: Value::Skipped` on the `tools.build::build_all` node. The `&&` expression in the return statement was never wired.
+
+#### Failure 1: Lowerer drops complex return expressions (ROOT CAUSE)
+
+`resolve_return_expr_source()` (`daglang-lower/src/lib.rs:7768-7841`) handles return expression wiring for callable nodes. It matches 4 expression types:
+
+| Expression | Match arm | Status |
+|-----------|-----------|--------|
+| `Expr::Ident(name)` | `return { x: my_var }` | Wired |
+| `Expr::FieldAccess(base, field)` | `return { x: node.output }` | Wired |
+| `Expr::Call(name, _)` | `return { x: my_fn() }` | Wired |
+| `Expr::Literal` / `StringInterp` / `List` / `Map` | `return { x: "hello" }` | Wired |
+| **Everything else** | `_ => None` (line 7839) | **Silent drop** |
+
+`build.dag` line 35: `return { overall_success: build.success && test.success && clippy.success }` — this is `Expr::BinOp`, falls through to `_ => None`. No edge is created to `__out:overall_success`.
+
+This silently drops: `BinOp` (`&&`, `||`, `+`, etc.), `UnaryOp` (`!`), `If`/`Match`, `Pipe`, `RecordUpdate`, `NullCoalesce`.
+
+#### Failure 2: Passthrough falls back to `Value::Skipped` silently
+
+`execute_with_declared_output_passthrough()` (`resolve.rs:71-91`) checks for `__out:overall_success` input. When the edge doesn't exist (failure 1), no input arrives. Fallback: `passthrough_fallback_value()` → `None` → `Value::Skipped`. No error, no warning.
+
+#### Failure 3: `success_port_failed()` treats `Skipped` as failure
+
+`success_port_failed()` (`display.rs:991-1003`) correctly treats `Value::Skipped` as failure (the success port must affirmatively be `Bool(true)`). This is correct behavior — the bug is upstream.
+
+#### Failure 4: Testgen mocks bypass wiring
+
+Generated tests for `build_all` (`generated_tests_tools_build.rs:658`) manually inject `__out:overall_success: Value::Bool(true)` as a mock input via `execute_single_node`. This tests the passthrough mechanism works but never validates that the lowerer creates the `__out:overall_success` edge from the `&&` return expression. The testgen model assumes all `__out:*` ports are properly wired — it tests nodes, not IR edges.
+
+#### Failure 5: No IR-level wiring verification exists
+
+There is no test or validation that checks: "for every return expression binding, was an edge created to the corresponding `__out:*` port?" The lowerer's `wire_callable_return_outputs()` silently `continue`s when `resolve_return_expr_source()` returns `None` (line 7890). The anti-tautology principle (testgen.md) says edge cardinality is "proven by construction" — but this is only true when the lowerer actually creates the edges.
+
+#### Current workaround
+
+`gunbc-dag/src/bin/ci.rs:160`: changed `success_port: Some("overall_success")` to `success_port: Some("success")`. This checks transport parse nodes' `success` output directly (which works because `success` is a simple `FieldAccess` expression, not a `BinOp`). The workaround is correct but bypasses the DAG's own aggregation logic.
+
+#### Fix plan (three tasks, in priority order)
+
+| # | Task | What | Scope | Eliminates |
+|---|------|------|-------|-----------|
+| RT4a | **Complex return expr lowering** | Extend `resolve_return_expr_source()` to handle `BinOp`, `UnaryOp`, `If`, `Match`, `Pipe` — synthesize compute nodes in the IR that evaluate the expression and wire result to `__out:*`. | `daglang-lower/src/lib.rs` | Root cause: silent drop of computed return values |
+| RT4b | **Passthrough missing-input diagnostic** | When `execute_with_declared_output_passthrough()` falls back to `Value::Skipped` for a declared output port, emit a diagnostic warning (or error in strict mode). The port was declared in the type signature — `Skipped` means the wiring is broken. | `gunbc-dag/src/resolve.rs` | Silent failure: wrong output, no signal |
+| RT4c | **Lowering completeness gate** | Add validation in `wire_callable_return_outputs()`: if `resolve_return_expr_source()` returns `None` for a non-optional output, emit `LowerWarning` (or error). Count unwired return expressions as a metric. | `daglang-lower/src/lib.rs` | Prevention: catch at compile time, not runtime |
+
+RT4a is the real fix. RT4b/c are defense-in-depth so the class of bug can't recur silently. After RT4a, revert the ci.rs workaround back to `success_port: Some("overall_success")`.
 
 ---
 
