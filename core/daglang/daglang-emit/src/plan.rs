@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::computation::{classify_computation, Computation};
 use daglang_derive::DerivedArtifacts;
 use daglang_lower::LoweredOp;
-use gunbc_ir::Dag;
+use gunbc_ir::{Dag, PortName};
 
 // ===========================================================================
 // EmitPlan — the backbone data structure for codegen
@@ -319,10 +319,8 @@ pub fn build_emit_plan(
 }
 
 fn is_user_input_port(name: &str) -> bool {
-    name != "__deps"
-        && !name.starts_with("res:")
-        && !name.starts_with("tool:")
-        && !name.starts_with("__out:")
+    let pn = PortName::from(name);
+    pn.is_user()
 }
 
 /// Kahn's algorithm topo sort over a `Dag<LoweredOp>`.

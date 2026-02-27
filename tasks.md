@@ -137,6 +137,7 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 | `docs/design/sdlc/domain-modeling-comprehensive.md` | All domain objects, state machines, invariants |
 | `docs/design/sdlc/e2e-gap-analysis.md` | Gap tracking (A–J). Header says "all resolved" but means DSL files exist — Rust can't execute them yet. Gaps C, F genuinely done in Rust. Gaps A, B, D, E, H, I, J resolved at DSL level only. Gap G (worker invokes compiled DAG) not done at all. |
 | `docs/design/sdlc/implementation-roadmap.md` | Task breakdown and dependency graph |
+| `docs/design/provider-contracts.md` | Provider response contracts: `@response` annotation, mandatory error modeling, testgen obligations, interface inheritance. Supersedes RT-I1/RT-I2. |
 
 ---
 
@@ -148,6 +149,8 @@ Blue team promotes to backlog or lane queues during triage.
 | Observation | Source | Date |
 |-------------|--------|------|
 | CI YAML generation (`generate_github_actions_template`, `generate_gitlab_ci_template`) is ~120 lines of hand-wired `push_str`/`write!` string concatenation in `codegen_cli.rs:503-609`. The DSL already has rendering infrastructure (`std/render.dag`, `std/markdown_render.dag`) and a proven code-generation pattern (`tools/makegen.dag`). CI YAML types (Workflow, Job, Step, Trigger, Permission, Cache) should be modeled in `.dag` with pure rendering functions, following the makegen pattern: discover via extern → render in pure DSL → `content_upsert`. Deletes both template functions + the validation functions (lines 450-500). See task breakdown below. | R1 scout | 2026-02-26 |
+| `dsl/cloud/aws/credential.dag` imports `aws.STS` and `aws.SecretsManager` from abstract infra services (no transport blocks). These work via profile bindings but have no test coverage at L0 (compilation) or L1 (hermetic). Same pattern for `cloud/azure/credential.dag`. These could be BT-adjacent test targets once SDLC profiles are active. | CI fix | 2026-02-27 |
+| The `credential_chain` pattern in `dsl/std/patterns.dag:236-283` is a proven 5-step OAuth2 chain (OIDC → STS → impersonation → SecretManager → AccessToken) with `local_auth()` at lines 392-411. Gist bypasses this entirely in favor of raw `shell.GCloud.SecretManagerAccessVersion`. Migrating gist to use `credential_chain` would exercise the pattern end-to-end and validate the compositional auth model. | RT-A4 analysis | 2026-02-27 |
 
 ---
 
@@ -219,51 +222,99 @@ correctness, then testing + foundation.
 
 | # | ID | What | Size | Status | Deps |
 |---|-----|------|------|--------|------|
-| 1 | RT1 | **Credential wiring.** `config { auth: BearerToken }` + `auth_token: Secret` → token never reaches execute node → unauthenticated request, silent. Fix: explicit `auth_input` in DSL config, lowerer wires to `res:credential`. Touches: daglang-syntax, daglang-lower, resolve_service.rs. Test: `make gist` returns 200. See POSTMORTEM below. | M | Pending | — |
-| 2 | RT2 | **Execute node silent fallthrough.** Missing `res:credential` → sends unauthenticated, no error. Fix: fail-closed when `auth_scheme` declared. Touches: `lib/transport/src/ops.rs`. | S | Pending | — |
-| 3 | RT3 | **File transport completeness.** Only READ/READ_BYTES/WRITE. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs EXISTS + CREATE_DIR. Touches: resolve_service.rs. | M | Pending | — |
-| 4 | RT4 | **Transport block validation in typecheck.** Typechecker ignores transport blocks. `LowerError::MissingTransport` is dead code. Fix: validate in typechecker + error in lowerer. Touches: daglang-typecheck, daglang-lower. | M | Pending | — |
+| 1 | RT1 | **Credential wiring.** `config { auth: BearerToken }` + `auth_token: Secret` → token never reaches execute node → unauthenticated request, silent. Fix: explicit `auth_input` in DSL config, lowerer wires to `res:credential`. Touches: daglang-syntax, daglang-lower, resolve_service.rs. Test: `make gist` returns 200. See POSTMORTEM below. | M | Done | — |
+| 2 | RT2 | **Execute node silent fallthrough.** Missing `res:credential` → sends unauthenticated, no error. Fix: fail-closed when `auth_scheme` declared. Touches: `lib/transport/src/ops.rs`. | S | Done | — |
+| 3 | RT3 | **File transport completeness.** Only READ/READ_BYTES/WRITE. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs EXISTS + CREATE_DIR. Touches: resolve_service.rs. | M | Done | — |
+| 4 | RT4 | **Transport block validation in lowerer.** `LowerError::MissingTransport` now fires for partially-specified services (some ops have transport, some don't). Fully-abstract services (no transport on ANY operation, e.g., infra/aws, infra/azure) are exempt — they get transport via profile bindings. Also exempts interface implementors. Touches: daglang-lower. | M | Done | — |
 | 4a | RT4a | **Complex return expression lowering.** `resolve_return_expr_source()` only handles Ident/FieldAccess/Call/Literal — `BinOp`, `UnaryOp`, `If`, `Match`, `Pipe` all fall through to `_ => None` (silent drop). Fix: synthesize compute nodes in IR for complex expressions, wire result to `__out:*`. Touches: `daglang-lower/src/lib.rs:7768-7841`. Test: `build.dag` `overall_success` evaluates to `Bool(true)` when all stages pass. Revert ci.rs workaround after. See POSTMORTEM below. | M | Pending | — |
 | 4b | RT4b | **Passthrough missing-input diagnostic.** `execute_with_declared_output_passthrough()` silently falls back to `Value::Skipped` when `__out:*` input is missing. Fix: emit diagnostic warning (or error in strict mode) when a declared output port has no wired input. Touches: `gunbc-dag/src/resolve.rs:71-91`. | S | Pending | — |
 | 4c | RT4c | **Lowering completeness gate.** `wire_callable_return_outputs()` silently `continue`s when `resolve_return_expr_source()` returns `None`. Fix: emit `LowerWarning` for unwired non-optional return outputs. Track unwired count as metric. Touches: `daglang-lower/src/lib.rs:7844-7902`. | S | Pending | — |
-| 5 | RT5 | **`fold` extraction** in evaluate_fn_body() — enables DSL classify_transports(). Deletes fidelity shadows + silent fallbacks. | M | Pending | — |
-| 6 | RT6 | **NodeKind required** on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
-| 7 | RT7 | **Port namespace typing**: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
-| 8 | RT8 | **CallableClass enum** in resolve.rs. Parse once, dispatch everywhere. | M | Pending | — |
-| 9 | RT9 | **Virtual I/O DSL types** (`dsl/std/virtual_io.dag`). VirtualFsSetup, ShellCassette, HttpStub, VirtualBackendConfig. | M | Pending | — |
-| 10 | RT10 | **Shell cassette registry** in VirtualTransportBackend. | S | Pending | — |
-| 11 | RT11 | **HTTP response registry** in VirtualTransportBackend. In-process request→response matching. | S | Pending | — |
-| 12 | RT12 | **TCP loopback registry** in VirtualTransportBackend. | S | Pending | — |
+| 5 | RT5 | **`fold` extraction** in evaluate_fn_body() — enables DSL classify_transports(). Deletes fidelity shadows + silent fallbacks. Multi-param lambda parsing, pipe method typechecker exclusion, fidelity.rs rewrite to call DSL classify_transports directly. test_policy.dag shadow functions removed. | M | Done | — |
+| 6 | RT6 | **NodeKind required** on Node\<T\>. Removed `Option<NodeKind>` — `kind` is now `NodeKind` with `#[serde(default)]` to `Pure`. Updated constructors, 27 test sites, and 14 comparison sites across 12 files. `validate_node_kinds_for_interception` checks `Pure` nodes instead of `None`. | M | Done | — |
+| 7 | RT7 | **Port namespace typing**: `PortCategory` enum (Resource/Tool/Internal/User) + methods on `PortName` (`is_resource()`, `is_tool()`, `is_internal()`, `is_user()`, `bare_name()`, `category()`). Migrated 14 string-match sites across 12 files. | M | Done | — |
+| 8 | RT8 | **TransportRole enum** in resolve.rs. `TransportRole::from_name()` parses `service_transport::{prepare/execute/parse}::` once, replaces 6 `starts_with()` checks in `resolve_domain()` and `resolve_service_transport()`. Match dispatch uses `(spec, role)` tuple instead of `(spec, is_prepare, is_parse)` booleans. | M | Done | — |
+| 9 | RT9 | **Virtual I/O DSL types** (`dsl/std/virtual_io.dag`). VirtualFsSetup, ShellCassette, HttpStub, VirtualBackendConfig, ShellCassetteRegistry, HttpStubRegistry, TcpLoopback, TcpLoopbackRegistry. HttpMethod enum for request matching. VirtualBackendConfig composes all registries. | M | Done | — |
+| 10 | RT10 | **Shell cassette registry** in VirtualTransportBackend. `ShellCassette` struct, `add_shell_cassette()`, `match_shell_cassette()`. Exact (command, args) matching with wildcard (empty args). Cassettes checked before built-in handlers (find, printenv, sh). 3 tests. | S | Done | — |
+| 11 | RT11 | **HTTP response registry** in VirtualTransportBackend. `HttpStub` struct with method/path matching, `add_http_stub()`. `execute_rest()` and `execute_http()` dispatch to stub registry. Path prefix and exact matching. JSON body parsing for REST, raw for HTTP. 2 tests. | S | Done | — |
+| 12 | RT12 | **TCP loopback registry** in VirtualTransportBackend. `TcpLoopback` struct, `add_tcp_loopback()`, `execute_tcp()`. Port-based matching, canned response data. 1 test. | S | Done | — |
 | 13 | RT13 | **Derive mock registries** from `@mock_response` annotations. Auto-generate VirtualBackendConfig per workflow. | M | Pending | RT9 |
 | 14 | RT14 | **S-tier codegen** in `build_fidelity_ladder_section`. Real mode + virtual backends via TransportBackendGuard. | M | Pending | RT10:13 |
 | 15 | RT15 | **M-tier codegen** (sandboxed tempdir, `#[cfg(feature = "sandboxed_tests")]`). | M | Pending | RT14 |
 | 16 | RT16 | **L/XL tier codegen** (cost-gated real/remote, `GUNBC_TEST_MAX_COST` env check). | S | Pending | RT14 |
-| 17 | RT17 | **DSL Makefile assembly**: import data, produce targets, wire to makegen output. | M | Pending | — |
-| 18 | RT18 | **Delete bootstrap externs**. Parity golden tests. | M | Pending | RT17 |
+| 17 | RT17 | **DSL Makefile assembly**: populated all 4 empty pipeline stages in `workflows/makegen.dag`. `load_registry` calls `discover_tools()`, `render_makefile` calls `render_makefile_content()` with data + tools, `upsert_makefile` calls `content_upsert()`, `report` emits success. Pipeline imports data from `config.build_targets` and functions from `tools.makegen`. | M | Done | — |
+| 18 | RT18 | **Delete bootstrap externs**. Parity golden tests. Blocked: DSL bodies produce simple output; Rust externs produce full output (Makefile via ToolRegistry, gitignore via BuildConfig categories). Needs DSL port of gitignore category system + makegen delegation. | M | Blocked | RT17, DSL gitignore port |
 | 19 | RT19 | **Recursive types** (self-referential type defs). | L | Pending | — |
 | 20 | RT20 | **Recursive functions** (self-calls in fn bodies). | L | Pending | RT19 |
 | 21 | RT21 | **Tree rendering in pure DSL**. Delete RenderTreeOp. | L | Pending | RT19, RT20 |
 | 22 | RT22 | **Snapshot content DSL**. Delete BuildSnapshotContentOp. | M | Pending | RT21 |
 | 23 | RT23 | **Delete extern_impls.rs** entirely. Zero extern func in any .dag file. | S | Pending | RT21, RT22 |
 
+### Postmortem-Driven: Auth & Testgen Hardening (URGENT)
+
+> See `TODO/gist-auth-postmortem.md` for full analysis. The gist 401 exposed
+> systemic gaps in credential lifecycle, testgen error coverage, and
+> compositional modeling enforcement. These affect every DSL-defined service,
+> not just gist.
+
+**Analysis tasks** (study before implementing):
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| A1 | RT-A1 | **Shell exit code audit.** Which operations use TrimStdout/SplitLines? Which can legitimately return non-zero (e.g. `printenv` → exit 1 = var not set)? Build decision matrix for exit code handling per operation. Refs: `resolve_service.rs:521-528` (TrimStdout), `resolve_service.rs:488` (SuccessStdoutStderr). | S | **Done** | — |
+| A2 | RT-A2 | **`@mock_response` adoption gap.** Every service operation should declare success + auth-failure mock responses. Count the gap: ops × missing mocks = obligation deficit. Currently `@mock_response` is only in examples/comments — zero real service uses it. Refs: `dsl/services/` (all .dag), `gunbc-dag/src/mock_defaults.rs:145-180`. **Findings**: 29 REST ops × 0 mock_response annotations = 29 missing. Parser has `MockResponseDef` AST but parsing is not implemented (empty Vec). See `TODO/testgen-proof-analysis.md`. | M | **Done** | — |
+| A3 | RT-A3 | **Credential chain audit.** Trace producer→consumer edges for every service with `config { auth }`. **Findings**: 5 services with `config { auth }`. Two have `auth_input` and work (`gcp.IAM` → access_token, `github.Gist` → auth_token). Three lack `auth_input` and have broken wiring: `gcp.SecretManager` (used in credential_chain but no auth_input → res:credential never bound), `gcp.ResourceManager` (both ops), `llm.Anthropic`. The lowerer only wires credentials when `auth_input` is explicitly set — there's no implicit resource injection path. Rule: services with `auth: <scheme>` MUST declare `auth_input: <field_name>`. Fix: add `auth_input` to SecretManager, ResourceManager, Anthropic + update callers to pass credential. | S | **Done** | — |
+| A4 | RT-A4 | **Why gist bypasses `credential_chain`.** **Findings**: (1) `credential_chain` pattern fully works — proven by generated tests in `generated_tests_cloud_gcp_credential.rs` (360 obligations, 259 testable). (2) `acquire_gcp_secret` wrapper exists at `dsl/cloud/gcp/credential.dag:27-55`. (3) Gist was never wired to credential_chain — `dsl/workflows/gist.dag` has an empty `credential_resolve` stage placeholder. (4) No blockers: all dependent services exist, RT1/RT2 fixes are applied, lowering is proven. (5) Migration: replace `shell.GCloud.SecretManagerAccessVersion` with `acquire_gcp_secret(runtime: LocalDev, ...)` in all 3 gist entrypoints. Benefits: structured errors, auto-refresh, runtime polymorphism, resource semantics. | M | **Done** | — |
+| A5 | RT-A5 | **Credential-as-resource model.** `credential_chain` declares `provides auth: AuthContext` (`dsl/std/resources.dag:87-98`, `expires: true`). How should the compiler enforce expiry handling? Should testgen generate expiry-scenario tests? **Findings**: (1) `expires: true` on `AuthContext` resource is parsed into `properties: Vec<(String, Expr)>` but the lowerer only reads `provider`/`cloud` from properties — `expires` is **silently discarded**. (2) The IR has full credential expiry infrastructure: `Secret.expires_at: Option<SystemTime>`, `Secret.is_valid()`, `MockSpec.resource_credential(id, expiry_ms)`, `ResourceType::Credential { expiry_ms, refreshable }`, `ResourceBehavior::LeaseExpires`. (3) No workflow test uses `resource_credential()` — only MockSpec unit tests test the infrastructure itself. (4) No testgen obligation generates expiry-scenario tests. (5) The `Credential` type in `core/ir/src/transport/credential.rs` has `expires_at` but nothing in the execution pipeline checks `is_valid()` before using the credential. **Gap summary**: DSL declares `expires: true`, IR has expiry plumbing, but compiler doesn't connect them. Three missing pieces: (a) lowerer reads `expires` from resource properties and sets `has_expiry` on the resource spec, (b) testgen generates expiry-scenario tests (expired credential → retry or fail), (c) executor checks `credential.is_valid()` before sending request. | S | **Done** | — |
+
+**Implementation tasks** (after analysis):
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| I1 | RT-I1 | **Superseded by PC-3.** ~~`@mock_response` on all service operations.~~ → `@response` annotations with provider contract semantics. See `docs/design/provider-contracts.md`. | — | Superseded | — |
+| I2 | RT-I2 | **Superseded by PC-7 + PC-8.** ~~Testgen error-status obligations.~~ → `ProviderResponseContract` obligation kind with per-status-code tests derived from `@response` annotations. See `docs/design/provider-contracts.md`. | — | Superseded | — |
+| I3 | RT-I3 | **`CredentialChainIntegrity` testgen obligation.** Bucket D.6: for every transport execute node with `res:credential` port, verify edge exists. If disconnected, emit Invalid (the 401 bug pattern). If connected, discharge. Two new tests: `test_credential_chain_integrity_connected` and `test_credential_chain_integrity_disconnected_is_invalid`. | M | **Done** | RT-A3 |
+| I4 | RT-I4 | **Shell exit code enforcement.** TrimStdout: fails on non-zero exit unless output is optional `T?` (returns `Value::Skipped`). SplitLines: returns empty list on non-zero (list-producing ops like `find` legitimately return exit 1 for missing paths). `shell_exit_error()` helper for clear diagnostics. Proof tests in `gunbc-dag/tests/shell_exit_enforcement_proof.rs`. Analysis report: `TODO/testgen-proof-analysis.md`. | S | **Done** | RT-A1 |
+| I5 | RT-I5 | **Wire `credential_chain` into gist.** 3 call sites in `gist.dag` migrated from `shell.GCloud.SecretManagerAccessVersion` to `acquire_gcp_secret(runtime: LocalDev, ...)`. Added `extract_secret` helper fn + `secret: Secret` output on `acquire_gcp_secret` to work around lowerer's single-level field access limitation for auth_input wiring. `shared/gist_modes.dag` kept on services-layer call (import direction lint: shared layer 5 cannot import cloud layer 7). Fixed dual-wiring bug: `wire_auth_credential_edges` now skips endpoints with `auth_input` to avoid duplicate `res:credential` edges. | M | **Done** | RT-A4 |
+| I6 | RT-I6 | **Verify `credential_chain` end-to-end.** Converted `gist_recent_end_to_end_emits_gist_url` to DryRun with `auto_mock_spec` (credential chain's `local_auth()` func is too complex for fn_body extraction — returns Skipped in Real mode). Added structural test `gist_recent_graph_wires_credential_to_gist_execute` verifying `res:credential` edge on Gist_Create execute node. Updated golden snapshot `s2_credential_chain_gcp.json` for `extract_secret` fn addition. All 4 gist_recent tests pass. | M | **Done** | RT-I5 |
+
 ### Horizon (after RT23)
 
 | # | ID | What | Size |
 |---|-----|------|------|
-| 24 | RT24 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
-| 25 | RT25 | String constants: central consts in `core/ir/src/signature.rs`. | S |
-| 26 | RT26 | `#[derive(StringEnum)]` for 15 enums (~60 match blocks). | M |
-| 27 | RT27 | ModulePath unification across 4 crates. | S |
-| 28 | RT28 | Shared DslTypeMapping table for emit backends. | S |
-| 29 | RT29 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
-| 30 | RT30 | Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortCategory`. | S |
-| 31 | RT31 | String constants migration: `__deps`/`res:file`/`tool:` → central consts. | M |
-| 32 | RT32 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
-| 33 | RT33 | Unify passthrough op variants → single data-driven PassthroughOp. | S |
-| 34 | RT34 | Error type consolidation (6 types → layered). | M |
-| 35 | RT35 | Test helper extraction (CompileTestHelper + MockFactory). | M |
-| 36 | RT36 | Scaffolding decision: delete or wire RetryPolicy/ErrorMapping/etc. | S |
-| 37 | RT37 | Underused abstractions: delete algebra/render traits or find second consumer. | S |
+| 24 | RT24 | ✅ `NodeKind` already has `TransportPrepare`/`TransportExecute`/`TransportParse` variants (added earlier). Added `NodeKind::is_transport()` convenience method for callers that need to check transport-phase membership. 13 files use these variants across lowerer, executor, codegen, testgen, and derive. | S |
+| 25 | RT25 | ✅ String constants centralized: `PortName::{RESOURCE_PREFIX, TOOL_PREFIX, INTERNAL_PREFIX, OUTPUT_PASSTHROUGH_PREFIX, DEPS, RESOURCE_CREDENTIAL}` on `PortName` in `types.rs`. Added `RESOURCE_CREDENTIAL` to `resource/mod.rs`. Updated `bare_name()`/`category()` to use constants. Migrated lowerer's private `OUTPUT_PASSTHROUGH_PREFIX` to use `PortName::OUTPUT_PASSTHROUGH_PREFIX`. | S |
+| 26 | RT26 | ✅ `#[derive(StringEnum)]` proc-macro generating `as_str()`, `parse()`, `Display` for unit-variant enums. Container attribute `#[string_enum(rename_all = "UPPERCASE")]`, variant attribute `#[string_enum(name = "custom")]`. Migrated 7 enums: HttpMethod, AnnotationLevel, ReasoningEffort, ReasoningSummary, Role, CloudProviderKind, CodegenSubcommand. Deleted ~180 lines of manual impls. | M |
+| 27 | RT27 | ✅ ModulePath unification across 4 crates. Replaced `Vec<String>` module paths with canonical `ModulePath` struct from daglang-syntax across resolve, typecheck, lower, emit, driver, cli. Added `new()`, `as_dotted()`, `Display`, `From<Vec<String>>`, `Hash`/`Eq` derives. | S |
+| 28 | RT28 | ✅ Shared DslTypeMapping table for emit backends. Added `type_mapping.rs` with `DslTypeMapping` struct, static `RUST_TYPE_MAPPING`/`GO_TYPE_MAPPING` tables, and shared `map_abstract_type()` with recursive container handling. Rust and Go backends now delegate to shared tables. C backend remains separate (returns CType enum, not String). | S |
+| 29 | RT29 | Registry pattern for DAG tooling string dispatch. Primary: `resolve_service_transport()` (12 arms), secondary: `lookup_extern_impl()` (9 arms). | L |
+| 30 | RT30 | ✅ Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortName` methods. 3 sites migrated (lower `is_user_param_port`, emit `is_user_input_port`, patterns `ResourceInput::new`). `process_registry.rs` skipped (uses `ClaimId`, not `PortName`). | S |
+| 31 | RT31 | ✅ Migrated hardcoded port name strings to central constants: `"__deps"` → `PortName::DEPS` (37 sites across lowerer, driver, resolve, infra), `"__out:"` → `PortName::OUTPUT_PASSTHROUGH_PREFIX` (2 sites in resolve), `"res:file"` → `RESOURCE_FILE` (3 sites in lowerer, testgen graph), `"res:credential"` → `PortName::RESOURCE_CREDENTIAL`/`RESOURCE_CREDENTIAL` (16 sites across lowerer, transport ops). Skipped raw string templates (emitted runtime code) and test-only assertions. | M |
+| 32 | RT32 | ✅ Split monolithic files: daglang-lower 11,497→8,107 lines (extracted spec.rs + tests.rs), typecheck 5,321→3,403 lines (extracted tests.rs), execute 4,336→2,186 lines (converted to directory module with tests.rs). Total: ~8.5K lines extracted. | L |
+| 33 | RT33 | ✅ Unified passthrough op variants: replaced 3 `LoweredOp` variants (`LoopUnpack`, `LoopPack`, `BranchMerge`) with single `Pattern(PatternOp)`. Added `kind_name()` to `PatternOp`. Simplified 10 match sites across lowerer, emit, derive, resolver, and CLI render. | S |
+| 34 | RT34 | ✅ Error type consolidation. Replaced opaque `CompileError { message: String }` with structured enum: `Resolve(ResolveError)`, `Typecheck(Vec<TypeError>)`, `Lower(LowerError)`, `Emit(EmitError)`, `Derive(DeriveError)`, `Message(String)`. Added `From` impls for all phase errors. Eliminated ad-hoc `format!()` conversions in driver pipeline. ParseErrors Display preserves `normalize_diagnostics` sorting. | M |
+| 35 | RT35 | ✅ Test helper extraction: consolidated 9 duplicate `unique_temp_dir`/`unique_temp_file` implementations across driver, cli (pipeline, main, compile/tests), and 3 integration test files to use shared `gunbc_test::{unique_temp_dir, unique_temp_file}`. Added `unique_temp_file()` to gunbc-test/temp.rs. Added gunbc-test as dev-dependency to daglang-driver and daglang-cli. `module_graph_from_sources` kept crate-local (would require compiler crate dependencies in test utility). | M |
+| 36 | RT36 | ✅ Deleted unused scaffolding: `RetryPolicy`, `ErrorMapping`, `BackoffStrategy` structs from lowerer, removed `retry_policy` field from `ServiceCallMetadata`, removed `error_mappings` field from `RestOperationSpec`, cleaned up 30+ `None`/`vec![]` initializations across 8 files. | S |
+| 37 | RT37 | ✅ Deleted underused abstractions: `Semiring` trait + impl + 5 tests (zero production consumers), `GraphicsMedium` trait (zero impls), `MarkupRenderer` trait (zero impls), `DocumentRenderer` trait (zero impls). Kept `PartialOrder`, `JoinSemilattice`, `MeetSemilattice`, `BoundedLattice`, `Lattice` (2+ production consumers each). | S |
+
+### Hack Deletion Queue (review-driven)
+
+Hacks, silent fallbacks, and missing-language-feature workarounds identified
+by code review. Each has a verified codebase location. Ordered: panics/safety
+first, then stringly-typed hacks, then language-feature gaps.
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 38 | RT38 | **No panics in lowering for user-authored DSL.** `derive_file_spec()` calls `FileOp::from_dsl_str(..).unwrap_or_else(\|\| panic!(...))` (`daglang-lower/src/lib.rs:5051-5052`). Replace with `LowerError::InvalidTransportSpec` (or similar) including service/op context + bad string. Add test: unknown file op → clean error message. | S | Pending | — |
+| 39 | RT39 | **`auth_input` must parse or error.** Parser at `daglang-syntax/src/parser.rs:338-343` silently advances on non-ident `auth_input` values (e.g. string literal → becomes `None`, changes semantics). Same pattern for `auth` at lines 331-336. Replace `else { self.advance(); }` with parse error "expected identifier for auth_input". Add test for non-ident value. | S | Pending | — |
+| 40 | RT40 | **Structural optionality for shell TrimStdout.** `resolve_service.rs:570` detects optional output via `f.type_id.ends_with('?')` — stringly-typed. Replace with structured optionality flag or port cardinality from IR/spec. Non-zero→Skipped should only apply when the operation explicitly declares that mapping, not for all optional outputs. | S | Pending | — |
+| 41 | RT41 | **Explicit exit mapping for shell SplitLines.** RT-I4 kept "non-zero → empty list" for SplitLines (`resolve_service.rs:529-537`). This conflates "command failed" with "no results" for non-`find` operations. Replace with explicit per-operation "acceptable non-zero exits" declaration (aligns with PC-4 `exit` blocks). Add test: exit=1 + non-empty stderr should error unless explicitly allowed. | S | Pending | PC-4 |
+| 42 | RT42 | **Pipe methods first-class in AST.** `should_track_call_name()` in `ast_utils.rs:42-76` hard-codes 20+ pipe method names as a string allowlist shared between typechecker and lowerer. Introduce `PipeMethod` enum (or similar) in AST/IR — single authoritative registry. Acceptance: delete the allowlist and still typecheck/evaluate same corpus. | M | Pending | — |
+| 43 | RT43 | **Nested field access in lowerer.** Lowerer only supports single-level field access for auth_input wiring. Workaround: `extract_secret` fn + alias `secret: Secret` output on `acquire_gcp_secret` (`dsl/cloud/gcp/credential.dag:28-31`). Implement `x.y` (and `x.y.z`) field access in lowerer/evaluator, then delete `extract_secret` and alias outputs. | M | Pending | — |
+| 44 | RT44 | **Expand `evaluate_fn_body` coverage.** `local_auth()` func is too complex for fn_body extraction — returns Skipped in Real mode (`gist_recent_regressions.rs:73-74`). Either (a) teach `evaluate_fn_body` to support effectful conditionals used in `local_auth()`, or (b) restructure `local_auth()` into extractable pieces. Regression test: Real mode must not silently return Skipped for credential chain. | M | Pending | — |
+| 45 | RT45 | **Typed enum values from `evaluate_fn_body`.** Fidelity classifier results come back as `Value::Str` requiring `TestClass::parse()` / `FermiCost::parse()` round-trips (`fidelity.rs:93-100`). Add `Value::Enum { ty, variant }` (or tagged union encoding) so evaluator returns structured enums. Delete parse round-trips. | M | Pending | — |
+| 46 | RT46 | **Delete fidelity silent fallbacks.** `unwrap_or(TestClass::Unit)` and `unwrap_or(FermiCost::XS)` in `fidelity.rs:95,100` silently default on classification failure. Replace with explicit error (or force explicit "unknown" classification). Add CI guard: grep for these patterns outside tests → fail. | S | Pending | RT45 |
+| 47 | RT47 | **Proper multi-param lambda parsing.** Speculative/backtracking parse at `parser.rs:2590-2628` manually manages `speculative_pos` index. Add a lookahead routine that decides "this is a lambda" without mutating parser state (or a formal backtracking helper). Test matrix: `(a,b)=>`, `(a, b) =>`, `(a,b,) =>` (if allowed), `(a) =>`, `(a,b)` (non-lambda). | M | Pending | — |
+| 48 | RT48 | **Ship PC-1 + PC-4 early.** `response { STATUS => TYPE }` and `exit { CODE => BEHAVIOR }` structural blocks replace `@mock_response` stub (`MockResponseDef` parser always returns empty Vec per `parser.rs:1275,1410`) and implicit shell exit semantics. Priority: PC-1 (parse response blocks) → PC-4 (parse exit blocks) → remove implicit SplitLines/TrimStdout fallbacks. | L | Pending | — |
 
 ---
 
@@ -275,14 +326,19 @@ smell catalog above to classify. Include file path + line if possible.
 | Smell | Observation | File | Source | Date |
 |-------|-------------|------|--------|------|
 | *(credential wiring promoted to RT1)* | | | | |
-| Static mapping table | Three functions (`transport_depth_ordinal`, `transport_depth_str`, `transport_is_hermetic`) encode the same semantic mapping for `ServiceTransportClass`. | `gunbc-dag/src/fidelity.rs:60-89` | RF-H4 PR scout | 2026-02-26 |
+| Validation at use site | `auto_mock_spec()` always produces exit 0 / status 200 for transport mocks. 7 transport mocks for gist_recent, 0 error scenarios. Testgen Bucket C `SingleTransportFailure` only injects `Value::Str("<TRANSPORT_FAILURE>")` sentinel, not realistic errors (401, exit 1). See `TODO/testgen-proof-analysis.md`. | `gunbc-dag/src/mock_defaults.rs:145-184` | RT-I4 proof | 2026-02-27 |
+| Validation at use site | `GenericRestParseOp` doesn't check HTTP status code — it just tries to extract fields from the response body. A 401 with `{"message":"Bad credentials"}` only fails because `html_url` is missing. If a 401 body happened to contain expected fields, it would "succeed" with garbage. | `gunbc-dag/src/resolve_service.rs` (REST parse) | RT-I4 proof | 2026-02-27 |
+| Heuristic reimplementation | `@mock_response` parser is NOT implemented. `MockResponseDef` AST struct exists in `daglang-syntax/src/lib.rs:587-591` but parser always initializes `Vec::new()`. No service in `dsl/services/` uses `@mock_response`. The `error_cases()` trait method on `Mockable` exists but is never populated. | `core/daglang/daglang-syntax/src/lib.rs`, `core/test/src/mockable.rs:59` | RT-A2 audit | 2026-02-27 |
+| Validation at use site | `GNUmakefile` had `--mode=ensure` flag on bootstrap command but the binary doesn't accept that flag. Bootstrap binary only accepts `--check-mode`, `--dry-run`, `--print-inputs`. | `GNUmakefile:26` | CI fix | 2026-02-27 |
+| Validation at use site | `find crates -type d` in bootstrap returns exit 1 when `crates/` directory doesn't exist. SplitLines was failing hard on this (post-RT-I4) but should return empty list for list-producing ops. | `dsl/tools/bootstrap.dag`, `gunbc-dag/src/resolve_service.rs:523-543` | CI fix | 2026-02-27 |
+| ~~Static mapping table~~ | ~~Three functions deleted by RT5 — DSL `classify_transports` is now the single source.~~ | ~~`gunbc-dag/src/fidelity.rs`~~ | RF-H4 PR scout | **Done** |
 | Heuristic reimplementation | `passthrough_fallback_value()` hard-codes a port alias table. | `gunbc-dag/src/resolve.rs:95-162` | RF-H4 PR scout | 2026-02-26 |
 | Heuristic reimplementation | `looks_effectful_without_kind()` re-derives NodeKind from port type strings. Dead code after RT6 (NodeKind). | `core/exec/src/execute.rs:2064-2092` | RF-H4 PR scout | 2026-02-26 |
 | Heuristic reimplementation | `classify_module()` inflated by transitive auth callables. | `gunbc-dag/src/fidelity.rs:184-209` | RF-E4 impl | 2026-02-26 |
-| Fallback arm | HTTP method `_ => RestRequest::post(&url)` — typo silently becomes POST. | `gunbc-dag/src/resolve_service.rs:72-79` | R1 scout | 2026-02-26 |
+| ~~Fallback arm~~ | ~~HTTP method fallback now returns `ExecError` instead of silently falling back to POST.~~ | ~~`gunbc-dag/src/resolve_service.rs:73-85`~~ | R1 scout | **Done** |
 | String dispatch | `match field.type_id.as_str()` for JSON→Value appears twice. | `gunbc-dag/src/resolve_service.rs:291-335, 352-366` | R1 scout | 2026-02-26 |
-| Validation at use site | `input_as_string()` returns `"(unresolved)"` magic string. | `gunbc-dag/src/resolve_service.rs:634-641` | R1 scout | 2026-02-26 |
-| String dispatch | `match self.spec.operation.as_str()` for file operations. | `gunbc-dag/src/resolve_service.rs:933-948` | R1 scout | 2026-02-26 |
+| ~~Validation at use site~~ | ~~`input_as_string()` now returns `Result<String, ExecError>` — missing inputs fail-closed instead of leaking `"(unresolved)"`.~~ | ~~`gunbc-dag/src/resolve_service.rs:703-733`~~ | R1 scout | **Done** |
+| ~~String dispatch~~ | ~~`FileOperationSpec.operation` now uses `FileOp` enum — parsed at boundary in `derive_file_spec()`, exhaustive match in `GenericFilePrepareOp`.~~ | ~~`gunbc-dag/src/resolve_service.rs`~~ | R1 scout | **Done** |
 | String dispatch | `workflow_unit_commands()` matches workflow name strings. | `gunbc-dag/src/workflow/unit_commands.rs:300-323` | R1 scout | 2026-02-26 |
 | Inventory linkage gap | `gunbc-codegen cigen` drops GCP secrets. See Theme INV below. | `gunbc-dag/src/ci/mod.rs:56-77` | lane-2 merge | 2026-02-26 |
 | *(success_port workaround promoted to RT4a:c)* | | | | |
@@ -438,6 +494,31 @@ secrets and not regenerated on every codegen pass.
 | RF-INV1 | **Force-link inventory crates in codegen binary.** Add explicit `use` references or `extern crate` for crates that register `DagSpecDef` with `live_required` secrets. Simplest fix, but fragile — adding a new crate with secrets requires updating codegen_cli.rs. | S | Quick fix. |
 | RF-INV2 | **DSL-derive CI secrets from service annotations.** Instead of inventory, derive `live_required` from `@auth` + `@endpoint` annotations on service operations in `.dag` files. The DSL already declares auth schemes — the compiler can extract which env vars are needed. Eliminates the inventory linkage problem entirely. | M | DSL-first fix. Aligns with RT13 (derive mock registries from `@mock_response`). |
 
+### Theme PC: Provider Response Contracts (mandatory error modeling)
+
+> Design doc: `docs/design/provider-contracts.md`
+> Aligns with: `docs/design/modeling/annotation-to-dag-modeling.md` Phase 2
+
+Services must model the actual provider API contract — not just the happy
+path. Every documented response code, error body shape, and failure mode
+gets declared via structural `response { ... }` blocks on operations.
+The lowerer compiles these into classify_response nodes in the transport
+DAG. Testgen generates **mandatory** per-status-code test obligations.
+Supersedes RT-I1 and RT-I2.
+
+| ID | What | Size | Deps |
+|----|------|------|------|
+| PC-1 | **`response` block parsing.** Add to `daglang-syntax`. `Vec<ResponseEntry>` on `OperationDef` (replaces `mock_response`). | M | — |
+| PC-2 | **Standard error types.** `dsl/std/errors.dag` — common HTTP, GitHub, GCP error shapes. | S | — |
+| PC-3 | **`response` blocks on all REST services.** 29 operations, `doc` references to provider API docs. | L | PC-1, PC-2 |
+| PC-4 | **`exit` blocks on all shell services.** Exit code → output type mapping. | M | PC-1 |
+| PC-5 | **Lowerer: populate `error_mappings` + classify_response node.** Wire `response` entries to existing `ErrorMapping` on `ServiceOperationSpec`. Generate classify_response node in transport DAG. | M | PC-1 |
+| PC-6 | **`GenericRestParseOp` status checking.** Route on status code before field extraction. Hard-fail on undeclared non-2xx. | M | PC-5 |
+| PC-7 | **`ProviderResponseContract` obligation.** New Bucket C obligation, one per `response` entry. | M | PC-5 |
+| PC-8 | **Testgen codegen for response contracts.** Per-status-code tests, mock body derived from response type. | L | PC-7 |
+| PC-9 | **Interface response contract inheritance.** Implementors inherit obligations from interface `response` declarations. | M | PC-7 |
+| PC-10 | **Completeness enforcement.** Compiler requires ≥1 success + ≥1 error entry in `response` block on every `transport rest {}` operation. | S | PC-1 |
+
 ### Compiler Features (low priority)
 
 | ID | Feature | Size | Notes |
@@ -478,8 +559,9 @@ cause **silent failures** — requests go out wrong without errors:
 | **RT4: Typecheck validation** | Typechecker ignores transport blocks entirely → invalid contents compile silently | High — errors surface late at resolve time with confusing messages |
 
 RT1 root cause analysis: See POSTMORTEM section below.
-RT4 detail: `LowerError::MissingTransport` is dead code — the lowerer falls
-through to `ServiceOperationSpec::None` instead of erroring when transport is missing.
+RT4 detail: `LowerError::MissingTransport` now fires for partially-specified services
+(at least one op has transport, another doesn't). Fully-abstract services (no transport
+on any operation) and interface implementors are exempt — they get transport via profiles.
 
 **Coverage snapshot** (97 total operations across 28 services):
 - 39 ops (40%): transport blocks present, pipeline works end-to-end
@@ -528,17 +610,20 @@ exist solely because `classify_transports` uses `fold` (via
 `fermi_max_of`), and the lowerer can't extract fn bodies containing
 `fold` for `evaluate_fn_body()`.
 
-**RT5** (was RF-G-unblock): Implement `fold` aggregation
-in Rust's `evaluate_fn_body()` evaluator (it already handles other
-collection ops). This directly enables calling the existing DSL fns.
-Once done, delete:
-- `transport_depth_ordinal()`, `transport_depth_str()` (RF-G1)
-- `transport_is_hermetic()` (RF-G2)
-- `classify_callable()` pre-aggregation (RF-G3)
-- `test_policy.dag::classify_from_facts()` (RF-G4)
-- `TestClass::parse()` / `FermiCost::parse()` round-trip (RF-G5)
-- `test_policy.dag` shadow fns (RF-G6)
-- Fidelity silent fallbacks `unwrap_or(Unit)` / `unwrap_or(XS)`
+**RT5** (was RF-G-unblock): **Done.** Multi-param lambda parsing
+(`(acc, d) => expr`), pipe method typechecker exclusion (fold, map,
+filter, etc. in should_track_call_name), fidelity.rs rewrite to call
+DSL `classify_transports()` directly via `evaluate_fn_body()`.
+Deleted:
+- ✅ `transport_depth_ordinal()`, `transport_depth_str()` (RF-G1)
+- ✅ `transport_is_hermetic()` (RF-G2)
+- ✅ `classify_callable()` pre-aggregation → now calls DSL (RF-G3)
+- ✅ `test_policy.dag::classify_from_facts()` (RF-G4)
+- ✅ `test_policy.dag` shadow fns `transport_depth`/`transport_hermetic` (RF-G6)
+Remaining: TestClass::parse()/FermiCost::parse() round-trip (RF-G5)
+still used — fidelity result comes back as Value::Str, needs parsing.
+Silent fallbacks `unwrap_or(Unit)` / `unwrap_or(XS)` still present as
+safety nets for edge cases.
 
 ### Theme H: Structural Enforcement (parse, don't validate)
 
@@ -619,3 +704,8 @@ RF-E4 (fidelity smoke test): 2026-02-26. makegen→Unit/XS, gist→Integration/L
 BB-2 (per-node corpus tests): 2026-02-26. `build_corpus_section()`. Pure→Real, effectful→DryRun.
 BB-3 (adjacent pair tests): 2026-02-26. `build_adjacent_pair_section()`. Edge wiring verification.
 BB-5 (cross-workflow consistency): 2026-02-26. `build_cross_workflow_section()`. Multi-workflow nodes.
+RT-A1 (shell exit code audit): 2026-02-27. Decision matrix for all 11 shell operations. TrimStdout/SplitLines semantics defined.
+RT-A2 (@mock_response gap): 2026-02-27. 29 REST ops × 0 annotations = 29 missing. Parser not implemented. See `TODO/testgen-proof-analysis.md`.
+RT-I4 (shell exit code enforcement): 2026-02-27. TrimStdout fails on non-zero (unless optional), SplitLines returns empty list. Proof tests + analysis report.
+Positional auth_input wiring: 2026-02-27. Fixed positional service call args dropping credentials. `operation_inputs` field on `ServiceTransportEndpoint`.
+GNUmakefile bootstrap fix: 2026-02-27. Removed invalid `--mode=ensure` flag. Fixed `make install` → `make ci` pipeline.

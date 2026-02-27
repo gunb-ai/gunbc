@@ -4,12 +4,12 @@
 use daglang_resolve::ModuleGraph;
 use daglang_resolve::ResolveError;
 use gunbc_ir::WorkspaceLayout;
+use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn workspace_root() -> PathBuf {
     static WORKSPACE_ROOT: OnceLock<PathBuf> = OnceLock::new();
@@ -24,30 +24,6 @@ fn workspace_root() -> PathBuf {
 
 fn daglang_bin() -> &'static str {
     env!("CARGO_BIN_EXE_daglang")
-}
-
-fn unique_temp_file(name: &str) -> std::path::PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "daglang_cli_{name}_{}_{}.dag",
-        std::process::id(),
-        nanos
-    ))
-}
-
-fn unique_temp_dir(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "daglang_cli_{name}_{}_{}",
-        std::process::id(),
-        nanos
-    ))
 }
 
 fn assert_no_compile_stage_banners(stderr: &str) {
@@ -269,7 +245,7 @@ fn resolve_discovered_module_order() -> Vec<String> {
         .expect("resolve discovery should succeed for real corpus")
         .modules
         .into_iter()
-        .map(|module| module.module_path.join("."))
+        .map(|module| module.module_path.as_dotted())
         .collect()
 }
 
@@ -280,7 +256,7 @@ fn resolve_discovered_module_summary() -> BTreeMap<String, (usize, usize)> {
         .into_iter()
         .map(|module| {
             (
-                module.module_path.join("."),
+                module.module_path.as_dotted(),
                 (module.ast.items.len(), module.dependencies.len()),
             )
         })

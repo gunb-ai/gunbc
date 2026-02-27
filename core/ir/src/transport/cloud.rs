@@ -31,30 +31,11 @@ impl TryFrom<&Value> for CloudSecretConfig {
 }
 
 /// Supported cloud providers for secret-backed credentials.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
 pub enum CloudProviderKind {
     Gcp,
     Aws,
     Azure,
-}
-
-impl CloudProviderKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CloudProviderKind::Gcp => "gcp",
-            CloudProviderKind::Aws => "aws",
-            CloudProviderKind::Azure => "azure",
-        }
-    }
-
-    pub fn parse(input: &str) -> Option<Self> {
-        match input.trim().to_lowercase().as_str() {
-            "gcp" => Some(CloudProviderKind::Gcp),
-            "aws" => Some(CloudProviderKind::Aws),
-            "azure" => Some(CloudProviderKind::Azure),
-            _ => None,
-        }
-    }
 }
 
 /// Where the OIDC subject token comes from.

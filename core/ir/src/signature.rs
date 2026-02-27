@@ -214,7 +214,7 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
     // Exclude tool ports (tool:*) - these are framework-provided, not user inputs
     for (node_id, port_name, _type_id) in &entrypoints.entrypoint_ports {
         // Skip tool capability ports - they're provided by the framework, not users
-        if port_name.0.starts_with("tool:") || port_name.0.starts_with("__out:") {
+        if port_name.is_tool() || port_name.is_internal() {
             continue;
         }
 

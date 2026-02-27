@@ -547,13 +547,99 @@ impl std::fmt::Display for NodeId {
     }
 }
 
+/// Structural classification of a port's namespace.
+///
+/// Port names use prefixes to encode their role:
+/// - `res:` — resource ports (credentials, filesystem handles, etc.)
+/// - `tool:` — tool handle ports (CLI tools, capabilities)
+/// - `__deps` / `__out:` — internal wiring (ordering, passthrough)
+/// - everything else — user-visible data ports
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PortCategory {
+    /// Resource port (`res:credential`, `res:file:data`, etc.)
+    Resource,
+    /// Tool handle port (`tool:clippy`, `tool:cargo`, etc.)
+    Tool,
+    /// Internal wiring port (`__deps`, `__out:result`, etc.)
+    Internal,
+    /// User-visible data port (everything else)
+    User,
+}
+
 /// Name of a port on a node.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PortName(pub String);
 
 impl PortName {
+    // ── Port namespace prefixes ──────────────────────────────────────
+    /// Prefix for resource ports (`res:credential`, `res:file:data`, etc.)
+    pub const RESOURCE_PREFIX: &'static str = "res:";
+    /// Prefix for tool handle ports (`tool:clippy`, `tool:cargo`, etc.)
+    pub const TOOL_PREFIX: &'static str = "tool:";
+    /// Prefix for internal ports (`__deps`, `__out:`, etc.)
+    pub const INTERNAL_PREFIX: &'static str = "__";
+    /// Prefix for output passthrough ports (`__out:result`, etc.)
+    pub const OUTPUT_PASSTHROUGH_PREFIX: &'static str = "__out:";
+
+    // ── Well-known port names ────────────────────────────────────────
+    /// Internal dependency ordering port.
+    pub const DEPS: &'static str = "__deps";
+    /// Resource credential port wired by auth_input.
+    pub const RESOURCE_CREDENTIAL: &'static str = "res:credential";
+
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
+    }
+
+    /// Classify this port by its namespace prefix.
+    pub fn category(&self) -> PortCategory {
+        if self.0.starts_with(Self::RESOURCE_PREFIX) {
+            PortCategory::Resource
+        } else if self.0.starts_with(Self::TOOL_PREFIX) {
+            PortCategory::Tool
+        } else if self.0.starts_with(Self::INTERNAL_PREFIX) {
+            PortCategory::Internal
+        } else {
+            PortCategory::User
+        }
+    }
+
+    /// Whether this is a resource port (`res:*`).
+    pub fn is_resource(&self) -> bool {
+        self.category() == PortCategory::Resource
+    }
+
+    /// Whether this is a tool handle port (`tool:*`).
+    pub fn is_tool(&self) -> bool {
+        self.category() == PortCategory::Tool
+    }
+
+    /// Whether this is an internal wiring port (`__*`).
+    pub fn is_internal(&self) -> bool {
+        self.category() == PortCategory::Internal
+    }
+
+    /// Whether this is a user-visible data port.
+    pub fn is_user(&self) -> bool {
+        self.category() == PortCategory::User
+    }
+
+    /// Strip the namespace prefix and return the bare name.
+    ///
+    /// `"res:credential"` → `"credential"`, `"tool:clippy"` → `"clippy"`,
+    /// `"__out:result"` → `"result"`, `"data"` → `"data"`.
+    pub fn bare_name(&self) -> &str {
+        if let Some(rest) = self.0.strip_prefix(Self::RESOURCE_PREFIX) {
+            rest
+        } else if let Some(rest) = self.0.strip_prefix(Self::TOOL_PREFIX) {
+            rest
+        } else if let Some(rest) = self.0.strip_prefix(Self::OUTPUT_PASSTHROUGH_PREFIX) {
+            rest
+        } else if let Some(rest) = self.0.strip_prefix(Self::INTERNAL_PREFIX) {
+            rest
+        } else {
+            &self.0
+        }
     }
 }
 

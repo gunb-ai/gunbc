@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 /// - `Warning`: Yellow, creates PR annotations
 /// - `Notice`: Blue/cyan, informational annotations
 /// - `Debug`: Gray, only shown when debug logging enabled
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, gunbc_delegate_macros::StringEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum AnnotationLevel {
     /// Debug message (only shown with debug logging enabled)
@@ -49,24 +49,6 @@ pub enum AnnotationLevel {
     Warning,
     /// Error (fatal issue)
     Error,
-}
-
-impl AnnotationLevel {
-    /// Get the string representation for this level.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Debug => "debug",
-            Self::Notice => "notice",
-            Self::Warning => "warning",
-            Self::Error => "error",
-        }
-    }
-}
-
-impl std::fmt::Display for AnnotationLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
 }
 
 /// File location for annotations.

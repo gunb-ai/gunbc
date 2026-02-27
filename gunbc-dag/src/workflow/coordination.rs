@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use gunbc_ir::{NodeId, PortName, RESOURCE_PORT_PREFIX};
+use gunbc_ir::{NodeId, PortName};
 
 use super::schema::{WorkflowSpec, PORT_AFTER};
 
@@ -52,7 +52,7 @@ pub fn coordination_status(
         }
 
         for input in &node.inputs {
-            if input.name.0 == PORT_AFTER || input.name.0.starts_with(RESOURCE_PORT_PREFIX) {
+            if input.name.0 == PORT_AFTER || input.name.is_resource() {
                 continue;
             }
             if !input.cardinality.requires_one() {

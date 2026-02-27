@@ -105,6 +105,8 @@ pub const RESOURCE_API_NETWORK: &str = "res:api:network";
 pub const RESOURCE_REPO: &str = "res:repo";
 /// Canonical coarse target resource port.
 pub const RESOURCE_TARGET: &str = "res:target";
+/// Canonical credential resource port (wired by `auth_input`).
+pub const RESOURCE_CREDENTIAL: &str = "res:credential";
 /// Canonical environment output port for read filesystem handles.
 pub const FILE_HANDLE_READ_PORT: &str = "file:read";
 /// Canonical environment output port for write filesystem handles.
@@ -665,13 +667,11 @@ pub enum ResourceValidationMode {
 
 /// Classify a node's effect kind, if any.
 ///
-/// Returns `None` for pure nodes and nodes without a kind set.
-/// Nodes with `kind: None` are treated as non-effectful — callers must
-/// ensure all effectful nodes have `kind` set before reaching validation.
+/// Returns `None` for pure nodes. Non-pure nodes return their `NodeKind`.
 pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
     match node.kind {
-        Some(NodeKind::Pure) | None => None,
-        Some(kind) => Some(kind),
+        NodeKind::Pure => None,
+        kind => Some(kind),
     }
 }
 
@@ -679,7 +679,7 @@ pub fn classify_effect<T>(node: &Node<T>) -> Option<NodeKind> {
 fn has_resource_port<T>(node: &Node<T>) -> bool {
     node.inputs
         .iter()
-        .any(|p| p.name.0.starts_with(RESOURCE_PORT_PREFIX))
+        .any(|p| p.name.is_resource())
 }
 
 /// Validate that all effectful nodes declare resource ports.

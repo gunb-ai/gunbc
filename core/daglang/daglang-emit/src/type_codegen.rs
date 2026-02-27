@@ -761,7 +761,7 @@ pub fn generate_types_for_modules(
     let mut static_struct_types: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for module in &typed.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
             continue;
         }
@@ -790,7 +790,7 @@ pub fn generate_types_for_modules(
     // Also collect DataDefs for impl generation.
     let mut data_defs: Vec<&DataDef> = Vec::new();
     for module in &typed.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
             continue;
         }
@@ -804,7 +804,7 @@ pub fn generate_types_for_modules(
     // Pass 2: generate all items, using type info for data tables.
     let mut all_items = Vec::new();
     for module in &typed.modules {
-        let module_name = module.module_path.join(".");
+        let module_name = module.module_path.as_dotted();
         if !module_filter.is_empty() && !module_filter.contains(&module_name.as_str()) {
             continue;
         }

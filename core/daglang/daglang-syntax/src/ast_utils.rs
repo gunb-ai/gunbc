@@ -40,7 +40,40 @@ pub fn resource_type_name(resource_type: &TypeExpr) -> String {
 }
 
 pub fn should_track_call_name(name: &str) -> bool {
-    !matches!(name, "<expr>" | "as" | "with" | "fn")
+    !matches!(
+        name,
+        "<expr>"
+            | "as"
+            | "with"
+            | "fn"
+            // Built-in pipe methods — resolved by the evaluator, not as
+            // callable targets. Adding new pipe methods here keeps the
+            // typechecker from rejecting non-lossy fn bodies that use them.
+            | "map"
+            | "filter"
+            | "filter_map"
+            | "flat_map"
+            | "fold"
+            | "join"
+            | "count"
+            | "sum"
+            | "first"
+            | "last"
+            | "any"
+            | "all"
+            | "contains"
+            | "sort_by"
+            | "max_by"
+            | "append"
+            | "starts_with"
+            | "ends_with"
+            | "repeat"
+            | "replace_section"
+            | "to_bytes"
+            | "to_json"
+            | "hash"
+            | "chars"
+    )
 }
 
 pub fn service_call_lookup_keys(call_path: &[String]) -> Option<[String; 3]> {

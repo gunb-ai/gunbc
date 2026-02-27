@@ -117,6 +117,7 @@ pub fn expected_dsl_files_sorted() -> Vec<&'static str> {
         "std/symbols.dag",
         "std/types.dag",
         "std/unicode.dag",
+        "std/virtual_io.dag",
         "std/width.dag",
         "tools/bootstrap.dag",
         "tools/build.dag",

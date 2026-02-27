@@ -426,26 +426,10 @@ fn expr_uses_json(expr: &Expr) -> bool {
 
 /// Map an abstract type name to its Rust equivalent.
 fn map_to_rust_type(abstract_type: &str) -> String {
-    match abstract_type {
-        "String" | "Path" => "String".to_string(),
-        "Bool" | "bool" => "bool".to_string(),
-        "Int" | "i64" | "I64" => "i64".to_string(),
-        "ToolRegistry" => "serde_json::Value".to_string(),
-        "TransportRequest" => "TransportRequest".to_string(),
-        "TransportResponse" => "TransportResponse".to_string(),
-        "FilesystemHandle" => "PathBuf".to_string(),
-        other => {
-            // Check for List<T> pattern.
-            if let Some(inner) = other
-                .strip_prefix("List<")
-                .and_then(|rest| rest.strip_suffix('>'))
-            {
-                return format!("Vec<{}>", map_to_rust_type(inner));
-            }
-            // Default: treat as opaque serde_json::Value.
-            "serde_json::Value".to_string()
-        }
-    }
+    crate::type_mapping::map_abstract_type(
+        &crate::type_mapping::RUST_TYPE_MAPPING,
+        abstract_type,
+    )
 }
 
 // ===========================================================================

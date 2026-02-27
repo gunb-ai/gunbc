@@ -6,24 +6,10 @@ use daglang_lower::{
 };
 use gunbc_exec::{lower, Executable, ExecutionMode};
 use gunbc_ir::{node::NodeBody, Dag, Edge, Node, Port};
+use gunbc_test::{unique_temp_dir, unique_temp_file};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-fn unique_temp_file(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    let fixture_root = std::env::temp_dir().join(format!(
-        "daglang_cli_compile_{name}_{}_{}",
-        std::process::id(),
-        nanos
-    ));
-    std::fs::create_dir_all(&fixture_root).expect("failed to create temp fixture root");
-    fixture_root.join(format!("{name}.dag"))
-}
 
 fn workspace_dsl_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../dsl")
@@ -39,15 +25,7 @@ fn workspace_single_file_context(relative_path: &str) -> PipelineContext {
 
 /// Create a unique temp directory with a `sample/` subdirectory for fixture files.
 fn unique_temp_root(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock should be after unix epoch")
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!(
-        "daglang_compile_{name}_{}_{}",
-        std::process::id(),
-        nanos
-    ));
+    let root = unique_temp_dir(name);
     std::fs::create_dir_all(root.join("sample")).expect("failed to create temp root");
     root
 }
@@ -617,7 +595,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-                retry_policy: None,
+
             })),
             is_interactive: false,
             resource_target: None,
@@ -641,7 +619,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-                retry_policy: None,
+
             })),
             is_interactive: false,
             resource_target: None,
@@ -665,7 +643,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-                retry_policy: None,
+
             })),
             is_interactive: false,
             resource_target: None,
@@ -1025,10 +1003,10 @@ fn compile_directory_sorts_lex_before_parse_diagnostics() {
     };
 
     let error = compile_from_context(&context).expect_err("compile should fail");
-    let first_diagnostic_line = error
-        .as_str()
+    let error_text = error.to_string();
+    let first_diagnostic_line = error_text
         .lines()
-        .find(|line| line.contains(".dag:"))
+        .find(|line: &&str| line.contains(".dag:"))
         .expect("expected at least one file diagnostic line");
     assert!(
         first_diagnostic_line.contains("z_lex.dag"),

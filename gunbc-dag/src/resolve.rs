@@ -32,9 +32,9 @@ use daglang_lower::{
 };
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
-use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
+use gunbc_ir::types::PortName;
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -74,13 +74,13 @@ fn execute_with_declared_output_passthrough(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
     for (key, value) in &inputs {
-        if key.starts_with("__out:") {
+        if key.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX) {
             continue;
         }
         outputs.insert(key.clone(), value.clone());
     }
     for port_name in output_port_names {
-        let passthrough_key = format!("__out:{port_name}");
+        let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
             outputs.insert(port_name.clone(), value.clone());
             continue;
@@ -296,7 +296,7 @@ impl Executable for SubDagDispatchOp {
                 input_mocks.set_input(node_id.0, port_name.0, value.clone());
                 continue;
             }
-            if port_name.0 == "__deps" {
+            if port_name.0 == PortName::DEPS {
                 input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
             }
         }
@@ -629,19 +629,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             outputs,
             service_metadata.as_deref(),
         ),
-        LoweredOp::LoopUnpack {
-            input_port,
-            element_port,
-        } => Ok(DynOp::new(PatternOp::LoopUnpack {
-            input_port: input_port.clone(),
-            element_port: element_port.clone(),
-        })),
-        LoweredOp::LoopPack { output_port } => Ok(DynOp::new(PatternOp::LoopPack {
-            output_port: output_port.clone(),
-        })),
-        LoweredOp::BranchMerge { output_port } => Ok(DynOp::new(PatternOp::BranchMerge {
-            output_port: output_port.clone(),
-        })),
+        LoweredOp::Pattern(pattern_op) => Ok(DynOp::new(pattern_op.clone())),
         LoweredOp::UnsupportedPattern { name } => Err(ResolveError {
             node_id: node_id.to_string(),
             reason: format!(
@@ -719,10 +707,9 @@ fn resolve_domain(
     //    Only route when the metadata has a concrete operation spec; nodes without
     //    specs (e.g., not-yet-implemented service operations) fall through to the
     //    passthrough default.
-    if name.starts_with("service_transport::") {
+    if let Some(transport_role) = TransportRole::from_name(name) {
         let has_spec = service_metadata.as_ref().is_some_and(|m| m.spec.is_some());
-        let is_execute = name.starts_with("service_transport::execute::");
-        if has_spec || is_execute {
+        if has_spec || transport_role == TransportRole::Execute {
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
         }
     }
@@ -900,6 +887,34 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
 // Service transport resolution
 // ============================================================================
 
+/// Structural classification of a service transport node's role.
+///
+/// Parsed once from the `service_transport::{role}::` name prefix, then
+/// dispatched on. Eliminates repeated `starts_with()` string checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportRole {
+    Prepare,
+    Execute,
+    Parse,
+}
+
+impl TransportRole {
+    /// Parse the transport role from a node name.
+    ///
+    /// Returns `None` for names that don't start with `service_transport::`.
+    fn from_name(name: &str) -> Option<Self> {
+        if name.starts_with("service_transport::execute::") {
+            Some(Self::Execute)
+        } else if name.starts_with("service_transport::prepare::") {
+            Some(Self::Prepare)
+        } else if name.starts_with("service_transport::parse::") {
+            Some(Self::Parse)
+        } else {
+            None
+        }
+    }
+}
+
 fn resolve_service_transport(
     node_id: &str,
     module: &str,
@@ -907,10 +922,12 @@ fn resolve_service_transport(
     _outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
+    let role = TransportRole::from_name(name);
+
     // Execute nodes: for InterfaceStub specs, use the stub execute op
     // (errors in Real mode, auto-mocked in DryRun). All others use the
     // standard transport executor.
-    if name.starts_with("service_transport::execute::") {
+    if role == Some(TransportRole::Execute) {
         if let Some(metadata) = service_metadata {
             if let Some(ServiceOperationSpec::InterfaceStub {
                 interface,
@@ -929,16 +946,13 @@ fn resolve_service_transport(
     // Generic dispatch: use the spec from service_metadata to select interpreter.
     if let Some(metadata) = service_metadata {
         if let Some(spec) = &metadata.spec {
-            let is_prepare = name.starts_with("service_transport::prepare::");
-            let is_parse = name.starts_with("service_transport::parse::");
-
-            match (spec, is_prepare, is_parse) {
-                (ServiceOperationSpec::Rest(rest_spec), true, _) => {
+            match (spec, role) {
+                (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericRestPrepareOp {
                         spec: rest_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Rest(rest_spec), _, true) => {
+                (ServiceOperationSpec::Rest(rest_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericRestParseOp {
                         spec: rest_spec.clone(),
                         service_name: metadata.service.clone(),
@@ -947,34 +961,34 @@ fn resolve_service_transport(
                         permissions: metadata.permissions.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Shell(shell_spec), true, _) => {
+                (ServiceOperationSpec::Shell(shell_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericShellPrepareOp {
                         spec: shell_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Shell(shell_spec), _, true) => {
+                (ServiceOperationSpec::Shell(shell_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericShellParseOp {
                         spec: shell_spec.clone(),
                         service_name: metadata.service.clone(),
                         operation_name: metadata.operation.clone(),
                     }));
                 }
-                (ServiceOperationSpec::File(file_spec), true, _) => {
+                (ServiceOperationSpec::File(file_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericFilePrepareOp {
                         spec: file_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::File(file_spec), _, true) => {
+                (ServiceOperationSpec::File(file_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericFileParseOp {
                         spec: file_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Local(local_spec), true, _) => {
+                (ServiceOperationSpec::Local(local_spec), Some(TransportRole::Prepare)) => {
                     return Ok(DynOp::new(GenericLocalPrepareOp {
                         spec: local_spec.clone(),
                     }));
                 }
-                (ServiceOperationSpec::Local(local_spec), _, true) => {
+                (ServiceOperationSpec::Local(local_spec), Some(TransportRole::Parse)) => {
                     return Ok(DynOp::new(GenericLocalParseOp {
                         spec: local_spec.clone(),
                     }));
@@ -985,8 +999,7 @@ fn resolve_service_transport(
                         interface,
                         capability,
                     },
-                    true,
-                    _,
+                    Some(TransportRole::Prepare),
                 ) => {
                     return Ok(DynOp::new(crate::resolve_service::InterfaceStubPrepareOp {
                         interface: interface.clone(),
@@ -998,8 +1011,7 @@ fn resolve_service_transport(
                         interface,
                         capability,
                     },
-                    _,
-                    true,
+                    Some(TransportRole::Parse),
                 ) => {
                     return Ok(DynOp::new(crate::resolve_service::InterfaceStubParseOp {
                         interface: interface.clone(),
@@ -1061,7 +1073,7 @@ fn needs_transport_resource(
             kind: PrimitiveOpKind::IoExecuteFileRead,
             ..
         }) => AccessMode::Read,
-        _ if lowered.kind == Some(gunbc_ir::NodeKind::TransportExecute) => {
+        _ if lowered.kind == gunbc_ir::NodeKind::TransportExecute => {
             // Service transport execute nodes need filesystem access.
             AccessMode::Read
         }
@@ -1487,7 +1499,7 @@ mod tests {
                 output_parsing: ShellOutputParsing::ExitCodeBool,
                 env: vec![],
             })),
-            retry_policy: None,
+
         }
     }
 
@@ -1538,7 +1550,7 @@ mod tests {
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
                 env: vec![],
             })),
-            retry_policy: None,
+
         }
     }
 
@@ -1768,9 +1780,10 @@ mod tests {
                 body_template: None,
                 headers: vec![],
                 auth_scheme: None,
-                error_mappings: vec![],
+                auth_input: None,
+
             })),
-            retry_policy: None,
+
         }
     }
 
@@ -1830,9 +1843,10 @@ mod tests {
                 body_template: None,
                 headers: vec![],
                 auth_scheme: None,
-                error_mappings: vec![],
+                auth_input: None,
+
             })),
-            retry_policy: None,
+
         }
     }
 

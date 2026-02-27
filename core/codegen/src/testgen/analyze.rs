@@ -117,7 +117,7 @@ pub fn analyze_dag_with_obligations<T>(
 fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
     dag.nodes
         .iter()
-        .filter(|n| n.kind == Some(NodeKind::TransportExecute))
+        .filter(|n| n.kind == NodeKind::TransportExecute)
         .map(|n| n.id.0.clone())
         .collect()
 }
@@ -126,7 +126,7 @@ fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
 fn find_tool_env_nodes<T>(dag: &Dag<T>) -> Vec<String> {
     dag.nodes
         .iter()
-        .filter(|n| n.kind == Some(NodeKind::ToolEnvironment))
+        .filter(|n| n.kind == NodeKind::ToolEnvironment)
         .map(|n| n.id.0.clone())
         .collect()
 }
@@ -164,7 +164,7 @@ fn find_pure_nodes<T>(
         .filter(|n| {
             let id = &n.id.0;
             // SubDag nodes are composite — not pure opaque nodes.
-            let is_tool_consumer = n.kind == Some(NodeKind::ToolConsumer);
+            let is_tool_consumer = n.kind == NodeKind::ToolConsumer;
             n.is_opaque()
                 && !transport_executors.contains(id)
                 && !tool_env_nodes.contains(id)

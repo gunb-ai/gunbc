@@ -1,12 +1,10 @@
 //! DSL-evaluated fidelity classification.
 //!
-//! Compiles `config/test_policy.dag`, extracts fn bodies and data
-//! declarations, then evaluates `classify_from_facts()` to produce
-//! test tier / depth / hermetic classification from structural graph facts.
-//!
-//! The Rust layer pre-aggregates transport classes (max depth, all-hermetic)
-//! before calling DSL. This split avoids the lowerer limitation where `fold`
-//! operations in fn bodies prevent `fn_body` extraction.
+//! Compiles `std/fidelity.dag` and evaluates `classify_transports()` to
+//! produce test tier / depth / hermetic classification from structural graph
+//! facts. All aggregation (max depth via fold, all-hermetic) now happens in
+//! the DSL — the Rust side only converts `ServiceTransportClass` to DSL
+//! values and interprets the result.
 //!
 //! Follows the proven pattern from `pragma/dsl_render.rs`.
 
@@ -28,18 +26,16 @@ pub struct FidelityClassification {
     pub hermetic: bool,
 }
 
-/// Compile `config/test_policy.dag` and extract fn bodies + data values.
-fn compile_test_policy() -> (
-    HashMap<String, LoweredFnBody>,
-    HashMap<String, serde_json::Value>,
-) {
+/// Compile `std/fidelity.dag` and extract fn bodies (including transitive
+/// imports from `std/fermi.dag`).
+fn compile_fidelity() -> HashMap<String, LoweredFnBody> {
     let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
-    let dag_file = dsl_root.join("config/test_policy.dag");
+    let dag_file = dsl_root.join("std/fidelity.dag");
     let context = DriverContext {
         roots: vec![dsl_root],
         target_file: Some(dag_file),
     };
-    let output = compile_from_context(&context).expect("test_policy.dag should compile");
+    let output = compile_from_context(&context).expect("std/fidelity.dag should compile");
 
     let mut fns = HashMap::new();
     for node in &output.lowered_dag.nodes {
@@ -54,76 +50,46 @@ fn compile_test_policy() -> (
         }
     }
 
-    (fns, output.data_values)
+    fns
 }
 
-/// Ordinal for a transport class (matches DSL `transport_depth` ordering).
-fn transport_depth_ordinal(tc: &ServiceTransportClass) -> u8 {
-    match tc {
-        ServiceTransportClass::LocalDirect | ServiceTransportClass::InterfaceStub => 0,
-        ServiceTransportClass::ShellLocal | ServiceTransportClass::FileBoundary => 1,
-        ServiceTransportClass::RestNetwork => 3,
-        ServiceTransportClass::Unknown => 4,
-    }
+/// Convert a `ServiceTransportClass` to the DSL `TransportClass` variant name.
+fn transport_class_to_dsl(tc: &ServiceTransportClass) -> Value {
+    Value::Str(match tc {
+        ServiceTransportClass::LocalDirect => "LocalDirect",
+        ServiceTransportClass::InterfaceStub => "InterfaceStub",
+        ServiceTransportClass::ShellLocal => "ShellLocal",
+        ServiceTransportClass::FileBoundary => "FileBoundary",
+        ServiceTransportClass::RestNetwork => "RestNetwork",
+        ServiceTransportClass::Unknown => "Unknown",
+    }.to_string())
 }
 
-/// Depth string for a transport class.
-fn transport_depth_str(tc: &ServiceTransportClass) -> &'static str {
-    match tc {
-        ServiceTransportClass::LocalDirect | ServiceTransportClass::InterfaceStub => "XS",
-        ServiceTransportClass::ShellLocal | ServiceTransportClass::FileBoundary => "S",
-        ServiceTransportClass::RestNetwork => "L",
-        ServiceTransportClass::Unknown => "XL",
-    }
-}
-
-/// Whether a transport class is hermetic (can be mocked in DryRun).
-fn transport_is_hermetic(tc: &ServiceTransportClass) -> bool {
-    matches!(
-        tc,
-        ServiceTransportClass::LocalDirect
-            | ServiceTransportClass::InterfaceStub
-            | ServiceTransportClass::ShellLocal
-            | ServiceTransportClass::FileBoundary
-    )
-}
-
-/// Classify a callable using DSL-evaluated policy.
+/// Classify a callable using DSL-evaluated `classify_transports()`.
 ///
-/// Pre-aggregates transport facts in Rust (max depth, all-hermetic),
-/// then evaluates `classify_from_facts()` from `config/test_policy.dag`.
+/// Converts transport classes to DSL values and evaluates the full
+/// classification pipeline in DSL — including fold-based max depth
+/// and all-hermetic checks.
 pub fn classify_callable(props: &CallableProperties) -> FidelityClassification {
-    let (fns, _data) = compile_test_policy();
+    let fns = compile_fidelity();
 
-    // Rust-side aggregation: max depth, all-hermetic
-    let max_depth = props
+    let transports: Vec<Value> = props
         .transport_classes
         .iter()
-        .max_by_key(|tc| transport_depth_ordinal(tc))
-        .map(|tc| transport_depth_str(tc))
-        .unwrap_or("XS");
+        .map(transport_class_to_dsl)
+        .collect();
 
-    let hermetic = props
-        .transport_classes
-        .iter()
-        .all(transport_is_hermetic);
-
-    let has_transports = !props.transport_classes.is_empty();
-
-    // DSL-side classification: tier from facts
     let mut inputs = HashMap::new();
-    inputs.insert("max_depth".to_string(), Value::Str(max_depth.to_string()));
-    inputs.insert("hermetic".to_string(), Value::Bool(hermetic));
-    inputs.insert("has_transports".to_string(), Value::Bool(has_transports));
+    inputs.insert("transports".to_string(), Value::List(transports));
 
     let body = fns
-        .get("classify_from_facts")
-        .expect("classify_from_facts fn body should exist in test_policy.dag");
+        .get("classify_transports")
+        .expect("classify_transports fn body should exist in std/fidelity.dag");
     let result = daglang_lower::eval::evaluate_fn_body(body, &inputs, &fns)
-        .expect("classify_from_facts should evaluate");
+        .expect("classify_transports should evaluate");
 
     let test_class = result
-        .get("tier")
+        .get("test_class")
         .and_then(Value::as_str)
         .and_then(TestClass::parse)
         .unwrap_or(TestClass::Unit);
@@ -188,7 +154,7 @@ pub fn classify_module(
     for props in callable_properties.values() {
         all_classes.extend(props.transport_classes.iter().cloned());
     }
-    all_classes.sort_by_key(transport_depth_ordinal);
+    all_classes.sort();
     all_classes.dedup();
 
     let aggregate = CallableProperties {

@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 /// Set by the lowerer (from `ObligationCategory`) and read by the executor,
 /// testgen, and derive — replacing the duplicated port-type heuristics
 /// (`type_id.0 == "TransportRequest"`, etc.) with a single source of truth.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum NodeKind {
     /// Executes transport I/O (consumes TransportRequest).
     TransportExecute,
@@ -33,7 +33,18 @@ pub enum NodeKind {
     /// Releases a resource.
     ResourceRelease,
     /// Pure computation (no I/O boundary).
+    #[default]
     Pure,
+}
+
+impl NodeKind {
+    /// Whether this node participates in a transport triplet (prepare/execute/parse).
+    pub fn is_transport(&self) -> bool {
+        matches!(
+            self,
+            NodeKind::TransportPrepare | NodeKind::TransportExecute | NodeKind::TransportParse
+        )
+    }
 }
 
 /// A node in the DAG, generic over its operation type.
@@ -75,13 +86,11 @@ pub struct Node<T> {
     /// Set by the lowerer from `ObligationCategory`. The executor reads this
     /// instead of re-deriving node kind from port type strings.
     ///
-    /// `None` means the node has not yet been classified. The executor treats
-    /// `None` as non-effectful for interception purposes and the resource
-    /// validator skips it — so **all effectful nodes must have `kind` set**
-    /// before reaching the executor. Use [`with_kind`](Self::with_kind) for
-    /// hand-built DAGs.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<NodeKind>,
+    /// Defaults to `Pure` for backward compatibility with serialized DAGs
+    /// that predate this field. The lowerer stamps all nodes via
+    /// `stamp_node_kinds()` before they reach the executor.
+    #[serde(default)]
+    pub kind: NodeKind,
 }
 
 impl<T> Node<T> {
@@ -94,7 +103,7 @@ impl<T> Node<T> {
             body: NodeBody::Opaque(op),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         }
     }
 
@@ -163,7 +172,7 @@ impl<T> Node<T> {
             body: NodeBody::SubDag(dag),
             examples: Vec::new(),
             log_detail: None,
-            kind: None,
+            kind: NodeKind::Pure,
         }
     }
 
@@ -212,7 +221,7 @@ impl<T> Node<T> {
 
     /// Set the structural node kind.
     pub fn with_kind(mut self, kind: NodeKind) -> Self {
-        self.kind = Some(kind);
+        self.kind = kind;
         self
     }
 

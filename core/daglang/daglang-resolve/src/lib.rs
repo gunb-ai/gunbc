@@ -22,11 +22,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use daglang_syntax::ast::SourceFile;
+use daglang_syntax::ast::{ModulePath, SourceFile};
 use daglang_syntax::diagnostic::Diagnostic;
 use daglang_syntax::parser;
 
-type ParsedModuleRecord = (PathBuf, Vec<String>, Vec<Vec<String>>, SourceFile);
+type ParsedModuleRecord = (PathBuf, ModulePath, Vec<ModulePath>, SourceFile);
 
 /// Strict check for `.dag` file extension (lowercase only).
 pub fn has_dag_extension(path: &Path) -> bool {
@@ -60,8 +60,8 @@ pub struct ResolvedModule {
     pub path: PathBuf,
     /// Parsed AST (unresolved).
     pub ast: SourceFile,
-    /// Module path segments (e.g., `["infra", "gcp", "resources"]`).
-    pub module_path: Vec<String>,
+    /// Module path (e.g., `infra.gcp.resources`).
+    pub module_path: ModulePath,
     /// Indices of modules this module depends on (via `import`).
     pub dependencies: Vec<usize>,
 }
@@ -135,12 +135,12 @@ impl ModuleGraph {
                     let mod_path = ast
                         .module_path
                         .as_ref()
-                        .map(|mp| mp.node.segments.clone())
+                        .map(|mp| mp.node.clone())
                         .unwrap_or_else(|| path_to_module_path(path, roots, &canonical_roots));
-                    let imports: Vec<Vec<String>> = ast
+                    let imports: Vec<ModulePath> = ast
                         .imports
                         .iter()
-                        .map(|imp| imp.node.path.segments.clone())
+                        .map(|imp| imp.node.path.clone())
                         .collect();
                     parsed.push((path.clone(), mod_path, imports, ast));
                 }
@@ -154,7 +154,7 @@ impl ModuleGraph {
             return Err(ResolveError::ParseErrors(parse_errors));
         }
 
-        let mut mod_index: HashMap<Vec<String>, usize> = HashMap::new();
+        let mut mod_index: HashMap<ModulePath, usize> = HashMap::new();
         for (i, (_, mp, _, _)) in parsed.iter().enumerate() {
             if mod_index.insert(mp.clone(), i).is_some() {
                 return Err(ResolveError::DuplicateModule(mp.clone()));
@@ -186,7 +186,7 @@ impl ModuleGraph {
     pub fn display_tree(&self) -> String {
         let mut out = String::new();
         for m in &self.modules {
-            let path_str = m.module_path.join(".");
+            let path_str = m.module_path.as_dotted();
             let dep_count = m.dependencies.len();
             let n_items = m.ast.items.len();
             writeln!(
@@ -237,12 +237,14 @@ fn collect_dag_files(
 
 /// Derive a module path from a filesystem path relative to any root.
 /// `dsl/tools/makegen.dag` with root `dsl/` -> `["tools", "makegen"]`
-pub fn relative_path_to_module_path(relative: &Path) -> Vec<String> {
-    relative
-        .with_extension("")
-        .components()
-        .filter_map(|component| component.as_os_str().to_str().map(|s| s.replace('-', "_")))
-        .collect()
+pub fn relative_path_to_module_path(relative: &Path) -> ModulePath {
+    ModulePath::new(
+        relative
+            .with_extension("")
+            .components()
+            .filter_map(|component| component.as_os_str().to_str().map(|s| s.replace('-', "_")))
+            .collect(),
+    )
 }
 
 /// Pick the shorter (or lexicographically smaller) relative path.
@@ -292,7 +294,7 @@ pub fn path_to_module_path(
     path: &Path,
     roots: &[PathBuf],
     canonical_roots: &[PathBuf],
-) -> Vec<String> {
+) -> ModulePath {
     let canonical_path = std::fs::canonicalize(path).ok();
     let mut best_relative: Option<PathBuf> = None;
     for root in roots {
@@ -313,11 +315,11 @@ pub fn path_to_module_path(
     if let Some(relative) = best_relative {
         return relative_path_to_module_path(&relative);
     }
-    vec![path
+    ModulePath::new(vec![path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown")
-        .to_string()]
+        .to_string()])
 }
 
 /// Stable topological sort: leaves (no deps) first.
@@ -411,13 +413,13 @@ pub enum ResolveError {
     ParseErrors(Vec<(PathBuf, Vec<Diagnostic>)>),
     /// An import references a module that doesn't exist.
     UnresolvedImport {
-        importing_module: Vec<String>,
-        target: Vec<String>,
+        importing_module: ModulePath,
+        target: ModulePath,
     },
     /// Circular dependency detected.
-    CyclicDependency(Vec<Vec<String>>),
+    CyclicDependency(Vec<ModulePath>),
     /// Duplicate module path.
-    DuplicateModule(Vec<String>),
+    DuplicateModule(ModulePath),
     /// Discovery root path is invalid.
     InvalidRootPath { path: PathBuf, reason: String },
     /// A `.dag` file has wrong-cased extension (e.g., `.DAG`, `.DaG`).
@@ -443,23 +445,18 @@ impl std::fmt::Display for ResolveError {
             Self::UnresolvedImport {
                 importing_module,
                 target,
-            } => write!(
-                f,
-                "unresolved import: {} -> {}",
-                importing_module.join("."),
-                target.join(".")
-            ),
+            } => write!(f, "unresolved import: {importing_module} -> {target}"),
             Self::CyclicDependency(cycle) => {
                 write!(f, "cyclic dependency: ")?;
                 for (i, m) in cycle.iter().enumerate() {
                     if i > 0 {
                         write!(f, " -> ")?;
                     }
-                    write!(f, "{}", m.join("."))?;
+                    write!(f, "{m}")?;
                 }
                 Ok(())
             }
-            Self::DuplicateModule(path) => write!(f, "duplicate module: {}", path.join(".")),
+            Self::DuplicateModule(path) => write!(f, "duplicate module: {path}"),
             Self::InvalidRootPath { path, reason } => {
                 write!(f, "invalid discovery root {}: {reason}", path.display())
             }

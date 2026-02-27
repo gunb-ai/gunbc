@@ -206,7 +206,7 @@ impl Subcommand {
 ///
 /// The codegen binary has multiple modes of operation, selected via
 /// a positional subcommand argument.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, gunbc_delegate_macros::StringEnum)]
 pub enum CodegenSubcommand {
     /// Default: full commit (generate CLIs, build binaries, create bin directory).
     #[default]
@@ -219,19 +219,6 @@ pub enum CodegenSubcommand {
     Cigen,
     /// Remove all generated artifacts.
     Rollback,
-}
-
-impl CodegenSubcommand {
-    /// The subcommand string as used on the command line.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Commit => "commit",
-            Self::Codegen => "codegen",
-            Self::Daggen => "daggen",
-            Self::Cigen => "cigen",
-            Self::Rollback => "rollback",
-        }
-    }
 }
 
 /// Binary-specific arguments.

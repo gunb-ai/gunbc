@@ -264,8 +264,9 @@ pattern credential_chain(
     lifetime_seconds: lifetime_seconds
   )
 
-  // Step 4: Access the secret
+  // Step 4: Access the secret (using impersonated token for auth)
   node secret: gcp.SecretManager.AccessVersion(
+    access_token: impersonated.token,
     project_id: project_id,
     secret: secret_name
   )
@@ -423,13 +424,14 @@ fn add_iam_binding(bindings: Json, service_account: String, role: String) -> { u
 }
 
 func iam_preflight_check(
+  access_token: Secret,
   project_id: ProjectId,
   service_account: ServiceAccountEmail,
   required_role: NonEmptyStr
 ) -> { ok: Bool }
   uses net: Network
 {
-  policy = gcp.ResourceManager.GetIamPolicy(project_id: project_id)
+  policy = gcp.ResourceManager.GetIamPolicy(access_token: access_token, project_id: project_id)
 
   has_binding = check_iam_binding(
     bindings: policy.bindings,
@@ -444,6 +446,7 @@ func iam_preflight_check(
       role: required_role
     )
     gcp.ResourceManager.SetIamPolicy(
+      access_token: access_token,
       project_id: project_id,
       bindings: updated.updated_bindings,
       etag: policy.etag

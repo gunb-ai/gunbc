@@ -1,12 +1,8 @@
 // config/test_policy.dag -- Repo-specific test classification policy.
 //
-// Self-contained classification logic evaluated at compile time via
-// evaluate_fn_body(). The Rust consumer (fidelity.rs) computes the
-// max transport class via Rust aggregation, then calls classify_single()
-// with the dominant transport class.
-//
-// The abstract vocabulary types live in std/fermi.dag and std/fidelity.dag
-// for documentation and future use when the evaluator gains full support.
+// Classification logic lives in std/fidelity.dag (classify_transports),
+// evaluated at compile time via evaluate_fn_body(). This file provides
+// repo-specific policy knobs: budget thresholds and budget checking.
 //
 // Like build_policy.dag is this repo's build choices, test_policy.dag is
 // this repo's test classification choices.
@@ -21,31 +17,7 @@ data default_ci_budget: FermiDepth = Xl
 // Default local budget (skip expensive tests locally)
 data default_local_budget: FermiDepth = S
 
-// --- Transport cost mapping ------------------------------------------
-
-fn transport_depth(tc: String) -> String {
-  match tc {
-    "LocalDirect"   => "XS"
-    "InterfaceStub" => "XS"
-    "ShellLocal"    => "S"
-    "FileBoundary"  => "S"
-    "RestNetwork"   => "L"
-    _               => "XL"
-  }
-}
-
-fn transport_hermetic(tc: String) -> Bool {
-  match tc {
-    "LocalDirect"   => true
-    "InterfaceStub" => true
-    "ShellLocal"    => true
-    "FileBoundary"  => true
-    "RestNetwork"   => false
-    _               => false
-  }
-}
-
-// --- Ordinal for depth comparison (used by Rust aggregation) ---------
+// --- Budget comparison -----------------------------------------------
 
 fn depth_ordinal(depth: String) -> Int {
   match depth {
@@ -56,31 +28,6 @@ fn depth_ordinal(depth: String) -> Int {
     "XL" => 4
     _    => 5
   }
-}
-
-// --- Classification --------------------------------------------------
-
-// Classify a callable given pre-aggregated structural facts.
-// The Rust consumer computes: max_depth (biggest transport class),
-// hermetic (all transports hermetic?), and passes them here.
-fn classify_from_facts(
-  max_depth: String,
-  hermetic: Bool,
-  has_transports: Bool,
-) -> {
-  tier: String,
-  depth: String,
-  hermetic: Bool,
-} {
-  let tier = if has_transports {
-    if hermetic { "Hermetic" } else { "Integration" }
-  } else {
-    "Unit"
-  }
-  let depth = if has_transports { max_depth } else { "XS" }
-  let h = if has_transports { hermetic } else { true }
-
-  return { tier: tier, depth: depth, hermetic: h }
 }
 
 // Check if a depth string is within a budget string.

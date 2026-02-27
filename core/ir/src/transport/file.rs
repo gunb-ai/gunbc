@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// File operation type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum FileOp {
     /// Read file contents as UTF-8 text
     Read,
@@ -23,6 +23,24 @@ pub enum FileOp {
     Glob,
     /// Fetch file metadata (content = modified millis since epoch)
     Metadata,
+}
+
+impl FileOp {
+    /// Parse a DSL file operation string (e.g. "READ", "WRITE") into a typed `FileOp`.
+    pub fn from_dsl_str(s: &str) -> Option<Self> {
+        match s {
+            "READ" => Some(Self::Read),
+            "READ_BYTES" => Some(Self::ReadBytes),
+            "WRITE" => Some(Self::Write),
+            "APPEND" => Some(Self::Append),
+            "DELETE" => Some(Self::Delete),
+            "EXISTS" => Some(Self::Exists),
+            "CREATE_DIR" => Some(Self::CreateDir),
+            "GLOB" => Some(Self::Glob),
+            "METADATA" => Some(Self::Metadata),
+            _ => None,
+        }
+    }
 }
 
 /// File operation request.
@@ -287,5 +305,19 @@ mod tests {
         let req = FileRequest::metadata("Cargo.toml");
         assert_eq!(req.operation, FileOp::Metadata);
         assert_eq!(req.path, "Cargo.toml");
+    }
+
+    #[test]
+    fn test_file_op_from_dsl_str() {
+        assert_eq!(FileOp::from_dsl_str("READ"), Some(FileOp::Read));
+        assert_eq!(FileOp::from_dsl_str("READ_BYTES"), Some(FileOp::ReadBytes));
+        assert_eq!(FileOp::from_dsl_str("WRITE"), Some(FileOp::Write));
+        assert_eq!(FileOp::from_dsl_str("APPEND"), Some(FileOp::Append));
+        assert_eq!(FileOp::from_dsl_str("DELETE"), Some(FileOp::Delete));
+        assert_eq!(FileOp::from_dsl_str("EXISTS"), Some(FileOp::Exists));
+        assert_eq!(FileOp::from_dsl_str("CREATE_DIR"), Some(FileOp::CreateDir));
+        assert_eq!(FileOp::from_dsl_str("GLOB"), Some(FileOp::Glob));
+        assert_eq!(FileOp::from_dsl_str("METADATA"), Some(FileOp::Metadata));
+        assert_eq!(FileOp::from_dsl_str("unknown"), None);
     }
 }

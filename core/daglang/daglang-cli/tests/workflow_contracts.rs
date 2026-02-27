@@ -2,12 +2,12 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use gunbc_ir::WorkspaceLayout;
+use gunbc_test::unique_temp_dir;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 struct WorkflowFixture {
     scenario: &'static str,
@@ -215,17 +215,6 @@ fn load_fixture(path: &Path) -> Value {
         .unwrap_or_else(|err| panic!("failed to read fixture {}: {err}", path.display()));
     serde_json::from_str(&raw)
         .unwrap_or_else(|err| panic!("invalid fixture json {}: {err}", path.display()))
-}
-
-fn unique_temp_dir(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "daglang_workflow_contracts_{label}_{}_{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock should be after unix epoch")
-            .as_nanos()
-    ))
 }
 
 #[test]

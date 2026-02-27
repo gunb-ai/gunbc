@@ -102,6 +102,7 @@ pub fn build_openai_request(chat: &ChatRequest) -> RestRequest {
         auth: None,
         query: Default::default(),
         timeout_ms: Some(120_000),
+        requires_auth: false,
     }
 }
 

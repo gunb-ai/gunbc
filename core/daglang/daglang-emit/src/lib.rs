@@ -35,6 +35,9 @@ pub mod rust_exec_runtime; // Task 3: Exec-runtime fast path
 // Wave 2
 pub mod plan; // Task 4: EmitPlan builder
 
+// Shared type mapping tables (RT28).
+pub mod type_mapping;
+
 // Wave 3 (Tasks 8-11): AbstractIR lowering pipeline.
 pub mod lower_c;
 pub mod lower_go;
@@ -312,9 +315,7 @@ pub fn emit_rust_bundle(
                 let fn_name = sanitize_identifier(&format!("{module}_{name}"));
                 emitted_functions.push(backend.emit_func(&fn_name));
             }
-            LoweredOp::LoopUnpack { .. }
-            | LoweredOp::LoopPack { .. }
-            | LoweredOp::BranchMerge { .. }
+            LoweredOp::Pattern(_)
             | LoweredOp::UnsupportedPattern { .. }
             | LoweredOp::ExternCall { .. } => {}
         }
@@ -694,9 +695,7 @@ fn collect_symbols_with_metadata(
                     service_phase: None,
                 });
             }
-            LoweredOp::LoopUnpack { .. }
-            | LoweredOp::LoopPack { .. }
-            | LoweredOp::BranchMerge { .. }
+            LoweredOp::Pattern(_)
             | LoweredOp::UnsupportedPattern { .. }
             | LoweredOp::ExternCall { .. } => {}
         }
@@ -1096,7 +1095,8 @@ mod tests {
             body_template: None,
             headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
             auth_scheme: None,
-            error_mappings: vec![],
+            auth_input: None,
+
         });
 
         let shell_spec = ServiceOperationSpec::Shell(ShellOperationSpec {
@@ -1131,7 +1131,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec.clone()),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1157,7 +1157,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec.clone()),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1183,7 +1183,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1209,7 +1209,7 @@ mod tests {
                     readonly: false,
                     permissions: vec![],
                     spec: Some(shell_spec.clone()),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1235,7 +1235,7 @@ mod tests {
                     readonly: false,
                     permissions: vec![],
                     spec: Some(shell_spec),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,

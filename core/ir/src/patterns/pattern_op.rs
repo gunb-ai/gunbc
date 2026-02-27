@@ -11,6 +11,7 @@ use std::time::Duration;
 /// Internal operation variants for pattern-generated nodes.
 #[derive(Debug, Clone)]
 pub enum PatternOp {
+    // ── NOTE: When adding new variants, update `kind_name()` below. ──
     /// Merge results from a Branch true/false subdag.
     BranchMerge { output_port: String },
     /// Unpack a list input for Loop patterns.
@@ -40,4 +41,21 @@ pub enum PatternOp {
     },
     /// Poll result collector.
     PollCollector { output_port: String },
+}
+
+impl PatternOp {
+    /// Human-readable variant name for display/rendering.
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            PatternOp::BranchMerge { .. } => "BranchMerge",
+            PatternOp::LoopUnpack { .. } => "LoopUnpack",
+            PatternOp::LoopPack { .. } => "LoopPack",
+            PatternOp::RetryController { .. } => "RetryController",
+            PatternOp::RetryCollector { .. } => "RetryCollector",
+            PatternOp::WhileInit { .. } => "WhileInit",
+            PatternOp::WhileController { .. } => "WhileController",
+            PatternOp::PollTimer { .. } => "PollTimer",
+            PatternOp::PollCollector { .. } => "PollCollector",
+        }
+    }
 }

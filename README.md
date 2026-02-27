@@ -35,7 +35,7 @@ gunbc is a **DSL-first workflow compiler** where **everything is a DAG**. The pr
 
 ### Compositional modeling
 
-Every external system is modeled as a **composition of layered concerns** (TCP → TLS → HTTP → REST → provider → operation), where each layer imposes invariants on the generated code. Workflows name only the top layer; the compiler composes all layers into transport code, mocks, and test obligations. DSL annotations (`@rest`, `@auth`, `@endpoint`, `@permissions`, `@idempotent`) are the mechanism — each annotation adds constraints that compose additively. Where the Rust substrate currently hand-wires what the DSL can derive (credential chains, transport triplets), those are active consolidation targets. See `docs/handbook.md` § "Compositional Modeling Philosophy" for the full treatment with examples.
+Every external system is modeled as a **composition of layered concerns** (TCP → TLS → HTTP → REST → provider → operation), where each layer imposes invariants on the generated code. Workflows name only the top layer; the compiler composes all layers into transport code, mocks, and test obligations. DSL structural blocks and keywords are the mechanism — `transport rest { ... }` (transport class), `config { endpoint: ..., auth: ... }` (service config), `readonly`/`idempotent` (behavioral properties) — each adds constraints that compose additively. Where the Rust substrate currently hand-wires what the DSL can derive (credential chains, transport triplets, error classification), those are active consolidation targets. See `docs/handbook.md` § "Compositional Modeling Philosophy" and `docs/design/modeling/annotation-to-dag-modeling.md` for the full treatment.
 
 ## Repo Map
 
@@ -71,14 +71,14 @@ Every external system is modeled as a **composition of layered concerns** (TCP �
 - Tool handles are capability-based. When used, they flow through `tool:<id>` ports.
 - Tool ports are excluded from user-facing workflow signatures.
 - Errors are explicit; there are no silent fallbacks or warning-only failures.
-- External systems are layered compositions — each DSL annotation (`@rest`, `@auth`, `@endpoint`, etc.) adds invariants that the compiler enforces in generated code, mocks, and tests.
-- Generated files are never committed — the compiler extracts all output paths from `content_upsert` and `@outputs` annotations, propagates them to the tool registry and `.gitignore`, and CI enforces that no generated file is tracked in git.
+- External systems are layered compositions — each DSL structural block (`transport rest { ... }`, `config { auth: ... }`, `response { ... }`) and keyword (`readonly`, `idempotent`) adds invariants that the compiler enforces in generated code, mocks, and tests.
+- Generated files are never committed — the compiler extracts all output paths from `content_upsert` and `outputs` declarations, propagates them to the tool registry and `.gitignore`, and CI enforces that no generated file is tracked in git.
 
 ## Common Tasks
 
 ### DSL-first (primary path)
 
-- **Add a new REST/Shell service:** Create `dsl/services/<provider>/<name>.dag` with `service` block and `operation` definitions. Identify the full layer stack (protocol, auth, provider, operation) and express each layer's invariants via annotations: `@endpoint` (provider), `@auth` (auth scheme), `@rest`/`@shell` (transport), `@permissions` (scopes), `@idempotent`/`@readonly` (behavioral properties), `@mock_response` (test data). Each annotation composes — the compiler generates transport code reflecting all layers.
+- **Add a new REST/Shell service:** Create `dsl/services/<provider>/<name>.dag` with `service` block and `operation` definitions. Identify the full layer stack (protocol, auth, provider, operation) and express each layer's invariants via structural blocks and keywords: `config { endpoint: ..., auth: ... }` (provider config), `transport rest { method: ..., path: ... }` or `transport shell { argv: [...] }` (transport class), `readonly`/`idempotent` (behavioral properties), `response { STATUS => TYPE }` (provider contract). Each block composes — the compiler generates transport code reflecting all layers.
 - **Add a new tool workflow:** Create `dsl/tools/<name>.dag` — import services, define `fn` (pure) and `func` (effectful) blocks. Use `uses` declarations for resource/capability requirements — the compiler resolves them transitively.
 - **Add a new pipeline:** Create `dsl/pipelines/<name>.dag` — import tools, define `pipeline` block with `stage` dependencies.
 
@@ -106,7 +106,7 @@ The `the-gunbai` repo contains the original design rationale, long-form design d
 - **LanguageUnderstanding** — language-agnostic specs mapped to Rust/Python/TypeScript via structured type/syntax/naming tables. Same generator, multiple backends.
 - **External dependency modeling** — tools declare runtime requirements (`uses net: Network`) and the system resolves prerequisites transitively.
 
-gunbc's DSL achieves ~80% of this via interface contracts, annotation composition, and `uses` declarations. The remaining gap is in the Rust substrate, where graph builders hand-wire what the DSL could derive. Active consolidation lanes target this gap (see `tasks.md`).
+gunbc's DSL achieves ~80% of this via interface contracts, structural block composition (`transport`, `config`, `response`), and `uses` declarations. The remaining gap is in the Rust substrate, where graph builders hand-wire what the DSL could derive. Active consolidation lanes target this gap (see `tasks.md`).
 
 ---
 
@@ -266,25 +266,40 @@ chars |> fold(init: { result: "" }, f: (acc, c) => acc with { result: acc.result
 
 **Escape sequences**: `\n`, `\t`, `\x1b[0m` (ANSI), `\\`.
 
+### Service Blocks and Keywords
+
+Transport, auth, and behavioral properties are expressed via **structural blocks and keywords**, not `@` annotations:
+
+**Transport blocks** (on operations):
+```
+transport rest { method: POST, path: "/gists" }
+transport shell { argv: ["cargo", "build", "--all-targets"] }
+transport file { op: PROBE, path: "{path}" }
+```
+
+**Service config** (on services):
+```
+config { endpoint: "https://api.github.com", auth: BearerToken, auth_input: auth_token }
+```
+
+**Behavioral keywords** (on operations): `readonly`, `idempotent`, `hermetic`
+
+**Contract declarations** (on interfaces): `contract get(id) after create(title, body, labels) => { found: true }`
+
 ### Annotations
 
-**Transport**: `@rest(METHOD, "/path")`, `@shell(["cmd", "arg"])`, `@file(PROBE, "{path}")`
-
-**Service**: `@endpoint("url")`, `@auth(BearerToken)`, `@auth(Header("x-api-key"))`, `@permissions(["scope"])`
-
-**Behavioral**: `@idempotent`, `@readonly`, `@hermetic`
-
-**Request shaping**: `@body_template({...})`, `@headers({...})`, `@json("path/to/field")`
-
-**Test**: `@mock_response(status: N, body: {...})`, `@tier(Unit)`, `@auto_mock(true)`, `@testgen_skip(true)`
-
-**Output**: `@outputs("glob")` — declares generated file paths for `.gitignore` and drift detection.
-
-**Retry**: `@retry(max: N, backoff: exponential(ms))`
-
-**Contract**: `@contract: get(id) after create(...) => found` — behavioral contract on interfaces.
+Annotations (`@` prefixed) are used for **type refinement** and a few test/output markers:
 
 **Refinement**: `@pattern("regex")`, `@range(min: N, max: N)`, `@non_empty`, `@format(uuid)`, `@brand("Name")`, `@content(Text)`, `@where(predicate_fn)`
+
+**Test config**: `@tier(Unit)`, `@auto_mock(true)`, `@testgen_skip(true)`
+
+**Output tracking**: `@outputs("glob")` — declares generated file paths for `.gitignore` and drift detection.
+
+> **Note**: `docs/design/modeling/annotation-to-dag-modeling.md` tracks the full annotation census
+> and migration plan. Several annotations (e.g., `@error_map`, `@retry`, `@requires`) are
+> Category 2: declared intent with no enforcement. These are being migrated to structural
+> DAG modeling per the compositional modeling philosophy.
 
 ### Known Limitations
 

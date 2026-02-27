@@ -58,6 +58,7 @@ impl Executable for HttpRequestOp {
             auth: None,
             query: std::collections::HashMap::new(),
             timeout_ms: None,
+            requires_auth: false,
         });
 
         OutputMap::new()
