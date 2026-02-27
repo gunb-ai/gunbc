@@ -148,6 +148,8 @@ Blue team promotes to backlog or lane queues during triage.
 | Observation | Source | Date |
 |-------------|--------|------|
 | CI YAML generation (`generate_github_actions_template`, `generate_gitlab_ci_template`) is ~120 lines of hand-wired `push_str`/`write!` string concatenation in `codegen_cli.rs:503-609`. The DSL already has rendering infrastructure (`std/render.dag`, `std/markdown_render.dag`) and a proven code-generation pattern (`tools/makegen.dag`). CI YAML types (Workflow, Job, Step, Trigger, Permission, Cache) should be modeled in `.dag` with pure rendering functions, following the makegen pattern: discover via extern → render in pure DSL → `content_upsert`. Deletes both template functions + the validation functions (lines 450-500). See task breakdown below. | R1 scout | 2026-02-26 |
+| `dsl/cloud/aws/credential.dag` imports `aws.STS` and `aws.SecretsManager` from abstract infra services (no transport blocks). These work via profile bindings but have no test coverage at L0 (compilation) or L1 (hermetic). Same pattern for `cloud/azure/credential.dag`. These could be BT-adjacent test targets once SDLC profiles are active. | CI fix | 2026-02-27 |
+| The `credential_chain` pattern in `dsl/std/patterns.dag:236-283` is a proven 5-step OAuth2 chain (OIDC → STS → impersonation → SecretManager → AccessToken) with `local_auth()` at lines 392-411. Gist bypasses this entirely in favor of raw `shell.GCloud.SecretManagerAccessVersion`. Migrating gist to use `credential_chain` would exercise the pattern end-to-end and validate the compositional auth model. | RT-A4 analysis | 2026-02-27 |
 
 ---
 
@@ -222,7 +224,7 @@ correctness, then testing + foundation.
 | 1 | RT1 | **Credential wiring.** `config { auth: BearerToken }` + `auth_token: Secret` → token never reaches execute node → unauthenticated request, silent. Fix: explicit `auth_input` in DSL config, lowerer wires to `res:credential`. Touches: daglang-syntax, daglang-lower, resolve_service.rs. Test: `make gist` returns 200. See POSTMORTEM below. | M | Done | — |
 | 2 | RT2 | **Execute node silent fallthrough.** Missing `res:credential` → sends unauthenticated, no error. Fix: fail-closed when `auth_scheme` declared. Touches: `lib/transport/src/ops.rs`. | S | Done | — |
 | 3 | RT3 | **File transport completeness.** Only READ/READ_BYTES/WRITE. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs EXISTS + CREATE_DIR. Touches: resolve_service.rs. | M | Done | — |
-| 4 | RT4 | **Transport block validation in typecheck.** Typechecker ignores transport blocks. `LowerError::MissingTransport` is dead code. Fix: validate in typechecker + error in lowerer. Touches: daglang-typecheck, daglang-lower. | M | Done | — |
+| 4 | RT4 | **Transport block validation in lowerer.** `LowerError::MissingTransport` now fires for partially-specified services (some ops have transport, some don't). Fully-abstract services (no transport on ANY operation, e.g., infra/aws, infra/azure) are exempt — they get transport via profile bindings. Also exempts interface implementors. Touches: daglang-lower. | M | Done | — |
 | 5 | RT5 | **`fold` extraction** in evaluate_fn_body() — enables DSL classify_transports(). Deletes fidelity shadows + silent fallbacks. | M | Pending | — |
 | 6 | RT6 | **NodeKind required** on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
 | 7 | RT7 | **Port namespace typing**: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |
@@ -267,7 +269,7 @@ correctness, then testing + foundation.
 | I1 | RT-I1 | **`@mock_response` on all service operations.** Add success + error variants (401, 500 minimum). Feed into testgen Bucket C scenarios. | L | Pending | RT-A2 |
 | I2 | RT-I2 | **Testgen error-status obligations.** Extend Bucket C: inject error status codes per REST operation, not just `Value::Skipped`. Refs: `core/codegen/src/testgen/obligation.rs` (`SingleTransportFailure`), `gunbc-dag/src/mock_defaults.rs` (`default_rest_response`). | L | Pending | RT-I1, RT9 |
 | I3 | RT-I3 | **`CredentialChainIntegrity` testgen obligation.** For every service with `config { auth }`, trace backwards to credential source, assert edge exists. Ref: `res:credential` port at `daglang-lower/src/lib.rs:5731`. | M | Pending | RT-A3 |
-| I4 | RT-I4 | **Shell exit code enforcement.** Add exit code check to TrimStdout and SplitLines with semantic opt-out for operations where non-zero is expected. **Done**: `shell_exit_error()` helper, SplitLines always fails on non-zero, TrimStdout fails unless output is optional `T?`. Proof tests in `gunbc-dag/tests/shell_exit_enforcement_proof.rs`. | S | **Done** | RT-A1 |
+| I4 | RT-I4 | **Shell exit code enforcement.** TrimStdout: fails on non-zero exit unless output is optional `T?` (returns `Value::Skipped`). SplitLines: returns empty list on non-zero (list-producing ops like `find` legitimately return exit 1 for missing paths). `shell_exit_error()` helper for clear diagnostics. Proof tests in `gunbc-dag/tests/shell_exit_enforcement_proof.rs`. Analysis report: `TODO/testgen-proof-analysis.md`. | S | **Done** | RT-A1 |
 | I5 | RT-I5 | **Wire `credential_chain` into gist.** Replace raw `shell.GCloud.SecretManagerAccessVersion` with `credential_chain(runtime: LocalDev, ...)` in all three gist entrypoints. | M | Pending | RT-A4 |
 | I6 | RT-I6 | **Verify `credential_chain` end-to-end.** Pattern references `gcp.STS.Exchange`, `gcp.SecretManager.AccessVersion`, `local_auth()` — all must lower correctly with RT1/RT2 fixes. | M | Pending | RT-I5 |
 
@@ -300,6 +302,11 @@ smell catalog above to classify. Include file path + line if possible.
 | Smell | Observation | File | Source | Date |
 |-------|-------------|------|--------|------|
 | *(credential wiring promoted to RT1)* | | | | |
+| Validation at use site | `auto_mock_spec()` always produces exit 0 / status 200 for transport mocks. 7 transport mocks for gist_recent, 0 error scenarios. Testgen Bucket C `SingleTransportFailure` only injects `Value::Str("<TRANSPORT_FAILURE>")` sentinel, not realistic errors (401, exit 1). See `TODO/testgen-proof-analysis.md`. | `gunbc-dag/src/mock_defaults.rs:145-184` | RT-I4 proof | 2026-02-27 |
+| Validation at use site | `GenericRestParseOp` doesn't check HTTP status code — it just tries to extract fields from the response body. A 401 with `{"message":"Bad credentials"}` only fails because `html_url` is missing. If a 401 body happened to contain expected fields, it would "succeed" with garbage. | `gunbc-dag/src/resolve_service.rs` (REST parse) | RT-I4 proof | 2026-02-27 |
+| Heuristic reimplementation | `@mock_response` parser is NOT implemented. `MockResponseDef` AST struct exists in `daglang-syntax/src/lib.rs:587-591` but parser always initializes `Vec::new()`. No service in `dsl/services/` uses `@mock_response`. The `error_cases()` trait method on `Mockable` exists but is never populated. | `core/daglang/daglang-syntax/src/lib.rs`, `core/test/src/mockable.rs:59` | RT-A2 audit | 2026-02-27 |
+| Validation at use site | `GNUmakefile` had `--mode=ensure` flag on bootstrap command but the binary doesn't accept that flag. Bootstrap binary only accepts `--check-mode`, `--dry-run`, `--print-inputs`. | `GNUmakefile:26` | CI fix | 2026-02-27 |
+| Validation at use site | `find crates -type d` in bootstrap returns exit 1 when `crates/` directory doesn't exist. SplitLines was failing hard on this (post-RT-I4) but should return empty list for list-producing ops. | `dsl/tools/bootstrap.dag`, `gunbc-dag/src/resolve_service.rs:523-543` | CI fix | 2026-02-27 |
 | Static mapping table | Three functions (`transport_depth_ordinal`, `transport_depth_str`, `transport_is_hermetic`) encode the same semantic mapping for `ServiceTransportClass`. | `gunbc-dag/src/fidelity.rs:60-89` | RF-H4 PR scout | 2026-02-26 |
 | Heuristic reimplementation | `passthrough_fallback_value()` hard-codes a port alias table. | `gunbc-dag/src/resolve.rs:95-162` | RF-H4 PR scout | 2026-02-26 |
 | Heuristic reimplementation | `looks_effectful_without_kind()` re-derives NodeKind from port type strings. Dead code after RT6 (NodeKind). | `core/exec/src/execute.rs:2064-2092` | RF-H4 PR scout | 2026-02-26 |
@@ -450,8 +457,9 @@ cause **silent failures** — requests go out wrong without errors:
 | **RT4: Typecheck validation** | Typechecker ignores transport blocks entirely → invalid contents compile silently | High — errors surface late at resolve time with confusing messages |
 
 RT1 root cause analysis: See POSTMORTEM section below.
-RT4 detail: `LowerError::MissingTransport` is dead code — the lowerer falls
-through to `ServiceOperationSpec::None` instead of erroring when transport is missing.
+RT4 detail: `LowerError::MissingTransport` now fires for partially-specified services
+(at least one op has transport, another doesn't). Fully-abstract services (no transport
+on any operation) and interface implementors are exempt — they get transport via profiles.
 
 **Coverage snapshot** (97 total operations across 28 services):
 - 39 ops (40%): transport blocks present, pipeline works end-to-end
@@ -591,3 +599,8 @@ RF-E4 (fidelity smoke test): 2026-02-26. makegen→Unit/XS, gist→Integration/L
 BB-2 (per-node corpus tests): 2026-02-26. `build_corpus_section()`. Pure→Real, effectful→DryRun.
 BB-3 (adjacent pair tests): 2026-02-26. `build_adjacent_pair_section()`. Edge wiring verification.
 BB-5 (cross-workflow consistency): 2026-02-26. `build_cross_workflow_section()`. Multi-workflow nodes.
+RT-A1 (shell exit code audit): 2026-02-27. Decision matrix for all 11 shell operations. TrimStdout/SplitLines semantics defined.
+RT-A2 (@mock_response gap): 2026-02-27. 29 REST ops × 0 annotations = 29 missing. Parser not implemented. See `TODO/testgen-proof-analysis.md`.
+RT-I4 (shell exit code enforcement): 2026-02-27. TrimStdout fails on non-zero (unless optional), SplitLines returns empty list. Proof tests + analysis report.
+Positional auth_input wiring: 2026-02-27. Fixed positional service call args dropping credentials. `operation_inputs` field on `ServiceTransportEndpoint`.
+GNUmakefile bootstrap fix: 2026-02-27. Removed invalid `--mode=ensure` flag. Fixed `make install` → `make ci` pipeline.
