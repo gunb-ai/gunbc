@@ -6,6 +6,8 @@
 module services.llm.anthropic
 
 service llm.Anthropic {
+  // TODO(RT-A3): add auth_input: api_key — requires threading api_key: Secret through
+  // all callers (design.dag, sdlc_stages.dag, review_pipeline.dag).
   config { endpoint: "https://api.anthropic.com", auth: Header("x-api-key") }
 
   operation Messages {

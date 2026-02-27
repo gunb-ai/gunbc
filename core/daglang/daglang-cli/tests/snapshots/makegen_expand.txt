@@ -394,6 +394,7 @@ Nodes:
       * updated_bindings: Json (1)
   - std.patterns::iam_preflight_check [callable::Func std.patterns.iam_preflight_check]
     inputs:
+      * access_token: Secret (1)
       * project_id: ProjectId (1)
       * service_account: ServiceAccountEmail (1)
       * required_role: NonEmptyStr (1)
@@ -1113,6 +1114,7 @@ Edges:
   - parse_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.payload -> std.patterns::credential_chain.__deps
   - param_source_std_patterns_credential_chain_project_id.project_id -> prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.project_id
   - param_source_std_patterns_credential_chain_secret_name.secret_name -> prepare_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.secret
+  - std.patterns::optional_impersonation.token -> execute_transport_services_gcp_secret_manager_gcp_SecretManager_AccessVersion.res:credential
   - param_source_std_patterns_credential_chain_runtime.runtime -> std.patterns::acquire_subject_token.runtime
   - param_source_std_patterns_credential_chain_audience.audience -> std.patterns::acquire_subject_token.audience
   - parse_transport_services_gcp_sts_gcp_STS_Exchange.access_token -> std.patterns::optional_impersonation.access_token

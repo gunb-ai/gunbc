@@ -23,16 +23,17 @@ service gcp.IAM {
 }
 
 service gcp.ResourceManager {
-  config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: BearerToken }
+  config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: BearerToken, auth_input: access_token }
 
   operation GetIamPolicy {
-    input { project_id: ProjectId }
+    input { access_token: Secret, project_id: ProjectId }
     output { bindings: Json, etag: String }
     transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
   }
 
   operation SetIamPolicy {
     input {
+      access_token: Secret
       project_id: ProjectId
       bindings: Json
       etag: NonEmptyStr

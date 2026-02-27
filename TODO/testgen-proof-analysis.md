@@ -184,6 +184,57 @@ test rest_401_response_surfaces_as_error ... ok
 test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
+## RT-A5: Credential Expiry Infrastructure Audit
+
+> **Date**: 2026-02-27
+> **Question**: `AuthContext` declares `expires: true`. Does the compiler enforce expiry handling? Should testgen generate expiry-scenario tests?
+
+### Findings
+
+**DSL layer**: `resource AuthContext` in `dsl/std/resources.dag:87-98` declares `expires: true`. The `credential_chain` pattern in `dsl/std/patterns.dag` declares `provides auth: AuthContext`. The `expires: true` property is parsed into `ResourceDef.properties: Vec<(String, Expr)>`.
+
+**Parser layer**: The parser stores `expires: true` as a generic `(String, Expr)` pair. No dedicated field on `ResourceDef`.
+
+**Lowerer layer**: `provider_hint_from_resource_properties()` (`daglang-lower/src/lib.rs:851-860`) only reads `provider`/`cloud` from resource properties. **`expires` is silently discarded.** The lowerer never sets an expiry flag on the resource spec.
+
+**IR layer**: Full expiry infrastructure exists but is disconnected from the DSL:
+- `Secret.expires_at: Option<SystemTime>` — carries expiry timestamp
+- `Secret.is_valid()` — checks if expired (`SystemTime::now() < expiry`)
+- `Credential` round-trips `expires_at` through `Value` serialization
+- `ResourceType::Credential { expiry_ms: Option<u64>, refreshable: bool }` — MockSpec models expiry
+- `ResourceBehavior::LeaseExpires` — behavior variant for timeout testing
+- `MockSpec.resource_credential(id, expiry_ms)` — test builder API
+- `MockSpec.resource_credential_refreshable(id, expiry_ms, refresh_ttl_ms)` — refresh simulation
+
+**Test layer**: No workflow test uses `resource_credential()`. The MockSpec credential simulation is only tested by its own unit tests (`core/test/src/mock_spec.rs:1440-1492`). Zero DAG tests exercise credential expiry.
+
+**Testgen layer**: `obligation.rs` has no credential-related obligation kind. No testgen code generates expiry-scenario tests.
+
+**Executor layer**: `TransportOps::Execute` (`lib/transport/src/ops.rs`) reads `res:credential` and sends the request. It **never checks `credential.is_valid()`** before using the credential. An expired credential silently produces a request with an invalid token.
+
+### Gap Summary
+
+| Component | Has Infrastructure | DSL Connected | Tests Exist |
+|-----------|-------------------|---------------|-------------|
+| `expires: true` on resource | Parse: yes | Lower: **no** | — |
+| `Secret.expires_at` | IR: yes | — | Unit only |
+| `Secret.is_valid()` | IR: yes | Executor: **never called** | Unit only |
+| `ResourceType::Credential` | MockSpec: yes | — | Unit only |
+| `resource_credential()` | MockSpec: yes | — | Zero workflow tests |
+| Testgen expiry obligations | — | **Not implemented** | — |
+
+### Missing Pieces (3)
+
+1. **Lowerer**: Read `expires` from resource properties → set `has_expiry: true` on the lowered resource spec. Propagate to generated code.
+
+2. **Testgen**: For every resource with `expires: true`, generate expiry-scenario tests:
+   - `test_{workflow}_credential_expired` — mock credential with `expiry_ms: 0`, verify graceful failure or refresh
+   - `test_{workflow}_credential_refresh` — mock refreshable credential, verify refresh succeeds
+
+3. **Executor**: Check `credential.is_valid()` in `TransportOps::Execute` before sending request. If expired, attempt refresh (if `refreshable: true`) or fail with `CredentialExpired` error.
+
+---
+
 ## Files Referenced
 
 | File | Role |
