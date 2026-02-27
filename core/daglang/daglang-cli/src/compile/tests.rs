@@ -617,7 +617,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-                retry_policy: None,
+
             })),
             is_interactive: false,
             resource_target: None,
@@ -641,7 +641,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-                retry_policy: None,
+
             })),
             is_interactive: false,
             resource_target: None,
@@ -665,7 +665,7 @@ fn render_triplets_json_includes_service_semantic_metadata_when_present() {
                 readonly: true,
                 permissions: vec![],
                 spec: None,
-                retry_policy: None,
+
             })),
             is_interactive: false,
             resource_target: None,

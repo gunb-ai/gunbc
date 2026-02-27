@@ -1093,7 +1093,7 @@ mod tests {
             headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
             auth_scheme: None,
             auth_input: None,
-            error_mappings: vec![],
+
         });
 
         let shell_spec = ServiceOperationSpec::Shell(ShellOperationSpec {
@@ -1128,7 +1128,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec.clone()),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1154,7 +1154,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec.clone()),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1180,7 +1180,7 @@ mod tests {
                     readonly: false,
                     permissions: vec!["messages".to_string()],
                     spec: Some(rest_spec),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1206,7 +1206,7 @@ mod tests {
                     readonly: false,
                     permissions: vec![],
                     spec: Some(shell_spec.clone()),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,
@@ -1232,7 +1232,7 @@ mod tests {
                     readonly: false,
                     permissions: vec![],
                     spec: Some(shell_spec),
-                    retry_policy: None,
+
                 })),
                 is_interactive: false,
                 resource_target: None,

@@ -251,9 +251,6 @@ pub struct ServiceCallMetadata {
     /// Used by generic protocol interpreters to replace per-service adapters.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spec: Option<ServiceOperationSpec>,
-    /// Retry policy (not yet implemented — will use DSL `retry` block syntax).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub retry_policy: Option<RetryPolicy>,
 }
 
 // ============================================================================
@@ -355,55 +352,6 @@ pub struct RestOperationSpec {
     /// `config { auth_input: field_name }` in the DSL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_input: Option<String>,
-    /// Error classification (not yet implemented — will use DSL `error_map` block).
-    /// Maps HTTP status codes to semantic error categories.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub error_mappings: Vec<ErrorMapping>,
-}
-
-// ============================================================================
-// Error classification (not yet implemented)
-// ============================================================================
-
-/// A single error classification entry.
-///
-/// Maps an HTTP status code to a semantic error category. These compose
-/// with protocol-stack defaults: service-specific mappings override
-/// the default HTTP status classification.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-pub struct ErrorMapping {
-    /// HTTP status code (e.g., 404, 412, 422).
-    pub status: u16,
-    /// Expected response body pattern (for status-code + body matching).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub body_pattern: Option<String>,
-}
-
-// ============================================================================
-// Retry policy (not yet implemented)
-// ============================================================================
-
-/// Retry policy for service operations.
-///
-/// Composes with the protocol stack's error classification to determine
-/// which errors are retryable.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-pub struct RetryPolicy {
-    /// Maximum number of retry attempts.
-    pub max_attempts: u32,
-    /// Backoff strategy.
-    pub backoff: BackoffStrategy,
-    /// HTTP status codes that trigger a retry (e.g., 429, 503).
-    pub retryable_statuses: Vec<u16>,
-}
-
-/// Backoff strategy for retries.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-pub enum BackoffStrategy {
-    /// Fixed delay between retries.
-    Fixed { delay_ms: u64 },
-    /// Exponential backoff with base delay.
-    Exponential { base_ms: u64 },
 }
 
 /// Shell protocol specification: argv template + output parsing.
@@ -1260,7 +1208,6 @@ fn add_interface_stub_transport_triplets(
                         interface: interface.name.clone(),
                         capability: capability.name.clone(),
                     }),
-                    retry_policy: None,
                 };
 
                 let suffix = sanitize_identifier(&format!(
@@ -5004,7 +4951,6 @@ fn derive_service_call_metadata(
         readonly: operation.readonly,
         permissions,
         spec,
-        retry_policy: None, // TODO: extract from DSL retry block when implemented
     }
 }
 
@@ -5176,7 +5122,6 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         headers,
         auth_scheme,
         auth_input,
-        error_mappings: vec![], // TODO: extract from DSL error_map block when implemented
     })
 }
 

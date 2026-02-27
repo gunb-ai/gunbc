@@ -1351,7 +1351,7 @@ mod tests {
                         readonly: true,
                         permissions: vec![],
                         spec: None,
-                        retry_policy: None,
+
                     })),
                     is_interactive: false,
                     resource_target: None,
@@ -1378,7 +1378,7 @@ mod tests {
                         readonly: false,
                         permissions: vec!["gist.write".to_string()],
                         spec: None,
-                        retry_policy: None,
+
                     })),
                     is_interactive: false,
                     resource_target: None,

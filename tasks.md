@@ -290,7 +290,7 @@ correctness, then testing + foundation.
 | 33 | RT33 | ✅ Unified passthrough op variants: replaced 3 `LoweredOp` variants (`LoopUnpack`, `LoopPack`, `BranchMerge`) with single `Pattern(PatternOp)`. Added `kind_name()` to `PatternOp`. Simplified 10 match sites across lowerer, emit, derive, resolver, and CLI render. | S |
 | 34 | RT34 | Error type consolidation (6 types → layered). | M |
 | 35 | RT35 | Test helper extraction (CompileTestHelper + MockFactory). | M |
-| 36 | RT36 | Scaffolding decision: delete or wire RetryPolicy/ErrorMapping/etc. | S |
+| 36 | RT36 | ✅ Deleted unused scaffolding: `RetryPolicy`, `ErrorMapping`, `BackoffStrategy` structs from lowerer, removed `retry_policy` field from `ServiceCallMetadata`, removed `error_mappings` field from `RestOperationSpec`, cleaned up 30+ `None`/`vec![]` initializations across 8 files. | S |
 | 37 | RT37 | Underused abstractions: delete algebra/render traits or find second consumer. | S |
 
 ---

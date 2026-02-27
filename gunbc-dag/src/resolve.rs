@@ -1498,7 +1498,7 @@ mod tests {
                 output_parsing: ShellOutputParsing::ExitCodeBool,
                 env: vec![],
             })),
-            retry_policy: None,
+
         }
     }
 
@@ -1549,7 +1549,7 @@ mod tests {
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
                 env: vec![],
             })),
-            retry_policy: None,
+
         }
     }
 
@@ -1780,9 +1780,9 @@ mod tests {
                 headers: vec![],
                 auth_scheme: None,
                 auth_input: None,
-                error_mappings: vec![],
+
             })),
-            retry_policy: None,
+
         }
     }
 
@@ -1843,9 +1843,9 @@ mod tests {
                 headers: vec![],
                 auth_scheme: None,
                 auth_input: None,
-                error_mappings: vec![],
+
             })),
-            retry_policy: None,
+
         }
     }
 
