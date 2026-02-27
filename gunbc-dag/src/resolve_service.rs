@@ -521,10 +521,21 @@ impl Executable for GenericShellParseOp {
                     }
 
                     ShellOutputParsing::SplitLines => {
-                        // Fail on non-zero exit — SplitLines callers expect
-                        // valid multi-line output (e.g. `find` directory listings).
+                        // On non-zero exit, return an empty list.
+                        // SplitLines is used for list-producing operations
+                        // (find, ls-files, etc.) where "nothing found" is a
+                        // valid result, and tools like `find` return exit 1
+                        // when the search path doesn't exist.
                         if !shell.success() {
-                            return Err(self.shell_exit_error(shell));
+                            let field_name = self
+                                .spec
+                                .output_fields
+                                .first()
+                                .map(|f| f.name.as_str())
+                                .unwrap_or("lines");
+                            return OutputMap::new()
+                                .str_list(field_name, Vec::new())
+                                .ok();
                         }
                         let lines: Vec<String> = shell
                             .stdout

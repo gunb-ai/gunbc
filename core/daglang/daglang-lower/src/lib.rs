@@ -5725,11 +5725,20 @@ fn add_service_transport_triplets(
                 // RT4: Fail-closed when a service operation has no transport
                 // block. Previously this silently created a triplet with no
                 // spec, causing the executor to skip the operation.
+                //
+                // Exempt fully-abstract services: if NO operation in the
+                // service has a transport block, the service is intended
+                // for profile-based transport binding (e.g., infra/aws,
+                // infra/azure providers). Also exempt interface implementors.
                 if operation.transport.is_none() && service.implements.is_none() {
-                    return Err(LowerError::MissingTransport {
-                        service: service.name.clone(),
-                        operation: operation.name.clone(),
-                    });
+                    let service_has_any_transport =
+                        service.operations.iter().any(|op| op.transport.is_some());
+                    if service_has_any_transport {
+                        return Err(LowerError::MissingTransport {
+                            service: service.name.clone(),
+                            operation: operation.name.clone(),
+                        });
+                    }
                 }
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
@@ -11531,6 +11540,11 @@ func verify(path: String, expected: String) -> { ok: Bool }
 
     #[test]
     fn missing_transport_annotation_returns_error() {
+        // A partially-specified service: one operation has transport,
+        // another does not. This catches the bug where a developer adds
+        // a new operation but forgets the transport block.
+        // Fully-abstract services (no transport on any operation) are
+        // exempt because they get transport via profile bindings.
         let typed = typed_project_from_sources(&[(
             "dsl/services/no_transport.dag",
             r#"module sample.no_transport
@@ -11540,6 +11554,11 @@ service sample.NoTransport {
     input { id: String }
     output { name: String }
   }
+  operation List {
+    input { page: Int }
+    output { names: List<String> }
+    transport rest { method: GET, path: "/items" }
+  }
 }
 func caller(id: String) -> { name: String } {
   result = sample.NoTransport.Fetch(id: id)
@@ -11548,7 +11567,7 @@ func caller(id: String) -> { name: String } {
         )]);
 
         let err = lower_typed_project(&typed).expect_err(
-            "lowering a service operation without transport should fail (RT4)",
+            "lowering a partially-specified service should fail (RT4)",
         );
         let msg = err.to_string();
         assert!(
