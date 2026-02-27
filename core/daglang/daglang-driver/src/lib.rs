@@ -1985,7 +1985,7 @@ func run() -> { ok: Bool } uses issues: IssueProvider {
         );
         assert!(
             output.lowered_dag.edges.iter().any(|edge| {
-                edge.to_node.0 == "pipelines.main::run" && edge.to_port.0 == "__deps"
+                edge.to_node.0 == "pipelines.main::run" && edge.to_port.0 == gunbc_ir::types::PortName::DEPS
             }),
             "bound service transport edge should feed target callable dependencies"
         );

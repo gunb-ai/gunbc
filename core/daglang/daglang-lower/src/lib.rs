@@ -29,7 +29,7 @@ use daglang_syntax::ast_utils::{
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
 use gunbc_ir::patterns::{BranchBuilder, LoopBuilder, PatternOp};
-use gunbc_ir::resource::AccessMode;
+use gunbc_ir::resource::{AccessMode, RESOURCE_FILE};
 use gunbc_ir::{
     Cardinality, Dag, DagTopology, Edge, EdgeKind, Guard, Node, NodeId, NodeKind, Port, PortName,
     Value,
@@ -1374,7 +1374,7 @@ impl DagBuilder {
     }
 
     fn add_edge(&mut self, from: &str, from_port: &str, to: &str, to_port: &str) {
-        let kind = if to_port == "__deps" {
+        let kind = if to_port == PortName::DEPS {
             EdgeKind::Control
         } else {
             EdgeKind::DataFlow
@@ -2850,7 +2850,7 @@ fn lower_callable(
         ));
     }
     inputs.push(Port::with_cardinality(
-        "__deps",
+        PortName::DEPS,
         "Any",
         Cardinality::ZERO_OR_MORE,
     ));
@@ -2965,7 +2965,7 @@ fn add_dependency_edges(
                     &source.node_id,
                     &source.primary_output,
                     &target.node_id,
-                    "__deps",
+                    PortName::DEPS,
                 );
             }
 
@@ -3395,7 +3395,7 @@ fn add_control_flow_pattern_nodes(
             .with_output("result", "Any")
             .build();
         builder.add_node(loop_node);
-        builder.add_edge(&node_id, "result", &target.node_id, "__deps");
+        builder.add_edge(&node_id, "result", &target.node_id, PortName::DEPS);
     }
 
     let if_sites = detect_if_branches_in_stmts(stmts);
@@ -3419,7 +3419,7 @@ fn add_control_flow_pattern_nodes(
                 .build();
             builder.add_node(if_node);
         }
-        builder.add_edge(&node_id, "result", &target.node_id, "__deps");
+        builder.add_edge(&node_id, "result", &target.node_id, PortName::DEPS);
     }
 
     let match_sites = detect_match_branches_in_stmts(stmts);
@@ -3443,7 +3443,7 @@ fn add_control_flow_pattern_nodes(
                 .build();
             builder.add_node(if_node);
         }
-        builder.add_edge(&node_id, "result", &target.node_id, "__deps");
+        builder.add_edge(&node_id, "result", &target.node_id, PortName::DEPS);
     }
 }
 
@@ -3635,7 +3635,7 @@ fn expand_single_content_upsert(
         "request",
     );
     builder.add_edge(&compare_id, "skip", &execute_transport_id, "skip");
-    builder.add_edge(&execute_transport_id, "response", &target.node_id, "__deps");
+    builder.add_edge(&execute_transport_id, "response", &target.node_id, PortName::DEPS);
 
     let content_destinations = [
         (compare_id.as_str(), "expected_content"),
@@ -3982,7 +3982,7 @@ fn expand_non_generic_pattern_calls(
                 &result.last_node_id,
                 "fresh", // CompareEquality's output — safe fallback
                 &target.node_id,
-                "__deps",
+                PortName::DEPS,
             );
             expanded_results.insert(binding_name.to_string(), result);
         }
@@ -4416,7 +4416,7 @@ fn expand_pattern_body_node(
                             &dep_output.node_id,
                             &dep_output.output_port,
                             &result.last_node_id,
-                            "__deps",
+                            PortName::DEPS,
                         );
                     }
                 }
@@ -4504,7 +4504,7 @@ fn expand_service_call_node(
                 &dep_output.node_id,
                 &dep_output.output_port,
                 &cloned.prepare_node_id,
-                "__deps",
+                PortName::DEPS,
             );
         }
     }
@@ -4585,7 +4585,7 @@ fn expand_eq_node(
                 &dep_output.node_id,
                 &dep_output.output_port,
                 &compare_id,
-                "__deps",
+                PortName::DEPS,
             );
         }
     }
@@ -4919,7 +4919,7 @@ fn add_makegen_scaffolding(
                 "fs_env",
                 "FilesystemHandle",
                 "execute_makegen_transport",
-                "res:file",
+                RESOURCE_FILE,
             );
         }
     }
@@ -5688,7 +5688,7 @@ fn add_service_transport_triplets(
                 let mut execute_inputs = vec![Port::scalar("request", "TransportRequest")];
                 if has_auth {
                     execute_inputs.push(Port::with_cardinality(
-                        "res:credential",
+                        PortName::RESOURCE_CREDENTIAL,
                         "Credential",
                         Cardinality::ZERO_OR_ONE,
                     ));
@@ -5938,7 +5938,7 @@ fn add_service_call_edges(
                     effective_endpoint.parse.node_id.as_str(),
                     effective_endpoint.parse.primary_output.as_str(),
                     target.node_id.as_str(),
-                    "__deps",
+                    PortName::DEPS,
                 );
                 // Extract auth_input name so the prepare-arg loop skips it
                 // (auth_input args go to res:credential on execute, not prepare).
@@ -6086,21 +6086,21 @@ fn add_service_call_edges(
                                     param_source.as_str(),
                                     arg_ident,
                                     effective_endpoint.execute_node_id.as_str(),
-                                    "res:credential",
+                                    PortName::RESOURCE_CREDENTIAL,
                                 );
                             } else if let Some(bound_source) = bound_callable_sources.get(arg_ident) {
                                 builder.add_edge(
                                     bound_source.node_id.as_str(),
                                     bound_source.primary_output.as_str(),
                                     effective_endpoint.execute_node_id.as_str(),
-                                    "res:credential",
+                                    PortName::RESOURCE_CREDENTIAL,
                                 );
                             } else if let Some(bound_source) = bound_service_sources.get(arg_ident) {
                                 builder.add_edge(
                                     bound_source.parse.node_id.as_str(),
                                     bound_source.parse.primary_output.as_str(),
                                     effective_endpoint.execute_node_id.as_str(),
-                                    "res:credential",
+                                    PortName::RESOURCE_CREDENTIAL,
                                 );
                             }
                         } else if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
@@ -6109,14 +6109,14 @@ fn add_service_call_edges(
                                     bound_source.node_id.as_str(),
                                     field_name.as_str(),
                                     effective_endpoint.execute_node_id.as_str(),
-                                    "res:credential",
+                                    PortName::RESOURCE_CREDENTIAL,
                                 );
                             } else if let Some(bound_source) = bound_service_sources.get(base_ident) {
                                 builder.add_edge(
                                     bound_source.parse.node_id.as_str(),
                                     field_name.as_str(),
                                     effective_endpoint.execute_node_id.as_str(),
-                                    "res:credential",
+                                    PortName::RESOURCE_CREDENTIAL,
                                 );
                             }
                         } else if let Some(literal) = arg.literal.as_ref() {
@@ -6124,16 +6124,16 @@ fn add_service_call_edges(
                                 builder,
                                 module_name.as_str(),
                                 item_name,
-                                "res:credential",
+                                PortName::RESOURCE_CREDENTIAL,
                                 "Secret",
                                 literal,
                                 format!("{call_index}_auth_input").as_str(),
                             );
                             builder.add_edge(
                                 literal_source.as_str(),
-                                "res:credential",
+                                PortName::RESOURCE_CREDENTIAL,
                                 effective_endpoint.execute_node_id.as_str(),
-                                "res:credential",
+                                PortName::RESOURCE_CREDENTIAL,
                             );
                         }
                         break;
@@ -6232,7 +6232,7 @@ fn add_service_call_edges(
                         source_endpoint.parse.node_id.as_str(),
                         source_endpoint.parse.primary_output.as_str(),
                         target.node_id.as_str(),
-                        "__deps",
+                        PortName::DEPS,
                     );
                     wire_profile_binding_config_inputs(
                         builder,
@@ -6436,16 +6436,16 @@ fn wire_profile_binding_config_inputs(
                 builder,
                 module_name,
                 item_name,
-                "res:credential",
+                PortName::RESOURCE_CREDENTIAL,
                 "Secret",
                 &literal,
                 suffix.as_str(),
             );
             builder.add_edge(
                 literal_source.as_str(),
-                "res:credential",
+                PortName::RESOURCE_CREDENTIAL,
                 source_endpoint.execute_node_id.as_str(),
-                "res:credential",
+                PortName::RESOURCE_CREDENTIAL,
             );
             continue;
         }
@@ -6583,7 +6583,7 @@ fn wire_auth_credential_edges(
                         cred_source.node_id.as_str(),
                         cred_source.primary_output.as_str(),
                         endpoint.execute_node_id.as_str(),
-                        "res:credential",
+                        PortName::RESOURCE_CREDENTIAL,
                     );
                 }
             }
@@ -6694,7 +6694,7 @@ fn add_used_resource_edges(
                         acquire_node.as_str(),
                         "resource_handle",
                         target.node_id.as_str(),
-                        "__deps",
+                        PortName::DEPS,
                     );
                 }
                 if let Some(release_node) = endpoint.release_node {
@@ -7086,7 +7086,7 @@ fn add_interface_contract_verification_nodes(
                         acquire_node.as_str(),
                         "resource_handle",
                         node_id.as_str(),
-                        "__deps",
+                        PortName::DEPS,
                     );
                 }
             }
@@ -7433,7 +7433,7 @@ fn build_collection_lowering_plan(
             spec.node_id.clone(),
             vec![
                 Port::with_cardinality("items", "Any", Cardinality::ONE),
-                Port::with_cardinality("__deps", "Any", Cardinality::ZERO_OR_MORE),
+                Port::with_cardinality(PortName::DEPS, "Any", Cardinality::ZERO_OR_MORE),
             ],
             vec![Port::with_cardinality("items", "Any", Cardinality::ONE)],
             LoweredOp::Collection {
@@ -7458,7 +7458,7 @@ fn build_collection_lowering_plan(
             last,
             "items".to_string(),
             callable_node_id.to_string(),
-            "__deps".to_string(),
+            PortName::DEPS.to_string(),
         ));
     }
     CollectionLoweringPlan { nodes, edges }
@@ -8589,7 +8589,7 @@ fn run(values: List<String>) -> { out: String } {
                     "sample.collections::run::JoinNode_2".to_string(),
                     "items".to_string(),
                     "sample.collections::run".to_string(),
-                    "__deps".to_string(),
+                    PortName::DEPS.to_string(),
                 ),
             ]
         );
@@ -8669,7 +8669,7 @@ fn run(values: List<String>) -> String {
             edge.from_node.0 == "sample.collections::run::JoinNode_2"
                 && edge.from_port.0 == "items"
                 && edge.to_node.0 == "sample.collections::run"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
     }
 
@@ -8735,12 +8735,12 @@ fn run(values: List<Int>, gate: Bool, mode: String) -> Int {
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "sample.control::run::cf_for_0"
                 && edge.to_node.0 == "sample.control::run"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "sample.control::run::cf_match_0"
                 && edge.to_node.0 == "sample.control::run"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
     }
 
@@ -8886,7 +8886,7 @@ func run() -> { output: String } {
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == parse.as_str()
                 && edge.to_node.0 == "sample.services::run"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
     }
 
@@ -9122,7 +9122,7 @@ func run(path: String) -> { body: String } {
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == parse_node
                 && edge.to_node.0 == "sample.services::run"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
         assert!(dag.nodes.iter().any(|node| node.id.0 == param_source));
         assert!(dag.edges.iter().any(|edge| {
@@ -9366,7 +9366,7 @@ func run() -> { ok: Bool } uses issues: IssueProvider {
                     .0
                     .starts_with("parse_transport_sample_profile_impl_Provider_get")
                     && edge.to_node.0 == "sample.profile::run"
-                    && edge.to_port.0 == "__deps"
+                    && edge.to_port.0 == PortName::DEPS
             }),
             "bound parse node should feed caller dependencies"
         );
@@ -9463,7 +9463,7 @@ func run(id: String) -> { ok: Bool } uses issues: IssueProvider {
             .any(|edge| edge.to_node.0 == prepare_node_id && edge.to_port.0 == "config.repo"));
         assert!(
             dag.edges.iter().any(|edge| {
-                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == PortName::RESOURCE_CREDENTIAL
             }),
             "credential should be wired to res:credential on execute node, not config.credential on prepare node"
         );
@@ -9504,7 +9504,7 @@ func caller(id: String) -> { ok: Bool }
             execute_node
                 .inputs
                 .iter()
-                .any(|port| port.name.0 == "res:credential"),
+                .any(|port| port.name.0 == PortName::RESOURCE_CREDENTIAL),
             "execute node should have res:credential input port"
         );
 
@@ -9577,7 +9577,7 @@ func caller(id: String) -> { ok: Bool }
         let execute_node_id = "execute_transport_sample_cred_sample_Api_Get";
         assert!(
             dag.edges.iter().any(|edge| {
-                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == PortName::RESOURCE_CREDENTIAL
             }),
             "credential provider output should be wired to execute node res:credential"
         );
@@ -9610,7 +9610,7 @@ func caller(name: String, token: Secret) -> { id: String } {
         // auth_token should be wired to res:credential on execute node
         assert!(
             dag.edges.iter().any(|edge| {
-                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == PortName::RESOURCE_CREDENTIAL
             }),
             "auth_input arg should be wired to execute node res:credential"
         );
@@ -9668,7 +9668,7 @@ func caller(name: String, token: Secret) -> { id: String } {
         // Positional auth_token should be wired to res:credential on execute node
         assert!(
             dag.edges.iter().any(|edge| {
-                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == PortName::RESOURCE_CREDENTIAL
             }),
             "positional auth_input arg should be wired to execute node res:credential; edges to execute: {:?}",
             dag.edges.iter().filter(|e| e.to_node.0 == execute_node_id).collect::<Vec<_>>()
@@ -9719,7 +9719,7 @@ func caller(id: String) -> { ok: Bool } {
         let execute_node_id = "execute_transport_sample_auth_field_sample_Api_Get";
         assert!(
             dag.edges.iter().any(|edge| {
-                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == PortName::RESOURCE_CREDENTIAL
             }),
             "field-access auth_input should wire to execute node res:credential"
         );
@@ -10008,7 +10008,7 @@ func run() -> { ok: Bool } uses fs: TempFile {
             edge.from_node.0 == acquire
                 && edge.from_port.0 == "resource_handle"
                 && edge.to_node.0 == "sample.resources::run"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "sample.resources::run"
@@ -10058,7 +10058,7 @@ func run() -> { ok: Bool } uses fs: TempFile(mode: ReadWrite) {
             edge.from_node.0 == "acquire_resource_sample_resources_TempFile"
                 && edge.from_port.0 == "resource_handle"
                 && edge.to_node.0 == "sample.resources::run"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
     }
 
@@ -10098,13 +10098,13 @@ func run() -> { ok: Bool } uses store: ObjectStorage(cloud: GcpConfig) {
             edge.from_node.0 == "acquire_resource_infra_providers_GcsBucket"
                 && edge.from_port.0 == "resource_handle"
                 && edge.to_node.0 == "infra.providers::run"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
         assert!(
             !dag.edges.iter().any(|edge| {
                 edge.from_node.0 == "acquire_resource_infra_providers_S3Bucket"
                     && edge.to_node.0 == "infra.providers::run"
-                    && edge.to_port.0 == "__deps"
+                    && edge.to_port.0 == PortName::DEPS
             }),
             "provider hint should avoid wiring non-matching provider resources"
         );
@@ -10202,20 +10202,20 @@ func run_azure() -> { ok: Bool } uses store: ObjectStorage(cloud: AzureConfig) {
             edge.from_node.0 == "acquire_resource_infra_providers_S3Bucket"
                 && edge.from_port.0 == "resource_handle"
                 && edge.to_node.0 == "infra.providers::run_aws"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
         assert!(dag.edges.iter().any(|edge| {
             edge.from_node.0 == "acquire_resource_infra_providers_BlobContainer"
                 && edge.from_port.0 == "resource_handle"
                 && edge.to_node.0 == "infra.providers::run_azure"
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
         assert!(
             !dag.edges.iter().any(|edge| {
                 edge.from_node.0 == "acquire_resource_infra_providers_GcsBucket"
                     && (edge.to_node.0 == "infra.providers::run_aws"
                         || edge.to_node.0 == "infra.providers::run_azure")
-                    && edge.to_port.0 == "__deps"
+                    && edge.to_port.0 == PortName::DEPS
             }),
             "aws/azure provider hints should not wire unrelated gcp resources"
         );
@@ -10285,7 +10285,7 @@ func store_artifact_azure(key: String, content: String) -> { ok: Bool } uses sto
                     edge.from_node.0 == acquire
                         && edge.from_port.0 == "resource_handle"
                         && edge.to_node.0 == target
-                        && edge.to_port.0 == "__deps"
+                        && edge.to_port.0 == PortName::DEPS
                 }),
                 "expected provider-specific resource wiring for {target}"
             );
@@ -10378,7 +10378,7 @@ func cross_provider_auth() -> { ok: Bool } {
             edge.from_node.0 == "acquire_resource_infra_aws_resources_S3Bucket"
                 && edge.from_port.0 == "resource_handle"
                 && edge.to_node.0 == verify_node
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
     }
 
@@ -10396,7 +10396,7 @@ func cross_provider_auth() -> { ok: Bool } {
             edge.from_node.0 == "acquire_resource_infra_azure_resources_BlobContainer"
                 && edge.from_port.0 == "resource_handle"
                 && edge.to_node.0 == verify_node
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
     }
 
@@ -10430,7 +10430,7 @@ resource GcsBucket implements ObjectStorage {
             edge.from_node.0 == "acquire_resource_infra_contracts_GcsBucket"
                 && edge.from_port.0 == "resource_handle"
                 && edge.to_node.0 == verify_0
-                && edge.to_port.0 == "__deps"
+                && edge.to_port.0 == PortName::DEPS
         }));
     }
 
@@ -10494,7 +10494,7 @@ resource BlobContainer implements ObjectStorage {
                     edge.from_node.0 == acquire_id
                         && edge.from_port.0 == "resource_handle"
                         && edge.to_node.0 == verify_id
-                        && edge.to_port.0 == "__deps"
+                        && edge.to_port.0 == PortName::DEPS
                 }),
                 "expected acquire->verify edge for {resource}"
             );
@@ -10657,7 +10657,7 @@ func run() -> { ok: Bool } uses store: Storage {
             .any(|node| node.id.0 == "sample.resources::run"));
         assert!(
             !dag.edges.iter().any(|edge| edge.to_node.0 == "sample.resources::run"
-                && edge.to_port.0 == "__deps"),
+                && edge.to_port.0 == PortName::DEPS),
             "interface-only uses should not fabricate lifecycle dependency edges"
         );
     }
@@ -11152,7 +11152,7 @@ func beta(msg: String) -> { reply: String } {
                 .push(edge.from_node.0.clone());
         }
         for ((node, port), sources) in &edge_targets {
-            if port == "__deps" || port == "request" || port == "response" {
+            if port == PortName::DEPS || port == "request" || port == "response" {
                 continue; // these are allowed to have multiple sources
             }
             assert!(

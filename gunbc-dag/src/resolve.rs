@@ -34,6 +34,7 @@ use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::resource::{AccessMode, RESOURCE_FILE, RESOURCE_FILE_PREFIX};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
+use gunbc_ir::types::PortName;
 use gunbc_ir::{Cardinality, Dag, Edge, Node, Port, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -73,13 +74,13 @@ fn execute_with_declared_output_passthrough(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
     for (key, value) in &inputs {
-        if key.starts_with("__out:") {
+        if key.starts_with(PortName::OUTPUT_PASSTHROUGH_PREFIX) {
             continue;
         }
         outputs.insert(key.clone(), value.clone());
     }
     for port_name in output_port_names {
-        let passthrough_key = format!("__out:{port_name}");
+        let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
             outputs.insert(port_name.clone(), value.clone());
             continue;
@@ -295,7 +296,7 @@ impl Executable for SubDagDispatchOp {
                 input_mocks.set_input(node_id.0, port_name.0, value.clone());
                 continue;
             }
-            if port_name.0 == "__deps" {
+            if port_name.0 == PortName::DEPS {
                 input_mocks.set_input(node_id.0, port_name.0, Value::List(Vec::new()));
             }
         }

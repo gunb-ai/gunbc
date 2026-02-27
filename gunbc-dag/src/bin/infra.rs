@@ -297,7 +297,7 @@ fn run_compiled_infra_orchestration(
         serde_json::to_string(&filter.skip)
             .map_err(|error| format!("failed to encode skip filter input: {error}"))?,
     );
-    inputs.insert("__deps".to_string(), "[]".to_string());
+    inputs.insert(gunbc_ir::types::PortName::DEPS.to_string(), "[]".to_string());
     inputs.insert("execute".to_string(), execute_mode.to_string());
 
     let input_mocks = build_entrypoint_input_mocks(&dag, &inputs, false)?;

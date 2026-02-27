@@ -285,7 +285,7 @@ correctness, then testing + foundation.
 | 28 | RT28 | Shared DslTypeMapping table for emit backends. | S |
 | 29 | RT29 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
 | 30 | RT30 | ✅ Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortName` methods. 3 sites migrated (lower `is_user_param_port`, emit `is_user_input_port`, patterns `ResourceInput::new`). `process_registry.rs` skipped (uses `ClaimId`, not `PortName`). | S |
-| 31 | RT31 | String constants migration: `__deps`/`res:file`/`tool:` → central consts. | M |
+| 31 | RT31 | ✅ Migrated hardcoded port name strings to central constants: `"__deps"` → `PortName::DEPS` (37 sites across lowerer, driver, resolve, infra), `"__out:"` → `PortName::OUTPUT_PASSTHROUGH_PREFIX` (2 sites in resolve), `"res:file"` → `RESOURCE_FILE` (3 sites in lowerer, testgen graph), `"res:credential"` → `PortName::RESOURCE_CREDENTIAL`/`RESOURCE_CREDENTIAL` (16 sites across lowerer, transport ops). Skipped raw string templates (emitted runtime code) and test-only assertions. | M |
 | 32 | RT32 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
 | 33 | RT33 | ✅ Unified passthrough op variants: replaced 3 `LoweredOp` variants (`LoopUnpack`, `LoopPack`, `BranchMerge`) with single `Pattern(PatternOp)`. Added `kind_name()` to `PatternOp`. Simplified 10 match sites across lowerer, emit, derive, resolver, and CLI render. | S |
 | 34 | RT34 | Error type consolidation (6 types → layered). | M |

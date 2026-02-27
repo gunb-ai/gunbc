@@ -21,6 +21,7 @@ use gunbc_exec::{
     TransportResponseExt,
 };
 use gunbc_ir::transport::{TcpRequest, TransportRequest, TransportResponse};
+use gunbc_ir::resource::RESOURCE_CREDENTIAL;
 use gunbc_ir::{AuthScheme, Credential, Secret, Value};
 use std::collections::HashMap;
 
@@ -63,7 +64,7 @@ impl Executable for TransportOps {
                 // Accepts either a full Credential map or a raw Secret/String
                 // (from profile bindings), defaulting to Bearer scheme.
                 if let TransportRequest::Rest(ref mut r) = request {
-                    if let Some(cred_value) = inputs.get("res:credential") {
+                    if let Some(cred_value) = inputs.get(RESOURCE_CREDENTIAL) {
                         match Credential::try_from(cred_value) {
                             Ok(cred) => cred.apply(r),
                             Err(_) => {
@@ -336,7 +337,7 @@ mod tests {
 
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));
-        inputs.insert("res:credential".to_string(), cred_value);
+        inputs.insert(RESOURCE_CREDENTIAL.to_string(), cred_value);
         inputs.insert("skip".to_string(), Value::Bool(false));
 
         let result = TransportOps::Execute
@@ -386,7 +387,7 @@ mod tests {
 
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));
-        inputs.insert("res:credential".to_string(), cred_value);
+        inputs.insert(RESOURCE_CREDENTIAL.to_string(), cred_value);
         inputs.insert("skip".to_string(), Value::Bool(false));
 
         let result = TransportOps::Execute
