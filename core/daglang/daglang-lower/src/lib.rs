@@ -337,8 +337,8 @@ impl ServiceOperationSpec {
 /// File protocol specification: operation type + path template.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct FileOperationSpec {
-    /// File operation kind from `transport file { op: OP }` — e.g. "READ", "WRITE", "READ_BYTES".
-    pub operation: String,
+    /// File operation kind, parsed from `transport file { op: OP }`.
+    pub operation: gunbc_ir::transport::FileOp,
     /// Path template from `transport file { path: "{path}" }`.
     pub path_template: String,
     /// Input fields from `input { ... }`.
@@ -5284,10 +5284,12 @@ fn derive_shell_spec(
 }
 
 fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
-    let (file_op, path_template) = match &operation.transport {
+    let (file_op_str, path_template) = match &operation.transport {
         Some(TransportBinding::File { op, path }) => (op.clone(), path.clone()),
         _ => return None,
     };
+    let file_op = gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str)
+        .unwrap_or_else(|| panic!("unknown file operation `{file_op_str}`"));
     let input_fields = operation
         .inputs
         .iter()

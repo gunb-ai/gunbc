@@ -16,7 +16,7 @@ use gunbc_exec::{
     TransportContext,
 };
 use gunbc_ir::transport::{
-    FileRequest, LocalRequest, RestRequest, ShellRequest, ShellResponse, TransportRequest,
+    FileOp, FileRequest, LocalRequest, RestRequest, ShellRequest, ShellResponse, TransportRequest,
     TransportResponse,
 };
 use gunbc_ir::{SecretString, Value};
@@ -1019,32 +1019,28 @@ impl Executable for GenericFilePrepareOp {
         let path = inputs.get("path").and_then(Value::as_str).ok_or_else(|| {
             ExecError::new("GenericFilePrepare: missing required `path` input".to_string())
         })?;
-        let request = match self.spec.operation.as_str() {
-            "READ" => FileRequest::read(path),
-            "READ_BYTES" => FileRequest::read_bytes(path),
-            "WRITE" => {
+        let request = match self.spec.operation {
+            FileOp::Read => FileRequest::read(path),
+            FileOp::ReadBytes => FileRequest::read_bytes(path),
+            FileOp::Write => {
                 let content = inputs
                     .get("content")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 FileRequest::write(path, content)
             }
-            "APPEND" => {
+            FileOp::Append => {
                 let content = inputs
                     .get("content")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 FileRequest::append(path, content)
             }
-            "DELETE" => FileRequest::delete(path),
-            "EXISTS" => FileRequest::exists(path),
-            "CREATE_DIR" => FileRequest::create_dir(path),
-            "GLOB" => FileRequest::glob(path),
-            other => {
-                return Err(ExecError::new(format!(
-                    "GenericFilePrepare: unknown file operation `{other}`"
-                )))
-            }
+            FileOp::Delete => FileRequest::delete(path),
+            FileOp::Exists => FileRequest::exists(path),
+            FileOp::CreateDir => FileRequest::create_dir(path),
+            FileOp::Glob => FileRequest::glob(path),
+            FileOp::Metadata => FileRequest::metadata(path),
         };
         OutputMap::new()
             .request("request", TransportRequest::File(request))
@@ -1884,7 +1880,7 @@ mod tests {
 
     fn file_read_spec() -> FileOperationSpec {
         FileOperationSpec {
-            operation: "READ".to_string(),
+            operation: FileOp::Read,
             path_template: "{path}".to_string(),
             input_fields: vec![FieldSpec {
                 name: "path".to_string(),
