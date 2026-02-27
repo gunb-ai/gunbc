@@ -83,7 +83,6 @@ pub trait OutputMedium {
 }
 
 pub trait TextMedium: OutputMedium<Output = String> {}
-pub trait GraphicsMedium: OutputMedium<Output = RenderSurface> {}
 
 // ---------------------------------------------------------------------------
 // Text medium implementations
@@ -394,12 +393,6 @@ pub trait CodeRenderer<M: OutputMedium> {
     fn render_item(&self, item: &crate::code_ir::Item, indent: usize) -> M::Output;
 }
 
-pub trait MarkupRenderer<M: OutputMedium> {
-    fn medium(&self) -> &M;
-    fn render_node(&self, node: &MarkupNode) -> M::Output;
-    fn render_document(&self, nodes: &[MarkupNode]) -> M::Output;
-}
-
 pub trait StructuredRenderer<M: OutputMedium> {
     fn medium(&self) -> &M;
     fn render_target(&self, target: &Target) -> M::Output;
@@ -411,10 +404,6 @@ pub trait FrameRenderer<M: OutputMedium> {
     fn medium(&self) -> &M;
     fn render_frame(&mut self, frame: &Frame, sink: &mut dyn std::io::Write)
         -> std::io::Result<()>;
-}
-
-pub trait DocumentRenderer<M: OutputMedium> {
-    fn render(&self, document: &Document) -> M::Output;
 }
 
 // ---------------------------------------------------------------------------

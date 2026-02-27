@@ -109,21 +109,6 @@ pub trait BoundedLattice: Lattice + PartialOrder {
     fn top() -> Self;
 }
 
-/// Commutative semiring: product with identity and absorbing element.
-///
-/// For [`Cardinality`], product models nested iteration: if outer produces
-/// `[a,b]` items each containing `[c,d]` items, the flattened result has
-/// `[a*c, b*d]` items.
-pub trait Semiring: Sized {
-    /// The multiplicative identity: `a.product(one()) == a`.
-    fn one() -> Self;
-
-    /// The absorbing element: `a.product(zero()) == zero()`.
-    fn zero() -> Self;
-
-    /// Product operation.
-    fn product(self, other: Self) -> Self;
-}
 
 // =============================================================================
 // Cardinality implementations
@@ -155,19 +140,6 @@ impl BoundedLattice for Cardinality {
     }
 }
 
-impl Semiring for Cardinality {
-    fn one() -> Self {
-        Cardinality::ONE
-    }
-
-    fn zero() -> Self {
-        Cardinality::ZERO
-    }
-
-    fn product(self, other: Self) -> Self {
-        Cardinality::product(self, other)
-    }
-}
 
 // =============================================================================
 // Tests
@@ -233,53 +205,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_semiring_identity() {
-        let one = <Cardinality as Semiring>::one();
-        let cases = [
-            Cardinality::ZERO,
-            Cardinality::ONE,
-            Cardinality::ZERO_OR_ONE,
-            Cardinality::ZERO_OR_MORE,
-            Cardinality::ONE_OR_MORE,
-        ];
-        for c in cases {
-            assert_eq!(
-                <Cardinality as Semiring>::product(c, one),
-                c,
-                "{c} * ONE should be {c}"
-            );
-            assert_eq!(
-                <Cardinality as Semiring>::product(one, c),
-                c,
-                "ONE * {c} should be {c}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_semiring_absorbing() {
-        let zero = <Cardinality as Semiring>::zero();
-        let cases = [
-            Cardinality::ZERO,
-            Cardinality::ONE,
-            Cardinality::ZERO_OR_ONE,
-            Cardinality::ZERO_OR_MORE,
-            Cardinality::ONE_OR_MORE,
-        ];
-        for c in cases {
-            assert_eq!(
-                <Cardinality as Semiring>::product(c, zero),
-                Cardinality::ZERO,
-                "{c} * ZERO should be ZERO"
-            );
-            assert_eq!(
-                <Cardinality as Semiring>::product(zero, c),
-                Cardinality::ZERO,
-                "ZERO * {c} should be ZERO"
-            );
-        }
-    }
 }
 
 // =============================================================================
@@ -364,36 +289,6 @@ mod proptests {
         #[test]
         fn everything_leq_top(c in arb_cardinality()) {
             prop_assert!(c.leq(&<Cardinality as BoundedLattice>::top()));
-        }
-
-        // --- Semiring laws via trait ---
-
-        #[test]
-        fn trait_product_identity(c in arb_cardinality()) {
-            let one = <Cardinality as Semiring>::one();
-            prop_assert_eq!(<Cardinality as Semiring>::product(c, one), c);
-            prop_assert_eq!(<Cardinality as Semiring>::product(one, c), c);
-        }
-
-        #[test]
-        fn trait_product_absorbing(c in arb_cardinality()) {
-            let zero = <Cardinality as Semiring>::zero();
-            prop_assert_eq!(
-                <Cardinality as Semiring>::product(c, zero),
-                <Cardinality as Semiring>::zero()
-            );
-            prop_assert_eq!(
-                <Cardinality as Semiring>::product(zero, c),
-                <Cardinality as Semiring>::zero()
-            );
-        }
-
-        #[test]
-        fn trait_product_commutative(a in arb_cardinality(), b in arb_cardinality()) {
-            prop_assert_eq!(
-                <Cardinality as Semiring>::product(a, b),
-                <Cardinality as Semiring>::product(b, a)
-            );
         }
 
         // --- Absorption laws (Lattice) ---

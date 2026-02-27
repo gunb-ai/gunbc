@@ -102,9 +102,7 @@ pub const CODEGEN_LIB_DIR: &str = "target/codegen/lib";
 pub const CODEGEN_STAMP_PATH: &str = "target/codegen/.codegen-stamp";
 
 // Re-exports for convenience
-pub use algebra::{
-    BoundedLattice, JoinSemilattice, Lattice, MeetSemilattice, PartialOrder, Semiring,
-};
+pub use algebra::{BoundedLattice, JoinSemilattice, Lattice, MeetSemilattice, PartialOrder};
 pub use boundary::{detect_boundaries, BoundaryInfo};
 pub use builder::{BuilderError, DagBuilder, InputRef, NodeRef, OutputRef, PortKind};
 pub use cargo::{
@@ -160,9 +158,9 @@ pub use platform::{
 };
 pub use render_ir::{
     AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
-    DocumentBody, DocumentRenderer, FileHeader, Frame, FrameRenderer, GraphicsElement,
-    GraphicsMedium, HtmlText, Line, MarkupNode, MarkupRenderer, OutputMedium, PlainText,
-    RenderSurface, Span, SpanStyle, StructuredBlock, StructuredRenderer, Target, TextMedium,
+    DocumentBody, FileHeader, Frame, FrameRenderer, GraphicsElement, HtmlText, Line, MarkupNode,
+    OutputMedium, PlainText, RenderSurface, Span, SpanStyle, StructuredBlock, StructuredRenderer,
+    Target, TextMedium,
 };
 pub use resource::{
     derive_resource_accesses, detect_resource_conflicts, normalize_resource_id, resource_api_port,

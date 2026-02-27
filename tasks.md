@@ -291,7 +291,7 @@ correctness, then testing + foundation.
 | 34 | RT34 | Error type consolidation (6 types → layered). | M |
 | 35 | RT35 | Test helper extraction (CompileTestHelper + MockFactory). | M |
 | 36 | RT36 | ✅ Deleted unused scaffolding: `RetryPolicy`, `ErrorMapping`, `BackoffStrategy` structs from lowerer, removed `retry_policy` field from `ServiceCallMetadata`, removed `error_mappings` field from `RestOperationSpec`, cleaned up 30+ `None`/`vec![]` initializations across 8 files. | S |
-| 37 | RT37 | Underused abstractions: delete algebra/render traits or find second consumer. | S |
+| 37 | RT37 | ✅ Deleted underused abstractions: `Semiring` trait + impl + 5 tests (zero production consumers), `GraphicsMedium` trait (zero impls), `MarkupRenderer` trait (zero impls), `DocumentRenderer` trait (zero impls). Kept `PartialOrder`, `JoinSemilattice`, `MeetSemilattice`, `BoundedLattice`, `Lattice` (2+ production consumers each). | S |
 
 ---
 
