@@ -90,6 +90,15 @@ impl Executable for TransportOps {
                         }
                     } else if let Some(cred) = r.auth.take() {
                         cred.apply(r);
+                    } else if r.requires_auth {
+                        // RT2: Fail-closed when auth is declared but no credential
+                        // is supplied. Previously this silently sent an
+                        // unauthenticated request, masking RT1 wiring bugs.
+                        return Err(ExecError::new(format!(
+                            "REST {} {} requires authentication but no credential was supplied \
+                             (missing res:credential input or profile binding)",
+                            r.method, r.url
+                        )));
                     }
                 }
 

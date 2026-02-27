@@ -335,6 +335,13 @@ impl Parser {
                                 self.advance();
                             }
                         }
+                        "auth_input" => {
+                            if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                config.auth_input = Some(self.expect_ident()?);
+                            } else {
+                                self.advance();
+                            }
+                        }
                         _ => {
                             self.advance();
                         }

@@ -219,10 +219,10 @@ correctness, then testing + foundation.
 
 | # | ID | What | Size | Status | Deps |
 |---|-----|------|------|--------|------|
-| 1 | RT1 | **Credential wiring.** `config { auth: BearerToken }` + `auth_token: Secret` → token never reaches execute node → unauthenticated request, silent. Fix: explicit `auth_input` in DSL config, lowerer wires to `res:credential`. Touches: daglang-syntax, daglang-lower, resolve_service.rs. Test: `make gist` returns 200. See POSTMORTEM below. | M | Pending | — |
-| 2 | RT2 | **Execute node silent fallthrough.** Missing `res:credential` → sends unauthenticated, no error. Fix: fail-closed when `auth_scheme` declared. Touches: `lib/transport/src/ops.rs`. | S | Pending | — |
-| 3 | RT3 | **File transport completeness.** Only READ/READ_BYTES/WRITE. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs EXISTS + CREATE_DIR. Touches: resolve_service.rs. | M | Pending | — |
-| 4 | RT4 | **Transport block validation in typecheck.** Typechecker ignores transport blocks. `LowerError::MissingTransport` is dead code. Fix: validate in typechecker + error in lowerer. Touches: daglang-typecheck, daglang-lower. | M | Pending | — |
+| 1 | RT1 | **Credential wiring.** `config { auth: BearerToken }` + `auth_token: Secret` → token never reaches execute node → unauthenticated request, silent. Fix: explicit `auth_input` in DSL config, lowerer wires to `res:credential`. Touches: daglang-syntax, daglang-lower, resolve_service.rs. Test: `make gist` returns 200. See POSTMORTEM below. | M | Done | — |
+| 2 | RT2 | **Execute node silent fallthrough.** Missing `res:credential` → sends unauthenticated, no error. Fix: fail-closed when `auth_scheme` declared. Touches: `lib/transport/src/ops.rs`. | S | Done | — |
+| 3 | RT3 | **File transport completeness.** Only READ/READ_BYTES/WRITE. Missing: EXISTS, CREATE_DIR, DELETE, APPEND, GLOB. SDLC local profile needs EXISTS + CREATE_DIR. Touches: resolve_service.rs. | M | Done | — |
+| 4 | RT4 | **Transport block validation in typecheck.** Typechecker ignores transport blocks. `LowerError::MissingTransport` is dead code. Fix: validate in typechecker + error in lowerer. Touches: daglang-typecheck, daglang-lower. | M | Done | — |
 | 5 | RT5 | **`fold` extraction** in evaluate_fn_body() — enables DSL classify_transports(). Deletes fidelity shadows + silent fallbacks. | M | Pending | — |
 | 6 | RT6 | **NodeKind required** on Node\<T\>. Remove Option, require in builders. | M | Pending | — |
 | 7 | RT7 | **Port namespace typing**: define `PortCategory` enum + methods on `PortName` in `core/ir/`. | M | Pending | — |

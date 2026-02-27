@@ -6,7 +6,7 @@
 module services.gcp.iam
 
 service gcp.IAM {
-  config { endpoint: "https://iamcredentials.googleapis.com", auth: BearerToken }
+  config { endpoint: "https://iamcredentials.googleapis.com", auth: BearerToken, auth_input: access_token }
 
   operation GenerateAccessToken {
     input {

@@ -24,6 +24,11 @@ pub struct RestRequest {
     pub query: HashMap<String, String>,
     /// Timeout in milliseconds
     pub timeout_ms: Option<u64>,
+    /// When true, the execute handler must fail-closed if `res:credential`
+    /// is not supplied. Set by the prepare node when the service declares
+    /// an auth scheme.
+    #[serde(default)]
+    pub requires_auth: bool,
 }
 
 /// REST API response.
@@ -49,6 +54,7 @@ impl RestRequest {
             auth: None,
             query: HashMap::new(),
             timeout_ms: None,
+            requires_auth: false,
         }
     }
 
@@ -62,6 +68,7 @@ impl RestRequest {
             auth: None,
             query: HashMap::new(),
             timeout_ms: None,
+            requires_auth: false,
         }
     }
 
@@ -75,6 +82,7 @@ impl RestRequest {
             auth: None,
             query: HashMap::new(),
             timeout_ms: None,
+            requires_auth: false,
         }
     }
 
@@ -88,6 +96,7 @@ impl RestRequest {
             auth: None,
             query: HashMap::new(),
             timeout_ms: None,
+            requires_auth: false,
         }
     }
 
@@ -101,6 +110,7 @@ impl RestRequest {
             auth: None,
             query: HashMap::new(),
             timeout_ms: None,
+            requires_auth: false,
         }
     }
 

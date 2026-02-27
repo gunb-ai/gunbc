@@ -378,6 +378,12 @@ pub struct RestOperationSpec {
     /// the correct HTTP header at transport execution time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_scheme: Option<String>,
+    /// Name of the input field that carries the authentication credential.
+    /// When set, the lowerer wires this field to `res:credential` on the execute
+    /// node instead of including it in the prepare body. Declared via
+    /// `config { auth_input: field_name }` in the DSL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_input: Option<String>,
     /// Error classification (not yet implemented — will use DSL `error_map` block).
     /// Maps HTTP status codes to semantic error categories.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -1977,9 +1983,9 @@ fn lower_typed_project_with_callable_scope(
     add_makegen_scaffolding(&mut builder, &endpoints_by_full);
     let mut service_registry = if callable_modules.is_some() && active_profile.is_none() {
         let required_service_calls = collect_required_service_call_keys(project, callable_modules);
-        add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))
+        add_service_transport_triplets(&mut builder, project, Some(&required_service_calls))?
     } else {
-        add_service_transport_triplets(&mut builder, project, None)
+        add_service_transport_triplets(&mut builder, project, None)?
     };
     let data_values = build_data_values(project);
     add_dependency_edges(
@@ -5177,7 +5183,8 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         }) => extract_headers_from_expr(h),
         _ => Vec::new(),
     };
-    let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers);
+    let auth_input = service.config.auth_input.clone();
+    let input_fields = derive_input_fields(&operation.inputs, &path_template, &headers, auth_input.as_deref());
     let output_fields = derive_output_fields(&operation.outputs);
     let body_template = match &operation.transport {
         Some(TransportBinding::Rest { body: Some(b), .. }) => body_template_entries_from_expr(b),
@@ -5198,6 +5205,7 @@ fn derive_rest_spec(service: &ServiceDef, operation: &OperationDef) -> Option<Re
         body_template,
         headers,
         auth_scheme,
+        auth_input,
         error_mappings: vec![], // TODO: extract from DSL error_map block when implemented
     })
 }
@@ -5360,13 +5368,23 @@ fn body_template_entry(key: &str, value: &Expr) -> Option<BodyEntry> {
 }
 
 /// Derive input field specs from operation inputs.
+///
+/// When `auth_input` is set, the named field is excluded from the returned
+/// list — it flows through `res:credential` on the execute node instead of
+/// appearing as a prepare-node body/header input.
 fn derive_input_fields(
     inputs: &[daglang_syntax::ast::Field],
     path_template: &str,
     headers: &[(String, String)],
+    auth_input: Option<&str>,
 ) -> Vec<FieldSpec> {
     let mut fields = inputs
         .iter()
+        .filter(|field| {
+            // Exclude the auth_input field — it is wired to res:credential
+            // on the execute node, not to the prepare node.
+            auth_input.is_none_or(|ai| field.name != ai)
+        })
         .map(|field| {
             let type_id = type_expr_to_string(&field.ty);
             let is_path_param = path_template.contains(&format!("{{{}}}", field.name));
@@ -5667,7 +5685,7 @@ fn add_service_transport_triplets(
     builder: &mut DagBuilder,
     project: &TypedProject,
     required_calls: Option<&HashSet<String>>,
-) -> ServiceEndpointRegistry {
+) -> Result<ServiceEndpointRegistry, LowerError> {
     let data_registry = build_data_registry(project);
     let mut registry = ServiceEndpointRegistry::default();
     for module in &project.modules {
@@ -5697,6 +5715,15 @@ fn add_service_transport_triplets(
                 }
                 let service_metadata =
                     derive_service_call_metadata(service, operation, &data_registry);
+                // RT4: Fail-closed when a service operation has no transport
+                // block. Previously this silently created a triplet with no
+                // spec, causing the executor to skip the operation.
+                if operation.transport.is_none() && service.implements.is_none() {
+                    return Err(LowerError::MissingTransport {
+                        service: service.name.clone(),
+                        operation: operation.name.clone(),
+                    });
+                }
                 let suffix = sanitize_identifier(&format!(
                     "{module_name}_{}_{}",
                     service.name, operation.name
@@ -5844,7 +5871,7 @@ fn add_service_transport_triplets(
             }
         }
     }
-    registry
+    Ok(registry)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5981,6 +6008,14 @@ fn add_service_call_edges(
                     target.node_id.as_str(),
                     "__deps",
                 );
+                // Extract auth_input name so the prepare-arg loop skips it
+                // (auth_input args go to res:credential on execute, not prepare).
+                let auth_input_field_name = effective_endpoint.metadata.as_ref().and_then(|m| {
+                    m.spec.as_ref().and_then(|s| match s {
+                        ServiceOperationSpec::Rest(spec) => spec.auth_input.clone(),
+                        _ => None,
+                    })
+                });
                 let mut supplied_prepare_inputs = HashSet::<String>::new();
                 for (index, arg) in call.args.iter().enumerate() {
                     let Some(prepare_input) = arg.name.as_deref().or_else(|| {
@@ -5991,6 +6026,10 @@ fn add_service_call_edges(
                     }) else {
                         continue;
                     };
+                    // Skip auth_input args — they are wired to res:credential below.
+                    if auth_input_field_name.as_deref() == Some(prepare_input) {
+                        continue;
+                    }
                     supplied_prepare_inputs.insert(prepare_input.to_string());
                     if let Some(arg_ident) = arg.ident.as_deref() {
                         if let Some(param_ty) = param_types.get(arg_ident) {
@@ -6078,6 +6117,83 @@ fn add_service_call_edges(
                         effective_endpoint.prepare_node_id.as_str(),
                         prepare_input,
                     );
+                }
+                // Wire auth_input argument to res:credential on execute node.
+                // When a service declares `config { auth_input: field_name }`,
+                // the named argument is excluded from prepare inputs (it doesn't
+                // go into the body/headers) and instead wires directly to
+                // `res:credential` on the execute node, where the transport
+                // executor applies it as an authentication header.
+                if let Some(ref auth_input_name) = auth_input_field_name {
+                    for arg in &call.args {
+                        if arg.name.as_deref() != Some(auth_input_name.as_str()) {
+                            continue;
+                        }
+                        if let Some(arg_ident) = arg.ident.as_deref() {
+                            if let Some(param_ty) = param_types.get(arg_ident) {
+                                let param_source = ensure_param_source_node(
+                                    builder,
+                                    module_name.as_str(),
+                                    item_name,
+                                    arg_ident,
+                                    param_ty.as_str(),
+                                );
+                                builder.add_edge(
+                                    param_source.as_str(),
+                                    arg_ident,
+                                    effective_endpoint.execute_node_id.as_str(),
+                                    "res:credential",
+                                );
+                            } else if let Some(bound_source) = bound_callable_sources.get(arg_ident) {
+                                builder.add_edge(
+                                    bound_source.node_id.as_str(),
+                                    bound_source.primary_output.as_str(),
+                                    effective_endpoint.execute_node_id.as_str(),
+                                    "res:credential",
+                                );
+                            } else if let Some(bound_source) = bound_service_sources.get(arg_ident) {
+                                builder.add_edge(
+                                    bound_source.parse.node_id.as_str(),
+                                    bound_source.parse.primary_output.as_str(),
+                                    effective_endpoint.execute_node_id.as_str(),
+                                    "res:credential",
+                                );
+                            }
+                        } else if let Some((base_ident, field_name)) = arg.field_access.as_ref() {
+                            if let Some(bound_source) = bound_callable_sources.get(base_ident) {
+                                builder.add_edge(
+                                    bound_source.node_id.as_str(),
+                                    field_name.as_str(),
+                                    effective_endpoint.execute_node_id.as_str(),
+                                    "res:credential",
+                                );
+                            } else if let Some(bound_source) = bound_service_sources.get(base_ident) {
+                                builder.add_edge(
+                                    bound_source.parse.node_id.as_str(),
+                                    field_name.as_str(),
+                                    effective_endpoint.execute_node_id.as_str(),
+                                    "res:credential",
+                                );
+                            }
+                        } else if let Some(literal) = arg.literal.as_ref() {
+                            let literal_source = ensure_literal_source_node(
+                                builder,
+                                module_name.as_str(),
+                                item_name,
+                                "res:credential",
+                                "Secret",
+                                literal,
+                                format!("{call_index}_auth_input").as_str(),
+                            );
+                            builder.add_edge(
+                                literal_source.as_str(),
+                                "res:credential",
+                                effective_endpoint.execute_node_id.as_str(),
+                                "res:credential",
+                            );
+                        }
+                        break;
+                    }
                 }
                 wire_profile_binding_config_inputs(
                     builder,
@@ -8791,7 +8907,9 @@ service FsStorage implements Storage {
             "dsl/services/shell.dag",
             r#"module sample.services
 service shell.Tools {
-  operation Echo(message: String) -> { output: String }
+  operation Echo(message: String) -> { output: String } {
+    transport shell { argv: ["echo", "{message}"] }
+  }
 }
 func run() -> { output: String } {
   result = shell.Tools.Echo(message: "hello")
@@ -9509,6 +9627,95 @@ func caller(id: String) -> { ok: Bool }
                 edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
             }),
             "credential provider output should be wired to execute node res:credential"
+        );
+    }
+
+    #[test]
+    fn auth_input_config_wires_arg_to_execute_res_credential() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/auth_input_test.dag",
+            r#"module sample.auth_input
+service sample.Api {
+  config { endpoint: "https://api.example.com", auth: BearerToken, auth_input: auth_token }
+  operation Create {
+    input { name: String, auth_token: Secret }
+    output { id: String }
+    transport rest { method: POST, path: "/v1/things" }
+  }
+}
+func caller(name: String, token: Secret) -> { id: String } {
+  result = sample.Api.Create(name: name, auth_token: token)
+  return { id: result.id }
+}"#,
+        )]);
+
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        let execute_node_id = "execute_transport_sample_auth_input_sample_Api_Create";
+        let prepare_node_id = "prepare_transport_sample_auth_input_sample_Api_Create";
+
+        // auth_token should be wired to res:credential on execute node
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+            }),
+            "auth_input arg should be wired to execute node res:credential"
+        );
+
+        // auth_token should NOT be wired to prepare node
+        assert!(
+            !dag.edges.iter().any(|edge| {
+                edge.to_node.0 == prepare_node_id && edge.to_port.0 == "auth_token"
+            }),
+            "auth_input arg should NOT be wired to prepare node"
+        );
+
+        // prepare node should not have auth_token as an input port
+        let prepare_node = dag
+            .nodes
+            .iter()
+            .find(|n| n.id.0 == prepare_node_id)
+            .expect("prepare node should exist");
+        assert!(
+            !prepare_node
+                .inputs
+                .iter()
+                .any(|port| port.name.0 == "auth_token"),
+            "prepare node should NOT have auth_token input port (excluded by auth_input)"
+        );
+    }
+
+    #[test]
+    fn auth_input_with_field_access_wires_to_res_credential() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/auth_input_field_access.dag",
+            r#"module sample.auth_field
+service sample.Api {
+  config { endpoint: "https://api.example.com", auth: BearerToken, auth_input: auth_token }
+  operation Get {
+    input { id: String, auth_token: Secret }
+    output { ok: Bool }
+    transport rest { method: GET, path: "/v1/items" }
+  }
+}
+func fetch_secret() -> { token: String } {
+  return { token: "test-credential" }
+}
+func caller(id: String) -> { ok: Bool } {
+  secret = fetch_secret()
+  result = sample.Api.Get(id: id, auth_token: secret.token)
+  return { ok: result.ok }
+}"#,
+        )]);
+
+        let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+        let execute_node_id = "execute_transport_sample_auth_field_sample_Api_Get";
+        assert!(
+            dag.edges.iter().any(|edge| {
+                edge.to_node.0 == execute_node_id && edge.to_port.0 == "res:credential"
+            }),
+            "field-access auth_input should wire to execute node res:credential"
         );
     }
 
@@ -10903,7 +11110,9 @@ func prompt() -> { ok: Bool } {
             "dsl/services/dedup_cross.dag",
             r#"module sample.dedup
 service Echo {
-  operation Ping(message: String) -> { reply: String }
+  operation Ping(message: String) -> { reply: String } {
+    transport shell { argv: ["echo", "{message}"] }
+  }
 }
 func alpha(msg: String) -> { reply: String } {
   result = Echo.Ping(message: msg)
@@ -10955,7 +11164,9 @@ func beta(msg: String) -> { reply: String } {
             "dsl/services/dedup_same.dag",
             r#"module sample.dedup_same
 service Echo {
-  operation Ping(message: String) -> { reply: String }
+  operation Ping(message: String) -> { reply: String } {
+    transport shell { argv: ["echo", "{message}"] }
+  }
 }
 func dual(msg: String) -> { reply: String } {
   first = Echo.Ping(message: msg)
@@ -11237,6 +11448,34 @@ func verify(path: String, expected: String) -> { ok: Bool }
             compare_has_edges,
             "expected edges wiring to compare node; edges: {:?}",
             edges
+        );
+    }
+
+    #[test]
+    fn missing_transport_annotation_returns_error() {
+        let typed = typed_project_from_sources(&[(
+            "dsl/services/no_transport.dag",
+            r#"module sample.no_transport
+service sample.NoTransport {
+  config { endpoint: "https://api.example.com" }
+  operation Fetch {
+    input { id: String }
+    output { name: String }
+  }
+}
+func caller(id: String) -> { name: String } {
+  result = sample.NoTransport.Fetch(id: id)
+  return { name: result.name }
+}"#,
+        )]);
+
+        let err = lower_typed_project(&typed).expect_err(
+            "lowering a service operation without transport should fail (RT4)",
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("NoTransport") && msg.contains("Fetch") && msg.contains("no transport"),
+            "error should mention service, operation, and missing transport; got: {msg}",
         );
     }
 }

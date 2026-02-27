@@ -559,6 +559,10 @@ pub mod ast {
     pub struct ServiceConfig {
         pub endpoint: Option<String>,
         pub auth: Option<String>,
+        /// Name of the input field that carries the authentication credential.
+        /// When set, the lowerer wires this argument to `res:credential` on the
+        /// execute node instead of including it in the prepare body.
+        pub auth_input: Option<String>,
     }
 
     #[derive(Debug, Clone)]

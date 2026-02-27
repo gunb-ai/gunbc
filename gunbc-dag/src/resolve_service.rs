@@ -150,6 +150,12 @@ impl Executable for GenericRestPrepareOp {
             request = request.header(key, header_value);
         }
 
+        // 6. Mark request as requiring auth when scheme is declared.
+        // Execute handler will fail-closed if res:credential is missing.
+        if self.spec.auth_scheme.is_some() {
+            request.requires_auth = true;
+        }
+
         OutputMap::new()
             .request("request", TransportRequest::Rest(request))
             .ok()
@@ -948,6 +954,17 @@ impl Executable for GenericFilePrepareOp {
                     .unwrap_or_default();
                 FileRequest::write(path, content)
             }
+            "APPEND" => {
+                let content = inputs
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                FileRequest::append(path, content)
+            }
+            "DELETE" => FileRequest::delete(path),
+            "EXISTS" => FileRequest::exists(path),
+            "CREATE_DIR" => FileRequest::create_dir(path),
+            "GLOB" => FileRequest::glob(path),
             other => {
                 return Err(ExecError::new(format!(
                     "GenericFilePrepare: unknown file operation `{other}`"
@@ -985,8 +1002,21 @@ impl Executable for GenericFileParseOp {
                             let content = file_resp.content.as_deref().unwrap_or_default();
                             out = out.str("content", content);
                         }
-                        "written" => {
-                            out = out.bool("written", file_resp.success);
+                        "written" | "deleted" | "created" => {
+                            out = out.bool(&field.name, file_resp.success);
+                        }
+                        "exists" => {
+                            out = out.bool("exists", file_resp.exists.unwrap_or(false));
+                        }
+                        "paths" => {
+                            // Glob results: newline-separated list → List<String>
+                            let content = file_resp.content.as_deref().unwrap_or_default();
+                            let paths: Vec<Value> = content
+                                .lines()
+                                .filter(|l| !l.is_empty())
+                                .map(|l| Value::Str(l.to_string()))
+                                .collect();
+                            out = out.value("paths", Value::List(paths));
                         }
                         other => {
                             let content = file_resp.content.as_deref().unwrap_or_default();
@@ -1206,6 +1236,7 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
+            auth_input: None,
             error_mappings: vec![],
         }
     }
@@ -1258,6 +1289,7 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
+            auth_input: None,
             error_mappings: vec![],
         }
     }
@@ -1363,6 +1395,7 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
+            auth_input: None,
             error_mappings: vec![],
         };
         let op = GenericRestPrepareOp { spec };
@@ -1423,6 +1456,7 @@ mod tests {
             body_template: None,
             headers: vec![],
             auth_scheme: None,
+            auth_input: None,
             error_mappings: vec![],
         };
         let op = GenericRestParseOp {
@@ -1715,6 +1749,7 @@ mod tests {
             ]),
             headers: vec![],
             auth_scheme: None,
+            auth_input: None,
             error_mappings: vec![],
         };
 

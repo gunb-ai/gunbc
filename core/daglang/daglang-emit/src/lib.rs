@@ -1096,6 +1096,7 @@ mod tests {
             body_template: None,
             headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
             auth_scheme: None,
+            auth_input: None,
             error_mappings: vec![],
         });
 
