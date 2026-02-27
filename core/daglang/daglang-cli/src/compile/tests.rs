@@ -1025,10 +1025,10 @@ fn compile_directory_sorts_lex_before_parse_diagnostics() {
     };
 
     let error = compile_from_context(&context).expect_err("compile should fail");
-    let first_diagnostic_line = error
-        .as_str()
+    let error_text = error.to_string();
+    let first_diagnostic_line = error_text
         .lines()
-        .find(|line| line.contains(".dag:"))
+        .find(|line: &&str| line.contains(".dag:"))
         .expect("expected at least one file diagnostic line");
     assert!(
         first_diagnostic_line.contains("z_lex.dag"),

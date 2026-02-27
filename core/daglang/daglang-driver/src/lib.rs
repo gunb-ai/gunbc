@@ -2,11 +2,11 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use daglang_derive::{derive_artifacts, DerivedArtifacts};
+use daglang_derive::{derive_artifacts, DeriveError, DerivedArtifacts};
 use daglang_emit::rust_exec_runtime::emit_exec_runtime_with_output_dir;
 use daglang_emit::{
     emit_c_bundle, emit_go_bundle, emit_mips_bundle, emit_rust_bundle, EmissionBundle,
-    EmissionSummary, EmittedFile,
+    EmitError, EmissionSummary, EmittedFile,
 };
 pub use daglang_lower::is_user_param_port;
 pub use daglang_lower::InferredEntrypoint;
@@ -14,14 +14,15 @@ use daglang_lower::{
     lower_typed_project_for_modules_with_entry,
     lower_typed_project_for_modules_with_entry_and_collection_nodes,
     lower_typed_project_with_profile, lower_typed_project_with_profile_and_collection_nodes,
-    LoweredOp,
+    LowerError, LoweredOp,
 };
 use daglang_resolve::{ModuleGraph, ResolveError, ResolvedModule};
 use daglang_syntax::ast::{Expr, Item, Literal, ModulePath, PipelineDef, StageDef, Stmt, TypeBody};
 use daglang_syntax::ast_utils::type_expr_to_string;
-use daglang_syntax::diagnostic;
 use daglang_syntax::parser;
-use daglang_typecheck::{typecheck_module_graph_with_options, TypecheckOptions, TypedProject};
+use daglang_typecheck::{
+    typecheck_module_graph_with_options, TypecheckOptions, TypeError, TypedProject,
+};
 use gunbc_ir::{Dag, ProgramSymbolId, ReachableDag, TypeRegistry};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -143,38 +144,101 @@ pub struct PipelineParam {
     pub default_value: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompileError {
-    message: String,
+/// Structured compiler error preserving phase-specific context.
+///
+/// Each variant wraps the original error type from the corresponding compiler
+/// phase, so callers can pattern-match on the phase without losing information.
+/// The [`Message`](CompileError::Message) variant covers ad-hoc errors that
+/// don't originate from a specific compiler phase (validation, I/O, etc.).
+#[derive(Debug)]
+pub enum CompileError {
+    Resolve(ResolveError),
+    Typecheck(Vec<TypeError>),
+    Lower(LowerError),
+    Emit(EmitError),
+    Derive(DeriveError),
+    /// Ad-hoc error message (validation, I/O, configuration).
+    Message(String),
 }
 
 impl CompileError {
-    pub fn as_str(&self) -> &str {
-        self.message.as_str()
-    }
-
+    /// Check whether the formatted error message contains the given substring.
     pub fn contains(&self, needle: &str) -> bool {
-        self.message.contains(needle)
+        self.to_string().contains(needle)
     }
 }
 
 impl std::fmt::Display for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
+        match self {
+            CompileError::Resolve(ResolveError::ParseErrors(files)) => {
+                f.write_str("compile diagnostics:\n")?;
+                let diagnostics = daglang_syntax::diagnostic::normalize_diagnostics(
+                    files
+                        .iter()
+                        .flat_map(|(_path, diagnostics)| diagnostics.clone())
+                        .collect(),
+                );
+                for d in diagnostics {
+                    writeln!(f, "  {}", d.render())?;
+                }
+                Ok(())
+            }
+            CompileError::Resolve(error) => write!(f, "resolve error: {error}"),
+            CompileError::Typecheck(errors) => {
+                f.write_str("typecheck errors:\n")?;
+                for error in errors {
+                    writeln!(f, "  {error}")?;
+                }
+                Ok(())
+            }
+            CompileError::Lower(error) => write!(f, "lower error: {error}"),
+            CompileError::Emit(error) => write!(f, "emit error: {error}"),
+            CompileError::Derive(error) => write!(f, "derive error: {error}"),
+            CompileError::Message(message) => f.write_str(message),
+        }
+    }
+}
+
+impl From<ResolveError> for CompileError {
+    fn from(error: ResolveError) -> Self {
+        CompileError::Resolve(error)
+    }
+}
+
+impl From<Vec<TypeError>> for CompileError {
+    fn from(errors: Vec<TypeError>) -> Self {
+        CompileError::Typecheck(errors)
+    }
+}
+
+impl From<LowerError> for CompileError {
+    fn from(error: LowerError) -> Self {
+        CompileError::Lower(error)
+    }
+}
+
+impl From<EmitError> for CompileError {
+    fn from(error: EmitError) -> Self {
+        CompileError::Emit(error)
+    }
+}
+
+impl From<DeriveError> for CompileError {
+    fn from(error: DeriveError) -> Self {
+        CompileError::Derive(error)
     }
 }
 
 impl From<String> for CompileError {
     fn from(message: String) -> Self {
-        Self { message }
+        CompileError::Message(message)
     }
 }
 
 impl From<&str> for CompileError {
     fn from(message: &str) -> Self {
-        Self {
-            message: message.to_string(),
-        }
+        CompileError::Message(message.to_string())
     }
 }
 
@@ -286,7 +350,7 @@ pub fn compile_from_module_graph_with_options(
             allow_unresolved_imports: false,
         },
     )
-    .map_err(format_typecheck_errors)?;
+    .map_err(CompileError::Typecheck)?;
     let extern_assets = collect_extern_assets(&typed);
     let lowered = if let Some(scope) = callable_scope.as_ref() {
         if options.emit_collection_nodes {
@@ -309,12 +373,12 @@ pub fn compile_from_module_graph_with_options(
     } else {
         lower_typed_project_with_profile(&typed, options.profile.as_deref())
     }
-    .map_err(|error| format!("lower error: {error}"))?;
+    .map_err(CompileError::Lower)?;
     let dag_paths = daglang_lower::extract_output_paths(&lowered);
     let annotation_paths = daglang_lower::extract_declared_outputs(&typed);
     let output_paths = merge_dedup_paths(dag_paths, annotation_paths);
 
-    let derived = derive_artifacts(&lowered).map_err(|error| format!("derive error: {error}"))?;
+    let derived = derive_artifacts(&lowered).map_err(CompileError::Derive)?;
 
     let target_module_name = context.target_file.as_ref().and_then(|tf| {
         let canonical = {
@@ -338,7 +402,7 @@ pub fn compile_from_module_graph_with_options(
         target_module_name.as_deref(),
         &extern_assets,
     )
-    .map_err(|error| format!("emit error: {error}"))?;
+    ?;
     let emit_manifest_path = append_emit_manifest(&mut emitted, target, layer)?;
 
     let pipeline_params = collect_pipeline_params(&typed);
@@ -465,7 +529,7 @@ pub fn check_from_module_graph(module_graph: ModuleGraph) -> Result<CheckOutput,
             allow_unresolved_imports: false,
         },
     ) {
-        return Err(format_typecheck_errors(errors));
+        return Err(CompileError::Typecheck(errors));
     }
     Ok(CheckOutput { parsed_files })
 }
@@ -482,7 +546,7 @@ pub fn load_pipeline_params(context: &DriverContext) -> Result<Vec<PipelineParam
             allow_unresolved_imports: true,
         },
     )
-    .map_err(format_typecheck_errors)?;
+    .map_err(CompileError::Typecheck)?;
     Ok(collect_pipeline_params(&typed))
 }
 
@@ -502,7 +566,7 @@ pub fn generate_types_from_context(
             allow_unresolved_imports: true,
         },
     )
-    .map_err(format_typecheck_errors)?;
+    .map_err(CompileError::Typecheck)?;
     Ok(daglang_emit::type_codegen::generate_types_for_modules(
         &typed,
         module_filter,
@@ -534,7 +598,7 @@ pub fn lint_report_coverage_from_context(
             allow_unresolved_imports: false,
         },
     )
-    .map_err(format_typecheck_errors)?;
+    .map_err(CompileError::Typecheck)?;
     Ok(lint_report_coverage(&typed))
 }
 
@@ -818,13 +882,6 @@ fn collect_root_identifiers(expr: &Expr, roots: &mut std::collections::BTreeSet<
     }
 }
 
-fn format_typecheck_errors<E: std::fmt::Display>(errors: Vec<E>) -> CompileError {
-    let mut message = String::from("typecheck errors:\n");
-    for error in errors {
-        writeln!(message, "  {error}").ok();
-    }
-    message.into()
-}
 
 fn emit_with_options(
     dag: &Dag<LoweredOp>,
@@ -836,24 +893,22 @@ fn emit_with_options(
     match (options.target, options.layer) {
         (CodegenTarget::Rust, CodegenLayer::Native) => {
             let reachable = ReachableDag::from_dag(dag);
-            emit_rust_bundle(&reachable, derived).map_err(|error| {
-                CompileError::from(format!("rust emit backend failed: {error}"))
-            })
+            emit_rust_bundle(&reachable, derived).map_err(CompileError::Emit)
         }
         (CodegenTarget::Go, CodegenLayer::Native) => {
             let reachable = ReachableDag::from_dag(dag);
             emit_go_bundle(&reachable, derived, extern_assets, &options.embedded_data)
-                .map_err(|error| CompileError::from(format!("go emit backend failed: {error}")))
+                .map_err(CompileError::Emit)
         }
         (CodegenTarget::C, CodegenLayer::Native) => {
             let reachable = ReachableDag::from_dag(dag);
             emit_c_bundle(&reachable, derived, extern_assets, &options.embedded_data)
-                .map_err(|error| CompileError::from(format!("c emit backend failed: {error}")))
+                .map_err(CompileError::Emit)
         }
         (CodegenTarget::Mips, CodegenLayer::Native) => {
             let reachable = ReachableDag::from_dag(dag);
             emit_mips_bundle(&reachable, derived, extern_assets, &options.embedded_data)
-                .map_err(|error| CompileError::from(format!("mips emit backend failed: {error}")))
+                .map_err(CompileError::Emit)
         }
         (CodegenTarget::Rust, CodegenLayer::ExecRuntime) => {
             let module_name = target_module_name
@@ -866,9 +921,7 @@ fn emit_with_options(
                 })
                 .unwrap_or("daglang.generated");
             let files = emit_exec_runtime_with_output_dir(dag, module_name, options.output_dir.as_deref())
-                .map_err(|error| {
-                CompileError::from(format!("rust exec-runtime emit failed: {error}"))
-            })?;
+                .map_err(|error| CompileError::Message(format!("exec-runtime emit: {error}")))?;
             let callable_count = dag.nodes.len();
             let pipeline_count = dag
                 .nodes
@@ -1013,7 +1066,7 @@ fn discover_module_graph_for_context(context: &DriverContext) -> Result<ModuleGr
         return discover_target_module_graph_for_context(context, target_file);
     }
 
-    ModuleGraph::discover_strict(&context.roots).map_err(format_resolve_error)
+    ModuleGraph::discover_strict(&context.roots).map_err(CompileError::Resolve)
 }
 
 fn discover_target_module_graph_for_context(
@@ -1101,7 +1154,7 @@ fn include_profile_modules(
             continue;
         }
         let mut discovered =
-            daglang_resolve::discover_dag_files(&discovery_root).map_err(format_resolve_error)?;
+            daglang_resolve::discover_dag_files(&discovery_root).map_err(CompileError::Resolve)?;
         seed_files.append(&mut discovered);
     }
     seed_files.sort();
@@ -1158,7 +1211,7 @@ fn include_profile_modules(
         if let Some(existing_index) = module_index_by_path.get(&module.path).copied() {
             let existing = &module_graph.modules[existing_index];
             if existing.module_path != module.module_path {
-                return Err(format_resolve_error(ResolveError::DuplicateModule(
+                return Err(CompileError::Resolve(ResolveError::DuplicateModule(
                     module.module_path,
                 )));
             }
@@ -1166,7 +1219,7 @@ fn include_profile_modules(
         {
             let existing = &module_graph.modules[existing_index];
             if existing.path != module.path {
-                return Err(format_resolve_error(ResolveError::DuplicateModule(
+                return Err(CompileError::Resolve(ResolveError::DuplicateModule(
                     module.module_path,
                 )));
             }
@@ -1278,7 +1331,7 @@ fn add_target_module_if_applicable(
             .get(existing)
             .is_some_and(|existing_module| existing_module.path != canonical_path)
         {
-            return Err(format_resolve_error(ResolveError::DuplicateModule(
+            return Err(CompileError::Resolve(ResolveError::DuplicateModule(
                 module.module_path.clone(),
             )));
         }
@@ -1312,7 +1365,7 @@ fn parse_target_module_file(
             .map_err(|error| format!("failed to read {}: {error}", path.display()))?
     };
     let ast = parser::parse_with_file_diagnostics(path, &source).map_err(|diagnostics| {
-        format_resolve_error(ResolveError::ParseErrors(vec![(
+        CompileError::Resolve(ResolveError::ParseErrors(vec![(
             path.to_path_buf(),
             diagnostics,
         )]))
@@ -1423,24 +1476,6 @@ fn merge_dedup_paths(a: Vec<String>, b: Vec<String>) -> Vec<String> {
     set.into_iter().collect()
 }
 
-fn format_resolve_error(error: ResolveError) -> CompileError {
-    match error {
-        ResolveError::ParseErrors(files) => {
-            let mut message = String::from("compile diagnostics:\n");
-            let diagnostics = diagnostic::normalize_diagnostics(
-                files
-                    .into_iter()
-                    .flat_map(|(_path, diagnostics)| diagnostics)
-                    .collect(),
-            );
-            for diagnostic in diagnostics {
-                writeln!(message, "  {}", diagnostic.render()).ok();
-            }
-            message.into()
-        }
-        other => format!("resolve error: {other}").into(),
-    }
-}
 
 fn validate_module_path_consistency(
     graph: &ModuleGraph,
@@ -1587,7 +1622,7 @@ mod tests {
             target_file: None,
         };
         let error = compile_from_context(&context).expect_err("compile should fail");
-        let error_text = error.as_str();
+        let error_text = error.to_string();
         assert!(error_text.contains("module path mismatches"));
         assert!(error_text.contains("declared `mismatch.main`"));
 
@@ -1659,7 +1694,7 @@ mod tests {
         let error =
             check_from_context(&context).expect_err("strict mode should fail unresolved import");
         assert!(
-            error.as_str().contains("unresolved import"),
+            error.to_string().contains("unresolved import"),
             "expected unresolved import error, got: {error}"
         );
 
@@ -1689,7 +1724,7 @@ mod tests {
         let error =
             check_from_context(&context).expect_err("strict dependency closure should typecheck");
         assert!(
-            error.as_str().contains("unresolved call target"),
+            error.to_string().contains("unresolved call target"),
             "expected unresolved call target error, got: {error}"
         );
 
@@ -2096,7 +2131,7 @@ fn run() -> Bool {
         .expect_err("compile should fail for unsupported target");
         assert!(
             error
-                .as_str()
+                .to_string()
                 .contains("layer 1 currently supports only --target rust"),
             "expected unsupported target error, got: {error}"
         );
