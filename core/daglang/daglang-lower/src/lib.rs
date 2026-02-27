@@ -5027,12 +5027,20 @@ fn derive_service_call_metadata(
 
     let spec = derive_operation_spec(service, operation, transport, data_registry);
 
+    // Auto-derive readonly from HTTP method: GET and HEAD are read-only by definition.
+    let readonly = operation.readonly
+        || matches!(
+            &operation.transport,
+            Some(TransportBinding::Rest { method, .. })
+                if method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD")
+        );
+
     ServiceCallMetadata {
         service: service.name.clone(),
         operation: operation.name.clone(),
         transport,
         idempotent: operation.idempotent,
-        readonly: operation.readonly,
+        readonly,
         permissions,
         spec,
         retry_policy: None, // TODO: extract from DSL retry block when implemented
@@ -8872,7 +8880,7 @@ service RemoteStorage implements Storage {
         assert_eq!(metadata.operation, "read");
         assert_eq!(metadata.transport, ServiceTransportClass::RestNetwork);
         assert!(metadata.idempotent);
-        assert!(!metadata.readonly);
+        assert!(metadata.readonly, "REST GET should auto-derive readonly");
         // Note: permissions not yet expressible in typed syntax (parser gap).
         assert!(metadata.permissions.is_empty());
     }

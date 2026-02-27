@@ -267,6 +267,30 @@ impl Executable for IdentityCallableOp {
     }
 }
 
+/// Source node for callable parameters referenced in service call arguments.
+///
+/// Receives the parameter value via boundary injection (auto_mock_spec or CLI
+/// entrypoint setup), then outputs it on the named port. Falls back to
+/// `Value::Skipped` if the value wasn't injected (e.g., inside nested SubDags
+/// where boundary propagation doesn't reach).
+#[derive(Debug, Clone)]
+struct CallParamSourceOp {
+    param: String,
+    output_port: String,
+}
+
+impl Executable for CallParamSourceOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // Value arrives via set_input() from boundary injection.
+        let value = inputs
+            .get(&self.param)
+            .or_else(|| inputs.values().next())
+            .cloned()
+            .unwrap_or(Value::Skipped);
+        Ok(HashMap::from([(self.output_port.clone(), value)]))
+    }
+}
+
 /// Test-only SubDag execution adapter.
 ///
 /// **Production path**: `resolve_node_body` handles `NodeBody::SubDag` via
@@ -660,7 +684,16 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
 fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, ResolveError> {
     match kind {
         PrimitiveOpKind::FsEnv => Ok(DynOp::new(DslFsEnvOp)),
-        PrimitiveOpKind::CallParamSource { .. } => Ok(DynOp::new(IdentityCallableOp)),
+        PrimitiveOpKind::CallParamSource { param, .. } => {
+            let output_port = outputs
+                .first()
+                .map(|port| port.name.0.clone())
+                .unwrap_or_else(|| param.clone());
+            Ok(DynOp::new(CallParamSourceOp {
+                param: param.clone(),
+                output_port,
+            }))
+        }
         PrimitiveOpKind::CallLiteralSource { literal } => {
             let output_port = outputs
                 .first()

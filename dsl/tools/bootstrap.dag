@@ -52,6 +52,3 @@ func bootstrap(check_mode: Bool?) -> { success: Bool, crate_count: Int, makefile
   }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────
-
-test bootstrap_dryrun {}

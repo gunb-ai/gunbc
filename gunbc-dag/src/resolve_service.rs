@@ -150,6 +150,48 @@ impl Executable for GenericRestPrepareOp {
             request = request.header(key, header_value);
         }
 
+        // 6. Embed auth credential on the request when a Secret-typed input
+        //    matching the auth scheme is available. This is a fallback path:
+        //    the primary path is `res:credential` on the execute node. But when
+        //    credentials arrive via boundary injection or param_source wiring,
+        //    embedding them here ensures `request.auth.take()` applies them.
+        if self.spec.auth_scheme.is_some() && request.auth.is_none() {
+            let token_str = self
+                .spec
+                .input_fields
+                .iter()
+                .filter(|f| f.type_id == "Secret")
+                .find_map(|f| match inputs.get(&f.name) {
+                    Some(Value::Secret(s)) => {
+                        #[allow(clippy::disallowed_methods)]
+                        // Approved: transport boundary — credential embedded in outbound request
+                        let t = s.expose_plaintext_for_transport();
+                        if t.is_empty() {
+                            None
+                        } else {
+                            Some(t.to_string())
+                        }
+                    }
+                    Some(Value::Str(s)) if !s.is_empty() => Some(s.clone()),
+                    _ => None,
+                });
+            if let Some(token) = token_str {
+                use gunbc_ir::transport::credential::{AuthScheme, Credential, Secret};
+                let scheme = match self.spec.auth_scheme.as_deref() {
+                    Some("BearerToken") => AuthScheme::Bearer,
+                    Some(h) if h.starts_with("Header(") => {
+                        let name = h
+                            .trim_start_matches("Header(\"")
+                            .trim_end_matches("\")")
+                            .to_string();
+                        AuthScheme::Header { name }
+                    }
+                    _ => AuthScheme::Bearer,
+                };
+                request.auth = Some(Credential::new(Secret::static_value(token), scheme));
+            }
+        }
+
         OutputMap::new()
             .request("request", TransportRequest::Rest(request))
             .ok()
@@ -335,14 +377,26 @@ fn extract_output_field(
     }
 }
 
-/// Navigate a dot-separated JSON path (e.g., "payload.data").
+/// Navigate a JSON path supporting both `.` and `/` separators and array indices.
+///
+/// Examples: `"payload.data"`, `"content/0/text"`, `"choices/0/message/content"`.
+/// Numeric segments index into arrays; string segments index into objects.
 fn navigate_json_path<'a>(
     body: &'a serde_json::Value,
     path: &str,
 ) -> Option<&'a serde_json::Value> {
     let mut current = body;
-    for segment in path.split('.') {
-        current = current.get(segment)?;
+    // Use `/` as separator when the path contains `/`, otherwise `.`.
+    let separator = if path.contains('/') { '/' } else { '.' };
+    for segment in path.split(separator) {
+        if segment.is_empty() {
+            continue;
+        }
+        if let Ok(idx) = segment.parse::<usize>() {
+            current = current.get(idx)?;
+        } else {
+            current = current.get(segment)?;
+        }
     }
     Some(current)
 }

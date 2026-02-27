@@ -185,28 +185,16 @@ fn transition_labels(
   non_sdlc |> append(stage_to_label(stage: to_stage))
 }
 
-// --- Stage-specific transition guards ------------------------------------
-// Each transition has a guard condition that must be satisfied.
+// --- Backward transition target ------------------------------------------
+// Maps a stage to its legal backward-transition target for retry.
+// Must match the backward edges encoded in is_legal_backward().
 
-type TransitionGuard {
-  from:           IssueLifecycleStage
-  to:             IssueLifecycleStage
-  guard_name:     NonEmptyStr
-  side_effects:   List<String>        // Description of side effects
-}
-
-fn transition_guards() -> List<TransitionGuard> {
-  [
-    TransitionGuard { from: Idea,         to: Design,       guard_name: "claim_acquired",      side_effects: ["Set label sdlc:design"] },
-    TransitionGuard { from: Design,       to: DesignReview, guard_name: "design_generated",    side_effects: ["Set label sdlc:design-review", "Post design comment"] },
-    TransitionGuard { from: DesignReview, to: Accepted,     guard_name: "review_passes",       side_effects: ["Set label sdlc:accepted"] },
-    TransitionGuard { from: DesignReview, to: Design,       guard_name: "review_changes",      side_effects: ["Set label sdlc:design", "Increment retry count"] },
-    TransitionGuard { from: Accepted,     to: Implementing, guard_name: "agent_spawned",       side_effects: ["Set label sdlc:implementing", "Create branch"] },
-    TransitionGuard { from: Implementing, to: CodeReview,   guard_name: "agent_complete",      side_effects: ["Set label sdlc:code-review"] },
-    TransitionGuard { from: Implementing, to: Accepted,     guard_name: "agent_fails_retry",   side_effects: ["Set label sdlc:accepted", "Increment retry count"] },
-    TransitionGuard { from: CodeReview,   to: Testing,      guard_name: "review_approves",     side_effects: ["Set label sdlc:testing"] },
-    TransitionGuard { from: CodeReview,   to: Implementing, guard_name: "review_changes_code", side_effects: ["Set label sdlc:implementing"] },
-    TransitionGuard { from: Testing,      to: Done,         guard_name: "tests_pass",          side_effects: ["Set label sdlc:done", "Close issue"] },
-    TransitionGuard { from: Testing,      to: Implementing, guard_name: "tests_fail_retry",    side_effects: ["Set label sdlc:implementing"] }
-  ]
+fn backward_target(stage: IssueLifecycleStage) -> IssueLifecycleStage {
+  match stage {
+    DesignReview => Design
+    Implementing => Accepted
+    CodeReview   => Implementing
+    Testing      => Implementing
+    _            => stage  // Stages without backward edges have no retry path
+  }
 }

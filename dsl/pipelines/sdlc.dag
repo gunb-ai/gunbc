@@ -45,7 +45,6 @@ import std.types {
     NonEmptyStr, ApprovalMode
 }
 import std.state_machines {
-    validate_transition, validate_transition_with_budget,
     determine_stage, stage_to_label, transition_labels
 }
 

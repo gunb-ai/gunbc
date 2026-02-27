@@ -191,21 +191,11 @@ fn emit_test_fn(
     let fn_name = format!("{}_mock_spec", test.name);
     let test_name = test.name.replace('_', "-");
 
-    // Prefer typed fields, fall back to annotations
-    let tier = test.tier.clone();
-    let hermetic = if test.hermetic {
-        Some(true)
-    } else {
-        Some(test.hermetic)
-    };
-
-    // Determine testgen flags
-    let flow_flag = if hermetic.unwrap_or(true) {
-        "flow_tests"
-    } else {
-        "live_flow_tests"
-    };
-    let class_attr = match tier.as_deref() {
+    // Fidelity system derives tier/hermetic from graph structure.
+    // Manual tier hints are accepted but only affect the testgen attribute;
+    // DSL tests always run against mocked graphs (hermetic by construction).
+    let flow_flag = "flow_tests";
+    let class_attr = match test.tier.as_deref() {
         Some("Unit") => ", class = \"unit\", fermi = \"XS\"",
         Some("Contract") => ", class = \"hermetic\", fermi = \"S\"",
         Some("Scenario") => ", class = \"hermetic\", fermi = \"S\"",

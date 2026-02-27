@@ -33,7 +33,7 @@ import std.types {
 }
 import std.state_machines {
     determine_stage, stage_to_label, transition_labels,
-    validate_transition_with_budget
+    validate_transition_with_budget, backward_target
 }
 
 // ── Reconciler parameters ────────────────────────────────────────────
@@ -59,17 +59,6 @@ fn is_success(status: AgentStatus) -> Bool {
   status == "Success"
 }
 
-// Map a stage to its legal backward-transition target for retry.
-// Must match the backward edges in std/state_machines.dag.
-fn retry_target(stage: IssueLifecycleStage) -> IssueLifecycleStage {
-  match stage {
-    DesignReview => Design
-    Implementing => Accepted
-    CodeReview   => Implementing
-    Testing      => Implementing
-    _            => stage  // Stages without backward edges have no retry path
-  }
-}
 
 fn format_terminal_comment(issue_id: String, stage: String, reason: String) -> String {
   "## Terminal Failure\n\n**Stage:** {stage}\n**Reason:** {reason}\n\nThis issue has reached a terminal failure state and requires manual intervention.\n\n---\n_Reported by gunbc reconciler_"
@@ -164,7 +153,7 @@ pipeline reconciler
               // Failed + retryable — check retry budget
               transition = validate_transition_with_budget(
                 from: remote_stage,
-                to: retry_target(stage: remote_stage),
+                to: backward_target(stage: remote_stage),
                 retry_budget_remaining: ledger_result.outcome.retry_budget_remaining
               )
               match transition {
