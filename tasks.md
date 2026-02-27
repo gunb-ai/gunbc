@@ -243,6 +243,34 @@ correctness, then testing + foundation.
 | 22 | RT22 | **Snapshot content DSL**. Delete BuildSnapshotContentOp. | M | Pending | RT21 |
 | 23 | RT23 | **Delete extern_impls.rs** entirely. Zero extern func in any .dag file. | S | Pending | RT21, RT22 |
 
+### Postmortem-Driven: Auth & Testgen Hardening (URGENT)
+
+> See `TODO/gist-auth-postmortem.md` for full analysis. The gist 401 exposed
+> systemic gaps in credential lifecycle, testgen error coverage, and
+> compositional modeling enforcement. These affect every DSL-defined service,
+> not just gist.
+
+**Analysis tasks** (study before implementing):
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| A1 | RT-A1 | **Shell exit code audit.** Which operations use TrimStdout/SplitLines? Which can legitimately return non-zero (e.g. `printenv` → exit 1 = var not set)? Build decision matrix for exit code handling per operation. Refs: `resolve_service.rs:521-528` (TrimStdout), `resolve_service.rs:488` (SuccessStdoutStderr). | S | Pending | — |
+| A2 | RT-A2 | **`@mock_response` adoption gap.** Every service operation should declare success + auth-failure mock responses. Count the gap: ops × missing mocks = obligation deficit. Currently `@mock_response` is only in examples/comments — zero real service uses it. Refs: `dsl/services/` (all .dag), `gunbc-dag/src/mock_defaults.rs:145-180`. | M | Pending | — |
+| A3 | RT-A3 | **Credential chain audit.** Trace producer→consumer edges for every service with `config { auth }`. Which chains are verified by tests? Which are not? Map: shell.GCloud outputs → REST service inputs. Refs: `dsl/services/gcp/*.dag`, `dsl/services/github/gist.dag`, `dsl/services/shell.dag`. | S | Pending | — |
+| A4 | RT-A4 | **Why gist bypasses `credential_chain`.** The pattern exists (`dsl/std/patterns.dag:236-283`) with `local_auth()` (lines 392-411). Gist uses raw `shell.GCloud.SecretManagerAccessVersion` instead. Was `credential_chain` ever wired in? What broke? Migration path to `credential_chain(runtime: LocalDev, ...)` for all three entrypoints. | M | Pending | — |
+| A5 | RT-A5 | **Credential-as-resource model.** `credential_chain` declares `provides auth: AuthContext` (`dsl/std/resources.dag:87-98`, `expires: true`). How should the compiler enforce expiry handling? Should testgen generate expiry-scenario tests? | S | Pending | — |
+
+**Implementation tasks** (after analysis):
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| I1 | RT-I1 | **`@mock_response` on all service operations.** Add success + error variants (401, 500 minimum). Feed into testgen Bucket C scenarios. | L | Pending | RT-A2 |
+| I2 | RT-I2 | **Testgen error-status obligations.** Extend Bucket C: inject error status codes per REST operation, not just `Value::Skipped`. Refs: `core/codegen/src/testgen/obligation.rs` (`SingleTransportFailure`), `gunbc-dag/src/mock_defaults.rs` (`default_rest_response`). | L | Pending | RT-I1, RT9 |
+| I3 | RT-I3 | **`CredentialChainIntegrity` testgen obligation.** For every service with `config { auth }`, trace backwards to credential source, assert edge exists. Ref: `res:credential` port at `daglang-lower/src/lib.rs:5731`. | M | Pending | RT-A3 |
+| I4 | RT-I4 | **Shell exit code enforcement.** Add exit code check to TrimStdout and SplitLines with semantic opt-out for operations where non-zero is expected. | S | Pending | RT-A1 |
+| I5 | RT-I5 | **Wire `credential_chain` into gist.** Replace raw `shell.GCloud.SecretManagerAccessVersion` with `credential_chain(runtime: LocalDev, ...)` in all three gist entrypoints. | M | Pending | RT-A4 |
+| I6 | RT-I6 | **Verify `credential_chain` end-to-end.** Pattern references `gcp.STS.Exchange`, `gcp.SecretManager.AccessVersion`, `local_auth()` — all must lower correctly with RT1/RT2 fixes. | M | Pending | RT-I5 |
+
 ### Horizon (after RT23)
 
 | # | ID | What | Size |
