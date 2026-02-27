@@ -263,25 +263,26 @@ correctness, then testing + foundation.
 | 21 | RT21 | **Tree rendering in pure DSL**. Delete RenderTreeOp. | L | Pending | RT19, RT20 |
 | 22 | RT22 | **Snapshot content DSL**. Delete BuildSnapshotContentOp. | M | Pending | RT21 |
 | 23 | RT23 | **Delete extern_impls.rs** entirely. Zero extern func in any .dag file. | S | Pending | RT21, RT22 |
+| 24 | RT24 | **Profile-aware compilation testing.** `auto_testgen_for_module()` now accepts discovered profiles. When `requires_profile`, picks first hermetic profile for compilation. `TestgenOp::AutoGenerate` has profile fallback. `build_dsl_graph_with_types_and_profile()` added. Deleted `sdlc_testgen.rs` + 2 hardcoded profile tests. Result: 6 SDLC modules now generate tests (3,532 test fns) instead of being silently skipped. | M | **Done** | — |
 
-### Horizon (after RT23)
+### Horizon (after RT24)
 
 | # | ID | What | Size |
 |---|-----|------|------|
-| 24 | RT24 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
-| 25 | RT25 | String constants: central consts in `core/ir/src/signature.rs`. | S |
-| 26 | RT26 | `#[derive(StringEnum)]` for 15 enums (~60 match blocks). | M |
-| 27 | RT27 | ModulePath unification across 4 crates. | S |
-| 28 | RT28 | Shared DslTypeMapping table for emit backends. | S |
-| 29 | RT29 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
-| 30 | RT30 | Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortCategory`. | S |
-| 31 | RT31 | String constants migration: `__deps`/`res:file`/`tool:` → central consts. | M |
-| 32 | RT32 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
-| 33 | RT33 | Unify passthrough op variants → single data-driven PassthroughOp. | S |
-| 34 | RT34 | Error type consolidation (6 types → layered). | M |
-| 35 | RT35 | Test helper extraction (CompileTestHelper + MockFactory). | M |
-| 36 | RT36 | Scaffolding decision: delete or wire RetryPolicy/ErrorMapping/etc. | S |
-| 37 | RT37 | Underused abstractions: delete algebra/render traits or find second consumer. | S |
+| 25 | RT25 | TransportNodeKind enum (Prepare/Execute/Parse). | S |
+| 26 | RT26 | String constants: central consts in `core/ir/src/signature.rs`. | S |
+| 27 | RT27 | `#[derive(StringEnum)]` for 15 enums (~60 match blocks). | M |
+| 28 | RT28 | ModulePath unification across 4 crates. | S |
+| 29 | RT29 | Shared DslTypeMapping table for emit backends. | S |
+| 30 | RT30 | Registry pattern for DAG tooling string dispatch (100+ arms). | L |
+| 31 | RT31 | Port namespace migration: `starts_with("res:")`/`"tool:"` → `PortCategory`. | S |
+| 32 | RT32 | String constants migration: `__deps`/`res:file`/`tool:` → central consts. | M |
+| 33 | RT33 | Split monolithic files (lower 11K, typecheck 5K, execute 4K). | L |
+| 34 | RT34 | Unify passthrough op variants → single data-driven PassthroughOp. | S |
+| 35 | RT35 | Error type consolidation (6 types → layered). | M |
+| 36 | RT36 | Test helper extraction (CompileTestHelper + MockFactory). | M |
+| 37 | RT37 | Scaffolding decision: delete or wire RetryPolicy/ErrorMapping/etc. | S |
+| 38 | RT38 | Underused abstractions: delete algebra/render traits or find second consumer. | S |
 
 ---
 
