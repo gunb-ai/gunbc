@@ -225,6 +225,34 @@ pub struct ShellCassette {
     pub exit_code: i32,
 }
 
+/// Argument matching mode for advanced shell cassette rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellArgMatchMode {
+    Exact,
+    Glob,
+    Any,
+}
+
+/// A richer shell cassette rule for hermetic shell testing.
+#[derive(Debug, Clone)]
+pub struct ShellCassetteRule {
+    pub command: String,
+    pub args: Vec<String>,
+    pub args_mode: ShellArgMatchMode,
+    pub cwd: Option<String>,
+    pub required_env: HashMap<String, String>,
+    pub stdin: Option<String>,
+    /// Ordered responses: first call returns index 0, second returns index 1, ...
+    /// Exhaustion is an error.
+    pub responses: Vec<ShellResponse>,
+}
+
+#[derive(Debug, Clone)]
+struct RegisteredShellCassette {
+    rule: ShellCassetteRule,
+    next_response: usize,
+}
+
 // ── HTTP/REST stub registry (RT11) ────────────────────────────────────
 
 /// A pre-recorded HTTP request → response mapping.
@@ -247,22 +275,44 @@ pub struct HttpStub {
     pub response_headers: HashMap<String, String>,
 }
 
-impl HttpStub {
-    /// Match this stub against a (method, url) pair.
-    fn matches(&self, method: &HttpMethod, url: &str) -> bool {
-        if let Some(ref m) = self.method {
-            if m != method {
-                return false;
-            }
-        }
-        // Extract path from URL (strip scheme + host).
-        let path = extract_url_path(url);
-        if self.exact_path {
-            path == self.path_pattern
-        } else {
-            path.starts_with(&self.path_pattern)
-        }
-    }
+/// HTTP path matching strategy for advanced stubs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HttpPathMatchMode {
+    Prefix,
+    Exact,
+    /// Parameterized template path (e.g. `/repos/{owner}/{repo}/issues`).
+    Template,
+}
+
+/// One HTTP response entry in an ordered stub sequence.
+#[derive(Debug, Clone)]
+pub struct HttpStubResponse {
+    pub status: u16,
+    pub response_body: String,
+    pub response_headers: HashMap<String, String>,
+}
+
+/// A richer HTTP stub rule for method+path+header matching with ordered responses.
+#[derive(Debug, Clone)]
+pub struct HttpStubRule {
+    pub method: Option<HttpMethod>,
+    pub path_pattern: String,
+    pub path_mode: HttpPathMatchMode,
+    pub required_headers: Vec<(String, String)>,
+    pub responses: Vec<HttpStubResponse>,
+}
+
+#[derive(Debug, Clone)]
+struct RegisteredHttpStub {
+    rule: HttpStubRule,
+    next_response: usize,
+}
+
+#[derive(Debug, Clone)]
+struct MatchedHttpStubResponse {
+    status: u16,
+    response_body: String,
+    response_headers: HashMap<String, String>,
 }
 
 /// Extract the path component from a URL string (without query or fragment).
@@ -298,8 +348,8 @@ pub struct TcpLoopback {
 #[derive(Debug, Default)]
 pub struct VirtualTransportBackend {
     fs: Mutex<VirtualFilesystem>,
-    shell_cassettes: Mutex<Vec<ShellCassette>>,
-    http_stubs: Mutex<Vec<HttpStub>>,
+    shell_cassettes: Mutex<Vec<RegisteredShellCassette>>,
+    http_stubs: Mutex<Vec<RegisteredHttpStub>>,
     tcp_loopbacks: Mutex<Vec<TcpLoopback>>,
 }
 
@@ -321,18 +371,74 @@ impl VirtualTransportBackend {
 
     /// Register a shell cassette (pre-recorded command → response).
     pub fn add_shell_cassette(&self, cassette: ShellCassette) {
+        let args_mode = if cassette.args.is_empty() {
+            ShellArgMatchMode::Any
+        } else {
+            ShellArgMatchMode::Exact
+        };
+        self.add_shell_cassette_rule(ShellCassetteRule {
+            command: cassette.command,
+            args: cassette.args,
+            args_mode,
+            cwd: None,
+            required_env: HashMap::new(),
+            stdin: None,
+            responses: vec![ShellResponse {
+                exit_code: cassette.exit_code,
+                stdout: cassette.stdout,
+                stderr: cassette.stderr,
+            }],
+        });
+    }
+
+    /// Register an advanced shell cassette rule.
+    pub fn add_shell_cassette_rule(&self, rule: ShellCassetteRule) {
+        assert!(
+            !rule.responses.is_empty(),
+            "shell cassette rule must have at least one response"
+        );
         self.shell_cassettes
             .lock()
             .expect("shell cassettes lock poisoned")
-            .push(cassette);
+            .push(RegisteredShellCassette {
+                rule,
+                next_response: 0,
+            });
     }
 
     /// Register an HTTP stub (pre-recorded request → response).
     pub fn add_http_stub(&self, stub: HttpStub) {
+        let path_mode = if stub.exact_path {
+            HttpPathMatchMode::Exact
+        } else {
+            HttpPathMatchMode::Prefix
+        };
+        self.add_http_stub_rule(HttpStubRule {
+            method: stub.method,
+            path_pattern: stub.path_pattern,
+            path_mode,
+            required_headers: Vec::new(),
+            responses: vec![HttpStubResponse {
+                status: stub.status,
+                response_body: stub.response_body,
+                response_headers: stub.response_headers,
+            }],
+        });
+    }
+
+    /// Register an advanced HTTP stub rule.
+    pub fn add_http_stub_rule(&self, rule: HttpStubRule) {
+        assert!(
+            !rule.responses.is_empty(),
+            "http stub rule must have at least one response"
+        );
         self.http_stubs
             .lock()
             .expect("http stubs lock poisoned")
-            .push(stub);
+            .push(RegisteredHttpStub {
+                rule,
+                next_response: 0,
+            });
     }
 
     /// Register a TCP loopback (port → canned response).
@@ -393,7 +499,7 @@ impl VirtualTransportBackend {
 
     fn execute_shell(&self, request: &ShellRequest) -> Result<ShellResponse, TransportError> {
         // Check cassette registry first (RT10).
-        if let Some(response) = self.match_shell_cassette(request) {
+        if let Some(response) = self.match_shell_cassette(request)? {
             return Ok(response);
         }
         // Fall through to built-in handlers.
@@ -402,84 +508,177 @@ impl VirtualTransportBackend {
             "printenv" => self.execute_printenv(request),
             "sh" => self.execute_sh(request),
             other => Err(TransportError::new(format!(
-                "virtual backend: unsupported shell command '{}'",
-                other
+                "virtual backend: unsupported shell command '{}' args={:?} cwd={:?}. {}",
+                other,
+                request.args,
+                request.cwd,
+                self.shell_stub_diagnostics()
             ))),
         }
     }
 
     /// Match a shell request against registered cassettes.
-    fn match_shell_cassette(&self, request: &ShellRequest) -> Option<ShellResponse> {
-        let cassettes = self
+    fn match_shell_cassette(
+        &self,
+        request: &ShellRequest,
+    ) -> Result<Option<ShellResponse>, TransportError> {
+        let mut cassettes = self
             .shell_cassettes
             .lock()
             .expect("shell cassettes lock poisoned");
-        for cassette in cassettes.iter() {
-            if cassette.command != request.command {
+        for cassette in cassettes.iter_mut() {
+            if cassette.rule.command != request.command {
                 continue;
             }
-            // Empty args = match any args for this command.
-            if !cassette.args.is_empty() && cassette.args != request.args {
+            if !shell_cassette_rule_matches(&cassette.rule, request) {
                 continue;
             }
-            return Some(ShellResponse {
-                exit_code: cassette.exit_code,
-                stdout: cassette.stdout.clone(),
-                stderr: cassette.stderr.clone(),
-            });
+            if cassette.next_response >= cassette.rule.responses.len() {
+                return Err(TransportError::new(format!(
+                    "virtual backend: shell cassette sequence exhausted for command '{}' (matched rule args={:?}, mode={:?})",
+                    cassette.rule.command, cassette.rule.args, cassette.rule.args_mode
+                )));
+            }
+            let response = cassette.rule.responses[cassette.next_response].clone();
+            cassette.next_response += 1;
+            return Ok(Some(response));
         }
-        None
+        Ok(None)
     }
 
     /// Execute a REST request against the HTTP stub registry (RT11).
     fn execute_rest(&self, request: &RestRequest) -> Result<RestResponse, TransportError> {
-        let stubs = self
-            .http_stubs
-            .lock()
-            .expect("http stubs lock poisoned");
-        for stub in stubs.iter() {
-            if stub.matches(&request.method, &request.url) {
-                let body: serde_json::Value = if stub.response_body.is_empty() {
-                    serde_json::json!({})
-                } else {
-                    serde_json::from_str(&stub.response_body).map_err(|e| {
-                        TransportError::new(format!(
-                            "virtual backend: invalid JSON in stub response body: {e}"
-                        ))
-                    })?
-                };
-                return Ok(RestResponse {
-                    status: stub.status,
-                    headers: stub.response_headers.clone(),
-                    body,
-                });
-            }
-        }
-        Err(TransportError::new(format!(
-            "virtual backend: no HTTP stub matches {} {}",
-            request.method, request.url
-        )))
+        let matched = self.match_http_stub(&request.method, &request.url, &request.headers)?;
+        let Some(stub) = matched else {
+            return Err(TransportError::new(format!(
+                "virtual backend: no HTTP stub matches {} {} headers={:?}. {}",
+                request.method,
+                request.url,
+                request.headers,
+                self.http_stub_diagnostics()
+            )));
+        };
+        let body: serde_json::Value = if stub.response_body.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_str(&stub.response_body).map_err(|e| {
+                TransportError::new(format!(
+                    "virtual backend: invalid JSON in stub response body: {e}"
+                ))
+            })?
+        };
+        Ok(RestResponse {
+            status: stub.status,
+            headers: stub.response_headers,
+            body,
+        })
     }
 
     /// Execute an HTTP request against the HTTP stub registry (RT11).
     fn execute_http(&self, request: &HttpRequest) -> Result<HttpResponse, TransportError> {
-        let stubs = self
-            .http_stubs
-            .lock()
-            .expect("http stubs lock poisoned");
-        for stub in stubs.iter() {
-            if stub.matches(&request.method, &request.url) {
-                return Ok(HttpResponse {
-                    status: stub.status,
-                    headers: stub.response_headers.clone(),
-                    body: stub.response_body.clone(),
-                });
+        let matched = self.match_http_stub(&request.method, &request.url, &request.headers)?;
+        let Some(stub) = matched else {
+            return Err(TransportError::new(format!(
+                "virtual backend: no HTTP stub matches {} {} headers={:?}. {}",
+                request.method,
+                request.url,
+                request.headers,
+                self.http_stub_diagnostics()
+            )));
+        };
+        Ok(HttpResponse {
+            status: stub.status,
+            headers: stub.response_headers,
+            body: stub.response_body,
+        })
+    }
+
+    fn match_http_stub(
+        &self,
+        method: &HttpMethod,
+        url: &str,
+        headers: &HashMap<String, String>,
+    ) -> Result<Option<MatchedHttpStubResponse>, TransportError> {
+        let path = extract_url_path(url);
+        let mut stubs = self.http_stubs.lock().expect("http stubs lock poisoned");
+        for stub in stubs.iter_mut() {
+            if !http_stub_rule_matches(&stub.rule, method, path, headers) {
+                continue;
             }
+            if stub.next_response >= stub.rule.responses.len() {
+                return Err(TransportError::new(format!(
+                    "virtual backend: HTTP stub response sequence exhausted for {} {} (path_mode={:?})",
+                    method, stub.rule.path_pattern, stub.rule.path_mode
+                )));
+            }
+            let response = stub.rule.responses[stub.next_response].clone();
+            stub.next_response += 1;
+            return Ok(Some(MatchedHttpStubResponse {
+                status: response.status,
+                response_body: response.response_body,
+                response_headers: response.response_headers,
+            }));
         }
-        Err(TransportError::new(format!(
-            "virtual backend: no HTTP stub matches {} {}",
-            request.method, request.url
-        )))
+        Ok(None)
+    }
+
+    fn http_stub_diagnostics(&self) -> String {
+        let stubs = self.http_stubs.lock().expect("http stubs lock poisoned");
+        if stubs.is_empty() {
+            return "registered stubs: <none>".to_string();
+        }
+        let entries = stubs
+            .iter()
+            .enumerate()
+            .map(|(idx, stub)| {
+                format!(
+                    "#{idx} method={:?} path={} mode={:?} headers={:?} remaining={}",
+                    stub.rule.method,
+                    stub.rule.path_pattern,
+                    stub.rule.path_mode,
+                    stub.rule.required_headers,
+                    stub.rule.responses.len().saturating_sub(stub.next_response)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        format!("registered stubs: [{entries}]")
+    }
+
+    fn shell_stub_diagnostics(&self) -> String {
+        let cassettes = self
+            .shell_cassettes
+            .lock()
+            .expect("shell cassettes lock poisoned");
+        if cassettes.is_empty() {
+            return "registered shell cassettes: <none>".to_string();
+        }
+        let entries = cassettes
+            .iter()
+            .enumerate()
+            .map(|(idx, cassette)| {
+                format!(
+                    "#{idx} command={} args={:?} mode={:?} cwd={:?} env_keys={:?} remaining={}",
+                    cassette.rule.command,
+                    cassette.rule.args,
+                    cassette.rule.args_mode,
+                    cassette.rule.cwd,
+                    cassette
+                        .rule
+                        .required_env
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>(),
+                    cassette
+                        .rule
+                        .responses
+                        .len()
+                        .saturating_sub(cassette.next_response)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        format!("registered shell cassettes: [{entries}]")
     }
 
     /// Execute a TCP request against the loopback registry (RT12).
@@ -621,15 +820,119 @@ fn unquote(value: &str) -> &str {
     }
 }
 
+fn shell_cassette_rule_matches(rule: &ShellCassetteRule, request: &ShellRequest) -> bool {
+    if rule.command != request.command {
+        return false;
+    }
+    if let Some(expected_cwd) = &rule.cwd {
+        if request.cwd.as_deref() != Some(expected_cwd.as_str()) {
+            return false;
+        }
+    }
+    if let Some(expected_stdin) = &rule.stdin {
+        if request.stdin.as_deref() != Some(expected_stdin.as_str()) {
+            return false;
+        }
+    }
+    if !rule.required_env.iter().all(|(key, expected)| {
+        request
+            .env
+            .get(key)
+            .is_some_and(|actual| actual == expected)
+    }) {
+        return false;
+    }
+    shell_args_match(rule, &request.args)
+}
+
+fn shell_args_match(rule: &ShellCassetteRule, request_args: &[String]) -> bool {
+    match rule.args_mode {
+        ShellArgMatchMode::Any => true,
+        ShellArgMatchMode::Exact => rule.args == request_args,
+        ShellArgMatchMode::Glob => {
+            if rule.args.len() != request_args.len() {
+                return false;
+            }
+            rule.args.iter().zip(request_args).all(|(pattern, actual)| {
+                match glob::Pattern::new(pattern) {
+                    Ok(glob) => glob.matches(actual),
+                    Err(_) => false,
+                }
+            })
+        }
+    }
+}
+
+fn http_stub_rule_matches(
+    rule: &HttpStubRule,
+    method: &HttpMethod,
+    path: &str,
+    headers: &HashMap<String, String>,
+) -> bool {
+    if let Some(expected) = rule.method {
+        if expected != *method {
+            return false;
+        }
+    }
+    if !path_matches(path, &rule.path_pattern, rule.path_mode) {
+        return false;
+    }
+    headers_match(headers, &rule.required_headers)
+}
+
+fn headers_match(headers: &HashMap<String, String>, required: &[(String, String)]) -> bool {
+    required.iter().all(|(key, expected)| {
+        headers
+            .iter()
+            .find(|(actual_key, _)| actual_key.eq_ignore_ascii_case(key))
+            .is_some_and(|(_, actual_value)| actual_value == expected)
+    })
+}
+
+fn path_matches(path: &str, pattern: &str, mode: HttpPathMatchMode) -> bool {
+    match mode {
+        HttpPathMatchMode::Prefix => path.starts_with(pattern),
+        HttpPathMatchMode::Exact => path == pattern,
+        HttpPathMatchMode::Template => path_template_matches(path, pattern),
+    }
+}
+
+fn path_template_matches(path: &str, template: &str) -> bool {
+    let path_segments: Vec<&str> = path.trim_matches('/').split('/').collect();
+    let template_segments: Vec<&str> = template.trim_matches('/').split('/').collect();
+    if path_segments.len() != template_segments.len() {
+        return false;
+    }
+    path_segments
+        .iter()
+        .zip(template_segments)
+        .all(|(actual, expected)| {
+            if expected.starts_with('{') && expected.ends_with('}') && expected.len() > 2 {
+                !actual.is_empty()
+            } else {
+                actual == &expected
+            }
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn extract_url_path_strips_query_and_fragment() {
-        assert_eq!(extract_url_path("https://api.example.com/v1/items"), "/v1/items");
-        assert_eq!(extract_url_path("https://api.example.com/v1/items?key=val"), "/v1/items");
-        assert_eq!(extract_url_path("https://api.example.com/v1/items#section"), "/v1/items");
+        assert_eq!(
+            extract_url_path("https://api.example.com/v1/items"),
+            "/v1/items"
+        );
+        assert_eq!(
+            extract_url_path("https://api.example.com/v1/items?key=val"),
+            "/v1/items"
+        );
+        assert_eq!(
+            extract_url_path("https://api.example.com/v1/items#section"),
+            "/v1/items"
+        );
         assert_eq!(
             extract_url_path("https://api.example.com/v1/items?key=val&b=2#frag"),
             "/v1/items"
@@ -660,7 +963,10 @@ mod tests {
             requires_auth: false,
         };
         let result = backend.execute_rest(&request);
-        assert!(result.is_err(), "invalid JSON in stub should produce an error");
+        assert!(
+            result.is_err(),
+            "invalid JSON in stub should produce an error"
+        );
         let err_msg = result.unwrap_err().to_string();
         assert!(
             err_msg.contains("invalid JSON"),
@@ -689,7 +995,49 @@ mod tests {
             timeout_ms: None,
             requires_auth: false,
         };
-        let result = backend.execute_rest(&request).expect("empty body should succeed");
+        let result = backend
+            .execute_rest(&request)
+            .expect("empty body should succeed");
         assert_eq!(result.body, serde_json::json!({}));
+    }
+
+    #[test]
+    fn template_path_matching_supports_parameter_segments() {
+        assert!(path_template_matches(
+            "/repos/octo/repo/issues",
+            "/repos/{owner}/{repo}/issues"
+        ));
+        assert!(!path_template_matches(
+            "/repos/octo/repo/pulls",
+            "/repos/{owner}/{repo}/issues"
+        ));
+    }
+
+    #[test]
+    fn shell_glob_arg_matching_uses_glob_patterns() {
+        let rule = ShellCassetteRule {
+            command: "cargo".to_string(),
+            args: vec!["test".to_string(), "--package".to_string(), "*".to_string()],
+            args_mode: ShellArgMatchMode::Glob,
+            cwd: None,
+            required_env: HashMap::new(),
+            stdin: None,
+            responses: vec![ShellResponse::ok("ok")],
+        };
+        let request = ShellRequest::new("cargo")
+            .arg("test")
+            .arg("--package")
+            .arg("gunbc-lib-transport");
+        assert!(shell_cassette_rule_matches(&rule, &request));
+    }
+
+    #[test]
+    fn header_matching_is_case_insensitive_on_key() {
+        let mut headers = HashMap::new();
+        headers.insert("X-GitHub-Api-Version".to_string(), "2022-11-28".to_string());
+        assert!(headers_match(
+            &headers,
+            &[("x-github-api-version".to_string(), "2022-11-28".to_string())]
+        ));
     }
 }

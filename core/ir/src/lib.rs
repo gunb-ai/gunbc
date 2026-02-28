@@ -182,9 +182,11 @@ pub use system_model::{
     SystemKind, SystemModel, SystemModelDef, UpsertPhase,
 };
 pub use transport::{
-    default_transport_behaviors, AuthScheme, Credential, CredentialError, CredentialIntent,
-    FieldRouteSpec, ScopeContract, ScopeContractError, Secret, SecretSource, TransportBehavior,
-    TransportKind, TransportRequest, TransportResponse,
+    default_transport_behaviors, AuthScheme, CircuitBreakerConfig, Credential, CredentialConfig,
+    CredentialError, CredentialInjection, CredentialIntent, CredentialProvider, FieldRouteSpec,
+    RateLimitAlgorithm, RateLimitConfig, ResponseClassification, ResponseProvider, RetryBackoff,
+    RetryConfig, ScopeContract, ScopeContractError, Secret, SecretSource, TransportBehavior,
+    TransportKind, TransportMiddlewareConfig, TransportRequest, TransportResponse,
 };
 pub use type_op::{
     BaseType, Coercion, ContentEncoding, MetadataPayload, PlatformRepr, Predicate, PredicateValue,
@@ -204,8 +206,7 @@ pub use types::{
     semantic_carrier_kind_for_type_id, value_backing_for_type_id, value_compatible_with_type_id,
     value_kind_name, Cardinality, CardinalityMismatch, CardinalitySamplingStrategy, NodeId,
     PortCategory, PortName, SeedPlaceholderPolicy, SemanticCarrierClass, SemanticCarrierKind,
-    TypeId,
-    ValueBacking,
+    TypeId, ValueBacking,
 };
 pub use validate::{
     validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
