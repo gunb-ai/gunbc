@@ -187,6 +187,18 @@ Add to Lane A as red-team debt tokens. Each must include an RT id and deletion c
 | RT-N6 | **`#[path]` crate boundary in core/resolve.** `core/resolve/src/service_ops.rs` uses `#[path = "...gunbc-dag/src/resolve_service.rs"]`. Compiles the file twice, bloats incremental builds. | `git mv` the file. Extract `use super::*` dependencies into shared types. `gunbc-dag` imports from `gunbc_resolve::service_ops`. | L | A3 |
 | RT-N7 | **ExprCompute is runtime interpreter.** `ExprComputeOp` builds a `LoweredFnBody` and calls `evaluate_fn_body` at runtime — "interpreter inside runtime." | Either fully desugar expressions into DAG nodes (preferred), or make compute nodes first-class compiled node type. Delete `ExprComputeOp` when all return expressions are desugared. | L | A1 (subsumes C10-full) |
 
+### Red-Team Review #4 — New Tasks
+
+| # | ID | What | Deletion Criteria | Size | Lane A Phase |
+|---|-----|------|-------------------|------|-------------|
+| RT-N8 | **Enum construction heuristic.** Evaluator uses capitalization to detect variant constructors. Payload variants become `Value::Map` with `_variant` tag, unit variants become `Value::Enum`. Unify representation. | Evaluator consults a constructor table, not casing. `Value::Enum { ty, variant, payload }` replaces both representations. | M | A3 |
+| RT-N9 | **Legacy enum string match fallback.** `match_pattern` Variant arm matches `Value::Str(s) if s == variant_name` as backward compat. | Delete legacy arm. Add warning if exercised. All compiled graphs use `Value::Enum`. | S | A3 |
+| RT-N10 | **AST interpreter bypass in catalog/commands.** Worker A's `expect_string_field` walks raw AST instead of using compiler evaluator. | Route through `compile_from_context` + `serde_json::from_value`. Part of C1 (StdLibHost). | M | A3 |
+| RT-N11 | **In-band JSON `__enum`/`__bytes` signaling.** `value_bridge.rs` hijacks JSON keys. External API payloads could collide. | Make `from_bridge_json` type-aware (take `&TypeId`). | M | A3 |
+| RT-N12 | **Generated CLIs ignore unknown flags.** Unknown args silently dropped. User typos become "works but wrong." | Generated CLIs strict: unknown flag → error + help + exit 2. | S | A2 |
+| RT-N13 | **State-machine backward mapping duplication.** `retry_target` hardcodes mapping that must match `std/state_machines.dag`. | Import/call `backward_target` from DSL, or generate backward edges from state machine definition. | S | B (DSL) |
+| RT-N14 | **Stub functions in `pipelines/sdlc.dag`.** `generate_implementation_plan`/`get_pr_diff` are placeholders. | Implement or delete/feature-flag so stubs can't be called accidentally. | M | B (DSL) |
+
 **Guardrail proposal** (for preventing reinfection):
 - Ban-list for `core/` and `gunbc-dag/src/`: `panic!` on user input, `unwrap_or(<default>)` on parse/type/lower paths, `eprintln!` as diagnostic, `ends_with("?")` optionality checks — require `// RT-xx temporary` comment with tracked task id.
 - Workaround comments must include: RT id, corresponding row in gap-analysis-tasks.md, deletion criteria.
