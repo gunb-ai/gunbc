@@ -783,6 +783,340 @@ Supersedes RT-I1 and RT-I2.
 
 ---
 
+# PHASE 2 — Integration & Production
+
+## Phase 2 Operating Model
+
+Phase 1 (Blue/Red) advanced the SDLC pipeline and hardened the compiler/runtime.
+Phase 2 wires those investments together and pushes SDLC to production.
+
+Five lanes: two start immediately (independent of Phase 1 lanes), three start
+as Phase 1 lanes land. Each lane is 5k+ LOC minimum.
+
+```
+Phase 1 (in progress):                    Phase 2:
+──────────────────────                     ────────
+Blue Lane 1: SDLC Activation        ──┐
+Blue Lane 2: External Deps (ED)     ──┤── Lane 6: Service Layer Completion ── Lane 7: SDLC Production
+Red Team: Workers A/B/C             ──┘                                   └── Lane 8: Contract Testing
+
+Independent (start NOW):
+  Lane 4: Domain Model Foundation  ── feeds Lane 6 (vocabulary + missing categories)
+  Lane 5: Transport Layer          ── feeds Lane 7 (middleware + virtual backends)
+```
+
+### Why Phase 2 exists
+
+Differential analysis of sibling repos (`the-gunbai`, `gunb.ai`) revealed a
+recurring pattern: we build a modeling capability, forget to integrate it, then
+reinvent or hack around it downstream. Phase 2 exists to prevent this for the
+entire SDLC production path.
+
+Specific gaps found:
+- `the-gunbai` models **9 behavioral dimensions** per operation (side effects,
+  idempotency, determinism, failure modes, edge cases, confidence, prerequisites,
+  assumptions, unknowns). gunbc models **2** (`readonly`/`idempotent`).
+- `gunb.ai` models **rate limits**, **capability prerequisites**, and
+  **infrastructure scopes**. gunbc models **none** of these.
+- **5 categories** of external systems in sibling repos are absent from gunbc:
+  secret providers, coordination stores, tool lifecycle, LLM pricing/capabilities,
+  API operational detail (rate limits, retry configs, versioning).
+- The ED lane creates "what is X?" type files, but no service imports from them.
+  Without wiring, the ED investment is orphaned.
+
+### Phase 2 File Ownership
+
+| Files | Lane |
+|-------|------|
+| `dsl/std/` (new: behavioral, coordination, rate_limit, errors, capability) | **4** |
+| `dsl/extdeps/secrets/`, `coordination/`, `tools/`, `devenv/`, `api/`, `llm/pricing.dag` | **4** |
+| `dsl/interfaces/` (enrichment with behavioral contracts) | **4** |
+| `lib/transport/src/` (middleware, virtual backends, credential middleware) | **5** |
+| `core/test/src/` (mock synthesis, failure injection) | **5** |
+| `core/ir/src/transport/` (transport middleware IR types) | **5** |
+| `dsl/services/` (wiring imports, response blocks) | **6** |
+| `core/daglang/daglang-syntax/` (response block parsing) | **6** |
+| `core/daglang/daglang-lower/` (response → classify_response nodes) | **6** |
+| `lib/cloud-ops/`, `lib/gcp-ops/` (real GCP API clients) | **7** |
+| `gunbc-dag/src/bin/sdlc.rs` (production CLI) | **7** |
+| `dsl/cloud/`, `dsl/workflows/` (deployment DAGs) | **7** |
+| `core/codegen/src/testgen/` (contract obligations, compliance) | **8** |
+
+### Phase 2 Source Reference
+
+All ported content from sibling repos lives in one design doc:
+
+**`docs/design/domain-model-porting.md`** — behavioral property structure (§1),
+secret providers (§2), coordination stores (§3), tool lifecycle (§4), LLM
+pricing/capabilities (§5), infrastructure scope model (§6), rate limits and
+retry configs (§7), Git CLI behaviors (§8), devcontainer model (§9).
+
+Lane 4 workers reference this doc directly. No access to sibling repos needed.
+
+---
+
+## Lane 4: Domain Model Foundation (INDEPENDENT — start now)
+
+### Principle
+
+Port the modeling depth from `the-gunbai` (behavioral properties per operation)
+and `gunb.ai` (rate limits, capability contracts, infrastructure scopes) into
+gunbc's DSL. Create domain models for categories the ED lane doesn't cover.
+
+**Pure DSL authoring** — no Rust changes, no compiler changes.
+
+### Why this lane exists
+
+The ED lane (Lane 2) creates "what is X?" type files for cloud/github/llm/git/cargo.
+This lane creates the **vocabulary** those models need (behavioral properties, rate limits,
+coordination primitives) and the **categories** ED doesn't cover (secrets, coordination,
+tools, dev environments). Both feed into Lane 6 (Service Layer Completion).
+
+Without this lane, the ED files are shallow type stubs — the behavioral depth that makes
+the sibling repos useful (failure modes, edge cases, rate limits, prerequisites) is missing.
+
+### File Territory
+
+- `dsl/std/` — new vocabulary files only (no modification of existing std/ files)
+- `dsl/extdeps/secrets/` — secret provider models (new subdirectory)
+- `dsl/extdeps/coordination/` — coordination store models (new subdirectory)
+- `dsl/extdeps/tools/` — tool lifecycle models (new subdirectory)
+- `dsl/extdeps/devenv/` — dev environment models (new subdirectory)
+- `dsl/extdeps/llm/pricing.dag` — complements ED-6:8 (which model message format)
+- `dsl/extdeps/api/` — API operational detail (complements ED-2:5, ED-9:15 which model entities)
+- `dsl/interfaces/` — enrichment of existing 7 files with behavioral contracts
+
+**No overlap with ED lane** (which writes `extdeps/cloud/`, `extdeps/github/`,
+`extdeps/llm/{core,anthropic,openai}.dag`, `extdeps/git.dag`, `extdeps/cargo.dag`).
+
+### Queue
+
+**Part A: Standard Vocabulary** (no deps, start first)
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | DM-1 | **`std/behavioral.dag`** — behavioral property vocabulary. Types: `SideEffects` (ReadOnly \| WritesState \| WritesExternal), `Determinism` (Deterministic \| NonDeterministic \| EventuallyConsistent), `FailureMode` { name, http_status?, recoverable, retry_safe }, `EdgeCase` { description, trigger, severity }, `Confidence` (Documented \| HighConfidence \| MediumConfidence \| LowConfidence \| Assumed), `Prerequisite` { description, kind }, `OperationBehavior` { side_effects, idempotent, determinism, failure_modes, edge_cases, confidence, prerequisites, assumptions, unknowns }. Ref: `docs/design/domain-model-porting.md` §1. | M | Pending | — |
+| 2 | DM-2 | **`std/rate_limit.dag`** — rate limiting & retry vocabulary. Types: `RateLimit` { scope, requests_per_window, window_seconds, burst? }, `ResetStrategy` (FixedWindow \| SlidingWindow \| TokenBucket), `RetryPolicy` { max_attempts, backoff, retry_on }, `BackoffStrategy` (Exponential { base_ms, max_ms } \| Linear { step_ms } \| JitteredExponential { base_ms, max_ms }), `PropagationDelay` { typical_ms, max_ms, description }. Data: common presets. Ref: `docs/design/domain-model-porting.md` §7. | S | Pending | — |
+| 3 | DM-3 | **`std/coordination.dag`** — coordination primitive vocabulary. Types: `CasMechanism` (GenerationBased \| ETagBased \| VersionId \| RowVersion), `FencingToken`, `LeaseConfig` { ttl_seconds, heartbeat_interval_seconds }, `DeliveryGuarantee` (AtLeastOnce \| AtMostOnce \| ExactlyOnce), `QueueSemantics` { ordering, visibility_timeout_seconds, dead_letter? }, `DeadLetterPolicy` { max_attempts, destination }, `NotificationMechanism` (Polling \| PubSub \| Listen \| Webhook). Ref: `docs/design/domain-model-porting.md` §3. | M | Pending | — |
+| 4 | DM-4 | **`std/errors.dag`** — standard error type vocabulary. Types: `HttpErrorShape` { status, error_type, message, detail? }, `AuthError` (Expired \| InvalidToken \| MissingCredential \| InsufficientScope \| Forbidden), `RateLimitError` { retry_after_seconds, scope }, `ConflictError` { resource, expected_version?, actual_version? }, `ProviderError` { provider, operation, http_status?, message }. Data: canonical error shapes — GitHub `{ message, documentation_url }`, GCP `{ error: { code, message, status } }`, Anthropic `{ type, error: { type, message } }`. Ref: `docs/design/domain-model-porting.md` §2, §7. | M | Pending | — |
+| 5 | DM-5 | **`std/capability.dag`** — capability contract vocabulary. Types: `InfraScope` (Secret \| Identity \| Api \| Storage \| Compute \| Network \| Database \| Queue \| Federation), `AccessLevel` (Read \| Write \| Admin), `CapabilityRequirement` { scope, level, resource }, `CapabilityGrant` { provider, scope, concrete_resource }, `ServiceAccessManifest` { service_name, requirements }. Ref: `docs/design/domain-model-porting.md` §6. | M | Pending | — |
+
+**Part B: Secret Provider Models** (deps on DM-1)
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 6 | DM-6 | **`extdeps/secrets/core.dag`** — "What is a secret provider?" Abstract model. Types: `SecretLifecycle` (Active \| Disabled \| Destroyed \| PendingDeletion), `SecretVersion` { id, state, created_at? }, `RotationPolicy` { period_seconds, next_rotation? }, `SecretAccessPolicy`, `SecretEncryption` (ProviderManaged \| CustomerManaged { key_id }). Data: shared behavioral properties — all reads readonly+idempotent, creates non-idempotent, version-add non-idempotent. | M | Pending | DM-1 |
+| 7 | DM-7 | **`extdeps/secrets/gcp_secret_manager.dag`** — "What is GCP Secret Manager?" Types: `GcpSecret`, `GcpSecretVersion`, `GcpReplicationPolicy` (Automatic \| UserManaged). Data: 8 `OperationBehavior` records (AccessVersion, CreateSecret, AddVersion, ListSecrets, GetSecret, DestroyVersion, DisableVersion, EnableVersion), rate limits per method, propagation delays. Ref: `docs/design/domain-model-porting.md` §2.1. | M | Pending | DM-6 |
+| 8 | DM-8 | **`extdeps/secrets/github_secrets.dag`** — "What is GitHub Secrets?" Types: `GitHubSecretScope` (Repository \| Environment \| Organization), `GitHubPublicKey` { key_id, key }, `OidcTokenClaims`. Data: 8 `OperationBehavior` records (Get, Create, Update, Delete, ListRepo, ListEnv, GetPublicKey, GetOidcToken), encryption model (libsodium sealed box). Ref: `docs/design/domain-model-porting.md` §2.2. | M | Pending | DM-6 |
+| 9 | DM-9 | **`extdeps/secrets/env_file.dag`** — "What is a .env file?" Types: `EnvEntry` { key, value, comment? }, `EnvFile`, `EnvValidation` { required_keys, format_rules }. Data: 6 `OperationBehavior` records (Load, Get, Set, List, Validate, GenerateExample), parsing rules. Ref: `docs/design/domain-model-porting.md` §2.3. | S | Pending | DM-6 |
+| 10 | DM-10 | **`extdeps/secrets/vault.dag`** — "What is HashiCorp Vault?" Types: `VaultEngine` (Kv2 \| Transit \| Database \| Pki), `VaultAuth` (AppRole \| Oidc \| Token \| Kubernetes), `VaultLease` { id, ttl_seconds, renewable }, `VaultPolicy`, `DynamicCredential` { engine, role, ttl }. Data: 10 `OperationBehavior` records (KvGet, KvPut, KvDelete, KvList, Authenticate, RenewLease, RevokeLease, GenerateDynamicCred, RotateRoot, WrapToken), lease lifecycle. Ref: `docs/design/domain-model-porting.md` §2.4. | L | Pending | DM-6 |
+
+**Part C: Coordination Store Models** (deps on DM-3)
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 11 | DM-11 | **`extdeps/coordination/core.dag`** — "What is a coordination store?" Abstract model. Types: `CoordinationBackend` (ObjectStore \| RelationalDb \| EmbeddedDb), `CasPattern` { mechanism, conflict_resolution }, `QueuePattern` { claiming, visibility, dead_letter }, `LeasePattern` { acquisition, heartbeat, expiry }, `NotificationPattern` { mechanism, latency, ordering }. Data: pattern composition rules (CAS+lease = distributed lock, queue+CAS = exactly-once processing). | M | Pending | DM-3 |
+| 12 | DM-12 | **`extdeps/coordination/gcs.dag`** — "GCS as coordination store." Types: `GcsGeneration`, `GcsMetageneration`, `GcsPrecondition` (IfGenerationMatch \| IfMetagenerationMatch \| IfGenerationNotMatch). Data: 6 `OperationBehavior` records (GetObject, InsertObject, PatchMetadata, DeleteObject, ComposeObjects, WatchChanges), CAS patterns (if-generation-match:0 = create-only), PubSub notification latency. Ref: `docs/design/domain-model-porting.md` §3.1. | M | Pending | DM-11 |
+| 13 | DM-13 | **`extdeps/coordination/postgres.dag`** — "PostgreSQL as coordination store." Types: `PgIsolationLevel` (ReadCommitted \| Serializable), `PgSkipLocked`, `PgFencingToken` { column, monotonic }, `PgNotifyChannel`. Data: 7 `OperationBehavior` records (KvGet, KvSet, KvCas, ClaimFromQueue, Heartbeat, Release, NotifyWatch), SKIP LOCKED semantics, NOTIFY/LISTEN latency. Ref: `docs/design/domain-model-porting.md` §3.2. | M | Pending | DM-11 |
+| 14 | DM-14 | **`extdeps/coordination/sqlite.dag`** — "SQLite as coordination store." Types: `SqliteJournalMode` (Wal \| Delete \| Truncate), `SqliteBusyTimeout`. Data: 5 `OperationBehavior` records (KvGet, KvSet, KvCas, Heartbeat, TtlCleanup), WAL mode constraints, single-writer limitation, CAS via `UPDATE WHERE version = ?`. Ref: `docs/design/domain-model-porting.md` §3.3. | S | Pending | DM-11 |
+
+**Part D: Tool Lifecycle Models** (deps on DM-1)
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 15 | DM-15 | **`extdeps/tools/rust_toolchain.dag`** — "What is the Rust toolchain?" Types: `RustChannel` (Stable \| Beta \| Nightly { date? }), `RustupComponent` (Rustfmt \| Clippy \| RustSrc \| Miri \| LlvmTools), `CargoCommand` (Build \| Test \| Clippy \| Doc \| Run \| Install \| Bench), `RustTarget`, `RustEdition` (E2015 \| E2018 \| E2021 \| E2024). Data: 6 `OperationBehavior` records (Install, AddComponent, Build, Test, ClippyLint, PublishCrate), platform matrix. Ref: `docs/design/domain-model-porting.md` §4.1. | M | Pending | DM-1 |
+| 16 | DM-16 | **`extdeps/tools/gh_cli.dag`** — "What is the GitHub CLI?" Types: `GhAuthMethod` (OAuthBrowser \| Token \| GitHubApp), `GhCommand` { verb, resource, flags }, `GhOutputFormat` (Json \| Table \| Template). Data: 6 `OperationBehavior` records (Auth, ReleaseList, ReleaseDownload, IssueCreate, PrCreate, RunWatch), auth flow. Ref: `docs/design/domain-model-porting.md` §4.2. | S | Pending | DM-1 |
+| 17 | DM-17 | **`extdeps/tools/package_managers.dag`** — "What are package managers?" Types: `PackageManager` (Apt \| Brew \| Cargo \| Winget \| Choco \| GithubRelease), `PlatformSupport` { os, arch }, `InstallSource` (SystemRepo \| Crate \| Release { url_template }). Data: 7 `OperationBehavior` records per manager (Verify, Install, Update, Remove, Search, ListInstalled, AddSource), cross-platform matrix. Ref: `docs/design/domain-model-porting.md` §4.3. | M | Pending | DM-1 |
+
+**Part E: Complementary Models** (deps on DM-1, DM-2)
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 18 | DM-18 | **`extdeps/devenv/devcontainers.dag`** — "What is a devcontainer?" Types: `LifecycleHook` (InitializeCommand \| OnCreateCommand \| PostCreateCommand \| PostStartCommand \| PostAttachCommand), `HookExecution` { phase, runs_as, timeout? }, `DevcontainerFeature` { id, version, options }, `DevcontainerEnvVar` { name, source, available_in }. Data: lifecycle timing, common features, quirks. Ref: `docs/design/domain-model-porting.md` §9. | S | Pending | DM-1 |
+| 19 | DM-19 | **`extdeps/llm/pricing.dag`** — LLM pricing and capability detail. Types: `ModelPricing` { input_per_million, output_per_million, cached_input_per_million? }, `ContextWindow` { max_tokens, max_output_tokens }, `ModelCapability` (ExtendedThinking \| StructuredOutput \| Grounding \| ToolUse \| VisionInput), `CachingBehavior` { min_cache_tokens, ttl_minutes?, discount_pct }. Data: model specs for Anthropic (Claude 4 family), OpenAI (GPT-4o, o1, o3), Gemini (2.5 family). Ref: `docs/design/domain-model-porting.md` §5. Complements ED-6:8 without overlap. | M | Pending | DM-1, DM-2 |
+| 20 | DM-20 | **`extdeps/api/github_ops.dag`** — GitHub API operational detail. Types: `GitHubProductTier` (Free \| Pro \| Team \| EnterpriseCloud \| EnterpriseServer), `GitHubApiVersion` { date, header }, `GitHubRateLimitScope` (Core \| Search \| GraphQL \| CodeSearch), `GitHubAppAuth` { jwt_expiry_minutes, clock_skew_seconds, installation_token_ttl }, `GitHubPollingConfig` { interval_seconds, max_wait_seconds }. Data: rate limits per scope+tier, versioning policy, polling configs. Ref: `docs/design/domain-model-porting.md` §7.1, §7.3. Complements ED-2:5 without overlap. | M | Pending | DM-1, DM-2, DM-5 |
+| 21 | DM-21 | **`extdeps/api/gcp_ops.dag`** — GCP API operational detail. Types: `GcpApiPattern` { service, version, base_url_template }, `GcpPropagationDelay` { operation, typical_seconds, max_seconds }, `GcpOrgPolicyConstraint` { constraint_id, affects }, `GcpCommandClassification` (Allowed \| Deprecated \| Forbidden). Data: propagation delays per service (IAM ~60s, DNS ~300s), retry configs, org policy constraints, gcloud command registry. Ref: `docs/design/domain-model-porting.md` §7.2. Complements ED-9:15 without overlap. | M | Pending | DM-1, DM-2, DM-5 |
+
+**Part F: Interface Enrichment** (deps on DM-1, DM-3, DM-5)
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 22 | DM-22 | **Enrich all 7 interfaces with behavioral contracts.** Import `std.behavioral`, `std.coordination`, `std.capability`. Add `OperationBehavior` data declarations for each capability. Add `CapabilityRequirement` declarations. Add failure mode contracts. Files: `interfaces/{artifact_store, outcome_ledger, signal_store, claim_store, credential_provider, issue_provider, agent_provider}.dag`. | L | Pending | DM-1, DM-3, DM-5 |
+
+**Chain**: DM-1:5 (parallel) → DM-6:10, DM-11:14, DM-15:17, DM-18:21 (parallel within group) → DM-22
+
+---
+
+## Lane 5: Transport Layer (INDEPENDENT — start now)
+
+### Principle
+
+Make the transport layer production-ready: rate limiting, retry with backoff,
+response classification, credential middleware, enriched virtual backends.
+All runtime infrastructure that Lane 7 (SDLC Production) needs.
+
+**Rust work in `lib/transport/`, `core/test/`, `core/ir/src/transport/`.**
+
+### Why this lane exists
+
+The transport layer handles basic HTTP/Shell/File I/O, but production use
+requires: rate limit awareness (GitHub: 5000/hr core, 30/min search; GCP:
+varies per service), automatic retry with jittered backoff, response
+classification (status code → typed error before field extraction), credential
+refresh/caching, and enriched virtual backends for hermetic testing.
+
+The virtual transport backend (`test_backend.rs`) handles File ops and basic
+Shell but HTTP stubs are unimplemented. Lane 7 (SDLC Production) needs all
+of these for real execution and for fidelity-tiered hermetic tests.
+
+### File Territory
+
+- `lib/transport/src/` — middleware modules, virtual backend enrichment, credential middleware
+- `core/test/src/` — mock response synthesis, failure injection
+- `core/ir/src/transport/` — transport middleware types (RateLimitConfig, RetryConfig)
+
+**No overlap with Red Team** (which works in `core/daglang/`, `core/codegen/`,
+`core/exec/`, `gunbc-dag/src/`).
+
+### Queue
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | TL-1 | **Rate limit middleware.** `lib/transport/src/rate_limit.rs`. Token bucket + sliding window implementations. Per-endpoint rate tracking. `RateLimitConfig` from IR transport metadata. Automatic 429/retry-after handling. Shared rate state across concurrent requests. Tests: burst exhaustion, recovery, concurrent access. | L | Pending | — |
+| 2 | TL-2 | **Retry middleware with backoff.** `lib/transport/src/retry.rs`. Exponential + jittered backoff. Configurable per-operation via `RetryPolicy` from IR. Idempotency-aware: only auto-retry operations marked `idempotent` or `readonly`. Transient error classification (5xx, network timeout, rate limit). Circuit breaker for persistent failures. Tests: retry sequences, backoff timing, circuit breaker state machine. | L | Pending | TL-1 |
+| 3 | TL-3 | **Response classification.** `lib/transport/src/classify.rs`. HTTP status code → typed error mapping. Per-provider error shape parsing (GitHub `{ message, documentation_url }`, GCP `{ error: { code, message, status } }`, Anthropic `{ type, error: { type, message } }`). Classification hierarchy: auth error > rate limit > client error > server error > network error. Feeds error into retry decision (TL-2). Tests: per-provider error shapes, unknown shapes, malformed responses. | M | Pending | — |
+| 4 | TL-4 | **Credential middleware.** `lib/transport/src/credential.rs`. Token caching with TTL-aware refresh. Multi-provider credential resolution (OAuth2 bearer, GCP WIF, API key). Automatic credential injection into requests based on `AuthScheme` from service config. Proactive refresh at 80% TTL. Thread-safe credential store. Tests: token refresh, concurrent access, expired token detection. | L | Pending | TL-3 |
+| 5 | TL-5 | **Virtual HTTP stub backend.** `lib/transport/src/test_backend.rs` enrichment. Method+path+headers → status+body+headers matching. Regex path matching for parameterized endpoints (`/repos/{owner}/{repo}/issues`). Ordered response sequences (first call → X, second → Y). Unmatched request → test failure with diagnostic. Tests: exact match, regex match, sequence exhaustion, diagnostics. | M | Pending | — |
+| 6 | TL-6 | **Virtual shell cassette backend.** `lib/transport/src/test_backend.rs` enrichment. argv pattern → stdout+stderr+exit_code matching. Environment variable assertion. Working directory tracking. Stdin injection. Tests: exact match, glob match, exit code scenarios, env vars. | M | Pending | — |
+| 7 | TL-7 | **Mock response synthesis.** `core/test/src/mock_synthesis.rs`. Generate mock responses from `OperationBehavior` data (DM-1 types at runtime). Status-code-specific mock bodies derived from error shapes (DM-4). Failure injection: inject specific failure modes from behavioral property declarations. Replace `default_rest_response()` kitchen sink with behavioral-property-driven synthesis. Tests: per-provider synthesis, failure injection, round-trip. | L | Pending | TL-3, TL-5 |
+| 8 | TL-8 | **Transport metrics hooks.** `lib/transport/src/metrics.rs`. Request/response timing. Retry count per request. Rate limit headroom tracking. Error classification distribution. Pluggable sink (log, structured event, /dev/null for tests). Tests: timing accuracy, concurrent metric collection. | S | Pending | TL-1, TL-2 |
+| 9 | TL-9 | **Transport middleware composition.** `lib/transport/src/pipeline.rs`. Compose middleware in order: metrics → rate_limit → retry → credential → execute → classify. `TransportPipeline` builder API. Per-operation middleware configuration from IR metadata. Override/disable individual middleware layers. Tests: full pipeline integration, middleware ordering, per-operation config. | M | Pending | TL-1:4, TL-8 |
+| 10 | TL-10 | **IR transport types.** `core/ir/src/transport/` additions. `RateLimitConfig`, `RetryConfig`, `CredentialConfig`, `ResponseClassification` as IR types. Lowerer can populate from service/operation metadata. Resolver reads to configure transport pipeline. Tests: round-trip serialization, lowerer population. | M | Pending | — |
+
+**Chain**: TL-1 → TL-2 → TL-9; TL-3 → TL-4, TL-7; TL-5; TL-6; TL-10 (early, no deps); TL-8 → TL-9
+
+---
+
+## Lane 6: Service Layer Completion (after ED lane + Red Team + Lane 4)
+
+### Principle
+
+Wire the domain models (ED lane + Lane 4) into services: import extdeps types,
+add `response {}` blocks, make the compiler enforce response contracts.
+
+This is the **integration lane** — it connects the knowledge layer to the execution layer.
+It exists specifically to prevent the "build a feature, forget to integrate it" pattern.
+
+### Why this lane exists
+
+The ED lane creates "what is X?" models. Lane 4 creates behavioral vocabulary. But today
+`services/github/issues.dag` defines its own input/output types inline instead of importing
+from `extdeps/github/issues.dag`. And no service operation declares error responses — the
+system is happy-path-only. This lane closes both gaps: services consume structured domain
+models, and the compiler enforces that every operation handles errors.
+
+### File Territory
+
+- `dsl/services/` — wiring imports, adding response blocks
+- `core/daglang/daglang-syntax/` — `response {}` block parsing
+- `core/daglang/daglang-lower/` — compile response entries to classify_response nodes
+- `gunbc-dag/src/resolve_service.rs` — status-aware GenericRestParseOp
+
+### Queue
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | SL-1 | **Wire extdeps → github services.** `services/github/{issues,pull_request,gist}.dag` import types from `extdeps/github/{issues,pull_requests,gists}.dag`. Replace inline type references with imported types. Validate compilation succeeds with richer type information. | M | Pending | ED-2:5 |
+| 2 | SL-2 | **Wire extdeps → llm services.** `services/llm/{anthropic,openai}.dag` import from `extdeps/llm/{anthropic,openai}.dag`. Model types replace string fields. | S | Pending | ED-6:8 |
+| 3 | SL-3 | **Wire extdeps → gcp services.** `services/gcp/{secret_manager,sts,iam}.dag` import from `extdeps/cloud/gcp/{secret_manager,sts,iam}.dag`. | M | Pending | ED-9:13 |
+| 4 | SL-4 | **Wire extdeps → shell/git/cargo services.** Import types from `extdeps/git.dag`, `extdeps/cargo.dag`, `extdeps/tools/rust_toolchain.dag`. | S | Pending | ED-16:17, DM-15 |
+| 5 | SL-5 | **Enrich ED files with behavioral properties.** Add `OperationBehavior` data declarations to all ED-1:21 extdeps files using DM-1 vocabulary. Rate limits (DM-2), capability requirements (DM-5). ~21 files enriched with behavioral data. | L | Pending | ED-1:21, DM-1:5 |
+| 6 | SL-6 | **`response` block parsing (PC-1).** Add `response { STATUS => TYPE }` syntax to `daglang-syntax`. `Vec<ResponseEntry>` on `OperationDef`. `ResponseEntry`: status pattern (200, 2xx, 401, 4xx, 5xx), response type, optional description. Replaces dead `MockResponseDef`. | M | Pending | Red C8 |
+| 7 | SL-7 | **`response` blocks on all REST services (PC-3).** 29 operations across github (14), llm (2), gcp (3), shell-as-rest (10). Each gets success + error response entries. Error shapes imported from `std/errors.dag` (DM-4). `doc` field references provider API docs. | L | Pending | SL-6, DM-4, SL-1:3 |
+| 8 | SL-8 | **`exit` blocks on all shell services (PC-4).** Exit code → output type mapping for shell operations. 0 = success, non-zero = error with stderr. | M | Pending | SL-6 |
+| 9 | SL-9 | **Lowerer: response → classify_response node (PC-5).** Compile `response {}` entries into `ErrorMapping` on `ServiceOperationSpec`. Generate classify_response node in transport DAG between execute and parse. | M | Pending | SL-6 |
+| 10 | SL-10 | **GenericRestParseOp status checking (PC-6).** Route on status code before field extraction. Non-2xx → classify against declared responses. Undeclared non-2xx → hard error. Supersedes Red C14. | M | Pending | SL-9 |
+| 11 | SL-11 | **Completeness enforcement (PC-10).** Compiler requires ≥1 success + ≥1 error entry in `response {}` on every `transport rest {}` operation. Warning for missing, error in strict mode. | S | Pending | SL-6 |
+
+**Chain**: SL-1:4 (wiring, parallel) → SL-5 (enrichment); SL-6 (parsing) → SL-7:8, SL-9 → SL-10 → SL-11
+
+---
+
+## Lane 7: SDLC Production (after SDLC lane + Lane 5 + Lane 6)
+
+### Principle
+
+Take the hermetic SDLC pipeline to real cloud execution. Credential chaining,
+Cloud Run deployment, real LLM agent, multi-worker CAS, CI integration.
+
+### Why this lane exists
+
+The SDLC pipeline works hermetically (L0–L7). This lane pushes it to L8
+(cloud deployment) and real-world execution. Every item here depends on
+the transport middleware (Lane 5) and service contracts (Lane 6) being in place,
+so when we hit real GCP APIs we have rate limiting, retry, and error classification
+instead of discovering those requirements empirically.
+
+### File Territory
+
+- `lib/cloud-ops/`, `lib/gcp-ops/` — real GCP API clients
+- `dsl/cloud/`, `dsl/workflows/` — deployment DAGs
+- `gunbc-dag/src/bin/sdlc.rs` — production CLI
+
+### Queue
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | SP-1 | **GCP credential chaining (BT13).** WIF OIDC → STS token exchange → optional impersonation → scoped access token. Consumes `extdeps/cloud/gcp/sts.dag` types + `extdeps/secrets/gcp_secret_manager.dag` behavioral model. Uses transport pipeline (TL-4 credential middleware). `std/patterns.dag::credential_chain` wired to real transport. Tests: L4 integration with real GCP (env-gated). | L | Pending | ED-15, DM-7, TL-4 |
+| 2 | SP-2 | **Cloud Run deployment DAG (BT14).** Service creation, revision deployment, traffic migration. Consumes `extdeps/cloud/gcp/cloud_run.dag` types. Idempotent deploy: revision exists → no-op. Traffic split: gradual rollout. Tests: deployment DAG compilation, DryRun scenario, L4 real deploy (env-gated). | L | Pending | SP-1, ED-14 |
+| 3 | SP-3 | **Agent provider: real LLM (BT17).** Wire `codex_agent.dag` to Anthropic/OpenAI via transport pipeline. Uses `extdeps/llm/pricing.dag` for token budget tracking. Prompt construction from SDLC stage context. Tests: L4 integration with real LLM (env-gated). | M | Pending | SL-2, DM-19 |
+| 4 | SP-4 | **Credential provider: local keychain (BT18).** Token storage for local profile. Encrypted file or OS keychain. Refresh logic. Tests: store/retrieve/refresh cycle. | M | Pending | TL-4 |
+| 5 | SP-5 | **Multi-worker CAS stress test (BT15).** 3 workers, exactly-once claim processing. GCS generation-based CAS. Conflict detection + retry. Consumes `extdeps/coordination/gcs.dag` behavioral model for CAS edge cases. Tests: concurrent claim, conflict resolution, exactly-once verification. | M | Pending | SP-2, DM-12 |
+| 6 | SP-6 | **CI integration (BT16).** Hermetic pipeline in CI (unit_test profile). Cloud smoke test (cloud_run profile, env-gated). Generated CI YAML includes SDLC stages. | M | Pending | SP-5 |
+| 7 | SP-7 | **Webhook-driven stage transitions (BT19).** Cloud Run HTTP endpoint receives GitHub webhook events. Event → stage transition mapping. Signature verification. Tests: webhook parsing, signature validation, event→stage mapping. | L | Pending | SP-2 |
+
+**Chain**: SP-1 → SP-2 → SP-5 → SP-6; SP-3; SP-4; SP-7 (after SP-2)
+
+---
+
+## Lane 8: Contract Testing & Compliance (after Red Team + Lane 6)
+
+### Principle
+
+Build the automated infrastructure that proves providers comply with interface
+contracts. Every interface gets a generated test suite. Every provider runs it.
+No happy-path-only models remain.
+
+### Why this lane exists
+
+Interfaces declare contracts (`contract get(id) after create(...) => { found: true }`)
+but no test infrastructure validates them. Providers implement interfaces but only
+the happy path is tested — error responses, conflict scenarios, and behavioral
+property violations are invisible. This lane builds the compiler and testgen
+support that turns those declarations into executable compliance tests.
+
+### File Territory
+
+- `core/codegen/src/testgen/` — contract obligation codegen
+- `core/daglang/daglang-syntax/` — contract annotation refinement
+- `dsl/` — test blocks, fixture enrichment
+
+### Queue
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | CT-1 | **Contract IR.** Parse `contract` declarations on interfaces into `ContractObligation` structs in lowerer. Obligation types: sequence (A after B), idempotency (A twice = same result), destructive (A then B fails). Store in type registry alongside interface capabilities. Design: `docs/design/contract-testing.md` §Phase 1. | L | Pending | Red C done |
+| 2 | CT-2 | **Contract test generation.** For each interface with `contract`, testgen emits parameterized test suite. Suite takes `ServiceBinding` as input. Each obligation → test case: setup → execute sequence → assert postcondition. Parameterized over providers: stub (fast/hermetic), real (env-gated). | L | Pending | CT-1 |
+| 3 | CT-3 | **Provider compliance wiring.** For each (profile, interface, provider) triple, instantiate CT-2 suite. Stub providers: always-run in CI. Real providers: env-gated. Wire into existing testgen infrastructure. | M | Pending | CT-2 |
+| 4 | CT-4 | **Annotation cleanup (Category 3).** Delete metadata noise annotations (`@network`, `@credential`, `@external`, `@derived_from`, `@ledger`, ~30 uses) per `docs/design/modeling/annotation-to-dag-modeling.md` Category 3. Pure DSL cleanup. | S | Pending | — |
+| 5 | CT-5 | **`ProviderResponseContract` obligation (PC-7:9).** New testgen Bucket C obligation, one per `response {}` entry. Per-status-code tests with mock body derived from response type. Interface response contract inheritance: implementors inherit obligations from interface `response` declarations. | L | Pending | SL-9, CT-1 |
+| 6 | CT-6 | **Restore deleted tests (RF-E5/E6).** Root causes (ReturnExprCompute, exec-runtime emitter) fixed by Red Team C10/C19. Re-enable: `makegen_runtime_differential`, `makegen_exec_runtime_e2e`, `pragma_exec_runtime_e2e`, `clippy_toml_dsl_produces_valid_output`. | M | Pending | Red C10 |
+| 7 | CT-7 | **DSL-derive CI secrets (RF-INV2).** Replace inventory linkage with derivation from `auth` + `endpoint` on service operations in `.dag` files. Compiler extracts required env vars from service configs. Eliminates the crate linkage problem entirely. | M | Pending | SL-6 |
+
+**Chain**: CT-1 → CT-2 → CT-3 → CT-5; CT-4 (no deps, start anytime); CT-6 (after Red C10); CT-7 (after SL-6)
+
+---
+
 ## Reference: Theme Details
 
 Detailed descriptions for queue items. The queue has priority order,
