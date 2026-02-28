@@ -199,6 +199,28 @@ pub(crate) fn build_dsl_graph_with_types(
     })
 }
 
+/// Compile a DSL module with an active profile and resolve, returning full result (RT24).
+///
+/// Like `build_dsl_graph_with_types()` but threads a profile through compilation
+/// so interface bindings resolve via the profile's bind declarations.
+pub(crate) fn build_dsl_graph_with_types_and_profile(
+    relative_module: &str,
+    profile: &str,
+) -> Result<DslGraphResult, BuilderError> {
+    let result = compile_lowered_with_profile(relative_module, profile)?;
+    let lowered = strip_pipeline_nodes(result.dag);
+    let dag = resolve_lowered_dag(&lowered).map_err(|error| {
+        BuilderError::InternalInvariant(format!(
+            "failed to resolve lowered DAG for `{relative_module}` with profile `{profile}`: {error}"
+        ))
+    })?;
+    Ok(DslGraphResult {
+        dag,
+        dsl_type_registry: result.dsl_type_registry,
+        callable_properties: result.callable_properties,
+    })
+}
+
 pub fn build_dsl_graph_for_entry(
     relative_module: &str,
     entry_node_id: &str,
@@ -357,20 +379,6 @@ mod tests {
             !dag.nodes.iter().any(|node| node.id.0 == "pipelines.ci::ci"),
             "runtime CI graph should not include pipeline metadata nodes"
         );
-    }
-
-    #[test]
-    fn builds_sdlc_pipeline_with_unit_test_profile() {
-        let dag = build_dsl_graph_with_profile("pipelines/sdlc.dag", "unit_test")
-            .expect("SDLC pipeline should compile with unit_test profile");
-        assert!(!dag.nodes.is_empty());
-    }
-
-    #[test]
-    fn builds_sdlc_workflow_with_unit_test_profile() {
-        let dag = build_dsl_graph_with_profile("workflows/sdlc.dag", "unit_test")
-            .expect("SDLC workflow should compile with unit_test profile");
-        assert!(!dag.nodes.is_empty());
     }
 
 }

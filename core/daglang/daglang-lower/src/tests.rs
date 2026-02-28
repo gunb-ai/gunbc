@@ -652,7 +652,7 @@ transport rest { method: GET, path: "/read" }
     assert_eq!(metadata.operation, "read");
     assert_eq!(metadata.transport, ServiceTransportClass::RestNetwork);
     assert!(metadata.idempotent);
-    assert!(!metadata.readonly);
+    assert!(metadata.readonly, "REST GET should auto-derive readonly");
     // Note: permissions not yet expressible in typed syntax (parser gap).
     assert!(metadata.permissions.is_empty());
 }

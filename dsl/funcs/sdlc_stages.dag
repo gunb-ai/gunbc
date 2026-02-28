@@ -31,60 +31,22 @@ import std.types {
     IssueLifecycleStage, StageOutcome, OutcomeStatus, ApprovalMode,
     NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker, MarkerKind
 }
-
-// ── Label constants ────────────────────────────────────────────────
-
-fn label_idea()          -> String { "sdlc:idea" }
-fn label_design()        -> String { "sdlc:design" }
-fn label_design_review() -> String { "sdlc:design-review" }
-fn label_accepted()      -> String { "sdlc:accepted" }
-fn label_implementing()  -> String { "sdlc:implementing" }
-fn label_code_review()   -> String { "sdlc:code-review" }
-fn label_testing()       -> String { "sdlc:testing" }
-fn label_done()          -> String { "sdlc:done" }
-fn label_terminal()      -> String { "sdlc:terminal-failed" }
-
-// ── Stage determination from labels ────────────────────────────────
-// Returns the most advanced SDLC stage found in the label set.
-// Falls back to "idea" if no sdlc:* label is present.
-
-fn determine_stage(labels: List<String>) -> IssueLifecycleStage {
-  match labels |> any(l => l == label_done()) {
-    true  => Done
-    false => match labels |> any(l => l == label_testing()) {
-      true  => Testing
-      false => match labels |> any(l => l == label_code_review()) {
-        true  => CodeReview
-        false => match labels |> any(l => l == label_implementing()) {
-          true  => Implementing
-          false => match labels |> any(l => l == label_accepted()) {
-            true  => Accepted
-            false => match labels |> any(l => l == label_design_review()) {
-              true  => DesignReview
-              false => match labels |> any(l => l == label_design()) {
-                true  => Design
-                false => Idea
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+import std.state_machines {
+    determine_stage, stage_to_label
 }
 
 // ── Next stage mapping ─────────────────────────────────────────────
 
 fn next_stage_label(current: IssueLifecycleStage) -> String {
   match current {
-    Idea            => label_design()
-    Design          => label_design_review()
-    DesignReview    => label_accepted()
-    Accepted        => label_implementing()
-    Implementing    => label_code_review()
-    CodeReview      => label_testing()
-    Testing         => label_done()
-    Done            => label_done()
+    Idea            => stage_to_label(stage: Design)
+    Design          => stage_to_label(stage: DesignReview)
+    DesignReview    => stage_to_label(stage: Accepted)
+    Accepted        => stage_to_label(stage: Implementing)
+    Implementing    => stage_to_label(stage: CodeReview)
+    CodeReview      => stage_to_label(stage: Testing)
+    Testing         => stage_to_label(stage: Done)
+    Done            => stage_to_label(stage: Done)
   }
 }
 
@@ -201,7 +163,7 @@ func handle_idea_to_design(
   // Transition labels: idea -> design
   labels = issues.set_labels(
     id: issue_id,
-    labels: [label_design()]
+    labels: [stage_to_label(stage: Design)]
   )
 
   return { success: true, next_stage: Design, artifact_posted: comment.ok, payload: None }
@@ -247,7 +209,7 @@ func handle_design_to_review(
   // Transition labels: design -> design-review
   labels = issues.set_labels(
     id: issue_id,
-    labels: [label_design_review()]
+    labels: [stage_to_label(stage: DesignReview)]
   )
 
   return { success: true, next_stage: DesignReview, artifact_posted: comment.ok, payload: None }
@@ -275,7 +237,7 @@ func handle_review_to_accepted(
   // Transition labels: design-review -> accepted
   labels = issues.set_labels(
     id: issue_id,
-    labels: [label_accepted()]
+    labels: [stage_to_label(stage: Accepted)]
   )
 
   return { success: true, next_stage: Accepted, artifact_posted: comment.ok, payload: None }
@@ -320,7 +282,7 @@ func handle_accepted_to_implementing(
   // Transition labels: accepted -> implementing
   labels = issues.set_labels(
     id: issue_id,
-    labels: [label_implementing()]
+    labels: [stage_to_label(stage: Implementing)]
   )
 
   return {
@@ -381,7 +343,7 @@ func handle_implementing_to_code_review(
   // Transition labels: implementing -> code-review
   labels = issues.set_labels(
     id: issue_id,
-    labels: [label_code_review()]
+    labels: [stage_to_label(stage: CodeReview)]
   )
 
   return { success: true, next_stage: CodeReview, artifact_posted: comment.ok, payload: None }
@@ -462,7 +424,7 @@ func handle_code_review_to_testing(
   // Transition labels: code-review -> testing
   labels = issues.set_labels(
     id: issue_id,
-    labels: [label_testing()]
+    labels: [stage_to_label(stage: Testing)]
   )
 
   return { success: true, next_stage: Testing, artifact_posted: comment.ok, payload: None }
@@ -516,7 +478,7 @@ func handle_testing_to_done(
   if all_passed {
     labels = issues.set_labels(
       id: issue_id,
-      labels: [label_done()]
+      labels: [stage_to_label(stage: Done)]
     )
   }
 

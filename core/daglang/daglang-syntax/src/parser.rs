@@ -1269,7 +1269,6 @@ impl Parser {
         let mut outputs = Vec::new();
         let mut idempotent = false;
         let mut readonly = false;
-        let mut hermetic = false;
         let permissions: Vec<String> = Vec::new();
         let mut transport: Option<TransportBinding> = None;
         let mock_response: Vec<MockResponseDef> = Vec::new();
@@ -1290,8 +1289,8 @@ impl Parser {
                 self.advance();
                 readonly = true;
             } else if self.check(&TokenKind::Hermetic) {
+                // Accept but ignore — hermeticity is structurally derived
                 self.advance();
-                hermetic = true;
             } else {
                 break;
             }
@@ -1315,8 +1314,8 @@ impl Parser {
                     self.advance();
                     readonly = true;
                 } else if self.check(&TokenKind::Hermetic) {
+                    // Accept but ignore — hermeticity is structurally derived
                     self.advance();
-                    hermetic = true;
                 } else if self.check(&TokenKind::Transport) {
                     transport = Some(self.parse_transport_binding()?);
                 } else {
@@ -1331,7 +1330,6 @@ impl Parser {
             outputs,
             idempotent,
             readonly,
-            hermetic,
             permissions,
             transport,
             mock_response,

@@ -284,7 +284,6 @@ pub mod ast {
         pub outputs: Vec<Field>,
         pub idempotent: bool,
         pub readonly: bool,
-        pub hermetic: bool,
         pub permissions: Vec<String>,
         pub transport: Option<TransportBinding>,
         pub mock_response: Vec<MockResponseDef>,

@@ -105,10 +105,17 @@ pub(crate) fn default_allowlist_rules() -> Vec<DisallowedMethodsAllowRule> {
         },
         DisallowedMethodsAllowRule {
             selector: CrateSelector::Exact("gunbc-exec"),
-            suffix: "src/execute.rs",
-            as_prefix: false,
+            suffix: "src/execute/",
+            as_prefix: true,
             rationale: "CI secret masking at transport boundary",
-            fallback_pattern: "core/exec/src/execute.rs",
+            fallback_pattern: "core/exec/src/execute/",
+        },
+        DisallowedMethodsAllowRule {
+            selector: CrateSelector::Exact("gunbc-test"),
+            suffix: "src/temp.rs",
+            as_prefix: false,
+            rationale: "test infrastructure: temp directory creation",
+            fallback_pattern: "core/test/src/temp.rs",
         },
         DisallowedMethodsAllowRule {
             selector: CrateSelector::Prefix("daglang-"),

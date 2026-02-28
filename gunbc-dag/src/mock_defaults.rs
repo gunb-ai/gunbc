@@ -174,7 +174,18 @@ fn default_rest_response() -> Value {
             "raw": "mock-token",
             "payload": { "data": "bW9jaw==" },
             "bindings": [],
-            "etag": "mock-etag"
+            "etag": "mock-etag",
+            // LLM response shapes so parse nodes extract non-empty content.
+            // Anthropic Messages API: content/0/text
+            "content": [{ "type": "text", "text": "Mock LLM response content." }],
+            "stop_reason": "end_turn",
+            // OpenAI Chat Completions API: choices/0/message/content
+            "choices": [{ "message": { "content": "Mock LLM response content." }, "finish_reason": "stop" }],
+            // OpenAI Responses API: output/0/content/0/text
+            "output": [{ "content": [{ "text": "Mock LLM response content." }] }],
+            // Shared usage shape (both providers)
+            "usage": { "input_tokens": 100, "output_tokens": 200, "prompt_tokens": 100, "completion_tokens": 200 },
+            "model": "mock-model"
         }),
     );
     response

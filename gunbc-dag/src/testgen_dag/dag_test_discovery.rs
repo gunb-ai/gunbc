@@ -3,8 +3,9 @@
 //! Two discovery modes:
 //!
 //! 1. **Auto-discovery** (`discover_compilable_modules`): Scans all of `dsl/`
-//!    recursively for `.dag` files with `func` items. Every compilable module
-//!    gets full testgen treatment via `auto_mock_spec()` — zero manual input.
+//!    recursively for `.dag` files with callable items (`func`, `fn`, `pattern`,
+//!    `pipeline`). Every compilable module gets full testgen treatment via
+//!    `auto_mock_spec()` — zero manual input.
 //!
 //! 2. **Test-block discovery** (`discover_dag_tests`): Legacy path that scans
 //!    `dsl/tools/*.dag` for inline `test` blocks. Provides fixture overrides
@@ -13,7 +14,7 @@
 //! Tier, hermetic, and fermi metadata are inferred from DAG topology by
 //! `generate_target()`, not declared statically in annotations.
 
-use crate::dsl_builder::{build_dsl_graph, build_dsl_graph_with_types};
+use crate::dsl_builder::{build_dsl_graph, build_dsl_graph_with_types, build_dsl_graph_with_types_and_profile};
 use crate::mock_defaults::auto_mock_spec;
 use daglang_emit::test_mock_emit::{TestFile, TERMINAL_NODE_SENTINEL};
 use daglang_syntax::ast::{ExpectStmt, Expr, FixtureDef, Literal, TestDef};
@@ -39,8 +40,12 @@ pub struct CompilableModule {
     pub dsl_path: String,
     /// Dot-separated module name (e.g., "tools.bootstrap").
     pub module_name: String,
-    /// Number of `func` items in the module.
-    pub func_count: usize,
+    /// Number of callable items in the module (func, fn, pattern, pipeline).
+    ///
+    /// Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs` —
+    /// the canonical set of item types that produce executable DAGs.
+    /// If a new callable item type is added to the AST, both must be updated.
+    pub callable_count: usize,
     /// Whether the module has inline `test` blocks.
     pub has_test_blocks: bool,
     /// Interface type names imported via `import interfaces.*`.
@@ -64,10 +69,10 @@ pub enum AutoTestgenResult {
 
 /// Discover all compilable `.dag` modules under `dsl_root`.
 ///
-/// Scans recursively for `.dag` files that contain `func` items (compilation
-/// units that produce DAGs with nodes). Pure-library modules with only
-/// types/data/services are excluded — they're tested transitively when
-/// imported by a compilable module.
+/// Scans recursively for `.dag` files containing callable items — `fn`, `func`,
+/// `pattern`, or `pipeline` — that produce executable DAGs with nodes.
+/// Pure-library modules with only types/data/services are excluded since
+/// they're tested transitively when imported by a compilable module.
 #[allow(clippy::disallowed_methods)] // Needs fs access for recursive .dag discovery
 pub fn discover_compilable_modules(dsl_root: &Path) -> Vec<CompilableModule> {
     let mut modules = Vec::new();
@@ -103,14 +108,21 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
             Err(_) => continue,
         };
 
-        // Count func items — only modules with funcs are compilable units
-        let func_count = ast
+        // Count callable items — these are the item types that produce executable DAGs.
+        // Mirrors `module_has_callable_items()` in `daglang-driver/src/lib.rs`.
+        use daglang_syntax::ast::Item;
+        let callable_count = ast
             .items
             .iter()
-            .filter(|item| matches!(item.node, daglang_syntax::ast::Item::FuncDef(_)))
+            .filter(|item| {
+                matches!(
+                    item.node,
+                    Item::FnDef(_) | Item::FuncDef(_) | Item::PatternDef(_) | Item::PipelineDef(_)
+                )
+            })
             .count();
 
-        if func_count == 0 {
+        if callable_count == 0 {
             continue;
         }
 
@@ -159,7 +171,7 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
         out.push(CompilableModule {
             dsl_path: rel_path,
             module_name,
-            func_count,
+            callable_count,
             has_test_blocks,
             interface_imports,
             requires_profile,
@@ -171,14 +183,51 @@ fn collect_dag_files(base: &Path, dir: &Path, out: &mut Vec<CompilableModule>) {
 ///
 /// Pipeline: compile → auto_mock_spec → generate_target. Zero manual input.
 /// Returns `Skipped` if compilation fails (graceful degradation).
-pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> AutoTestgenResult {
+///
+/// RT24: When `module.requires_profile`, picks the first hermetic profile
+/// from `profiles` (or the first profile if none are hermetic) and compiles
+/// with it. Also populates `live_profile_tests` for per-profile live tests.
+pub fn auto_testgen_for_module(
+    module: &CompilableModule,
+    output_dir: &Path,
+    profiles: &[super::profile_discovery::DiscoveredProfile],
+) -> AutoTestgenResult {
+    // RT24: Determine matching profiles and pick one for structural compilation.
+    let matching_profiles = if module.requires_profile {
+        super::profile_discovery::profiles_for_module(profiles, &module.interface_imports)
+    } else {
+        vec![]
+    };
+
+    // Pick the first hermetic profile, or first profile if no hermetic.
+    let compile_profile = if module.requires_profile {
+        matching_profiles
+            .iter()
+            .find(|p| p.test_class == TestClass::Hermetic)
+            .or_else(|| matching_profiles.first())
+            .map(|p| p.name.as_str())
+    } else {
+        None
+    };
+
     // 1. Compile to Dag<DynOp> + DSL type registry
-    let result = match build_dsl_graph_with_types(&module.dsl_path) {
-        Ok(result) => result,
-        Err(e) => {
-            return AutoTestgenResult::Skipped {
-                reason: format!("compile error: {e}"),
-            };
+    let result = if let Some(profile) = compile_profile {
+        match build_dsl_graph_with_types_and_profile(&module.dsl_path, profile) {
+            Ok(result) => result,
+            Err(e) => {
+                return AutoTestgenResult::Skipped {
+                    reason: format!("compile error (profile={profile}): {e}"),
+                };
+            }
+        }
+    } else {
+        match build_dsl_graph_with_types(&module.dsl_path) {
+            Ok(result) => result,
+            Err(e) => {
+                return AutoTestgenResult::Skipped {
+                    reason: format!("compile error: {e}"),
+                };
+            }
         }
     };
 
@@ -202,14 +251,40 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
         module.module_name.replace('.', "_"),
     );
     let module_test_name = format!("{}_generated_tests", module.module_name.replace('.', "_"));
-    let dag_builder_call = format!(
-        "crate::dsl_builder::build_dsl_graph(\"{}\").expect(\"graph should build\")",
-        module.dsl_path,
-    );
+
+    // RT24: dag_builder_call uses profile when required.
+    let dag_builder_call = if let Some(profile) = compile_profile {
+        format!(
+            "crate::dsl_builder::build_dsl_graph_with_profile(\"{}\", \"{}\").expect(\"graph should build\")",
+            module.dsl_path, profile,
+        )
+    } else {
+        format!(
+            "crate::dsl_builder::build_dsl_graph(\"{}\").expect(\"graph should build\")",
+            module.dsl_path,
+        )
+    };
     let mock_spec_path = format!(
         "crate::mock_defaults::auto_mock_spec(&dag, \"{}\")",
         safe_name,
     );
+
+    // RT24: Populate per-profile live test configs for profile-requiring modules.
+    let live_profile_tests: Vec<gunbc_codegen::registry::LiveProfileTestConfig> =
+        matching_profiles
+            .iter()
+            .map(|profile| gunbc_codegen::registry::LiveProfileTestConfig {
+                profile_name: profile.name.clone(),
+                test_class: profile.test_class,
+                fermi_cost: profile_fermi_cost(profile),
+                required_env: profile.required_env.clone(),
+                required_any_of: Vec::new(),
+                dag_builder_call: format!(
+                    "crate::dsl_builder::build_dsl_graph_with_profile(\"{}\", \"{}\").expect(\"profile graph should build\")",
+                    module.dsl_path, profile.name,
+                ),
+            })
+            .collect();
 
     let target_def = TestgenTargetDef {
         name: Cow::Owned(safe_name.clone()),
@@ -233,7 +308,7 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
         live_required: None,
         live_required_any_of: None,
         tool_name: None,
-        live_profile_tests: Vec::new(),
+        live_profile_tests,
     };
 
     // 4. Generate test code via the shared codegen path with DSL type awareness
@@ -247,6 +322,22 @@ pub fn auto_testgen_for_module(module: &CompilableModule, output_dir: &Path) -> 
     AutoTestgenResult::Generated {
         target_def,
         test_code,
+    }
+}
+
+/// Derive fermi cost from a profile's test class and environment requirements.
+fn profile_fermi_cost(
+    profile: &super::profile_discovery::DiscoveredProfile,
+) -> FermiCost {
+    match profile.test_class {
+        TestClass::Unit | TestClass::Hermetic => FermiCost::XS,
+        TestClass::Integration => {
+            if profile.required_env.is_empty() {
+                FermiCost::S
+            } else {
+                FermiCost::M
+            }
+        }
     }
 }
 
@@ -645,14 +736,20 @@ mod tests {
             "std.types should be excluded (no func items)"
         );
 
-        // Every module should have func_count > 0
+        // Every module should have callable_count > 0
         for module in &modules {
             assert!(
-                module.func_count > 0,
-                "{} has func_count=0",
+                module.callable_count > 0,
+                "{} has callable_count=0",
                 module.module_name
             );
         }
+
+        // Pipelines and workflows should now be discovered
+        assert!(
+            names.iter().any(|n| n.starts_with("pipelines.") || n.starts_with("workflows.")),
+            "pipeline/workflow modules should be discovered"
+        );
     }
 
     #[test]
@@ -660,13 +757,13 @@ mod tests {
         let module = CompilableModule {
             dsl_path: "tools/makegen.dag".to_string(),
             module_name: "tools.makegen".to_string(),
-            func_count: 1,
+            callable_count: 1,
             has_test_blocks: true,
             interface_imports: HashSet::new(),
             requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
-        let result = auto_testgen_for_module(&module, output_dir);
+        let result = auto_testgen_for_module(&module, output_dir, &[]);
         match result {
             AutoTestgenResult::Generated { test_code, .. } => {
                 assert!(
@@ -689,13 +786,13 @@ mod tests {
         let module = CompilableModule {
             dsl_path: "nonexistent/fake.dag".to_string(),
             module_name: "nonexistent.fake".to_string(),
-            func_count: 1,
+            callable_count: 1,
             has_test_blocks: false,
             interface_imports: HashSet::new(),
             requires_profile: false,
         };
         let output_dir = std::path::Path::new("gunbc-dag/src");
-        let result = auto_testgen_for_module(&module, output_dir);
+        let result = auto_testgen_for_module(&module, output_dir, &[]);
         assert!(
             matches!(result, AutoTestgenResult::Skipped { .. }),
             "nonexistent module should be skipped"
@@ -724,31 +821,34 @@ mod tests {
         let dsl_root = layout.workspace_root.join("dsl");
         let output_dir = std::path::Path::new("/tmp/testgen_validation");
 
-        // Phase 1: Discover all compilable modules
+        // Phase 1: Discover all compilable modules + profiles (RT24)
         let modules = discover_compilable_modules(&dsl_root);
+        let profiles = crate::testgen_dag::profile_discovery::discover_profiles(&dsl_root);
         let total_discovered = modules.len();
 
         eprintln!("\n========================================");
         eprintln!("  Auto-Testgen Pipeline Validation");
         eprintln!("========================================\n");
         eprintln!("Discovered {} compilable .dag modules:\n", total_discovered);
+        eprintln!("Discovered {} profiles\n", profiles.len());
 
         for (i, m) in modules.iter().enumerate() {
             eprintln!(
-                "  {:>2}. {:<40} funcs={} tests={}",
+                "  {:>2}. {:<40} callables={} tests={} profile={}",
                 i + 1,
                 m.module_name,
-                m.func_count,
-                if m.has_test_blocks { "yes" } else { "no" }
+                m.callable_count,
+                if m.has_test_blocks { "yes" } else { "no" },
+                if m.requires_profile { "yes" } else { "no" },
             );
         }
 
-        // Phase 2: Run auto_testgen_for_module on each
+        // Phase 2: Run auto_testgen_for_module on each (with profiles)
         let mut generated = Vec::new();
         let mut skipped = Vec::new();
 
         for module in &modules {
-            let result = auto_testgen_for_module(module, output_dir);
+            let result = auto_testgen_for_module(module, output_dir, &profiles);
             match result {
                 AutoTestgenResult::Generated {
                     test_code,
@@ -811,6 +911,20 @@ mod tests {
         // Every generated module should produce at least 1 #[test] fn
         for (name, count, _) in &generated {
             assert!(*count > 0, "{} generated 0 test functions", name);
+        }
+
+        // RT24: Profile-requiring modules should now generate (not be skipped)
+        let profile_modules: Vec<&str> = modules
+            .iter()
+            .filter(|m| m.requires_profile)
+            .map(|m| m.module_name.as_str())
+            .collect();
+        let skipped_names: Vec<&str> = skipped.iter().map(|(n, _)| n.as_str()).collect();
+        for pm in &profile_modules {
+            assert!(
+                !skipped_names.contains(pm),
+                "profile-requiring module `{pm}` was skipped — RT24 should compile it with a profile"
+            );
         }
     }
 }

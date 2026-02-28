@@ -122,10 +122,3 @@ func gist_recent(since: String = "3.days.ago", public: Bool = false) -> { url: U
   return { url: result.html_url as Url }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────
-
-test gist_snapshot_dryrun {}
-
-test gist_diff_dryrun {}
-
-test gist_recent_dryrun {}

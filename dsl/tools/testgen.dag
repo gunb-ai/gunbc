@@ -27,6 +27,3 @@ func testgen(targets: List<CodegenTarget>) -> { success: Bool, all_fresh: Bool }
   return { success: true, all_fresh: results |> all(r => r.written == false) }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────
-
-test testgen_dag_dryrun {}

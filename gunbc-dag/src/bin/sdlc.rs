@@ -139,6 +139,36 @@ fn main() {
         }
     }
 
+    // Propagate entrypoint values to param_source nodes (Gap 3 safety net).
+    // param_source nodes are interior nodes whose input ports have the same names
+    // as callable parameters. detect_entrypoints finds them, but they may have
+    // different node_ids from the top-level entrypoint nodes. Copy matching values
+    // so param_source nodes receive the same inputs as their callable counterparts.
+    let ports_snapshot: Vec<_> = entrypoints.entrypoint_ports.clone();
+    for (node_id, port_name, _) in &ports_snapshot {
+        if !node_id.0.starts_with("param_source_") {
+            continue;
+        }
+        if input_mocks
+            .get_input(&node_id.0, &port_name.0)
+            .is_some()
+        {
+            continue;
+        }
+        for (other_id, other_port, _) in &ports_snapshot {
+            if other_port == port_name && other_id != node_id {
+                if let Some(val) = input_mocks.get_input(&other_id.0, &other_port.0) {
+                    input_mocks.set_input(
+                        node_id.0.clone(),
+                        port_name.0.clone(),
+                        val.clone(),
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
     // ========================================================================
     // Set up execution mode
     // ========================================================================

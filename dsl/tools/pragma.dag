@@ -87,6 +87,3 @@ func pragma(directives: List<PragmaDirective>) -> { success: Bool, clippy_writte
   }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────
-
-test pragma_dryrun {}
