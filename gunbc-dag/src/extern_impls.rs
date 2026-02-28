@@ -28,6 +28,7 @@ pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
         ("std.markdown", "render_tree"),
         ("tools.bootstrap", "render_bootstrap_gitignore"),
         ("tools.bootstrap", "render_bootstrap_makefile"),
+        ("tools.cigen", "discover_ci_config"),
         ("tools.gist", "build_snapshot_content"),
         ("tools.makegen", "discover_tools"),
         ("tools.pragma", "render_clippy_toml"),
@@ -43,6 +44,8 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
         ("std.markdown", "render_tree") => Some(DynOp::new(RenderTreeOp)),
 
         ("tools.gist", "build_snapshot_content") => Some(DynOp::new(BuildSnapshotContentOp)),
+
+        ("tools.cigen", "discover_ci_config") => Some(DynOp::new(DiscoverCiConfigOp)),
 
         ("tools.makegen", "discover_tools") => Some(DynOp::new(DiscoverToolsOp)),
 
@@ -173,6 +176,70 @@ fn extract_file_contents(inputs: &HashMap<String, Value>) -> Result<Vec<String>,
             "extract_file_contents: expected List, got {:?}",
             std::mem::discriminant(other)
         ))),
+    }
+}
+
+// ============================================================================
+// tools.cigen extern impls
+// ============================================================================
+
+/// `discover_ci_config() -> CiConfig`
+///
+/// Returns dynamic CI configuration derived from workspace metadata:
+/// permissions from testgen targets, secrets for live tests, and
+/// workspace-specific tool commands.
+#[derive(Debug, Clone)]
+struct DiscoverCiConfigOp;
+
+impl Executable for DiscoverCiConfigOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::ci;
+        use crate::WorkspaceBinary;
+
+        let permissions: Vec<Value> = ci::ci_workflow_permissions()
+            .into_iter()
+            .map(|(scope, level)| {
+                let mut map = BTreeMap::new();
+                map.insert(
+                    "scope".to_string(),
+                    Value::Str(scope.as_yaml_key().to_string()),
+                );
+                map.insert(
+                    "level".to_string(),
+                    Value::Str(level.as_yaml_value().to_string()),
+                );
+                Value::Map(map)
+            })
+            .collect();
+
+        let secrets: Vec<Value> = ci::ci_live_test_secrets()
+            .into_iter()
+            .map(|s| Value::Str(s.to_string()))
+            .collect();
+
+        let tool = WorkspaceBinary::Ci.invocation();
+        let codegen = WorkspaceBinary::Codegen.invocation();
+
+        let mut config = BTreeMap::new();
+        config.insert("permissions".to_string(), Value::List(permissions));
+        config.insert("secrets_env".to_string(), Value::List(secrets));
+        config.insert(
+            "tool_command".to_string(),
+            Value::Str(tool.command().to_string()),
+        );
+        config.insert(
+            "generator_name".to_string(),
+            Value::Str(codegen.binary.clone()),
+        );
+        config.insert(
+            "regenerate_command".to_string(),
+            Value::Str(format!("{} -- cigen", codegen.command())),
+        );
+
+        OutputMap::new().value("return", Value::Map(config)).ok()
     }
 }
 

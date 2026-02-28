@@ -362,9 +362,11 @@ fn workspace_binary_enum_covers_dsl_tools() {
 
     // Tools that exist as DSL entrypoints but are intentionally NOT in
     // the WorkspaceBinary dispatch enum. Includes newly-inferred entrypoints
-    // that haven't been promoted to standalone CLI binaries yet.
+    // that haven't been promoted to standalone CLI binaries yet, and
+    // subcommands dispatched through existing binaries (e.g., cigen via codegen).
     let non_workspace_dispatch: BTreeSet<&str> = BTreeSet::from([
         "build-all",
+        "cigen", // subcommand of gunbc-codegen, not a standalone binary
         "clippy-lint",
         "codegen-ensure",
         "deps",
@@ -600,6 +602,11 @@ const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
     "std.patterns::local_auth",
     "std.patterns::metadata_oidc",
     "std.patterns::optional_impersonation",
+    "std.ci_render::render_github_env",
+    "std.ci_render::render_github_permissions",
+    "std.ci_render::render_github_step_env",
+    "std.ci_render::render_gitlab_variables",
+    "std.ci_render::render_yaml_block",
     "std.patterns::read_binary_files",
     "std.patterns::read_text_files",
     "std.patterns::resource_provide::credential_chain::auth",
@@ -607,6 +614,8 @@ const ALLOWED_PASSTHROUGH_CALLABLES: &[&str] = &[
     "std.patterns::transaction",
     "std.patterns::upsert",
     "tools.bootstrap::bootstrap",
+    "tools.cigen::build_ci_workflow",
+    "tools.cigen::cigen",
     "tools.build::build_all",
     "tools.clippy::clippy_lint",
     "tools.codegen::codegen",

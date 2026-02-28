@@ -1,0 +1,127 @@
+// std/ci.dag -- CI workflow model: tautological definitions.
+//
+// Layer 0 types for CI/CD pipeline configuration. Each type models
+// a universal CI concept (providers, jobs, steps, triggers, caches).
+// Data declarations capture canonical defaults (Rust cache paths,
+// Cargo CI environment). The rendering layer (ci_render.dag) consumes
+// these types to produce provider-specific YAML.
+
+module std.ci
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
+type CiProvider = GitHub | GitLab
+
+// ---------------------------------------------------------------------------
+// Primitives (composition blocks)
+// ---------------------------------------------------------------------------
+
+type CiPermission {
+  scope: String,
+  level: String
+}
+
+type CiEnvVar {
+  key: String,
+  value: String
+}
+
+type CiCache {
+  key: String,
+  paths: List<String>,
+  restore_keys: List<String>
+}
+
+type CiCheckout {
+  fetch_depth: Int?,
+  submodules: String?
+}
+
+type CiRunner {
+  id: String,
+  name: String
+}
+
+type CiTrigger {
+  branches: List<String>,
+  on_push: Bool,
+  on_pull_request: Bool
+}
+
+type CiSecret {
+  name: String
+}
+
+// ---------------------------------------------------------------------------
+// Step (sum type — provider-agnostic CI operations)
+// ---------------------------------------------------------------------------
+
+type CiStep
+  = Run { name: String, command: String }
+  | Uses { name: String, action: String, with_params: List<CiEnvVar> }
+  | DagRun { name: String, command: String, env: List<CiEnvVar> }
+
+// ---------------------------------------------------------------------------
+// Job and Workflow (compositional aggregation)
+// ---------------------------------------------------------------------------
+
+type CiJob {
+  name: String,
+  runner: CiRunner,
+  timeout_minutes: Int,
+  steps: List<CiStep>
+}
+
+type CiWorkflow {
+  name: String,
+  provider: CiProvider,
+  trigger: CiTrigger,
+  permissions: List<CiPermission>,
+  env: List<CiEnvVar>,
+  cache: CiCache?,
+  checkout: CiCheckout?,
+  jobs: List<CiJob>,
+  secrets_env: List<String>,
+  generator_name: String,
+  regenerate_command: String
+}
+
+// ---------------------------------------------------------------------------
+// Tautological data: canonical CI defaults
+// ---------------------------------------------------------------------------
+
+data default_checkout: CiCheckout = {
+  fetch_depth: 1,
+  submodules: null
+}
+
+data ubuntu_latest: CiRunner = {
+  id: "ubuntu-latest",
+  name: "Ubuntu Latest"
+}
+
+data rust_cache: CiCache = {
+  key: "cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}",
+  paths: [
+    "~/.cargo/bin/",
+    "~/.cargo/registry/index/",
+    "~/.cargo/registry/cache/",
+    "~/.cargo/git/db/"
+  ],
+  restore_keys: [
+    "cargo-${{ runner.os }}-"
+  ]
+}
+
+data cargo_ci_env: List<CiEnvVar> = [
+  { key: "CARGO_TERM_COLOR", value: "always" },
+  { key: "RUSTFLAGS", value: "-D warnings" }
+]
+
+data default_trigger: CiTrigger = {
+  branches: ["main"],
+  on_push: true,
+  on_pull_request: true
+}

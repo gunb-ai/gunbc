@@ -1,0 +1,87 @@
+// tools/cigen.dag -- CI workflow YAML generation tool.
+//
+// Discovers dynamic CI configuration (permissions, secrets, tool commands)
+// via extern bridge, combines with canonical static data from std/ci.dag,
+// renders provider-specific YAML via std/ci_render.dag, and writes files
+// via content_upsert.
+
+module tools.cigen
+
+import std.patterns { content_upsert }
+import std.ci {
+  CiProvider, CiWorkflow, CiJob, CiStep, CiEnvVar, CiPermission,
+  CiCache, CiCheckout, CiTrigger, CiRunner,
+  default_checkout, ubuntu_latest, rust_cache, cargo_ci_env, default_trigger
+}
+import std.ci_render { render_github_workflow, render_gitlab_workflow }
+
+// ---------------------------------------------------------------------------
+// Extern discovery: dynamic CI configuration from Rust inventory
+// ---------------------------------------------------------------------------
+
+// Returns permissions derived from testgen metadata, secrets required
+// by live tests, and workspace-specific tool commands.
+type CiConfig {
+  permissions: List<CiPermission>,
+  secrets_env: List<String>,
+  tool_command: String,
+  generator_name: String,
+  regenerate_command: String
+}
+
+extern func discover_ci_config() -> CiConfig
+
+// ---------------------------------------------------------------------------
+// Workflow construction
+// ---------------------------------------------------------------------------
+
+fn bootstrap_command() -> String {
+  "|\n          rm -rf target/codegen\n          # Cargo validates all [[bin]] paths even with --bin filter.\n          # Create minimal stubs so the manifest parses, then check only bootstrap binaries.\n          for dir in $(grep 'path = \"../target/codegen/' gunbc-dag/Cargo.toml | sed 's|.*\"../\\(.*\\)/main.rs\"|\\1|'); do\n            mkdir -p \"$dir\" && echo 'fn main() {}' > \"$dir/main.rs\"\n          done\n          cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci\n"
+}
+
+fn build_ci_workflow(config: CiConfig, provider: CiProvider) -> CiWorkflow {
+  let job: CiJob = {
+    name: "ci",
+    runner: ubuntu_latest,
+    timeout_minutes: 30,
+    steps: [
+      Run { name: "Verify Bootstrap Invariants", command: bootstrap_command() },
+      DagRun {
+        name: "Run CI Pipeline",
+        command: config.tool_command,
+        env: [{ key: "CARGO_INCREMENTAL", value: "\"1\"" }]
+      }
+    ]
+  }
+  {
+    name: "ci",
+    provider: provider,
+    trigger: default_trigger,
+    permissions: config.permissions,
+    env: cargo_ci_env,
+    cache: rust_cache,
+    checkout: default_checkout,
+    jobs: [job],
+    secrets_env: config.secrets_env,
+    generator_name: config.generator_name,
+    regenerate_command: config.regenerate_command
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+func cigen() -> { written_github: Bool, written_gitlab: Bool } {
+  config = discover_ci_config()
+
+  github_workflow = build_ci_workflow(config: config, provider: GitHub)
+  github_yaml = render_github_workflow(w: github_workflow)
+  github_result = content_upsert(content: github_yaml, path: ".github/workflows/ci.yml")
+
+  gitlab_workflow = build_ci_workflow(config: config, provider: GitLab)
+  gitlab_yaml = render_gitlab_workflow(w: gitlab_workflow)
+  gitlab_result = content_upsert(content: gitlab_yaml, path: ".gitlab-ci.yml")
+
+  return { written_github: github_result.written, written_gitlab: gitlab_result.written }
+}
