@@ -17,7 +17,7 @@
 module tools.cigen
 
 import std.patterns { content_upsert }
-import std.yaml_render {
+import extdeps.yaml {
   yaml_header, yaml_mapping, yaml_indent, yaml_indented_mapping,
   yaml_indented_item, yaml_block, yaml_sequence_block, yaml_mapping_block
 }
