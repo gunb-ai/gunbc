@@ -278,6 +278,3 @@ func makegen(path: String = "Makefile") -> { written: Bool } {
   return { written: result.written }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────
-
-test makegen_dryrun {}

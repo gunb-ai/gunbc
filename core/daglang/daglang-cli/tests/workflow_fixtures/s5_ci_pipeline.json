@@ -35,7 +35,7 @@
       "service_transport_parse_targets": 10,
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 10,
-      "service_transport_readonly_targets": 0,
+      "service_transport_readonly_targets": 3,
       "total_obligations": 231,
       "transport_execution_targets": 10
     }

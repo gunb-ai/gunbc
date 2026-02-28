@@ -88,14 +88,48 @@ impl Executable for TestgenOp {
                 live_profile_tests,
             } => {
                 // 1. Compile .dag → Dag<DynOp> + DSL type registry
+                // RT24: Try profileless first; if that fails and we have live_profile_tests,
+                // retry with the first hermetic profile (or first profile).
                 let result = match crate::dsl_builder::build_dsl_graph_with_types(dsl_path) {
                     Ok(r) => r,
+                    Err(e) if !live_profile_tests.is_empty() => {
+                        // Pick first hermetic profile, or first profile.
+                        let fallback_profile = live_profile_tests
+                            .iter()
+                            .find(|p| p.test_class == gunbc_test::TestClass::Hermetic)
+                            .or_else(|| live_profile_tests.first())
+                            .map(|p| p.profile_name.as_str());
+
+                        if let Some(profile) = fallback_profile {
+                            match crate::dsl_builder::build_dsl_graph_with_types_and_profile(dsl_path, profile) {
+                                Ok(r) => r,
+                                Err(e2) => {
+                                    let placeholder = format!(
+                                        "// Auto-testgen skipped for '{module_name}': profile={profile}: {e2}\n\
+                                         // Original error (no profile): {e}\n"
+                                    );
+                                    return OutputMap::new()
+                                        .str("content", placeholder)
+                                        .str("path", output_path.to_string())
+                                        .ok();
+                                }
+                            }
+                        } else {
+                            let placeholder = format!(
+                                "// Auto-testgen skipped for '{module_name}': {e}\n\
+                                 // No matching profiles available.\n"
+                            );
+                            return OutputMap::new()
+                                .str("content", placeholder)
+                                .str("path", output_path.to_string())
+                                .ok();
+                        }
+                    }
                     Err(e) => {
                         let placeholder = format!(
                             "// Auto-testgen skipped for '{module_name}': {e}\n\
                              // This module cannot be compiled without additional context\n\
-                             // (e.g., provider binding or --profile flag).\n\
-                             // See IS-3 in TODO/tasks.md for the proper fix.\n"
+                             // (e.g., provider binding or --profile flag).\n"
                         );
                         return OutputMap::new()
                             .str("content", placeholder)

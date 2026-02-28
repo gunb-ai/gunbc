@@ -33,12 +33,12 @@ fn worker_sa_email(project_id: String) -> String {
 // ── Resource declarations ───────────────────────────────────────────
 
 func deploy_ledger_bucket(project_id: String) -> { name: String } {
-  existing = Storage.GetBucket(name: ledger_bucket_name(project_id: project))
+  existing = Storage.GetBucket(name: ledger_bucket_name(project_id: project_id))
 
   if !existing.exists {
     created = Storage.CreateBucket(
-      project_id: project,
-      name: ledger_bucket_name(project_id: project),
+      project_id: project_id,
+      name: ledger_bucket_name(project_id: project_id),
       location: "us-central1",
       storage_class: "STANDARD",
       labels: { "managed-by": "gunbc", "component": "sdlc-ledger" }
@@ -51,13 +51,13 @@ func deploy_ledger_bucket(project_id: String) -> { name: String } {
 
 func deploy_service_account(project_id: String) -> { email: String } {
   existing = IAM.GetServiceAccount(
-    project_id: project,
-    email: worker_sa_email(project_id: project)
+    project_id: project_id,
+    email: worker_sa_email(project_id: project_id)
   )
 
   if !existing.exists {
     created = IAM.CreateServiceAccount(
-      project_id: project,
+      project_id: project_id,
       account_id: "gunbc-sdlc-worker",
       display_name: "gunbc SDLC Worker"
     )
@@ -72,17 +72,17 @@ func deploy_worker_service(
   region: String
 ) -> { name: String, uri: String } {
   existing = CloudRun.GetService(
-    project_id: project,
+    project_id: project_id,
     region: region,
     name: worker_service_name()
   )
 
   if !existing.exists {
     created = CloudRun.CreateService(
-      project_id: project,
+      project_id: project_id,
       region: region,
       name: worker_service_name(),
-      image: worker_image(project_id: project, region: region),
+      image: worker_image(project_id: project_id, region: region),
       memory: "512Mi",
       cpu: 1,
       min_instances: 0,
@@ -92,17 +92,17 @@ func deploy_worker_service(
         "SDLC_REPO_OWNER": "gunb-ai",
         "SDLC_REPO_NAME": "gunbc"
       },
-      service_account: worker_sa_email(project_id: project),
+      service_account: worker_sa_email(project_id: project_id),
       labels: { "managed-by": "gunbc", "component": "sdlc-worker" }
     )
     return { name: created.name, uri: created.uri }
   }
 
   updated = CloudRun.UpdateService(
-    project_id: project,
+    project_id: project_id,
     region: region,
     name: worker_service_name(),
-    image: worker_image(project_id: project, region: region),
+    image: worker_image(project_id: project_id, region: region),
     memory: "512Mi",
     labels: { "managed-by": "gunbc", "component": "sdlc-worker" }
   )
@@ -111,13 +111,13 @@ func deploy_worker_service(
 
 func deploy_github_secret(project_id: String) -> { name: String } {
   existing = SecretManager.GetSecret(
-    project_id: project,
+    project_id: project_id,
     secret: "github-token"
   )
 
   if !existing.exists {
     created = SecretManager.CreateSecret(
-      project_id: project,
+      project_id: project_id,
       secret_id: "github-token"
     )
     return { name: created.name }
@@ -132,10 +132,10 @@ func deploy_all(
   project_id: String,
   region: String
 ) -> { success: Bool } {
-  bucket = deploy_ledger_bucket(project_id: project)
-  sa = deploy_service_account(project_id: project)
-  secret = deploy_github_secret(project_id: project)
-  service = deploy_worker_service(project_id: project, region: region)
+  bucket = deploy_ledger_bucket(project_id: project_id)
+  sa = deploy_service_account(project_id: project_id)
+  secret = deploy_github_secret(project_id: project_id)
+  service = deploy_worker_service(project_id: project_id, region: region)
 
   return { success: true }
 }

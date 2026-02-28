@@ -45,7 +45,6 @@ import std.types {
     NonEmptyStr, ApprovalMode
 }
 import std.state_machines {
-    validate_transition, validate_transition_with_budget,
     determine_stage, stage_to_label, transition_labels
 }
 
@@ -128,21 +127,6 @@ fn format_test_results(test_result: Json, clippy_result: Json) -> String {
   let test_status = match test_result.success { true => "PASSED", false => "FAILED" }
   let clippy_status = match clippy_result.success { true => "PASSED", false => "FAILED" }
   "## Acceptance Tests\n\n| Check | Status |\n|---|---|\n| `cargo test` | {test_status} |\n| `cargo clippy` | {clippy_status} |\n\n### Test Output\n```\n{test_result.stdout}\n```\n\n### Clippy Output\n```\n{clippy_result.stdout}\n```\n\n---\n_Tested by gunbc SDLC pipeline_"
-}
-
-// ── Stub functions (DR-4) ────────────────────────────────────────────
-// Referenced in gap analysis but not yet implemented. Stubbed here
-// so the DSL definition is self-contained.
-
-fn generate_implementation_plan(design: String, context: String) -> String {
-  "## Implementation Plan (stub)\n\nBased on design:\n{design}\n\nContext: {context}\n\n_Stub: real implementation will use LLM to decompose design into tasks._"
-}
-
-fn get_pr_diff(owner: String, repo: String, number: Int) -> { diff: String, files: Json } {
-  {
-    diff: "--- stub ---\n+++ stub ---\n@@ Stub diff for {owner}/{repo}#{number} @@",
-    files: []
-  }
 }
 
 // ── Pipeline ────────────────────────────────────────────────────────

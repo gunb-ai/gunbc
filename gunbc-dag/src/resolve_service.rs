@@ -347,14 +347,26 @@ fn extract_output_field(
     }
 }
 
-/// Navigate a dot-separated JSON path (e.g., "payload.data").
+/// Navigate a JSON path supporting both `.` and `/` separators and array indices.
+///
+/// Examples: `"payload.data"`, `"content/0/text"`, `"choices/0/message/content"`.
+/// Numeric segments index into arrays; string segments index into objects.
 fn navigate_json_path<'a>(
     body: &'a serde_json::Value,
     path: &str,
 ) -> Option<&'a serde_json::Value> {
     let mut current = body;
-    for segment in path.split('.') {
-        current = current.get(segment)?;
+    // Use `/` as separator when the path contains `/`, otherwise `.`.
+    let separator = if path.contains('/') { '/' } else { '.' };
+    for segment in path.split(separator) {
+        if segment.is_empty() {
+            continue;
+        }
+        if let Ok(idx) = segment.parse::<usize>() {
+            current = current.get(idx)?;
+        } else {
+            current = current.get(segment)?;
+        }
     }
     Some(current)
 }

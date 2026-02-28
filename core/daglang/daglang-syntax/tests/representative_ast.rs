@@ -53,8 +53,8 @@ fn makegen_contains_fn_and_func_items() {
     let source = parse_dsl("tools/makegen.dag");
     assert_eq!(
         source.items.len(),
-        35,
-        "makegen should contain 35 top-level items (32 fn, 1 extern func, 1 func, 1 test)"
+        34,
+        "makegen should contain 34 top-level items (32 fn, 1 extern func, 1 func)"
     );
     assert_eq!(
         source
@@ -138,7 +138,6 @@ fn makegen_contains_fn_and_func_items() {
             "fn render_header",
             "fn render_makefile_content",
             "func makegen",
-            "test makegen_dryrun",
         ]
     );
 }

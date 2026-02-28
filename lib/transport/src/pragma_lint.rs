@@ -248,7 +248,7 @@ mod tests {
             "core/ir/src/resource/mod.rs",
             "core/ir/src/resource/handle.rs",
             "core/ir/src/value.rs",
-            "core/exec/src/execute.rs",
+            "core/exec/src/execute/mod.rs",
             "core/exec/src/display.rs",
             "gunbc-dag/src/resolve_service.rs",
             "lib/gcp-ops/src/ops.rs",

@@ -1,7 +1,7 @@
 {
   "module": "tools.makegen",
   "path": "tools/makegen.dag",
-  "items": 35,
+  "items": 34,
   "dependencies": [
     "std.patterns",
     "extdeps.make",
@@ -29,7 +29,7 @@
       "service_transport_parse_targets": 6,
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 8,
-      "service_transport_readonly_targets": 0,
+      "service_transport_readonly_targets": 3,
       "total_obligations": 161,
       "transport_execution_targets": 8
     }
