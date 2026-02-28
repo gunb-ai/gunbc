@@ -39,6 +39,7 @@ use serde::Serialize;
 
 pub mod eval;
 pub mod expr;
+pub(crate) mod scope;
 pub mod spec;
 
 pub use spec::{
@@ -446,14 +447,14 @@ pub fn topology_with_obligation_kinds(dag: &Dag<LoweredOp>) -> DagTopology {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct LoweredEndpoint {
-    node_id: String,
-    primary_output: String,
+pub(crate) struct LoweredEndpoint {
+    pub(crate) node_id: String,
+    pub(crate) primary_output: String,
 }
 
 #[derive(Debug, Clone)]
-struct EndpointRegistry<T> {
-    by_key: HashMap<String, Option<T>>,
+pub(crate) struct EndpointRegistry<T> {
+    pub(crate) by_key: HashMap<String, Option<T>>,
 }
 
 impl<T> Default for EndpointRegistry<T> {
@@ -483,23 +484,23 @@ impl<T: PartialEq> EndpointRegistry<T> {
     }
 }
 
-type ServiceEndpointRegistry = EndpointRegistry<ServiceTransportEndpoint>;
+pub(crate) type ServiceEndpointRegistry = EndpointRegistry<ServiceTransportEndpoint>;
 type ResourceLifecycleRegistry = EndpointRegistry<ResourceLifecycleEndpoint>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ServiceTransportEndpoint {
-    parse: LoweredEndpoint,
-    prepare_node_id: String,
-    execute_node_id: String,
-    prepare_inputs: Vec<String>,
+pub(crate) struct ServiceTransportEndpoint {
+    pub(crate) parse: LoweredEndpoint,
+    pub(crate) prepare_node_id: String,
+    pub(crate) execute_node_id: String,
+    pub(crate) prepare_inputs: Vec<String>,
     /// Full (unfiltered) operation input names for positional arg resolution.
     /// `prepare_inputs` excludes `auth_input`, so positional indices shift.
     /// Resolving against this list gives the correct field name, which the
     /// downstream auth_input skip/wire logic then handles by name.
-    operation_inputs: Vec<String>,
-    has_auth: bool,
+    pub(crate) operation_inputs: Vec<String>,
+    pub(crate) has_auth: bool,
     /// Service call metadata for this endpoint (carried for loop-body transport).
-    metadata: Option<ServiceCallMetadata>,
+    pub(crate) metadata: Option<ServiceCallMetadata>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -702,19 +703,19 @@ struct ProfileBindingRecord {
 }
 
 #[derive(Debug, Clone)]
-struct ActiveProfileBindings {
-    profile_name: String,
-    by_interface: HashMap<String, ActiveProfileBinding>,
+pub(crate) struct ActiveProfileBindings {
+    pub(crate) profile_name: String,
+    pub(crate) by_interface: HashMap<String, ActiveProfileBinding>,
 }
 
 #[derive(Debug, Clone)]
-struct ActiveProfileBinding {
-    implementation_type: String,
-    config_values: HashMap<String, ProfileConfigValue>,
+pub(crate) struct ActiveProfileBinding {
+    pub(crate) implementation_type: String,
+    pub(crate) config_values: HashMap<String, ProfileConfigValue>,
 }
 
 #[derive(Debug, Clone)]
-enum ProfileConfigValue {
+pub(crate) enum ProfileConfigValue {
     Literal(String),
     SecretRef(String),
 }
@@ -2963,7 +2964,7 @@ fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
 }
 
 /// Collect service call paths from a single expression (non-recursive into for-loops).
-fn collect_service_call_paths_from_expr(expr: &Expr, paths: &mut Vec<Vec<String>>) {
+pub(crate) fn collect_service_call_paths_from_expr(expr: &Expr, paths: &mut Vec<Vec<String>>) {
     if let Expr::ServiceCall(path, _) = expr {
         paths.push(path.clone());
     }
@@ -6162,12 +6163,12 @@ fn add_service_call_edges(
 }
 
 #[derive(Debug, Clone)]
-struct ServiceCallResolvedSource {
-    endpoint: ServiceTransportEndpoint,
-    binding_config: Option<HashMap<String, ProfileConfigValue>>,
+pub(crate) struct ServiceCallResolvedSource {
+    pub(crate) endpoint: ServiceTransportEndpoint,
+    pub(crate) binding_config: Option<HashMap<String, ProfileConfigValue>>,
 }
 
-fn resolve_service_call_source(
+pub(crate) fn resolve_service_call_source(
     caller: &str,
     call_path: &[String],
     uses_binding_types: &HashMap<String, String>,
@@ -7039,7 +7040,7 @@ fn resolve_interface_contract_count(project: &TypedProject, interface_name: &str
     0
 }
 
-fn resolve_service_endpoint(
+pub(crate) fn resolve_service_endpoint(
     call_path: &[String],
     registry: &ServiceEndpointRegistry,
 ) -> Option<ServiceTransportEndpoint> {
@@ -7199,18 +7200,18 @@ fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut BTreeSet<String>) {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ServiceCallArgSite {
-    name: Option<String>,
-    ident: Option<String>,
-    field_access: Option<(String, String)>,
-    call: Option<String>,
-    literal: Option<ServiceCallArgLiteral>,
+pub(crate) struct ServiceCallArgSite {
+    pub(crate) name: Option<String>,
+    pub(crate) ident: Option<String>,
+    pub(crate) field_access: Option<(String, String)>,
+    pub(crate) call: Option<String>,
+    pub(crate) literal: Option<ServiceCallArgLiteral>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ServiceCallSite {
-    path: Vec<String>,
-    args: Vec<ServiceCallArgSite>,
+pub(crate) struct ServiceCallSite {
+    pub(crate) path: Vec<String>,
+    pub(crate) args: Vec<ServiceCallArgSite>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -7220,7 +7221,7 @@ struct FnCallSite {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ServiceCallArgLiteral {
+pub(crate) enum ServiceCallArgLiteral {
     String(String),
     Int(i64),
     Bool(bool),
@@ -7375,7 +7376,7 @@ fn build_collection_lowering_plan(
     CollectionLoweringPlan { nodes, edges }
 }
 
-fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
+pub(crate) fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<ServiceCallSite>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::ServiceCall(path, args) = expr {
             calls.push(ServiceCallSite {

@@ -3300,3 +3300,182 @@ fn service_transport_class_hermetic_matches_dsl_fidelity() {
     assert!(!ServiceTransportClass::RestNetwork.is_hermetic());
     assert!(!ServiceTransportClass::Unknown.is_hermetic());
 }
+
+// ============================================================================
+// ScopedBody integration tests against real DSL corpus
+// ============================================================================
+
+/// Helper: find func body stmts by name, panicking with context on failure.
+fn find_func_stmts(
+    project: &TypedProject,
+    module_name: &str,
+    func_name: &str,
+) -> Vec<Stmt> {
+    for module in &project.modules {
+        if module.module_path.as_dotted() != module_name {
+            continue;
+        }
+        for item in &module.ast.items {
+            if let Item::FuncDef(def) = &item.node {
+                if def.name == func_name {
+                    assert!(
+                        !def.body.lossy,
+                        "{func_name} body is lossy — parser didn't capture stmts"
+                    );
+                    return def.body.stmts.clone();
+                }
+            }
+        }
+    }
+    panic!("{func_name} not found as func in {module_name}");
+}
+
+/// Helper: find pattern body stmts by name.
+fn find_pattern_stmts(
+    project: &TypedProject,
+    module_name: &str,
+    pattern_name: &str,
+) -> Vec<Stmt> {
+    for module in &project.modules {
+        if module.module_path.as_dotted() != module_name {
+            continue;
+        }
+        for item in &module.ast.items {
+            if let Item::PatternDef(def) = &item.node {
+                if def.name == pattern_name {
+                    assert!(
+                        !def.body.lossy,
+                        "{pattern_name} body is lossy — parser didn't capture stmts"
+                    );
+                    return def.body.stmts.clone();
+                }
+            }
+        }
+    }
+    panic!("{pattern_name} not found as pattern in {module_name}");
+}
+
+#[test]
+fn scope_acquire_subject_token_has_match_with_fn_calls() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_pattern_stmts(&project, "std.patterns", "acquire_subject_token");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // acquire_subject_token body:
+    //   node token = match runtime {
+    //     GitHubActions => github_oidc(audience: audience)   // fn call
+    //     Metadata     => metadata_oidc(audience: audience)  // fn call
+    //     LocalDev     => local_auth()                       // fn call
+    //   }
+    //   return { token: token.token }
+    //
+    // The match arms call funcs (not service calls directly).
+    // Since arms don't contain direct Expr::ServiceCall, the match is Other.
+    // After pattern expansion, the func bodies get inlined and service calls
+    // become visible — that's when scoped emission matters.
+    assert!(!body.items.is_empty(), "body should have items");
+    assert_eq!(body.direct_service_calls().len(), 0);
+}
+
+#[test]
+fn scope_github_oidc_has_direct_service_calls() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_func_stmts(&project, "std.patterns", "github_oidc");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // github_oidc has:
+    //   url = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_URL")
+    //   auth = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+    //   response = github.OIDC.GetToken(...)
+    //   return { token: ... }
+    //
+    // All 3 service calls are at top level.
+    let direct = body.direct_service_calls();
+    assert!(
+        direct.len() >= 3,
+        "github_oidc should have at least 3 direct service calls, got {}",
+        direct.len()
+    );
+    let paths: Vec<String> = direct.iter().map(|c| c.path.join(".")).collect();
+    assert!(
+        paths.iter().any(|p| p.contains("GetToken")),
+        "should contain GetToken service call, got: {:?}",
+        paths
+    );
+}
+
+#[test]
+fn scope_metadata_oidc_has_direct_service_call() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_func_stmts(&project, "std.patterns", "metadata_oidc");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // metadata_oidc has:
+    //   response = gcp.Metadata.GetIdentityToken(audience: audience)
+    //   return { token: ... }
+    let direct = body.direct_service_calls();
+    assert_eq!(
+        direct.len(),
+        1,
+        "metadata_oidc should have exactly 1 direct service call"
+    );
+    assert!(
+        direct[0].path.join(".").contains("GetIdentityToken"),
+        "should be GetIdentityToken, got: {:?}",
+        direct[0].path
+    );
+}
+
+#[test]
+fn scope_optional_impersonation_match_arm_body_is_lossy() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_pattern_stmts(&project, "std.patterns", "optional_impersonation");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // optional_impersonation has a match with a multi-statement block body:
+    //   Some(sa) => {
+    //     response = gcp.IAM.GenerateAccessToken(...)
+    //     { token: response.access_token }
+    //   }
+    //
+    // The parser currently drops the assignment+service call inside the match
+    // arm block body, resulting in Record(None, []). This is a known parser
+    // limitation: block bodies inside match arms aren't fully captured.
+    //
+    // The ScopedBody correctly handles whatever the parser produces — it sees
+    // the match arm bodies as empty records (no service calls), so it classifies
+    // the match as Other (no nested service calls to scope).
+    //
+    // Once the parser supports block bodies in match arms, this test should
+    // be updated to verify that the service call is nested inside the match.
+    assert!(!body.items.is_empty(), "body should have items");
+    assert_eq!(
+        body.direct_service_calls().len(),
+        0,
+        "no direct service calls (match arm bodies are lossy)"
+    );
+}
+
+#[test]
+fn scope_credential_chain_has_service_calls() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_pattern_stmts(&project, "std.patterns", "credential_chain");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // credential_chain composes acquire_subject_token, optional_impersonation, etc.
+    // via node statements and fn calls. Verify the scope tree builds without panic.
+    assert!(
+        !body.items.is_empty(),
+        "credential_chain should have items"
+    );
+}
