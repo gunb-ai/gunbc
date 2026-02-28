@@ -400,6 +400,12 @@ Before making a decision in any of these areas, read the relevant doc.
 | [`docs/design/sdlc/e2e-gap-analysis.md`](design/sdlc/e2e-gap-analysis.md) | Implementation deltas (all gaps resolved) |
 | [`docs/design/sdlc/domain-modeling-comprehensive.md`](design/sdlc/domain-modeling-comprehensive.md) | Entity catalog, state machines, invariants |
 
+### Domain modeling (Phase 2)
+
+| Doc | Key decision |
+|-----|-------------|
+| [`docs/design/domain-model-porting.md`](design/domain-model-porting.md) | Ported behavioral data from sibling repos for Lane 4 (domain model foundation) |
+
 ---
 
 ## Common commands
