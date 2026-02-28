@@ -109,7 +109,7 @@ data exemptions: List<Exemption> = [
   },
   {
     invariant_id: "I6",
-    scope: PackageFile { package_name: "gunbc-exec", path: "src/execute.rs" },
+    scope: PackageFile { package_name: "gunbc-exec", path: "src/execute/mod.rs" },
     rationale: "CI secret masking at transport boundary"
   },
   {
@@ -163,7 +163,8 @@ data allowlist_patterns: List<AllowlistPattern> = [
   { pattern: "lib/transport/", rationale: "transport boundary" },
   { pattern: "core/exec/src/freshness.rs", rationale: "freshness steps run external tooling as child processes" },
   { pattern: "core/exec/src/display.rs", rationale: "CI secret masking at transport boundary" },
-  { pattern: "core/exec/src/execute.rs", rationale: "CI secret masking at transport boundary" },
+  { pattern: "core/exec/src/execute/", rationale: "CI secret masking at transport boundary" },
+  { pattern: "core/test/src/temp.rs", rationale: "test infrastructure: temp directory creation" },
   { pattern: "core/daglang/daglang-cli/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
   { pattern: "core/daglang/daglang-contract/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },
   { pattern: "core/daglang/daglang-derive/", rationale: "compiler pipeline: filesystem discovery for .dag module resolution" },

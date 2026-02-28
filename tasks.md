@@ -354,6 +354,23 @@ and structural simplifications identified by reviewing state machine / annotatio
 | 56 | RT56 | **Deterministic profile selection policy.** Replace "first hermetic profile" heuristic in `auto_testgen_for_module()` with explicit policy (e.g., `unit_test` always unless overridden). `gunbc-dag/src/bin/sdlc.rs` + testgen. | S | Pending | — |
 | 57 | RT57 | **Remove TestgenOp compilation fallback.** `TestgenOp::AutoGenerate` tries profileless compile, then retries with "first hermetic profile". Replace with: `requires_profile` → select by deterministic policy (RT56), no retry loop. | S | Pending | RT56 |
 
+### Binary Elimination Queue (handwritten → generated)
+
+Eliminate all handwritten binary entrypoints except bootstrap exceptions (`ci.rs`, `codegen_cli.rs`).
+The CLI generator should produce every binary from DSL metadata. Design: `docs/design/binary-elimination.md`.
+
+| # | ID | What | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 58 | RT58 | **Param source propagation in detect_entrypoints.** Move `param_source_*` propagation from `sdlc.rs` into `detect_entrypoints()` or `BoundaryMocks`. All generated binaries get it automatically. Acceptance: delete param_source block from `sdlc.rs`, dry-run still works. | S | Pending | — |
+| 59 | RT59 | **Profile-aware CLI generation.** Expose `available_profiles` in `CompileOutput`. CLI template: when profiles exist, generate `--profile` enum flag, call `build_dsl_graph_with_profile()`, profile `unit_test` auto-enables DryRun mode. | M | Pending | — |
+| 60 | RT60 | **Eliminate `sdlc.rs`.** With profile-aware CLI gen (RT59) and param_source fix (RT58), `sdlc.rs` is a standard generated binary. Delete handwritten file, verify generated binary matches behavior. | S | Pending | RT58, RT59 |
+| 61 | RT61 | **Eliminate `deps_config.rs`.** Model verify/ensure as DAG execution parameter. Add `--mode` flag support to template for content_upsert workflows. Resource manifest update as post-execution hook. | S | Pending | — |
+| 62 | RT62 | **Eliminate `pipeline.rs`.** Move `query_ci_status()`, `query_pr_description()`, `query_issue_description()` into DAG func nodes (shell transport to `gh` CLI). With profile support + standard CLI params, binary is generated. | M | Pending | RT59 |
+| 63 | RT63 | **Subcommand dispatch in CLI generator.** When a `.dag` module has multiple exported `func` items, generate one binary with subcommand dispatch. Each subcommand gets its own parameter schema from the corresponding func's signature. | M | Pending | — |
+| 64 | RT64 | **Eliminate `workflow.rs`.** Requires subcommand dispatch (plan vs run modes). Move `render_plan_text`, `render_plan_json` into DSL fns. Move SLO checking into the DAG. | L | Pending | RT63 |
+| 65 | RT65 | **Eliminate `infra.rs`.** 8 subcommands (most complex binary). Move spec rendering to DSL. Needs `KEY=VALUE` parsing + multi-value flags + `--execute` safety gate in CLI template. Last and hardest elimination. | L | Pending | RT63 |
+| 66 | RT66 | **Delete handwritten binary infrastructure.** After all binaries generated, delete `BinaryArgs` from `gunbc-cli`, remove `#[allow(clippy::disallowed_methods)]` annotations, clean up orphaned support code. ~2,600 lines deleted. | S | Pending | RT64, RT65 |
+
 ---
 
 ## Red Unqueued

@@ -76,6 +76,11 @@ impl TransportBackend for GcloudExpiredBackend {
                     "oldest-commit\n",
                 )))
             }
+            // Credential chain probes CI environment via printenv; return empty
+            // to simulate non-CI, forcing fallback to gcloud.
+            TransportRequest::Shell(shell) if shell.command == "printenv" => {
+                Ok(TransportResponse::Shell(ShellResponse::ok("")))
+            }
             // KEY: gcloud returns exit 1 (session expired / not logged in)
             TransportRequest::Shell(shell) if shell.command == "gcloud" => {
                 Ok(TransportResponse::Shell(ShellResponse::failed(
@@ -145,6 +150,11 @@ impl TransportBackend for Rest401Backend {
                     "oldest-commit\n",
                 )))
             }
+            // Credential chain probes CI environment via printenv; return empty
+            // to simulate non-CI, forcing fallback to gcloud.
+            TransportRequest::Shell(shell) if shell.command == "printenv" => {
+                Ok(TransportResponse::Shell(ShellResponse::ok("")))
+            }
             TransportRequest::Shell(shell) if shell.command == "gcloud" => Ok(
                 TransportResponse::Shell(ShellResponse::ok("ghp_mock_token\n")),
             ),
@@ -201,8 +211,10 @@ fn build_gist_recent_with_inputs() -> (gunbc_ir::Dag<gunbc_exec::DynOp>, Boundar
 /// then flow to the GitHub API as the auth token, causing a 401 error that
 /// was misdiagnosed as a token permission issue.
 ///
-/// After RT-I4, TrimStdout checks the exit code and fails immediately with
-/// a descriptive error mentioning the service name and exit code.
+/// After RT-I4, the credential chain fails — either via shell exit code
+/// checking (exit 1 from gcloud) or via credential Skipped propagation
+/// (when the WIF conditional path skips). Either way, execution fails
+/// rather than silently sending an unauthenticated request.
 #[test]
 fn gcloud_exit_code_1_fails_with_error() {
     let (dag, input_mocks) = build_gist_recent_with_inputs();
@@ -222,10 +234,13 @@ fn gcloud_exit_code_1_fails_with_error() {
     );
 
     let error = result.unwrap_err().to_string();
-    // Error should mention shell exit code (from shell_exit_error helper)
+    // Error should mention either shell exit code (direct gcloud failure) or
+    // credential resolution failure (Skipped propagation through conditional path)
     assert!(
-        error.contains("exited with code 1") || error.contains("exit"),
-        "error should mention shell exit code, got: {error}"
+        error.contains("exit")
+            || error.contains("credential")
+            || error.contains("Skipped"),
+        "error should mention exit code or credential failure, got: {error}"
     );
 
     // Verify that the REST endpoint was never called — the failure should
