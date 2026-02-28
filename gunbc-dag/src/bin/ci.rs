@@ -21,7 +21,7 @@
 //! without requiring separate workflow steps.
 
 #![deny(dead_code)]
-use gunbc_cli::BinaryArgs;
+use gunbc_cli::{parse, CliParam, ParamType};
 use gunbc_dag::build::build_build_graph;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::{print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions};
@@ -53,14 +53,38 @@ fn ci_path_for_node(node_id: &str) -> Option<&'static str> {
 }
 
 fn main() {
-    let parsed = BinaryArgs::new().with_mode().parse_env();
+    let argv: Vec<String> = std::env::args().collect();
+    let parsed = match parse(&argv, &[CliParam::new("mode", ParamType::Str)]) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            print_attention(
+                AttentionLevel::Error,
+                "invalid CLI arguments",
+                &error.to_string(),
+            );
+            process::exit(1);
+        }
+    };
     if parsed.help {
         print_help();
         return;
     }
 
     let dry_run = parsed.dry_run;
-    let resource_mode = parsed.resource_mode.unwrap_or(ExecMode::Ensure);
+    let resource_mode = match parsed.values.get("mode").and_then(Value::as_str) {
+        Some(mode) => match ExecMode::parse_strict(mode) {
+            Ok(mode) => mode,
+            Err(_) => {
+                print_attention(
+                    AttentionLevel::Error,
+                    "invalid --mode value",
+                    &format!("expected ensure|verify, got '{mode}'"),
+                );
+                process::exit(1);
+            }
+        },
+        None => ExecMode::Ensure,
+    };
 
     // Runtime CI path uses the concrete build/test/lint DAG.
     let dag = match build_build_graph() {

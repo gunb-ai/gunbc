@@ -22,7 +22,7 @@
 
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
-use gunbc_cli::BinaryArgs;
+use gunbc_cli::parse;
 use gunbc_codegen::{core_outputs, generate_cli_with_import, FileWriter, ToolDef};
 use gunbc_exec::{print_attention, run_freshness_steps, AttentionLevel};
 use gunbc_ir::resource::{
@@ -39,7 +39,7 @@ use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let parsed = match BinaryArgs::new().parse(&args) {
+    let parsed = match parse(&args, &[]) {
         Ok(parsed) => parsed,
         Err(e) => {
             print_attention(
