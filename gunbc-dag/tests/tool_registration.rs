@@ -334,65 +334,6 @@ fn dsl_is_single_authority() {
     );
 }
 
-#[test]
-fn workspace_binary_invocations_are_consistent() {
-    use gunbc_dag::WorkspaceBinary;
-
-    let mut violations = Vec::new();
-    for binary in WorkspaceBinary::ALL {
-        let inv = binary.invocation();
-        if inv.binary.is_empty() {
-            violations.push(format!(
-                "WorkspaceBinary '{}' has empty binary",
-                binary.tool_name()
-            ));
-        }
-    }
-
-    assert!(
-        violations.is_empty(),
-        "violations:\n{}",
-        violations.join("\n")
-    );
-}
-
-#[test]
-fn workspace_binary_enum_covers_dsl_tools() {
-    use gunbc_dag::WorkspaceBinary;
-
-    // Tools that exist as DSL entrypoints but are intentionally NOT in
-    // the WorkspaceBinary dispatch enum. Includes newly-inferred entrypoints
-    // that haven't been promoted to standalone CLI binaries yet.
-    let non_workspace_dispatch: BTreeSet<&str> = BTreeSet::from([
-        "build-all",
-        "clippy-lint",
-        "codegen-ensure",
-        "deps",
-        "deps-generate",
-        "docgen",
-        "review",
-    ]);
-
-    let enum_binaries: BTreeSet<&str> =
-        WorkspaceBinary::ALL.iter().map(|b| b.tool_name()).collect();
-    let dsl_invocable: BTreeSet<String> = dsl_tools()
-        .into_iter()
-        .filter(|tool| tool.invocation.is_some())
-        .map(|tool| tool.meta.tool_name.to_string())
-        .collect();
-
-    let missing: BTreeSet<&String> = dsl_invocable
-        .iter()
-        .filter(|name| !enum_binaries.contains(name.as_str()))
-        .filter(|name| !non_workspace_dispatch.contains(name.as_str()))
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "DSL tools missing from WorkspaceBinary: {:?}",
-        missing
-    );
-}
-
 // ============================================================================
 // ToolDef -> ToolInfo Roundtrip Contract Tests
 // ============================================================================

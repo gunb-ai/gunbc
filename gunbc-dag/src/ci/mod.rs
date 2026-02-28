@@ -5,7 +5,7 @@
 pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use gunbc_primitives::EmbeddedFileExistsOp;
 
-use crate::WorkspaceBinary;
+use gunbc_ir::CargoInvocation;
 use gunbc_exec::DynOp;
 use gunbc_ir::transport::github_actions::{
     checkout, gcp_workload_identity, rust_toolchain, ubuntu_latest, Integration, Permissions,
@@ -35,7 +35,7 @@ pub fn ci_integrations() -> Vec<Integration> {
 
 /// Get the complete workflow configuration for CI.
 pub fn ci_workflow_config() -> WorkflowConfig {
-    let ci_cmd = WorkspaceBinary::Ci.command();
+    let ci_cmd = CargoInvocation::composed("ci", "dag").command();
     WorkflowConfig::new("CI", ubuntu_latest(), ci_integrations())
         .with_run_command(format!("|\n          {ci_cmd} -- run"))
 }

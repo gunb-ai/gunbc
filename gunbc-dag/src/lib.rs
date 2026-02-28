@@ -17,7 +17,6 @@
 //! - `gunbc-dag::ci` defines gunbc's CI pipeline (repo-specific)
 
 #![deny(dead_code)]
-pub mod binaries;
 pub mod bootstrap;
 pub mod build;
 pub mod ci;
@@ -46,7 +45,6 @@ pub mod testgen_dag;
 pub mod tool_runner;
 pub mod workflow;
 // Re-exports for convenience
-pub use binaries::WorkspaceBinary;
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp};
 pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp};

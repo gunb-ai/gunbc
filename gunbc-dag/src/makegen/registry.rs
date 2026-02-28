@@ -17,9 +17,10 @@ use crate::resources::{
     generated_tests_resource_id, gitignore_resource_id, makefile_resource_id,
     pragma_config_resource_id, verified_artifacts_resource_id,
 };
-use crate::WorkspaceBinary;
 use gunbc_infra::ResourceId;
-use gunbc_ir::cargo::{BinaryArgs, CargoCommand, CodegenSubcommand, Subcommand, Warnings};
+use gunbc_ir::cargo::{
+    BinaryArgs, CargoCommand, CargoInvocation, CodegenSubcommand, Subcommand, Warnings,
+};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::ShellRequest;
 use std::collections::{BTreeMap, BTreeSet};
@@ -155,8 +156,8 @@ impl BuildConfig {
     /// This is the repo's standard policy for both CI and local builds.
     pub fn cargo() -> Self {
         let w = Warnings::Deny;
-        let codegen_inv = WorkspaceBinary::Codegen.invocation();
-        let codegen_dag_inv = WorkspaceBinary::CodegenDag.invocation();
+        let codegen_inv = CargoInvocation::composed("codegen", "dag");
+        let codegen_dag_inv = CargoInvocation::composed("codegen-dag", "dag");
         let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
         Self {
             build_system: BuildSystem::Cargo,
@@ -191,29 +192,29 @@ impl BuildConfig {
                 .args(BinaryArgs::codegen(CodegenSubcommand::Cigen))
                 .warnings(w)),
             testgen: c(
-                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
+                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("testgen", "dag")))
                     .warnings(w),
             ),
             deps_config_ensure: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::DepsConfig.invocation(),
+                CargoInvocation::composed("deps-config", "dag"),
             ))
             .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
             deps_config_check: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::DepsConfig.invocation(),
+                CargoInvocation::composed("deps-config", "dag"),
             ))
             .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             bootstrap: c(CargoCommand::new(Subcommand::Run(
-                WorkspaceBinary::Bootstrap.invocation(),
+                CargoInvocation::composed("bootstrap", "dag"),
             ))
             .warnings(w)),
             pragma: c(
-                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Pragma.invocation()))
+                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("pragma", "dag")))
                     .warnings(w),
             ),
             makegen: c(
-                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Makegen.invocation()))
+                CargoCommand::new(Subcommand::Run(CargoInvocation::composed("makegen", "dag")))
                     .warnings(w),
             ),
         }
@@ -347,10 +348,10 @@ impl ToolInfo {
     }
 
     /// Create a tool that is a repo-local workspace binary.
-    pub fn workspace(binary: WorkspaceBinary, description: impl Into<String>) -> Self {
+    pub fn workspace(tool_name: &str, description: impl Into<String>) -> Self {
         Self {
-            invocation: binary.invocation(),
-            short_name: binary.component().to_string(),
+            invocation: CargoInvocation::composed(tool_name, "dag"),
+            short_name: tool_name.to_string(),
             description: description.into(),
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
@@ -1536,7 +1537,7 @@ fn manual_workspace_tools_from_dsl_modules(
     if tool_modules.contains("pragma") {
         tools.push(
             ToolInfo::workspace(
-                WorkspaceBinary::Pragma,
+                "pragma",
                 "Generate clippy.toml and pragma allowlists",
             )
             .manual(),
@@ -1761,7 +1762,7 @@ mod tests {
     #[test]
     fn test_tool_workflow_spec_contains_entrypoints_and_deps() {
         let config = BuildConfig::cargo();
-        let mut tool = ToolInfo::workspace(WorkspaceBinary::Ci, "Run CI pipeline")
+        let mut tool = ToolInfo::workspace("ci", "Run CI pipeline")
             .manual()
             .with_param(EntrypointParam::new("mode", "MODE", "--mode", "String"));
         tool.live_secrets = vec!["CI_TOKEN".to_string()];

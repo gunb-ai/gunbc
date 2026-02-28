@@ -3,7 +3,7 @@
 //! This module provides a workflow-model bridge to CI YAML generation.
 
 use crate::makegen::registry::WorkflowSpec;
-use crate::WorkspaceBinary;
+use gunbc_ir::CargoInvocation;
 use gunbc_ir::transport::ci::{CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig};
 use gunbc_ir::{Dag, Edge, Node, Port};
 use std::collections::BTreeSet;
@@ -57,7 +57,7 @@ pub fn render_github_actions_from_workflow_specs(
     specs: &[WorkflowSpec],
 ) -> String {
     let dag = workflow_specs_to_dag(specs);
-    let mut config = RenderConfig::new(workflow_name, WorkspaceBinary::Ci.invocation());
+    let mut config = RenderConfig::new(workflow_name, CargoInvocation::composed("ci", "dag"));
     for secret in workflow_live_secrets(specs) {
         config = config.with_env(
             secret.as_str(),
@@ -70,7 +70,7 @@ pub fn render_github_actions_from_workflow_specs(
 /// Render a GitLab CI workflow YAML from workflow specs.
 pub fn render_gitlab_ci_from_workflow_specs(workflow_name: &str, specs: &[WorkflowSpec]) -> String {
     let dag = workflow_specs_to_dag(specs);
-    let mut config = RenderConfig::new(workflow_name, WorkspaceBinary::Ci.invocation());
+    let mut config = RenderConfig::new(workflow_name, CargoInvocation::composed("ci", "dag"));
     for secret in workflow_live_secrets(specs) {
         config = config.with_env(secret.as_str(), format!("${secret}").as_str());
     }
@@ -142,7 +142,7 @@ mod tests {
     fn shared_steps_dependencies_match_workflow_specs() {
         let specs = sample_specs();
         let dag = workflow_specs_to_dag(&specs);
-        let config = RenderConfig::new("ci", WorkspaceBinary::Ci.invocation());
+        let config = RenderConfig::new("ci", CargoInvocation::composed("ci", "dag"));
         let steps = dag_to_shared_steps(&dag, &config);
 
         let expected = specs

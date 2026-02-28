@@ -26,7 +26,7 @@ use gunbc_cli::BinaryArgs;
 use gunbc_codegen::{
     core_outputs, generate_cli_with_import, generate_cli_with_subcommands, FileWriter, ToolDef,
 };
-use gunbc_dag::WorkspaceBinary;
+use gunbc_ir::CargoInvocation;
 use gunbc_exec::{print_attention, run_freshness_steps, AttentionLevel};
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
@@ -365,8 +365,8 @@ fn cmd_cigen(dry_run: bool) {
     let gitlab_provider = GitLabCiProvider::default();
 
     // Generate CI YAML for gunbc-ci
-    let codegen = WorkspaceBinary::Codegen.invocation();
-    let tool = WorkspaceBinary::Ci.invocation();
+    let codegen = CargoInvocation::composed("codegen", "dag");
+    let tool = CargoInvocation::composed("ci", "dag");
 
     // Derive permissions from CI workflow integrations (checkout, GCP WIF, etc.)
     let ci_perms: Vec<(String, String)> = gunbc_dag::ci::ci_workflow_permissions()
@@ -1118,9 +1118,10 @@ fn print_help() {
 mod tests {
     use super::{
         discover_codegen_tools, generate_github_actions_template, generate_gitlab_ci_template,
-        parse_command_arg, validate_generated_ci_template, CiTemplateKind, WorkspaceBinary,
+        parse_command_arg, validate_generated_ci_template, CiTemplateKind,
     };
     use gunbc_ir::transport::ci::{CacheConfig, RenderConfig};
+    use gunbc_ir::CargoInvocation;
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
@@ -1149,8 +1150,8 @@ mod tests {
 
     #[test]
     fn github_template_passes_static_validation() {
-        let codegen = WorkspaceBinary::Codegen.invocation();
-        let config = RenderConfig::new("ci", WorkspaceBinary::Ci.invocation())
+        let codegen = CargoInvocation::composed("codegen", "dag");
+        let config = RenderConfig::new("ci", CargoInvocation::composed("ci", "dag"))
             .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
             .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
             .with_cargo_env(gunbc_ir::CargoEnv::ci())
@@ -1175,8 +1176,8 @@ mod tests {
 
     #[test]
     fn gitlab_template_passes_static_validation() {
-        let codegen = WorkspaceBinary::Codegen.invocation();
-        let config = RenderConfig::new("ci", WorkspaceBinary::Ci.invocation())
+        let codegen = CargoInvocation::composed("codegen", "dag");
+        let config = RenderConfig::new("ci", CargoInvocation::composed("ci", "dag"))
             .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
             .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
             .with_cargo_env(gunbc_ir::CargoEnv::ci())
