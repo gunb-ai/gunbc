@@ -27,7 +27,7 @@ finish registry cleanup. Net ~4,000 LOC deletion.
 
 | # | ID | What | Acceptance Criteria | Size |
 |---|-----|------|---------------------|------|
-| 1 | C10-full | **Complete ReturnExprCompute desugaring.** The `remap_expr_idents` fix handles `FieldAccess` → `Ident(base__field)`. Remaining: fn-call results in func bodies (`report = summarize(...)` → `return { report: report }`) don't create `__out:report` edges. Wire `fn`-call result bindings as callable endpoints in the lowerer. | `make install` works. Test `compile_resolve_execute_end_to_end_function_body_expressions` asserts `Value::Str` not `Value::Skipped`. | M |
+| 1 | C10-full | **Complete ReturnExprCompute desugaring.** Two remaining gaps: (a) fn-call results in func bodies (`report = summarize(...)` → `return { report: report }`) don't create `__out:report` edges — wire fn-call result bindings as callable endpoints. (b) **Local variable refs in ExprCompute** (`has_local_refs` trap): `collect_expr_leaf_refs` skips local bindings (e.g., `check = shell.Codegen.Check()`) instead of wiring them as edges. Fix: pass local variable → producer map into `collect_expr_leaf_refs`, emit `LeafRef::LocalBinding { endpoint, port }`, wire the edge in `synthesize_expr_compute`. | `make install` works. `codegen.dag` return expressions resolve at runtime. Test asserts `Value::Str` not `Value::Skipped`. | L |
 | 2 | C19 | **Restore passthrough enforcement.** Remove `Value::Skipped` fallback in `execute_with_declared_output_passthrough` (resolve.rs). Replace with `ExecError` for non-optional outputs. | `resolve.rs` returns `ExecError`. All tests still pass (requires C10-full first). | S |
 | 3 | C20 | **CLI generator: profile, mode, subcommand.** Generated CLIs accept `--profile <name>` (enum from `available_profiles`), `--mode ensure\|verify`, subcommand dispatch for multi-func modules. `KEY=VALUE` parsing for infra-style tools. | Generated CLI for `pipelines/sdlc.dag` accepts `--profile`. Multi-func modules get subcommands. | L |
 
@@ -46,7 +46,7 @@ finish registry cleanup. Net ~4,000 LOC deletion.
 
 | # | ID | What | Acceptance Criteria | Size |
 |---|-----|------|---------------------|------|
-| 10 | C1 | **Stdlib host + caching.** `OnceLock` cache for compiled fn bodies. `include_str!` for stdlib sources. Delete per-module compile wrappers. | `classify_callable()` never calls `compile_from_context()`. No `../../dsl` paths. | M |
+| 10 | C1 | **Stdlib host + caching.** `OnceLock` cache for compiled fn bodies. `include_str!` for stdlib sources. Delete per-module compile wrappers. **Also: migrate compile-on-demand pattern** in justfile.rs, gitignore.rs, shared.rs, resource_defs.rs, catalog.rs, commands.rs to `include_str!` or `StdLibHost`-style embedding. (Hack #4 from review.) | `classify_callable()` never calls `compile_from_context()`. No `../../dsl` paths. No runtime filesystem access for DSL data. | L |
 | 11 | C4 | **LoweringContext struct.** Group 8-11 lowerer params into `LoweringContext`. Delete 18 `#[allow(clippy::too_many_arguments)]`. | Zero `too_many_arguments`. All `.dag` compile. | L |
 | 12 | C5 | **Integrate scope.rs.** Replace `detect_*_branches_in_stmts`, `IfBranchSite`, `MatchBranchSite` with `ScopedBody` callers. | `IfBranchSite` deleted. `scope.rs` has non-test callers. | M |
 | 13 | C6 | **Extract transport derivation.** `transport.rs` module returning `TransportManifest`. | `add_service_transport_triplets` returns data, not mutates builder. | M |
@@ -162,6 +162,16 @@ Week 4:
   Lane A: A10, B2 → B10, BT-E1, C13:14
 ```
 
+### Architectural Hacks Addressed (from review feedback)
+
+| Hack | Status | What |
+|------|--------|------|
+| #1 PipeMethod spread | **Fixed** | `PipeMethod::as_str()` + `Display` + `FromStr` on enum. Three duplicate `pipe_method_name()` deleted. |
+| #2 Silent fallbacks | **Fixed** | `resource_defs.rs` and `gitignore.rs` now `.expect()` on DSL compile. Fallback data deleted. |
+| #3 `#[path]` illusion | **Documented** | Physical move requires extracting `use super::*` reverse dep first. Lane A task. |
+| #4 compile-on-demand | **Partially fixed** | All callsites now fail-closed (no silent fallbacks). `include_str!` migration folded into C1. |
+| #5 `has_local_refs` | **Documented** | Root cause of `make install` failure. Fix strategy in C10-full. |
+
 ## What's Done (from this session)
 
 | Item | Status |
@@ -169,11 +179,12 @@ Week 4:
 | P0-1,2 | Fixed (remap_expr_idents FieldAccess flattening) |
 | P0-3 | Fixed (ratchet baseline 77→93) |
 | P0-4 | Fixed (PipeMethod FromStr trait) |
-| P0-5 | Partial (runtime fix for ExprCompute, C10-full needed for make install) |
+| P0-5 | Partial (remap_expr_idents fix for FieldAccess, `has_local_refs` trap remains → C10-full) |
 | C3 compat | Fixed (Enum/Str equality, Enum+string concat, Skipped→empty list) |
 | C8 | Verified done (MockResponseDef deleted, hermetic accepted/ignored, error_cases gone) |
 | C9 | Verified done (no panics in lowerer lib.rs) |
 | C16 | Verified partial (metadata preferred, from_node_context fallback) |
 | C18 | Verified done (looks_effectful_without_kind removed, no expiry plumbing) |
+| Hack fixes | PipeMethod consolidation (-75 lines), fail-closed resource_defs/gitignore, fallback data deleted |
 | Merge fixes | ci.rs import, stale Cargo.toml bins, codegen regen, workspace.dag, workspace_model, pragma_lint allowlist |
 | Snapshots | makegen_expand.txt, module_graph.rs, corpus_modules.rs all updated |
