@@ -1,0 +1,73 @@
+// extdeps/devenv/devcontainers.dag -- "What is a devcontainer?"
+
+module extdeps.devenv.devcontainers
+
+type LifecycleHook
+  = InitializeCommand
+  | OnCreateCommand
+  | PostCreateCommand
+  | PostStartCommand
+  | PostAttachCommand
+
+type HookExecution {
+  phase: LifecycleHook
+  runs_as: String
+  timeout: Int?
+}
+
+type FeatureOption {
+  name: String
+  value: String
+}
+
+type DevcontainerFeature {
+  id: String
+  version: String
+  options: List<FeatureOption>
+}
+
+type EnvVarSource = ContainerEnv | LocalEnv | SecretStore | FeatureGenerated
+
+type DevcontainerEnvVar {
+  name: String
+  source: EnvVarSource
+  available_in: List<String>
+}
+
+data lifecycle_timing: List<HookExecution> = [
+  { phase: InitializeCommand, runs_as: "host-user", timeout: 300 },
+  { phase: OnCreateCommand, runs_as: "container-user", timeout: 600 },
+  { phase: PostCreateCommand, runs_as: "container-user", timeout: 1200 },
+  { phase: PostStartCommand, runs_as: "container-user", timeout: 300 },
+  { phase: PostAttachCommand, runs_as: "container-user", timeout: 120 }
+]
+
+data common_features: List<DevcontainerFeature> = [
+  {
+    id: "ghcr.io/devcontainers/features/common-utils",
+    version: "2",
+    options: [{ name: "installZsh", value: "false" }]
+  },
+  {
+    id: "ghcr.io/devcontainers/features/git",
+    version: "1",
+    options: []
+  },
+  {
+    id: "ghcr.io/devcontainers/features/github-cli",
+    version: "1",
+    options: []
+  }
+]
+
+data runtime_env_vars: List<DevcontainerEnvVar> = [
+  { name: "REMOTE_CONTAINERS", source: ContainerEnv, available_in: ["initialize", "runtime"] },
+  { name: "CODESPACES", source: ContainerEnv, available_in: ["runtime"] },
+  { name: "GITHUB_TOKEN", source: SecretStore, available_in: ["runtime", "task"] }
+]
+
+data known_quirks: List<String> = [
+  "postStartCommand runs on every container start and must be idempotent",
+  "feature install order can affect PATH and shell initialization side effects",
+  "user UID/GID mismatch can cause permission drift on bind-mounted workspaces"
+]

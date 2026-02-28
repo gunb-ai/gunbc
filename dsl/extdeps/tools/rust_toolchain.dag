@@ -1,0 +1,131 @@
+// extdeps/tools/rust_toolchain.dag -- "What is the Rust toolchain?"
+
+module extdeps.tools.rust_toolchain
+
+import std.behavioral {
+  OperationBehavior, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+
+type RustChannel = Stable | Beta | Nightly { date: String? }
+
+type RustupComponent = Rustfmt | Clippy | RustSrc | Miri | LlvmTools
+
+type CargoCommand = Build | Test | ClippyLint | Doc | Run | Install | Bench | PublishCrate
+
+type RustTarget {
+  triple: String
+  tier: Int
+}
+
+type RustEdition = E2015 | E2018 | E2021 | E2024
+
+type ToolchainOperationBehavior {
+  operation: String
+  behavior: OperationBehavior
+}
+
+type PlatformSupport {
+  os: String
+  arch: String
+}
+
+data supported_platforms: List<PlatformSupport> = [
+  { os: "linux", arch: "x86_64" },
+  { os: "linux", arch: "aarch64" },
+  { os: "macos", arch: "x86_64" },
+  { os: "macos", arch: "aarch64" },
+  { os: "windows", arch: "x86_64" }
+]
+
+data operation_behaviors: List<ToolchainOperationBehavior> = [
+  {
+    operation: "Install",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["channel"],
+      determinism: NonDeterministic,
+      failure_modes: [{ name: "NetworkUnavailable", condition: "rustup_download_failed", http_status: null, recoverable: true, retry_safe: true }],
+      edge_cases: [{ description: "shell restart or cargo env source may be required after first install", trigger: "fresh_install", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "network access and curl or package manager availability", kind: Infrastructure }],
+      assumptions: ["Rustup is the canonical install manager"],
+      unknowns: ["Mirror fallback behavior on partial CDN outages"]
+    }
+  },
+  {
+    operation: "AddComponent",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["component", "channel"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "component availability differs by target/channel combination", trigger: "unsupported_component", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "toolchain installed", kind: Tooling }],
+      assumptions: ["rustup component registry metadata is up to date"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "Build",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["workspace_hash", "profile", "target"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "CompileError", condition: "source_or_dependency_error", http_status: null, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "Cargo.toml and lockfile resolve dependency graph", kind: Infrastructure }],
+      assumptions: ["Build cache contents are not part of logical output semantics"],
+      unknowns: ["Toolchain minor-version drift impact on warning surface"]
+    }
+  },
+  {
+    operation: "Test",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: ["workspace_hash", "test_filter"],
+      determinism: NonDeterministic,
+      failure_modes: [{ name: "TestFailure", condition: "assertion_failed", http_status: null, recoverable: false, retry_safe: false }],
+      edge_cases: [{ description: "ignored tests require explicit include flag", trigger: "missing_include_ignored", severity: Low }],
+      confidence: Documented,
+      prerequisites: [{ description: "binary artifacts are buildable for selected targets", kind: Tooling }],
+      assumptions: ["Tests avoid hidden global state when run in CI"],
+      unknowns: ["Flake rate under concurrent test execution on constrained runners"]
+    }
+  },
+  {
+    operation: "ClippyLint",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: ["workspace_hash", "lint_profile"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "LintFailure", condition: "warning_promoted_to_error", http_status: null, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "clippy component installed", kind: Tooling }],
+      assumptions: ["Lint version tracks selected rust toolchain"],
+      unknowns: []
+    }
+  },
+  {
+    operation: "PublishCrate",
+    behavior: {
+      side_effects: WritesExternal,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [{ name: "VersionAlreadyPublished", condition: "crate_version_exists", http_status: null, recoverable: false, retry_safe: false }],
+      edge_cases: [{ description: "publish cannot overwrite an existing semver version", trigger: "duplicate_version", severity: High }],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "registry token with publish permission", kind: Credential }],
+      assumptions: ["Crate metadata satisfies registry policy checks"],
+      unknowns: ["Registry-side indexing delay before just-published crate is queryable"]
+    }
+  }
+]

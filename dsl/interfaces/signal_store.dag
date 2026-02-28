@@ -13,6 +13,89 @@
 module interfaces.signal_store
 
 import std.types { NonEmptyStr, Signal, SignalType }
+import std.behavioral {
+  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+import std.coordination { DeliveryGuarantee, QueueSemantics, QueueOrdering }
+import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
+
+type CapabilityBehaviorContract {
+  capability: String
+  behavior: OperationBehavior
+}
+
+type CapabilityFailureContract {
+  capability: String
+  failures: List<FailureMode>
+}
+
+data delivery_guarantee: DeliveryGuarantee = AtLeastOnce
+
+data queue_semantics: QueueSemantics = {
+  ordering: Unordered,
+  visibility_timeout_seconds: 300,
+  dead_letter: { max_attempts: 10, destination: "signals.dlq" }
+}
+
+data capability_behaviors: List<CapabilityBehaviorContract> = [
+  {
+    capability: "emit",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["signal.idempotency_key"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "Conflict", condition: "duplicate_idempotency_key_with_different_payload", http_status: 409, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "signal backend write access", kind: Capability }],
+      assumptions: ["idempotency key deduplicates equivalent logical signal"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "consume",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: false,
+      idempotency_keys: null,
+      determinism: NonDeterministic,
+      failure_modes: [],
+      edge_cases: [{ description: "duplicate, delayed, and reordered signals are expected", trigger: "distributed_delivery", severity: High }],
+      confidence: Documented,
+      prerequisites: [{ description: "consumer has claim/read access to queue", kind: Capability }],
+      assumptions: ["authoritative state checks happen against store/ledger, not only signal stream"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "ack",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["idempotency_key"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "consumer identity can ack consumed signals", kind: Runtime }],
+      assumptions: ["acking an already-acked signal is no-op success"],
+      unknowns: []
+    }
+  }
+]
+
+data capability_requirements: List<CapabilityRequirement> = [
+  { scope: Queue, level: Write, resource: "signal_store.emit" },
+  { scope: Queue, level: Read, resource: "signal_store.consume" }
+]
+
+data capability_failure_contracts: List<CapabilityFailureContract> = [
+  {
+    capability: "emit",
+    failures: [{ name: "Conflict", condition: "duplicate_idempotency_key_with_different_payload", http_status: 409, recoverable: false, retry_safe: false }]
+  }
+]
 
 interface SignalStore {
 

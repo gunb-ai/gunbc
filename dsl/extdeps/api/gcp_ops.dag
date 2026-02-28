@@ -1,0 +1,127 @@
+// extdeps/api/gcp_ops.dag -- GCP API operational detail.
+
+module extdeps.api.gcp_ops
+
+import std.rate_limit { BackoffStrategy, RetryPolicy }
+
+type GcpApiPattern {
+  service: String
+  version: String
+  base_url_template: String
+}
+
+type GcpPropagationDelay {
+  operation: String
+  typical_seconds: Int
+  max_seconds: Int
+}
+
+type GcpOrgPolicyConstraint {
+  constraint_id: String
+  affects: String
+}
+
+type GcpCommandClassification = Allowed | Deprecated | Forbidden
+
+type GcpServiceConcurrency {
+  service: String
+  max_concurrent: Int
+}
+
+type GcpRetryConfig {
+  name: String
+  policy: RetryPolicy
+}
+
+type GcpCommandEntry {
+  command: String
+  classification: GcpCommandClassification
+  rationale: String
+}
+
+data api_patterns: List<GcpApiPattern> = [
+  { service: "secretmanager", version: "v1", base_url_template: "https://secretmanager.googleapis.com/v1" },
+  { service: "iam", version: "v1", base_url_template: "https://iam.googleapis.com/v1" },
+  { service: "storage", version: "v1", base_url_template: "https://storage.googleapis.com/storage/v1" },
+  { service: "run", version: "v2", base_url_template: "https://run.googleapis.com/v2" },
+  { service: "artifactregistry", version: "v1", base_url_template: "https://artifactregistry.googleapis.com/v1" }
+]
+
+data propagation_delays: List<GcpPropagationDelay> = [
+  { operation: "iam_policy_change", typical_seconds: 60, max_seconds: 420 },
+  { operation: "dns_change", typical_seconds: 300, max_seconds: 900 },
+  { operation: "api_enablement", typical_seconds: 30, max_seconds: 180 }
+]
+
+data org_policy_constraints: List<GcpOrgPolicyConstraint> = [
+  { constraint_id: "constraints/iam.allowedPolicyMemberDomains", affects: "IAM member domain allowlist" },
+  { constraint_id: "constraints/storage.publicAccessPrevention", affects: "Bucket/object public exposure" }
+]
+
+data service_concurrency: List<GcpServiceConcurrency> = [
+  { service: "secret_manager", max_concurrent: 10 },
+  { service: "iam", max_concurrent: 5 },
+  { service: "storage", max_concurrent: 10 },
+  { service: "compute", max_concurrent: 10 },
+  { service: "cloud_run", max_concurrent: 5 },
+  { service: "cloud_functions", max_concurrent: 3 },
+  { service: "artifact_registry", max_concurrent: 10 }
+]
+
+data retry_configs: List<GcpRetryConfig> = [
+  {
+    name: "default",
+    policy: {
+      max_attempts: 5,
+      backoff: Exponential { base_ms: 30000, max_ms: 120000 },
+      retry_on: ["http_429", "http_500", "http_503", "network", "timeout"]
+    }
+  },
+  {
+    name: "api_enablement",
+    policy: {
+      max_attempts: 4,
+      backoff: Exponential { base_ms: 30000, max_ms: 120000 },
+      retry_on: ["http_429", "http_503", "api_not_enabled_yet"]
+    }
+  },
+  {
+    name: "iam_propagation",
+    policy: {
+      max_attempts: 5,
+      backoff: Exponential { base_ms: 60000, max_ms: 180000 },
+      retry_on: ["permission_not_yet_propagated", "http_403_transient"]
+    }
+  }
+]
+
+data gcp_label_constraints: List<String> = [
+  "Label keys and values are limited to 63 characters",
+  "Resources accept at most 64 labels"
+]
+
+data iam_roles_modeled: List<String> = [
+  "roles/secretmanager.secretAccessor",
+  "roles/storage.objectViewer",
+  "roles/storage.objectCreator",
+  "roles/artifactregistry.reader",
+  "roles/artifactregistry.writer"
+]
+
+data gcloud_command_registry: List<GcpCommandEntry> = [
+  {
+    command: "gcloud services enable SERVICE",
+    classification: Allowed,
+    rationale: "Required to activate APIs before first use"
+  },
+  {
+    command: "gcloud iam service-accounts keys create",
+    classification: Deprecated,
+    rationale: "Prefer workload identity federation over long-lived keys"
+  },
+  {
+    command: "gcloud projects add-iam-policy-binding allUsers",
+    classification: Forbidden,
+    rationale: "Violates least-privilege and public access controls"
+  }
+]

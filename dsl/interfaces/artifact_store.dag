@@ -13,6 +13,104 @@
 module interfaces.artifact_store
 
 import std.types { NonEmptyStr, ArtifactPayload, ArtifactType, ArtifactMarker }
+import std.behavioral {
+  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+import std.coordination { CasMechanism, DeliveryGuarantee }
+import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
+
+type CapabilityBehaviorContract {
+  capability: String
+  behavior: OperationBehavior
+}
+
+type CapabilityFailureContract {
+  capability: String
+  failures: List<FailureMode>
+}
+
+data cas_mechanism: CasMechanism = GenerationBased
+data delivery_guarantee: DeliveryGuarantee = AtLeastOnce
+
+data capability_behaviors: List<CapabilityBehaviorContract> = [
+  {
+    capability: "store",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["artifact_id", "content_hash"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "Conflict", condition: "same_artifact_id_different_hash", http_status: 409, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "artifact storage write access", kind: Capability }],
+      assumptions: ["content_hash computed over canonical artifact bytes"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "retrieve",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: ["artifact_id"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "NotFound", condition: "artifact_missing", http_status: 404, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "artifact storage read access", kind: Capability }],
+      assumptions: [],
+      unknowns: []
+    }
+  },
+  {
+    capability: "store_marker",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["marker.run_key", "marker.artifact_type", "marker.phase", "marker.content_hash"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "MarkerConflict", condition: "same_marker_key_different_hash", http_status: 409, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "marker namespace write access", kind: Capability }],
+      assumptions: ["Canonical markers are immutable once committed"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "get_canonical_marker",
+    behavior: {
+      side_effects: ReadOnly,
+      idempotent: true,
+      idempotency_keys: ["run_key", "artifact_type"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "marker namespace read access", kind: Capability }],
+      assumptions: ["Canonical marker is authoritative commit pointer"],
+      unknowns: []
+    }
+  }
+]
+
+data capability_requirements: List<CapabilityRequirement> = [
+  { scope: Storage, level: Write, resource: "artifact_store.payload" },
+  { scope: Storage, level: Write, resource: "artifact_store.markers" },
+  { scope: Storage, level: Read, resource: "artifact_store.read" }
+]
+
+data capability_failure_contracts: List<CapabilityFailureContract> = [
+  {
+    capability: "store",
+    failures: [{ name: "Conflict", condition: "same_artifact_id_different_hash", http_status: 409, recoverable: false, retry_safe: false }]
+  },
+  {
+    capability: "store_marker",
+    failures: [{ name: "MarkerConflict", condition: "same_marker_key_different_hash", http_status: 409, recoverable: false, retry_safe: false }]
+  }
+]
 
 interface ArtifactStore {
 

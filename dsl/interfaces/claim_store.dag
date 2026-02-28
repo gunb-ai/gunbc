@@ -14,6 +14,94 @@
 module interfaces.claim_store
 
 import std.types { NonEmptyStr, IssueLifecycleStage }
+import std.behavioral {
+  OperationBehavior, FailureMode, SideEffects, Determinism, Confidence, PrerequisiteKind, Severity
+}
+import std.coordination { CasMechanism, LeaseConfig, DeliveryGuarantee }
+import std.capability { CapabilityRequirement, InfraScope, AccessLevel }
+
+type CapabilityBehaviorContract {
+  capability: String
+  behavior: OperationBehavior
+}
+
+type CapabilityFailureContract {
+  capability: String
+  failures: List<FailureMode>
+}
+
+data cas_mechanism: CasMechanism = GenerationBased
+
+data default_lease: LeaseConfig = {
+  ttl_seconds: 300,
+  heartbeat_interval_seconds: 60
+}
+
+data delivery_guarantee: DeliveryGuarantee = AtMostOnce
+
+data capability_behaviors: List<CapabilityBehaviorContract> = [
+  {
+    capability: "acquire",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["issue_id", "stage", "owner"],
+      determinism: NonDeterministic,
+      failure_modes: [{ name: "Conflict", condition: "active_lease_exists", http_status: 409, recoverable: true, retry_safe: true }],
+      edge_cases: [{ description: "expired leases are reclaimable", trigger: "claim_expired", severity: Medium }],
+      confidence: Documented,
+      prerequisites: [{ description: "coordination storage write access", kind: Capability }],
+      assumptions: ["generation monotonically increments for each successful acquire"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "heartbeat",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["issue_id", "stage", "owner", "generation"],
+      determinism: Deterministic,
+      failure_modes: [{ name: "LeaseLost", condition: "owner_or_generation_mismatch", http_status: 409, recoverable: false, retry_safe: false }],
+      edge_cases: [],
+      confidence: Documented,
+      prerequisites: [{ description: "caller holds active lease", kind: Runtime }],
+      assumptions: ["heartbeat extends lease expiry only for current owner+generation"],
+      unknowns: []
+    }
+  },
+  {
+    capability: "release",
+    behavior: {
+      side_effects: WritesState,
+      idempotent: true,
+      idempotency_keys: ["issue_id", "stage", "owner", "generation"],
+      determinism: Deterministic,
+      failure_modes: [],
+      edge_cases: [],
+      confidence: HighConfidence,
+      prerequisites: [{ description: "caller holds active lease", kind: Runtime }],
+      assumptions: ["release clears claim ownership for subsequent acquirers"],
+      unknowns: []
+    }
+  }
+]
+
+data capability_requirements: List<CapabilityRequirement> = [
+  { scope: Storage, level: Write, resource: "claim_store.records" },
+  { scope: Queue, level: Write, resource: "claim_store.leases" }
+]
+
+data capability_failure_contracts: List<CapabilityFailureContract> = [
+  {
+    capability: "acquire",
+    failures: [{ name: "Conflict", condition: "active_lease_exists", http_status: 409, recoverable: true, retry_safe: true }]
+  },
+  {
+    capability: "heartbeat",
+    failures: [{ name: "LeaseLost", condition: "owner_or_generation_mismatch", http_status: 409, recoverable: false, retry_safe: false }]
+  }
+]
 
 interface ClaimStore {
 
