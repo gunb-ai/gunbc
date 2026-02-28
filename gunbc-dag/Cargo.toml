@@ -106,37 +106,16 @@ path = "src/bin/workflow.rs"
 name = "gunbc-gist"
 path = "../target/codegen/bin/gist/main.rs"
 
-[[bin]]
-name = "gunbc-gist-diff"
-path = "../target/codegen/bin/gist-diff/main.rs"
-
-[[bin]]
-name = "gunbc-gist-recent"
-path = "../target/codegen/bin/gist-recent/main.rs"
 
 [[bin]]
 name = "gunbc-deps"
 path = "../target/codegen/bin/deps/main.rs"
 
-[[bin]]
-name = "gunbc-review-design"
-path = "../target/codegen/bin/review-design/main.rs"
-
-[[bin]]
-name = "gunbc-generate-design"
-path = "../target/codegen/bin/generate-design/main.rs"
 
 [[bin]]
 name = "gunbc-docgen"
 path = "../target/codegen/bin/docgen/main.rs"
 
-[[bin]]
-name = "gunbc-deps-generate"
-path = "../target/codegen/bin/deps-generate/main.rs"
-
-[[bin]]
-name = "gunbc-codegen-ensure"
-path = "../target/codegen/bin/codegen-ensure/main.rs"
 
 [[bin]]
 name = "gunbc-clippy-lint"

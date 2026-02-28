@@ -22,7 +22,7 @@
 
 #![deny(dead_code)]
 use gunbc_cli::{parse, CliParam, ParamType};
-use gunbc_dag::build::build_build_graph;
+use gunbc_dag::build_build_graph;
 use gunbc_dag::resources::MAKEFILE_OUTPUT_PATH;
 use gunbc_dag::{print_tool_header, run_tool, wire_fs_env_write_mock, RunToolOptions};
 use gunbc_exec::{print_attention, AttentionLevel, BoundaryMocks, CiContext, ExecutionMode};
