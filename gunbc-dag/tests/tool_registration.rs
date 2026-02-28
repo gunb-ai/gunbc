@@ -26,8 +26,6 @@ fn dsl_discovery_finds_expected_tools() {
         "bootstrap",
         "deps",
         "gist",
-        "gist-diff",
-        "gist-recent",
         "makegen",
         "pragma",
         "testgen",
