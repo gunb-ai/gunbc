@@ -56,6 +56,10 @@ name = "gunbc-ci"
 path = "src/bin/ci.rs"
 
 [[bin]]
+name = "gunbc-cigen"
+path = "../target/codegen/bin/cigen/main.rs"
+
+[[bin]]
 name = "gunbc-makegen"
 path = "../target/codegen/bin/makegen/main.rs"
 
