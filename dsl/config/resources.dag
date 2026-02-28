@@ -1,0 +1,37 @@
+// config/resources.dag -- Canonical resource freshness inputs/outputs.
+//
+// Rust constructs ResourceDef values from this data. This file is the
+// source-of-truth for build resource globs and generated output paths.
+
+module config.resources
+
+type ResourceOutputPath {
+  id: String
+  path: String
+}
+
+data repo_source_input_globs: List<String> = [
+  "gunbc-dag/src/**/*.rs",
+  "core/**/*.rs",
+  "lib/**/*.rs",
+  "dsl/**/*.dag"
+]
+
+data repo_config_input_files: List<String> = [
+  "Cargo.lock",
+  "Cargo.toml",
+  "gunbc-dag/Cargo.toml"
+]
+
+data testgen_input_globs: List<String> = [
+  "gunbc-dag/src/**/*.rs",
+  "core/ir/src/**/*.rs",
+  "lib/**/*.rs",
+  "dsl/**/*.dag"
+]
+
+data output_paths: List<ResourceOutputPath> = [
+  { id: "makefile", path: "Makefile" },
+  { id: "gitignore", path: ".gitignore" },
+  { id: "deps_config", path: "deps.toml" }
+]

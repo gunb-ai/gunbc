@@ -44,20 +44,22 @@ fn gist_graph_has_read_text_files_node() {
 }
 
 #[test]
-fn gist_graph_has_build_snapshot_content_node() {
+fn gist_graph_has_gist_callable_node() {
     let dag =
         build_dsl_graph_for_entry("tools/gist.dag", "tools.gist::gist").expect("build gist graph");
     let lowered = lower(&dag).expect("lower gist graph");
 
-    let has_build_snapshot = lowered
+    // build_snapshot_content is an extern call inside tools.gist::gist, so it
+    // is no longer represented as a standalone top-level node.
+    let has_gist_callable = lowered
         .dag
         .nodes
         .iter()
-        .any(|n| n.id.0.contains("build_snapshot_content"));
+        .any(|n| n.id.0 == "tools.gist::gist");
 
     assert!(
-        has_build_snapshot,
-        "gist graph should contain build_snapshot_content extern fn node. Got nodes: {:?}",
+        has_gist_callable,
+        "gist graph should contain tools.gist::gist callable node. Got nodes: {:?}",
         lowered
             .dag
             .nodes
@@ -111,10 +113,8 @@ fn gist_snapshot_dry_run_completes() {
         "execution should include read_text_files pattern. Got: {node_ids:?}"
     );
     assert!(
-        node_ids
-            .iter()
-            .any(|id| id.contains("build_snapshot_content")),
-        "execution should include build_snapshot_content. Got: {node_ids:?}"
+        node_ids.iter().any(|id| id == &"tools.gist::gist"),
+        "execution should include tools.gist::gist callable. Got: {node_ids:?}"
     );
     assert!(
         node_ids.iter().any(|id| id.contains("Gist_Create")),

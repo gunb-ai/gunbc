@@ -44,6 +44,7 @@ pub mod fidelity;
 pub mod mock;
 pub mod mock_requirements;
 pub mod mock_spec;
+pub mod mock_synthesis;
 pub mod mockable;
 pub mod simulator;
 pub mod window;
@@ -74,6 +75,7 @@ pub use mock_spec::{
     ResourceBehavior, ResourceMocks, ResourceRefreshResult, ResourceSimulation, ResourceType,
     TransportMock,
 };
+pub use mock_synthesis::{synthesize_rest_response, MockProvider, MockResponseSynthesis};
 pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 pub use simulator::{IoContract, Simulator};
 pub use window::{

@@ -212,9 +212,9 @@ fn http_stub_matches_rest_request() {
     });
     let _guard = TransportBackendGuard::install(backend);
 
-    let resp = execute_transport_with_backend(&TransportRequest::Rest(
-        RestRequest::post("https://api.github.com/gists"),
-    ))
+    let resp = execute_transport_with_backend(&TransportRequest::Rest(RestRequest::post(
+        "https://api.github.com/gists",
+    )))
     .expect("HTTP stub should match REST request");
     match resp {
         TransportResponse::Rest(rest) => {
@@ -280,4 +280,130 @@ fn tcp_loopback_returns_canned_data() {
         }
         other => panic!("expected Tcp response, got {other:?}"),
     }
+}
+
+#[test]
+fn http_stub_template_and_header_matching_with_ordered_responses() {
+    use gunbc_ir::transport::http::HttpMethod;
+    use gunbc_lib_transport::test_backend::{HttpPathMatchMode, HttpStubResponse, HttpStubRule};
+    use std::collections::HashMap;
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_http_stub_rule(HttpStubRule {
+        method: Some(HttpMethod::Post),
+        path_pattern: "/repos/{owner}/{repo}/issues".to_string(),
+        path_mode: HttpPathMatchMode::Template,
+        required_headers: vec![("x-github-api-version".to_string(), "2022-11-28".to_string())],
+        responses: vec![
+            HttpStubResponse {
+                status: 201,
+                response_body: r#"{"id":1,"state":"open"}"#.to_string(),
+                response_headers: HashMap::new(),
+            },
+            HttpStubResponse {
+                status: 202,
+                response_body: r#"{"id":1,"state":"queued"}"#.to_string(),
+                response_headers: HashMap::new(),
+            },
+        ],
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let request = TransportRequest::Rest(
+        RestRequest::post("https://api.github.com/repos/octo/repo/issues")
+            .header("X-GitHub-Api-Version", "2022-11-28"),
+    );
+    let first = execute_transport_with_backend(&request).expect("first ordered response");
+    let second = execute_transport_with_backend(&request).expect("second ordered response");
+
+    match first {
+        TransportResponse::Rest(rest) => {
+            assert_eq!(rest.status, 201);
+            assert_eq!(rest.body["state"], "open");
+        }
+        other => panic!("expected Rest response, got {other:?}"),
+    }
+    match second {
+        TransportResponse::Rest(rest) => {
+            assert_eq!(rest.status, 202);
+            assert_eq!(rest.body["state"], "queued");
+        }
+        other => panic!("expected Rest response, got {other:?}"),
+    }
+}
+
+#[test]
+fn http_stub_sequence_exhaustion_returns_diagnostic_error() {
+    use gunbc_ir::transport::http::HttpMethod;
+    use gunbc_lib_transport::test_backend::{HttpPathMatchMode, HttpStubResponse, HttpStubRule};
+    use std::collections::HashMap;
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_http_stub_rule(HttpStubRule {
+        method: Some(HttpMethod::Get),
+        path_pattern: "/rate-limit".to_string(),
+        path_mode: HttpPathMatchMode::Exact,
+        required_headers: vec![],
+        responses: vec![HttpStubResponse {
+            status: 429,
+            response_body: r#"{"message":"too many requests"}"#.to_string(),
+            response_headers: HashMap::new(),
+        }],
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let request = TransportRequest::Rest(RestRequest::get("https://api.github.com/rate-limit"));
+    let _ = execute_transport_with_backend(&request).expect("first call should consume response");
+    let err = execute_transport_with_backend(&request).expect_err("second call should exhaust");
+    assert!(
+        err.to_string().contains("sequence exhausted"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn shell_cassette_rule_matches_glob_env_cwd_stdin_and_sequence() {
+    use gunbc_ir::transport::ShellResponse;
+    use gunbc_lib_transport::test_backend::{ShellArgMatchMode, ShellCassetteRule};
+    use std::collections::HashMap;
+
+    let mut env = HashMap::new();
+    env.insert("RUSTFLAGS".to_string(), "-Dwarnings".to_string());
+
+    let backend = Arc::new(VirtualTransportBackend::new());
+    backend.add_shell_cassette_rule(ShellCassetteRule {
+        command: "cargo".to_string(),
+        args: vec!["test".to_string(), "--package".to_string(), "*".to_string()],
+        args_mode: ShellArgMatchMode::Glob,
+        cwd: Some("/workspace".to_string()),
+        required_env: env,
+        stdin: Some("approve".to_string()),
+        responses: vec![ShellResponse::ok("first"), ShellResponse::ok("second")],
+    });
+    let _guard = TransportBackendGuard::install(backend);
+
+    let request = TransportRequest::Shell(
+        ShellRequest::new("cargo")
+            .arg("test")
+            .arg("--package")
+            .arg("gunbc-lib-transport")
+            .cwd("/workspace")
+            .env("RUSTFLAGS", "-Dwarnings")
+            .stdin("approve"),
+    );
+    let first = execute_transport_with_backend(&request).expect("first shell response");
+    let second = execute_transport_with_backend(&request).expect("second shell response");
+    match first {
+        TransportResponse::Shell(shell) => assert_eq!(shell.stdout, "first"),
+        other => panic!("expected Shell response, got {other:?}"),
+    }
+    match second {
+        TransportResponse::Shell(shell) => assert_eq!(shell.stdout, "second"),
+        other => panic!("expected Shell response, got {other:?}"),
+    }
+    let err = execute_transport_with_backend(&request).expect_err("third call exhausts sequence");
+    assert!(
+        err.to_string().contains("sequence exhausted"),
+        "unexpected shell sequence error: {err}"
+    );
 }

@@ -226,6 +226,11 @@ Nodes:
       * __deps: Any (0..*)
     outputs:
       * return: String (1)
+  - tools.makegen::discover_tools [extern_call::tools.makegen::discover_tools]
+    inputs:
+      * __deps: Any (0..*)
+    outputs:
+      * return: List<DiscoveredTool> (1)
   - tools.makegen::render_header [callable::Fn tools.makegen.render_header]
     inputs:
       * __out:return: String (1)
@@ -1088,6 +1093,7 @@ Edges:
   - tools.makegen::render_header.return -> tools.makegen::render_makefile_content.__deps
   - tools.makegen::render_makefile_body.return -> tools.makegen::render_makefile_content.__deps
   - std.patterns::content_upsert.written -> tools.makegen::makegen.__deps
+  - tools.makegen::discover_tools.return -> tools.makegen::makegen.__deps
   - tools.makegen::render_makefile_content.return -> tools.makegen::makegen.__deps
   - prepare_read_makegen.request -> execute_read_makegen.request
   - prepare_read_makegen.skip -> execute_read_makegen.skip
@@ -1172,6 +1178,7 @@ Edges:
   - literal_source_tools_makegen_render_makefile_content_return_return_0.return -> tools.makegen::render_makefile_content.__out:return
   - literal_source_tools_makegen_makegen_workflows_data_0.workflows -> tools.makegen::render_makefile_content.workflows
   - literal_source_tools_makegen_makegen_metas_data_1.metas -> tools.makegen::render_makefile_content.metas
+  - tools.makegen::discover_tools.return -> tools.makegen::render_makefile_content.tools
   - literal_source_tools_makegen_makegen_res_targets_data_3.res_targets -> tools.makegen::render_makefile_content.res_targets
   - tools.makegen::render_makefile_content.return -> std.patterns::content_upsert.content
   - param_source_tools_makegen_makegen_path.path -> std.patterns::content_upsert.path

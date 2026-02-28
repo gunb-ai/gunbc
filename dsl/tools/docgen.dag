@@ -28,6 +28,25 @@ type DocgenSources {
   clippy_policy: String               // content of lib/tools/clippy/src/policy.rs
 }
 
+type DocgenReadTarget {
+  name: String
+  path: String
+  input_port: String
+  allow_missing: Bool
+}
+
+data read_targets: List<DocgenReadTarget> = [
+  { name: "ab_doc_template", path: "docs/ab-writing-workflows.md", input_port: "template", allow_missing: false },
+  { name: "clippy_graph_mock", path: "lib/tools/clippy/src/graph_mock.rs", input_port: "clippy_graph_mock", allow_missing: true },
+  { name: "clippy_generated_tests", path: "lib/tools/clippy/src/generated_tests.rs", input_port: "clippy_generated_tests", allow_missing: true },
+  { name: "clippy_config", path: "lib/tools/clippy/src/config.rs", input_port: "clippy_config", allow_missing: false },
+  { name: "clippy_graph", path: "lib/tools/clippy/src/graph.rs", input_port: "clippy_graph", allow_missing: false },
+  { name: "clippy_lib", path: "lib/tools/clippy/src/lib.rs", input_port: "clippy_lib", allow_missing: false },
+  { name: "clippy_lint", path: "lib/tools/clippy/src/lint.rs", input_port: "clippy_lint", allow_missing: false },
+  { name: "clippy_ops", path: "lib/tools/clippy/src/ops.rs", input_port: "clippy_ops", allow_missing: false },
+  { name: "clippy_policy", path: "lib/tools/clippy/src/policy.rs", input_port: "clippy_policy", allow_missing: false }
+]
+
 fn render_ab_workflows_document(sources: DocgenSources) -> Document {
   let content = sources.template
     |> replace_section("clippy_mock_spec", sources.clippy_graph_mock)

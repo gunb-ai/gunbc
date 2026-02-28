@@ -33,6 +33,7 @@
 #![allow(clippy::disallowed_types)]
 
 pub mod backend;
+pub mod classify;
 pub mod cli;
 pub mod executor;
 pub mod freshness_policy;

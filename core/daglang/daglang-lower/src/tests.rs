@@ -2,8 +2,7 @@ use super::*;
 use daglang_resolve::{ModuleGraph, ResolvedModule};
 use daglang_syntax::parser;
 use daglang_typecheck::typecheck_module_graph;
-use gunbc_dag::deps_tool::build_deps_graph;
-use gunbc_dag::{build_bootstrap_graph, build_codegen_graph, build_pragma_graph};
+use gunbc_dag::{build_bootstrap_graph, build_codegen_graph, build_deps_graph, build_pragma_graph};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::{Edge, Port};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -131,6 +130,54 @@ fn lower_target_module_with_dependency_scope(
         }
     }
     lower_typed_project_for_modules(typed, &scope).expect("lowering should succeed")
+}
+
+#[test]
+fn extern_func_decl_lowers_to_extern_call_and_wires_content_upsert() {
+    let typed = typed_project_from_sources(&[(
+        "sample/externs.dag",
+        r#"module sample.externs
+import std.patterns { content_upsert }
+
+extern func render() -> { return: String }
+
+func run() -> { written: Bool } {
+  content = render()
+  result = content_upsert(content: content, path: "out.txt")
+  return { written: result.written }
+}"#,
+    )]);
+
+    let dag = lower_target_module(&typed, "sample.externs");
+
+    let render_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "sample.externs::render")
+        .expect("extern callable node should be lowered");
+    match &render_node.body {
+        NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
+            assert_eq!(symbol, "sample.externs::render");
+        }
+        other => panic!("expected ExternCall node body, got {other:?}"),
+    }
+
+    let has_content_edge = dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "sample.externs::render"
+            && edge.from_port.0 == "return"
+            && edge.to_port.0 == "content"
+    });
+    assert!(
+        has_content_edge,
+        "extern output should feed content_upsert content port; edges: {:?}",
+        dag.edges
+            .iter()
+            .map(|e| format!(
+                "{}.{}->{}.{}",
+                e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0
+            ))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
