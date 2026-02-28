@@ -1,7 +1,6 @@
-// Transitional extraction for C11: keep a single compiled implementation in
-// core/resolve while preserving the existing source file location until the
-// follow-up physical move lands.
-include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../gunbc-dag/src/resolve_service.rs"
-));
+// Transitional extraction for C11: compile the implementation from its current
+// source file while `gunbc-dag` consumes it through this crate boundary.
+#[path = "../../../gunbc-dag/src/resolve_service.rs"]
+mod service_ops_impl;
+
+pub use service_ops_impl::*;
