@@ -116,7 +116,10 @@ fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame {
 // ── Comment-syntax extraction ──────────────────────────────────────
 
 fn comment_prefix_for(syntax: CommentSyntax) -> String {
-  syntax.line_prefix ?? ""
+  match syntax.line_prefix {
+    null => ""
+    prefix => prefix
+  }
 }
 
 fn config_comment_prefix(format: ConfigFormat) -> String {
