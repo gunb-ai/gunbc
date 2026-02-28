@@ -1420,6 +1420,11 @@ pub enum LowerError {
         profile: String,
         interface_type: String,
     },
+    /// Transport block specifies an unknown file operation.
+    InvalidFileOp {
+        operation: String,
+        file_op: String,
+    },
     /// Active profile uses an env(...) config binding that is not set.
     MissingProfileConfigEnv {
         profile: String,
@@ -1483,6 +1488,9 @@ impl std::fmt::Display for LowerError {
                 f,
                 "ambiguous provided resource `{binding}: {resource_type}` in `{caller}`; use a concrete resource type"
             ),
+            Self::InvalidFileOp { operation, file_op } => {
+                write!(f, "unknown file operation `{file_op}` on `{operation}`")
+            }
             Self::UnknownProfile { profile } => {
                 write!(f, "unknown profile `{profile}`")
             }
@@ -5380,16 +5388,15 @@ fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
         Some(TransportBinding::File { op, path }) => (op.clone(), path.clone()),
         _ => return None,
     };
-    let file_op = match gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str) {
-        Some(op) => op,
-        None => {
-            eprintln!(
-                "lowering error: unknown file operation `{file_op_str}` on `{}`",
-                operation.name
-            );
-            return None;
-        }
-    };
+    let file_op = gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str).unwrap_or_else(|| {
+        panic!(
+            "{}",
+            LowerError::InvalidFileOp {
+                operation: operation.name.clone(),
+                file_op: file_op_str.clone(),
+            }
+        )
+    });
     let input_fields = operation
         .inputs
         .iter()

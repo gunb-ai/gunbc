@@ -65,11 +65,10 @@ impl std::fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
-/// Extract output port names and optionality from Port declarations.
 fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
     outputs
         .iter()
-        .map(|p| (p.name.0.clone(), p.type_id.0.ends_with('?')))
+        .map(|p| (p.name.0.clone(), p.is_optional()))
         .collect()
 }
 
