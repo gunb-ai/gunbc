@@ -55,6 +55,7 @@ macro_rules! workspace_binaries {
 workspace_binaries! {
     Bootstrap      => "bootstrap",
     Ci             => "ci",
+    Cigen          => "cigen",
     Codegen        => "codegen",
     CodegenDag     => "codegen-dag",
     DepsConfig     => "deps-config",

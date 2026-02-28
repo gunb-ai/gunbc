@@ -62,8 +62,7 @@ pub use gunbc_lib_cloud_ops::env_requirements::{
 };
 pub use makegen::{
     build_makegen_graph, default_build_config, default_core_workflows, makegen_signature,
-    render_github_actions_from_workflow_specs, render_gitignore,
-    render_gitlab_ci_from_workflow_specs, render_justfile, render_makefile, workflow_specs_to_dag,
+    render_gitignore, render_justfile, render_makefile,
     BuildConfig, MakegenGraphOp, WorkflowKind, WorkflowSpec,
 };
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp};
