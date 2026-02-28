@@ -51,6 +51,12 @@ pub struct ToolMeta {
     /// When set, the generated CLI calls this instead of using inline boundary values.
     /// Example: "some_crate::graph_mock::mock_spec()"
     pub mock_spec_call: Option<Cow<'static, str>>,
+    /// Enable `--mode` flag (verify/ensure) for content_upsert tools (RT61).
+    ///
+    /// When set, the generated CLI accepts `--mode=verify` (CI: fail on drift)
+    /// and `--mode=ensure` (dev: write if changed, default). In verify mode,
+    /// the CLI forces dry-run execution so content_upsert nodes check but don't write.
+    pub enable_mode: bool,
 }
 
 /// An entrypoint that becomes a CLI flag.
@@ -298,6 +304,20 @@ pub fn generate_cli_with_import(
     plain_rust_renderer().render_source_file(&file)
 }
 
+/// Generate a complete main.rs with subcommand dispatch (RT63).
+///
+/// When a `.dag` module exports multiple `func` items, this generates one
+/// binary that dispatches to the appropriate graph builder based on the
+/// subcommand name. Each subcommand gets its own arg schema and execution.
+pub fn generate_cli_with_subcommands(
+    tool: &ToolMeta,
+    subcommands: &[crate::registry::SubcommandDef],
+    custom_import: Option<&str>,
+) -> String {
+    let file = build_subcommand_source_file(tool, subcommands, custom_import);
+    plain_rust_renderer().render_source_file(&file)
+}
+
 // ============================================================================
 // Import builder
 // ============================================================================
@@ -411,11 +431,21 @@ fn generate_graph_builder_call(tool: &ToolMeta) -> String {
 /// Emits a schema definition + parse call, then extracts local variables from
 /// `ParseResult.values` so that `graph_builder_args` (which references locals
 /// by name) still compiles.
-fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
+///
+/// When `enable_mode` is true, adds a `--mode` string parameter to the schema.
+fn generate_arg_parsing_with_mode(
+    entrypoints: &[CliEntrypoint],
+    enable_mode: bool,
+) -> String {
     let mut code = String::new();
 
     // Build schema
     code.push_str("let schema = vec![\n");
+    if enable_mode {
+        code.push_str(
+            "    gunbc_cli::CliParam::new(\"mode\", gunbc_cli::ParamType::Str),\n",
+        );
+    }
     for ep in entrypoints {
         let type_expr = match ep.type_id {
             ParamType::Str => "gunbc_cli::ParamType::Str",
@@ -615,13 +645,15 @@ fn generate_input_mocks(_entrypoints: &[CliEntrypoint]) -> String {
 
     code.push_str("let entrypoints = detect_entrypoints(&dag);\n");
     code.push_str("let mut input_mocks = BoundaryMocks::new();\n");
-    code.push_str("for (node_id, port_name, _) in entrypoints.entrypoint_ports {\n");
+    code.push_str("for (node_id, port_name, _) in &entrypoints.entrypoint_ports {\n");
     code.push_str("    if let Some(value) = cli_inputs.get(&port_name.0) {\n");
     code.push_str(
         "        input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), value.clone());\n",
     );
     code.push_str("    }\n");
     code.push_str("}\n");
+    // RT58: propagate entrypoint values to param_source_* nodes
+    code.push_str("input_mocks.propagate_to_param_sources(&entrypoints.entrypoint_ports);\n");
 
     code
 }
@@ -655,6 +687,41 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
         )
         .unwrap();
     }
+    code
+}
+
+/// Generate the `--mode` handling block (RT61).
+///
+/// When `enable_mode` is true, generates code that:
+/// 1. Extracts the `--mode` value from parsed CLI args
+/// 2. In verify mode, forces `dry_run = true` so content_upsert checks but doesn't write
+///
+/// The `--mode` flag is passed as a regular CLI parameter via the pre-parse loop
+/// in `generate_arg_parsing`. This function emits the post-parse handling.
+fn generate_mode_block(tool: &ToolMeta) -> String {
+    if !tool.enable_mode {
+        return String::new();
+    }
+    // After arg parsing, extract mode and override dry_run for verify mode.
+    // Uses ExecMode::parse_strict for clear error on invalid mode values.
+    let mut code = String::new();
+    code.push_str("// --mode flag: verify (CI) or ensure (dev, default)\n");
+    code.push_str("let resource_mode = match cli_inputs.get(\"mode\") {\n");
+    code.push_str("    Some(Value::Str(m)) => {\n");
+    code.push_str("        match gunbc_ir::resource::ExecMode::parse_strict(m) {\n");
+    code.push_str("            Ok(mode) => mode,\n");
+    code.push_str("            Err(e) => {\n");
+    code.push_str("                eprintln!(\"error: {}\", e);\n");
+    code.push_str("                process::exit(1);\n");
+    code.push_str("            }\n");
+    code.push_str("        }\n");
+    code.push_str("    }\n");
+    code.push_str(
+        "    _ => gunbc_ir::resource::ExecMode::Ensure, // default: ensure (dev mode)\n",
+    );
+    code.push_str("};\n");
+    code.push_str("// Verify mode forces dry-run so content_upsert nodes check without writing\n");
+    code.push_str("let dry_run = dry_run || resource_mode.fails_on_stale();\n\n");
     code
 }
 
@@ -707,18 +774,20 @@ fn build_cli_source_file(
 
 /// Build the `main()` function for standard mode.
 fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
-    let arg_parsing = generate_arg_parsing(entrypoints);
+    let arg_parsing = generate_arg_parsing_with_mode(entrypoints, tool.enable_mode);
     let graph_builder_call = generate_graph_builder_call(tool);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
     let body_lines_expr = generate_preamble_body_lines(entrypoints);
     let success_port_arg = generate_success_port_arg(tool);
+    let mode_block = generate_mode_block(tool);
 
     let body_code = format!(
         "let args: Vec<String> = env::args().collect();\n\
          \n\
          // Parse arguments\n\
          {arg_parsing}\n\
+         {mode_block}\
          // Build the graph and compose with freshness checks\n\
          let dag = {graph_builder_call};\n\
          let steps = check_and_plan_freshness();\n\
@@ -737,6 +806,7 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          // Execute DAG with unified display\n\
          execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
         arg_parsing = arg_parsing,
+        mode_block = mode_block,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
         dry_run_block = dry_run_block,
@@ -761,6 +831,12 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
 fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
     let help_options = generate_help_options(entrypoints);
 
+    let mode_help = if tool.enable_mode {
+        "println!(\"        --mode MODE      Resource mode: verify (CI) or ensure (default)\");\n         "
+    } else {
+        ""
+    };
+
     let body_code = format!(
         "println!(\"{tool_name} - {description}\");\n\
          println!();\n\
@@ -770,6 +846,7 @@ fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          println!(\"OPTIONS:\");\n\
          {help_options}\
          println!(\"    -n, --dry-run        Don't perform actual I/O\");\n\
+         {mode_help}\
          println!(\"    --print-inputs json  Print parsed inputs as JSON and exit\");\n\
          println!(\"    -h, --help           Print this help\");\n\
          println!();\n\
@@ -777,6 +854,241 @@ fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
         tool_name = tool.tool_name,
         description = tool.description,
         help_options = help_options,
+        mode_help = mode_help,
+    );
+
+    FnDef {
+        name: "print_help".to_string(),
+        is_pub: false,
+        params: vec![],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+// ============================================================================
+// Subcommand Dispatch Mode (RT63)
+// ============================================================================
+
+/// Build a `SourceFile` IR for a subcommand-dispatch CLI main.rs.
+fn build_subcommand_source_file(
+    tool: &ToolMeta,
+    subcommands: &[crate::registry::SubcommandDef],
+    custom_import: Option<&str>,
+) -> SourceFile {
+    let imports = build_cli_imports(tool, custom_import, false);
+
+    let main_fn = build_subcmd_main_fn(tool, subcommands);
+    let help_fn = build_subcmd_help_fn(tool, subcommands);
+
+    // Per-subcommand run functions
+    let mut items = imports;
+    items.push(Item::Fn(main_fn));
+
+    for subcmd in subcommands {
+        items.push(Item::Fn(build_subcmd_run_fn(tool, subcmd)));
+    }
+
+    items.push(Item::Fn(help_fn));
+
+    SourceFile {
+        doc: vec![
+            format!(
+                "Generated CLI for {} with subcommand dispatch.",
+                tool.tool_name
+            ),
+            String::new(),
+            "This file is generated by gunbc-codegen. Do not edit manually.".to_string(),
+            "Regenerate with: make codegen".to_string(),
+            String::new(),
+            "Subcommands:".to_string(),
+        ]
+        .into_iter()
+        .chain(subcommands.iter().map(|s| format!("- {}: {}", s.name, s.description)))
+        .collect(),
+        items,
+    }
+}
+
+/// Build the dispatch `main()` for subcommand mode.
+fn build_subcmd_main_fn(
+    tool: &ToolMeta,
+    subcommands: &[crate::registry::SubcommandDef],
+) -> FnDef {
+    let mut match_arms = String::new();
+    for subcmd in subcommands {
+        writeln!(
+            match_arms,
+            "    \"{}\" => run_{}(&args[2..]),",
+            subcmd.name,
+            subcmd.func_name,
+        )
+        .unwrap();
+    }
+
+    let body_code = format!(
+        "let args: Vec<String> = env::args().collect();\n\
+         \n\
+         if args.len() < 2 {{\n\
+         {indent}print_help();\n\
+         {indent}return;\n\
+         }}\n\
+         \n\
+         let subcommand = args[1].as_str();\n\
+         match subcommand {{\n\
+         {match_arms}\
+         {indent}\"-h\" | \"--help\" | \"help\" => print_help(),\n\
+         {indent}other => {{\n\
+         {indent}{indent}eprintln!(\"Unknown subcommand '{{}}'. Run '{tool_name} help' for usage.\", other);\n\
+         {indent}{indent}process::exit(1);\n\
+         {indent}}}\n\
+         }}",
+        match_arms = match_arms,
+        tool_name = tool.tool_name,
+        indent = "    ",
+    );
+
+    FnDef {
+        name: "main".to_string(),
+        is_pub: false,
+        params: vec![],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+/// Build a `run_<func>()` function for a single subcommand.
+fn build_subcmd_run_fn(
+    tool: &ToolMeta,
+    subcmd: &crate::registry::SubcommandDef,
+) -> FnDef {
+    let arg_parsing = generate_arg_parsing_with_mode(&subcmd.entrypoints, tool.enable_mode);
+    let input_mocks = generate_input_mocks(&subcmd.entrypoints);
+    let body_lines_expr = generate_preamble_body_lines(&subcmd.entrypoints);
+
+    let graph_builder_call = if subcmd.returns_result {
+        let call = if subcmd.graph_builder_args.is_empty() {
+            format!("{}()", subcmd.graph_builder_call)
+        } else {
+            format!("{}({})", subcmd.graph_builder_call, subcmd.graph_builder_args)
+        };
+        format!(
+            "match {} {{\n    Ok(d) => d,\n    Err(e) => {{\n        eprintln!(\"Error building graph: {{}}\", e);\n        process::exit(1);\n    }}\n}}",
+            call
+        )
+    } else if subcmd.graph_builder_args.is_empty() {
+        format!("{}()", subcmd.graph_builder_call)
+    } else {
+        format!("{}({})", subcmd.graph_builder_call, subcmd.graph_builder_args)
+    };
+
+    let mock_setup = match &subcmd.mock_spec_call {
+        Some(call) => format!(
+            "let _spec = {};\nExecutionMode::DryRun(_spec.to_dry_run_mocks())",
+            call
+        ),
+        None => r#"compile_error!("subcommand has no mock_spec_call")"#.to_string(),
+    };
+    let dry_run_block = format!(
+        "let mode = if dry_run {{\n    {}\n}} else {{\n    ExecutionMode::Real\n}};",
+        mock_setup.replace('\n', "\n    ")
+    );
+
+    let success_port_arg = match &subcmd.success_port {
+        Some(port) => format!("Some(\"{}\")", port),
+        None => "None".to_string(),
+    };
+
+    let mode_block = if tool.enable_mode {
+        generate_mode_block(tool)
+    } else {
+        String::new()
+    };
+
+    let body_code = format!(
+        "// Reconstruct args with program name for parser compatibility\n\
+         let mut args: Vec<String> = Vec::new();\n\
+         args.push(\"{subcmd_name}\".to_string());\n\
+         args.extend_from_slice(raw_args);\n\
+         let args = args;\n\
+         \n\
+         {arg_parsing}\n\
+         {mode_block}\
+         // Build the graph and compose with freshness checks\n\
+         let dag = {graph_builder_call};\n\
+         let steps = check_and_plan_freshness();\n\
+         let dag = compose_with_freshness(dag, steps);\n\
+         \n\
+         {input_mocks}\n\
+         // Set up execution mode\n\
+         {dry_run_block}\n\
+         \n\
+         // Build preamble\n\
+         let mut body_lines = {body_lines_expr};\n\
+         body_lines.push(format!(\"mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }}));\n\
+         let preamble = Preamble::with_body(\"{tool_name} {subcmd_name}\", \"{description}\", body_lines);\n\
+         let animated = print_preamble_auto(&preamble);\n\
+         \n\
+         execute_and_display(&dag, mode, animated, {success_port_arg}, Some(&input_mocks));",
+        subcmd_name = subcmd.name,
+        arg_parsing = arg_parsing,
+        mode_block = mode_block,
+        graph_builder_call = graph_builder_call,
+        input_mocks = input_mocks,
+        dry_run_block = dry_run_block,
+        body_lines_expr = body_lines_expr,
+        tool_name = tool.tool_name,
+        description = subcmd.description.replace('"', "\\\""),
+        success_port_arg = success_port_arg,
+    );
+
+    FnDef {
+        name: format!("run_{}", subcmd.func_name),
+        is_pub: false,
+        params: vec![("raw_args".to_string(), "&[String]".to_string())],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![format!("Run the '{}' subcommand.", subcmd.name)],
+        attributes: vec![],
+    }
+}
+
+/// Build the help function for subcommand mode.
+fn build_subcmd_help_fn(
+    tool: &ToolMeta,
+    subcommands: &[crate::registry::SubcommandDef],
+) -> FnDef {
+    let mut subcmd_lines = String::new();
+    for subcmd in subcommands {
+        writeln!(
+            subcmd_lines,
+            "println!(\"    {:<20}  {}\");",
+            subcmd.name, subcmd.description,
+        )
+        .unwrap();
+    }
+
+    let body_code = format!(
+        "println!(\"{tool_name} - {description}\");\n\
+         println!();\n\
+         println!(\"USAGE:\");\n\
+         println!(\"    {tool_name} <SUBCOMMAND> [OPTIONS]\");\n\
+         println!();\n\
+         println!(\"SUBCOMMANDS:\");\n\
+         {subcmd_lines}\
+         println!();\n\
+         println!(\"GLOBAL OPTIONS:\");\n\
+         println!(\"    -n, --dry-run        Don't perform actual I/O\");\n\
+         println!(\"    -h, --help           Print this help\");\n\
+         println!();\n\
+         println!(\"Run '{tool_name} <SUBCOMMAND> --help' for subcommand-specific options.\");",
+        tool_name = tool.tool_name,
+        description = tool.description,
+        subcmd_lines = subcmd_lines,
     );
 
     FnDef {
@@ -874,7 +1186,7 @@ match parsed.subcommand {\n\
 
 /// Build the `run_full_dag()` function for step mode.
 fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
-    let arg_parsing = generate_arg_parsing(entrypoints);
+    let arg_parsing = generate_arg_parsing_with_mode(entrypoints, false);
     let graph_builder_call = generate_graph_builder_call(tool);
     let input_mocks = generate_input_mocks(entrypoints);
     let dry_run_block = generate_dry_run_block(tool);
@@ -1236,6 +1548,7 @@ mod tests {
             success_port: None,
             enable_step_mode: false,
             mock_spec_call: Some("some_crate::graph_mock::mock_spec()".into()),
+            enable_mode: false,
         };
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", ParamType::Str)
@@ -1266,6 +1579,7 @@ mod tests {
             success_port: None,
             enable_step_mode: false,
             mock_spec_call: Some("mock_spec()".into()),
+            enable_mode: false,
         };
         let entrypoints = vec![];
 
@@ -1292,6 +1606,7 @@ mod tests {
             success_port: Some("overall_success".into()),
             enable_step_mode: true,
             mock_spec_call: Some("ci_mock_spec()".into()),
+            enable_mode: false,
         };
         let entrypoints = vec![];
 
@@ -1322,6 +1637,7 @@ mod tests {
             success_port: None,
             enable_step_mode: false,
             mock_spec_call: Some("mock()".into()),
+            enable_mode: false,
         };
         let entrypoints = vec![];
 
@@ -1343,6 +1659,7 @@ mod tests {
             success_port: None,
             enable_step_mode: false,
             mock_spec_call: Some("mock()".into()),
+            enable_mode: false,
         };
         let entrypoints = vec![];
 
@@ -1376,6 +1693,7 @@ mod tests {
             success_port: Some("overall_success".into()),
             enable_step_mode: true,
             mock_spec_call: Some("mock()".into()),
+            enable_mode: false,
         };
         let entrypoints = vec![];
 
@@ -1386,5 +1704,169 @@ mod tests {
             .filter(|i| matches!(i, Item::Fn(_)))
             .count();
         assert_eq!(fn_count, 7, "step mode should have 7 functions");
+    }
+
+    #[test]
+    fn test_generate_cli_with_mode_flag() {
+        let tool = ToolMeta {
+            crate_name: "gunbc-deps".into(),
+            tool_name: "deps".into(),
+            description: "Generate deps.toml".into(),
+            graph_builder_call: "build_deps_graph".into(),
+            graph_builder_args: "".into(),
+            returns_result: false,
+            success_port: None,
+            enable_step_mode: false,
+            mock_spec_call: Some("mock()".into()),
+            enable_mode: true,
+        };
+        let entrypoints = vec![];
+
+        let code = generate_cli(&tool, &entrypoints);
+        // Schema should include mode parameter
+        assert!(
+            code.contains("CliParam::new(\"mode\""),
+            "mode param should be in schema"
+        );
+        // Mode parsing block
+        assert!(
+            code.contains("ExecMode::parse_strict"),
+            "should parse mode strictly"
+        );
+        // Verify mode overrides dry_run
+        assert!(
+            code.contains("resource_mode.fails_on_stale()"),
+            "verify mode should force dry_run"
+        );
+        // Help text includes --mode
+        assert!(
+            code.contains("--mode MODE"),
+            "help should mention --mode flag"
+        );
+    }
+
+    #[test]
+    fn test_generate_cli_without_mode_flag() {
+        let tool = ToolMeta {
+            crate_name: "gunbc-gist".into(),
+            tool_name: "gist".into(),
+            description: "Create gist".into(),
+            graph_builder_call: "build_gist_graph".into(),
+            graph_builder_args: "".into(),
+            returns_result: false,
+            success_port: None,
+            enable_step_mode: false,
+            mock_spec_call: Some("mock()".into()),
+            enable_mode: false,
+        };
+        let entrypoints = vec![];
+
+        let code = generate_cli(&tool, &entrypoints);
+        // Should NOT have mode handling
+        assert!(
+            !code.contains("ExecMode::parse_strict"),
+            "should not have mode parsing when disabled"
+        );
+        assert!(
+            !code.contains("--mode MODE"),
+            "help should not mention --mode when disabled"
+        );
+    }
+
+    #[test]
+    fn test_generate_cli_with_subcommands() {
+        use crate::registry::SubcommandDef;
+
+        let tool = ToolMeta {
+            crate_name: "gunbc-dag".into(),
+            tool_name: "gist".into(),
+            description: "Gist operations".into(),
+            graph_builder_call: "".into(),
+            graph_builder_args: "".into(),
+            returns_result: false,
+            success_port: None,
+            enable_step_mode: false,
+            mock_spec_call: None,
+            enable_mode: false,
+        };
+
+        let subcommands = vec![
+            SubcommandDef {
+                name: "create".to_string(),
+                func_name: "create".to_string(),
+                description: "Create a new gist".to_string(),
+                graph_builder_call: "build_gist_create_graph".to_string(),
+                graph_builder_args: "".to_string(),
+                returns_result: true,
+                success_port: None,
+                mock_spec_call: Some("create_mock()".to_string()),
+                entrypoints: vec![
+                    CliEntrypoint::new("owner", ParamType::Str).short('o'),
+                ],
+            },
+            SubcommandDef {
+                name: "list".to_string(),
+                func_name: "list".to_string(),
+                description: "List gists".to_string(),
+                graph_builder_call: "build_gist_list_graph".to_string(),
+                graph_builder_args: "".to_string(),
+                returns_result: true,
+                success_port: None,
+                mock_spec_call: Some("list_mock()".to_string()),
+                entrypoints: vec![],
+            },
+        ];
+
+        let code = generate_cli_with_subcommands(&tool, &subcommands, None);
+
+        // Should have dispatch
+        assert!(
+            code.contains("match subcommand"),
+            "should have subcommand dispatch"
+        );
+        assert!(
+            code.contains("\"create\" => run_create("),
+            "should dispatch to run_create"
+        );
+        assert!(
+            code.contains("\"list\" => run_list("),
+            "should dispatch to run_list"
+        );
+
+        // Should have per-subcommand run functions
+        assert!(
+            code.contains("fn run_create("),
+            "should have run_create function"
+        );
+        assert!(
+            code.contains("fn run_list("),
+            "should have run_list function"
+        );
+
+        // Should have help with subcommands
+        assert!(
+            code.contains("SUBCOMMANDS"),
+            "help should list subcommands"
+        );
+        assert!(
+            code.contains("Create a new gist"),
+            "help should show descriptions"
+        );
+
+        // Per-subcommand graph builders
+        assert!(
+            code.contains("build_gist_create_graph"),
+            "should call create's graph builder"
+        );
+        assert!(
+            code.contains("build_gist_list_graph"),
+            "should call list's graph builder"
+        );
+
+        // Per-subcommand entrypoints — the schema has the port name "owner"
+        assert!(
+            code.contains("\"owner\""),
+            "create subcommand should have owner param in schema"
+        );
     }
 }

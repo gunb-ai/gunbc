@@ -23,7 +23,9 @@
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
 use gunbc_cli::BinaryArgs;
-use gunbc_codegen::{core_outputs, generate_cli_with_import, FileWriter, ToolDef};
+use gunbc_codegen::{
+    core_outputs, generate_cli_with_import, generate_cli_with_subcommands, FileWriter, ToolDef,
+};
 use gunbc_dag::WorkspaceBinary;
 use gunbc_exec::{print_attention, run_freshness_steps, AttentionLevel};
 use gunbc_ir::resource::{
@@ -789,8 +791,16 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     }
 
     for tool in &tools {
-        let code =
-            generate_cli_with_import(&tool.meta, &tool.entrypoints, tool.custom_import.as_deref());
+        // RT63: Use subcommand dispatch when the tool has multiple funcs
+        let code = if tool.has_subcommands() {
+            generate_cli_with_subcommands(
+                &tool.meta,
+                &tool.subcommands,
+                tool.custom_import.as_deref(),
+            )
+        } else {
+            generate_cli_with_import(&tool.meta, &tool.entrypoints, tool.custom_import.as_deref())
+        };
         let tool_dir = output_dir.join(tool.meta.tool_name.as_ref());
         let main_path = tool_dir.join("main.rs");
 
