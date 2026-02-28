@@ -436,8 +436,8 @@ mod tests {
     use gunbc_ir::{Edge, Node, Port};
 
     use super::*;
-    use crate::workflow::process_registry::{ProcessUnitRef, ProcessUnitSpec, UnitClaim};
-    use crate::workflow::schema::{
+    use crate::process_registry::{ProcessUnitRef, ProcessUnitSpec, UnitClaim};
+    use crate::schema::{
         required_input_contract, required_output_contract, WorkflowId, WorkflowSpec, WorkflowUnit,
     };
 

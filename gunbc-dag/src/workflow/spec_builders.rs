@@ -2,7 +2,7 @@
 
 use super::catalog;
 use super::process_registry::default_process_unit_registry;
-use super::schema::WorkflowSpec;
+use gunbc_workflow::WorkflowSpec;
 
 /// Build a workflow spec by canonical/alias name.
 pub fn workflow_spec(name: &str) -> Result<WorkflowSpec, String> {

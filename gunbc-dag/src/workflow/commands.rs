@@ -9,9 +9,8 @@ use std::sync::OnceLock;
 
 use daglang_driver::{compile_from_context, DriverContext};
 use gunbc_ir::NodeId;
+use gunbc_workflow::UnitCommand;
 use serde::Deserialize;
-
-use super::executor::UnitCommand;
 
 #[derive(Debug, Clone, Deserialize)]
 struct UnitCommandDef {

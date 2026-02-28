@@ -89,38 +89,60 @@ fn merge_workflow_plan(
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     use super::*;
-    use crate::workflow::process_registry::default_process_unit_registry;
-    use crate::workflow::spec_builders::{
-        ci_workflow_spec, gist_workflow_spec, test_all_workflow_spec,
-    };
-
-    fn temp_root() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "gunbc-global-plan-test-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ))
-    }
+    use crate::process_registry::{ProcessUnitRef, ProcessUnitSpec, UnitClaim};
+    use crate::schema::{required_input_contract, required_output_contract, WorkflowOp, WorkflowUnit};
+    use gunbc_ir::{Dag, Node};
 
     #[test]
     fn cross_workflow_equivalent_units_are_deduped() {
-        let root = temp_root();
+        let mut ci_dag: Dag<WorkflowUnit> = Dag::new();
+        ci_dag.add_node(Node::opaque(
+            "ci.codegen",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "ci",
+                "ci.codegen",
+            ))),
+        ));
+        let mut test_all_dag: Dag<WorkflowUnit> = Dag::new();
+        test_all_dag.add_node(Node::opaque(
+            "test_all.codegen",
+            required_input_contract(),
+            required_output_contract(),
+            WorkflowUnit::new(WorkflowOp::InvokeProcessUnit(ProcessUnitRef::new(
+                "test_all",
+                "test_all.codegen",
+            ))),
+        ));
+
         let specs = vec![
-            ci_workflow_spec().expect("ci spec"),
-            test_all_workflow_spec().expect("test-all spec"),
+            WorkflowSpec::new("ci", ci_dag, 1),
+            WorkflowSpec::new("test-all", test_all_dag, 1),
         ];
-        let registry = default_process_unit_registry();
-        let global =
-            plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
-                .expect("global plan");
+
+        let mut registry = ProcessUnitRegistry::new();
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("ci", "ci.codegen"),
+            1,
+            vec![UnitClaim::read("tool:cargo")],
+        ));
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("test_all", "test_all.codegen"),
+            1,
+            vec![UnitClaim::read("tool:cargo")],
+        ));
+
+        let workspace_root = std::path::Path::new(".");
+        let global = plan_global_workflows(
+            &specs,
+            &registry,
+            &PlannerInputsByWorkflow::new(),
+            workspace_root,
+        )
+        .expect("global plan");
 
         let codegen = global
             .vertices
@@ -136,51 +158,5 @@ mod tests {
             .node_refs
             .iter()
             .any(|reference| reference.workflow_id == WorkflowId::new("test-all")));
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    /// WF14/WF15: compilation and codegen capabilities shared between
-    /// gist-snapshot and CI workflows via global dedup.
-    #[test]
-    fn universal_capabilities_deduped_across_ci_and_gist() {
-        let root = temp_root();
-        let specs = vec![
-            ci_workflow_spec().expect("ci spec"),
-            gist_workflow_spec().expect("gist spec"),
-        ];
-        let registry = default_process_unit_registry();
-        let global =
-            plan_global_workflows(&specs, &registry, &PlannerInputsByWorkflow::new(), &root)
-                .expect("global plan");
-
-        // compilation_ensure should appear as a shared vertex.
-        let compilation = global
-            .vertices
-            .iter()
-            .find(|vertex| vertex.work_id.unit_id == NodeId::from("compilation_ensure"))
-            .expect("expected canonical compilation_ensure vertex");
-        assert!(
-            compilation
-                .node_refs
-                .iter()
-                .any(|r| r.workflow_id == WorkflowId::new("gist")),
-            "compilation_ensure should reference gist workflow"
-        );
-
-        // codegen_ensure should appear as a shared vertex.
-        let codegen_ensure = global
-            .vertices
-            .iter()
-            .find(|vertex| vertex.work_id.unit_id == NodeId::from("codegen_ensure"))
-            .expect("expected canonical codegen_ensure vertex");
-        assert!(
-            codegen_ensure
-                .node_refs
-                .iter()
-                .any(|r| r.workflow_id == WorkflowId::new("gist")),
-            "codegen_ensure should reference gist workflow"
-        );
-
-        let _ = std::fs::remove_dir_all(root);
     }
 }

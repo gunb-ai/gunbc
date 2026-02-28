@@ -89,7 +89,7 @@ mod tests {
     use super::*;
     use gunbc_ir::{Dag, Edge, Node, Port};
 
-    use crate::workflow::schema::{
+    use crate::schema::{
         required_input_contract, required_output_contract, WorkflowId, WorkflowOp, WorkflowSpec,
         WorkflowUnit,
     };
@@ -102,7 +102,7 @@ mod tests {
             required_input_contract(),
             required_output_contract(),
             WorkflowUnit::new(WorkflowOp::Aggregate(
-                crate::workflow::schema::AggregateSpec::new("a"),
+                crate::schema::AggregateSpec::new("a"),
             )),
         ));
         dag.add_node(Node::opaque(
@@ -110,7 +110,7 @@ mod tests {
             required_input_contract(),
             required_output_contract(),
             WorkflowUnit::new(WorkflowOp::Aggregate(
-                crate::workflow::schema::AggregateSpec::new("b"),
+                crate::schema::AggregateSpec::new("b"),
             )),
         ));
         dag.add_edge(Edge::control("wf.a", "commit", "wf.b", "after"));
@@ -137,7 +137,7 @@ mod tests {
             inputs,
             required_output_contract(),
             WorkflowUnit::new(WorkflowOp::Aggregate(
-                crate::workflow::schema::AggregateSpec::new("only"),
+                crate::schema::AggregateSpec::new("only"),
             )),
         ));
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
@@ -163,7 +163,7 @@ mod tests {
             inputs,
             required_output_contract(),
             WorkflowUnit::new(WorkflowOp::Aggregate(
-                crate::workflow::schema::AggregateSpec::new("only"),
+                crate::schema::AggregateSpec::new("only"),
             )),
         ));
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);

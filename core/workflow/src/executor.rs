@@ -260,10 +260,10 @@ fn emit_unit_status(node_id: &NodeId, status: UnitStatus<'_>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::coordination::CoordinationStatus;
-    use crate::workflow::key::{CanonicalKeyPayload, MaterializationKey, WorkIdentity};
-    use crate::workflow::planner::WorkflowPlan;
-    use crate::workflow::process_registry::ProcessId;
+    use crate::coordination::CoordinationStatus;
+    use crate::key::{CanonicalKeyPayload, MaterializationKey, WorkIdentity};
+    use crate::planner::WorkflowPlan;
+    use crate::process_registry::ProcessId;
 
     fn make_node_plan(name: &str, action: PlanAction) -> super::super::planner::NodePlan {
         let work_id = WorkIdentity::new(ProcessId::new("test"), NodeId::from(name));
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn execute_nodes_without_commands_succeed_as_noop() {
-        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
+        let spec = crate::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![make_node_plan(
                 "report",
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn dry_run_does_not_execute_commands() {
-        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
+        let spec = crate::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![make_node_plan(
                 "build",
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn execution_summary_reports_correct_totals() {
-        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
+        let spec = crate::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![
                 make_node_plan(
@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn pending_approval_exit_code_detected() {
-        let spec = crate::workflow::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
+        let spec = crate::schema::WorkflowSpec::new("test", gunbc_ir::Dag::new(), 1);
         let plan = WorkflowPlan {
             nodes: vec![make_node_plan(
                 "approve",

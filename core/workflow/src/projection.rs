@@ -78,12 +78,12 @@ pub fn validate_projection_equivalence(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::global_plan::{
+    use crate::global_plan::{
         GlobalExecutionVertex, GlobalWorkflowPlan, WorkflowNodeRef,
     };
-    use crate::workflow::key::MaterializationDigest;
-    use crate::workflow::planner::PlanAction;
-    use crate::workflow::schema::WorkflowId;
+    use crate::key::MaterializationDigest;
+    use crate::planner::PlanAction;
+    use crate::schema::WorkflowId;
     use gunbc_ir::NodeId;
 
     fn sample_plan() -> GlobalWorkflowPlan {
@@ -92,7 +92,7 @@ mod tests {
                 work_id: WorkIdentity::new("process-unit", "codegen"),
                 digest: MaterializationDigest("abc".to_string()),
                 action: PlanAction::Execute {
-                    miss_reason: crate::workflow::MissReason::NoPriorRun,
+                    miss_reason: crate::MissReason::NoPriorRun,
                 },
                 node_refs: vec![WorkflowNodeRef {
                     workflow_id: WorkflowId::new("ci"),

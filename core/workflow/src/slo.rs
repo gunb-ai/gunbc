@@ -168,7 +168,7 @@ mod tests {
     use gunbc_ir::NodeId;
 
     use super::*;
-    use crate::workflow::key::MissReason;
+    use crate::key::MissReason;
 
     fn make_summary(
         workflow_id: &str,

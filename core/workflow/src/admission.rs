@@ -319,8 +319,8 @@ mod tests {
     use super::*;
     use gunbc_ir::{AccessMode, Edge, Node, Port};
 
-    use crate::workflow::process_registry::{ProcessUnitRef, ProcessUnitSpec};
-    use crate::workflow::schema::{
+    use crate::process_registry::{ProcessUnitRef, ProcessUnitSpec};
+    use crate::schema::{
         required_input_contract, required_output_contract, WorkflowId, WorkflowSpec,
     };
 

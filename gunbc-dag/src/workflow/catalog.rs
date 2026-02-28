@@ -18,7 +18,7 @@ use super::capabilities::{
 use super::process_registry::{
     claim_handle_type_id, ProcessUnitRef, ProcessUnitRegistry, ProcessUnitSpec, UnitClaim,
 };
-use super::schema::{
+use gunbc_workflow::{
     required_input_contract, required_output_contract, ReportSpec, WorkflowOp, WorkflowSpec,
     WorkflowUnit,
 };

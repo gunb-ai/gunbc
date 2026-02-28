@@ -12,6 +12,7 @@ gunbc-ir = { path = "../core/ir" }
 gunbc-exec = { path = "../core/exec" }
 gunbc-codegen = { path = "../core/codegen" }
 gunbc-test = { path = "../core/test" }
+gunbc-workflow = { path = "../core/workflow" }
 
 # DSL compilation
 daglang-derive = { path = "../core/daglang/daglang-derive" }
