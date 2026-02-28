@@ -18,6 +18,7 @@
 
 pub mod cli_gen;
 pub mod entrypoint;
+pub mod fidelity;
 pub mod file_writer;
 pub mod lambda_gen;
 pub mod registry;
@@ -25,9 +26,12 @@ pub mod rest_gen;
 pub mod template;
 pub mod testgen;
 
-pub use cli_gen::{generate_cli, generate_cli_with_import, CliEntrypoint, ToolMeta};
+pub use cli_gen::{
+    generate_cli, generate_cli_with_import, generate_cli_with_subcommands, CliEntrypoint, ToolMeta,
+};
+pub use fidelity::{classify_callable, classify_module, FidelityClassification};
 pub use file_writer::{FileWriter, WriteResult};
-pub use registry::{core_outputs, TestgenTargetDef, ToolDef};
+pub use registry::{core_outputs, SubcommandDef, TestgenTargetDef, ToolDef};
 pub use template::Template;
 
 use gunbc_ir::{detect_boundaries, detect_entrypoints, BoundaryInfo, Dag, EntrypointInfo};

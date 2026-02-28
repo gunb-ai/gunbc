@@ -271,6 +271,44 @@ impl Parser {
         Some(text.to_string())
     }
 
+    /// Try to parse a multi-param lambda parameter list: `ident, ident, ...) =>`.
+    ///
+    /// Called after the opening `(` has been consumed. On success, consumes
+    /// through the `=>` and returns the parameter names. On failure, returns
+    /// `None` without advancing (caller must restore `self.pos`).
+    fn try_parse_lambda_params(&mut self) -> Option<Vec<String>> {
+        let mut params = Vec::new();
+        // First param
+        let first = Self::token_kind_as_ident(&self.peek().kind)?;
+        params.push(first);
+        self.advance();
+        // Subsequent comma-separated params
+        while self.check(&TokenKind::Comma) {
+            self.advance(); // skip comma
+            // Allow trailing comma: `(a, b,) =>`
+            if self.check(&TokenKind::RParen) {
+                break;
+            }
+            let name = Self::token_kind_as_ident(&self.peek().kind)?;
+            params.push(name);
+            self.advance();
+        }
+        // Need at least 2 params (single-param uses `name => body` syntax)
+        if params.len() < 2 {
+            return None;
+        }
+        // Must see `) =>`
+        if !self.check(&TokenKind::RParen) {
+            return None;
+        }
+        self.advance(); // skip )
+        if !self.check(&TokenKind::FatArrow) {
+            return None;
+        }
+        self.advance(); // skip =>
+        Some(params)
+    }
+
     fn err(&self, message: String) -> ParseError {
         ParseError {
             message,
@@ -324,22 +362,41 @@ impl Parser {
                             if let TokenKind::Str(s) = &self.peek().kind {
                                 config.endpoint = Some(s.clone());
                                 self.advance();
+                            } else if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                // Typed field syntax: `endpoint: String = "https://..."`
+                                // Skip type identifier and `=`, then extract default string.
+                                self.advance(); // skip type ident
+                                if self.eat(&TokenKind::Eq) {
+                                    if let TokenKind::Str(s) = &self.peek().kind {
+                                        config.endpoint = Some(s.clone());
+                                        self.advance();
+                                    }
+                                }
                             } else {
-                                self.advance();
+                                return Err(self.err(format!(
+                                    "expected string literal for `endpoint`, found {}",
+                                    self.peek().kind.desc()
+                                )));
                             }
                         }
                         "auth" => {
                             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                                 config.auth = Some(self.expect_ident()?);
                             } else {
-                                self.advance();
+                                return Err(self.err(format!(
+                                    "expected identifier for `auth`, found {}",
+                                    self.peek().kind.desc()
+                                )));
                             }
                         }
                         "auth_input" => {
                             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                                 config.auth_input = Some(self.expect_ident()?);
                             } else {
-                                self.advance();
+                                return Err(self.err(format!(
+                                    "expected identifier for `auth_input`, found {}",
+                                    self.peek().kind.desc()
+                                )));
                             }
                         }
                         _ => {
@@ -1271,7 +1328,6 @@ impl Parser {
         let mut readonly = false;
         let permissions: Vec<String> = Vec::new();
         let mut transport: Option<TransportBinding> = None;
-        let mock_response: Vec<MockResponseDef> = Vec::new();
 
         if self.eat(&TokenKind::LParen) {
             inputs = self.parse_field_list_until_rparen()?;
@@ -1332,7 +1388,6 @@ impl Parser {
             readonly,
             permissions,
             transport,
-            mock_response,
         })
     }
 
@@ -1405,7 +1460,6 @@ impl Parser {
         let mut outputs = Vec::new();
         let mut idempotent = false;
         let mut readonly = false;
-        let mock_response: Vec<MockResponseDef> = Vec::new();
         while !self.check(&TokenKind::RBrace) && !self.at_eof() {
             if self.check(&TokenKind::Input) {
                 self.advance();
@@ -1434,7 +1488,6 @@ impl Parser {
             outputs,
             idempotent,
             readonly,
-            mock_response,
         })
     }
 
@@ -1457,7 +1510,6 @@ impl Parser {
                     outputs: op.outputs,
                     idempotent: op.idempotent,
                     readonly: op.readonly,
-                    mock_response: op.mock_response,
                 });
             } else if self.check(&TokenKind::Capability) {
                 capabilities.push(self.parse_interface_capability_signature()?);
@@ -1528,7 +1580,6 @@ impl Parser {
             outputs,
             idempotent: false,
             readonly: false,
-            mock_response: Vec::new(),
         })
     }
 
@@ -1591,7 +1642,6 @@ impl Parser {
             outputs,
             idempotent,
             readonly,
-            mock_response: Vec::new(),
         })
     }
 
@@ -2586,49 +2636,15 @@ impl Parser {
                     return Ok(Expr::Record(None, Vec::new()));
                 }
                 // Try multi-param lambda: (a, b) => body
-                // Speculatively collect ident-comma sequences. If we see
-                // `)` followed by `=>`, it's a lambda; otherwise backtrack.
+                // Use save/restore backtracking with normal parser methods.
                 let save_pos = self.pos;
                 let save_errors = self.errors.len();
-                let mut params = Vec::new();
-                let mut is_lambda = false;
-                if let Some(first) = Self::token_kind_as_ident(&self.peek().kind) {
-                    let mut speculative_pos = self.pos;
-                    params.push(first);
-                    speculative_pos += 1; // skip first ident
-                    // Check for comma-separated idents
-                    while speculative_pos < self.tokens.len()
-                        && self.tokens[speculative_pos].kind == TokenKind::Comma
-                    {
-                        speculative_pos += 1; // skip comma
-                        if speculative_pos < self.tokens.len() {
-                            if let Some(name) =
-                                Self::token_kind_as_ident(&self.tokens[speculative_pos].kind)
-                            {
-                                params.push(name);
-                                speculative_pos += 1; // skip ident
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                    // Check for ) => pattern
-                    if params.len() >= 2
-                        && speculative_pos < self.tokens.len()
-                        && self.tokens[speculative_pos].kind == TokenKind::RParen
-                        && speculative_pos + 1 < self.tokens.len()
-                        && self.tokens[speculative_pos + 1].kind == TokenKind::FatArrow
-                    {
-                        // Commit: advance past all params, commas, ), =>
-                        self.pos = speculative_pos + 2;
-                        is_lambda = true;
-                    }
-                }
-                if is_lambda {
+                let params = self.try_parse_lambda_params();
+                if let Some(params) = params {
                     let body = self.parse_expr(0)?;
                     Ok(Expr::Lambda(params, Box::new(body)))
                 } else {
-                    // Reset and parse as parenthesized expression
+                    // Not a lambda — restore and parse as parenthesized expression
                     self.pos = save_pos;
                     self.errors.truncate(save_errors);
                     let expr = self.parse_expr(0)?;

@@ -286,7 +286,6 @@ pub mod ast {
         pub readonly: bool,
         pub permissions: Vec<String>,
         pub transport: Option<TransportBinding>,
-        pub mock_response: Vec<MockResponseDef>,
     }
 
     // ── Resources ───────────────────────────────────────────────────
@@ -309,7 +308,6 @@ pub mod ast {
         pub outputs: Vec<Field>,
         pub idempotent: bool,
         pub readonly: bool,
-        pub mock_response: Vec<MockResponseDef>,
     }
 
     // ── Interfaces ──────────────────────────────────────────────────
@@ -618,13 +616,6 @@ pub mod ast {
             path: String,
         },
         Local,
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct MockResponseDef {
-        pub status: Option<i64>,
-        pub body: Option<Expr>,
-        pub scenario: Option<String>,
     }
 
     #[derive(Debug, Clone)]

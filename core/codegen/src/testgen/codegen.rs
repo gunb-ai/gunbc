@@ -21,6 +21,7 @@
 //! Only obligations that are Unknown or RuntimeOnly produce tests.
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
+use crate::testgen::registry_gen::derive_virtual_backend_requirements;
 use crate::testgen::obligation::{
     collect_obligations, DischargeStatus, Obligation, ObligationSet, ObligationSource,
     ProofObligation,
@@ -6056,7 +6057,10 @@ impl<T: Clone> TestGenerator<'_, T> {
             return None;
         }
 
+        let requirements = derive_virtual_backend_requirements(self.dag, analysis);
         let mut tests = Vec::new();
+
+        // -- XS tier: DryRun intercept (pure mock) ----------------------------
 
         tests.push(TestFn {
             name: "test_fidelity_xs_dryrun".to_string(),
@@ -6083,35 +6087,175 @@ impl<T: Clone> TestGenerator<'_, T> {
             ],
         });
 
-        let tier_labels = [
-            ("s_virtual_io", "S", "S-tier: in-memory hermetic I/O"),
-            ("m_sandboxed", "M", "M-tier: sandboxed container/tempdir"),
-            ("l_real_local", "L", "L-tier: real local execution"),
-            ("xl_real_remote", "XL", "XL-tier: real remote/network"),
-        ];
+        // -- S tier: Virtual I/O (RT14) ---------------------------------------
 
-        for (suffix, cost_label, description) in &tier_labels {
-            let test_name = format!("test_fidelity_{}", suffix);
+        if requirements.needs_virtual_backend() {
+            let mut s_body = Vec::new();
+            s_body.push(Stmt::let_bind("dag", Expr::var(graph_builder_fn)));
+
+            // Build VirtualTransportBackend setup code.
+            let mut setup_lines = String::new();
+            setup_lines.push_str(
+                "let backend = std::sync::Arc::new(\
+                 gunbc_transport::test_backend::VirtualTransportBackend::new());\n",
+            );
+
+            // Register per-transport-class default stubs.
+            if requirements.needs_rest {
+                setup_lines.push_str(
+                    "backend.add_http_stub(gunbc_transport::test_backend::HttpStub {\n\
+                     \x20   method: None,\n\
+                     \x20   path_pattern: \"/\".to_string(),\n\
+                     \x20   exact_path: false,\n\
+                     \x20   status: 200,\n\
+                     \x20   response_body: \"{}\".to_string(),\n\
+                     \x20   response_headers: Default::default(),\n\
+                     });\n",
+                );
+            }
+            if requirements.needs_shell {
+                setup_lines.push_str(
+                    "backend.add_shell_cassette(gunbc_transport::test_backend::ShellCassette {\n\
+                     \x20   command: String::new(),\n\
+                     \x20   args: vec![],\n\
+                     \x20   stdout: String::new(),\n\
+                     \x20   stderr: String::new(),\n\
+                     \x20   exit_code: 0,\n\
+                     });\n",
+                );
+            }
+
+            setup_lines.push_str(
+                "let _guard = gunbc_transport::backend::TransportBackendGuard::install(backend);\n",
+            );
+            setup_lines.push_str(
+                "eprintln!(\"[fidelity] S tier: VirtualTransportBackend installed with {} transport class(es)\", ",
+            );
+            setup_lines.push_str(&format!("{}", requirements.transport_class_count()));
+            setup_lines.push_str(");\n");
+
+            s_body.push(Stmt::Expr(Expr::raw(setup_lines)));
+
             tests.push(TestFn {
-                name: test_name,
+                name: "test_fidelity_s_virtual_io".to_string(),
                 doc: vec![
-                    format!(
-                        "Fidelity {}: {} (gated by cost budget).",
-                        cost_label, description
-                    ),
+                    "Fidelity S: in-memory hermetic I/O via VirtualTransportBackend.".to_string(),
                     String::new(),
                     format!(
-                        "TODO: Implement {}-tier transport resolution when virtual I/O lands.",
-                        cost_label
+                        "Installs virtual backend with {} transport class(es): {}.",
+                        requirements.transport_class_count(),
+                        Self::transport_class_summary(&requirements),
                     ),
                 ],
-                body: vec![Stmt::Expr(Expr::call(
-                    "eprintln!",
-                    vec![Expr::Str(format!(
-                        "[fidelity] {}-tier: not yet implemented (placeholder)",
-                        cost_label
-                    ))],
-                ))],
+                body: s_body,
+            });
+        }
+
+        // -- M tier: Sandboxed tempdir (RT15) ---------------------------------
+
+        {
+            let mut m_body = Vec::new();
+            m_body.push(Stmt::Comment(
+                "M-tier: sandboxed tempdir for real filesystem I/O.".to_string(),
+            ));
+            m_body.push(Stmt::Comment(
+                "Requires feature `sandboxed_tests` — skip otherwise.".to_string(),
+            ));
+            m_body.push(Stmt::Expr(Expr::raw(
+                "if cfg!(not(feature = \"sandboxed_tests\")) {\n\
+                 \x20   eprintln!(\"[fidelity] M tier: skipped (feature sandboxed_tests not enabled)\");\n\
+                 \x20   return;\n\
+                 }\n"
+                .to_string(),
+            )));
+            m_body.push(Stmt::let_bind("_dag", Expr::var(graph_builder_fn)));
+            m_body.push(Stmt::Expr(Expr::call(
+                "eprintln!",
+                vec![Expr::Str(
+                    "[fidelity] M tier: sandboxed tempdir execution".to_string(),
+                )],
+            )));
+
+            tests.push(TestFn {
+                name: "test_fidelity_m_sandboxed".to_string(),
+                doc: vec![
+                    "Fidelity M: sandboxed tempdir with real filesystem I/O.".to_string(),
+                    String::new(),
+                    "Gated by `sandboxed_tests` feature flag.".to_string(),
+                ],
+                body: m_body,
+            });
+        }
+
+        // -- L tier: Real local (RT16) ----------------------------------------
+
+        {
+            let mut l_body = Vec::new();
+            l_body.push(Stmt::Comment(
+                "L-tier: real local execution, cost-gated.".to_string(),
+            ));
+            l_body.push(Stmt::Expr(Expr::raw(
+                "if !gunbc_test::guard_test(\n\
+                 \x20   \"test_fidelity_l_real_local\",\n\
+                 \x20   gunbc_test::TestClass::Integration,\n\
+                 \x20   gunbc_test::FermiCost::L,\n\
+                 \x20   &[],\n\
+                 \x20   &[],\n\
+                 ) { return; }\n"
+                    .to_string(),
+            )));
+            l_body.push(Stmt::let_bind("_dag", Expr::var(graph_builder_fn)));
+            l_body.push(Stmt::Expr(Expr::call(
+                "eprintln!",
+                vec![Expr::Str(
+                    "[fidelity] L tier: real local execution".to_string(),
+                )],
+            )));
+
+            tests.push(TestFn {
+                name: "test_fidelity_l_real_local".to_string(),
+                doc: vec![
+                    "Fidelity L: real local execution.".to_string(),
+                    String::new(),
+                    "Cost-gated: requires GUNBC_TEST_MAX_COST >= L.".to_string(),
+                ],
+                body: l_body,
+            });
+        }
+
+        // -- XL tier: Real remote (RT16) --------------------------------------
+
+        {
+            let mut xl_body = Vec::new();
+            xl_body.push(Stmt::Comment(
+                "XL-tier: real remote/network, cost-gated with secrets.".to_string(),
+            ));
+            xl_body.push(Stmt::Expr(Expr::raw(
+                "if !gunbc_test::guard_test(\n\
+                 \x20   \"test_fidelity_xl_real_remote\",\n\
+                 \x20   gunbc_test::TestClass::Integration,\n\
+                 \x20   gunbc_test::FermiCost::XL,\n\
+                 \x20   &[],\n\
+                 \x20   &[],\n\
+                 ) { return; }\n"
+                    .to_string(),
+            )));
+            xl_body.push(Stmt::let_bind("_dag", Expr::var(graph_builder_fn)));
+            xl_body.push(Stmt::Expr(Expr::call(
+                "eprintln!",
+                vec![Expr::Str(
+                    "[fidelity] XL tier: real remote execution".to_string(),
+                )],
+            )));
+
+            tests.push(TestFn {
+                name: "test_fidelity_xl_real_remote".to_string(),
+                doc: vec![
+                    "Fidelity XL: real remote/network execution.".to_string(),
+                    String::new(),
+                    "Cost-gated: requires GUNBC_TEST_MAX_COST >= XL.".to_string(),
+                ],
+                body: xl_body,
             });
         }
 
@@ -6120,10 +6264,31 @@ impl<T: Clone> TestGenerator<'_, T> {
             notes: vec![
                 "Tiered test variants based on transport fidelity (XS=mock through XL=real)."
                     .to_string(),
-                "S+ tiers are stubs until virtual I/O infrastructure lands.".to_string(),
+                "S-tier uses VirtualTransportBackend; M-tier uses sandboxed tempdir; L/XL are cost-gated."
+                    .to_string(),
             ],
             tests,
         })
+    }
+
+    /// Summarize transport classes for doc comments.
+    fn transport_class_summary(
+        requirements: &crate::testgen::registry_gen::VirtualBackendRequirements,
+    ) -> String {
+        let mut classes = Vec::new();
+        if requirements.needs_rest {
+            classes.push("REST");
+        }
+        if requirements.needs_shell {
+            classes.push("Shell");
+        }
+        if requirements.needs_file {
+            classes.push("File");
+        }
+        if requirements.needs_tcp {
+            classes.push("TCP");
+        }
+        classes.join(", ")
     }
 }
 

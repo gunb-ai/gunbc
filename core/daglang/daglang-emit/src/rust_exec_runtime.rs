@@ -335,6 +335,11 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
             kind: PrimitiveOpKind::ContentUpsertOutputPath { .. },
             ..
         } => return None,
+        // RT4a: Return expression compute nodes are resolved at runtime.
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ReturnExprCompute { .. },
+            ..
+        } => return None,
     }
 
     let (module, name, obligation) = match op {

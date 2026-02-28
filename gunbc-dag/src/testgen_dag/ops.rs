@@ -144,14 +144,14 @@ impl Executable for TestgenOp {
 
                 // 2b. Classify the module via DSL-evaluated fidelity policy
                 let classification =
-                    crate::fidelity::classify_module(&result.callable_properties);
+                    gunbc_codegen::fidelity::classify_module(&result.callable_properties);
                 let all_transport_classes: Vec<_> = result
                     .callable_properties
                     .values()
                     .flat_map(|p| p.transport_classes.iter().cloned())
                     .collect();
                 let requires =
-                    crate::fidelity::requires_from_transport_classes(&all_transport_classes);
+                    gunbc_codegen::fidelity::requires_from_transport_classes(&all_transport_classes);
 
                 // 3. Build TestgenTargetDef
                 let module_test_name = format!("{}_generated_tests", module_name.replace('.', "_"));

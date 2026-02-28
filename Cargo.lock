@@ -352,6 +352,9 @@ dependencies = [
 name = "gunbc-codegen"
 version = "0.1.0"
 dependencies = [
+ "daglang-derive",
+ "daglang-driver",
+ "daglang-lower",
  "gunbc-cli",
  "gunbc-exec",
  "gunbc-infra",

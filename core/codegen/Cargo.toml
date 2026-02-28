@@ -11,4 +11,7 @@ gunbc-ir = { path = "../ir" }
 gunbc-test = { path = "../test" }
 gunbc-exec = { path = "../exec" }
 gunbc-cli = { path = "../cli" }
+daglang-derive = { path = "../daglang/daglang-derive" }
+daglang-driver = { path = "../daglang/daglang-driver" }
+daglang-lower = { path = "../daglang/daglang-lower" }
 serde_json = { workspace = true }

@@ -3273,3 +3273,373 @@ func caller(id: String) -> { name: String } {
         "error should mention service, operation, and missing transport; got: {msg}",
     );
 }
+
+// RT55: Transport cost model on ServiceTransportClass
+#[test]
+fn service_transport_class_fermi_depth_matches_dsl_fidelity() {
+    use super::ServiceTransportClass;
+
+    // Mirrors transport_depth() in std/fidelity.dag
+    assert_eq!(ServiceTransportClass::LocalDirect.fermi_depth(), "Xs");
+    assert_eq!(ServiceTransportClass::InterfaceStub.fermi_depth(), "Xs");
+    assert_eq!(ServiceTransportClass::ShellLocal.fermi_depth(), "S");
+    assert_eq!(ServiceTransportClass::FileBoundary.fermi_depth(), "S");
+    assert_eq!(ServiceTransportClass::RestNetwork.fermi_depth(), "L");
+    assert_eq!(ServiceTransportClass::Unknown.fermi_depth(), "Xl");
+}
+
+#[test]
+fn service_transport_class_hermetic_matches_dsl_fidelity() {
+    use super::ServiceTransportClass;
+
+    // Mirrors transport_hermetic() in std/fidelity.dag
+    assert!(ServiceTransportClass::LocalDirect.is_hermetic());
+    assert!(ServiceTransportClass::InterfaceStub.is_hermetic());
+    assert!(ServiceTransportClass::ShellLocal.is_hermetic());
+    assert!(ServiceTransportClass::FileBoundary.is_hermetic());
+    assert!(!ServiceTransportClass::RestNetwork.is_hermetic());
+    assert!(!ServiceTransportClass::Unknown.is_hermetic());
+}
+
+// ============================================================================
+// ScopedBody integration tests against real DSL corpus
+// ============================================================================
+
+/// Helper: find func body stmts by name, panicking with context on failure.
+fn find_func_stmts(
+    project: &TypedProject,
+    module_name: &str,
+    func_name: &str,
+) -> Vec<Stmt> {
+    for module in &project.modules {
+        if module.module_path.as_dotted() != module_name {
+            continue;
+        }
+        for item in &module.ast.items {
+            if let Item::FuncDef(def) = &item.node {
+                if def.name == func_name {
+                    assert!(
+                        !def.body.lossy,
+                        "{func_name} body is lossy — parser didn't capture stmts"
+                    );
+                    return def.body.stmts.clone();
+                }
+            }
+        }
+    }
+    panic!("{func_name} not found as func in {module_name}");
+}
+
+/// Helper: find pattern body stmts by name.
+fn find_pattern_stmts(
+    project: &TypedProject,
+    module_name: &str,
+    pattern_name: &str,
+) -> Vec<Stmt> {
+    for module in &project.modules {
+        if module.module_path.as_dotted() != module_name {
+            continue;
+        }
+        for item in &module.ast.items {
+            if let Item::PatternDef(def) = &item.node {
+                if def.name == pattern_name {
+                    assert!(
+                        !def.body.lossy,
+                        "{pattern_name} body is lossy — parser didn't capture stmts"
+                    );
+                    return def.body.stmts.clone();
+                }
+            }
+        }
+    }
+    panic!("{pattern_name} not found as pattern in {module_name}");
+}
+
+#[test]
+fn scope_acquire_subject_token_has_match_with_fn_calls() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_pattern_stmts(&project, "std.patterns", "acquire_subject_token");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // acquire_subject_token body:
+    //   node token = match runtime {
+    //     GitHubActions => github_oidc(audience: audience)   // fn call
+    //     Metadata     => metadata_oidc(audience: audience)  // fn call
+    //     LocalDev     => local_auth()                       // fn call
+    //   }
+    //   return { token: token.token }
+    //
+    // The match arms call funcs (not service calls directly).
+    // Since arms don't contain direct Expr::ServiceCall, the match is Other.
+    // After pattern expansion, the func bodies get inlined and service calls
+    // become visible — that's when scoped emission matters.
+    assert!(!body.items.is_empty(), "body should have items");
+    assert_eq!(body.direct_service_calls().len(), 0);
+}
+
+#[test]
+fn scope_github_oidc_has_direct_service_calls() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_func_stmts(&project, "std.patterns", "github_oidc");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // github_oidc has:
+    //   url = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_URL")
+    //   auth = shell.Env.Get(name: "ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+    //   response = github.OIDC.GetToken(...)
+    //   return { token: ... }
+    //
+    // All 3 service calls are at top level.
+    let direct = body.direct_service_calls();
+    assert!(
+        direct.len() >= 3,
+        "github_oidc should have at least 3 direct service calls, got {}",
+        direct.len()
+    );
+    let paths: Vec<String> = direct.iter().map(|c| c.path.join(".")).collect();
+    assert!(
+        paths.iter().any(|p| p.contains("GetToken")),
+        "should contain GetToken service call, got: {:?}",
+        paths
+    );
+}
+
+#[test]
+fn scope_metadata_oidc_has_direct_service_call() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_func_stmts(&project, "std.patterns", "metadata_oidc");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // metadata_oidc has:
+    //   response = gcp.Metadata.GetIdentityToken(audience: audience)
+    //   return { token: ... }
+    let direct = body.direct_service_calls();
+    assert_eq!(
+        direct.len(),
+        1,
+        "metadata_oidc should have exactly 1 direct service call"
+    );
+    assert!(
+        direct[0].path.join(".").contains("GetIdentityToken"),
+        "should be GetIdentityToken, got: {:?}",
+        direct[0].path
+    );
+}
+
+#[test]
+fn scope_optional_impersonation_match_arm_body_is_lossy() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_pattern_stmts(&project, "std.patterns", "optional_impersonation");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // optional_impersonation has a match with a multi-statement block body:
+    //   Some(sa) => {
+    //     response = gcp.IAM.GenerateAccessToken(...)
+    //     { token: response.access_token }
+    //   }
+    //
+    // The parser currently drops the assignment+service call inside the match
+    // arm block body, resulting in Record(None, []). This is a known parser
+    // limitation: block bodies inside match arms aren't fully captured.
+    //
+    // The ScopedBody correctly handles whatever the parser produces — it sees
+    // the match arm bodies as empty records (no service calls), so it classifies
+    // the match as Other (no nested service calls to scope).
+    //
+    // Once the parser supports block bodies in match arms, this test should
+    // be updated to verify that the service call is nested inside the match.
+    assert!(!body.items.is_empty(), "body should have items");
+    assert_eq!(
+        body.direct_service_calls().len(),
+        0,
+        "no direct service calls (match arm bodies are lossy)"
+    );
+}
+
+#[test]
+fn scope_credential_chain_has_service_calls() {
+    use super::scope::ScopedBody;
+
+    let project = typed_project_for_module_with_dependency_closure("std.patterns");
+    let stmts = find_pattern_stmts(&project, "std.patterns", "credential_chain");
+    let body = ScopedBody::from_stmts(&stmts);
+
+    // credential_chain composes acquire_subject_token, optional_impersonation, etc.
+    // via node statements and fn calls. Verify the scope tree builds without panic.
+    assert!(
+        !body.items.is_empty(),
+        "credential_chain should have items"
+    );
+}
+
+// ============================================================================
+// Phase 2+3: Branch-scoped transport tests
+// ============================================================================
+
+#[test]
+fn detect_if_branches_collects_service_call_paths() {
+    use daglang_syntax::ast::{Expr, Stmt};
+
+    let stmts = vec![Stmt::Expr(Expr::If(
+        Box::new(Expr::Ident("enabled".into())),
+        Box::new(Expr::ServiceCall(
+            vec!["gcp".into(), "Storage".into(), "ReadObject".into()],
+            vec![],
+        )),
+        Some(Box::new(Expr::ServiceCall(
+            vec!["gcp".into(), "Storage".into(), "WriteObject".into()],
+            vec![],
+        ))),
+    ))];
+
+    let sites = detect_if_branches_in_stmts(&stmts);
+    assert_eq!(sites.len(), 1);
+    assert!(sites[0].has_else);
+    assert_eq!(sites[0].then_service_call_paths.len(), 1);
+    assert_eq!(
+        sites[0].then_service_call_paths[0],
+        vec!["gcp", "Storage", "ReadObject"]
+    );
+    assert_eq!(sites[0].else_service_call_paths.len(), 1);
+    assert_eq!(
+        sites[0].else_service_call_paths[0],
+        vec!["gcp", "Storage", "WriteObject"]
+    );
+}
+
+#[test]
+fn detect_match_branches_collects_service_call_paths() {
+    use daglang_syntax::ast::{Expr, MatchArm, Pattern, Stmt};
+
+    let stmts = vec![Stmt::Expr(Expr::Match(
+        Box::new(Expr::Ident("mode".into())),
+        vec![
+            MatchArm {
+                pattern: Pattern::Ident("Create".into()),
+                guard: None,
+                body: Expr::ServiceCall(
+                    vec!["github".into(), "Gist".into(), "Create".into()],
+                    vec![],
+                ),
+            },
+            MatchArm {
+                pattern: Pattern::Ident("Update".into()),
+                guard: None,
+                body: Expr::ServiceCall(
+                    vec!["github".into(), "Gist".into(), "Update".into()],
+                    vec![],
+                ),
+            },
+        ],
+    ))];
+
+    let sites = detect_match_branches_in_stmts(&stmts);
+    assert_eq!(sites.len(), 1);
+    assert_eq!(sites[0].arm_count, 2);
+    assert_eq!(sites[0].all_service_call_paths.len(), 2);
+    assert_eq!(
+        sites[0].all_service_call_paths[0],
+        vec!["github", "Gist", "Create"]
+    );
+    assert_eq!(
+        sites[0].all_service_call_paths[1],
+        vec!["github", "Gist", "Update"]
+    );
+}
+
+#[test]
+fn make_branch_body_dag_no_transports_has_single_op() {
+    let dag = make_branch_body_dag("test_module", "callable", 0, "true", &[]);
+    assert_eq!(dag.nodes.len(), 1);
+    assert_eq!(dag.nodes[0].id.0, "op");
+    // Should have input and condition ports
+    assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "input"));
+    assert!(dag.nodes[0].inputs.iter().any(|p| p.name.0 == "condition"));
+}
+
+#[test]
+fn make_branch_body_dag_with_transports_has_triplets() {
+    let transport = LoopBodyTransport {
+        metadata: ServiceCallMetadata {
+            service: "gcp.Storage".to_string(),
+            operation: "ReadObject".to_string(),
+            transport: ServiceTransportClass::RestNetwork,
+            idempotent: true,
+            readonly: true,
+            permissions: vec![],
+            spec: None,
+        },
+        prepare_inputs: vec!["bucket".to_string(), "path".to_string()],
+        parse_output: "result".to_string(),
+    };
+    let dag = make_branch_body_dag("test_module", "callable", 0, "true", &[transport]);
+
+    // Should have: op + prepare + execute + parse = 4 nodes
+    assert_eq!(dag.nodes.len(), 4);
+
+    let node_ids: Vec<&str> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
+    assert!(node_ids.contains(&"op"), "should have body op");
+    assert!(
+        node_ids.contains(&"prepare_branch_t0"),
+        "should have prepare"
+    );
+    assert!(
+        node_ids.contains(&"execute_branch_t0"),
+        "should have execute"
+    );
+    assert!(node_ids.contains(&"parse_branch_t0"), "should have parse");
+
+    // op should still have condition port for BranchBuilder guard
+    let op_node = dag.nodes.iter().find(|n| n.id.0 == "op").unwrap();
+    assert!(
+        op_node.inputs.iter().any(|p| p.name.0 == "condition"),
+        "op should retain condition port for guard propagation"
+    );
+
+    // Should have 3 edges: prepare→execute, execute→parse, parse→op
+    assert_eq!(dag.edges.len(), 3);
+}
+
+#[test]
+fn branch_body_dag_with_transports_builds_with_branch_builder() {
+    use gunbc_ir::patterns::branch::BranchBuilder;
+
+    let transport = LoopBodyTransport {
+        metadata: ServiceCallMetadata {
+            service: "gcp.Storage".to_string(),
+            operation: "ReadObject".to_string(),
+            transport: ServiceTransportClass::RestNetwork,
+            idempotent: true,
+            readonly: true,
+            permissions: vec![],
+            spec: None,
+        },
+        prepare_inputs: vec!["bucket".to_string()],
+        parse_output: "result".to_string(),
+    };
+    let true_dag = make_branch_body_dag("test_module", "callable", 0, "true", &[transport]);
+    let false_dag = make_branch_body_dag("test_module", "callable", 0, "false", &[]);
+
+    // This should not panic — the true_dag retains condition/input ports
+    let branch_node = BranchBuilder::<LoweredOp>::new("test_branch")
+        .with_true_branch(true_dag)
+        .with_false_branch(false_dag)
+        .with_output("result", "Any")
+        .build();
+
+    assert!(branch_node.is_subdag());
+    // The branch node should expose the prepare input 'bucket' as an entrypoint
+    assert!(
+        branch_node.inputs.iter().any(|p| p.name.0 == "bucket"),
+        "branch should expose prepare inputs as entrypoints: {:?}",
+        branch_node.inputs.iter().map(|p| &p.name.0).collect::<Vec<_>>()
+    );
+}

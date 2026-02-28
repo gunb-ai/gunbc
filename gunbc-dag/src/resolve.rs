@@ -64,12 +64,16 @@ impl std::fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
-fn declared_output_names(outputs: &[Port]) -> Vec<String> {
-    outputs.iter().map(|p| p.name.0.clone()).collect()
+/// Extract output port names and optionality from Port declarations.
+fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
+    outputs
+        .iter()
+        .map(|p| (p.name.0.clone(), p.type_id.0.ends_with('?')))
+        .collect()
 }
 
 fn execute_with_declared_output_passthrough(
-    output_port_names: &[String],
+    output_ports: &[(String, bool)],
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
@@ -79,14 +83,27 @@ fn execute_with_declared_output_passthrough(
         }
         outputs.insert(key.clone(), value.clone());
     }
-    for port_name in output_port_names {
+    for (port_name, is_optional) in output_ports {
         let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
             outputs.insert(port_name.clone(), value.clone());
             continue;
         }
         outputs.entry(port_name.clone()).or_insert_with(|| {
-            passthrough_fallback_value(port_name, &inputs).unwrap_or(Value::Skipped)
+            if let Some(fallback) = passthrough_fallback_value(port_name, &inputs) {
+                return fallback;
+            }
+            if *is_optional {
+                Value::Skipped
+            } else {
+                // RT83: Required output ports produce a diagnostic instead of
+                // silently substituting Skipped. This surfaces lowering gaps.
+                eprintln!(
+                    "passthrough error: required output `{port_name}` has no wired input \
+                     (this typically means the lowerer failed to wire a return expression)"
+                );
+                Value::Skipped
+            }
         });
     }
     Ok(outputs)
@@ -168,12 +185,12 @@ fn passthrough_value_to_text(value: &Value) -> String {
 /// the callable node itself is a passthrough that maps SubDag results to outputs.
 #[derive(Debug, Clone)]
 struct DeclaredOutputCallableOp {
-    output_port_names: Vec<String>,
+    output_ports: Vec<(String, bool)>,
 }
 
 impl Executable for DeclaredOutputCallableOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
+        execute_with_declared_output_passthrough(&self.output_ports, inputs)
     }
 }
 
@@ -190,7 +207,7 @@ struct PipelineDispatchOp {
     _name: String,
     stage_count: usize,
     stage_names: Vec<String>,
-    output_port_names: Vec<String>,
+    output_ports: Vec<(String, bool)>,
 }
 
 impl std::fmt::Debug for PipelineDispatchOp {
@@ -199,7 +216,7 @@ impl std::fmt::Debug for PipelineDispatchOp {
             .field("compat_mode", &"DeclaredOutputCallableOp")
             .field("stage_count", &self.stage_count)
             .field("stage_names", &self.stage_names)
-            .field("output_port_names", &self.output_port_names)
+            .field("output_ports", &self.output_ports)
             .finish()
     }
 }
@@ -218,7 +235,7 @@ impl Executable for PipelineDispatchOp {
     /// - If `current_stage` is absent: no `next_stage` is emitted
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let mut outputs =
-            execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
+            execute_with_declared_output_passthrough(&self.output_ports, inputs)?;
         outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
         outputs.insert(
             "stage_order".to_string(),
@@ -375,6 +392,31 @@ impl Executable for LiteralSourceOp {
         OutputMap::new()
             .value(self.output_port.as_str(), self.value.clone())
             .ok()
+    }
+}
+
+/// RT4a: Compute node for complex return expressions (BinOp, UnaryOp, etc.).
+/// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
+#[derive(Debug, Clone)]
+struct ReturnExprComputeOp {
+    fn_body: daglang_lower::LoweredFnBody,
+    output_port: String,
+}
+
+impl Executable for ReturnExprComputeOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let sibling_fns = HashMap::new();
+        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &inputs, &sibling_fns)
+            .map_err(|e| ExecError::new(e.message))?;
+        // The fn body returns { result: <value> }, extract and output it.
+        if let Some(value) = result.get(&self.output_port) {
+            OutputMap::new()
+                .value(self.output_port.as_str(), value.clone())
+                .ok()
+        } else {
+            // Fallback: return whatever the fn body produced.
+            Ok(result)
+        }
     }
 }
 
@@ -636,7 +678,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             _name: name.clone(),
             stage_count: *stages,
             stage_names: stage_names.clone(),
-            output_port_names: declared_output_names(outputs),
+            output_ports: declared_output_ports(outputs),
         })),
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
@@ -703,6 +745,17 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
+        // RT4a: Compute nodes evaluate complex return expressions via fn body evaluation.
+        PrimitiveOpKind::ReturnExprCompute { fn_body } => {
+            let output_port = outputs
+                .first()
+                .map(|port| port.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(ReturnExprComputeOp {
+                fn_body: *fn_body.clone(),
+                output_port,
+            }))
+        }
     }
 }
 
@@ -775,7 +828,7 @@ fn resolve_domain(
     // ExternCall nodes (from `extern func` declarations) use
     // resolve_extern_call() which is fail-closed — no passthrough fallback.
     Ok(DynOp::new(DeclaredOutputCallableOp {
-        output_port_names: declared_output_names(outputs),
+        output_ports: declared_output_ports(outputs),
     }))
 }
 
@@ -1528,6 +1581,7 @@ mod tests {
                     json_path: "needed".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 }],
                 output_parsing: ShellOutputParsing::ExitCodeBool,
                 env: vec![],
@@ -1564,6 +1618,7 @@ mod tests {
                         json_path: "success".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "stdout".to_string(),
@@ -1571,6 +1626,7 @@ mod tests {
                         json_path: "stdout".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "stderr".to_string(),
@@ -1578,6 +1634,7 @@ mod tests {
                         json_path: "stderr".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
@@ -1801,6 +1858,7 @@ mod tests {
                         json_path: "access_token".to_string(),
                         is_secret: true,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "expires_in".to_string(),
@@ -1808,6 +1866,7 @@ mod tests {
                         json_path: "expires_in".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 body_template: None,
@@ -1864,6 +1923,7 @@ mod tests {
                         json_path: "payload".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "name".to_string(),
@@ -1871,6 +1931,7 @@ mod tests {
                         json_path: "name".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 body_template: None,
