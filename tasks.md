@@ -529,8 +529,8 @@ spec.rs       # Service operation specs
 | C9 | RT38, RT39 | **No panics, no silent parse.** `LowerError::InvalidTransportSpec` replaces `panic!`. Parse error for bad `auth_input`. | Zero `panic!` on user DSL. Parser test for `auth_input: "token"`. | S |
 | C10 | RT94, RT4a, RT4c | **Resolve ReturnExprCompute split-brain + completeness gate.** Desugar complex returns (BinOp/UnaryOp/If/Match/Pipe/...) into explicit DAG semantics so emit/interpret share behavior. Delete `MetadataOnly` for `ReturnExprCompute`. Delete `ReturnExprComputeOp`. Add fail-closed compile-time gate for non-optional unwired returns (RT4c). | Zero `ReturnExprCompute` in any compiled graph. `PrimitiveOpKind::ReturnExprCompute` deleted. No silent return-binding drops (`_ => None`) for required outputs. | L |
 | C10a | RT-I5 | **`make gist` auth credential bridge fix (postmortem Option A/B/C).** Pick one option and implement in `daglang-lower` and/or `resolve_service.rs` so `auth_token: Secret` reaches REST auth reliably. This must land before C11 extraction to avoid migrating a known bug into core. | `make gist` no longer 401s due to empty bearer token path. C11 is blocked until this passes. | M |
-| C11 | RT67, RT72 | **Move resolve_service.rs to core/.** 2,190 lines → `core/resolve/src/service_ops.rs`. Split `resolve.rs`: generic framework (~1.6k) → `core/resolve/`. Domain dispatch (~700) stays. Must delete app-specific string dispatch in the move. **Precondition: C10a complete.** | `resolve_service.rs` deleted from gunbc-dag. New `core/resolve/` crate. Moved code is simpler than source. | L |
-| C12 | RT73 | **Move testgen to core/.** 5 files (2,177 lines) → `core/codegen/src/testgen/`. Must delete gunbc-dag-specific assumptions in the move. | `testgen_dag/` deleted from gunbc-dag. Testgen works from `core/codegen`. | M |
+| C11 | RT67, RT72 | **Move resolve_service.rs to core/.** 2,190 lines → `core/resolve/src/service_ops.rs`. Split `resolve.rs`: generic framework (~1.6k) → `core/resolve/`. Domain dispatch (~700) stays. Must delete app-specific string dispatch in the move. **Precondition: C10a complete. Inventory linkage gate required (RF-INV1 or RF-INV2) before/with move.** | `resolve_service.rs` deleted from gunbc-dag. New `core/resolve/` crate. Moved code is simpler than source. No dropped registrations after crate-boundary move (force-link evidence or RF-INV2 replacement). | L |
+| C12 | RT73 | **Move testgen to core/.** 5 files (2,177 lines) → `core/codegen/src/testgen/`. Must delete gunbc-dag-specific assumptions in the move. **Inventory linkage gate required (RF-INV1 or RF-INV2) before/with move.** | `testgen_dag/` deleted from gunbc-dag. Testgen works from `core/codegen`. Cross-crate registrations still discoverable (or inventory removed via RF-INV2 path). | M |
 | C13 | RT68 | **Split mock_defaults.** Generic probing (~350) → `core/test/`. Delete GCP blob (~230). | `mock_defaults.rs` deleted. Auto-mock works from `core/test`. | S |
 | C14 | RT89 | **REST status-code checking.** `GenericRestParseOp` checks status before field extraction. Non-2xx → error. | 401 → structured error (not "field missing"). Test: mock 401 → error has status. | M |
 | C15 | RT88 | **Fail-closed resolver audit.** Classify all `_ =>` fallbacks. Delete `passthrough_fallback_value()` (70 lines). | Zero undocumented fallbacks. `passthrough_fallback_value` deleted. | M |
@@ -540,7 +540,7 @@ spec.rs       # Service operation specs
 | C19 | RT83, RT4b | **Restore passthrough enforcement + runtime fail-closed diagnostics.** After C4+C5+C7 wire dag_util branches, required outputs with no input must return `ExecError` (not `Skipped`) and emit clear diagnostics for missing declared passthroughs (RT4b). | `resolve.rs` returns `ExecError` for required missing outputs. Missing passthrough ports are diagnosable (no silent fallback). CI clean (no unwired branches). | S |
 | C20 | RT59, RT63 | **CLI generator: profile, mode, subcommand support.** Expose `available_profiles` in `CompileOutput`. Template generates `--profile` enum flag, `--mode ensure\|verify`, subcommand dispatch for multi-func modules. `KEY=VALUE` arg parsing for infra-style tools. Unblocks Worker A. | Generated CLI for `pipelines/sdlc.dag` accepts `--profile`. Generated CLI for multi-func modules has subcommands. | L |
 
-**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A)
+**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → (RF-INV1 or RF-INV2 gate) → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A)
 
 ---
 
@@ -747,6 +747,11 @@ Meanwhile `gunbc-ci` (`ci.rs`) transitively references them through
 **Impact**: Running `gunbc-codegen cigen` produces a ci.yml missing 5
 GCP secret env vars. Current workaround: ci.yml is committed with
 secrets and not regenerated on every codegen pass.
+
+**C11/C12 linkage trap**: moving large subsystems to `core/` crosses crate
+boundaries and can trigger the same linker-drop behavior. Treat **RF-INV1 or
+RF-INV2 as a hard gate** for C11/C12 so moved resolvers/testgen paths do not
+silently lose registrations.
 
 | ID | Fix | Size | Notes |
 |----|-----|------|-------|
