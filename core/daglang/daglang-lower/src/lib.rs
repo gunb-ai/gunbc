@@ -1751,6 +1751,20 @@ fn lower_typed_project_with_callable_scope(
                     );
                     builder.add_node(node);
                 }
+                TypedItemSignature::ExternFunc(callable) => {
+                    if !include_callables {
+                        continue;
+                    }
+                    let (node, endpoint) = lower_extern_callable(callable, &module_name);
+                    register_endpoint(
+                        &mut endpoints_by_full,
+                        &mut endpoints_by_name,
+                        &module_name,
+                        &callable.name,
+                        endpoint,
+                    );
+                    builder.add_node(node);
+                }
                 TypedItemSignature::Pipeline {
                     name,
                     stages,
@@ -2761,6 +2775,53 @@ fn lower_callable(
     )
 }
 
+fn lower_extern_callable(
+    callable: &TypedCallableSignature,
+    module_name: &str,
+) -> (Node<LoweredOp>, LoweredEndpoint) {
+    let node_id = lowered_node_id(module_name, &callable.name);
+    let outputs = if callable.outputs.is_empty() {
+        vec![Port::with_cardinality("return", "Unit", Cardinality::ONE)]
+    } else {
+        callable
+            .outputs
+            .iter()
+            .map(|binding| {
+                Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
+            })
+            .collect()
+    };
+    let mut inputs = callable
+        .params
+        .iter()
+        .map(|binding| {
+            Port::with_cardinality(binding.name.as_str(), binding.ty.as_str(), Cardinality::ONE)
+        })
+        .collect::<Vec<_>>();
+    inputs.push(Port::with_cardinality(
+        PortName::DEPS,
+        "Any",
+        Cardinality::ZERO_OR_MORE,
+    ));
+    let primary_output = outputs
+        .first()
+        .map(|port| port.name.0.clone())
+        .unwrap_or_else(|| "return".to_string());
+    let symbol = format!("{module_name}.{}", callable.name);
+    (
+        Node::opaque(
+            node_id.clone(),
+            inputs,
+            outputs,
+            LoweredOp::ExternCall { symbol },
+        ),
+        LoweredEndpoint {
+            node_id,
+            primary_output,
+        },
+    )
+}
+
 fn lowered_node_id(module_name: &str, item_name: &str) -> String {
     format!("{module_name}::{item_name}").replace([' ', '/'], "_")
 }
@@ -2807,7 +2868,8 @@ fn add_dependency_edges(
             .filter_map(|signature| match signature {
                 TypedItemSignature::Fn(callable)
                 | TypedItemSignature::Func(callable)
-                | TypedItemSignature::Pattern(callable) => Some((
+                | TypedItemSignature::Pattern(callable)
+                | TypedItemSignature::ExternFunc(callable) => Some((
                     callable.name.clone(),
                     callable
                         .params

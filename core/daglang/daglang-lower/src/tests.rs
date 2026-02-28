@@ -133,6 +133,54 @@ fn lower_target_module_with_dependency_scope(
 }
 
 #[test]
+fn extern_func_decl_lowers_to_extern_call_and_wires_content_upsert() {
+    let typed = typed_project_from_sources(&[(
+        "sample/externs.dag",
+        r#"module sample.externs
+import std.patterns { content_upsert }
+
+extern func render() -> { return: String }
+
+func run() -> { written: Bool } {
+  content = render()
+  result = content_upsert(content: content, path: "out.txt")
+  return { written: result.written }
+}"#,
+    )]);
+
+    let dag = lower_target_module(&typed, "sample.externs");
+
+    let render_node = dag
+        .nodes
+        .iter()
+        .find(|node| node.id.0 == "sample.externs::render")
+        .expect("extern callable node should be lowered");
+    match &render_node.body {
+        NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
+            assert_eq!(symbol, "sample.externs.render");
+        }
+        other => panic!("expected ExternCall node body, got {other:?}"),
+    }
+
+    let has_content_edge = dag.edges.iter().any(|edge| {
+        edge.from_node.0 == "sample.externs::render"
+            && edge.from_port.0 == "return"
+            && edge.to_port.0 == "content"
+    });
+    assert!(
+        has_content_edge,
+        "extern output should feed content_upsert content port; edges: {:?}",
+        dag.edges
+            .iter()
+            .map(|e| format!(
+                "{}.{}->{}.{}",
+                e.from_node.0, e.from_port.0, e.to_node.0, e.to_port.0
+            ))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn collect_collection_ops_detects_pipe_map_filter_join_chain() {
     let stmts = callable_stmts_from_source(
         r#"

@@ -71,6 +71,7 @@ pub enum TypedItemSignature {
     Fn(TypedCallableSignature),
     Func(TypedCallableSignature),
     Pattern(TypedCallableSignature),
+    ExternFunc(TypedCallableSignature),
     Service {
         name: String,
         operations: usize,
@@ -90,7 +91,7 @@ pub enum TypedItemSignature {
     },
 }
 
-/// A normalized callable signature for fn/func/pattern items.
+/// A normalized callable signature for fn/func/pattern/extern items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypedCallableSignature {
     pub name: String,
@@ -911,6 +912,25 @@ fn collect_signatures(
                         &format!("{}.{}", def.name, field.name),
                     ));
                 }
+                signatures.push(TypedItemSignature::ExternFunc(TypedCallableSignature {
+                    name: def.name.clone(),
+                    params: def
+                        .inputs
+                        .iter()
+                        .map(|field| TypedBinding {
+                            name: field.name.clone(),
+                            ty: type_expr_to_string(&field.ty),
+                        })
+                        .collect(),
+                    outputs: def
+                        .outputs
+                        .iter()
+                        .map(|field| TypedBinding {
+                            name: field.name.clone(),
+                            ty: type_expr_to_string(&field.ty),
+                        })
+                        .collect(),
+                }));
             }
             Item::ExternAssetDecl(def) => {
                 errors.extend(record_duplicate_item_name(
