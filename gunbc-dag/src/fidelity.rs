@@ -88,23 +88,34 @@ pub fn classify_callable(props: &CallableProperties) -> FidelityClassification {
     let result = daglang_lower::eval::evaluate_fn_body(body, &inputs, &fns)
         .expect("classify_transports should evaluate");
 
-    let test_class = result
-        .get("test_class")
+    let test_class_value = result.get("test_class");
+    let test_class = test_class_value
         .and_then(Value::as_str)
         .and_then(TestClass::parse)
-        .unwrap_or(TestClass::Unit);
-    let fermi_cost = result
-        .get("depth")
+        .unwrap_or_else(|| {
+            panic!(
+                "classify_transports returned invalid test_class: {:?}",
+                test_class_value
+            )
+        });
+    let depth_value = result.get("depth");
+    let fermi_cost = depth_value
         .and_then(Value::as_str)
         .and_then(FermiCost::parse)
-        .unwrap_or(FermiCost::XS);
-    let hermetic = result
-        .get("hermetic")
-        .and_then(|v| match v {
-            Value::Bool(b) => Some(*b),
-            _ => None,
-        })
-        .unwrap_or(true);
+        .unwrap_or_else(|| {
+            panic!(
+                "classify_transports returned invalid depth: {:?}",
+                depth_value
+            )
+        });
+    let hermetic_value = result.get("hermetic");
+    let hermetic = match hermetic_value {
+        Some(Value::Bool(b)) => *b,
+        other => panic!(
+            "classify_transports returned invalid hermetic: {:?}",
+            other
+        ),
+    };
 
     FidelityClassification {
         test_class,

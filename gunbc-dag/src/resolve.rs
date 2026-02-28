@@ -1574,6 +1574,7 @@ mod tests {
                     json_path: "needed".to_string(),
                     is_secret: false,
                     is_raw_body: false,
+                    is_optional: false,
                 }],
                 output_parsing: ShellOutputParsing::ExitCodeBool,
                 env: vec![],
@@ -1610,6 +1611,7 @@ mod tests {
                         json_path: "success".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "stdout".to_string(),
@@ -1617,6 +1619,7 @@ mod tests {
                         json_path: "stdout".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "stderr".to_string(),
@@ -1624,6 +1627,7 @@ mod tests {
                         json_path: "stderr".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 output_parsing: ShellOutputParsing::SuccessStdoutStderr,
@@ -1847,6 +1851,7 @@ mod tests {
                         json_path: "access_token".to_string(),
                         is_secret: true,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "expires_in".to_string(),
@@ -1854,6 +1859,7 @@ mod tests {
                         json_path: "expires_in".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 body_template: None,
@@ -1910,6 +1916,7 @@ mod tests {
                         json_path: "payload".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                     OutputFieldSpec {
                         name: "name".to_string(),
@@ -1917,6 +1924,7 @@ mod tests {
                         json_path: "name".to_string(),
                         is_secret: false,
                         is_raw_body: false,
+                        is_optional: false,
                     },
                 ],
                 body_template: None,

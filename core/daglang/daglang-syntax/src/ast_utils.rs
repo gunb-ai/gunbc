@@ -1,5 +1,14 @@
 use crate::ast::{Expr, Stmt, TypeExpr};
 
+/// Returns true if the type expression is optional (`T?`), looking through refinement wrappers.
+pub fn is_type_expr_optional(expr: &TypeExpr) -> bool {
+    match expr {
+        TypeExpr::Optional(_) => true,
+        TypeExpr::Refined(inner, _) => is_type_expr_optional(inner),
+        _ => false,
+    }
+}
+
 pub fn type_expr_to_string(expr: &TypeExpr) -> String {
     match expr {
         TypeExpr::Named(name) => name.clone(),

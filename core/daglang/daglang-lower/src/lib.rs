@@ -23,8 +23,9 @@ use daglang_syntax::ast::{
     TransportBinding,
 };
 use daglang_syntax::ast_utils::{
-    canonical_resource_type_name, resource_type_name, service_call_lookup_keys,
-    should_track_call_name as should_track_call, type_expr_to_string, walk_stmts,
+    canonical_resource_type_name, is_type_expr_optional, resource_type_name,
+    service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
+    walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
@@ -5287,6 +5288,7 @@ fn derive_output_fields(outputs: &[daglang_syntax::ast::Field]) -> Vec<OutputFie
                 json_path,
                 is_secret: base_type_id == "Secret",
                 is_raw_body,
+                is_optional: is_type_expr_optional(&field.ty),
             }
         })
         .collect()
