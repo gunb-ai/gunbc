@@ -166,10 +166,45 @@ B6/B7/B8 can start after B5 (or in parallel with each other).
 | RT13 (Derive mock registries from @mock_response) | Lane B's B4 deletes MockResponseDef scaffolding entirely. Mock registries derive from `response {}` blocks (PC-1) which is a separate feature track. |
 | RT18 (Delete bootstrap externs) | Lane A's A5 deletes all extern_impls.rs including bootstrap bridges. |
 
+## New Themes from PR #95 Review
+
+Three cross-cutting themes surfaced during review. These add tasks to Lane B.
+
+### Theme D: Silent catch-all arms in expression processing
+
+`collect_expr_leaf_refs` and `remap_expr_idents` both have `_ => {}` / `_ => None`
+catch-all arms that silently drop information from unhandled `Expr` variants
+(`Record`, `StringInterp`, `Lambda`, `List`, `Map`, `For`, `ServiceCall`).
+Compare: `scope.rs::collect_scoped_items_from_expr` handles all 20+ variants.
+
+| # | What | LOC |
+|---|------|-----|
+| B11 | **Expr walker totality.** Audit every `match expr {` in daglang-lower for catch-all arms. Each must either (a) handle the variant, (b) recurse into sub-expressions, or (c) emit a typed diagnostic. Delete all `_ => {}` in expression walkers. Covers `collect_expr_leaf_refs`, `remap_expr_idents`, `resolve_return_expr_source`, `collect_fn_calls_with_args`. | **-200** (deletions from replacing catch-alls with explicit arms) |
+
+### Theme E: Stringly-encoded structured data in the lowerer
+
+`PARAM_REF_SENTINEL` encodes param field access as `base__field` strings with `__`
+separator, decoded via `split_once("__")`. Node IDs in `registry_gen.rs` use string
+naming conventions for transport class inference. The lowerer has multiple places
+where structured information is encoded as strings.
+
+| # | What | LOC |
+|---|------|-----|
+| B12 | **Typed leaf references.** Replace the `(String, String, String, String)` ref tuple in `collect_expr_leaf_refs` with a `LeafRef` enum: `Param { name, field: Option, ty }`, `Callable { endpoint, port }`, `Service { endpoint, port }`. Delete `PARAM_REF_SENTINEL` and `split_once("__")` decoding. | **-50** (net, replaces string encoding with typed enum) |
+
+### Theme F: Infrastructure without callers
+
+`scope.rs` (589 lines) is declared `pub(crate)` with 12 tests but zero callers
+in `lib.rs`. The ad-hoc `detect_*_branches_in_stmts` functions it's meant to
+replace are still active. This violates "no stubs that look like features."
+
+This is already covered by B2 (integrate scope.rs, delete ad-hoc detection).
+Elevating priority: B2 should run early in Lane B to close this gap.
+
 ## Summary
 
 | Lane | Theme | LOC Deleted | Files Deleted | Files Moved |
 |------|-------|-------------|---------------|-------------|
 | **A** | Substrate Deletion | ~12,900 | ~25 .rs files | 0 |
-| **B** | Compiler Hardening | ~9,150 | ~5 .rs files | ~10 .rs files to core/ |
-| **Total** | | **~22,050** | ~30 | ~10 |
+| **B** | Compiler Hardening | ~9,400 | ~5 .rs files | ~10 .rs files to core/ |
+| **Total** | | **~22,300** | ~30 | ~10 |
