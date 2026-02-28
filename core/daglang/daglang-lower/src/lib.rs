@@ -3018,90 +3018,40 @@ pub(crate) fn collect_service_call_paths_from_expr(expr: &Expr, paths: &mut Vec<
     }
 }
 
-fn collect_if_branch_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<IfBranchScopeSite>) {
-    for item in &body.items {
-        match item {
-            scope::ScopedItem::IfBranch {
-                then_body,
-                else_body,
-            } => {
-                out.push(IfBranchScopeSite {
-                    has_else: else_body.is_some(),
-                    then_service_call_paths: collect_service_paths_from_scoped_body(then_body),
-                    else_service_call_paths: else_body
-                        .as_ref()
-                        .map(collect_service_paths_from_scoped_body)
-                        .unwrap_or_default(),
-                });
-                collect_if_branch_sites_from_scoped(then_body, out);
-                if let Some(else_body) = else_body {
-                    collect_if_branch_sites_from_scoped(else_body, out);
-                }
-            }
-            scope::ScopedItem::ForLoop { body, .. } => collect_if_branch_sites_from_scoped(body, out),
-            scope::ScopedItem::MatchBranch { arms } => {
-                for arm in arms {
-                    collect_if_branch_sites_from_scoped(&arm.body, out);
-                }
-            }
-            scope::ScopedItem::ServiceCall(_)
-            | scope::ScopedItem::FnCall { .. }
-            | scope::ScopedItem::Binding { .. }
-            | scope::ScopedItem::Other => {}
-        }
-    }
-}
-
-fn collect_match_branch_sites_from_scoped(
-    body: &scope::ScopedBody,
-    out: &mut Vec<MatchBranchScopeSite>,
-) {
-    for item in &body.items {
-        match item {
-            scope::ScopedItem::MatchBranch { arms } => {
-                let mut all = Vec::new();
-                for arm in arms {
-                    all.extend(collect_service_paths_from_scoped_body(&arm.body));
-                }
-                out.push(MatchBranchScopeSite {
-                    arm_count: arms.len(),
-                    all_service_call_paths: all,
-                });
-                for arm in arms {
-                    collect_match_branch_sites_from_scoped(&arm.body, out);
-                }
-            }
-            scope::ScopedItem::ForLoop { body, .. } => {
-                collect_match_branch_sites_from_scoped(body, out)
-            }
-            scope::ScopedItem::IfBranch {
-                then_body,
-                else_body,
-            } => {
-                collect_match_branch_sites_from_scoped(then_body, out);
-                if let Some(else_body) = else_body {
-                    collect_match_branch_sites_from_scoped(else_body, out);
-                }
-            }
-            scope::ScopedItem::ServiceCall(_)
-            | scope::ScopedItem::FnCall { .. }
-            | scope::ScopedItem::Binding { .. }
-            | scope::ScopedItem::Other => {}
-        }
-    }
-}
-
 fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchScopeSite> {
-    let scoped = scope::ScopedBody::from_stmts(stmts);
     let mut sites = Vec::new();
-    collect_if_branch_sites_from_scoped(&scoped, &mut sites);
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::If(_, then_expr, else_branch) = expr {
+            let mut then_calls = Vec::new();
+            collect_service_call_paths_from_expr(then_expr, &mut then_calls);
+            let mut else_calls = Vec::new();
+            if let Some(else_expr) = else_branch {
+                collect_service_call_paths_from_expr(else_expr, &mut else_calls);
+            }
+            sites.push(IfBranchScopeSite {
+                has_else: else_branch.is_some(),
+                then_service_call_paths: then_calls,
+                else_service_call_paths: else_calls,
+            });
+        }
+    });
     sites
 }
 
 fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchScopeSite> {
-    let scoped = scope::ScopedBody::from_stmts(stmts);
     let mut sites = Vec::new();
-    collect_match_branch_sites_from_scoped(&scoped, &mut sites);
+    walk_stmts(stmts, &mut |expr| {
+        if let Expr::Match(_, arms) = expr {
+            let mut all_calls = Vec::new();
+            for arm in arms {
+                collect_service_call_paths_from_expr(&arm.body, &mut all_calls);
+            }
+            sites.push(MatchBranchScopeSite {
+                arm_count: arms.len(),
+                all_service_call_paths: all_calls,
+            });
+        }
+    });
     sites
 }
 
