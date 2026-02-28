@@ -7187,14 +7187,57 @@ fn collect_return_expr_leaves(
     bound_callable_sources: &HashMap<String, LoweredEndpoint>,
     bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    _module_name: &str,
-    _item_name: &str,
+    module_name: &str,
+    item_name: &str,
     _builder: &mut DagBuilder,
     leaves: &mut Vec<ReturnExprLeaf>,
     seen: &mut HashMap<(String, String), String>,
     has_unresolved: &mut bool,
 ) -> daglang_syntax::ast::Expr {
     use daglang_syntax::ast::Expr;
+
+    // Macro to recurse into sub-expressions (avoids closure borrow issues).
+    macro_rules! recurse {
+        ($sub:expr) => {
+            collect_return_expr_leaves(
+                $sub,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+                module_name,
+                item_name,
+                _builder,
+                leaves,
+                seen,
+                has_unresolved,
+            )
+        };
+    }
+
+    // Register a resolved (node_id, port) pair as a leaf input and
+    // return the rewritten Ident expression.
+    fn register_leaf(
+        node_id: String,
+        port: String,
+        leaves: &mut Vec<ReturnExprLeaf>,
+        seen: &mut HashMap<(String, String), String>,
+    ) -> Expr {
+        let key = (node_id.clone(), port.clone());
+        let input_name = seen
+            .entry(key)
+            .or_insert_with(|| {
+                let name = format!("input_{}", leaves.len());
+                leaves.push(ReturnExprLeaf {
+                    input_port: name.clone(),
+                    source_node: node_id,
+                    source_port: port,
+                });
+                name
+            })
+            .clone();
+        Expr::Ident(input_name)
+    }
 
     match expr {
         Expr::FieldAccess(base, field) => {
@@ -7207,40 +7250,18 @@ fn collect_return_expr_leaves(
                     bound_callable_sources,
                     bound_service_sources,
                     endpoints_by_name,
+                    module_name,
+                    item_name,
+                    _builder,
                 );
                 if let Some((node_id, port)) = resolved {
-                    let key = (node_id.clone(), port.clone());
-                    let input_name = seen
-                        .entry(key)
-                        .or_insert_with(|| {
-                            let name = format!("input_{}", leaves.len());
-                            leaves.push(ReturnExprLeaf {
-                                input_port: name.clone(),
-                                source_node: node_id,
-                                source_port: port,
-                            });
-                            name
-                        })
-                        .clone();
-                    return Expr::Ident(input_name);
+                    return register_leaf(node_id, port, leaves, seen);
                 }
                 // FieldAccess on a known base but unresolvable — bail
                 *has_unresolved = true;
             }
             // Recurse on base for nested field access
-            let new_base = collect_return_expr_leaves(
-                base,
-                param_types,
-                bound_callable_sources,
-                bound_service_sources,
-                endpoints_by_name,
-                _module_name,
-                _item_name,
-                _builder,
-                leaves,
-                seen,
-                has_unresolved,
-            );
+            let new_base = recurse!(base);
             Expr::FieldAccess(Box::new(new_base), field.clone())
         }
         Expr::Ident(name) => {
@@ -7251,22 +7272,12 @@ fn collect_return_expr_leaves(
                 bound_callable_sources,
                 bound_service_sources,
                 endpoints_by_name,
+                module_name,
+                item_name,
+                _builder,
             );
             if let Some((node_id, port)) = resolved {
-                let key = (node_id.clone(), port.clone());
-                let input_name = seen
-                    .entry(key)
-                    .or_insert_with(|| {
-                        let name = format!("input_{}", leaves.len());
-                        leaves.push(ReturnExprLeaf {
-                            input_port: name.clone(),
-                            source_node: node_id,
-                            source_port: port,
-                        });
-                        name
-                    })
-                    .clone();
-                return Expr::Ident(input_name);
+                return register_leaf(node_id, port, leaves, seen);
             }
             // Ident not in known sources — could be a literal/variant or
             // unresolvable. Mark if it looks like a variable reference.
@@ -7281,59 +7292,74 @@ fn collect_return_expr_leaves(
             expr.clone()
         }
         Expr::BinOp(lhs, op, rhs) => {
-            let new_lhs = collect_return_expr_leaves(
-                lhs,
-                param_types,
-                bound_callable_sources,
-                bound_service_sources,
-                endpoints_by_name,
-                _module_name,
-                _item_name,
-                _builder,
-                leaves,
-                seen,
-                has_unresolved,
-            );
-            let new_rhs = collect_return_expr_leaves(
-                rhs,
-                param_types,
-                bound_callable_sources,
-                bound_service_sources,
-                endpoints_by_name,
-                _module_name,
-                _item_name,
-                _builder,
-                leaves,
-                seen,
-                has_unresolved,
-            );
+            let new_lhs = recurse!(lhs);
+            let new_rhs = recurse!(rhs);
             Expr::BinOp(Box::new(new_lhs), op.clone(), Box::new(new_rhs))
         }
         Expr::UnaryOp(op, inner) => {
-            let new_inner = collect_return_expr_leaves(
-                inner,
-                param_types,
-                bound_callable_sources,
-                bound_service_sources,
-                endpoints_by_name,
-                _module_name,
-                _item_name,
-                _builder,
-                leaves,
-                seen,
-                has_unresolved,
-            );
+            let new_inner = recurse!(inner);
             Expr::UnaryOp(op.clone(), Box::new(new_inner))
         }
+        Expr::If(cond, then_expr, else_expr) => {
+            let new_cond = recurse!(cond);
+            let new_then = recurse!(then_expr);
+            let new_else = else_expr.as_ref().map(|e| Box::new(recurse!(e)));
+            Expr::If(Box::new(new_cond), Box::new(new_then), new_else)
+        }
+        Expr::Match(scrutinee, arms) => {
+            let new_scrutinee = recurse!(scrutinee);
+            let new_arms = arms
+                .iter()
+                .map(|arm| daglang_syntax::ast::MatchArm {
+                    pattern: arm.pattern.clone(),
+                    guard: arm.guard.as_ref().map(|g| recurse!(g)),
+                    body: recurse!(&arm.body),
+                })
+                .collect();
+            Expr::Match(Box::new(new_scrutinee), new_arms)
+        }
+        // Pipe expressions are NOT recursed into: pipe method evaluation at
+        // runtime has complex requirements (receiver type, lambda args) that
+        // the compute node evaluator can't always satisfy. Additionally, |>
+        // has the lowest precedence, so `x |> count() > 0` parses as
+        // `Pipe(x, BinOp(count(), >, 0))` which eval_pipe can't handle.
+        // These are better handled by the old return wiring path.
+        Expr::Pipe(..) => expr.clone(),
+        Expr::Call(name, args) => {
+            let new_args = args
+                .iter()
+                .map(|(label, arg)| (label.clone(), recurse!(arg)))
+                .collect();
+            Expr::Call(name.clone(), new_args)
+        }
+        Expr::Lambda(params, body) => {
+            // Lambda bodies introduce bound variables (e.g., `x` in `map(x => ...)`)
+            // that are NOT DAG node references. Recursing into the body would
+            // incorrectly flag lambda params as unresolved. Lambda closures over
+            // DAG nodes are a future enhancement (RT4b). For now, clone as-is.
+            let _ = (params, body);
+            expr.clone()
+        }
+        Expr::Record(name, fields) => {
+            let new_fields = fields
+                .iter()
+                .map(|(k, v)| (k.clone(), recurse!(v)))
+                .collect();
+            Expr::Record(name.clone(), new_fields)
+        }
+        // For expressions are effectful iteration — not suitable for compute
+        // node evaluation. Clone as-is so the old return wiring handles them.
+        Expr::For(..) => expr.clone(),
         Expr::Literal(_) | Expr::StringInterp(_) | Expr::List(_) | Expr::Map(_) => expr.clone(),
-        // For other expression types, clone as-is. The evaluator will
-        // handle them if they don't reference external nodes.
+        // Remaining expression types (Guarded, After, Return, ServiceCall)
+        // are not expected in return expressions. Clone as-is.
         _ => expr.clone(),
     }
 }
 
 /// Resolve a single leaf identifier (with optional field) to a DAG source
 /// node + port, using the same resolution logic as `resolve_return_expr_source`.
+#[allow(clippy::too_many_arguments)]
 fn resolve_leaf_source(
     name: &str,
     field: Option<&str>,
@@ -7341,6 +7367,9 @@ fn resolve_leaf_source(
     bound_callable_sources: &HashMap<String, LoweredEndpoint>,
     bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    module_name: &str,
+    item_name: &str,
+    builder: &DagBuilder,
 ) -> Option<(String, String)> {
     if let Some(field) = field {
         // FieldAccess: base.field — resolve base, use field as port
@@ -7357,8 +7386,18 @@ fn resolve_leaf_source(
     } else {
         // Ident: look up as param, callable, or service
         if param_types.contains_key(name) {
-            // Params are handled via ensure_param_source_node at a higher level.
-            // For now, skip — this path is for callable/service results.
+            // Parameters in `func` items are wired via ensure_param_source_node.
+            // Resolve to the existing param_source_* node so the compute node
+            // can wire an edge from it. For `fn` items (pure functions), no
+            // param source nodes exist — return None so the evaluator handles
+            // them directly.
+            let node_id = format!(
+                "param_source_{}",
+                sanitize_identifier(&format!("{module_name}_{item_name}_{name}"))
+            );
+            if builder.dag.get_node(&NodeId::new(&node_id)).is_some() {
+                return Some((node_id, name.to_string()));
+            }
             return None;
         }
         if let Some(source) = bound_callable_sources.get(name) {

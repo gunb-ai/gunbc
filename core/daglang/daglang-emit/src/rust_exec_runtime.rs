@@ -335,11 +335,13 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
             kind: PrimitiveOpKind::ContentUpsertOutputPath { .. },
             ..
         } => return None,
-        // RT4a: Return expression compute nodes are resolved at runtime.
+        // RT4a: Return expression compute nodes are resolved at runtime
+        // by the DAG executor. Classify as Passthrough so the emit pipeline
+        // recognizes them as valid nodes.
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::ReturnExprCompute { .. },
             ..
-        } => return None,
+        } => return Some(HandlerKind::Passthrough),
     }
 
     let (module, name, obligation) = match op {
