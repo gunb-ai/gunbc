@@ -10,6 +10,19 @@ The compiler was built by trial-and-error. The result: 93k lines of compiler cod
 serving 16k lines of DSL source. The ratio is wrong. The next phase makes the
 compiler conform to these principles (adapted from Google C++ style):
 
+### Target: Pure core library + imperative shell
+
+**Pure core** (deterministic, no env/filesystem reads):
+- `parse(source) -> Ast`
+- `typecheck(ast) -> TypedAst`
+- `lower(typed) -> LoweredDag`
+- `eval_fn_body(body, inputs, stdlib) -> Value`
+
+**Imperative shell** (CLI / tooling): filesystem, env vars, config resolution.
+Calls the pure core with explicit inputs. Renders errors consistently.
+
+### Six principles
+
 1. **Pure functions, imperative shell.** Business logic computes values; side effects
    happen at the boundary. The lowerer's 33 `&mut DagBuilder` functions violate this —
    every phase should return typed data, not mutate shared state.
@@ -20,22 +33,52 @@ compiler conform to these principles (adapted from Google C++ style):
 
 3. **Strong interfaces.** Types express contracts. Port types should be structured
    (not `ends_with('?')` string convention). Field access should be typed (not
-   `base__field` string encoding). State that can't exist shouldn't be representable.
+   `base__field` string encoding). Pipe methods are an enum, not a string allowlist.
+   Enums are values, not strings that get parsed later.
 
-4. **No "compile-then-eval" anti-pattern.** The `fidelity.rs` pattern (compile a .dag
-   file, extract fn bodies, call the evaluator at runtime) uses the compiler as an
-   ad-hoc interpreter. DSL declarations should compile to static data that Rust reads
-   directly — not require re-parsing and interpreting on every invocation.
+4. **Stdlib is a cached registry, not compile-on-demand.** The `fidelity.rs` pattern
+   (compile a .dag file, extract fn bodies, call the evaluator at runtime) is the
+   "compiler as eval server" anti-pattern. Replace with:
+   - **Tier 0**: Cache compiled fn bodies in `OnceLock` (immediate)
+   - **Tier 1**: Embed DSL source via `include_str!` (hermetic, no disk paths)
+   - **Tier 2**: Compile at build time to static table/artifact (no runtime compiler)
 
-5. **Minimal language core.** Language features (lambdas, pipe methods, match, optional
-   chaining) grew incrementally without design. Each feature is a special case in the
-   typechecker, lowerer, and evaluator. The existing features stay (15.7k lines of DSL
-   use them), but no new features should be added without proving they can't be expressed
-   with existing primitives.
+5. **Minimal language core.** Lambdas exist because the stdlib uses `fold`/`map`/`filter`.
+   They stay — but must be **constrained**: no capturing, no mutation, only as arguments
+   to a closed set of built-in combinators. New features are added only if they unlock
+   deletion of a Rust workaround, and come with tests at parse/typecheck/eval levels.
+   The core is kept small; sugar lowers early to the core.
 
 6. **Delete, don't relocate.** Every cleanup task should net-delete lines. Moving code
-   between files without simplification is not progress. If infrastructure exists to
-   serve a registry that's being deleted, the infrastructure goes too.
+   between files without simplification is not progress. Every workaround is a "debt
+   token" that must be paid back before adding more features. New features must delete
+   an existing workaround.
+
+### Decision: don't rewrite — strangler-refactor the lowerer
+
+A full rewrite would lose 3k+ tests and re-learn the same lessons. Instead:
+- Keep parser, typechecker, IR, emit backends, test infrastructure.
+- Build a new lowerer in parallel (behind a flag) using the pure-function design.
+- Run both lowerers on the full `.dag` corpus, diff their DAGs until convergent.
+- Switch over when parity is proven. Delete the old lowerer.
+
+This is the highest-ROI "start over" — targeted at the worst component, with the
+working system as the acceptance oracle.
+
+### Known split-brain: interpreted vs emitted runtime
+
+`ReturnExprCompute` nodes have runtime behavior in the interpreted executor
+(`ReturnExprComputeOp` evaluates `fn_body`) but are classified as `MetadataOnly`
+in the emitted Rust runtime (exec-runtime emission skips them). This means:
+- Interpreted execution: compute nodes evaluate correctly
+- Emitted execution: compute nodes are silently dropped → missing values
+
+This must be resolved before the emit path is used in production. Options:
+(a) Emitted runtime gets a handler that evaluates stored fn bodies, or
+(b) Lowerer guarantees no `ReturnExprCompute` nodes in graphs sent to emit
+    (compile error if they exist), or
+(c) Lowerer desugars complex return expressions into explicit DAG nodes
+    before they reach emit (the proper long-term solution).
 
 ## Design Principles
 
@@ -149,21 +192,36 @@ a silently incomplete graph.
 | B9 | **Lowerer: RT4a/4b/4c completion + RT38/RT39/RT43.** Complete return expression compute wiring (param refs — already started). Add nested field access. Replace panics with LowerError. Add structured LowerWarnings to return type. | Various lowerer improvements | **-200** (net, after adding warnings infrastructure) |
 | B10 | **Executor: delete dead heuristics.** Delete `looks_effectful_without_kind()` (dead after RT6). Delete credential expiry dead code paths that were never wired (RT91 analysis showed the plumbing exists but nothing calls it — delete the unused plumbing). | `core/exec/src/execute.rs` dead code, `core/ir/src/transport/credential.rs` unused paths | **-400** |
 
-**Lane B Total: ~9,150 LOC deleted/moved**
+| B11 | **Expr walker totality.** Audit every `match expr {` in daglang-lower for catch-all arms. Each must either handle the variant, recurse into sub-expressions, or emit a typed diagnostic. Delete all `_ => {}` in expression walkers. | `collect_expr_leaf_refs`, `remap_expr_idents`, `resolve_return_expr_source` catch-alls | **-200** |
+| B12 | **Typed leaf references.** Replace `PARAM_REF_SENTINEL` string encoding + `(String, String, String, String)` tuples with `LeafRef` enum: `Param { name, field: Option, ty }`, `Callable { endpoint, port }`, `Service { endpoint, port }`. Delete sentinel and `split_once("__")` decoding. | String encoding → typed enum | **-50** |
+| B13 | **Stdlib host + caching.** Replace "compile std/*.dag in random files" with a single cached stdlib interface using `OnceLock<HashMap<String, LoweredFnBody>>`. Embed stdlib DSL sources via `include_str!`. Delete per-module compilation wrappers (fidelity.rs compile_fidelity, pragma/dsl_render.rs equivalent). One stdlib host, one cache. | `core/codegen/src/fidelity.rs` compile-then-eval (~60 lines), similar patterns | **-200** |
+| B14 | **Pipe methods first-class in AST.** Delete `should_track_call_name()` string allowlist in `ast_utils.rs`. Replace with `PipeMethod` enum at parse boundary. Exhaustive match in typechecker and lowerer. Adding a new pipe method becomes a compile error at every consumer. (RT42) | `ast_utils.rs` allowlist (~40 lines), cross-layer string checks | **-100** |
+| B15 | **Typed enums end-to-end.** Finish `Value::Enum { ty, variant }` so fidelity/test classification returns structured enums. Delete `TestClass::parse()` / `FermiCost::parse()` string round-trips. Replace `unwrap_or(TestClass::Unit)` silent fallbacks with explicit errors. (RT45+RT46) | Parse round-trips (~30 lines), silent fallbacks (~10 lines) | **-50** |
+| B16 | **Transport class in node metadata.** Store `ServiceTransportClass` explicitly during lowering instead of deriving it from node-id substring heuristics (`node_id.contains("shell")`). Registry gen reads metadata, not names. | `registry_gen.rs` heuristic inference (~40 lines) | **-40** |
+| B17 | **Resolve ReturnExprCompute split-brain.** Emitted runtime classifies `ReturnExprCompute` as MetadataOnly (skipped), while interpreted executor evaluates them. Either: (a) emit handler, (b) compile error if emit path encounters them, or (c) desugar to explicit DAG nodes in lowerer. | Split-brain resolution | **0** (architecture fix) |
+| B18 | **Kill `propagate_to_param_sources`.** Param source nodes should not be separate boundary entrypoints. Fix boundary detection so generated CLI code doesn't need manual propagation. | `intercept.rs` propagation (~30 lines), `sdlc.rs`/CLI manual wiring | **-100** |
+
+**Lane B Total: ~10,290 LOC deleted/moved**
 
 ### Lane B Dependency Chain
 
 ```
-B1 (context extraction) ───→ B2 (scope.rs integration) ───→ B3 (transport extraction) ───→ B9 (RT4a completion)
-B4 (dead scaffolding) ────────────────────────────────────────────────────────────────────┘
+B1 (context extraction) ───→ B2 (scope.rs integration) ───→ B3 (transport extraction)
+B4 (dead scaffolding) ──────────────────────────────────────→ B9 (RT4a completion)
 B5 (fail-closed audit) ──→ B6 (resolve extraction to core/)
                            B7 (testgen extraction to core/)
                            B8 (mock defaults split)
 B10 (executor dead code) ─┘
+B11 (expr totality) ──→ B12 (typed leaf refs) ──→ B17 (split-brain)
+B13 (stdlib host) ─────→ B15 (typed enums)
+B14 (pipe method enum)
+B16 (transport metadata)
+B18 (param source boundary)
 ```
 
-B1 and B4 can start immediately in parallel. B5 can start immediately.
-B6/B7/B8 can start after B5 (or in parallel with each other).
+B1, B4, B5, B11, B13, B14, B16, B18 can all start immediately.
+Highest priority: B13 (stdlib host) stops the compile-then-eval pattern from spreading.
+Highest ROI: B17 (split-brain) prevents runtime correctness divergence.
 
 ---
 
@@ -240,5 +298,5 @@ Elevating priority: B2 should run early in Lane B to close this gap.
 | Lane | Theme | LOC Deleted | Files Deleted | Files Moved |
 |------|-------|-------------|---------------|-------------|
 | **A** | Substrate Deletion | ~12,900 | ~25 .rs files | 0 |
-| **B** | Compiler Hardening | ~9,400 | ~5 .rs files | ~10 .rs files to core/ |
-| **Total** | | **~22,300** | ~30 | ~10 |
+| **B** | Compiler Hardening | ~10,290 | ~5 .rs files | ~10 .rs files to core/ |
+| **Total** | | **~23,190** | ~30 | ~10 |

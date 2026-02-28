@@ -277,11 +277,27 @@ This refactor subsumes or enables several pending tasks:
 | `tests.rs` (existing) | 3,275 | ~4,000 | Per-phase test modules |
 | **Total** | **~14,000** | **~12,000** | Net reduction from dedup + dead code |
 
-## 8. Risk Mitigation
+## 8. Execution Strategy: Strangler Refactor
+
+Don't rewrite — build the new lowerer alongside the old one and prove parity.
+
+1. New lowerer lives behind `lower_typed_project_v2()` (or feature flag)
+2. Parity test: compile every `.dag` module through both lowerers, diff DAGs
+3. CI runs both paths; failures in v2 are non-blocking until parity proven
+4. When v2 produces identical DAGs for the full corpus: delete v1
+
+**Why this works**: the existing 3k+ tests and 316 CLI command tests serve as
+the acceptance oracle. The new lowerer doesn't need its own integration tests
+until it replaces the old one — it just needs to produce identical output.
+
+**Why not a clean-room rewrite**: a rewrite without an acceptance suite tends
+to recreate the same ad-hoc decisions. The parity approach forces the new code
+to handle every case the old code handles, discovered by running real DSL.
+
+## 9. Risk Mitigation
 
 **Risk**: Snapshot tests break during extraction.
-**Mitigation**: Each wave has a parity test: compile all `.dag` modules,
-compare `Dag<LoweredOp>` output byte-for-byte with the imperative pipeline.
+**Mitigation**: Each wave has a parity test (see above).
 
 **Risk**: Performance regression from intermediate allocations.
 **Mitigation**: Profile before/after. `Vec<DerivedEdge>` allocation is small
@@ -292,10 +308,10 @@ relative to the type-checking and parsing work. If needed, use arena allocation.
 edges, (4c) auth edges, (4d) return wiring. Each sub-wave is independently
 shippable.
 
-## 9. Non-Goals
+## 10. Non-Goals
 
 - **Changing the pipeline interface**: `lower_typed_project(&TypedProject) -> Result<Dag<LoweredOp>, LowerError>` stays the same.
-- **Rewriting the emitter**: The emit layer is already relatively pure.
+- **Rewriting the parser or typechecker**: These are adequate. Effort goes to the lowerer.
 - **Changing the IR types**: `Dag<LoweredOp>`, `Node`, `Edge`, `Port` stay as-is.
-- **Parallelizing phases**: The pure-function architecture enables this, but
-  it's not a goal for this refactor. Sequential composition is fine.
+- **Adding language features**: The refactor improves how existing features are lowered,
+  not what features exist. Every new feature must delete a workaround first.
