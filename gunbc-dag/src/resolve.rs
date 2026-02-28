@@ -331,15 +331,15 @@ impl Executable for LiteralSourceOp {
     }
 }
 
-/// RT4a: Compute node for complex return expressions (BinOp, UnaryOp, etc.).
+/// Compute node for lowered expression evaluation.
 /// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
 #[derive(Debug, Clone)]
-struct ReturnExprComputeOp {
+struct ExprComputeOp {
     fn_body: daglang_lower::LoweredFnBody,
     output_port: String,
 }
 
-impl Executable for ReturnExprComputeOp {
+impl Executable for ExprComputeOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let sibling_fns = HashMap::new();
         let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &inputs, &sibling_fns)
@@ -681,13 +681,12 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
-        // RT4a: Compute nodes evaluate complex return expressions via fn body evaluation.
-        PrimitiveOpKind::ReturnExprCompute { fn_body } => {
+        PrimitiveOpKind::ExprCompute { fn_body } => {
             let output_port = outputs
                 .first()
                 .map(|port| port.name.0.clone())
                 .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(ReturnExprComputeOp {
+            Ok(DynOp::new(ExprComputeOp {
                 fn_body: *fn_body.clone(),
                 output_port,
             }))

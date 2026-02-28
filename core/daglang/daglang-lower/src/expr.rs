@@ -16,6 +16,24 @@ pub struct LoweredFnBody {
     pub stmts: Vec<LoweredStmt>,
 }
 
+/// Typed reference to an expression leaf source used by lowerer wiring.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeafRef {
+    Param {
+        name: String,
+        field: Option<String>,
+        ty: String,
+    },
+    Callable {
+        endpoint: String,
+        port: String,
+    },
+    Service {
+        endpoint: String,
+        port: String,
+    },
+}
+
 /// A lowered statement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoweredStmt {
