@@ -38,18 +38,23 @@ pub mod makegen;
 pub mod mock_defaults;
 pub mod policy;
 pub mod pragma;
+pub mod resource_defs;
 pub mod resolve;
 pub mod resolve_service;
-pub mod resources;
 pub mod testgen_dag;
 pub mod tool_runner;
 pub mod workflow;
+
+// Compatibility re-export: resource APIs moved from resources.rs to resource_defs.rs.
+pub mod resources {
+    pub use crate::resource_defs::*;
+}
 // Re-exports for convenience
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp};
 pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp};
 pub use codegen::{build_codegen_graph, codegen_signature, CodegenGraphOp};
-pub use docgen::{build_docgen_graph, DocgenGraphOp, DocgenReadTarget, DOCGEN_READ_TARGETS};
+pub use docgen::{build_docgen_graph, DocgenGraphOp};
 pub use dry_run::wire_fs_env_write_mock;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
@@ -65,7 +70,7 @@ pub use makegen::{
 };
 pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp};
 pub use resolve::{resolve_lowered_dag, ResolveError};
-pub use resources::{
+pub use resource_defs::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
