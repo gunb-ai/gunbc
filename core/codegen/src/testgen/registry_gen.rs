@@ -8,10 +8,9 @@
 //! # Design
 //!
 //! Transport nodes in the DAG follow the prepare→execute→parse triplet
-//! pattern. The execute node's request type (`TransportRequest` variant)
-//! determines the transport class. Since request types aren't directly
-//! stored on nodes, we use the naming convention: node IDs contain
-//! the service operation which maps to a transport class.
+//! pattern. The execute node's request/response types determine the transport
+//! class. For lowered DAGs, we read `ServiceTransportClass` metadata directly
+//! from `LoweredOp`; type-based fallback is only for non-lowered test DAGs.
 //!
 //! The derived config is used by `build_fidelity_ladder_section()` to
 //! generate S-tier test code that installs a `VirtualTransportBackend`
@@ -41,41 +40,17 @@ pub enum TransportClass {
 }
 
 impl TransportClass {
-    /// Classify a transport node by examining its port types and node ID.
-    fn from_node_context(node_id: &str, input_type: Option<&str>, output_type: Option<&str>) -> Self {
-        // Check explicit request/response types first.
+    /// Classify a transport node by examining explicit request/response types.
+    fn from_node_context(_node_id: &str, input_type: Option<&str>, output_type: Option<&str>) -> Self {
         match (input_type, output_type) {
             (Some("TcpRequest"), _) | (_, Some("TcpResponse")) => return Self::Tcp,
+            (Some("ShellRequest"), _) | (_, Some("ShellResponse")) => return Self::Shell,
+            (Some("FileRequest"), _) | (_, Some("FileResponse")) => return Self::File,
+            (Some("HttpRequest"), _) | (_, Some("HttpResponse")) => return Self::Http,
+            (Some("LocalRequest"), _) | (_, Some("LocalResponse")) => return Self::Local,
             _ => {}
         }
-
-        // Infer from node ID naming convention.
-        // Transport triplet nodes follow: execute_<operation> or
-        // service_transport::execute::<provider>.<service>::<operation>
-        let lower = node_id.to_lowercase();
-        if lower.contains("rest") || lower.contains("http_stub") {
-            return Self::Rest;
-        }
-        if lower.contains("shell")
-            || lower.contains("cargo")
-            || lower.contains("git::")
-            || lower.contains("_git_")
-            || lower.starts_with("git_")
-            || lower.ends_with("_git")
-        {
-            return Self::Shell;
-        }
-        if lower.contains("file") || lower.contains("fs::") || lower.contains("content_upsert") {
-            return Self::File;
-        }
-        if lower.contains("tcp") {
-            return Self::Tcp;
-        }
-        if lower.contains("local") {
-            return Self::Local;
-        }
-
-        // Default: REST (most common for service operations).
+        // Default: REST (most common transport class).
         Self::Rest
     }
 }
@@ -204,7 +179,7 @@ mod tests {
     use gunbc_ir::{Dag, Node};
 
     #[test]
-    fn classify_rest_from_node_id() {
+    fn classify_rest_from_unknown_types_defaults_to_rest() {
         assert_eq!(
             TransportClass::from_node_context("service_transport::execute::github.Gist::Create", None, None),
             TransportClass::Rest
@@ -212,25 +187,17 @@ mod tests {
     }
 
     #[test]
-    fn classify_shell_from_node_id() {
+    fn classify_shell_from_port_types() {
         assert_eq!(
-            TransportClass::from_node_context("execute_cargo_build", None, None),
-            TransportClass::Shell
-        );
-        assert_eq!(
-            TransportClass::from_node_context("service_transport::execute::git::Status", None, None),
+            TransportClass::from_node_context("execute_shell", Some("ShellRequest"), Some("ShellResponse")),
             TransportClass::Shell
         );
     }
 
     #[test]
-    fn classify_file_from_node_id() {
+    fn classify_file_from_port_types() {
         assert_eq!(
-            TransportClass::from_node_context("execute_file_read", None, None),
-            TransportClass::File
-        );
-        assert_eq!(
-            TransportClass::from_node_context("execute_content_upsert", None, None),
+            TransportClass::from_node_context("execute_file", Some("FileRequest"), Some("FileResponse")),
             TransportClass::File
         );
     }
@@ -272,8 +239,8 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "execute_git_status",
-                vec![port("request", "TransportRequest")],
-                vec![port("response", "TransportResponse")],
+                vec![port("request", "ShellRequest")],
+                vec![port("response", "ShellResponse")],
                 (),
             )
             .with_kind(NodeKind::TransportExecute),
@@ -281,8 +248,8 @@ mod tests {
         dag.add_node(
             Node::opaque(
                 "execute_file_read",
-                vec![port("request", "TransportRequest")],
-                vec![port("response", "TransportResponse")],
+                vec![port("request", "FileRequest")],
+                vec![port("response", "FileResponse")],
                 (),
             )
             .with_kind(NodeKind::TransportExecute),
