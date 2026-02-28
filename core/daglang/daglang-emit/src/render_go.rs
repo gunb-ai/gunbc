@@ -544,6 +544,7 @@ fn render_value_expr(expr: &ValueExpr) -> String {
             format!("{}{{ {} }}", name, field_strs.join(", "))
         }
         ValueExpr::Secret(s) => format!("NewSecret(\"{}\")", escape_go_str(s)),
+        ValueExpr::Enum { ty: _, variant } => format!("\"{}\"", escape_go_str(variant)),
         ValueExpr::Skipped => "nil /* skipped */".to_string(),
     }
 }

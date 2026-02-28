@@ -9,10 +9,13 @@
 //! Follows the proven pattern from `pragma/dsl_render.rs`.
 
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use daglang_derive::CallableProperties;
-use daglang_driver::{compile_from_context, DriverContext};
+use daglang_resolve::{ModuleGraph, ResolvedModule};
+use daglang_syntax::ast::ModulePath;
+use daglang_syntax::parser;
 use daglang_lower::{CallableKind, LoweredFnBody, LoweredOp, ServiceTransportClass};
 use gunbc_ir::node::NodeBody;
 use gunbc_ir::Value;
@@ -26,19 +29,96 @@ pub struct FidelityClassification {
     pub hermetic: bool,
 }
 
-/// Compile `std/fidelity.dag` and extract fn bodies (including transitive
-/// imports from `std/fermi.dag`).
-fn compile_fidelity() -> HashMap<String, LoweredFnBody> {
-    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dsl");
-    let dag_file = dsl_root.join("std/fidelity.dag");
-    let context = DriverContext {
-        roots: vec![dsl_root],
-        target_file: Some(dag_file),
-    };
-    let output = compile_from_context(&context).expect("std/fidelity.dag should compile");
+const STD_TYPES_SOURCE: &str = include_str!("../../../dsl/std/types.dag");
+const STD_FERMI_SOURCE: &str = include_str!("../../../dsl/std/fermi.dag");
+const STD_FIDELITY_SOURCE: &str = include_str!("../../../dsl/std/fidelity.dag");
+
+/// Embedded stdlib evaluator host with one-time compilation cache.
+struct StdLibHost {
+    fns: HashMap<String, LoweredFnBody>,
+}
+
+impl StdLibHost {
+    fn global() -> &'static Self {
+        static HOST: OnceLock<StdLibHost> = OnceLock::new();
+        HOST.get_or_init(|| StdLibHost {
+            fns: compile_stdlib_fns(),
+        })
+    }
+
+    fn eval_fn(&self, fn_name: &str, inputs: &HashMap<String, Value>) -> HashMap<String, Value> {
+        let body = self
+            .fns
+            .get(fn_name)
+            .unwrap_or_else(|| panic!("stdlib function `{fn_name}` not found"));
+        daglang_lower::eval::evaluate_fn_body(body, inputs, &self.fns)
+            .unwrap_or_else(|e| panic!("stdlib function `{fn_name}` failed to evaluate: {e}"))
+    }
+}
+
+fn parse_embedded_module(path: &Path, source: &str) -> (ModulePath, Vec<ModulePath>, daglang_syntax::ast::SourceFile) {
+    let ast = parser::parse_with_file_diagnostics(path, source)
+        .unwrap_or_else(|diags| panic!("failed to parse embedded stdlib module {path:?}: {diags:?}"));
+    let module_path = ast
+        .module_path
+        .as_ref()
+        .map(|mp| mp.node.clone())
+        .unwrap_or_else(|| panic!("embedded stdlib module {path:?} is missing `module` declaration"));
+    let imports = ast
+        .imports
+        .iter()
+        .map(|imp| imp.node.path.clone())
+        .collect::<Vec<_>>();
+    (module_path, imports, ast)
+}
+
+fn build_embedded_stdlib_graph() -> ModuleGraph {
+    let modules = vec![
+        (PathBuf::from("<stdlib>/std/types.dag"), STD_TYPES_SOURCE),
+        (PathBuf::from("<stdlib>/std/fermi.dag"), STD_FERMI_SOURCE),
+        (PathBuf::from("<stdlib>/std/fidelity.dag"), STD_FIDELITY_SOURCE),
+    ];
+
+    let mut parsed = Vec::new();
+    for (path, source) in modules {
+        let (module_path, imports, ast) = parse_embedded_module(path.as_path(), source);
+        parsed.push((path, module_path, imports, ast));
+    }
+
+    let mut index_by_module = HashMap::new();
+    for (idx, (_, module_path, _, _)) in parsed.iter().enumerate() {
+        index_by_module.insert(module_path.clone(), idx);
+    }
+
+    let mut resolved = Vec::new();
+    for (path, module_path, imports, ast) in parsed {
+        let mut dependencies = Vec::new();
+        for import in imports {
+            let dep = index_by_module.get(&import).copied().unwrap_or_else(|| {
+                panic!("embedded stdlib import `{}` missing from host graph", import.as_dotted())
+            });
+            dependencies.push(dep);
+        }
+        resolved.push(ResolvedModule {
+            path,
+            ast,
+            module_path,
+            dependencies,
+        });
+    }
+
+    ModuleGraph { modules: resolved }
+}
+
+fn compile_stdlib_fns() -> HashMap<String, LoweredFnBody> {
+    let graph = build_embedded_stdlib_graph();
+    let typed = daglang_typecheck::typecheck_module_graph(graph)
+        .unwrap_or_else(|errs| panic!("embedded stdlib typecheck failed: {errs:?}"));
+    let lowered = daglang_lower::lower_typed_project(&typed)
+        .unwrap_or_else(|e| panic!("embedded stdlib lowering failed: {e}"));
 
     let mut fns = HashMap::new();
-    for node in &output.lowered_dag.nodes {
+    for node in &lowered.nodes {
         if let NodeBody::Opaque(LoweredOp::Callable {
             kind: CallableKind::Fn,
             name,
@@ -49,20 +129,51 @@ fn compile_fidelity() -> HashMap<String, LoweredFnBody> {
             fns.insert(name.clone(), *body.clone());
         }
     }
-
     fns
 }
 
 /// Convert a `ServiceTransportClass` to the DSL `TransportClass` variant name.
 fn transport_class_to_dsl(tc: &ServiceTransportClass) -> Value {
-    Value::Str(match tc {
-        ServiceTransportClass::LocalDirect => "LocalDirect",
-        ServiceTransportClass::InterfaceStub => "InterfaceStub",
-        ServiceTransportClass::ShellLocal => "ShellLocal",
-        ServiceTransportClass::FileBoundary => "FileBoundary",
-        ServiceTransportClass::RestNetwork => "RestNetwork",
-        ServiceTransportClass::Unknown => "Unknown",
-    }.to_string())
+    Value::Enum {
+        ty: "TransportClass".to_string(),
+        variant: match tc {
+            ServiceTransportClass::LocalDirect => "LocalDirect",
+            ServiceTransportClass::InterfaceStub => "InterfaceStub",
+            ServiceTransportClass::ShellLocal => "ShellLocal",
+            ServiceTransportClass::FileBoundary => "FileBoundary",
+            ServiceTransportClass::RestNetwork => "RestNetwork",
+            ServiceTransportClass::Unknown => "Unknown",
+        }
+        .to_string(),
+    }
+}
+
+fn enum_variant(value: &Value) -> Option<&str> {
+    match value {
+        Value::Enum { variant, .. } => Some(variant.as_str()),
+        Value::Str(value) => Some(value.as_str()),
+        _ => None,
+    }
+}
+
+fn decode_test_class(value: Option<&Value>) -> TestClass {
+    match value.and_then(enum_variant) {
+        Some("Unit") => TestClass::Unit,
+        Some("Hermetic") => TestClass::Hermetic,
+        Some("Integration") => TestClass::Integration,
+        other => panic!("classify_transports returned invalid test_class: {:?}", other),
+    }
+}
+
+fn decode_fermi_cost(value: Option<&Value>) -> FermiCost {
+    match value.and_then(enum_variant) {
+        Some("Xs") => FermiCost::XS,
+        Some("S") => FermiCost::S,
+        Some("M") => FermiCost::M,
+        Some("L") => FermiCost::L,
+        Some("Xl") => FermiCost::XL,
+        other => panic!("classify_transports returned invalid depth: {:?}", other),
+    }
 }
 
 /// Classify a callable using DSL-evaluated `classify_transports()`.
@@ -71,7 +182,7 @@ fn transport_class_to_dsl(tc: &ServiceTransportClass) -> Value {
 /// classification pipeline in DSL — including fold-based max depth
 /// and all-hermetic checks.
 pub fn classify_callable(props: &CallableProperties) -> FidelityClassification {
-    let fns = compile_fidelity();
+    let stdlib = StdLibHost::global();
 
     let transports: Vec<Value> = props
         .transport_classes
@@ -82,32 +193,10 @@ pub fn classify_callable(props: &CallableProperties) -> FidelityClassification {
     let mut inputs = HashMap::new();
     inputs.insert("transports".to_string(), Value::List(transports));
 
-    let body = fns
-        .get("classify_transports")
-        .expect("classify_transports fn body should exist in std/fidelity.dag");
-    let result = daglang_lower::eval::evaluate_fn_body(body, &inputs, &fns)
-        .expect("classify_transports should evaluate");
+    let result = stdlib.eval_fn("classify_transports", &inputs);
 
-    let test_class_value = result.get("test_class");
-    let test_class = test_class_value
-        .and_then(Value::as_str)
-        .and_then(TestClass::parse)
-        .unwrap_or_else(|| {
-            panic!(
-                "classify_transports returned invalid test_class: {:?}",
-                test_class_value
-            )
-        });
-    let depth_value = result.get("depth");
-    let fermi_cost = depth_value
-        .and_then(Value::as_str)
-        .and_then(FermiCost::parse)
-        .unwrap_or_else(|| {
-            panic!(
-                "classify_transports returned invalid depth: {:?}",
-                depth_value
-            )
-        });
+    let test_class = decode_test_class(result.get("test_class"));
+    let fermi_cost = decode_fermi_cost(result.get("depth"));
     let hermetic_value = result.get("hermetic");
     let hermetic = match hermetic_value {
         Some(Value::Bool(b)) => *b,

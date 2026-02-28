@@ -529,6 +529,18 @@ impl<M: TextMedium> RustCodeRenderer<M> {
                     format!("Value::Secret({})", inner)
                 }
             }
+            ValueExpr::Enum { ty, variant } => {
+                let escaped_ty = escape_rust_str(ty);
+                let escaped_variant = escape_rust_str(variant);
+                if bare {
+                    format!("\"{}\".to_string()", escaped_variant)
+                } else {
+                    format!(
+                        "Value::Enum {{ ty: \"{}\".to_string(), variant: \"{}\".to_string() }}",
+                        escaped_ty, escaped_variant
+                    )
+                }
+            }
             ValueExpr::Skipped => "Value::Skipped".to_string(),
         }
     }

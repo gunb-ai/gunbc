@@ -153,6 +153,13 @@ fn passthrough_fallback_value(port_name: &str, inputs: &HashMap<String, Value>) 
         Value::Secret(secret) => Value::Str(secret.to_string()),
         Value::Request(request) => Value::Str(format!("{request:?}")),
         Value::Response(response) => Value::Str(format!("{response:?}")),
+        Value::Enum { ty, variant } => {
+            if ty.is_empty() {
+                Value::Str(variant)
+            } else {
+                Value::Str(format!("{ty}.{variant}"))
+            }
+        }
         Value::Skipped => Value::Skipped,
     })
 }
@@ -170,6 +177,13 @@ fn passthrough_value_to_text(value: &Value) -> String {
         Value::Secret(value) => value.to_string(),
         Value::Request(value) => format!("{value:?}"),
         Value::Response(value) => format!("{value:?}"),
+        Value::Enum { ty, variant } => {
+            if ty.is_empty() {
+                variant.clone()
+            } else {
+                format!("{ty}.{variant}")
+            }
+        }
         Value::List(values) => format!("{values:?}"),
         Value::Set(values) => format!("{values:?}"),
         Value::Skipped => String::new(),

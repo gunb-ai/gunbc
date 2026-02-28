@@ -14,4 +14,7 @@ gunbc-cli = { path = "../cli" }
 daglang-derive = { path = "../daglang/daglang-derive" }
 daglang-driver = { path = "../daglang/daglang-driver" }
 daglang-lower = { path = "../daglang/daglang-lower" }
+daglang-resolve = { path = "../daglang/daglang-resolve" }
+daglang-syntax = { path = "../daglang/daglang-syntax" }
+daglang-typecheck = { path = "../daglang/daglang-typecheck" }
 serde_json = { workspace = true }

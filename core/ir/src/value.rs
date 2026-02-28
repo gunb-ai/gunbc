@@ -169,6 +169,11 @@ pub enum Value {
     Response(TransportResponse),
     /// Secret value (redacted in logs/display, exposed only at I/O boundaries)
     Secret(SecretString),
+    /// Typed enum variant (sum-type unit variant).
+    ///
+    /// `ty` is the enum type name (e.g., "TestClass"), and `variant` is the
+    /// selected variant (e.g., "Hermetic").
+    Enum { ty: String, variant: String },
     /// Node was skipped (guard evaluated to false)
     Skipped,
 }
@@ -192,6 +197,7 @@ pub enum ValueKind {
     TransportRequest,
     TransportResponse,
     Secret,
+    Enum,
     Skipped,
 }
 
@@ -212,6 +218,7 @@ impl ValueKind {
             ValueKind::TransportRequest => "TransportRequest",
             ValueKind::TransportResponse => "TransportResponse",
             ValueKind::Secret => "Secret",
+            ValueKind::Enum => "Enum",
             ValueKind::Skipped => "Skipped",
         }
     }
@@ -240,6 +247,7 @@ impl Value {
             Value::Request(_) => ValueKind::TransportRequest,
             Value::Response(_) => ValueKind::TransportResponse,
             Value::Secret(_) => ValueKind::Secret,
+            Value::Enum { .. } => ValueKind::Enum,
             Value::Skipped => ValueKind::Skipped,
         }
     }
@@ -408,6 +416,7 @@ impl Value {
             Value::List(v) | Value::Set(v) => v.is_empty(),
             Value::Map(m) => m.is_empty(),
             Value::Secret(s) => s.is_empty(),
+            Value::Enum { .. } => false,
             Value::Bool(_)
             | Value::Int(_)
             | Value::Float(_)
@@ -705,6 +714,16 @@ impl PartialEq for Value {
             (Value::Request(a), Value::Request(b)) => a == b,
             (Value::Response(a), Value::Response(b)) => a == b,
             (Value::Secret(a), Value::Secret(b)) => a == b,
+            (
+                Value::Enum {
+                    ty: a_ty,
+                    variant: a_variant,
+                },
+                Value::Enum {
+                    ty: b_ty,
+                    variant: b_variant,
+                },
+            ) => a_ty == b_ty && a_variant == b_variant,
             (Value::Skipped, Value::Skipped) => true,
             _ => false,
         }
@@ -727,6 +746,7 @@ impl fmt::Display for Value {
             Value::Request(r) => write!(f, "<Request: {:?}>", std::mem::discriminant(r)),
             Value::Response(r) => write!(f, "<Response: {:?}>", std::mem::discriminant(r)),
             Value::Secret(_) => write!(f, "***"),
+            Value::Enum { ty, variant } => write!(f, "{ty}.{variant}"),
             Value::Skipped => write!(f, "<SKIPPED>"),
         }
     }
