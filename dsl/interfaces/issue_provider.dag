@@ -30,11 +30,14 @@ interface IssueProvider {
 
   capability discover(labels: List<String>, state: IssueState?)
     -> { issues: List<TrackedIssue> }
+    readonly
 
   // --- Single issue --------------------------------------------------------
 
   capability get(id: NonEmptyStr)
     -> { issue: TrackedIssue, found: Bool }
+    idempotent
+    readonly
 
   // --- Mutations -----------------------------------------------------------
 
@@ -43,6 +46,7 @@ interface IssueProvider {
 
   capability comment(id: NonEmptyStr, body: String, marker: NonEmptyStr?)
     -> { comment_id: NonEmptyStr, ok: Bool }
+    idempotent
 
   capability set_labels(id: NonEmptyStr, labels: List<String>)
     -> { ok: Bool }
@@ -54,6 +58,7 @@ interface IssueProvider {
 
   capability list_events(id: NonEmptyStr, since: String?)
     -> { events: List<IssueEvent> }
+    readonly
 
   // --- Behavioral contracts ------------------------------------------------
   //

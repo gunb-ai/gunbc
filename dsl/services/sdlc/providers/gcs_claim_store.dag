@@ -13,6 +13,16 @@
 //   - release: delete with `x-goog-if-generation-match: {generation}`
 //
 // Gap E resolution: generation-based CAS for multi-worker claim safety.
+//
+// CAS wiring status (as of 2026-02-28):
+//   The DSL declares CAS intent (generation parameters, 412 test scenarios),
+//   but the compiler does NOT yet inject x-goog-if-generation-match headers
+//   from input fields. The lowerer generates static headers only. Until
+//   parameterized header support exists, the Rust worker must construct the
+//   precondition header at runtime from the generation input. Tests mock the
+//   412 response, which validates parse-layer conflict handling, but the
+//   actual header injection is not compiler-verified.
+//   See: tasks.md RT-PC1 (parameterized header injection)
 
 module services.sdlc.providers.gcs_claim_store
 
@@ -59,6 +69,7 @@ service gcs.ClaimStore : ClaimStore {
       conflict: Bool
       lease_generation: Int
     }
+    idempotent
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=claims/\{issue_id\}/\{stage\}.json" }
   }
 
@@ -70,6 +81,7 @@ service gcs.ClaimStore : ClaimStore {
       generation: Int
     }
     output { accepted: Bool }
+    idempotent
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=claims/\{issue_id\}/\{stage\}.json" }
   }
 

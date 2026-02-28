@@ -26,6 +26,7 @@ interface ClaimStore {
     owner:        NonEmptyStr,
     lease_ttl_ms: Int
   ) -> { acquired: Bool, conflict: Bool, lease_generation: Int }
+    idempotent
 
   // Extend the expiry of an active lease.
   // Requires owner and generation to match the active lease.
@@ -35,6 +36,7 @@ interface ClaimStore {
     owner:        NonEmptyStr,
     generation:   Int
   ) -> { accepted: Bool }
+    idempotent
 
   // Release an active lease.
   // Requires owner and generation to match the active lease.

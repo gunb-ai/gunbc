@@ -15,6 +15,11 @@
 //   - Re-write with different content_hash: fails (conflict)
 //
 // Gap E resolution: GCS generation-based CAS for outcome safety.
+//
+// CAS wiring status (as of 2026-02-28):
+//   Same gap as gcs_claim_store.dag — the DSL declares CAS intent but the
+//   compiler does not inject precondition headers from input fields.
+//   See: tasks.md RT-PC1 (parameterized header injection)
 
 module services.sdlc.providers.gcs_outcome_ledger
 
@@ -49,6 +54,7 @@ service gcs.OutcomeLedger : OutcomeLedger {
       updated: Bool
       previous: StageOutcome?
     }
+    idempotent
     transport rest { method: PUT, path: "/upload/storage/v1/b/\{bucket\}/o?uploadType=media&name=outcomes/\{run_key\}/\{stage\}.json" }
   }
 
@@ -61,6 +67,8 @@ service gcs.OutcomeLedger : OutcomeLedger {
       found: Bool
       outcome: StageOutcome?
     }
+    idempotent
+    readonly
     transport rest { method: GET, path: "/storage/v1/b/\{bucket\}/o/outcomes%2F\{run_key\}%2F\{stage\}.json?alt=media" }
   }
 

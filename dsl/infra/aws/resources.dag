@@ -39,6 +39,8 @@ resource S3Bucket implements ObjectStorage {
   release {}
 
   capability read {
+    readonly
+    idempotent
     input { key: NonEmptyStr }
     output { content: Bytes, found: Bool }
   }
@@ -54,6 +56,8 @@ resource S3Bucket implements ObjectStorage {
   }
 
   capability list {
+    readonly
+    idempotent
     input { prefix: String }
     output { keys: List<NonEmptyStr> }
   }
@@ -128,6 +132,8 @@ resource LambdaFunction implements Compute {
   }
 
   capability get_url {
+    readonly
+    idempotent
     input {}
     output { url: Url }
     // Returns the function URL if configured
@@ -170,6 +176,8 @@ resource AwsSecret implements SecretStore {
   release {}
 
   capability read_value {
+    readonly
+    idempotent
     input {}
     output { value: Secret }
   }
@@ -185,6 +193,8 @@ resource AwsSecret implements SecretStore {
   }
 
   capability list_versions {
+    readonly
+    idempotent
     input {}
     output { versions: List<NonEmptyStr> }
   }
@@ -229,6 +239,7 @@ resource AwsIamRole implements Identity {
   release {}
 
   capability assume {
+    readonly
     input { scopes: List<String>, lifetime_seconds: Int = 3600 }
     output { token: Secret, expires_at: String }
     // AWS: maps to STS AssumeRole
@@ -284,6 +295,7 @@ resource SqsQueue implements Queue<String> {
   }
 
   capability subscribe {
+    readonly
     input {}
     output { messages: List<QueueMessage<String>> }
   }

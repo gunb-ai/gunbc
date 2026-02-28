@@ -8,6 +8,7 @@
     "services.shell",
     "services.cargo"
   ],
+  "_count_rationale": "Restored readonly on check/resolve capabilities and idempotent on cargo operations from pre-migration @annotations (2026-02-28).",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -26,11 +27,11 @@
       "service_transport_execute_targets": 7,
       "service_transport_external_targets": 4,
       "service_transport_hermetic_targets": 3,
-      "service_transport_idempotent_targets": 0,
+      "service_transport_idempotent_targets": 2,
       "service_transport_parse_targets": 7,
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 7,
-      "service_transport_readonly_targets": 3,
+      "service_transport_readonly_targets": 5,
       "total_obligations": 73,
       "transport_execution_targets": 7
     }

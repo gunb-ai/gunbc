@@ -33,12 +33,16 @@ module infra.core
 
 interface ObjectStorage {
   capability read(key: NonEmptyStr) -> { content: Bytes, found: Bool }
+    readonly
+    idempotent
 
   capability write(key: NonEmptyStr, content: Bytes) -> { ok: Bool }
 
   capability delete(key: NonEmptyStr) -> { ok: Bool }
 
   capability list(prefix: String) -> { keys: List<NonEmptyStr> }
+    readonly
+    idempotent
 
   // Behavioral contracts -- compiler generates verification tests for
   // every implementor (GCS, S3, Azure Blob).
@@ -62,6 +66,8 @@ interface Compute {
   capability invoke(path: String, body: Json) -> { response: Json, status: Int }
 
   capability get_url() -> { url: Url }
+    readonly
+    idempotent
 
   capability scale(min_instances: Int, max_instances: Int) -> { ok: Bool }
 
@@ -81,12 +87,16 @@ interface Compute {
 
 interface SecretStore {
   capability read_value() -> { value: Secret }
+    readonly
+    idempotent
 
   capability write_value(value: Secret) -> { ok: Bool, version: NonEmptyStr }
 
   capability rotate(new_value: Secret) -> { ok: Bool, new_version: NonEmptyStr }
 
   capability list_versions() -> { versions: List<NonEmptyStr> }
+    readonly
+    idempotent
 
   // Contracts
 }
@@ -127,6 +137,7 @@ interface Queue<T> {
   capability publish(message: T) -> { message_id: NonEmptyStr, ok: Bool }
 
   capability subscribe() -> { messages: List<QueueMessage<T>> }
+    readonly
 
   capability ack(message_id: NonEmptyStr) -> { ok: Bool }
 

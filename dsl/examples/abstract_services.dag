@@ -38,12 +38,20 @@ import std.types { FilePath }
 
 interface Storage {
   operation Get(key: String) -> { value: Bytes?, found: Bool }
+    idempotent
+    readonly
 
   operation Put(key: String, value: Bytes) -> { ok: Bool }
+    idempotent
+    readonly
 
   operation Delete(key: String) -> { ok: Bool }
+    idempotent
+    readonly
 
   operation List(prefix: String) -> { keys: List<String> }
+    idempotent
+    readonly
 
   // Behavioral contracts -- the compiler uses these for:
   //   1. Test generation (verify implementations obey the contract)
