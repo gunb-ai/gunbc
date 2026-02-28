@@ -388,6 +388,31 @@ impl Executable for LiteralSourceOp {
     }
 }
 
+/// RT4a: Compute node for complex return expressions (BinOp, UnaryOp, etc.).
+/// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
+#[derive(Debug, Clone)]
+struct ReturnExprComputeOp {
+    fn_body: daglang_lower::LoweredFnBody,
+    output_port: String,
+}
+
+impl Executable for ReturnExprComputeOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let sibling_fns = HashMap::new();
+        let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &inputs, &sibling_fns)
+            .map_err(|e| ExecError::new(e.message))?;
+        // The fn body returns { result: <value> }, extract and output it.
+        if let Some(value) = result.get(&self.output_port) {
+            OutputMap::new()
+                .value(self.output_port.as_str(), value.clone())
+                .ok()
+        } else {
+            // Fallback: return whatever the fn body produced.
+            Ok(result)
+        }
+    }
+}
+
 /// Standard resource kinds from `dsl/std/resources.dag`.
 ///
 /// Parsed once at resolution time (fail-fast). Unknown resource names
@@ -713,6 +738,17 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
+        // RT4a: Compute nodes evaluate complex return expressions via fn body evaluation.
+        PrimitiveOpKind::ReturnExprCompute { fn_body } => {
+            let output_port = outputs
+                .first()
+                .map(|port| port.name.0.clone())
+                .unwrap_or_else(|| "result".to_string());
+            Ok(DynOp::new(ReturnExprComputeOp {
+                fn_body: *fn_body.clone(),
+                output_port,
+            }))
+        }
     }
 }
 

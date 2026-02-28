@@ -202,6 +202,12 @@ pub enum PrimitiveOpKind {
     ContentUpsertOutputPath {
         path: String,
     },
+    /// A compute node that evaluates a complex return expression.
+    /// Created by the lowerer when return expressions contain BinOp,
+    /// UnaryOp, If, Match, etc. that can't be wired as simple edges.
+    ReturnExprCompute {
+        fn_body: Box<LoweredFnBody>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -303,6 +309,7 @@ impl PrimitiveOpKind {
             }
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
+            Self::ReturnExprCompute { .. } => ObligationCategory::None,
         }
     }
 }
@@ -7759,8 +7766,246 @@ fn resolve_return_expr_source(
             );
             Some((src, output_name.to_string()))
         }
-        _ => None,
+        // RT4a: Handle complex return expressions (BinOp, UnaryOp, If, Match, Pipe, etc.)
+        // by synthesizing a compute node that evaluates the expression at runtime.
+        _ => {
+            synthesize_return_expr_compute(
+                builder,
+                expr,
+                output_port,
+                output_name,
+                param_types,
+                bound_callable_sources,
+                bound_service_sources,
+                endpoints_by_name,
+                module_name,
+                item_name,
+                disambiguator,
+            )
+        }
     }
+}
+
+/// Collect all leaf expression references from a complex expression.
+/// Returns (input_port_name, source_node_id, source_port_name) triples.
+#[allow(clippy::too_many_arguments)]
+fn collect_expr_leaf_refs(
+    expr: &Expr,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    refs: &mut Vec<(String, String, String)>,
+    seen: &mut HashSet<String>,
+) {
+    match expr {
+        Expr::Ident(name) => {
+            let port_name = name.clone();
+            if seen.contains(&port_name) {
+                return;
+            }
+            if let Some(_param_ty) = param_types.get(name) {
+                // param refs handled separately via ensure_param_source_node
+            } else if let Some(source) = bound_callable_sources.get(name) {
+                seen.insert(port_name.clone());
+                refs.push((port_name, source.node_id.clone(), source.primary_output.clone()));
+            } else if let Some(source) = bound_service_sources.get(name) {
+                seen.insert(port_name.clone());
+                refs.push((port_name, source.parse.node_id.clone(), source.parse.primary_output.clone()));
+            } else if let Some(Some(source)) = endpoints_by_name.get(name) {
+                seen.insert(port_name.clone());
+                refs.push((port_name, source.node_id.clone(), source.primary_output.clone()));
+            }
+        }
+        Expr::FieldAccess(base, field) => {
+            if let Expr::Ident(base_ident) = base.as_ref() {
+                let port_name = format!("{base_ident}__{field}");
+                if seen.contains(&port_name) {
+                    return;
+                }
+                if let Some(source) = bound_callable_sources.get(base_ident) {
+                    seen.insert(port_name.clone());
+                    refs.push((port_name, source.node_id.clone(), field.clone()));
+                } else if let Some(source) = bound_service_sources.get(base_ident) {
+                    seen.insert(port_name.clone());
+                    refs.push((port_name, source.parse.node_id.clone(), field.clone()));
+                } else if let Some(Some(source)) = endpoints_by_name.get(base_ident) {
+                    seen.insert(port_name.clone());
+                    refs.push((port_name, source.node_id.clone(), field.clone()));
+                }
+            } else {
+                collect_expr_leaf_refs(base, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            }
+        }
+        Expr::BinOp(left, _, right) => {
+            collect_expr_leaf_refs(left, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(right, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+        }
+        Expr::UnaryOp(_, inner) => {
+            collect_expr_leaf_refs(inner, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+        }
+        Expr::If(cond, then_, else_) => {
+            collect_expr_leaf_refs(cond, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(then_, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            if let Some(e) = else_ {
+                collect_expr_leaf_refs(e, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            }
+        }
+        Expr::Pipe(receiver, call) => {
+            collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(call, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+        }
+        Expr::Match(scrutinee, arms) => {
+            collect_expr_leaf_refs(scrutinee, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            for arm in arms {
+                collect_expr_leaf_refs(&arm.body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            }
+        }
+        Expr::Call(_, args) => {
+            for (_, arg) in args {
+                collect_expr_leaf_refs(arg, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Remap AST expression identifiers to use compute node input port names.
+/// `FieldAccess(Ident("build"), "success")` becomes `Ident("build__success")`.
+fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
+    match expr {
+        Expr::FieldAccess(base, field) => {
+            if let Expr::Ident(base_ident) = base.as_ref() {
+                expr::LoweredExpr::Ident(format!("{base_ident}__{field}"))
+            } else {
+                expr::LoweredExpr::FieldAccess {
+                    expr: Box::new(remap_expr_idents(base)),
+                    field: field.clone(),
+                }
+            }
+        }
+        Expr::Ident(name) => expr::LoweredExpr::Ident(name.clone()),
+        Expr::BinOp(left, op, right) => expr::LoweredExpr::BinOp {
+            left: Box::new(remap_expr_idents(left)),
+            op: match op {
+                daglang_syntax::ast::BinOp::Add => expr::LoweredBinOp::Add,
+                daglang_syntax::ast::BinOp::Sub => expr::LoweredBinOp::Sub,
+                daglang_syntax::ast::BinOp::Mul => expr::LoweredBinOp::Mul,
+                daglang_syntax::ast::BinOp::Div => expr::LoweredBinOp::Div,
+                daglang_syntax::ast::BinOp::Mod => expr::LoweredBinOp::Mod,
+                daglang_syntax::ast::BinOp::Eq => expr::LoweredBinOp::Eq,
+                daglang_syntax::ast::BinOp::Ne => expr::LoweredBinOp::Ne,
+                daglang_syntax::ast::BinOp::Lt => expr::LoweredBinOp::Lt,
+                daglang_syntax::ast::BinOp::Gt => expr::LoweredBinOp::Gt,
+                daglang_syntax::ast::BinOp::Le => expr::LoweredBinOp::Le,
+                daglang_syntax::ast::BinOp::Ge => expr::LoweredBinOp::Ge,
+                daglang_syntax::ast::BinOp::And => expr::LoweredBinOp::And,
+                daglang_syntax::ast::BinOp::Or => expr::LoweredBinOp::Or,
+                daglang_syntax::ast::BinOp::NullCoalesce => expr::LoweredBinOp::NullCoalesce,
+            },
+            right: Box::new(remap_expr_idents(right)),
+        },
+        Expr::UnaryOp(op, inner) => expr::LoweredExpr::UnaryOp {
+            op: match op {
+                daglang_syntax::ast::UnaryOp::Not => expr::LoweredUnaryOp::Not,
+                daglang_syntax::ast::UnaryOp::Neg => expr::LoweredUnaryOp::Neg,
+            },
+            expr: Box::new(remap_expr_idents(inner)),
+        },
+        Expr::If(cond, then_, else_) => expr::LoweredExpr::IfElse {
+            cond: Box::new(remap_expr_idents(cond)),
+            then_: Box::new(remap_expr_idents(then_)),
+            else_: else_.as_ref().map(|e| Box::new(remap_expr_idents(e))),
+        },
+        Expr::Literal(lit) => {
+            let lowered = match lit {
+                daglang_syntax::ast::Literal::Int(n) => expr::LoweredLiteral::Int(*n),
+                daglang_syntax::ast::Literal::Bool(b) => expr::LoweredLiteral::Bool(*b),
+                daglang_syntax::ast::Literal::String(s) => expr::LoweredLiteral::String(s.clone()),
+                daglang_syntax::ast::Literal::None => expr::LoweredLiteral::None,
+                _ => expr::LoweredLiteral::None,
+            };
+            expr::LoweredExpr::Literal(lowered)
+        }
+        // For unsupported expression kinds, fall through to Ident placeholder
+        _ => expr::LoweredExpr::Literal(expr::LoweredLiteral::None),
+    }
+}
+
+/// Synthesize a compute node for a complex return expression.
+/// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
+#[allow(clippy::too_many_arguments)]
+fn synthesize_return_expr_compute(
+    builder: &mut DagBuilder,
+    expr: &Expr,
+    output_port: &Port,
+    output_name: &str,
+    param_types: &HashMap<String, String>,
+    bound_callable_sources: &HashMap<String, LoweredEndpoint>,
+    bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
+    endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
+    module_name: &str,
+    item_name: &str,
+    disambiguator: &str,
+) -> Option<(String, String)> {
+    // 1. Collect all leaf references from the expression tree.
+    let mut refs = Vec::new();
+    let mut seen = HashSet::new();
+    collect_expr_leaf_refs(
+        expr,
+        param_types,
+        bound_callable_sources,
+        bound_service_sources,
+        endpoints_by_name,
+        &mut refs,
+        &mut seen,
+    );
+
+    if refs.is_empty() {
+        return None;
+    }
+
+    // 2. Create input/output ports for the compute node.
+    let input_ports: Vec<Port> = refs
+        .iter()
+        .map(|(port_name, _, _)| Port::with_cardinality(port_name.as_str(), "Bool", Cardinality::ONE))
+        .collect();
+    let output_type = output_port.type_id.0.as_str();
+    let result_port_name = "result";
+    let output_ports = vec![Port::with_cardinality(result_port_name, output_type, Cardinality::ONE)];
+
+    // 3. Create the fn body from the remapped expression.
+    let lowered_expr = remap_expr_idents(expr);
+    let fn_body = LoweredFnBody {
+        stmts: vec![expr::LoweredStmt::Return(vec![
+            (result_port_name.to_string(), lowered_expr),
+        ])],
+    };
+
+    // 4. Create the compute node.
+    let node_id = format!(
+        "return_expr_compute_{}",
+        sanitize_identifier(&format!("{module_name}_{item_name}_{output_name}_{disambiguator}"))
+    );
+    builder.add_node(Node::opaque(
+        node_id.clone(),
+        input_ports,
+        output_ports,
+        LoweredOp::Primitive {
+            module: module_name.to_string(),
+            name: format!("return_expr_compute::{item_name}::{output_name}"),
+            kind: PrimitiveOpKind::ReturnExprCompute {
+                fn_body: Box::new(fn_body),
+            },
+        },
+    ));
+
+    // 5. Wire each leaf reference as an edge to the compute node.
+    for (port_name, source_node, source_port) in &refs {
+        builder.add_edge(source_node, source_port, &node_id, port_name);
+    }
+
+    Some((node_id, result_port_name.to_string()))
 }
 
 #[allow(clippy::too_many_arguments)]
