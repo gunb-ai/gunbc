@@ -373,7 +373,7 @@ fn cmd_cigen(dry_run: bool) {
         gunbc_exec::ExecutionMode::Real
     };
 
-    gunbc_exec::execute_and_display(&dag, mode, false, Some("written"), None);
+    gunbc_exec::execute_and_display(&dag, mode, false, None, None);
 }
 
 /// Resolve workspace package names to their directory paths using cargo metadata.
