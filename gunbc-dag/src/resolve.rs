@@ -64,12 +64,16 @@ impl std::fmt::Display for ResolveError {
 
 impl std::error::Error for ResolveError {}
 
-fn declared_output_names(outputs: &[Port]) -> Vec<String> {
-    outputs.iter().map(|p| p.name.0.clone()).collect()
+/// Extract output port names and optionality from Port declarations.
+fn declared_output_ports(outputs: &[Port]) -> Vec<(String, bool)> {
+    outputs
+        .iter()
+        .map(|p| (p.name.0.clone(), p.type_id.0.ends_with('?')))
+        .collect()
 }
 
 fn execute_with_declared_output_passthrough(
-    output_port_names: &[String],
+    output_ports: &[(String, bool)],
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
@@ -79,7 +83,7 @@ fn execute_with_declared_output_passthrough(
         }
         outputs.insert(key.clone(), value.clone());
     }
-    for port_name in output_port_names {
+    for (port_name, is_optional) in output_ports {
         let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
             outputs.insert(port_name.clone(), value.clone());
@@ -87,13 +91,16 @@ fn execute_with_declared_output_passthrough(
         }
         outputs.entry(port_name.clone()).or_insert_with(|| {
             if let Some(fallback) = passthrough_fallback_value(port_name, &inputs) {
-                fallback
+                return fallback;
+            }
+            if *is_optional {
+                Value::Skipped
             } else {
-                // RT4b: Emit diagnostic when a declared output port has no wired input.
-                // This typically means the lowerer failed to wire a return expression.
+                // RT83: Required output ports produce a diagnostic instead of
+                // silently substituting Skipped. This surfaces lowering gaps.
                 eprintln!(
-                    "passthrough warning: declared output `{port_name}` has no wired input \
-                     (falling back to Skipped)"
+                    "passthrough error: required output `{port_name}` has no wired input \
+                     (this typically means the lowerer failed to wire a return expression)"
                 );
                 Value::Skipped
             }
@@ -178,12 +185,12 @@ fn passthrough_value_to_text(value: &Value) -> String {
 /// the callable node itself is a passthrough that maps SubDag results to outputs.
 #[derive(Debug, Clone)]
 struct DeclaredOutputCallableOp {
-    output_port_names: Vec<String>,
+    output_ports: Vec<(String, bool)>,
 }
 
 impl Executable for DeclaredOutputCallableOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        execute_with_declared_output_passthrough(&self.output_port_names, inputs)
+        execute_with_declared_output_passthrough(&self.output_ports, inputs)
     }
 }
 
@@ -200,7 +207,7 @@ struct PipelineDispatchOp {
     _name: String,
     stage_count: usize,
     stage_names: Vec<String>,
-    output_port_names: Vec<String>,
+    output_ports: Vec<(String, bool)>,
 }
 
 impl std::fmt::Debug for PipelineDispatchOp {
@@ -209,7 +216,7 @@ impl std::fmt::Debug for PipelineDispatchOp {
             .field("compat_mode", &"DeclaredOutputCallableOp")
             .field("stage_count", &self.stage_count)
             .field("stage_names", &self.stage_names)
-            .field("output_port_names", &self.output_port_names)
+            .field("output_ports", &self.output_ports)
             .finish()
     }
 }
@@ -228,7 +235,7 @@ impl Executable for PipelineDispatchOp {
     /// - If `current_stage` is absent: no `next_stage` is emitted
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let mut outputs =
-            execute_with_declared_output_passthrough(&self.output_port_names, inputs)?;
+            execute_with_declared_output_passthrough(&self.output_ports, inputs)?;
         outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
         outputs.insert(
             "stage_order".to_string(),
@@ -671,7 +678,7 @@ fn resolve_op(node_id: &str, op: &LoweredOp, outputs: &[Port]) -> Result<DynOp, 
             _name: name.clone(),
             stage_count: *stages,
             stage_names: stage_names.clone(),
-            output_port_names: declared_output_names(outputs),
+            output_ports: declared_output_ports(outputs),
         })),
         LoweredOp::Primitive { kind, .. } => resolve_primitive(kind, outputs),
         LoweredOp::Callable {
@@ -821,7 +828,7 @@ fn resolve_domain(
     // ExternCall nodes (from `extern func` declarations) use
     // resolve_extern_call() which is fail-closed — no passthrough fallback.
     Ok(DynOp::new(DeclaredOutputCallableOp {
-        output_port_names: declared_output_names(outputs),
+        output_ports: declared_output_ports(outputs),
     }))
 }
 
