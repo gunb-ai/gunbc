@@ -8087,9 +8087,12 @@ fn collect_expr_leaf_refs(
                 if seen.contains(&port_name) {
                     return;
                 }
-                if param_types.contains_key(base_ident) {
-                    seen.insert(port_name.clone());
-                    refs.push((port_name, PARAM_REF_SENTINEL.to_string(), format!("{base_ident}__{field}"), "Any".to_string()));
+                if let Some(param_ty) = param_types.get(base_ident) {
+                    let base_port = base_ident.clone();
+                    if !seen.contains(&base_port) {
+                        seen.insert(base_port.clone());
+                        refs.push((base_port, PARAM_REF_SENTINEL.to_string(), base_ident.clone(), param_ty.clone()));
+                    }
                 } else if let Some(source) = bound_callable_sources.get(base_ident) {
                     seen.insert(port_name.clone());
                     refs.push((port_name, source.node_id.clone(), field.clone(), "Any".to_string()));
@@ -8133,7 +8136,40 @@ fn collect_expr_leaf_refs(
                 collect_expr_leaf_refs(arg, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
             }
         }
-        _ => {}
+        Expr::Record(_, fields) => {
+            for (_, field_expr) in fields {
+                collect_expr_leaf_refs(field_expr, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            }
+        }
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let daglang_syntax::ast::StringPart::Expr(inner) = part {
+                    collect_expr_leaf_refs(inner, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+                }
+            }
+        }
+        Expr::List(elems) => {
+            for elem in elems {
+                collect_expr_leaf_refs(elem, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            }
+        }
+        Expr::Lambda(_, body) => {
+            collect_expr_leaf_refs(body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+        }
+        Expr::For(_, iterable, _, body) => {
+            collect_expr_leaf_refs(iterable, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            collect_expr_leaf_refs(body, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+        }
+        Expr::Return(fields) => {
+            for (_, field_expr) in fields {
+                collect_expr_leaf_refs(field_expr, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen);
+            }
+        }
+        Expr::Literal(_)
+        | Expr::Map(_)
+        | Expr::ServiceCall(_, _)
+        | Expr::Guarded(_, _)
+        | Expr::After(_, _) => {}
     }
 }
 
@@ -8142,13 +8178,9 @@ fn collect_expr_leaf_refs(
 fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
     match expr {
         Expr::FieldAccess(base, field) => {
-            if let Expr::Ident(base_ident) = base.as_ref() {
-                expr::LoweredExpr::Ident(format!("{base_ident}__{field}"))
-            } else {
-                expr::LoweredExpr::FieldAccess {
-                    expr: Box::new(remap_expr_idents(base)),
-                    field: field.clone(),
-                }
+            expr::LoweredExpr::FieldAccess {
+                expr: Box::new(remap_expr_idents(base)),
+                field: field.clone(),
             }
         }
         Expr::Ident(name) => expr::LoweredExpr::Ident(name.clone()),
@@ -8194,7 +8226,20 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
             };
             expr::LoweredExpr::Literal(lowered)
         }
-        // For unsupported expression kinds, fall through to Ident placeholder
+        Expr::StringInterp(parts) => {
+            let lowered_parts = parts
+                .iter()
+                .map(|part| match part {
+                    daglang_syntax::ast::StringPart::Literal(s) => {
+                        expr::LoweredStringPart::Literal(s.clone())
+                    }
+                    daglang_syntax::ast::StringPart::Expr(e) => {
+                        expr::LoweredStringPart::Expr(remap_expr_idents(e))
+                    }
+                })
+                .collect();
+            expr::LoweredExpr::StringInterp(lowered_parts)
+        }
         _ => expr::LoweredExpr::Literal(expr::LoweredLiteral::None),
     }
 }

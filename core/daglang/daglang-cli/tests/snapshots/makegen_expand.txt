@@ -711,6 +711,7 @@ Nodes:
   - return_expr_compute_tools_makegen_resolve_meta_deps_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::resolve_meta_deps::return]
     inputs:
       * needs: List<ResourceNeed> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * result: List<String> (1)
   - param_source_tools_makegen_resolve_meta_deps_needs [primitive::CallParamSource { callable: "resolve_meta_deps", param: "needs" } tools.makegen.call_param_source::resolve_meta_deps::needs]
@@ -724,6 +725,7 @@ Nodes:
   - return_expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::resolve_meta_fix_deps::return]
     inputs:
       * needs: List<ResourceNeed> (1)
+      * res_targets: List<ResourceTargetEntry> (1)
     outputs:
       * result: List<String> (1)
   - param_source_tools_makegen_resolve_meta_fix_deps_needs [primitive::CallParamSource { callable: "resolve_meta_fix_deps", param: "needs" } tools.makegen.call_param_source::resolve_meta_fix_deps::needs]
@@ -731,6 +733,11 @@ Nodes:
       * needs: List<ResourceNeed> (1)
     outputs:
       * needs: List<ResourceNeed> (1)
+  - param_source_tools_makegen_resolve_meta_fix_deps_res_targets [primitive::CallParamSource { callable: "resolve_meta_fix_deps", param: "res_targets" } tools.makegen.call_param_source::resolve_meta_fix_deps::res_targets]
+    inputs:
+      * res_targets: List<ResourceTargetEntry> (1)
+    outputs:
+      * res_targets: List<ResourceTargetEntry> (1)
   - return_expr_compute_tools_makegen_apply_prefix_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::apply_prefix::return]
     inputs:
       * prefix: String? (1)
@@ -775,7 +782,7 @@ Nodes:
       * name: Any (1)
   - return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_meta_check_variant::return]
     inputs:
-      * meta__check_command: Any (1)
+      * meta: MetaTargetDef (1)
       * deps: Any (1)
     outputs:
       * result: String (1)
@@ -810,7 +817,7 @@ Nodes:
       * return: String (1)
   - return_expr_compute_tools_makegen_render_help_param_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_help_param::return]
     inputs:
-      * p__default: Any (1)
+      * p: EntrypointParam (1)
     outputs:
       * result: String (1)
   - param_source_tools_makegen_render_help_param_p [primitive::CallParamSource { callable: "render_help_param", param: "p" } tools.makegen.call_param_source::render_help_param::p]
@@ -1080,8 +1087,7 @@ Nodes:
       * bindings: Json (1)
   - return_expr_compute_std_filesystem_skip_reason_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.filesystem.return_expr_compute::skip_reason::return]
     inputs:
-      * entry__kind: Any (1)
-      * entry__symlink_target: Any (1)
+      * entry: FileEntry (1)
     outputs:
       * result: String (1)
   - param_source_std_filesystem_skip_reason_entry [primitive::CallParamSource { callable: "skip_reason", param: "entry" } std.filesystem.call_param_source::skip_reason::entry]
@@ -1222,9 +1228,11 @@ Edges:
   - return_expr_compute_tools_makegen_resolve_resource_target_return_return_0.result -> tools.makegen::resolve_resource_target.__out:return
   - param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets -> tools.makegen::resolve_resource_target.res_targets
   - param_source_tools_makegen_resolve_meta_deps_needs.needs -> return_expr_compute_tools_makegen_resolve_meta_deps_return_return_0.needs
+  - param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets -> return_expr_compute_tools_makegen_resolve_meta_deps_return_return_0.res_targets
   - return_expr_compute_tools_makegen_resolve_meta_deps_return_return_0.result -> tools.makegen::resolve_meta_deps.__out:return
   - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1.mode -> tools.makegen::resolve_resource_target.mode
   - param_source_tools_makegen_resolve_meta_fix_deps_needs.needs -> return_expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0.needs
+  - param_source_tools_makegen_resolve_meta_fix_deps_res_targets.res_targets -> return_expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0.res_targets
   - return_expr_compute_tools_makegen_resolve_meta_fix_deps_return_return_0.result -> tools.makegen::resolve_meta_fix_deps.__out:return
   - param_source_tools_makegen_apply_prefix_prefix.prefix -> return_expr_compute_tools_makegen_apply_prefix_return_return_0.prefix
   - param_source_tools_makegen_apply_prefix_cmd.cmd -> return_expr_compute_tools_makegen_apply_prefix_return_return_0.cmd
@@ -1238,7 +1246,7 @@ Edges:
   - param_source_tools_makegen_render_meta_fix_variant_res_targets.res_targets -> tools.makegen::resolve_meta_fix_deps.res_targets
   - literal_source_tools_makegen_render_meta_fix_variant_name_fn_0.name -> tools.makegen::render_target.name
   - tools.makegen::render_target.return -> tools.makegen::render_meta_fix_variant.__out:return
-  - param_source_tools_makegen_render_meta_check_variant_meta.check_command -> return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0.meta__check_command
+  - param_source_tools_makegen_render_meta_check_variant_meta.meta -> return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0.meta
   - tools.makegen::resolve_meta_deps.return -> return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0.deps
   - return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0.result -> tools.makegen::render_meta_check_variant.__out:return
   - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_base.meta
@@ -1251,7 +1259,7 @@ Edges:
   - literal_source_tools_makegen_render_meta_targets_title_fn_0.title -> tools.makegen::render_section_header.title
   - param_source_tools_makegen_render_meta_targets_res_targets.res_targets -> tools.makegen::render_meta_target.res_targets
   - literal_source_tools_makegen_render_meta_targets_return_return_0.return -> tools.makegen::render_meta_targets.__out:return
-  - param_source_tools_makegen_render_help_param_p.default -> return_expr_compute_tools_makegen_render_help_param_return_return_0.p__default
+  - param_source_tools_makegen_render_help_param_p.p -> return_expr_compute_tools_makegen_render_help_param_return_return_0.p
   - return_expr_compute_tools_makegen_render_help_param_return_return_0.result -> tools.makegen::render_help_param.__out:return
   - param_source_tools_makegen_render_help_params_params.params -> return_expr_compute_tools_makegen_render_help_params_return_return_0.params
   - return_expr_compute_tools_makegen_render_help_params_return_return_0.result -> tools.makegen::render_help_params.__out:return
@@ -1338,8 +1346,7 @@ Edges:
   - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__out:token
   - literal_source_std_patterns_check_iam_binding_has_role_return_0.has_role -> std.patterns::check_iam_binding.__out:has_role
   - param_source_std_patterns_add_iam_binding_bindings.bindings -> std.patterns::add_iam_binding.__out:updated_bindings
-  - param_source_std_filesystem_skip_reason_entry.kind -> return_expr_compute_std_filesystem_skip_reason_return_return_0.entry__kind
-  - param_source_std_filesystem_skip_reason_entry.symlink_target -> return_expr_compute_std_filesystem_skip_reason_return_return_0.entry__symlink_target
+  - param_source_std_filesystem_skip_reason_entry.entry -> return_expr_compute_std_filesystem_skip_reason_return_return_0.entry
   - return_expr_compute_std_filesystem_skip_reason_return_return_0.result -> std.filesystem::skip_reason.__out:return
   - acquire_resource_std_resources_Filesystem.resource_handle -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
