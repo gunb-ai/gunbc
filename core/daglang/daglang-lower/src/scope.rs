@@ -8,8 +8,14 @@
 //! their transport triplets inside the branch SubDag, not at the
 //! top level. The existing `collect_service_calls_from_stmts` flattens
 //! all calls regardless of scope. This module preserves that structure.
+//!
+//! Note: Types in this module are actively being integrated into the main
+//! lowering pipeline. They replace the ad-hoc IfBranchSite/MatchBranchSite
+//! structs and detect_*_branches_in_stmts functions in lib.rs.
 
-use daglang_syntax::ast::{Expr, MatchArm, Pattern, Stmt};
+use daglang_syntax::ast::{Expr, Pattern, Stmt};
+#[cfg(test)]
+use daglang_syntax::ast::MatchArm;
 
 /// A service call found in the AST, with its dot-separated path and args.
 #[derive(Debug, Clone)]

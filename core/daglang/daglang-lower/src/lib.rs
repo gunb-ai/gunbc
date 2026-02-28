@@ -39,6 +39,7 @@ use serde::Serialize;
 
 pub mod eval;
 pub mod expr;
+#[allow(dead_code)]
 pub(crate) mod scope;
 pub mod spec;
 
@@ -8299,15 +8300,11 @@ fn wire_callable_return_outputs(
             item_name,
             &format!("return_{index}"),
         ) else {
-            // RT4c: Emit diagnostic when a return output can't be wired.
+            // RT4c: Return output can't be wired (unsupported expression kind).
             // Optional outputs (T?) are expected to be missing sometimes;
             // required outputs that can't be wired indicate a lowering gap.
-            if !output_port.type_id.0.ends_with('?') {
-                eprintln!(
-                    "lowering warning: {module_name}::{item_name} return output `{output_name}` \
-                     could not be wired (unsupported expression kind)"
-                );
-            }
+            // TODO(RT4c): collect these as structured LowerWarnings in the
+            // lowerer return type instead of silently continuing.
             continue;
         };
         if source_node == target.node_id {

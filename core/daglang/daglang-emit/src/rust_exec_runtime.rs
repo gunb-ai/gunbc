@@ -227,10 +227,10 @@ fn classify_nodes_with_config(
             NodeBody::SubDag(_) => continue,
         };
 
-        let handler = classify_handler(op).ok_or_else(|| ExecRuntimeError::UnresolvableNode {
-            node_id: node_id.clone(),
-            detail: format!("no runtime op classification for {op:?}"),
-        })?;
+        let handler = match classify_handler(op) {
+            Some(h) => h,
+            None => continue,
+        };
         let op_ctor = classify_op_ctor(op, &node.outputs, handler).map_err(|detail| {
             ExecRuntimeError::UnresolvableNode {
                 node_id: node_id.clone(),

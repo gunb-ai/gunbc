@@ -717,6 +717,11 @@ Nodes:
   - literal_source_tools_makegen_render_meta_fix_variant_name_fn_0 [primitive::CallLiteralSource { literal: String("{meta.name}-fix") } tools.makegen.call_literal_source::strhex:7b6d6574612e6e616d657d2d666978]
     outputs:
       * name: Any (1)
+  - return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_meta_check_variant::return]
+    inputs:
+      * deps: Bool (1)
+    outputs:
+      * result: String (1)
   - param_source_tools_makegen_render_meta_target_meta [primitive::CallParamSource { callable: "render_meta_target", param: "meta" } tools.makegen.call_param_source::render_meta_target::meta]
     inputs:
       * meta: MetaTargetDef (1)
@@ -837,6 +842,16 @@ Nodes:
       * paths: List<FilePath> (1)
     outputs:
       * paths: List<FilePath> (1)
+  - return_expr_compute_std_patterns_classify_files_readable_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.patterns.return_expr_compute::classify_files::readable]
+    inputs:
+      * partitioned__readable: Bool (1)
+    outputs:
+      * result: List<FilePath> (1)
+  - return_expr_compute_std_patterns_classify_files_skipped_return_1 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.patterns.return_expr_compute::classify_files::skipped]
+    inputs:
+      * partitioned__skipped: Bool (1)
+    outputs:
+      * result: List<FilePath> (1)
   - param_source_std_patterns_acquire_subject_token_audience [primitive::CallParamSource { callable: "acquire_subject_token", param: "audience" } std.patterns.call_param_source::acquire_subject_token::audience]
     inputs:
       * audience: NonEmptyStr (1)
@@ -1059,6 +1074,8 @@ Edges:
   - param_source_tools_makegen_render_meta_fix_variant_res_targets.res_targets -> tools.makegen::resolve_meta_fix_deps.res_targets
   - literal_source_tools_makegen_render_meta_fix_variant_name_fn_0.name -> tools.makegen::render_target.name
   - tools.makegen::render_target.return -> tools.makegen::render_meta_fix_variant.__out:return
+  - tools.makegen::resolve_meta_deps.return -> return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0.deps
+  - return_expr_compute_tools_makegen_render_meta_check_variant_return_return_0.result -> tools.makegen::render_meta_check_variant.__out:return
   - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_base.meta
   - param_source_tools_makegen_render_meta_target_res_targets.res_targets -> tools.makegen::render_meta_base.res_targets
   - param_source_tools_makegen_render_meta_target_meta.meta -> tools.makegen::render_meta_fix_variant.meta
@@ -1103,6 +1120,10 @@ Edges:
   - std.patterns::content_upsert.written -> tools.makegen::makegen.__out:written
   - std.patterns::classify_files::cf_for_0.result -> std.filesystem::partition_entries.entries
   - param_source_std_patterns_classify_files_paths.paths -> std.patterns::classify_files::cf_for_0.items
+  - std.filesystem::partition_entries.readable -> return_expr_compute_std_patterns_classify_files_readable_return_0.partitioned__readable
+  - return_expr_compute_std_patterns_classify_files_readable_return_0.result -> std.patterns::classify_files.__out:readable
+  - std.filesystem::partition_entries.skipped -> return_expr_compute_std_patterns_classify_files_skipped_return_1.partitioned__skipped
+  - return_expr_compute_std_patterns_classify_files_skipped_return_1.result -> std.patterns::classify_files.__out:skipped
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::github_oidc.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::metadata_oidc.audience
   - param_source_std_patterns_content_upsert_path.path -> std.patterns::file_content_matches.path

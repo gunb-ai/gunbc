@@ -143,3 +143,7 @@ path = "../target/codegen/bin/build-all/main.rs"
 [[bin]]
 name = "gunbc-sdlc"
 path = "src/bin/sdlc.rs"
+
+[[bin]]
+name = "gunbc-design"
+path = "../target/codegen/bin/design/main.rs"

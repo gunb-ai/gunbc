@@ -58,6 +58,7 @@ workspace_binaries! {
     Codegen        => "codegen",
     CodegenDag     => "codegen-dag",
     DepsConfig     => "deps-config",
+    Design         => "design",
     GenerateDesign => "generate-design",
     Gist           => "gist",
     GistDiff       => "gist-diff",

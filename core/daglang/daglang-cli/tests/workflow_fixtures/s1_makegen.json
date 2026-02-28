@@ -7,7 +7,7 @@
     "extdeps.make",
     "config.build_targets"
   ],
-  "_count_rationale": "Restored readonly/idempotent on cargo and git service operations from pre-migration @annotations (2026-02-28).",
+  "_count_rationale": "RT4a ReturnExprCompute nodes add 3 pure nodes (render_meta_check_variant, classify_files readable+skipped) (2026-02-28).",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -18,7 +18,7 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 1,
-      "pure_node_determinism_targets": 153,
+      "pure_node_determinism_targets": 156,
       "resource_acquire_targets": 4,
       "resource_provide_targets": 1,
       "resource_release_targets": 4,
@@ -31,7 +31,7 @@
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 8,
       "service_transport_readonly_targets": 5,
-      "total_obligations": 161,
+      "total_obligations": 164,
       "transport_execution_targets": 8
     }
   }
