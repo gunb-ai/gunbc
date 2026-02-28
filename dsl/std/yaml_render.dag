@@ -1,0 +1,84 @@
+// std/yaml_render.dag -- YAML serialization primitives.
+//
+// Pure DSL encoding of YAML syntax: mappings, sequences, block scalars,
+// indentation, comments. Follows the std/markdown_render.dag pattern of
+// format-specific rendering in std/.
+//
+// "What is YAML?" at the rendering level: indentation-based nesting,
+// key: value mappings, - item sequences, # line comments.
+//
+// Consumers compose these primitives to build complete YAML documents.
+// The primitives encode YAML's serialization rules — consumers supply
+// the domain-specific structure (GitHub Actions schema, GitLab CI schema).
+
+module std.yaml_render
+
+import std.languages { yaml_format }
+import std.format_render { config_format_header, format_comment }
+
+// ── Scalars ────────────────────────────────────────────────────────
+
+fn yaml_mapping(key: String, value: String) -> String {
+  "{key}: {value}"
+}
+
+fn yaml_sequence_item(value: String) -> String {
+  "- {value}"
+}
+
+// ── Indentation ────────────────────────────────────────────────────
+
+fn yaml_indent(level: Int, text: String) -> String {
+  let pad = "  " |> repeat(level)
+  "{pad}{text}"
+}
+
+fn yaml_indented_mapping(level: Int, key: String, value: String) -> String {
+  yaml_indent(level: level, text: yaml_mapping(key: key, value: value))
+}
+
+fn yaml_indented_item(level: Int, value: String) -> String {
+  yaml_indent(level: level, text: yaml_sequence_item(value: value))
+}
+
+// ── Blocks ─────────────────────────────────────────────────────────
+
+fn yaml_block(header: String, level: Int, items: List<String>) -> String {
+  let lines = items
+    |> map(item => yaml_indent(level: level, text: item))
+    |> join("\n")
+  if items |> count() > 0 {
+    "{header}\n{lines}"
+  } else {
+    header
+  }
+}
+
+fn yaml_sequence_block(header: String, level: Int, items: List<String>) -> String {
+  let lines = items
+    |> map(item => yaml_indented_item(level: level, value: item))
+    |> join("\n")
+  if items |> count() > 0 {
+    "{header}\n{lines}"
+  } else {
+    header
+  }
+}
+
+fn yaml_mapping_block(level: Int, entries: List<{ key: String, value: String }>) -> String {
+  entries
+    |> map(e => yaml_indented_mapping(level: level, key: e.key, value: e.value))
+    |> join("\n")
+}
+
+// ── Comments ───────────────────────────────────────────────────────
+
+fn yaml_comment(text: String) -> String {
+  format_comment(syntax: yaml_format.comment, text: text)
+}
+
+// ── Header ─────────────────────────────────────────────────────────
+
+fn yaml_header(generator: String, regen_command: String) -> String {
+  config_format_header(format: yaml_format, generator: generator, regen_command: regen_command)
+}
