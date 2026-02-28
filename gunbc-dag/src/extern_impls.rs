@@ -28,6 +28,7 @@ pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
         ("std.markdown", "render_tree"),
         ("tools.bootstrap", "render_bootstrap_gitignore"),
         ("tools.bootstrap", "render_bootstrap_makefile"),
+        ("tools.cigen", "discover_ci_config"),
         ("tools.gist", "build_snapshot_content"),
         ("tools.makegen", "discover_tools"),
         ("tools.pragma", "render_clippy_toml"),
@@ -41,6 +42,8 @@ pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
 pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
     match (module, name) {
         ("std.markdown", "render_tree") => Some(DynOp::new(RenderTreeOp)),
+
+        ("tools.cigen", "discover_ci_config") => Some(DynOp::new(DiscoverCiConfigOp)),
 
         ("tools.gist", "build_snapshot_content") => Some(DynOp::new(BuildSnapshotContentOp)),
 
@@ -173,6 +176,140 @@ fn extract_file_contents(inputs: &HashMap<String, Value>) -> Result<Vec<String>,
             "extract_file_contents: expected List, got {:?}",
             std::mem::discriminant(other)
         ))),
+    }
+}
+
+// ============================================================================
+// tools.cigen extern impls
+// ============================================================================
+
+/// `discover_ci_config() -> CiConfig`
+///
+/// Builds a CiConfig record from the repo's CI workflow configuration:
+/// permissions, secrets, env, runner, cache, and tool command.
+#[derive(Debug, Clone)]
+struct DiscoverCiConfigOp;
+
+impl Executable for DiscoverCiConfigOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        use crate::ci::{ci_live_test_secrets, ci_workflow_permissions};
+        use crate::WorkspaceBinary;
+        use gunbc_ir::transport::github_actions::ubuntu_latest;
+
+        let codegen = WorkspaceBinary::Codegen.invocation();
+        let tool = WorkspaceBinary::Ci.invocation();
+        let runner = ubuntu_latest();
+
+        // Permissions from CI workflow integrations
+        let permissions: Vec<Value> = ci_workflow_permissions()
+            .into_iter()
+            .map(|(scope, level)| {
+                let mut map = BTreeMap::new();
+                map.insert(
+                    "scope".to_string(),
+                    Value::Str(scope.as_yaml_key().to_string()),
+                );
+                // Map permission levels to DSL sum type variant names
+                let level_variant = match level.as_yaml_value() {
+                    "read" => "PermRead",
+                    "write" => "PermWrite",
+                    _ => "PermNone",
+                };
+                map.insert("level".to_string(), Value::Str(level_variant.to_string()));
+                Value::Map(map)
+            })
+            .collect();
+
+        // Secrets from testgen metadata
+        let secrets: Vec<Value> = ci_live_test_secrets()
+            .into_iter()
+            .map(|s| Value::Str(s.to_string()))
+            .collect();
+
+        // Standard Rust CI env (derived from CargoEnv::ci())
+        let cargo_env = gunbc_ir::CargoEnv::ci();
+        let env: Vec<Value> = cargo_env
+            .to_env_map()
+            .into_iter()
+            .map(|(k, v)| {
+                let mut map = BTreeMap::new();
+                map.insert("key".to_string(), Value::Str(k));
+                map.insert("value".to_string(), Value::Str(v));
+                Value::Map(map)
+            })
+            .collect();
+
+        // Cache configuration
+        let cache = {
+            let mut map = BTreeMap::new();
+            map.insert(
+                "key".to_string(),
+                Value::Str(
+                    "cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}".to_string(),
+                ),
+            );
+            map.insert(
+                "paths".to_string(),
+                Value::List(vec![
+                    Value::Str("~/.cargo/bin/".to_string()),
+                    Value::Str("~/.cargo/registry/index/".to_string()),
+                    Value::Str("~/.cargo/registry/cache/".to_string()),
+                    Value::Str("~/.cargo/git/db/".to_string()),
+                ]),
+            );
+            map.insert(
+                "restore_keys".to_string(),
+                Value::List(vec![Value::Str("cargo-${{ runner.os }}-".to_string())]),
+            );
+            Value::Map(map)
+        };
+
+        // Checkout (default)
+        let checkout = {
+            let mut map = BTreeMap::new();
+            map.insert("fetch_depth".to_string(), Value::Unit);
+            map.insert("submodules".to_string(), Value::Unit);
+            Value::Map(map)
+        };
+
+        // Branches from git config
+        let git = gunbc_ir::GitConfig::default();
+        let branches: Vec<Value> = git
+            .ci_branches()
+            .into_iter()
+            .map(|b| Value::Str(b.to_string()))
+            .collect();
+
+        // Build the CiConfig record
+        let mut config = BTreeMap::new();
+        config.insert("workflow_name".to_string(), Value::Str("ci".to_string()));
+        config.insert("runner".to_string(), Value::Str(runner.id.to_string()));
+        config.insert("timeout_minutes".to_string(), Value::Int(30));
+        config.insert("branches".to_string(), Value::List(branches));
+        config.insert("permissions".to_string(), Value::List(permissions));
+        config.insert("env".to_string(), Value::List(env));
+        config.insert("cache".to_string(), cache);
+        config.insert("checkout".to_string(), checkout);
+        config.insert("secrets".to_string(), Value::List(secrets));
+        config.insert(
+            "tool_command".to_string(),
+            Value::Str(tool.command().to_string()),
+        );
+        config.insert(
+            "generator_name".to_string(),
+            Value::Str(codegen.binary.clone()),
+        );
+        config.insert(
+            "regenerate_command".to_string(),
+            Value::Str(format!("{} -- cigen", codegen.command())),
+        );
+
+        OutputMap::new()
+            .value("return", Value::Map(config))
+            .ok()
     }
 }
 
@@ -608,6 +745,30 @@ mod tests {
                 }
             }
             _ => panic!("expected List, got {:?}", std::mem::discriminant(tools)),
+        }
+    }
+
+    #[test]
+    fn test_discover_ci_config() {
+        let result = DiscoverCiConfigOp.execute(HashMap::new()).unwrap();
+        let config = result.get("return").expect("expected return key");
+        match config {
+            Value::Map(map) => {
+                assert_eq!(
+                    map.get("workflow_name").and_then(Value::as_str),
+                    Some("ci")
+                );
+                assert!(map.contains_key("runner"), "config missing runner");
+                assert!(map.contains_key("permissions"), "config missing permissions");
+                assert!(map.contains_key("env"), "config missing env");
+                assert!(map.contains_key("cache"), "config missing cache");
+                assert!(map.contains_key("secrets"), "config missing secrets");
+                assert!(
+                    map.contains_key("tool_command"),
+                    "config missing tool_command"
+                );
+            }
+            _ => panic!("expected Map, got {:?}", std::mem::discriminant(config)),
         }
     }
 

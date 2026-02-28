@@ -1,0 +1,150 @@
+// std/ci.dag -- CI model types: tautological definitions.
+//
+// "What is a CI workflow?" -- provider-independent model of CI/CD pipelines.
+// Each type is a compositional building block. Data declarations are
+// tautological assertions about shared CI configurations (Rust cache paths,
+// cargo env, default runners).
+//
+// Layering:
+//   Layer 0: Primitives (CiStepKind, CiTriggerEvent, CiPermissionLevel)
+//   Layer 1: Building blocks (CiStep, CiTrigger, CiPermission, CiCache, CiEnv)
+//   Layer 2: Composition (CiJob, CiWorkflow)
+//   Layer 3: Provider (CiProvider = GitHub | GitLab)
+//
+// Consumers: std/ci_render.dag (rendering), tools/cigen.dag (generation).
+
+module std.ci
+
+// ── Layer 0: Primitives ──────────────────────────────────────────────
+
+// "What kind of step?" -- the three shapes a CI step can take.
+type CiStepKind
+  = Run { command: String }
+  | Uses { action: String, with: List<CiEnv> }
+  | DagRun { binary: String, args: List<String> }
+
+// "What triggers a workflow?"
+type CiTriggerEvent
+  = Push
+  | PullRequest
+  | Schedule { cron: String }
+  | WorkflowDispatch
+
+// "What permission level?"
+type CiPermissionLevel
+  = PermRead
+  | PermWrite
+  | PermNone
+
+// "Which CI provider?"
+type CiProvider
+  = GitHub
+  | GitLab
+
+// ── Layer 1: Building blocks ─────────────────────────────────────────
+
+// "What is an environment variable?"
+type CiEnv {
+  key: String
+  value: String
+}
+
+// "What is a permission scope?"
+type CiPermission {
+  scope: String
+  level: CiPermissionLevel
+}
+
+// "What is a CI step?"
+type CiStep {
+  name: String
+  kind: CiStepKind
+  env: List<CiEnv>
+}
+
+// "What is a trigger?"
+type CiTrigger {
+  event: CiTriggerEvent
+  branches: List<String>
+}
+
+// "What is a cache?"
+type CiCache {
+  key: String
+  paths: List<String>
+  restore_keys: List<String>
+}
+
+// "What is a checkout?"
+type CiCheckout {
+  fetch_depth: Int?
+  submodules: String?
+}
+
+// ── Layer 2: Composition ─────────────────────────────────────────────
+
+// "What is a CI job?"
+type CiJob {
+  name: String
+  runner: String
+  timeout_minutes: Int
+  steps: List<CiStep>
+}
+
+// "What is a CI workflow?"
+type CiWorkflow {
+  name: String
+  triggers: List<CiTrigger>
+  permissions: List<CiPermission>
+  env: List<CiEnv>
+  jobs: List<CiJob>
+  cache: CiCache?
+  checkout: CiCheckout?
+  secrets: List<String>
+}
+
+// "What is a CI config?" -- discovery result from Rust extern bridge.
+type CiConfig {
+  workflow_name: String
+  runner: String
+  timeout_minutes: Int
+  branches: List<String>
+  permissions: List<CiPermission>
+  env: List<CiEnv>
+  cache: CiCache
+  checkout: CiCheckout
+  secrets: List<String>
+  tool_command: String
+  generator_name: String
+  regenerate_command: String
+}
+
+// ── Layer 3: Shared data declarations ────────────────────────────────
+
+// "What is the Rust cargo cache?"
+data rust_cache: CiCache = {
+  key: "cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}",
+  paths: [
+    "~/.cargo/bin/",
+    "~/.cargo/registry/index/",
+    "~/.cargo/registry/cache/",
+    "~/.cargo/git/db/"
+  ],
+  restore_keys: ["cargo-${{ runner.os }}-"]
+}
+
+// "What is the standard Rust CI env?"
+data rust_ci_env: List<CiEnv> = [
+  { key: "CARGO_TERM_COLOR", value: "always" },
+  { key: "RUSTFLAGS", value: "-D warnings" }
+]
+
+// "What is the default checkout?"
+data default_checkout: CiCheckout = {
+  fetch_depth: null,
+  submodules: null
+}
+
+// Output paths for provider-specific YAML.
+data github_output_path: String = ".github/workflows/ci.yml"
+data gitlab_output_path: String = ".gitlab-ci.yml"

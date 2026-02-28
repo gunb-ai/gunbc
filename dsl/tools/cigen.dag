@@ -1,0 +1,35 @@
+// tools/cigen.dag -- CI YAML generation.
+//
+// Renders CI workflow files for GitHub Actions and GitLab CI from a
+// single CiConfig discovery result. Follows the makegen.dag pattern:
+// discover via extern → render in pure DSL → content_upsert.
+//
+// The only extern func is discover_ci_config(), which calls into Rust
+// to introspect permissions, secrets, tool invocations, and branches.
+
+module tools.cigen
+
+import std.patterns { content_upsert }
+import std.ci { CiConfig, github_output_path, gitlab_output_path }
+import std.ci_render { render_github_workflow, render_gitlab_ci }
+
+// ── Extern boundary ──────────────────────────────────────────────────
+// CI config discovery: permissions, secrets, env, runner, tool command.
+// Rust builds CiConfig from ci_workflow_permissions(), ci_live_test_secrets(),
+// CargoEnv::ci(), etc.
+
+extern func discover_ci_config() -> CiConfig
+
+// ── Entry point ──────────────────────────────────────────────────────
+
+func cigen() -> { github_written: Bool, gitlab_written: Bool } {
+  config = discover_ci_config()
+
+  github_yaml = render_github_workflow(config: config)
+  github = content_upsert(content: github_yaml, path: github_output_path)
+
+  gitlab_yaml = render_gitlab_ci(config: config)
+  gitlab = content_upsert(content: gitlab_yaml, path: gitlab_output_path)
+
+  return { github_written: github.written, gitlab_written: gitlab.written }
+}

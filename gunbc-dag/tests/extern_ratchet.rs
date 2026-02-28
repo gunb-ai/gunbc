@@ -9,11 +9,12 @@ use gunbc_dag::extern_impls::all_extern_symbols;
 use std::path::PathBuf;
 
 /// Current baseline: number of `extern func` declarations in all `.dag` files.
-const EXTERN_FUNC_DECL_BASELINE: usize = 2;
+/// Increased from 2 → 3: added `discover_ci_config()` for DSL-driven cigen (CG-3).
+const EXTERN_FUNC_DECL_BASELINE: usize = 3;
 
 /// Current baseline: number of extern implementations in `all_extern_symbols()`.
-/// Decreased from 8 → 6: allowlist + lint_policy migrated to DSL evaluation (FC-P6-d).
-const EXTERN_IMPL_BASELINE: usize = 6;
+/// Increased from 6 → 7: added `discover_ci_config` for DSL-driven cigen (CG-4).
+const EXTERN_IMPL_BASELINE: usize = 7;
 
 #[test]
 #[allow(clippy::disallowed_methods)]

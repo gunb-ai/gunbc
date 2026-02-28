@@ -3273,3 +3273,73 @@ func caller(id: String) -> { name: String } {
         "error should mention service, operation, and missing transport; got: {msg}",
     );
 }
+
+/// BT-E1: Two modules calling the same service operation must each get their
+/// own transport triplet clone.  Before the fix, `endpoint_use_count` was
+/// per-module, so the second module would wire to the original shared prepare
+/// node — producing duplicate scalar edges that fail at execution time.
+#[test]
+fn cross_module_service_call_gets_cloned_triplet() {
+    let typed = typed_project_from_sources(&[
+        (
+            "dsl/services/api.dag",
+            r#"module shared.api
+service remote.Api {
+  operation Fetch(query: String) -> { data: String } {
+    transport rest { method: GET, path: "/fetch" }
+  }
+}"#,
+        ),
+        (
+            "dsl/callers/alpha.dag",
+            r#"module callers.alpha
+import shared.api
+func alpha_fetch(q: String) -> { data: String } {
+  result = remote.Api.Fetch(query: q)
+  return { data: result.data }
+}"#,
+        ),
+        (
+            "dsl/callers/beta.dag",
+            r#"module callers.beta
+import shared.api
+func beta_fetch(q: String) -> { data: String } {
+  result = remote.Api.Fetch(query: q)
+  return { data: result.data }
+}"#,
+        ),
+    ]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed (BT-E1)");
+
+    // The original triplet exists.
+    let suffix = "shared_api_remote_Api_Fetch";
+    let original_prepare = format!("prepare_transport_{suffix}");
+    assert!(
+        dag.nodes.iter().any(|n| n.id.0 == original_prepare),
+        "original prepare node should exist",
+    );
+
+    // The second caller should get a cloned triplet (_c1 suffix).
+    let cloned_prepare = format!("prepare_transport_{suffix}_c1");
+    assert!(
+        dag.nodes.iter().any(|n| n.id.0 == cloned_prepare),
+        "cloned prepare node should exist for second caller (BT-E1): nodes = {:?}",
+        dag.nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>(),
+    );
+
+    // Both prepare nodes should have their own scalar inputs (no shared wiring).
+    let original_edges: Vec<_> = dag
+        .edges
+        .iter()
+        .filter(|e| e.to_node.0 == original_prepare)
+        .collect();
+    let cloned_edges: Vec<_> = dag
+        .edges
+        .iter()
+        .filter(|e| e.to_node.0 == cloned_prepare)
+        .collect();
+    assert!(
+        !original_edges.is_empty() && !cloned_edges.is_empty(),
+        "both triplets should have incoming edges",
+    );
+}

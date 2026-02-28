@@ -381,4 +381,11 @@ mod tests {
         );
     }
 
+    #[test]
+    fn builds_cigen_dsl_graph() {
+        let dag = build_dsl_graph_for_entrypoint("tools/cigen.dag", Some("cigen"))
+            .expect("cigen DSL graph should resolve (CG-3)");
+        assert!(!dag.nodes.is_empty());
+    }
+
 }
