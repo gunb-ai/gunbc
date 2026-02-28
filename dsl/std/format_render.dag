@@ -1,23 +1,32 @@
-// std/format_render.dag -- Format-aware rendering primitives.
+// std/format_render.dag -- Common rendering layer.
 //
-// Bridges std/languages.dag (language/format models) to shared/dag_util.dag
-// (Document rendering engine). Derives comment syntax, headers, and section
-// markers from ConfigFormat/Language definitions instead of hardcoded strings.
+// The single shared rendering substrate for all generated file output.
+// Two concerns:
 //
-// This is the missing link between "What is YAML?" (languages.dag) and
-// "render a YAML file with # comments" (Document engine). Previously every
-// tool manually threaded comment_prefix: "#" — now the prefix is derived
-// from the format model.
+//   1. Format-aware primitives — derive comment syntax, headers, and
+//      section markers from ConfigFormat/Language models in languages.dag.
+//
+//   2. Structured-text primitives — indented text, key-value pairs,
+//      list items, and blocks. These are format-agnostic building blocks
+//      that YAML, TOML, Makefile, and other renderers parameterize.
+//
+// Format-specific modules (yaml_render.dag, markdown_render.dag) are
+// thin wrappers that fix the parameters (indent unit, kv separator,
+// list prefix) for their format.
 //
 // Layering:
-//   std/languages.dag → std/format_render.dag → tools/*
-//   (what is YAML?)     (YAML-aware header)     (cigen, pragma, makegen)
+//   std/languages.dag → std/format_render.dag → std/yaml_render.dag → tools/*
+//   (what is YAML?)     (common render)          (YAML params)         (cigen, etc.)
 
 module std.format_render
 
 import std.languages { CommentSyntax, ConfigFormat, Language }
 import std.types { Document, DocumentSection }
 import shared.dag_util { doc_with_header, render_document }
+
+// ═══════════════════════════════════════════════════════════════════
+// Part 1: Format-aware primitives (language model → rendering)
+// ═══════════════════════════════════════════════════════════════════
 
 // ── Comment-syntax extraction ──────────────────────────────────────
 
@@ -90,4 +99,70 @@ fn render_format_document(
       sections: sections
     )
   )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Part 2: Structured-text primitives (format-agnostic)
+// ═══════════════════════════════════════════════════════════════════
+//
+// Generic building blocks for indentation-based text formats.
+// Format-specific modules fix the parameters:
+//   YAML:     indent_unit = "  ", kv_sep = ": ",  list_prefix = "- "
+//   Makefile: indent_unit = "\t", kv_sep = " = ", list_prefix = ""
+
+// ── Indentation ────────────────────────────────────────────────────
+
+fn indent_text(level: Int, unit: String, text: String) -> String {
+  let pad = unit |> repeat(level)
+  "{pad}{text}"
+}
+
+// ── Key-value pairs ────────────────────────────────────────────────
+
+fn kv_pair(key: String, sep: String, value: String) -> String {
+  "{key}{sep}{value}"
+}
+
+fn indented_kv(level: Int, unit: String, key: String, sep: String, value: String) -> String {
+  indent_text(level: level, unit: unit, text: kv_pair(key: key, sep: sep, value: value))
+}
+
+// ── List items ─────────────────────────────────────────────────────
+
+fn list_item(prefix: String, value: String) -> String {
+  "{prefix}{value}"
+}
+
+fn indented_list_item(level: Int, unit: String, prefix: String, value: String) -> String {
+  indent_text(level: level, unit: unit, text: list_item(prefix: prefix, value: value))
+}
+
+// ── Blocks ─────────────────────────────────────────────────────────
+
+fn text_block(header: String, level: Int, unit: String, items: List<String>) -> String {
+  let lines = items
+    |> map(item => indent_text(level: level, unit: unit, text: item))
+    |> join("\n")
+  if items |> count() > 0 {
+    "{header}\n{lines}"
+  } else {
+    header
+  }
+}
+
+fn list_block(header: String, level: Int, unit: String, prefix: String, items: List<String>) -> String {
+  let lines = items
+    |> map(item => indented_list_item(level: level, unit: unit, prefix: prefix, value: item))
+    |> join("\n")
+  if items |> count() > 0 {
+    "{header}\n{lines}"
+  } else {
+    header
+  }
+}
+
+fn kv_block(level: Int, unit: String, sep: String, entries: List<{ key: String, value: String }>) -> String {
+  entries
+    |> map(e => indented_kv(level: level, unit: unit, key: e.key, sep: sep, value: e.value))
+    |> join("\n")
 }
