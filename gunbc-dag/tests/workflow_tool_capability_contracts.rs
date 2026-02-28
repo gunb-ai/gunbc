@@ -38,7 +38,7 @@ fn temp_root() -> std::path::PathBuf {
 #[test]
 fn all_tool_workflow_specs_build_without_error() {
     for name in all_tool_workflow_names() {
-        tool_workflow_spec(name)
+        tool_workflow_spec(&name)
             .unwrap_or_else(|error| panic!("tool workflow '{name}' failed to build: {error}"));
     }
 }
@@ -46,11 +46,11 @@ fn all_tool_workflow_specs_build_without_error() {
 #[test]
 fn all_tool_workflow_specs_are_deterministic() {
     for name in all_tool_workflow_names() {
-        let a = tool_workflow_spec(name).expect(name);
-        let b = tool_workflow_spec(name).expect(name);
+        let a = tool_workflow_spec(&name).expect(&name);
+        let b = tool_workflow_spec(&name).expect(&name);
         assert_eq!(
-            a.dag.to_ascii(name),
-            b.dag.to_ascii(name),
+            a.dag.to_ascii(&name),
+            b.dag.to_ascii(&name),
             "workflow '{name}' is not deterministic"
         );
     }

@@ -10,7 +10,7 @@ pub fn workflow_spec(name: &str) -> Result<WorkflowSpec, String> {
 }
 
 /// Return canonical tool workflow names.
-pub fn all_tool_workflow_names() -> Vec<&'static str> {
+pub fn all_tool_workflow_names() -> Vec<String> {
     catalog::all_tool_workflow_names()
 }
 
@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn all_tool_workflows_build_successfully() {
         for name in all_tool_workflow_names() {
-            tool_workflow_spec(name)
+            tool_workflow_spec(&name)
                 .unwrap_or_else(|error| panic!("tool workflow '{name}' failed to build: {error}"));
         }
     }

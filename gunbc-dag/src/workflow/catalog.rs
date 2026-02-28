@@ -2,12 +2,15 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
+use daglang_driver::{compile_from_context, DriverContext};
 use daglang_syntax::{
     ast::{Expr, Item, Literal, Stmt},
     parser,
 };
-use gunbc_ir::{Dag, Edge, Node, Port};
+use gunbc_ir::{resource::AccessMode, Dag, Edge, Node, Port};
+use serde::Deserialize;
 
 use super::capabilities::{
     CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID,
@@ -20,111 +23,36 @@ use super::schema::{
     WorkflowUnit,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Deserialize)]
 pub(super) struct WorkflowVariantDef {
-    pub canonical_name: &'static str,
-    pub aliases: &'static [&'static str],
-    pub file: &'static str,
-    pub pipeline: &'static str,
-    pub mode: Option<&'static str>,
-    pub namespace: &'static str,
+    pub canonical_name: String,
+    pub aliases: Vec<String>,
+    pub file: String,
+    pub pipeline: String,
+    pub mode: Option<String>,
+    pub namespace: String,
     pub is_tool: bool,
 }
 
-const WORKFLOW_VARIANTS: &[WorkflowVariantDef] = &[
-    // Core planner workflows
-    WorkflowVariantDef {
-        canonical_name: "ci",
-        aliases: &[],
-        file: "ci.dag",
-        pipeline: "ci",
-        mode: None,
-        namespace: "ci",
-        is_tool: false,
-    },
-    WorkflowVariantDef {
-        canonical_name: "test-all",
-        aliases: &["test_all"],
-        file: "test_all.dag",
-        pipeline: "test_all",
-        mode: None,
-        namespace: "test_all",
-        is_tool: false,
-    },
-    // Tool workflow variants
-    WorkflowVariantDef {
-        canonical_name: "gist",
-        aliases: &["gist_snapshot", "gist-snapshot"],
-        file: "gist.dag",
-        pipeline: "gist",
-        mode: Some("gist"),
-        namespace: "gist",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "gist-diff",
-        aliases: &["gist_diff"],
-        file: "gist.dag",
-        pipeline: "gist",
-        mode: Some("gist-diff"),
-        namespace: "gist",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "gist-recent",
-        aliases: &["gist_recent"],
-        file: "gist.dag",
-        pipeline: "gist",
-        mode: Some("gist-recent"),
-        namespace: "gist",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "bootstrap",
-        aliases: &[],
-        file: "bootstrap.dag",
-        pipeline: "bootstrap",
-        mode: None,
-        namespace: "bootstrap",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "makegen",
-        aliases: &[],
-        file: "makegen.dag",
-        pipeline: "makegen",
-        mode: None,
-        namespace: "makegen",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "pragma",
-        aliases: &[],
-        file: "pragma.dag",
-        pipeline: "pragma",
-        mode: None,
-        namespace: "pragma",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "deps",
-        aliases: &[],
-        file: "deps.dag",
-        pipeline: "deps",
-        mode: None,
-        namespace: "deps",
-        is_tool: true,
-    },
-    WorkflowVariantDef {
-        canonical_name: "build-all",
-        aliases: &["build_all"],
-        file: "build_all.dag",
-        pipeline: "build_all",
-        mode: None,
-        namespace: "build_all",
-        is_tool: true,
-    },
-];
+#[derive(Debug, Clone, Deserialize)]
+struct StageClaimDef {
+    claim_id: String,
+    access_mode: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StageDefaultClaimsDef {
+    stage_name: String,
+    claims: Vec<StageClaimDef>,
+}
+
+#[derive(Debug, Clone)]
+struct WorkflowCatalogData {
+    workflow_variants: Vec<WorkflowVariantDef>,
+    default_stage_claims: HashMap<String, Vec<UnitClaim>>,
+}
+
+static WORKFLOW_CATALOG_DATA: OnceLock<Result<WorkflowCatalogData, String>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 struct StageTemplate {
@@ -140,25 +68,113 @@ struct WorkflowTemplate {
     stages: Vec<StageTemplate>,
 }
 
-pub(super) fn all_tool_workflow_names() -> Vec<&'static str> {
-    WORKFLOW_VARIANTS
+#[allow(clippy::disallowed_methods)]
+fn workflow_catalog_data() -> Result<&'static WorkflowCatalogData, String> {
+    WORKFLOW_CATALOG_DATA
+        .get_or_init(load_workflow_catalog_data)
+        .as_ref()
+        .map_err(|error| error.clone())
+}
+
+#[allow(clippy::disallowed_methods)]
+fn load_workflow_catalog_data() -> Result<WorkflowCatalogData, String> {
+    let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
+    let dag_file = dsl_root.join("config/workflow_catalog.dag");
+    let context = DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(dag_file.clone()),
+    };
+    let output = compile_from_context(&context)
+        .map_err(|error| format!("failed to compile {}: {error}", dag_file.display()))?;
+
+    let variants_value = output
+        .data_values
+        .get("workflow_variants")
+        .cloned()
+        .ok_or_else(|| "missing data value 'workflow_variants'".to_string())?;
+    let workflow_variants: Vec<WorkflowVariantDef> = serde_json::from_value(variants_value)
+        .map_err(|error| format!("invalid workflow_variants data: {error}"))?;
+    if workflow_variants.is_empty() {
+        return Err("workflow catalog is empty".to_string());
+    }
+
+    let defaults_value = output
+        .data_values
+        .get("default_stage_claims")
+        .cloned()
+        .ok_or_else(|| "missing data value 'default_stage_claims'".to_string())?;
+    let defaults: Vec<StageDefaultClaimsDef> = serde_json::from_value(defaults_value)
+        .map_err(|error| format!("invalid default_stage_claims data: {error}"))?;
+
+    let mut default_stage_claims = HashMap::new();
+    for stage in defaults {
+        if default_stage_claims.contains_key(&stage.stage_name) {
+            return Err(format!(
+                "duplicate default_stage_claims entry for stage '{}'",
+                stage.stage_name
+            ));
+        }
+        let claims = stage
+            .claims
+            .into_iter()
+            .map(|claim| {
+                Ok(UnitClaim::new(
+                    claim.claim_id,
+                    parse_access_mode(&claim.access_mode)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        default_stage_claims.insert(stage.stage_name, claims);
+    }
+
+    Ok(WorkflowCatalogData {
+        workflow_variants,
+        default_stage_claims,
+    })
+}
+
+fn parse_access_mode(mode: &str) -> Result<AccessMode, String> {
+    match mode.to_ascii_lowercase().as_str() {
+        "read" => Ok(AccessMode::Read),
+        "write" => Ok(AccessMode::Write),
+        "exclusive" => Ok(AccessMode::Exclusive),
+        other => Err(format!(
+            "unknown access mode '{other}' in workflow catalog; expected Read/Write/Exclusive"
+        )),
+    }
+}
+
+pub(super) fn all_tool_workflow_names() -> Vec<String> {
+    workflow_catalog_data()
+        .unwrap_or_else(|error| panic!("failed to load workflow catalog DSL data: {error}"))
+        .workflow_variants
         .iter()
         .filter(|variant| variant.is_tool)
-        .map(|variant| variant.canonical_name)
+        .map(|variant| variant.canonical_name.clone())
         .collect()
 }
 
-pub(super) fn all_known_workflow_names() -> Vec<&'static str> {
-    WORKFLOW_VARIANTS
+pub(super) fn all_known_workflow_names() -> Vec<String> {
+    workflow_catalog_data()
+        .unwrap_or_else(|error| panic!("failed to load workflow catalog DSL data: {error}"))
+        .workflow_variants
         .iter()
-        .map(|variant| variant.canonical_name)
+        .map(|variant| variant.canonical_name.clone())
         .collect()
 }
 
-pub(super) fn resolve_workflow_variant(name: &str) -> Option<&'static WorkflowVariantDef> {
-    WORKFLOW_VARIANTS
+pub(super) fn resolve_workflow_variant(name: &str) -> Option<WorkflowVariantDef> {
+    let normalized = name.replace('_', "-");
+    workflow_catalog_data()
+        .ok()?
+        .workflow_variants
         .iter()
-        .find(|variant| variant.canonical_name == name || variant.aliases.contains(&name))
+        .find(|variant| {
+            variant.canonical_name == name
+                || variant.canonical_name == normalized
+                || variant.aliases.iter().any(|alias| alias == name || alias == &normalized)
+        })
+        .cloned()
 }
 
 pub(super) fn build_workflow_spec(
@@ -175,7 +191,7 @@ pub(super) fn build_workflow_spec(
 
     let templates = load_workflow_templates()?;
     let template = templates
-        .get(variant.file)
+        .get(variant.file.as_str())
         .ok_or_else(|| format!("missing workflow template for file '{}'", variant.file))?;
 
     if template.pipeline_name != variant.pipeline {
@@ -188,7 +204,7 @@ pub(super) fn build_workflow_spec(
     let active_stages: Vec<&StageTemplate> = template
         .stages
         .iter()
-        .filter(|stage| stage_is_enabled(stage, variant.mode))
+        .filter(|stage| stage_is_enabled(stage, variant.mode.as_deref()))
         .collect();
 
     if active_stages.is_empty() {
@@ -257,7 +273,7 @@ pub(super) fn build_workflow_spec(
         }
     }
 
-    Ok(WorkflowSpec::new(variant.canonical_name, dag, 1))
+    Ok(WorkflowSpec::new(variant.canonical_name.as_str(), dag, 1))
 }
 
 pub(super) fn build_process_unit_registry() -> Result<ProcessUnitRegistry, String> {
@@ -267,9 +283,9 @@ pub(super) fn build_process_unit_registry() -> Result<ProcessUnitRegistry, Strin
     let mut compilation_claims: Option<Vec<UnitClaim>> = None;
     let mut codegen_claims: Option<Vec<UnitClaim>> = None;
 
-    for variant in WORKFLOW_VARIANTS {
+    for variant in &workflow_catalog_data()?.workflow_variants {
         let template = templates
-            .get(variant.file)
+            .get(variant.file.as_str())
             .ok_or_else(|| format!("missing workflow template for file '{}'", variant.file))?;
 
         if template.pipeline_name != variant.pipeline {
@@ -282,7 +298,7 @@ pub(super) fn build_process_unit_registry() -> Result<ProcessUnitRegistry, Strin
         for stage in template
             .stages
             .iter()
-            .filter(|stage| stage_is_enabled(stage, variant.mode))
+            .filter(|stage| stage_is_enabled(stage, variant.mode.as_deref()))
         {
             if stage.name == "report" {
                 continue;
@@ -364,7 +380,7 @@ fn process_ref_for_stage(variant: &WorkflowVariantDef, stage_name: &str) -> Proc
         "codegen_ensure" => codegen_ref(),
         _ => {
             let node_id = format!("{}.{}", variant.namespace, stage_name);
-            ProcessUnitRef::new(variant.namespace, node_id)
+            ProcessUnitRef::new(variant.namespace.as_str(), node_id)
         }
     }
 }
@@ -380,15 +396,15 @@ fn stage_is_enabled(stage: &StageTemplate, mode: Option<&str>) -> bool {
 }
 
 #[allow(clippy::disallowed_methods)]
-fn load_workflow_templates() -> Result<HashMap<&'static str, WorkflowTemplate>, String> {
+fn load_workflow_templates() -> Result<HashMap<String, WorkflowTemplate>, String> {
     let mut templates = HashMap::new();
-    for variant in WORKFLOW_VARIANTS {
-        if templates.contains_key(variant.file) {
+    for variant in &workflow_catalog_data()?.workflow_variants {
+        if templates.contains_key(&variant.file) {
             continue;
         }
         templates.insert(
-            variant.file,
-            parse_workflow_template(variant.file, variant.pipeline)?,
+            variant.file.clone(),
+            parse_workflow_template(&variant.file, &variant.pipeline)?,
         );
     }
     Ok(templates)
@@ -502,15 +518,12 @@ fn parse_stage_claims(_stmts: &[Stmt]) -> Vec<UnitClaim> {
 /// Default claims for well-known stages whose resource usage is known
 /// structurally but not yet expressible in DSL stage bodies.
 fn default_stage_claims(stage_name: &str) -> Vec<UnitClaim> {
-    match stage_name {
-        // cargo build writes to target/
-        "build_compile" => vec![UnitClaim::write("file:target"), UnitClaim::read("tool:cargo")],
-        // cargo test reads target/ and test artifacts
-        "test_run" => vec![UnitClaim::read("file:target"), UnitClaim::read("tool:cargo")],
-        // clippy reads source + target
-        "clippy_run" => vec![UnitClaim::read("file:target"), UnitClaim::read("tool:cargo")],
-        _ => vec![],
-    }
+    workflow_catalog_data()
+        .unwrap_or_else(|error| panic!("failed to load workflow catalog DSL data: {error}"))
+        .default_stage_claims
+        .get(stage_name)
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn workflow_file_path(file: &str) -> PathBuf {

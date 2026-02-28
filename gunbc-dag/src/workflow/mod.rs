@@ -5,6 +5,7 @@ mod catalog;
 pub mod admission;
 pub mod capabilities;
 pub mod coordination;
+pub mod commands;
 pub mod errors;
 pub mod executor;
 pub mod global_plan;
@@ -16,7 +17,6 @@ pub mod proof;
 pub mod schema;
 pub mod slo;
 pub mod spec_builders;
-pub mod unit_commands;
 
 pub use admission::{
     validate_conflicting_claims, validate_effectful_claim_declarations, validate_required_claims,
@@ -63,4 +63,4 @@ pub use spec_builders::{
     gist_diff_workflow_spec, gist_recent_workflow_spec, gist_workflow_spec, makegen_workflow_spec,
     pragma_workflow_spec, test_all_workflow_spec, tool_workflow_spec,
 };
-pub use unit_commands::{ci_unit_commands, test_all_unit_commands, workflow_unit_commands};
+pub use commands::{ci_unit_commands, test_all_unit_commands, workflow_unit_commands};

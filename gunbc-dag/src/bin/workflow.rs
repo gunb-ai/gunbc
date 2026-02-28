@@ -56,7 +56,7 @@ fn main() {
         "ci" => ci_workflow_spec(),
         "test-all" | "test_all" => test_all_workflow_spec(),
         name => tool_workflow_spec(name).map_err(|_| {
-            let mut all_names = vec!["ci", "test-all"];
+            let mut all_names = vec!["ci".to_string(), "test-all".to_string()];
             all_names.extend(all_tool_workflow_names());
             format!(
                 "unknown workflow '{}': expected one of {}",
@@ -478,7 +478,7 @@ fn format_miss_reason(reason: &MissReason) -> String {
 }
 
 fn print_help() {
-    let mut all_names = vec!["ci", "test-all"];
+    let mut all_names = vec!["ci".to_string(), "test-all".to_string()];
     all_names.extend(all_tool_workflow_names());
     println!("gunbc-workflow - workflow planner and executor");
     println!();
@@ -706,10 +706,10 @@ mod tests {
             let args = parse_args(vec![
                 "gunbc-workflow".to_string(),
                 "--plan".to_string(),
-                name.to_string(),
+                name.clone(),
             ])
             .unwrap_or_else(|_| panic!("parse should succeed for {name}"));
-            assert_eq!(args.workflow, *name);
+            assert_eq!(args.workflow, name);
         }
     }
 }

@@ -1,0 +1,147 @@
+// config/workflow_catalog.dag -- Workflow variant and default claim catalog.
+//
+// Replaces hardcoded Rust tables in `gunbc-dag/src/workflow/catalog.rs`.
+
+module config.workflow_catalog
+
+type WorkflowVariant {
+  canonical_name: String
+  aliases: List<String>
+  file: String
+  pipeline: String
+  mode: String?
+  namespace: String
+  is_tool: Bool
+}
+
+type StageClaim {
+  claim_id: String
+  access_mode: String
+}
+
+type StageDefaultClaims {
+  stage_name: String
+  claims: List<StageClaim>
+}
+
+data workflow_variants: List<WorkflowVariant> = [
+  // Core planner workflows
+  {
+    canonical_name: "ci",
+    aliases: [],
+    file: "ci.dag",
+    pipeline: "ci",
+    mode: None,
+    namespace: "ci",
+    is_tool: false
+  },
+  {
+    canonical_name: "test-all",
+    aliases: ["test_all"],
+    file: "test_all.dag",
+    pipeline: "test_all",
+    mode: None,
+    namespace: "test_all",
+    is_tool: false
+  },
+
+  // Tool workflow variants
+  {
+    canonical_name: "gist",
+    aliases: ["gist_snapshot", "gist-snapshot"],
+    file: "gist.dag",
+    pipeline: "gist",
+    mode: "gist",
+    namespace: "gist",
+    is_tool: true
+  },
+  {
+    canonical_name: "gist-diff",
+    aliases: ["gist_diff"],
+    file: "gist.dag",
+    pipeline: "gist",
+    mode: "gist-diff",
+    namespace: "gist",
+    is_tool: true
+  },
+  {
+    canonical_name: "gist-recent",
+    aliases: ["gist_recent"],
+    file: "gist.dag",
+    pipeline: "gist",
+    mode: "gist-recent",
+    namespace: "gist",
+    is_tool: true
+  },
+  {
+    canonical_name: "bootstrap",
+    aliases: [],
+    file: "bootstrap.dag",
+    pipeline: "bootstrap",
+    mode: None,
+    namespace: "bootstrap",
+    is_tool: true
+  },
+  {
+    canonical_name: "makegen",
+    aliases: [],
+    file: "makegen.dag",
+    pipeline: "makegen",
+    mode: None,
+    namespace: "makegen",
+    is_tool: true
+  },
+  {
+    canonical_name: "pragma",
+    aliases: [],
+    file: "pragma.dag",
+    pipeline: "pragma",
+    mode: None,
+    namespace: "pragma",
+    is_tool: true
+  },
+  {
+    canonical_name: "deps",
+    aliases: [],
+    file: "deps.dag",
+    pipeline: "deps",
+    mode: None,
+    namespace: "deps",
+    is_tool: true
+  },
+  {
+    canonical_name: "build-all",
+    aliases: ["build_all"],
+    file: "build_all.dag",
+    pipeline: "build_all",
+    mode: None,
+    namespace: "build_all",
+    is_tool: true
+  }
+]
+
+// Default claims for well-known stages whose resource usage is known
+// structurally but not yet expressible in DSL stage bodies.
+data default_stage_claims: List<StageDefaultClaims> = [
+  {
+    stage_name: "build_compile",
+    claims: [
+      { claim_id: "file:target", access_mode: "Write" },
+      { claim_id: "tool:cargo", access_mode: "Read" }
+    ]
+  },
+  {
+    stage_name: "test_run",
+    claims: [
+      { claim_id: "file:target", access_mode: "Read" },
+      { claim_id: "tool:cargo", access_mode: "Read" }
+    ]
+  },
+  {
+    stage_name: "clippy_run",
+    claims: [
+      { claim_id: "file:target", access_mode: "Read" },
+      { claim_id: "tool:cargo", access_mode: "Read" }
+    ]
+  }
+]
