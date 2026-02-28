@@ -7,7 +7,7 @@
     "infra.spec",
     "infra.aws.services"
   ],
-  "_count_rationale": "Restored readonly on read/list/get_url/assume/subscribe and idempotent on read/list/get_url capabilities from pre-migration @annotations (2026-02-28).",
+  "_count_rationale": "Param ref wiring fix: return compute nodes now wire param_source inputs (2026-02-28).",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -18,11 +18,11 @@
     "expected_json": {
       "dry_run_completion_required": true,
       "interface_contract_verification_targets": 4,
-      "pure_node_determinism_targets": 127,
+      "pure_node_determinism_targets": 129,
       "resource_acquire_targets": 5,
       "resource_provide_targets": 0,
       "resource_release_targets": 5,
-      "service_param_source_targets": 0,
+      "service_param_source_targets": 1,
       "service_transport_execute_targets": 55,
       "service_transport_external_targets": 55,
       "service_transport_hermetic_targets": 0,
@@ -31,7 +31,7 @@
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 55,
       "service_transport_readonly_targets": 5,
-      "total_obligations": 182,
+      "total_obligations": 184,
       "transport_execution_targets": 55
     }
   }
