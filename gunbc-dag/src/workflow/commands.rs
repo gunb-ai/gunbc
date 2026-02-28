@@ -3,7 +3,7 @@
 //! Report and aggregate nodes intentionally have no command and are treated
 //! as no-ops by the executor.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -75,11 +75,12 @@ fn load_command_catalog() -> Result<WorkflowCommandCatalog, String> {
             }
         }
 
-        let mut names = vec![set.workflow.clone(), set.workflow.replace('_', "-")];
+        let mut names = vec![set.workflow];
         names.extend(set.aliases);
+        let normalized_names: BTreeSet<String> =
+            names.into_iter().map(|alias| alias.replace('_', "-")).collect();
 
-        for alias in names {
-            let normalized = alias.replace('_', "-");
+        for normalized in normalized_names {
             if by_workflow.contains_key(&normalized) {
                 return Err(format!(
                     "duplicate workflow command set mapping for alias '{}'",

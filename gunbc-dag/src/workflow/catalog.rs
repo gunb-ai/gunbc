@@ -231,7 +231,7 @@ pub(super) fn build_workflow_spec(
                 WorkflowUnit::new(WorkflowOp::Report(ReportSpec::new(node_id))),
             )
         } else {
-            let process_ref = process_ref_for_stage(variant, &stage.name);
+            let process_ref = process_ref_for_stage(&variant, &stage.name);
             let process_spec = registry.get(&process_ref).ok_or_else(|| {
                 format!(
                     "missing process unit registry entry for {}::{}",
