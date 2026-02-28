@@ -37,16 +37,21 @@ mod tests {
     }
 
     fn load_disallowed_methods_allowlist(root: &Path) -> HashSet<String> {
-        let path = root.join("tools/disallowed-methods-allowlist.txt");
-        let content = match fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(_) => {
-                // The shell guardrail script was removed; this generated file may
-                // be absent on fresh checkouts. Fall back to the canonical
-                // transport-boundary prefix used by pragma policy.
-                return default_disallowed_methods_allowlist();
-            }
-        };
+        let candidate_paths = [
+            root.join("tools/disallowed-methods-allowlist.txt"),
+            root.join("core/daglang/daglang-cli/tools/disallowed-methods-allowlist.txt"),
+        ];
+        let content = candidate_paths
+            .iter()
+            .find_map(|path| fs::read_to_string(path).ok())
+            .unwrap_or_else(|| {
+                // Fall back to the canonical transport-boundary prefix when
+                // generated policy artifacts are absent.
+                String::new()
+            });
+        if content.is_empty() {
+            return default_disallowed_methods_allowlist();
+        }
         let mut allowed = HashSet::new();
         for line in content.lines() {
             let line = line.trim();
@@ -72,9 +77,23 @@ mod tests {
     }
 
     fn load_pragma_lint_policy(root: &Path) -> PragmaLintPolicy {
-        let path = root.join("tools/pragma-lint-policy.txt");
-        let content = fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("missing pragma policy file: {}", path.display()));
+        let candidate_paths = [
+            root.join("tools/pragma-lint-policy.txt"),
+            root.join("core/daglang/daglang-cli/tools/pragma-lint-policy.txt"),
+        ];
+        let content = candidate_paths
+            .iter()
+            .find_map(|path| fs::read_to_string(path).ok())
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing pragma policy file: {}",
+                    candidate_paths
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(" or ")
+                )
+            });
 
         let mut section = "";
         let mut allow_dead_code = HashSet::new();
