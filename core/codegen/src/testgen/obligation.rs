@@ -1138,7 +1138,7 @@ fn collect_resource_obligations<T>(
         let cred_port = node
             .inputs
             .iter()
-            .find(|p| p.name.0 == "res:credential");
+            .find(|p| p.name.0 == PortName::RESOURCE_CREDENTIAL);
 
         let Some(port) = cred_port else {
             // No res:credential port — not an authenticated endpoint.
