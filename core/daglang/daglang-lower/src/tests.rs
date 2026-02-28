@@ -2973,6 +2973,75 @@ func dual(msg: String) -> { reply: String } {
     );
 }
 
+#[test]
+fn cross_module_service_dedup_clones_transport_triplet() {
+    // Regression for BT-E1: two callables in different modules that invoke the
+    // same service operation must not both wire scalar inputs to the original
+    // prepare node.
+    let typed = typed_project_from_sources(&[
+        (
+            "dsl/services/dedup_shared.dag",
+            r#"module sample.shared
+service Echo {
+  operation Ping(message: String) -> { reply: String } {
+transport shell { argv: ["echo", "{message}"] }
+  }
+}"#,
+        ),
+        (
+            "dsl/services/dedup_alpha.dag",
+            r#"module sample.alpha
+func alpha() -> { reply: String } {
+  result = sample.shared.Echo.Ping(message: "alpha")
+  return { reply: result.reply }
+}"#,
+        ),
+        (
+            "dsl/services/dedup_beta.dag",
+            r#"module sample.beta
+func beta() -> { reply: String } {
+  result = sample.shared.Echo.Ping(message: "beta")
+  return { reply: result.reply }
+}"#,
+        ),
+    ]);
+    let dag = lower_typed_project(&typed).expect("lowering should succeed");
+
+    let prepare_nodes: Vec<_> = dag
+        .nodes
+        .iter()
+        .filter(|n| {
+            n.id.0.starts_with("prepare_transport_")
+                && n.id.0.contains("sample_shared_Echo_Ping")
+        })
+        .collect();
+    assert!(
+        prepare_nodes.len() >= 2,
+        "expected at least 2 prepare nodes for sample.shared.Echo.Ping (original + clone), found {}: {:?}",
+        prepare_nodes.len(),
+        prepare_nodes.iter().map(|n| &n.id.0).collect::<Vec<_>>()
+    );
+
+    // Ensure no scalar destination gets multiple upstream edges.
+    let mut edge_targets: std::collections::HashMap<(String, String), Vec<String>> =
+        std::collections::HashMap::new();
+    for edge in &dag.edges {
+        edge_targets
+            .entry((edge.to_node.0.clone(), edge.to_port.0.clone()))
+            .or_default()
+            .push(edge.from_node.0.clone());
+    }
+    for ((node, port), sources) in &edge_targets {
+        if port == PortName::DEPS || port == "request" || port == "response" {
+            continue;
+        }
+        assert!(
+            sources.len() <= 1,
+            "duplicate scalar edge to {node}:{port} from {sources:?}",
+        );
+    }
+}
+
 // ── Pattern expansion tests ──────────────────────────────────────
 
 /// Lower a synthetic test module injected into the real DSL corpus.

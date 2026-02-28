@@ -5678,13 +5678,13 @@ fn add_service_call_edges(
     known_interface_types: &HashSet<String>,
     data_values: &HashMap<String, serde_json::Value>,
 ) -> Result<(), LowerError> {
+    // Track transport endpoint usage across ALL callables in the compiled
+    // graph so the second callsite (even in a different module) to reference
+    // the same service operation gets a cloned triplet (_c1, _c2, …) instead
+    // of wiring duplicate scalar edges to the original.
+    let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
     for module in &project.modules {
         let module_name = module.module_path.as_dotted();
-        // Track transport endpoint usage across ALL callables in the module so
-        // that the second callable to reference the same service operation gets
-        // a cloned triplet (_c1, _c2, …) instead of wiring duplicate scalar
-        // edges to the original.
-        let mut endpoint_use_count: HashMap<String, usize> = HashMap::new();
         for item in &module.ast.items {
             let (item_name, params, stmts, uses_binding_types, body_lossy) = match &item.node {
                 Item::FnDef(def) => (
