@@ -8,4 +8,6 @@ description = "Generic workflow planner/executor engine"
 [dependencies]
 gunbc-ir = { path = "../ir" }
 gunbc-exec = { path = "../exec" }
+gunbc-infra = { path = "../infra" }
 serde = { workspace = true }
+serde_json = { workspace = true }
