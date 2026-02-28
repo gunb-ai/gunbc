@@ -4078,6 +4078,8 @@ fn expand_non_generic_pattern_calls(
 /// Maximum recursion depth for pattern expansion (patterns calling patterns).
 const PATTERN_EXPANSION_MAX_DEPTH: usize = 5;
 
+const PARAM_REF_SENTINEL: &str = "__param_ref__";
+
 #[allow(clippy::too_many_arguments)]
 fn expand_single_pattern(
     builder: &mut DagBuilder,
@@ -6007,6 +6009,9 @@ fn add_service_call_edges(
             collect_service_calls_from_stmts(stmts, &mut service_calls);
             // Filter out service calls that are inside control-flow bodies
             // (handled by scoped transport wiring in add_control_flow_pattern_nodes).
+            // We count nested occurrences per path and remove that many from the
+            // flat list (back-to-front), preserving top-level calls that share
+            // the same operation path as a nested call.
             let mut nested_call_paths = Vec::<Vec<String>>::new();
             for site in detect_for_loops_in_stmts(stmts) {
                 nested_call_paths.extend(site.body_service_call_paths);
@@ -6019,7 +6024,20 @@ fn add_service_call_edges(
                 nested_call_paths.extend(site.all_service_call_paths);
             }
             if !nested_call_paths.is_empty() {
-                service_calls.retain(|call| !nested_call_paths.contains(&call.path));
+                let mut nested_counts: HashMap<Vec<String>, usize> = HashMap::new();
+                for path in &nested_call_paths {
+                    *nested_counts.entry(path.clone()).or_insert(0) += 1;
+                }
+                let mut removal_budget = nested_counts;
+                service_calls.retain(|call| {
+                    if let Some(count) = removal_budget.get_mut(&call.path) {
+                        if *count > 0 {
+                            *count -= 1;
+                            return false;
+                        }
+                    }
+                    true
+                });
             }
             for (call_index, call) in service_calls.into_iter().enumerate() {
                 let Some(source) = resolve_service_call_source(
@@ -8050,7 +8068,10 @@ fn collect_expr_leaf_refs(
                 return;
             }
             if let Some(_param_ty) = param_types.get(name) {
-                // param refs handled separately via ensure_param_source_node
+                // Param refs are collected with a PARAM_REF sentinel source.
+                // synthesize_return_expr_compute resolves them via ensure_param_source_node.
+                seen.insert(port_name.clone());
+                refs.push((port_name, PARAM_REF_SENTINEL.to_string(), name.clone()));
             } else if let Some(source) = bound_callable_sources.get(name) {
                 seen.insert(port_name.clone());
                 refs.push((port_name, source.node_id.clone(), source.primary_output.clone()));
@@ -8247,7 +8268,15 @@ fn synthesize_return_expr_compute(
 
     // 5. Wire each leaf reference as an edge to the compute node.
     for (port_name, source_node, source_port) in &refs {
-        builder.add_edge(source_node, source_port, &node_id, port_name);
+        if source_node == PARAM_REF_SENTINEL {
+            let param_name = source_port;
+            let param_ty = param_types.get(param_name).map_or("Any", |s| s.as_str());
+            let param_source_id =
+                ensure_param_source_node(builder, module_name, item_name, param_name, param_ty);
+            builder.add_edge(&param_source_id, param_name, &node_id, port_name);
+        } else {
+            builder.add_edge(source_node, source_port, &node_id, port_name);
+        }
     }
 
     Some((node_id, result_port_name.to_string()))
