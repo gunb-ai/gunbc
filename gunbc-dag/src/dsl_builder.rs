@@ -181,6 +181,23 @@ pub fn build_dsl_graph(relative_module: &str) -> Result<Dag<DynOp>, BuilderError
     Ok(build_dsl_graph_with_types(relative_module)?.dag)
 }
 
+/// Convention-based tool graph builder.
+///
+/// `build_tool_graph("bootstrap")` → `build_dsl_graph("tools/bootstrap.dag")`.
+/// Replaces per-tool wrapper modules (RT81).
+pub fn build_tool_graph(tool_name: &str) -> Result<Dag<DynOp>, BuilderError> {
+    build_dsl_graph(&format!("tools/{tool_name}.dag"))
+}
+
+/// Infer the workflow signature for a convention-based tool.
+///
+/// Compiles the tool's DSL module and derives the signature from graph structure.
+pub fn tool_signature(
+    tool_name: &str,
+) -> Result<gunbc_ir::WorkflowSignature, BuilderError> {
+    build_tool_graph(tool_name).map(|dag| gunbc_ir::infer_signature(&dag))
+}
+
 /// Compile a DSL module and resolve lowered ops, also returning DSL type registry.
 pub(crate) fn build_dsl_graph_with_types(
     relative_module: &str,
