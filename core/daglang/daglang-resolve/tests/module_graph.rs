@@ -237,7 +237,7 @@ fn real_corpus_dependency_counts_match_expected_snapshot() {
         ("std.markdown".into(), 0),
         ("std.markdown_render".into(), 1),
         ("std.patterns".into(), 7),
-        ("std.render".into(), 6),
+        ("std.render".into(), 4),
         ("std.resources".into(), 0),
         ("std.state_machines".into(), 1),
         ("std.symbols".into(), 0),

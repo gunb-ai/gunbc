@@ -21,8 +21,6 @@ import std.width { truncate_text }
 import std.unicode { string_display_width }
 import std.symbols { SemanticColor, SymbolId, Tier, resolve_symbol }
 import std.languages { CommentSyntax, ConfigFormat, Language }
-import std.types { Document, DocumentSection }
-import shared.dag_util { doc_with_header, render_document }
 
 // ═══════════════════════════════════════════════════════════════════
 // Terminal rendering IR
@@ -158,35 +156,6 @@ fn format_section_header(syntax: CommentSyntax, title: String) -> String {
   let prefix = comment_prefix_for(syntax: syntax)
   let separator = "=" |> repeat(76)
   "{prefix} {separator}\n{prefix} {title}\n{prefix} {separator}"
-}
-
-// ── Format-aware Document construction ─────────────────────────────
-
-fn format_document(
-  format: ConfigFormat,
-  generator: String,
-  regen_command: String,
-  sections: List<DocumentSection>
-) -> Document {
-  let header = config_format_header(format: format, generator: generator, regen_command: regen_command)
-  let prefix = config_comment_prefix(format: format)
-  doc_with_header(header: header, comment_prefix: prefix, sections: sections)
-}
-
-fn render_format_document(
-  format: ConfigFormat,
-  generator: String,
-  regen_command: String,
-  sections: List<DocumentSection>
-) -> String {
-  render_document(
-    document: format_document(
-      format: format,
-      generator: generator,
-      regen_command: regen_command,
-      sections: sections
-    )
-  )
 }
 
 // ═══════════════════════════════════════════════════════════════════
