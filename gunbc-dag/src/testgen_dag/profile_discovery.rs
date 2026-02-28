@@ -167,6 +167,12 @@ fn collect_env_calls(expr: &Expr, env_vars: &mut Vec<String>) {
             collect_env_calls(lhs, env_vars);
             collect_env_calls(rhs, env_vars);
         }
+        Expr::PipeCall(receiver, _, args) => {
+            collect_env_calls(receiver, env_vars);
+            for (_, arg) in args {
+                collect_env_calls(arg, env_vars);
+            }
+        }
         Expr::Record(_, fields) | Expr::Return(fields) => {
             for (_, value) in fields {
                 collect_env_calls(value, env_vars);

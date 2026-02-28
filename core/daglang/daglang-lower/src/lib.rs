@@ -24,8 +24,7 @@ use daglang_syntax::ast::{
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_type_expr_optional, resource_type_name,
-    service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
-    walk_stmts,
+    service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
@@ -3574,7 +3573,7 @@ fn expand_content_upsert_patterns(
         };
         match expr {
             Expr::Call(name, args) => {
-                if should_track_call(name) {
+                if !is_internal_synthetic_call(name) {
                     bound_callables.insert(binding.clone(), name.clone());
                 }
                 if name == "content_upsert" {
@@ -7417,10 +7416,14 @@ fn item_callable_provides(item: &Item) -> Option<(&str, &[daglang_syntax::ast::P
     }
 }
 
+fn is_internal_synthetic_call(name: &str) -> bool {
+    matches!(name, "<expr>" | "as" | "with" | "fn")
+}
+
 fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut BTreeSet<String>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Call(name, _) = expr {
-            if should_track_call(name) {
+            if !is_internal_synthetic_call(name) {
                 calls.insert(name.clone());
             }
         }
@@ -7507,14 +7510,48 @@ fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
     walk_stmts(stmts, &mut |expr| {
-        if let Expr::Pipe(_, rhs) = expr {
-            let Expr::Call(name, _) = rhs.as_ref() else {
-                return;
-            };
-            let Some(kind) = collection_op_kind(name) else {
-                return;
-            };
-            sites.push(CollectionOpSite { kind });
+        match expr {
+            Expr::Pipe(_, rhs) => {
+                let Expr::Call(name, _) = rhs.as_ref() else {
+                    return;
+                };
+                let Some(kind) = collection_op_kind(name) else {
+                    return;
+                };
+                sites.push(CollectionOpSite { kind });
+            }
+            Expr::PipeCall(_, method, _) => {
+                let method_name = match method {
+                    daglang_syntax::ast::PipeMethod::Map => "map",
+                    daglang_syntax::ast::PipeMethod::Filter => "filter",
+                    daglang_syntax::ast::PipeMethod::FilterMap => "filter_map",
+                    daglang_syntax::ast::PipeMethod::FlatMap => "flat_map",
+                    daglang_syntax::ast::PipeMethod::SortBy => "sort_by",
+                    daglang_syntax::ast::PipeMethod::Append => "append",
+                    daglang_syntax::ast::PipeMethod::Fold => "fold",
+                    daglang_syntax::ast::PipeMethod::Join => "join",
+                    daglang_syntax::ast::PipeMethod::Count => "count",
+                    daglang_syntax::ast::PipeMethod::Sum => "sum",
+                    daglang_syntax::ast::PipeMethod::First => "first",
+                    daglang_syntax::ast::PipeMethod::Last => "last",
+                    daglang_syntax::ast::PipeMethod::MaxBy => "max_by",
+                    daglang_syntax::ast::PipeMethod::Any => "any",
+                    daglang_syntax::ast::PipeMethod::All => "all",
+                    daglang_syntax::ast::PipeMethod::Contains => "contains",
+                    daglang_syntax::ast::PipeMethod::StartsWith => "starts_with",
+                    daglang_syntax::ast::PipeMethod::EndsWith => "ends_with",
+                    daglang_syntax::ast::PipeMethod::Repeat => "repeat",
+                    daglang_syntax::ast::PipeMethod::ReplaceSection => "replace_section",
+                    daglang_syntax::ast::PipeMethod::Chars => "chars",
+                    daglang_syntax::ast::PipeMethod::ToBytes => "to_bytes",
+                    daglang_syntax::ast::PipeMethod::ToJson => "to_json",
+                    daglang_syntax::ast::PipeMethod::Hash => "hash",
+                };
+                if let Some(kind) = collection_op_kind(method_name) {
+                    sites.push(CollectionOpSite { kind });
+                }
+            }
+            _ => {}
         }
     });
 }
@@ -7618,7 +7655,7 @@ pub(crate) fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<S
 fn collect_fn_calls_with_args(stmts: &[Stmt], calls: &mut Vec<FnCallSite>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Call(name, args) = expr {
-            if should_track_call(name) {
+            if !is_internal_synthetic_call(name) {
                 calls.push(FnCallSite {
                     name: name.clone(),
                     args: args.iter().map(service_call_arg_site).collect(),
@@ -8130,6 +8167,12 @@ fn collect_expr_leaf_refs(
             collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             collect_expr_leaf_refs(call, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
         }
+        Expr::PipeCall(receiver, _, args) => {
+            collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            for (_, arg) in args {
+                collect_expr_leaf_refs(arg, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            }
+        }
         Expr::Match(scrutinee, arms) => {
             collect_expr_leaf_refs(scrutinee, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             for arm in arms {
@@ -8245,7 +8288,46 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
                 .collect();
             expr::LoweredExpr::StringInterp(lowered_parts)
         }
+        Expr::PipeCall(receiver, method, args) => expr::LoweredExpr::Pipe {
+            receiver: Box::new(remap_expr_idents(receiver)),
+            call: Box::new(expr::LoweredExpr::Call {
+                name: pipe_method_name(*method).to_string(),
+                args: args
+                    .iter()
+                    .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
+                    .collect(),
+            }),
+        },
         _ => expr::LoweredExpr::Literal(expr::LoweredLiteral::None),
+    }
+}
+
+fn pipe_method_name(method: daglang_syntax::ast::PipeMethod) -> &'static str {
+    match method {
+        daglang_syntax::ast::PipeMethod::Map => "map",
+        daglang_syntax::ast::PipeMethod::Filter => "filter",
+        daglang_syntax::ast::PipeMethod::FilterMap => "filter_map",
+        daglang_syntax::ast::PipeMethod::FlatMap => "flat_map",
+        daglang_syntax::ast::PipeMethod::SortBy => "sort_by",
+        daglang_syntax::ast::PipeMethod::Append => "append",
+        daglang_syntax::ast::PipeMethod::Fold => "fold",
+        daglang_syntax::ast::PipeMethod::Join => "join",
+        daglang_syntax::ast::PipeMethod::Count => "count",
+        daglang_syntax::ast::PipeMethod::Sum => "sum",
+        daglang_syntax::ast::PipeMethod::First => "first",
+        daglang_syntax::ast::PipeMethod::Last => "last",
+        daglang_syntax::ast::PipeMethod::MaxBy => "max_by",
+        daglang_syntax::ast::PipeMethod::Any => "any",
+        daglang_syntax::ast::PipeMethod::All => "all",
+        daglang_syntax::ast::PipeMethod::Contains => "contains",
+        daglang_syntax::ast::PipeMethod::StartsWith => "starts_with",
+        daglang_syntax::ast::PipeMethod::EndsWith => "ends_with",
+        daglang_syntax::ast::PipeMethod::Repeat => "repeat",
+        daglang_syntax::ast::PipeMethod::ReplaceSection => "replace_section",
+        daglang_syntax::ast::PipeMethod::Chars => "chars",
+        daglang_syntax::ast::PipeMethod::ToBytes => "to_bytes",
+        daglang_syntax::ast::PipeMethod::ToJson => "to_json",
+        daglang_syntax::ast::PipeMethod::Hash => "hash",
     }
 }
 

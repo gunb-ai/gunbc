@@ -520,6 +520,8 @@ pub mod ast {
         For(String, Box<Expr>, Vec<String>, Box<Expr>),
         /// Pipe: `expr |> fn`
         Pipe(Box<Expr>, Box<Expr>),
+        /// Built-in pipe method call: `expr |> method(args)`
+        PipeCall(Box<Expr>, PipeMethod, Vec<(Option<String>, Expr)>),
         /// Lambda (inline only, in |> chains): `x => x.name`
         Lambda(Vec<String>, Box<Expr>),
         /// List literal: `[a, b, c]`
@@ -532,6 +534,73 @@ pub mod ast {
         After(Box<Expr>, Vec<String>),
         /// Return: `return { field: value }`
         Return(Vec<(String, Expr)>),
+    }
+
+    /// Built-in pipe methods resolved by parser/typechecker/lowerer as
+    /// first-class syntax, not free-form callable names.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum PipeMethod {
+        // Collection -> Collection
+        Map,
+        Filter,
+        FilterMap,
+        FlatMap,
+        SortBy,
+        Append,
+        // Collection -> Scalar
+        Fold,
+        Join,
+        Count,
+        Sum,
+        First,
+        Last,
+        MaxBy,
+        Any,
+        All,
+        Contains,
+        // String methods
+        StartsWith,
+        EndsWith,
+        Repeat,
+        ReplaceSection,
+        Chars,
+        // Conversion methods
+        ToBytes,
+        ToJson,
+        Hash,
+    }
+
+    impl PipeMethod {
+        /// Parse a method name string into a known built-in pipe method.
+        pub fn from_str(name: &str) -> Option<Self> {
+            match name {
+                "map" => Some(Self::Map),
+                "filter" => Some(Self::Filter),
+                "filter_map" => Some(Self::FilterMap),
+                "flat_map" => Some(Self::FlatMap),
+                "sort_by" => Some(Self::SortBy),
+                "append" => Some(Self::Append),
+                "fold" => Some(Self::Fold),
+                "join" => Some(Self::Join),
+                "count" => Some(Self::Count),
+                "sum" => Some(Self::Sum),
+                "first" => Some(Self::First),
+                "last" => Some(Self::Last),
+                "max_by" => Some(Self::MaxBy),
+                "any" => Some(Self::Any),
+                "all" => Some(Self::All),
+                "contains" => Some(Self::Contains),
+                "starts_with" => Some(Self::StartsWith),
+                "ends_with" => Some(Self::EndsWith),
+                "repeat" => Some(Self::Repeat),
+                "replace_section" => Some(Self::ReplaceSection),
+                "chars" => Some(Self::Chars),
+                "to_bytes" => Some(Self::ToBytes),
+                "to_json" => Some(Self::ToJson),
+                "hash" => Some(Self::Hash),
+                _ => None,
+            }
+        }
     }
 
     #[derive(Debug, Clone)]

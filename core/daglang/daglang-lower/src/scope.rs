@@ -271,6 +271,12 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
             collect_scoped_items_from_expr(lhs, items);
             collect_scoped_items_from_expr(rhs, items);
         }
+        Expr::PipeCall(receiver, _, args) => {
+            collect_scoped_items_from_expr(receiver, items);
+            for (_, arg_expr) in args {
+                collect_scoped_items_from_expr(arg_expr, items);
+            }
+        }
 
         // Binary op — recurse.
         Expr::BinOp(lhs, _, rhs) => {
