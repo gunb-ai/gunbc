@@ -17,31 +17,24 @@
 //! - `gunbc-dag::ci` defines gunbc's CI pipeline (repo-specific)
 
 #![deny(dead_code)]
-pub mod bootstrap;
-pub mod build;
 pub mod ci;
-pub mod codegen;
-pub mod deps_tool;
 #[allow(clippy::vec_init_then_push)] // Docgen uses vec-init-then-push patterns
 pub mod docgen;
 pub mod dry_run;
 pub mod dsl_builder;
 pub mod dsl_registry;
-pub mod embedded_assets;
-pub mod extern_impls;
+pub mod extern_ops;
 pub mod fidelity;
 pub mod fs_env;
-pub mod gist;
-pub mod infra;
 
 pub mod makegen;
 pub mod mock_defaults;
-pub mod policy;
 pub mod pragma;
 pub mod resource_defs;
 pub mod resolve;
 pub mod resolve_service;
 pub mod testgen_dag;
+pub mod tool_graphs;
 pub mod tool_runner;
 pub mod workflow;
 
@@ -50,10 +43,7 @@ pub mod resources {
     pub use crate::resource_defs::*;
 }
 // Re-exports for convenience
-pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp};
-pub use build::{build_build_graph, build_signature, BuildGraphOp};
 pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp};
-pub use codegen::{build_codegen_graph, codegen_signature, CodegenGraphOp};
 pub use docgen::{build_docgen_graph, DocgenGraphOp};
 pub use dry_run::wire_fs_env_write_mock;
 pub use fs_env::{add_fs_env_root_node, wire_fs_env_write_edges};
@@ -74,6 +64,11 @@ pub use resource_defs::{
     deps_config_resource_def, gitignore_resource_def, makefile_resource_def, testgen_resource_def,
 };
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
+pub use tool_graphs::{
+    bootstrap_signature, build_bootstrap_graph, build_build_graph, build_codegen_graph,
+    build_deps_graph, build_infra_graph, build_signature, codegen_signature, BootstrapGraphOp,
+    BuildGraphOp, CodegenGraphOp, DepsGraphOp, InfraGraphOp,
+};
 pub use tool_runner::{
     freshness_steps_planned, print_tool_header, run_tool, update_freshness_manifest_if_needed,
     RunToolOptions,

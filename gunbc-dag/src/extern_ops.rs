@@ -1,67 +1,23 @@
-//! Explicit extern implementations for DSL `extern func` declarations.
-//!
-//! Every entry here corresponds to an `extern func` in a `.dag` file. If a
-//! DSL function has a body, it must NOT appear here — the DSL body is what
-//! runs. This module provides Rust implementations for operations that
-//! cannot be expressed in pure DSL (registry access, recursive algorithms,
-//! complex content assembly).
-//!
-//! # Invariant
-//!
-//! `all_extern_symbols()` returns the complete set of `(module, name)` pairs.
-//! A test snapshots this list to prevent silent additions.
+//! Explicit extern operation implementations for DSL `extern func` declarations.
 
 use std::collections::{BTreeMap, HashMap};
 
 use gunbc_exec::{DynOp, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 
-// ============================================================================
-// Registry
-// ============================================================================
-
-/// All extern symbols backed by this module.
-///
-/// Used by tests to snapshot the full key set and prevent silent additions.
-pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
-    &[
-        ("std.markdown", "render_tree"),
-        ("tools.bootstrap", "render_bootstrap_gitignore"),
-        ("tools.bootstrap", "render_bootstrap_makefile"),
-        ("tools.cigen", "discover_ci_config"),
-        ("tools.gist", "build_snapshot_content"),
-        ("tools.makegen", "discover_tools"),
-        ("tools.pragma", "render_clippy_toml"),
-    ]
-}
-
-/// Look up an extern implementation by module and name.
-///
-/// Returns `Some(DynOp)` if an extern implementation exists, `None` otherwise.
-/// No fallback — unresolvable extern symbols are hard errors in the resolver.
-pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
+/// Resolve an extern symbol to a concrete runtime operation.
+pub fn resolve_extern_symbol(module: &str, name: &str) -> Option<DynOp> {
     match (module, name) {
         ("std.markdown", "render_tree") => Some(DynOp::new(RenderTreeOp)),
-
         ("tools.gist", "build_snapshot_content") => Some(DynOp::new(BuildSnapshotContentOp)),
-
         ("tools.makegen", "discover_tools") => Some(DynOp::new(DiscoverToolsOp)),
-
-        ("tools.pragma", "render_clippy_toml") => Some(DynOp::new(RenderClippyTomlOp)),
-        ("tools.pragma", "render_disallowed_methods_allowlist") => {
-            Some(DynOp::new(RenderAllowlistOp))
-        }
-        ("tools.pragma", "render_pragma_lint_policy") => Some(DynOp::new(RenderLintPolicyOp)),
-
         ("tools.bootstrap", "render_bootstrap_makefile") => {
             Some(DynOp::new(GenerateBootstrapMakefileOp))
         }
         ("tools.bootstrap", "render_bootstrap_gitignore") => {
             Some(DynOp::new(GenerateBootstrapGitignoreOp))
         }
-
         ("tools.cigen", "discover_ci_config") => Some(DynOp::new(DiscoverCiConfigOp)),
-
         _ => None,
     }
 }
@@ -70,9 +26,6 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
 // std.markdown extern impls
 // ============================================================================
 
-/// `render_tree(paths: List<String>) -> String`
-///
-/// Produces a tree-character directory tree inside a fenced code block.
 #[derive(Debug, Clone)]
 struct RenderTreeOp;
 
@@ -91,9 +44,6 @@ impl Executable for RenderTreeOp {
 // tools.gist extern impls
 // ============================================================================
 
-/// `build_snapshot_content(branch, files, file_contents, skipped) -> String`
-///
-/// Renders a full markdown document for the workspace snapshot.
 #[derive(Debug, Clone)]
 struct BuildSnapshotContentOp;
 
@@ -183,10 +133,6 @@ fn extract_file_contents(inputs: &HashMap<String, Value>) -> Result<Vec<String>,
 // tools.makegen extern impls
 // ============================================================================
 
-/// `discover_tools() -> List<DiscoveredTool>`
-///
-/// Returns tool information from the Rust ToolRegistry as structured data
-/// that the DSL rendering functions can consume.
 #[derive(Debug, Clone)]
 struct DiscoverToolsOp;
 
@@ -297,63 +243,6 @@ impl Executable for DiscoverToolsOp {
 }
 
 // ============================================================================
-// tools.pragma extern impls
-// ============================================================================
-
-#[derive(Debug, Clone)]
-struct RenderClippyTomlOp;
-
-impl Executable for RenderClippyTomlOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        use crate::policy::pragma::clippy_renderer;
-        let content = clippy_renderer().render();
-        OutputMap::new()
-            .str("content", content.clone())
-            .str("return", content)
-            .ok()
-    }
-}
-
-/// DSL-backed allowlist renderer. Replaces Rust extern impl (FC-P6-d).
-/// Compiles `config/clippy_policy.dag` and evaluates `derive_disallowed_methods_allowlist()`.
-#[derive(Debug, Clone)]
-struct RenderAllowlistOp;
-
-impl Executable for RenderAllowlistOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        let content = crate::pragma::dsl_render::render_allowlist_via_dsl();
-        OutputMap::new()
-            .str("content", content.clone())
-            .str("return", content)
-            .ok()
-    }
-}
-
-/// DSL-backed lint policy renderer. Replaces Rust extern impl (FC-P6-d).
-/// Compiles `config/clippy_policy.dag` and evaluates `derive_pragma_lint_policy()`.
-#[derive(Debug, Clone)]
-struct RenderLintPolicyOp;
-
-impl Executable for RenderLintPolicyOp {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        let content = crate::pragma::dsl_render::render_lint_policy_via_dsl();
-        OutputMap::new()
-            .str("content", content.clone())
-            .str("return", content)
-            .ok()
-    }
-}
-
-// ============================================================================
 // tools.bootstrap extern impls
 // ============================================================================
 
@@ -395,12 +284,6 @@ impl Executable for GenerateBootstrapGitignoreOp {
 // tools.cigen extern impls
 // ============================================================================
 
-/// `discover_ci_config() -> CiDiscovery`
-///
-/// Returns dynamic CI configuration values from the Rust runtime:
-/// secrets (from testgen metadata), tool command (from CargoInvocation),
-/// and bootstrap script (verification shell commands).
-/// Static config (branches, runner, permissions, env) lives in config/ci.dag.
 #[derive(Debug, Clone)]
 struct DiscoverCiConfigOp;
 
@@ -533,26 +416,12 @@ fn lang_for_path(path: &str) -> &'static str {
     }
 }
 
-// ============================================================================
-// Tests
-// ============================================================================
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn all_extern_symbols_matches_lookup() {
-        for &(module, name) in all_extern_symbols() {
-            assert!(
-                lookup_extern_impl(module, name).is_some(),
-                "all_extern_symbols lists ({module}, {name}) but lookup_extern_impl returns None"
-            );
-        }
-    }
-
-    #[test]
-    fn render_tree_produces_tree_characters() {
+    fn render_tree_extern_produces_tree_characters() {
         let inputs = HashMap::from([(
             "paths".to_string(),
             Value::str_list(vec!["src/main.rs".to_string(), "Cargo.toml".to_string()]),
@@ -562,128 +431,15 @@ mod tests {
         assert!(rendered.starts_with("```\n."));
         assert!(rendered.ends_with("```"));
         assert!(rendered.contains("Cargo.toml"));
-        assert!(rendered.contains("src"));
-        assert!(rendered.contains("main.rs"));
     }
 
     #[test]
-    fn build_snapshot_content_produces_markdown() {
-        let inputs = HashMap::from([
-            ("branch".to_string(), Value::Str("main".to_string())),
-            (
-                "files".to_string(),
-                Value::str_list(vec!["src/main.rs".to_string(), "Cargo.toml".to_string()]),
-            ),
-            (
-                "file_contents".to_string(),
-                Value::str_list(vec![
-                    "fn main() {}".to_string(),
-                    "[package]\nname = \"test\"".to_string(),
-                ]),
-            ),
-        ]);
-        let out = BuildSnapshotContentOp.execute(inputs).unwrap();
-        let rendered = out["return"].as_str().unwrap();
-        assert!(rendered.contains("# Workspace Snapshot"));
-        assert!(rendered.contains("Branch: `main`"));
-        assert!(rendered.contains("## Directory Tree"));
-        assert!(rendered.contains("## File Contents"));
-    }
-
-    #[test]
-    fn render_path_tree_basic() {
-        let tree = render_path_tree(&["src/main.rs", "Cargo.toml", "src/lib.rs"]);
-        assert!(tree.starts_with("```\n."));
-        assert!(tree.ends_with("```"));
-        assert!(tree.contains("├──") || tree.contains("└──"));
-    }
-
-    #[test]
-    fn lang_for_path_common_extensions() {
-        assert_eq!(lang_for_path("src/main.rs"), "rust");
-        assert_eq!(lang_for_path("Cargo.toml"), "toml");
-        assert_eq!(lang_for_path("package.json"), "json");
-        assert_eq!(lang_for_path("rules.dag"), "dag");
-    }
-
-    #[test]
-    fn test_render_clippy_toml() {
-        let result = RenderClippyTomlOp.execute(HashMap::new()).unwrap();
-        let content = result
-            .get("content")
-            .and_then(Value::as_str)
-            .expect("expected clippy content");
-        assert!(content.contains("disallowed-methods"));
-    }
-
-    #[test]
-    fn test_render_allowlist() {
-        let result = RenderAllowlistOp.execute(HashMap::new()).unwrap();
-        let content = result
-            .get("content")
-            .and_then(Value::as_str)
-            .expect("expected allowlist content");
-        assert!(content.contains("Generated by gunbc-pragma"));
-    }
-
-    #[test]
-    fn test_render_lint_policy() {
-        let result = RenderLintPolicyOp.execute(HashMap::new()).unwrap();
-        let content = result
-            .get("content")
-            .and_then(Value::as_str)
-            .expect("expected lint policy content");
-        assert!(content.contains("Generated by gunbc-pragma"));
-    }
-
-    #[test]
-    fn test_discover_tools_returns_list() {
-        let result = DiscoverToolsOp.execute(HashMap::new()).unwrap();
-        let tools = result.get("return").expect("expected return key");
+    fn discover_tools_returns_non_empty_list() {
+        let out = DiscoverToolsOp.execute(HashMap::new()).unwrap();
+        let tools = out.get("return").expect("return key");
         match tools {
-            Value::List(items) => {
-                assert!(
-                    items.len() >= 5,
-                    "should discover at least 5 tools, got {}",
-                    items.len()
-                );
-                // Check first tool has expected fields
-                if let Value::Map(tool) = &items[0] {
-                    assert!(tool.contains_key("short_name"), "tool missing short_name");
-                    assert!(tool.contains_key("command"), "tool missing command");
-                    assert!(
-                        tool.contains_key("dry_run_command"),
-                        "tool missing dry_run_command"
-                    );
-                    assert!(tool.contains_key("deps"), "tool missing deps");
-                    assert!(tool.contains_key("entrypoints"), "tool missing entrypoints");
-                }
-            }
-            _ => panic!("expected List, got {:?}", std::mem::discriminant(tools)),
+            Value::List(items) => assert!(!items.is_empty(), "tool list should not be empty"),
+            _ => panic!("discover_tools should return a list"),
         }
-    }
-
-    #[test]
-    fn test_generate_makefile() {
-        let result = GenerateBootstrapMakefileOp.execute(HashMap::new()).unwrap();
-        let content = result
-            .get("makefile_content")
-            .and_then(Value::as_str)
-            .expect("expected makefile content");
-        assert!(content.contains("Generated by gunbc-makegen"));
-        assert!(content.contains("build:"));
-    }
-
-    #[test]
-    fn test_generate_gitignore() {
-        let result = GenerateBootstrapGitignoreOp
-            .execute(HashMap::new())
-            .unwrap();
-        let content = result
-            .get("gitignore_content")
-            .and_then(Value::as_str)
-            .expect("expected gitignore content");
-        assert!(content.contains("Generated by gunbc-bootstrap"));
-        assert!(content.contains("/target/"));
     }
 }

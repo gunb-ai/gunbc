@@ -14,7 +14,6 @@ use crate::makegen::registry::{BuildConfig, EntrypointParam, ToolInfo, ToolRegis
 use gunbc_ir::CargoInvocation;
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::render_ir::FileHeader;
-use super::shared::render_makefile;
 
 /// Renderer for Justfiles with standardized header generation.
 pub struct JustfileRenderer<'a> {
@@ -447,7 +446,7 @@ mod tests {
     #[test]
     fn test_justfile_target_graph_matches_makefile() {
         let registry = ToolRegistry::default_registry();
-        let makefile = render_makefile(&registry);
+        let makefile = crate::makegen::shared::render_makefile(&registry);
         let justfile = render_justfile(&registry);
 
         let make_graph = parse_target_graph(&makefile);

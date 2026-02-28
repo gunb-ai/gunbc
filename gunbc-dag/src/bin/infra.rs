@@ -9,7 +9,7 @@
 
 #![deny(dead_code)]
 
-use gunbc_dag::infra::build_infra_graph;
+use gunbc_dag::build_infra_graph;
 use gunbc_exec::{
     execute_with_mode_and_inputs, print_attention, AttentionLevel, BoundaryMocks, ExecutionLog,
     ExecutionMode,

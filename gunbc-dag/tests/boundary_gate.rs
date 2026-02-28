@@ -33,8 +33,8 @@ const ALLOWED_DIRS: &[&str] = &[
     "lib/primitives/",
     // Makegen (Rust-side rendering, migrating to DSL)
     "gunbc-dag/src/makegen/",
-    // Extern impls (to be deleted as externs are eliminated)
-    "gunbc-dag/src/extern_impls.rs",
+    // Extern ops (recursive/inventory-backed extern function handlers)
+    "gunbc-dag/src/extern_ops.rs",
     // Binary entrypoints
     "gunbc-dag/src/bin/",
     // Test generation DAG
@@ -43,8 +43,6 @@ const ALLOWED_DIRS: &[&str] = &[
     "gunbc-dag/src/workflow/",
     // DSL registry
     "gunbc-dag/src/dsl_registry.rs",
-    // Policy (to be migrated to DSL)
-    "gunbc-dag/src/policy/",
 ];
 
 /// Current baseline: total `push_str` occurrences in non-boundary Rust files.

@@ -21,16 +21,13 @@ fn render_diff_markdown(diff: String, branch: String, base_ref: CommitSha) -> St
   "# Diff: {branch} vs {base_ref}\n\n```diff\n{diff}\n```\n"
 }
 
-// Overridden by extern_impls.rs (BuildSnapshotContentOp) at resolve time.
-// Phase 5 of extern-bridge-gap-analysis.md converts this to pure DSL.
-fn build_snapshot_content(
-    branch: String,
-    files: List<String>,
-    file_contents: List<String>,
-    skipped: List<String>
-) -> String {
-  "{branch}"
-}
+// Recursive markdown assembly stays in Rust until recursive DSL modeling ships.
+extern func build_snapshot_content(
+  branch: String,
+  files: List<String>,
+  file_contents: List<String>,
+  skipped: List<String>
+) -> { return: String }
 
 // ── Entrypoints ─────────────────────────────────────────────────────
 

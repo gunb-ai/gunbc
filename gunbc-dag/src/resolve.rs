@@ -767,7 +767,7 @@ fn resolve_domain(
     node_id: &str,
     module: &str,
     name: &str,
-    kind: CallableKind,
+    _kind: CallableKind,
     outputs: &[Port],
     service_metadata: Option<&ServiceCallMetadata>,
 ) -> Result<DynOp, ResolveError> {
@@ -798,26 +798,7 @@ fn resolve_domain(
             return resolve_service_transport(node_id, module, name, outputs, service_metadata);
         }
     }
-    // 4. Extern impl lookup — DSL `extern func` items resolved to Rust ops.
-    //
-    // Shadow bridge detection: if an extern impl exists for a Fn/Func callable,
-    // the Rust impl silently overrides whatever DSL body the callable has.
-    // This is a documented workaround for a lowerer limitation (NF-7: same-module
-    // extern func calls don't wire output ports correctly). Once NF-7 is resolved,
-    // these callables should be converted to `extern func` declarations in DSL
-    // and this shadow bridge path can be removed.
-    let _ = &kind; // used in debug_assertions block below; suppress release warning
-    if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
-        #[cfg(debug_assertions)]
-        if matches!(kind, CallableKind::Fn | CallableKind::Func) {
-            eprintln!(
-                "resolve: shadow bridge {module}::{name} (kind={kind:?}) — \
-                 Rust extern impl overrides DSL callable body"
-            );
-        }
-        return Ok(op);
-    }
-    // 5. Default: identity callable for compiler-validated callables.
+    // 4. Default: identity callable for compiler-validated callables.
     //
     // All LoweredOp::Callable nodes are produced by the DSL compiler (the
     // lowerer only emits Callable for items in the typed project). The
@@ -947,7 +928,7 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
     let module = sym.module().unwrap_or("");
     let name = sym.name().unwrap_or("");
 
-    if let Some(op) = crate::extern_impls::lookup_extern_impl(module, name) {
+    if let Some(op) = crate::extern_ops::resolve_extern_symbol(module, name) {
         return Ok(op);
     }
     if module == "std.resources" {
@@ -963,7 +944,7 @@ fn resolve_extern_call(node_id: &str, symbol: &str) -> Result<DynOp, ResolveErro
         node_id: node_id.to_string(),
         reason: format!(
             "extern symbol `{symbol}` could not be resolved — \
-             no extern impl, std.resources, or tools.infra handler found"
+             no extern op, std.resources, or tools.infra handler found"
         ),
     })
 }
@@ -1300,46 +1281,6 @@ mod tests {
                 kind,
             },
         )
-    }
-
-    #[test]
-    fn resolve_pragma_render_ops_emit_content() {
-        let cases = [
-            "render_clippy_toml",
-            "render_disallowed_methods_allowlist",
-            "render_pragma_lint_policy",
-        ];
-        for name in cases {
-            let node = callable_node(name, "tools.pragma", name, ObligationCategory::None);
-            let result = resolve_node(&node).expect(name);
-            let outputs = result.execute(HashMap::new()).expect(name);
-            assert!(
-                outputs
-                    .get("return")
-                    .and_then(Value::as_str)
-                    .map(|content| !content.is_empty())
-                    .unwrap_or(false),
-                "resolver should execute pragma renderer `{name}` and emit non-empty return"
-            );
-        }
-    }
-
-    #[test]
-    fn resolve_bootstrap_render_ops_emit_content() {
-        let cases = ["render_bootstrap_makefile", "render_bootstrap_gitignore"];
-        for name in cases {
-            let node = callable_node(name, "tools.bootstrap", name, ObligationCategory::None);
-            let result = resolve_node(&node).expect(name);
-            let outputs = result.execute(HashMap::new()).expect(name);
-            assert!(
-                outputs
-                    .get("return")
-                    .and_then(Value::as_str)
-                    .map(|content| !content.is_empty())
-                    .unwrap_or(false),
-                "resolver should execute bootstrap renderer `{name}` and emit non-empty return"
-            );
-        }
     }
 
     #[test]
@@ -2328,27 +2269,4 @@ mod tests {
         );
     }
 
-    /// Shadow bridge: a Callable (DSL fn body) that has a Rust extern impl.
-    /// The extern impl wins at resolution (Step 4 > Step 5). This test
-    /// documents the behavior. When NF-7 lands (same-module extern func
-    /// wiring), these callables should become ExternCall nodes and this
-    /// shadow bridge pattern should be eliminated.
-    #[test]
-    fn resolve_shadow_bridge_callable_uses_extern_impl_not_passthrough() {
-        // tools.pragma::render_clippy_toml has a Rust extern impl.
-        // When it appears as a Callable (fn body), the extern impl wins.
-        let node = callable_node(
-            "render_clippy_toml",
-            "tools.pragma",
-            "render_clippy_toml",
-            ObligationCategory::PureRender,
-        );
-        let result =
-            resolve_node(&node).expect("shadow bridge callable should resolve to extern impl");
-        let debug = format!("{result:?}");
-        assert!(
-            debug.contains("RenderClippyTomlOp"),
-            "should resolve to RenderClippyTomlOp (extern impl), not DeclaredOutputCallableOp: {debug}"
-        );
-    }
 }
