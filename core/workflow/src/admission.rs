@@ -4,9 +4,9 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use gunbc_ir::{derive_resource_accesses, Dag, NodeBody, ResourceId};
 
-use super::errors::WorkflowAdmissionError;
-use super::process_registry::{ClaimId, ProcessUnitRegistry, UnitClaim};
-use super::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit};
+use crate::errors::WorkflowAdmissionError;
+use crate::process_registry::{ClaimId, ProcessUnitRegistry, UnitClaim};
+use crate::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit};
 
 /// Validate workflow admission with fail-closed semantics.
 ///
@@ -319,8 +319,8 @@ mod tests {
     use super::*;
     use gunbc_ir::{AccessMode, Edge, Node, Port};
 
-    use crate::workflow::process_registry::{ProcessUnitRef, ProcessUnitSpec};
-    use crate::workflow::schema::{
+    use crate::process_registry::{ProcessUnitRef, ProcessUnitSpec};
+    use crate::schema::{
         required_input_contract, required_output_contract, WorkflowId, WorkflowSpec,
     };
 

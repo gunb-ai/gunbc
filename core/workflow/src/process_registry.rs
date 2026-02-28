@@ -155,15 +155,6 @@ fn canonicalize_unit_id(unit_id: &NodeId) -> NodeId {
     }
 }
 
-/// Default registry for WF1/WF2 planner bootstrap.
-///
-/// Derived from `dsl/workflows/*.dag` stage claim annotations.
-pub fn default_process_unit_registry() -> ProcessUnitRegistry {
-    super::catalog::build_process_unit_registry().unwrap_or_else(|error| {
-        panic!("failed to derive process unit registry from DSL workflows: {error}")
-    })
-}
-
 /// Canonical handle type auto-wiring policy for resource claims.
 pub fn claim_handle_type_id(claim_id: &ClaimId) -> &'static str {
     if claim_id.0.starts_with("file:") {
@@ -182,42 +173,6 @@ pub fn claim_handle_type_id(claim_id: &ClaimId) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::capabilities::{
-        CODEGEN_ENSURE_UNIT, CODEGEN_PROCESS_ID, COMPILATION_ENSURE_UNIT, COMPILATION_PROCESS_ID,
-    };
-
-    #[test]
-    fn default_registry_contains_ci_and_test_all_units() {
-        let registry = default_process_unit_registry();
-        assert!(registry.contains(&ProcessUnitRef::new("ci", "ci.codegen")));
-        assert!(registry.contains(&ProcessUnitRef::new("test_all", "test_all.codegen")));
-    }
-
-    #[test]
-    fn registry_exposes_required_claims() {
-        let registry = default_process_unit_registry();
-        let spec = registry
-            .get(&ProcessUnitRef::new("ci", "ci.build_compile"))
-            .expect("ci.build_compile should exist");
-        assert!(spec.required_claims.iter().any(
-            |claim| claim.claim_id.0 == "file:target" && claim.access_mode == AccessMode::Write
-        ));
-    }
-
-    #[test]
-    fn canonical_work_identity_is_context_free_across_workflows() {
-        let registry = default_process_unit_registry();
-        let ci = registry
-            .get(&ProcessUnitRef::new("ci", "ci.codegen"))
-            .expect("ci.codegen");
-        let test_all = registry
-            .get(&ProcessUnitRef::new("test_all", "test_all.codegen"))
-            .expect("test_all.codegen");
-        assert_eq!(
-            ci.canonical_work_identity(),
-            test_all.canonical_work_identity()
-        );
-    }
 
     #[test]
     fn claim_handle_type_policy_maps_common_prefixes() {
@@ -236,69 +191,6 @@ mod tests {
     }
 
     #[test]
-    fn default_registry_contains_canonical_capability_units() {
-        let registry = default_process_unit_registry();
-        assert!(registry.contains(&ProcessUnitRef::new(
-            COMPILATION_PROCESS_ID,
-            COMPILATION_ENSURE_UNIT
-        )));
-        assert!(registry.contains(&ProcessUnitRef::new(
-            CODEGEN_PROCESS_ID,
-            CODEGEN_ENSURE_UNIT
-        )));
-    }
-
-    #[test]
-    fn default_registry_contains_tool_workflow_units() {
-        let registry = default_process_unit_registry();
-        assert!(registry.contains(&ProcessUnitRef::new("gist", "gist.branch_resolution")));
-        assert!(registry.contains(&ProcessUnitRef::new(
-            "bootstrap",
-            "bootstrap.workspace_scan"
-        )));
-        assert!(registry.contains(&ProcessUnitRef::new("makegen", "makegen.load_registry")));
-        assert!(registry.contains(&ProcessUnitRef::new("pragma", "pragma.render_clippy")));
-        assert!(registry.contains(&ProcessUnitRef::new("deps", "deps.load_manifest")));
-        assert!(registry.contains(&ProcessUnitRef::new("build_all", "build_all.build")));
-    }
-
-    // gist_create_unit_has_network_write_claim and
-    // gist_credential_unit_has_credential_read_claim removed:
-    // M22 deleted @network(WRITE, "github_gist") and @credential(READ, "github")
-    // from gist.dag. These claims will be re-introduced via mandatory resource
-    // declarations (M10) once the resource port system replaces annotation-based
-    // claim inference.
-
-    #[test]
-    fn universal_capabilities_are_registered_once_without_workflow_duplication() {
-        let registry = default_process_unit_registry();
-        let compilation_specs: Vec<_> = registry
-            .iter()
-            .filter(|spec| spec.reference.process_id.0 == COMPILATION_PROCESS_ID)
-            .collect();
-        assert_eq!(
-            compilation_specs.len(),
-            1,
-            "compilation capability should be registered once"
-        );
-        assert_eq!(
-            compilation_specs[0].reference.unit_id.0,
-            COMPILATION_ENSURE_UNIT
-        );
-
-        let codegen_specs: Vec<_> = registry
-            .iter()
-            .filter(|spec| spec.reference.process_id.0 == CODEGEN_PROCESS_ID)
-            .collect();
-        assert_eq!(
-            codegen_specs.len(),
-            1,
-            "codegen capability should be registered once"
-        );
-        assert_eq!(codegen_specs[0].reference.unit_id.0, CODEGEN_ENSURE_UNIT);
-    }
-
-    #[test]
     fn network_claim_maps_to_network_handle() {
         assert_eq!(
             claim_handle_type_id(&ClaimId::new("network:github_gist")),
@@ -311,6 +203,31 @@ mod tests {
         assert_eq!(
             claim_handle_type_id(&ClaimId::new("credential:github")),
             "ResourceHandle"
+        );
+    }
+
+    #[test]
+    fn canonical_work_identity_is_context_free_across_workflows() {
+        let mut registry = ProcessUnitRegistry::new();
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("ci", "ci.codegen"),
+            1,
+            vec![UnitClaim::read("file:dsl")],
+        ));
+        registry.register(ProcessUnitSpec::new(
+            ProcessUnitRef::new("test_all", "test_all.codegen"),
+            1,
+            vec![UnitClaim::read("file:dsl")],
+        ));
+        let ci = registry
+            .get(&ProcessUnitRef::new("ci", "ci.codegen"))
+            .expect("ci.codegen");
+        let test_all = registry
+            .get(&ProcessUnitRef::new("test_all", "test_all.codegen"))
+            .expect("test_all.codegen");
+        assert_eq!(
+            ci.canonical_work_identity(),
+            test_all.canonical_work_identity()
         );
     }
 }

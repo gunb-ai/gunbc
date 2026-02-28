@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use gunbc_ir::{NodeId, PortName};
 
-use super::schema::{WorkflowSpec, PORT_AFTER};
+use crate::schema::{WorkflowSpec, PORT_AFTER};
 
 /// Why a node is blocked from execution readiness.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,9 +89,9 @@ mod tests {
     use super::*;
     use gunbc_ir::{Dag, Edge, Node, Port};
 
-    use crate::workflow::schema::{
-        required_input_contract, required_output_contract, WorkflowId, WorkflowOp, WorkflowSpec,
-        WorkflowUnit,
+    use crate::schema::{
+        required_input_contract, required_output_contract, AggregateSpec, WorkflowId, WorkflowOp,
+        WorkflowSpec, WorkflowUnit,
     };
 
     #[test]
@@ -101,17 +101,13 @@ mod tests {
             "wf.a",
             required_input_contract(),
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::Aggregate(
-                crate::workflow::schema::AggregateSpec::new("a"),
-            )),
+            WorkflowUnit::new(WorkflowOp::Aggregate(AggregateSpec::new("a"))),
         ));
         dag.add_node(Node::opaque(
             "wf.b",
             required_input_contract(),
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::Aggregate(
-                crate::workflow::schema::AggregateSpec::new("b"),
-            )),
+            WorkflowUnit::new(WorkflowOp::Aggregate(AggregateSpec::new("b"))),
         ));
         dag.add_edge(Edge::control("wf.a", "commit", "wf.b", "after"));
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
@@ -136,9 +132,7 @@ mod tests {
             "wf.only",
             inputs,
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::Aggregate(
-                crate::workflow::schema::AggregateSpec::new("only"),
-            )),
+            WorkflowUnit::new(WorkflowOp::Aggregate(AggregateSpec::new("only"))),
         ));
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
 
@@ -162,9 +156,7 @@ mod tests {
             "wf.only",
             inputs,
             required_output_contract(),
-            WorkflowUnit::new(WorkflowOp::Aggregate(
-                crate::workflow::schema::AggregateSpec::new("only"),
-            )),
+            WorkflowUnit::new(WorkflowOp::Aggregate(AggregateSpec::new("only"))),
         ));
         let spec = WorkflowSpec::new(WorkflowId::new("wf"), dag, 1);
 

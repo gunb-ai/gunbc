@@ -3,7 +3,7 @@
 use gunbc_ir::{AccessMode, NodeId};
 use std::fmt;
 
-use super::process_registry::{ClaimId, ProcessUnitRef, UnitClaim};
+use crate::process_registry::{ClaimId, ProcessUnitRef, UnitClaim};
 
 /// Fail-closed validation errors for workflow planner admission.
 #[derive(Debug, Clone, PartialEq, Eq)]

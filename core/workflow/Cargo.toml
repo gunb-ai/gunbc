@@ -1,0 +1,13 @@
+[package]
+name = "gunbc-workflow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Generic workflow engine: planner, executor, coordination, SLO"
+
+[dependencies]
+gunbc-infra = { path = "../infra" }
+gunbc-ir = { path = "../ir" }
+gunbc-exec = { path = "../exec" }
+serde = { workspace = true }
+serde_json = { workspace = true }

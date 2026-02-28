@@ -2,8 +2,8 @@
 
 use std::collections::BTreeSet;
 
-use super::global_plan::GlobalWorkflowPlan;
-use super::key::{MaterializationDigest, WorkIdentity};
+use crate::global_plan::GlobalWorkflowPlan;
+use crate::key::{MaterializationDigest, WorkIdentity};
 
 /// Invariant failure diagnostics for workflow non-redundancy checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,10 +49,9 @@ pub fn prove_non_redundancy(plan: &GlobalWorkflowPlan) -> Result<(), Vec<Invaria
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workflow::global_plan::{GlobalExecutionVertex, GlobalWorkflowPlan};
-    use crate::workflow::key::MaterializationDigest;
-    use crate::workflow::planner::PlanAction;
-    use crate::workflow::schema::WorkflowId;
+    use crate::global_plan::GlobalExecutionVertex;
+    use crate::planner::PlanAction;
+    use crate::schema::WorkflowId;
     use gunbc_ir::NodeId;
 
     fn sample_vertex() -> GlobalExecutionVertex {
@@ -60,9 +59,9 @@ mod tests {
             work_id: WorkIdentity::new("process-unit", "codegen"),
             digest: MaterializationDigest("abc".to_string()),
             action: PlanAction::Execute {
-                miss_reason: crate::workflow::MissReason::NoPriorRun,
+                miss_reason: crate::MissReason::NoPriorRun,
             },
-            node_refs: vec![crate::workflow::global_plan::WorkflowNodeRef {
+            node_refs: vec![crate::global_plan::WorkflowNodeRef {
                 workflow_id: WorkflowId::new("ci"),
                 node_id: NodeId::from("ci.codegen"),
             }],

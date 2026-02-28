@@ -6,7 +6,7 @@ use gunbc_infra::hash::ContentHash;
 use gunbc_ir::{NodeId, PortName};
 use serde::{Deserialize, Serialize};
 
-use super::process_registry::ProcessId;
+use crate::process_registry::ProcessId;
 
 /// Deterministic materialization digest (sha256 of canonical key payload).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

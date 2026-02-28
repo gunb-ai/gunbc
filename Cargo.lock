@@ -394,6 +394,7 @@ dependencies = [
  "gunbc-test",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
+ "gunbc-workflow",
  "ron",
  "serde",
  "serde_json",
@@ -603,6 +604,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "gunbc-workflow"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-infra",
+ "gunbc-ir",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

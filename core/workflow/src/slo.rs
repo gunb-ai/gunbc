@@ -3,8 +3,8 @@
 //! Provides run-ledger timing metrics, warm-path budget assertions,
 //! and "top slow units" reporting for CI integration.
 
-use super::executor::{ExecutionSummary, UnitResult};
-use super::planner::PlanExplain;
+use crate::executor::{ExecutionSummary, UnitResult};
+use crate::planner::PlanExplain;
 
 /// SLO budget thresholds (milliseconds).
 #[derive(Debug, Clone)]
@@ -168,7 +168,7 @@ mod tests {
     use gunbc_ir::NodeId;
 
     use super::*;
-    use crate::workflow::key::MissReason;
+    use crate::key::MissReason;
 
     fn make_summary(
         workflow_id: &str,

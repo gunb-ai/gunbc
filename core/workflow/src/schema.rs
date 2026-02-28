@@ -4,7 +4,7 @@
 
 use gunbc_ir::{Dag, Port, PortName, TypeId};
 
-use super::process_registry::ProcessUnitRef;
+use crate::process_registry::ProcessUnitRef;
 
 /// Canonical workflow ID.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -5,6 +5,7 @@ members = [
     "core/infra",
     "core/ir",
     "core/exec",
+    "core/workflow",
     "core/cli",
     "core/codegen",
     "core/test",

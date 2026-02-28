@@ -6,12 +6,12 @@ use std::path::Path;
 use gunbc_exec::topo_sort;
 use gunbc_ir::{canonical_edge_order, NodeBody, NodeId, PortName, Value};
 
-use super::coordination::{coordination_status, BlockedReason, CoordinationStatus};
-use super::key::{
+use crate::coordination::{coordination_status, BlockedReason, CoordinationStatus};
+use crate::key::{
     CanonicalKeyPayload, MaterializationDigest, MaterializationKey, MissReason, WorkIdentity,
 };
-use super::process_registry::{ProcessId, ProcessUnitRegistry};
-use super::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER};
+use crate::process_registry::{ProcessId, ProcessUnitRegistry};
+use crate::schema::{WorkflowOp, WorkflowSpec, WorkflowUnit, PORT_AFTER};
 
 /// Per-node planner action.
 #[derive(Debug, Clone, PartialEq)]
@@ -81,7 +81,7 @@ pub enum WorkflowPlannerError {
     UnknownNode(NodeId),
     UnknownProcessUnit {
         node_id: NodeId,
-        process_unit: super::process_registry::ProcessUnitRef,
+        process_unit: crate::process_registry::ProcessUnitRef,
     },
     StrictDryRunMissingInput {
         node_id: NodeId,
@@ -230,7 +230,7 @@ pub fn plan_workflow_with_mode(
     let provided_inputs = planner_inputs
         .iter()
         .map(|(node, ports)| (node.clone(), ports.keys().cloned().collect()))
-        .collect::<BTreeMap<NodeId, std::collections::BTreeSet<PortName>>>();
+        .collect::<BTreeMap<NodeId, BTreeSet<PortName>>>();
     let coordination =
         coordination_status(spec, &std::collections::HashSet::new(), &provided_inputs);
 
@@ -436,8 +436,8 @@ mod tests {
     use gunbc_ir::{Edge, Node, Port};
 
     use super::*;
-    use crate::workflow::process_registry::{ProcessUnitRef, ProcessUnitSpec, UnitClaim};
-    use crate::workflow::schema::{
+    use crate::process_registry::{ProcessUnitRef, ProcessUnitSpec, UnitClaim};
+    use crate::schema::{
         required_input_contract, required_output_contract, WorkflowId, WorkflowSpec, WorkflowUnit,
     };
 
