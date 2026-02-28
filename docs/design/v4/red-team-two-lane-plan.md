@@ -4,6 +4,39 @@
 **Date**: 2026-02-28
 **Goal**: Two parallel worker lanes, ~10k LOC each, primarily deletion
 
+## Architectural Direction
+
+The compiler was built by trial-and-error. The result: 93k lines of compiler code
+serving 16k lines of DSL source. The ratio is wrong. The next phase makes the
+compiler conform to these principles (adapted from Google C++ style):
+
+1. **Pure functions, imperative shell.** Business logic computes values; side effects
+   happen at the boundary. The lowerer's 33 `&mut DagBuilder` functions violate this —
+   every phase should return typed data, not mutate shared state.
+
+2. **Clear errors.** Every failure path produces a typed error with source location.
+   No panics on user input (RT38). No `_ => None` silent drops (RT82). No `eprintln!`
+   diagnostics (currently 92 across the compiler). Errors are values, not side effects.
+
+3. **Strong interfaces.** Types express contracts. Port types should be structured
+   (not `ends_with('?')` string convention). Field access should be typed (not
+   `base__field` string encoding). State that can't exist shouldn't be representable.
+
+4. **No "compile-then-eval" anti-pattern.** The `fidelity.rs` pattern (compile a .dag
+   file, extract fn bodies, call the evaluator at runtime) uses the compiler as an
+   ad-hoc interpreter. DSL declarations should compile to static data that Rust reads
+   directly — not require re-parsing and interpreting on every invocation.
+
+5. **Minimal language core.** Language features (lambdas, pipe methods, match, optional
+   chaining) grew incrementally without design. Each feature is a special case in the
+   typechecker, lowerer, and evaluator. The existing features stay (15.7k lines of DSL
+   use them), but no new features should be added without proving they can't be expressed
+   with existing primitives.
+
+6. **Delete, don't relocate.** Every cleanup task should net-delete lines. Moving code
+   between files without simplification is not progress. If infrastructure exists to
+   serve a registry that's being deleted, the infrastructure goes too.
+
 ## Design Principles
 
 1. **Lanes touch different files** — no merge conflicts
@@ -47,6 +80,7 @@ the registry maintenance AND the consumer complexity.
 | **Delete makegen Rust registry** (RT75+80 merged) | RT18 (bootstrap extern deletion — gitignore categories move to DSL), RT86 (cross-layer contract tests — layers collapse) | ~3,500 |
 | **Delete extern_impls.rs + resolve.rs dispatch** (RT23+72 merged) | RT29 (registry dispatch — the other big string dispatch target), RT44 (evaluate_fn_body coverage — externs handled differently) | ~3,000 |
 | **Delete dead AST scaffolding** (RT84 expanded) | RT13 (mock registry derivation — delete MockResponseDef instead of wiring it), RT-I1/I2 (superseded — delete the scaffolding entirely) | ~500 |
+| **Delete compile-then-eval pattern** (fidelity.rs + similar) | RT45 (typed enum values), RT46 (fidelity fallbacks), RT69 (fidelity migration — already done but left the anti-pattern) | ~400 |
 
 ## Lane A: "Substrate Deletion" — Delete gunbc-dag Rust infrastructure
 
