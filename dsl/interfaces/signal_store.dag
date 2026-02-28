@@ -19,6 +19,7 @@ interface SignalStore {
   // Emit a signal. Idempotent: dedup by idempotency_key.
   capability emit(signal: Signal)
     -> { emitted: Bool }
+    idempotent
 
   // Consume signals of specified types. Returns unconsumed signals
   // up to the specified limit.
@@ -29,6 +30,7 @@ interface SignalStore {
   // signal is a no-op success.
   capability ack(idempotency_key: NonEmptyStr)
     -> { acked: Bool }
+    idempotent
 
   // --- Behavioral contracts ------------------------------------------------
   //

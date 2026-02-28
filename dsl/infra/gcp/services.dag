@@ -13,6 +13,8 @@ module infra.gcp.services
 service gcp.Storage {
 
   operation GetBucket {
+    readonly
+    idempotent
     input { name: NonEmptyStr }
     output { exists: Bool, name: String, labels: Map<String, String>? }
   }
@@ -39,6 +41,8 @@ service gcp.Storage {
 service gcp.CloudRun {
 
   operation GetService {
+    readonly
+    idempotent
     input { project_id: ProjectId, region: String, name: NonEmptyStr }
     output { exists: Bool, name: String, uri: Url?, labels: Map<String, String>? }
   }
@@ -84,6 +88,8 @@ service gcp.CloudRun {
 service gcp.SecretManager.Lifecycle {
 
   operation GetSecret {
+    readonly
+    idempotent
     input { project_id: ProjectId, secret: NonEmptyStr }
     output { exists: Bool, name: String }
   }
@@ -109,6 +115,8 @@ service gcp.SecretManager.Lifecycle {
 service gcp.IAM.Lifecycle {
 
   operation GetServiceAccount {
+    readonly
+    idempotent
     input { project_id: ProjectId, email: ServiceAccountEmail }
     output { exists: Bool, email: String }
   }
@@ -160,6 +168,8 @@ service gcp.WIF {
 service gcp.PubSub {
 
   operation GetTopic {
+    readonly
+    idempotent
     input { project_id: ProjectId, topic: NonEmptyStr }
     output { exists: Bool, name: String }
   }

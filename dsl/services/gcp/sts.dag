@@ -18,6 +18,7 @@ service gcp.STS {
     }
     // Body includes grant_type and token_type fields -- the compiler
     // generates the full OAuth2 token exchange request from these inputs.
+    idempotent
     transport rest { method: POST, path: "/v1/token" }
   }
 }
@@ -39,6 +40,7 @@ service github.OIDC {
       request_token: Secret
     }
     output { subject_token: Secret from "value" }
+    readonly
     transport rest { method: GET, path: "/\{audience\}" }
   }
 }
@@ -50,6 +52,7 @@ service gcp.Metadata {
     input { audience: NonEmptyStr }
     output { subject_token: Secret }
     // Response body IS the token (not JSON), parsed as raw string.
+    readonly
     transport rest { method: GET, path: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}" }
   }
 }

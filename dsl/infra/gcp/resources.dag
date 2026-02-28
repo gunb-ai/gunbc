@@ -52,6 +52,8 @@ resource GcsBucket implements ObjectStorage {
 
   // Capabilities map to ObjectStorage interface
   capability read {
+    readonly
+    idempotent
     input { key: NonEmptyStr }
     output { content: Bytes, found: Bool }
   }
@@ -67,6 +69,8 @@ resource GcsBucket implements ObjectStorage {
   }
 
   capability list {
+    readonly
+    idempotent
     input { prefix: String }
     output { keys: List<NonEmptyStr> }
   }
@@ -148,6 +152,8 @@ resource CloudRunService implements Compute {
   }
 
   capability get_url {
+    readonly
+    idempotent
     input {}
     output { url: Url }
   }
@@ -198,6 +204,8 @@ resource ManagedSecret implements SecretStore {
   release {}
 
   capability read_value {
+    readonly
+    idempotent
     input {}
     output { value: Secret }
   }
@@ -213,6 +221,8 @@ resource ManagedSecret implements SecretStore {
   }
 
   capability list_versions {
+    readonly
+    idempotent
     input {}
     output { versions: List<NonEmptyStr> }
   }
@@ -259,6 +269,7 @@ resource GcpServiceAccount implements Identity {
   release {}
 
   capability assume {
+    readonly
     input { scopes: List<String>, lifetime_seconds: Int = 3600 }
     output { token: Secret, expires_at: String }
   }
@@ -327,6 +338,8 @@ resource WifProvider {
   release {}
 
   capability get_token {
+    readonly
+    idempotent
     input { audience: NonEmptyStr }
     output { token: Secret }
   }
@@ -366,6 +379,7 @@ resource PubSubTopic implements Queue<Bytes> {
   }
 
   capability subscribe {
+    readonly
     input {}
     output { messages: List<QueueMessage<Bytes>> }
   }

@@ -450,3 +450,80 @@ fn workflow_expand_negative_fixture_typecheck_error_contract() {
 
     std::fs::remove_dir_all(&temp_dir).expect("failed to remove temp dir");
 }
+
+/// Structural invariant: transport obligation counts are internally consistent.
+///
+/// The lowerer generates prepare→execute→parse triplets for transport ops.
+/// Not all transport types require a parse node (e.g., file transport may
+/// skip parse), so parse <= execute. But prepare and execute must match.
+///
+/// Additionally: hermetic + external must equal execute (mutually exclusive
+/// classification), and idempotent/readonly must not exceed execute count
+/// (they are attribute overlays).
+#[test]
+fn workflow_obligation_triplet_invariants_hold() {
+    for fixture in WORKFLOW_FIXTURES {
+        let expected = load_fixture(&fixture_dir().join(fixture.fixture_file));
+        let Some(obligations) = expected.get("obligations_contract") else {
+            continue;
+        };
+        let Some(expected_json) = obligations.get("expected_json") else {
+            continue;
+        };
+
+        let get = |key: &str| -> u64 {
+            expected_json
+                .get(key)
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+        };
+
+        let prepare = get("service_transport_prepare_targets");
+        let execute = get("service_transport_execute_targets");
+        let parse = get("service_transport_parse_targets");
+        let hermetic = get("service_transport_hermetic_targets");
+        let external = get("service_transport_external_targets");
+        let idempotent = get("service_transport_idempotent_targets");
+        let readonly = get("service_transport_readonly_targets");
+
+        // Prepare and execute always come in pairs
+        assert_eq!(
+            prepare, execute,
+            "scenario {}: prepare ({prepare}) != execute ({execute}) — \
+             each transport op should have exactly one prepare and one execute node",
+            fixture.scenario
+        );
+
+        // Parse may be absent for some transport types (file, interface stubs),
+        // but can never exceed execute count
+        assert!(
+            parse <= execute,
+            "scenario {}: parse ({parse}) > execute ({execute}) — \
+             parse nodes cannot exceed transport execute nodes",
+            fixture.scenario
+        );
+
+        // Hermetic + external == execute (mutually exclusive classification)
+        assert_eq!(
+            hermetic + external,
+            execute,
+            "scenario {}: hermetic ({hermetic}) + external ({external}) != execute ({execute}) — \
+             every transport execute node must be classified as exactly one of hermetic or external",
+            fixture.scenario
+        );
+
+        // Attribute overlays cannot exceed total execute count
+        assert!(
+            idempotent <= execute,
+            "scenario {}: idempotent ({idempotent}) > execute ({execute}) — \
+             idempotent is an overlay, cannot exceed transport count",
+            fixture.scenario
+        );
+        assert!(
+            readonly <= execute,
+            "scenario {}: readonly ({readonly}) > execute ({execute}) — \
+             readonly is an overlay, cannot exceed transport count",
+            fixture.scenario
+        );
+    }
+}

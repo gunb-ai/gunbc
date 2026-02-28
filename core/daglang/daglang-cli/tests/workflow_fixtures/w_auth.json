@@ -5,6 +5,7 @@
   "dependencies": [
     "std.types"
   ],
+  "_count_rationale": "12 operations × 3 triplet nodes = 36 transport targets. readonly/idempotent restored from pre-migration @annotations (2026-02-28).",
   "expand_contract": {
     "status": "success",
     "error_contains": null
@@ -23,11 +24,11 @@
       "service_transport_execute_targets": 36,
       "service_transport_external_targets": 26,
       "service_transport_hermetic_targets": 10,
-      "service_transport_idempotent_targets": 0,
+      "service_transport_idempotent_targets": 1,
       "service_transport_parse_targets": 36,
       "service_transport_permission_scoped_targets": 0,
       "service_transport_prepare_targets": 36,
-      "service_transport_readonly_targets": 0,
+      "service_transport_readonly_targets": 7,
       "total_obligations": 108,
       "transport_execution_targets": 36
     }

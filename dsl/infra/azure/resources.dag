@@ -41,6 +41,8 @@ resource BlobContainer implements ObjectStorage {
   release {}
 
   capability read {
+    readonly
+    idempotent
     input { key: NonEmptyStr }
     output { content: Bytes, found: Bool }
   }
@@ -56,6 +58,8 @@ resource BlobContainer implements ObjectStorage {
   }
 
   capability list {
+    readonly
+    idempotent
     input { prefix: String }
     output { keys: List<NonEmptyStr> }
   }
@@ -124,6 +128,8 @@ resource ContainerApp implements Compute {
   }
 
   capability get_url {
+    readonly
+    idempotent
     input {}
     output { url: Url }
   }
@@ -165,6 +171,8 @@ resource KeyVaultSecret implements SecretStore {
   release {}
 
   capability read_value {
+    readonly
+    idempotent
     input {}
     output { value: Secret }
   }
@@ -180,6 +188,8 @@ resource KeyVaultSecret implements SecretStore {
   }
 
   capability list_versions {
+    readonly
+    idempotent
     input {}
     output { versions: List<NonEmptyStr> }
   }
@@ -222,6 +232,7 @@ resource AzureManagedIdentity implements Identity {
   release {}
 
   capability assume {
+    readonly
     input { scopes: List<String>, lifetime_seconds: Int = 3600 }
     output { token: Secret, expires_at: String }
     // Azure: Acquire token via MSAL / managed identity endpoint
@@ -286,6 +297,7 @@ resource ServiceBusQueue implements Queue<String> {
   }
 
   capability subscribe {
+    readonly
     input {}
     output { messages: List<QueueMessage<String>> }
   }

@@ -11,6 +11,8 @@ module infra.aws.services
 service aws.S3 {
 
   operation HeadBucket {
+    readonly
+    idempotent
     input { bucket: NonEmptyStr }
     output { exists: Bool }
   }
@@ -56,6 +58,8 @@ service aws.S3 {
 service aws.Lambda {
 
   operation GetFunction {
+    readonly
+    idempotent
     input { function_name: NonEmptyStr }
     output { exists: Bool, function_arn: String?, state: String? }
   }
@@ -112,6 +116,8 @@ service aws.Lambda {
 service aws.SecretsManager {
 
   operation DescribeSecret {
+    readonly
+    idempotent
     input { secret_id: NonEmptyStr }
     output { exists: Bool, arn: String?, name: String? }
     // AWS Secrets Manager uses POST with X-Amz-Target header
@@ -149,6 +155,8 @@ service aws.SecretsManager {
 service aws.IAM {
 
   operation GetRole {
+    readonly
+    idempotent
     input { role_name: NonEmptyStr }
     output { exists: Bool, arn: String?, role_name: String? }
   }
@@ -194,6 +202,8 @@ service aws.STS {
 service aws.SQS {
 
   operation GetQueueUrl {
+    readonly
+    idempotent
     input { queue_name: NonEmptyStr }
     output { exists: Bool, queue_url: Url? }
   }

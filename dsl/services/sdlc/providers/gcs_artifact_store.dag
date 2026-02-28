@@ -10,6 +10,13 @@
 //   gs://{bucket}/markers/{run_key}/{type}/{kind}.json — lifecycle markers
 //
 // Profile binding: cloud_run
+//
+// CAS wiring status (as of 2026-02-28):
+//   The store operation's content-hash dedup relies on GCS preconditions
+//   (x-goog-if-generation-match), but the compiler does not inject these
+//   headers from input fields. Tests mock 412 conflict responses to verify
+//   parse-layer handling, but the precondition is not compiler-enforced.
+//   See: tasks.md RT-PC1 (parameterized header injection)
 
 module services.sdlc.providers.gcs_artifact_store
 

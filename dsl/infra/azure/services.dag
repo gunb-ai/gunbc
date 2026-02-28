@@ -10,6 +10,8 @@ module infra.azure.services
 service azure.BlobStorage {
 
   operation GetContainer {
+    readonly
+    idempotent
     input { account_name: NonEmptyStr, container: NonEmptyStr }
     output { exists: Bool }
   }
@@ -51,6 +53,8 @@ service azure.BlobStorage {
 service azure.ContainerApps {
 
   operation Get {
+    readonly
+    idempotent
     input { subscription_id: NonEmptyStr, resource_group: NonEmptyStr, name: NonEmptyStr }
     output { exists: Bool, fqdn: Url?, properties: Json? }
   }
@@ -86,6 +90,8 @@ service azure.ContainerApps {
 service azure.KeyVault {
 
   operation GetSecret {
+    readonly
+    idempotent
     input { vault_name: NonEmptyStr, name: NonEmptyStr }
     output { exists: Bool, value: Secret?, version: String? }
   }
@@ -112,6 +118,8 @@ service azure.KeyVault {
 service azure.ManagedIdentity {
 
   operation Get {
+    readonly
+    idempotent
     input { subscription_id: NonEmptyStr, resource_group: NonEmptyStr, name: NonEmptyStr }
     output { exists: Bool, principal_id: String?, client_id: String? }
   }
@@ -147,6 +155,8 @@ service azure.ManagedIdentity {
 service azure.ServiceBus {
 
   operation GetQueue {
+    readonly
+    idempotent
     input { subscription_id: NonEmptyStr, resource_group: NonEmptyStr, namespace: NonEmptyStr, queue_name: NonEmptyStr }
     output { exists: Bool }
   }
