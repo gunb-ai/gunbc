@@ -394,6 +394,7 @@ dependencies = [
  "gunbc-lib-review",
  "gunbc-lib-transport",
  "gunbc-primitives",
+ "gunbc-resolve",
  "gunbc-test",
  "gunbc-testgen-registry",
  "gunbc-testgen-registry-macros",
@@ -577,6 +578,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "gunbc-resolve"
+version = "0.1.0"
+dependencies = [
+ "daglang-lower",
+ "gunbc-exec",
+ "gunbc-ir",
+ "serde_json",
 ]
 
 [[package]]
