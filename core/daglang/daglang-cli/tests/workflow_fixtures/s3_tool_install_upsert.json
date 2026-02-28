@@ -5,8 +5,7 @@
   "dependencies": [
     "std.patterns",
     "std.resources",
-    "services.shell",
-    "shared.dag_util"
+    "services.shell"
   ],
   "_count_rationale": "Param field-access wiring fix: return compute nodes now wire param.field inputs (2026-02-28).",
   "expand_contract": {
