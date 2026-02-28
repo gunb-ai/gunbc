@@ -83,17 +83,26 @@ fn execute_with_declared_output_passthrough(
         }
         outputs.insert(key.clone(), value.clone());
     }
-    for (port_name, _is_optional) in output_ports {
+    let any_passthrough_wired = output_ports.iter().any(|(port_name, _)| {
+        let key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
+        inputs.contains_key(&key)
+    });
+    for (port_name, is_optional) in output_ports {
         let passthrough_key = format!("{}{port_name}", PortName::OUTPUT_PASSTHROUGH_PREFIX);
         if let Some(value) = inputs.get(&passthrough_key) {
             outputs.insert(port_name.clone(), value.clone());
             continue;
         }
-        // TODO(C19): restore ExecError here after C10 wires all return expressions.
-        // Currently some return bindings (fn-call results, complex exprs with local
-        // variable refs) don't produce __out edges. Failing hard breaks working DAGs.
-        outputs.insert(port_name.clone(), Value::Skipped);
-        continue;
+        if *is_optional || !any_passthrough_wired {
+            outputs.insert(port_name.clone(), Value::Skipped);
+            continue;
+        }
+        // Required output, other passthroughs arrived but this one is missing.
+        // Fail-closed: this indicates a lowerer wiring gap.
+        return Err(ExecError::new(format!(
+            "missing required declared output passthrough: `{}` (expected input `{}`)",
+            port_name, passthrough_key
+        )));
     }
     Ok(outputs)
 }

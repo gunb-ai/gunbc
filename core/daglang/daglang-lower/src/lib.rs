@@ -5244,9 +5244,10 @@ fn derive_operation_spec(
         ServiceTransportClass::ShellLocal => {
             derive_shell_spec(service, operation, data_registry).map(ServiceOperationSpec::Shell)
         }
-        ServiceTransportClass::FileBoundary => {
-            derive_file_spec(operation).map(ServiceOperationSpec::File)
-        }
+        ServiceTransportClass::FileBoundary => match derive_file_spec(operation) {
+            Ok(spec) => Some(ServiceOperationSpec::File(spec)),
+            Err(_) => None,
+        },
         ServiceTransportClass::LocalDirect => {
             Some(ServiceOperationSpec::Local(derive_local_spec(operation)))
         }
@@ -5386,20 +5387,22 @@ fn derive_shell_spec(
     })
 }
 
-fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
+fn derive_file_spec(operation: &OperationDef) -> Result<FileOperationSpec, LowerError> {
     let (file_op_str, path_template) = match &operation.transport {
         Some(TransportBinding::File { op, path }) => (op.clone(), path.clone()),
-        _ => return None,
-    };
-    let file_op = gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str).unwrap_or_else(|| {
-        panic!(
-            "{}",
-            LowerError::InvalidFileOp {
+        _ => {
+            return Err(LowerError::InvalidFileOp {
                 operation: operation.name.clone(),
-                file_op: file_op_str.clone(),
-            }
-        )
-    });
+                file_op: "(no transport)".to_string(),
+            })
+        }
+    };
+    let file_op = gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str).ok_or_else(|| {
+        LowerError::InvalidFileOp {
+            operation: operation.name.clone(),
+            file_op: file_op_str.clone(),
+        }
+    })?;
     let input_fields = operation
         .inputs
         .iter()
@@ -5416,7 +5419,7 @@ fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
         })
         .collect();
     let output_fields = derive_output_fields(&operation.outputs);
-    Some(FileOperationSpec {
+    Ok(FileOperationSpec {
         operation: file_op,
         path_template,
         input_fields,
