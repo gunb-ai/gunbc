@@ -8355,9 +8355,13 @@ fn collect_expr_leaf_refs(
 fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
     match expr {
         Expr::FieldAccess(base, field) => {
-            expr::LoweredExpr::FieldAccess {
-                expr: Box::new(remap_expr_idents(base)),
-                field: field.clone(),
+            if let Expr::Ident(base_ident) = base.as_ref() {
+                expr::LoweredExpr::Ident(format!("{base_ident}__{field}"))
+            } else {
+                expr::LoweredExpr::FieldAccess {
+                    expr: Box::new(remap_expr_idents(base)),
+                    field: field.clone(),
+                }
             }
         }
         Expr::Ident(name) => expr::LoweredExpr::Ident(name.clone()),

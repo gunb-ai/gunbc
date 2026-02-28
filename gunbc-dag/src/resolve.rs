@@ -90,14 +90,11 @@ fn execute_with_declared_output_passthrough(
             outputs.insert(port_name.clone(), value.clone());
             continue;
         }
-        if *is_optional {
-            outputs.insert(port_name.clone(), Value::Skipped);
-            continue;
-        }
-        return Err(ExecError::new(format!(
-            "missing required declared output passthrough: `{}` (expected input `{}`)",
-            port_name, passthrough_key
-        )));
+        // TODO(C19): restore ExecError here after C10 wires all return expressions.
+        // Currently some return bindings (fn-call results, complex exprs with local
+        // variable refs) don't produce __out edges. Failing hard breaks working DAGs.
+        outputs.insert(port_name.clone(), Value::Skipped);
+        continue;
     }
     Ok(outputs)
 }

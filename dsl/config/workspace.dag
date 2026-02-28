@@ -23,6 +23,8 @@ data workspace_crates: List<CrateSpec> = [
   { path: "core/infra",                     name: "gunbc-infra",                  layer: Core },
   { path: "core/ir",                        name: "gunbc-ir",                     layer: Core },
   { path: "core/exec",                      name: "gunbc-exec",                   layer: Core },
+  { path: "core/resolve",                   name: "gunbc-resolve",                layer: Core },
+  { path: "core/workflow",                  name: "gunbc-workflow",               layer: Core },
   { path: "core/cli",                       name: "gunbc-cli",                    layer: Core },
   { path: "core/codegen",                   name: "gunbc-codegen",                layer: Core },
   { path: "core/test",                      name: "gunbc-test",                   layer: Core },

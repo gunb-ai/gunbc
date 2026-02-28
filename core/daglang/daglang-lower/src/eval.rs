@@ -377,10 +377,16 @@ fn field_access(base: &Value, field: &str) -> Result<Value, EvalError> {
 
 fn eval_binop(lhs: &Value, op: LoweredBinOp, rhs: &Value) -> Result<Value, EvalError> {
     match op {
-        // String concatenation
-        LoweredBinOp::Add if matches!(lhs, Value::Str(_)) || matches!(rhs, Value::Str(_)) => Ok(
-            Value::Str(format!("{}{}", value_to_string(lhs), value_to_string(rhs))),
-        ),
+        LoweredBinOp::Add
+            if matches!(lhs, Value::Str(_) | Value::Enum { .. })
+                || matches!(rhs, Value::Str(_) | Value::Enum { .. }) =>
+        {
+            Ok(Value::Str(format!(
+                "{}{}",
+                value_to_string(lhs),
+                value_to_string(rhs)
+            )))
+        }
         // Arithmetic
         LoweredBinOp::Add => int_op(lhs, rhs, |a, b| a + b),
         LoweredBinOp::Sub => int_op(lhs, rhs, |a, b| a - b),
@@ -420,8 +426,9 @@ fn int_op(lhs: &Value, rhs: &Value, f: impl Fn(i64, i64) -> i64) -> Result<Value
 fn values_equal(lhs: &Value, rhs: &Value) -> bool {
     match (lhs, rhs) {
         (Value::Unit, Value::Unit) | (Value::Skipped, Value::Skipped) => true,
-        // null comparison: None/Unit treated as equal
         (Value::Unit, Value::Skipped) | (Value::Skipped, Value::Unit) => true,
+        (Value::Enum { variant, .. }, Value::Str(s))
+        | (Value::Str(s), Value::Enum { variant, .. }) => variant == s,
         _ => lhs == rhs,
     }
 }
@@ -659,7 +666,8 @@ fn eval_pipe_method(
                     Ok(Value::List(results))
                 }
                 (Value::List(items), _) => Ok(Value::List(items)),
-                _ => Err(EvalError::new("map requires a list")),
+                (Value::Skipped, _) => Ok(Value::List(vec![])),
+                (other, _) => Err(EvalError::new(format!("map requires a list, got {:?}", other))),
             }
         }
 

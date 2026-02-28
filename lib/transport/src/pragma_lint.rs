@@ -36,6 +36,7 @@ mod tests {
         HashSet::from([
             "lib/transport/".to_string(),
             "core/exec/".to_string(),
+            "core/workflow/".to_string(),
             "core/codegen/".to_string(),
             "core/testgen-registry/".to_string(),
             "core/ir/".to_string(),

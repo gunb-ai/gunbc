@@ -97,6 +97,20 @@ pub fn workspace_crates() -> Vec<CrateSpec> {
             is_producer: false,
         },
         CrateSpec {
+            name: "core/resolve",
+            tier: CrateTier::Core,
+            description: "Service operation resolution",
+            depends_on: &["core/ir"],
+            is_producer: false,
+        },
+        CrateSpec {
+            name: "core/workflow",
+            tier: CrateTier::Core,
+            description: "Workflow planner and executor",
+            depends_on: &["core/ir"],
+            is_producer: false,
+        },
+        CrateSpec {
             name: "core/cli",
             tier: CrateTier::Core,
             description: "CLI argument parsing",
