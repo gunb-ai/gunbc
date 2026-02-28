@@ -289,13 +289,34 @@ fn render_execution_report_includes_slo_and_summary() {
 
 #[test]
 fn makefile_ci_and_test_all_registered_as_core_workflows() {
-    let workflows = gunbc_dag::makegen::default_core_workflows();
+    use daglang_driver::{compile_from_context, DriverContext};
+
+    let dsl_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
+    let dag_file = dsl_root.join("config/build_targets.dag");
+    let output = compile_from_context(&DriverContext {
+        roots: vec![dsl_root],
+        target_file: Some(dag_file),
+    })
+    .expect("build_targets.dag should compile");
+    let workflows = output
+        .data_values
+        .get("core_workflows")
+        .and_then(serde_json::Value::as_array)
+        .expect("core_workflows data should exist");
     assert!(
-        workflows.iter().any(|w| w.name == "ci"),
+        workflows.iter().any(|w| {
+            w.get("name")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|name| name == "ci")
+        }),
         "ci should be registered as a core workflow"
     );
     assert!(
-        workflows.iter().any(|w| w.name == "test-all"),
+        workflows.iter().any(|w| {
+            w.get("name")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|name| name == "test-all")
+        }),
         "test-all should be registered as a core workflow"
     );
 }

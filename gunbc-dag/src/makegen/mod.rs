@@ -13,9 +13,8 @@ use gunbc_ir::{infer_signature, BuilderError, Dag, WorkflowSignature};
 pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer};
 pub use justfile::{render_justfile, render_justfile_with_config, JustfileRenderer};
 pub use registry::{
-    default_build_config, default_core_workflows, default_meta_targets, BuildConfig, BuildSystem,
-    ConfigField, EntrypointParam, FixAlias, MetaTarget, ResourceNeed, ResourceTargetMap, ToolInfo,
-    ToolRegistry, WorkflowKind, WorkflowSpec,
+    default_build_config, BuildCommand, BuildConfig, BuildSystem, EntrypointParam, ExtraTarget,
+    ToolInfo, ToolRegistry, WorkflowKind, WorkflowSpec,
 };
 pub use shared::render_makefile;
 
