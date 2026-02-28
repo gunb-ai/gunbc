@@ -47,6 +47,7 @@ pub fn classify_value(value: &Value) -> ValueCategory {
         Value::Json(_) | Value::Secret(_) | Value::Float(_) | Value::Bytes(_) => {
             ValueCategory::Shared
         }
+        Value::Enum { .. } => ValueCategory::Shared,
         Value::Map(_) | Value::Set(_) | Value::Request(_) | Value::Response(_) | Value::Skipped => {
             ValueCategory::GunbcOnly
         }
@@ -90,6 +91,12 @@ pub fn to_bridge_json(value: &Value) -> Option<serde_json::Value> {
             "__bytes": b.len(),
         })),
         Value::Secret(_) => Some(serde_json::Value::String("***".to_string())),
+        Value::Enum { ty, variant } => Some(serde_json::json!({
+            "__enum": {
+                "ty": ty,
+                "variant": variant
+            }
+        })),
         Value::Request(_) | Value::Response(_) | Value::Skipped => None,
     }
 }
@@ -112,7 +119,23 @@ pub fn from_bridge_json(json: &serde_json::Value) -> Value {
             }
         }
         serde_json::Value::Array(arr) => Value::List(arr.iter().map(from_bridge_json).collect()),
-        serde_json::Value::Object(_) => Value::Json(json.clone()),
+        serde_json::Value::Object(obj) => {
+            if let Some(enum_obj) = obj.get("__enum").and_then(|v| v.as_object()) {
+                let ty = enum_obj
+                    .get("ty")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let variant = enum_obj
+                    .get("variant")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                Value::Enum { ty, variant }
+            } else {
+                Value::Json(json.clone())
+            }
+        }
     }
 }
 

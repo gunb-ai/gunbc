@@ -48,81 +48,6 @@ pub fn resource_type_name(resource_type: &TypeExpr) -> String {
     }
 }
 
-/// Built-in pipe methods resolved by the evaluator, not as callable targets.
-///
-/// Single authoritative registry. To add a new pipe method:
-/// 1. Add a variant here
-/// 2. Add the string match in `from_str`
-/// 3. Implement the evaluation in `eval.rs`
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PipeMethod {
-    // Collection → Collection
-    Map,
-    Filter,
-    FilterMap,
-    FlatMap,
-    SortBy,
-    Append,
-    // Collection → Scalar
-    Fold,
-    Join,
-    Count,
-    Sum,
-    First,
-    Last,
-    MaxBy,
-    Any,
-    All,
-    Contains,
-    // String methods
-    StartsWith,
-    EndsWith,
-    Repeat,
-    ReplaceSection,
-    Chars,
-    // Conversion methods
-    ToBytes,
-    ToJson,
-    Hash,
-}
-
-impl PipeMethod {
-    /// Parse a method name string into a PipeMethod, if it is a known built-in.
-    pub fn from_str(name: &str) -> Option<Self> {
-        match name {
-            "map" => Some(Self::Map),
-            "filter" => Some(Self::Filter),
-            "filter_map" => Some(Self::FilterMap),
-            "flat_map" => Some(Self::FlatMap),
-            "sort_by" => Some(Self::SortBy),
-            "append" => Some(Self::Append),
-            "fold" => Some(Self::Fold),
-            "join" => Some(Self::Join),
-            "count" => Some(Self::Count),
-            "sum" => Some(Self::Sum),
-            "first" => Some(Self::First),
-            "last" => Some(Self::Last),
-            "max_by" => Some(Self::MaxBy),
-            "any" => Some(Self::Any),
-            "all" => Some(Self::All),
-            "contains" => Some(Self::Contains),
-            "starts_with" => Some(Self::StartsWith),
-            "ends_with" => Some(Self::EndsWith),
-            "repeat" => Some(Self::Repeat),
-            "replace_section" => Some(Self::ReplaceSection),
-            "chars" => Some(Self::Chars),
-            "to_bytes" => Some(Self::ToBytes),
-            "to_json" => Some(Self::ToJson),
-            "hash" => Some(Self::Hash),
-            _ => None,
-        }
-    }
-}
-
-pub fn should_track_call_name(name: &str) -> bool {
-    !matches!(name, "<expr>" | "as" | "with" | "fn") && PipeMethod::from_str(name).is_none()
-}
-
 pub fn service_call_lookup_keys(call_path: &[String]) -> Option<[String; 3]> {
     if call_path.len() < 2 {
         return None;
@@ -170,6 +95,12 @@ pub fn walk_expr(expr: &Expr, visitor: &mut impl FnMut(&Expr)) {
         Expr::BinOp(lhs, _, rhs) | Expr::Pipe(lhs, rhs) => {
             walk_expr(lhs, visitor);
             walk_expr(rhs, visitor);
+        }
+        Expr::PipeCall(receiver, _, args) => {
+            walk_expr(receiver, visitor);
+            for (_, arg) in args {
+                walk_expr(arg, visitor);
+            }
         }
         Expr::UnaryOp(_, inner) | Expr::Lambda(_, inner) | Expr::After(inner, _) => {
             walk_expr(inner, visitor)

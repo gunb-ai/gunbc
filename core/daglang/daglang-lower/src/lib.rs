@@ -24,8 +24,7 @@ use daglang_syntax::ast::{
 };
 use daglang_syntax::ast_utils::{
     canonical_resource_type_name, is_type_expr_optional, resource_type_name,
-    service_call_lookup_keys, should_track_call_name as should_track_call, type_expr_to_string,
-    walk_stmts,
+    service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
 use daglang_typecheck::{TypedCallableSignature, TypedItemSignature, TypedProject};
 use gunbc_ir::patterns::branch::IfBuilder;
@@ -205,10 +204,10 @@ pub enum PrimitiveOpKind {
     ContentUpsertOutputPath {
         path: String,
     },
-    /// A compute node that evaluates a complex return expression.
-    /// Created by the lowerer when return expressions contain BinOp,
-    /// UnaryOp, If, Match, etc. that can't be wired as simple edges.
-    ReturnExprCompute {
+    /// A compute node that evaluates a lowered expression body.
+    /// Created by the lowerer when complex expressions cannot be represented
+    /// as direct wiring edges.
+    ExprCompute {
         fn_body: Box<LoweredFnBody>,
     },
 }
@@ -344,7 +343,7 @@ impl PrimitiveOpKind {
             }
             Self::CompareEquality => ObligationCategory::InterfaceContractVerification,
             Self::ContentUpsertOutputPath { .. } => ObligationCategory::None,
-            Self::ReturnExprCompute { .. } => ObligationCategory::None,
+            Self::ExprCompute { .. } => ObligationCategory::None,
         }
     }
 }
@@ -2788,7 +2787,6 @@ fn register_endpoint(
         .or_insert(Some(endpoint));
 }
 
-#[allow(clippy::too_many_arguments)]
 fn add_dependency_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -2928,45 +2926,75 @@ struct ForLoopSite {
 }
 
 #[derive(Debug)]
-struct IfBranchSite {
+struct IfBranchScopeSite {
     has_else: bool,
-    /// Service call paths inside the then-branch expression.
     then_service_call_paths: Vec<Vec<String>>,
-    /// Service call paths inside the else-branch expression (empty if no else).
     else_service_call_paths: Vec<Vec<String>>,
 }
 
 #[derive(Debug)]
-struct MatchBranchSite {
+struct MatchBranchScopeSite {
     arm_count: usize,
-    /// Service call paths from ALL arms combined (for top-level filtering).
     all_service_call_paths: Vec<Vec<String>>,
 }
 
-fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
-    let mut sites = Vec::new();
-    walk_stmts(stmts, &mut |expr| {
-        if let Expr::For(var, iterable, passthrough, body) = expr {
-            let iterable_ref = match iterable.as_ref() {
-                Expr::Ident(name) => Some(IterableRef::Ident(name.clone())),
-                Expr::FieldAccess(base, field) => match base.as_ref() {
-                    Expr::Ident(base_ident) => {
-                        Some(IterableRef::FieldAccess(base_ident.clone(), field.clone()))
+fn collect_service_paths_from_scoped_body(body: &scope::ScopedBody) -> Vec<Vec<String>> {
+    body.all_service_calls()
+        .into_iter()
+        .map(|call| call.path.clone())
+        .collect()
+}
+
+fn collect_for_loop_sites_from_scoped(body: &scope::ScopedBody, out: &mut Vec<ForLoopSite>) {
+    for item in &body.items {
+        match item {
+            scope::ScopedItem::ForLoop {
+                element_var,
+                iterable,
+                passthrough,
+                body,
+            } => {
+                let iterable_ref = match iterable {
+                    scope::ExprRef::Ident(name) => Some(IterableRef::Ident(name.clone())),
+                    scope::ExprRef::FieldAccess { base, field } => {
+                        Some(IterableRef::FieldAccess(base.clone(), field.clone()))
                     }
-                    _ => None,
-                },
-                _ => None,
-            };
-            let mut body_calls = Vec::new();
-            collect_service_call_paths_from_expr(body, &mut body_calls);
-            sites.push(ForLoopSite {
-                element_var: var.clone(),
-                iterable: iterable_ref,
-                passthrough: passthrough.clone(),
-                body_service_call_paths: body_calls,
-            });
+                    scope::ExprRef::Literal(_) | scope::ExprRef::Opaque => None,
+                };
+                out.push(ForLoopSite {
+                    element_var: element_var.clone(),
+                    iterable: iterable_ref,
+                    passthrough: passthrough.clone(),
+                    body_service_call_paths: collect_service_paths_from_scoped_body(body),
+                });
+                collect_for_loop_sites_from_scoped(body, out);
+            }
+            scope::ScopedItem::IfBranch {
+                then_body,
+                else_body,
+            } => {
+                collect_for_loop_sites_from_scoped(then_body, out);
+                if let Some(else_body) = else_body {
+                    collect_for_loop_sites_from_scoped(else_body, out);
+                }
+            }
+            scope::ScopedItem::MatchBranch { arms } => {
+                for arm in arms {
+                    collect_for_loop_sites_from_scoped(&arm.body, out);
+                }
+            }
+            scope::ScopedItem::ServiceCall(_)
+            | scope::ScopedItem::FnCall { .. }
+            | scope::ScopedItem::Binding { .. }
+            | scope::ScopedItem::Other => {}
         }
-    });
+    }
+}
+
+fn detect_for_loops_in_stmts(stmts: &[Stmt]) -> Vec<ForLoopSite> {
+    let scoped = scope::ScopedBody::from_stmts(stmts);
+    let mut sites = Vec::new();
+    collect_for_loop_sites_from_scoped(&scoped, &mut sites);
     sites
 }
 
@@ -2998,7 +3026,7 @@ pub(crate) fn collect_service_call_paths_from_expr(expr: &Expr, paths: &mut Vec<
     }
 }
 
-fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchSite> {
+fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchScopeSite> {
     let mut sites = Vec::new();
     walk_stmts(stmts, &mut |expr| {
         if let Expr::If(_, then_expr, else_branch) = expr {
@@ -3008,7 +3036,7 @@ fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchSite> {
             if let Some(else_expr) = else_branch {
                 collect_service_call_paths_from_expr(else_expr, &mut else_calls);
             }
-            sites.push(IfBranchSite {
+            sites.push(IfBranchScopeSite {
                 has_else: else_branch.is_some(),
                 then_service_call_paths: then_calls,
                 else_service_call_paths: else_calls,
@@ -3018,7 +3046,7 @@ fn detect_if_branches_in_stmts(stmts: &[Stmt]) -> Vec<IfBranchSite> {
     sites
 }
 
-fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchSite> {
+fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchScopeSite> {
     let mut sites = Vec::new();
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Match(_, arms) = expr {
@@ -3026,7 +3054,7 @@ fn detect_match_branches_in_stmts(stmts: &[Stmt]) -> Vec<MatchBranchSite> {
             for arm in arms {
                 collect_service_call_paths_from_expr(&arm.body, &mut all_calls);
             }
-            sites.push(MatchBranchSite {
+            sites.push(MatchBranchScopeSite {
                 arm_count: arms.len(),
                 all_service_call_paths: all_calls,
             });
@@ -3528,7 +3556,6 @@ fn add_control_flow_pattern_nodes(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn expand_content_upsert_patterns(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -3574,7 +3601,7 @@ fn expand_content_upsert_patterns(
         };
         match expr {
             Expr::Call(name, args) => {
-                if should_track_call(name) {
+                if !is_internal_synthetic_call(name) {
                     bound_callables.insert(binding.clone(), name.clone());
                 }
                 if name == "content_upsert" {
@@ -3603,7 +3630,6 @@ fn expand_content_upsert_patterns(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn expand_single_content_upsert(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -3996,7 +4022,6 @@ fn pattern_uses_binding_types(uses: &[daglang_syntax::ast::UsesClause]) -> HashM
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn expand_non_generic_pattern_calls(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -4078,9 +4103,6 @@ fn expand_non_generic_pattern_calls(
 /// Maximum recursion depth for pattern expansion (patterns calling patterns).
 const PATTERN_EXPANSION_MAX_DEPTH: usize = 5;
 
-const PARAM_REF_SENTINEL: &str = "__param_ref__";
-
-#[allow(clippy::too_many_arguments)]
 fn expand_single_pattern(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -4397,7 +4419,6 @@ fn resolve_expr_idents(expr: &Expr, arg_map: &HashMap<String, &Expr>) -> Expr {
 /// - `Expr::ServiceCall` → clone transport triplet from service registry
 /// - `Expr::Call("eq", ...)` → create CompareEquality primitive
 /// - `Expr::Call(pattern_name, ...)` → recursive pattern expansion
-#[allow(clippy::too_many_arguments)]
 fn expand_pattern_body_node(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -4523,7 +4544,6 @@ fn expand_pattern_body_node(
 
 /// Expand a service call node (e.g., `fs.read(path: path)`) by cloning
 /// the corresponding transport triplet from the service registry.
-#[allow(clippy::too_many_arguments)]
 fn expand_service_call_node(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -4599,7 +4619,6 @@ fn expand_service_call_node(
 }
 
 /// Expand an `eq(a: ..., b: ...)` call into a CompareEquality primitive node.
-#[allow(clippy::too_many_arguments)]
 fn expand_eq_node(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -4683,7 +4702,6 @@ fn expand_eq_node(
 ///
 /// Resolves the expression through the pattern's arg_map (caller scope),
 /// node_outputs (expanded nodes), and param sources.
-#[allow(clippy::too_many_arguments)]
 fn wire_pattern_arg_to_prepare(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -4724,7 +4742,6 @@ fn wire_pattern_arg_to_prepare(
 /// 2. If the arg is a FieldAccess on an expanded node → wire from that node.
 /// 3. If the arg is a literal → create a literal source node.
 /// 4. If the arg is an ident matching a caller callable → wire from that.
-#[allow(clippy::too_many_arguments)]
 fn wire_pattern_arg_to_node(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -4816,7 +4833,6 @@ fn wire_pattern_arg_to_node(
 ///
 /// Handles idents (param sources, callable endpoints, data values),
 /// field access, and literals from the caller's scope.
-#[allow(clippy::too_many_arguments)]
 fn wire_caller_expr_to_node(
     builder: &mut DagBuilder,
     module_name: &str,
@@ -5921,7 +5937,6 @@ fn add_service_transport_triplets(
     Ok(registry)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn add_service_call_edges(
     builder: &mut DagBuilder,
     project: &TypedProject,
@@ -7417,10 +7432,14 @@ fn item_callable_provides(item: &Item) -> Option<(&str, &[daglang_syntax::ast::P
     }
 }
 
+fn is_internal_synthetic_call(name: &str) -> bool {
+    matches!(name, "<expr>" | "as" | "with" | "fn")
+}
+
 fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut BTreeSet<String>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Call(name, _) = expr {
-            if should_track_call(name) {
+            if !is_internal_synthetic_call(name) {
                 calls.insert(name.clone());
             }
         }
@@ -7507,14 +7526,48 @@ fn collection_op_kind(name: &str) -> Option<CollectionOpKind> {
 
 fn collect_collection_ops_from_stmts(stmts: &[Stmt], sites: &mut Vec<CollectionOpSite>) {
     walk_stmts(stmts, &mut |expr| {
-        if let Expr::Pipe(_, rhs) = expr {
-            let Expr::Call(name, _) = rhs.as_ref() else {
-                return;
-            };
-            let Some(kind) = collection_op_kind(name) else {
-                return;
-            };
-            sites.push(CollectionOpSite { kind });
+        match expr {
+            Expr::Pipe(_, rhs) => {
+                let Expr::Call(name, _) = rhs.as_ref() else {
+                    return;
+                };
+                let Some(kind) = collection_op_kind(name) else {
+                    return;
+                };
+                sites.push(CollectionOpSite { kind });
+            }
+            Expr::PipeCall(_, method, _) => {
+                let method_name = match method {
+                    daglang_syntax::ast::PipeMethod::Map => "map",
+                    daglang_syntax::ast::PipeMethod::Filter => "filter",
+                    daglang_syntax::ast::PipeMethod::FilterMap => "filter_map",
+                    daglang_syntax::ast::PipeMethod::FlatMap => "flat_map",
+                    daglang_syntax::ast::PipeMethod::SortBy => "sort_by",
+                    daglang_syntax::ast::PipeMethod::Append => "append",
+                    daglang_syntax::ast::PipeMethod::Fold => "fold",
+                    daglang_syntax::ast::PipeMethod::Join => "join",
+                    daglang_syntax::ast::PipeMethod::Count => "count",
+                    daglang_syntax::ast::PipeMethod::Sum => "sum",
+                    daglang_syntax::ast::PipeMethod::First => "first",
+                    daglang_syntax::ast::PipeMethod::Last => "last",
+                    daglang_syntax::ast::PipeMethod::MaxBy => "max_by",
+                    daglang_syntax::ast::PipeMethod::Any => "any",
+                    daglang_syntax::ast::PipeMethod::All => "all",
+                    daglang_syntax::ast::PipeMethod::Contains => "contains",
+                    daglang_syntax::ast::PipeMethod::StartsWith => "starts_with",
+                    daglang_syntax::ast::PipeMethod::EndsWith => "ends_with",
+                    daglang_syntax::ast::PipeMethod::Repeat => "repeat",
+                    daglang_syntax::ast::PipeMethod::ReplaceSection => "replace_section",
+                    daglang_syntax::ast::PipeMethod::Chars => "chars",
+                    daglang_syntax::ast::PipeMethod::ToBytes => "to_bytes",
+                    daglang_syntax::ast::PipeMethod::ToJson => "to_json",
+                    daglang_syntax::ast::PipeMethod::Hash => "hash",
+                };
+                if let Some(kind) = collection_op_kind(method_name) {
+                    sites.push(CollectionOpSite { kind });
+                }
+            }
+            _ => {}
         }
     });
 }
@@ -7618,7 +7671,7 @@ pub(crate) fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<S
 fn collect_fn_calls_with_args(stmts: &[Stmt], calls: &mut Vec<FnCallSite>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Call(name, args) = expr {
-            if should_track_call(name) {
+            if !is_internal_synthetic_call(name) {
                 calls.push(FnCallSite {
                     name: name.clone(),
                     args: args.iter().map(service_call_arg_site).collect(),
@@ -7759,7 +7812,6 @@ pub fn build_data_values(project: &TypedProject) -> HashMap<String, serde_json::
     values
 }
 
-#[allow(clippy::too_many_arguments)]
 fn wire_fn_call_arguments(
     builder: &mut DagBuilder,
     stmts: &[Stmt],
@@ -7957,7 +8009,6 @@ fn return_literal_arg(expr: &Expr) -> Option<ServiceCallArgLiteral> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn resolve_return_expr_source(
     builder: &mut DagBuilder,
     expr: &Expr,
@@ -8029,10 +8080,9 @@ fn resolve_return_expr_source(
             );
             Some((src, output_name.to_string()))
         }
-        // RT4a: Handle complex return expressions (BinOp, UnaryOp, If, Match, Pipe, etc.)
-        // by synthesizing a compute node that evaluates the expression at runtime.
+        // Handle complex expressions by synthesizing a dedicated compute node.
         _ => {
-            synthesize_return_expr_compute(
+            synthesize_expr_compute(
                 builder,
                 expr,
                 output_port,
@@ -8049,18 +8099,22 @@ fn resolve_return_expr_source(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExprLeafRef {
+    input_port: String,
+    source: expr::LeafRef,
+}
+
 /// Collect all leaf expression references from a complex expression.
-/// Returns (input_port_name, source_node_id, source_port_name, type_id) tuples.
 /// Sets `has_local_refs` to true if the expression references local variables
 /// (let bindings) that can't be resolved as compute node inputs.
-#[allow(clippy::too_many_arguments)]
 fn collect_expr_leaf_refs(
     expr: &Expr,
     param_types: &HashMap<String, String>,
     bound_callable_sources: &HashMap<String, LoweredEndpoint>,
     bound_service_sources: &HashMap<String, ServiceTransportEndpoint>,
     endpoints_by_name: &HashMap<String, Option<LoweredEndpoint>>,
-    refs: &mut Vec<(String, String, String, String)>,
+    refs: &mut Vec<ExprLeafRef>,
     seen: &mut HashSet<String>,
     has_local_refs: &mut bool,
 ) {
@@ -8072,16 +8126,41 @@ fn collect_expr_leaf_refs(
             }
             if let Some(param_ty) = param_types.get(name) {
                 seen.insert(port_name.clone());
-                refs.push((port_name, PARAM_REF_SENTINEL.to_string(), name.clone(), param_ty.clone()));
+                refs.push(ExprLeafRef {
+                    input_port: port_name,
+                    source: expr::LeafRef::Param {
+                        name: name.clone(),
+                        field: None,
+                        ty: param_ty.clone(),
+                    },
+                });
             } else if let Some(source) = bound_callable_sources.get(name) {
                 seen.insert(port_name.clone());
-                refs.push((port_name, source.node_id.clone(), source.primary_output.clone(), "Any".to_string()));
+                refs.push(ExprLeafRef {
+                    input_port: port_name,
+                    source: expr::LeafRef::Callable {
+                        endpoint: source.node_id.clone(),
+                        port: source.primary_output.clone(),
+                    },
+                });
             } else if let Some(source) = bound_service_sources.get(name) {
                 seen.insert(port_name.clone());
-                refs.push((port_name, source.parse.node_id.clone(), source.parse.primary_output.clone(), "Any".to_string()));
+                refs.push(ExprLeafRef {
+                    input_port: port_name,
+                    source: expr::LeafRef::Service {
+                        endpoint: source.parse.node_id.clone(),
+                        port: source.parse.primary_output.clone(),
+                    },
+                });
             } else if let Some(Some(source)) = endpoints_by_name.get(name) {
                 seen.insert(port_name.clone());
-                refs.push((port_name, source.node_id.clone(), source.primary_output.clone(), "Any".to_string()));
+                refs.push(ExprLeafRef {
+                    input_port: port_name,
+                    source: expr::LeafRef::Callable {
+                        endpoint: source.node_id.clone(),
+                        port: source.primary_output.clone(),
+                    },
+                });
             } else {
                 *has_local_refs = true;
             }
@@ -8096,17 +8175,42 @@ fn collect_expr_leaf_refs(
                     let base_port = base_ident.clone();
                     if !seen.contains(&base_port) {
                         seen.insert(base_port.clone());
-                        refs.push((base_port, PARAM_REF_SENTINEL.to_string(), base_ident.clone(), param_ty.clone()));
+                        refs.push(ExprLeafRef {
+                            input_port: base_port,
+                            source: expr::LeafRef::Param {
+                                name: base_ident.clone(),
+                                field: Some(field.clone()),
+                                ty: param_ty.clone(),
+                            },
+                        });
                     }
                 } else if let Some(source) = bound_callable_sources.get(base_ident) {
                     seen.insert(port_name.clone());
-                    refs.push((port_name, source.node_id.clone(), field.clone(), "Any".to_string()));
+                    refs.push(ExprLeafRef {
+                        input_port: port_name,
+                        source: expr::LeafRef::Callable {
+                            endpoint: source.node_id.clone(),
+                            port: field.clone(),
+                        },
+                    });
                 } else if let Some(source) = bound_service_sources.get(base_ident) {
                     seen.insert(port_name.clone());
-                    refs.push((port_name, source.parse.node_id.clone(), field.clone(), "Any".to_string()));
+                    refs.push(ExprLeafRef {
+                        input_port: port_name,
+                        source: expr::LeafRef::Service {
+                            endpoint: source.parse.node_id.clone(),
+                            port: field.clone(),
+                        },
+                    });
                 } else if let Some(Some(source)) = endpoints_by_name.get(base_ident) {
                     seen.insert(port_name.clone());
-                    refs.push((port_name, source.node_id.clone(), field.clone(), "Any".to_string()));
+                    refs.push(ExprLeafRef {
+                        input_port: port_name,
+                        source: expr::LeafRef::Callable {
+                            endpoint: source.node_id.clone(),
+                            port: field.clone(),
+                        },
+                    });
                 }
             } else {
                 collect_expr_leaf_refs(base, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
@@ -8129,6 +8233,12 @@ fn collect_expr_leaf_refs(
         Expr::Pipe(receiver, call) => {
             collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
             collect_expr_leaf_refs(call, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+        }
+        Expr::PipeCall(receiver, _, args) => {
+            collect_expr_leaf_refs(receiver, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            for (_, arg) in args {
+                collect_expr_leaf_refs(arg, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
+            }
         }
         Expr::Match(scrutinee, arms) => {
             collect_expr_leaf_refs(scrutinee, param_types, bound_callable_sources, bound_service_sources, endpoints_by_name, refs, seen, has_local_refs);
@@ -8245,14 +8355,52 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
                 .collect();
             expr::LoweredExpr::StringInterp(lowered_parts)
         }
+        Expr::PipeCall(receiver, method, args) => expr::LoweredExpr::Pipe {
+            receiver: Box::new(remap_expr_idents(receiver)),
+            call: Box::new(expr::LoweredExpr::Call {
+                name: pipe_method_name(*method).to_string(),
+                args: args
+                    .iter()
+                    .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
+                    .collect(),
+            }),
+        },
         _ => expr::LoweredExpr::Literal(expr::LoweredLiteral::None),
+    }
+}
+
+fn pipe_method_name(method: daglang_syntax::ast::PipeMethod) -> &'static str {
+    match method {
+        daglang_syntax::ast::PipeMethod::Map => "map",
+        daglang_syntax::ast::PipeMethod::Filter => "filter",
+        daglang_syntax::ast::PipeMethod::FilterMap => "filter_map",
+        daglang_syntax::ast::PipeMethod::FlatMap => "flat_map",
+        daglang_syntax::ast::PipeMethod::SortBy => "sort_by",
+        daglang_syntax::ast::PipeMethod::Append => "append",
+        daglang_syntax::ast::PipeMethod::Fold => "fold",
+        daglang_syntax::ast::PipeMethod::Join => "join",
+        daglang_syntax::ast::PipeMethod::Count => "count",
+        daglang_syntax::ast::PipeMethod::Sum => "sum",
+        daglang_syntax::ast::PipeMethod::First => "first",
+        daglang_syntax::ast::PipeMethod::Last => "last",
+        daglang_syntax::ast::PipeMethod::MaxBy => "max_by",
+        daglang_syntax::ast::PipeMethod::Any => "any",
+        daglang_syntax::ast::PipeMethod::All => "all",
+        daglang_syntax::ast::PipeMethod::Contains => "contains",
+        daglang_syntax::ast::PipeMethod::StartsWith => "starts_with",
+        daglang_syntax::ast::PipeMethod::EndsWith => "ends_with",
+        daglang_syntax::ast::PipeMethod::Repeat => "repeat",
+        daglang_syntax::ast::PipeMethod::ReplaceSection => "replace_section",
+        daglang_syntax::ast::PipeMethod::Chars => "chars",
+        daglang_syntax::ast::PipeMethod::ToBytes => "to_bytes",
+        daglang_syntax::ast::PipeMethod::ToJson => "to_json",
+        daglang_syntax::ast::PipeMethod::Hash => "hash",
     }
 }
 
 /// Synthesize a compute node for a complex return expression.
 /// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
-#[allow(clippy::too_many_arguments)]
-fn synthesize_return_expr_compute(
+fn synthesize_expr_compute(
     builder: &mut DagBuilder,
     expr: &Expr,
     output_port: &Port,
@@ -8265,7 +8413,7 @@ fn synthesize_return_expr_compute(
     item_name: &str,
     disambiguator: &str,
 ) -> Option<(String, String)> {
-    let mut refs: Vec<(String, String, String, String)> = Vec::new();
+    let mut refs: Vec<ExprLeafRef> = Vec::new();
     let mut seen = HashSet::new();
     let mut has_local_refs = false;
     collect_expr_leaf_refs(
@@ -8285,7 +8433,14 @@ fn synthesize_return_expr_compute(
 
     let input_ports: Vec<Port> = refs
         .iter()
-        .map(|(port_name, _, _, type_id)| Port::with_cardinality(port_name.as_str(), type_id.as_str(), Cardinality::ONE))
+        .map(|leaf| match &leaf.source {
+            expr::LeafRef::Param { ty, .. } => {
+                Port::with_cardinality(leaf.input_port.as_str(), ty.as_str(), Cardinality::ONE)
+            }
+            expr::LeafRef::Callable { .. } | expr::LeafRef::Service { .. } => {
+                Port::with_cardinality(leaf.input_port.as_str(), "Any", Cardinality::ONE)
+            }
+        })
         .collect();
     let output_type = output_port.type_id.0.as_str();
     let result_port_name = "result";
@@ -8301,7 +8456,7 @@ fn synthesize_return_expr_compute(
 
     // 4. Create the compute node.
     let node_id = format!(
-        "return_expr_compute_{}",
+        "expr_compute_{}",
         sanitize_identifier(&format!("{module_name}_{item_name}_{output_name}_{disambiguator}"))
     );
     builder.add_node(Node::opaque(
@@ -8310,34 +8465,30 @@ fn synthesize_return_expr_compute(
         output_ports,
         LoweredOp::Primitive {
             module: module_name.to_string(),
-            name: format!("return_expr_compute::{item_name}::{output_name}"),
-            kind: PrimitiveOpKind::ReturnExprCompute {
+            name: format!("expr_compute::{item_name}::{output_name}"),
+            kind: PrimitiveOpKind::ExprCompute {
                 fn_body: Box::new(fn_body),
             },
         },
     ));
 
-    for (port_name, source_node, source_port, _type_id) in &refs {
-        if source_node == PARAM_REF_SENTINEL {
-            // source_port is either "param_name" (plain) or "param__field" (field access).
-            // Split on "__" to get the base param and optional field.
-            let (base_param, field) = source_port
-                .split_once("__")
-                .map_or((source_port.as_str(), None), |(b, f)| (b, Some(f)));
-            let param_ty = param_types.get(base_param).map_or("Any", |s| s.as_str());
-            let param_source_id =
-                ensure_param_source_node(builder, module_name, item_name, base_param, param_ty);
-            let src_port = field.unwrap_or(base_param);
-            builder.add_edge(&param_source_id, src_port, &node_id, port_name);
-        } else {
-            builder.add_edge(source_node, source_port, &node_id, port_name);
+    for leaf in &refs {
+        match &leaf.source {
+            expr::LeafRef::Param { name, ty, .. } => {
+                let param_source_id =
+                    ensure_param_source_node(builder, module_name, item_name, name, ty);
+                builder.add_edge(&param_source_id, name, &node_id, &leaf.input_port);
+            }
+            expr::LeafRef::Callable { endpoint, port }
+            | expr::LeafRef::Service { endpoint, port } => {
+                builder.add_edge(endpoint, port, &node_id, &leaf.input_port);
+            }
         }
     }
 
     Some((node_id, result_port_name.to_string()))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn wire_callable_return_outputs(
     builder: &mut DagBuilder,
     stmts: &[Stmt],
@@ -8468,7 +8619,6 @@ fn collect_for_loop_bindings(
 /// `{target}::cf_for_{index}` and an input port named `"items"`. This function
 /// resolves `<iterable>` to a source node (service call result, callable result,
 /// or parameter) and wires the data edge.
-#[allow(clippy::too_many_arguments)]
 fn wire_for_loop_iterables(
     builder: &mut DagBuilder,
     stmts: &[Stmt],

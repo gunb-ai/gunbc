@@ -7,6 +7,7 @@ members = [
     "core/exec",
     "core/workflow",
     "core/cli",
+    "core/resolve",
     "core/codegen",
     "core/test",
     "core/testgen-registry",

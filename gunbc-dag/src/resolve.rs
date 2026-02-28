@@ -40,9 +40,10 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 
-use crate::resolve_service::{
+use gunbc_resolve::service_ops::{
     GenericFileParseOp, GenericFilePrepareOp, GenericLocalParseOp, GenericLocalPrepareOp,
     GenericRestParseOp, GenericRestPrepareOp, GenericShellParseOp, GenericShellPrepareOp,
+    InterfaceStubExecuteOp, InterfaceStubParseOp, InterfaceStubPrepareOp,
 };
 
 // ============================================================================
@@ -89,91 +90,16 @@ fn execute_with_declared_output_passthrough(
             outputs.insert(port_name.clone(), value.clone());
             continue;
         }
-        outputs.entry(port_name.clone()).or_insert_with(|| {
-            if let Some(fallback) = passthrough_fallback_value(port_name, &inputs) {
-                return fallback;
-            }
-            if *is_optional {
-                Value::Skipped
-            } else {
-                // RT83: Required output ports with no wired input indicate a
-                // lowering gap. Diagnostic suppressed from stderr to avoid noise
-                // in CI — tracked via structured obligations instead.
-                // TODO(RT83): return ExecError for required ports once all
-                // dag_util.dag if/else branches are fully wired.
-                Value::Skipped
-            }
-        });
+        if *is_optional {
+            outputs.insert(port_name.clone(), Value::Skipped);
+            continue;
+        }
+        return Err(ExecError::new(format!(
+            "missing required declared output passthrough: `{}` (expected input `{}`)",
+            port_name, passthrough_key
+        )));
     }
     Ok(outputs)
-}
-
-fn passthrough_fallback_value(port_name: &str, inputs: &HashMap<String, Value>) -> Option<Value> {
-    let aliases: &[&str] = match port_name {
-        "result" => &["input", "value", "content", "document"],
-        "return" => &[
-            "value",
-            "content",
-            "document",
-            "input",
-            "result",
-            "directives",
-            "sections",
-            "lines",
-            "text",
-            "items",
-        ],
-        _ => &[],
-    };
-
-    let candidate = aliases
-        .iter()
-        .find_map(|alias| inputs.get(*alias).cloned())?;
-
-    if port_name != "return" {
-        return Some(candidate);
-    }
-
-    Some(match candidate {
-        Value::Str(_) => candidate,
-        Value::Int(value) => Value::Str(value.to_string()),
-        Value::Bool(value) => Value::Str(value.to_string()),
-        Value::Float(value) => Value::Str(value.to_string()),
-        Value::Unit => Value::Str(String::new()),
-        Value::List(values) | Value::Set(values) => Value::Str(
-            values
-                .iter()
-                .map(passthrough_value_to_text)
-                .collect::<Vec<_>>()
-                .join("\n"),
-        ),
-        Value::Map(values) => Value::Str(format!("{values:?}")),
-        Value::Json(value) => Value::Str(value.to_string()),
-        Value::Bytes(bytes) => Value::Str(format!("{bytes:?}")),
-        Value::Secret(secret) => Value::Str(secret.to_string()),
-        Value::Request(request) => Value::Str(format!("{request:?}")),
-        Value::Response(response) => Value::Str(format!("{response:?}")),
-        Value::Skipped => Value::Skipped,
-    })
-}
-
-fn passthrough_value_to_text(value: &Value) -> String {
-    match value {
-        Value::Str(value) => value.clone(),
-        Value::Int(value) => value.to_string(),
-        Value::Bool(value) => value.to_string(),
-        Value::Float(value) => value.to_string(),
-        Value::Unit => String::new(),
-        Value::Json(value) => value.to_string(),
-        Value::Map(value) => format!("{value:?}"),
-        Value::Bytes(value) => format!("{value:?}"),
-        Value::Secret(value) => value.to_string(),
-        Value::Request(value) => format!("{value:?}"),
-        Value::Response(value) => format!("{value:?}"),
-        Value::List(values) => format!("{values:?}"),
-        Value::Set(values) => format!("{values:?}"),
-        Value::Skipped => String::new(),
-    }
 }
 
 /// Identity callable op for DSL-compiled callables with fn bodies.
@@ -233,8 +159,20 @@ impl Executable for PipelineDispatchOp {
     ///     if already at the last stage (terminal self-loop)
     /// - If `current_stage` is absent: no `next_stage` is emitted
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut outputs =
-            execute_with_declared_output_passthrough(&self.output_ports, inputs)?;
+        // These outputs are computed by dispatch logic itself, not expected as
+        // passthrough inputs from upstream wiring.
+        let passthrough_ports: Vec<(String, bool)> = self
+            .output_ports
+            .iter()
+            .filter(|(name, _)| {
+                !matches!(
+                    name.as_str(),
+                    "stages" | "stage_order" | "active_stage" | "next_stage"
+                )
+            })
+            .cloned()
+            .collect();
+        let mut outputs = execute_with_declared_output_passthrough(&passthrough_ports, inputs)?;
         outputs.insert("stages".to_string(), Value::Int(self.stage_count as i64));
         outputs.insert(
             "stage_order".to_string(),
@@ -394,15 +332,15 @@ impl Executable for LiteralSourceOp {
     }
 }
 
-/// RT4a: Compute node for complex return expressions (BinOp, UnaryOp, etc.).
+/// Compute node for lowered expression evaluation.
 /// Evaluates a `LoweredFnBody` using `evaluate_fn_body` with inputs from predecessor nodes.
 #[derive(Debug, Clone)]
-struct ReturnExprComputeOp {
+struct ExprComputeOp {
     fn_body: daglang_lower::LoweredFnBody,
     output_port: String,
 }
 
-impl Executable for ReturnExprComputeOp {
+impl Executable for ExprComputeOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let sibling_fns = HashMap::new();
         let result = daglang_lower::eval::evaluate_fn_body(&self.fn_body, &inputs, &sibling_fns)
@@ -744,13 +682,12 @@ fn resolve_primitive(kind: &PrimitiveOpKind, outputs: &[Port]) -> Result<DynOp, 
         PrimitiveOpKind::IoExecuteFileWrite => Ok(DynOp::new(TransportOps::Execute)),
         // FC-7: Output path annotation nodes are metadata-only, resolve as identity.
         PrimitiveOpKind::ContentUpsertOutputPath { .. } => Ok(DynOp::new(IdentityCallableOp)),
-        // RT4a: Compute nodes evaluate complex return expressions via fn body evaluation.
-        PrimitiveOpKind::ReturnExprCompute { fn_body } => {
+        PrimitiveOpKind::ExprCompute { fn_body } => {
             let output_port = outputs
                 .first()
                 .map(|port| port.name.0.clone())
                 .unwrap_or_else(|| "result".to_string());
-            Ok(DynOp::new(ReturnExprComputeOp {
+            Ok(DynOp::new(ExprComputeOp {
                 fn_body: *fn_body.clone(),
                 output_port,
             }))
@@ -1019,7 +956,7 @@ fn resolve_service_transport(
                 capability,
             }) = &metadata.spec
             {
-                return Ok(DynOp::new(crate::resolve_service::InterfaceStubExecuteOp {
+                return Ok(DynOp::new(InterfaceStubExecuteOp {
                     interface: interface.clone(),
                     capability: capability.clone(),
                 }));
@@ -1086,7 +1023,7 @@ fn resolve_service_transport(
                     },
                     Some(TransportRole::Prepare),
                 ) => {
-                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubPrepareOp {
+                    return Ok(DynOp::new(InterfaceStubPrepareOp {
                         interface: interface.clone(),
                         capability: capability.clone(),
                     }));
@@ -1098,7 +1035,7 @@ fn resolve_service_transport(
                     },
                     Some(TransportRole::Parse),
                 ) => {
-                    return Ok(DynOp::new(crate::resolve_service::InterfaceStubParseOp {
+                    return Ok(DynOp::new(InterfaceStubParseOp {
                         interface: interface.clone(),
                         capability: capability.clone(),
                     }));

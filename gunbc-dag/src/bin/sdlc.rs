@@ -171,9 +171,6 @@ fn main() {
         }
     }
 
-    // RT58: propagate entrypoint values to param_source_* nodes.
-    input_mocks.propagate_to_param_sources(&entrypoints.entrypoint_ports);
-
     // ========================================================================
     // Set up execution mode
     // ========================================================================

@@ -11,6 +11,7 @@ gunbc-infra = { path = "../core/infra" }
 gunbc-ir = { path = "../core/ir" }
 gunbc-exec = { path = "../core/exec" }
 gunbc-workflow = { path = "../core/workflow" }
+gunbc-resolve = { path = "../core/resolve" }
 gunbc-codegen = { path = "../core/codegen" }
 gunbc-test = { path = "../core/test" }
 

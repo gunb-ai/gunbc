@@ -149,7 +149,7 @@ pub fn iter_resource_tests() -> impl Iterator<Item = &'static ResourceTestDef> {
 ///
 /// This is the single codegen path — all targets use this function.
 /// Per-target variation is only in which DAG and MockSpec are provided.
-pub fn generate_target<T: Executable + Clone>(
+pub fn generate_target<T: Executable + Clone + 'static>(
     config: &TestgenTargetDef,
     dag: Dag<T>,
     spec: MockSpec,
@@ -160,7 +160,7 @@ pub fn generate_target<T: Executable + Clone>(
 /// Like [`generate_target`] but merges a DSL-extracted type registry into the
 /// core type registry, making DSL-defined sum/product types visible to testgen
 /// for variant coverage obligations.
-pub fn generate_target_with_types<T: Executable + Clone>(
+pub fn generate_target_with_types<T: Executable + Clone + 'static>(
     config: &TestgenTargetDef,
     dag: Dag<T>,
     spec: MockSpec,

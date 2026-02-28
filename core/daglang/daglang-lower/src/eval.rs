@@ -257,8 +257,11 @@ fn eval_expr(
 
         LoweredExpr::VariantConstruct { tag, fields } => {
             if fields.is_empty() {
-                // Unit variant: `Closed` → Value::Str("Closed")
-                Ok(Value::Str(tag.clone()))
+                // Unit variant: `Closed` → Value::Enum { ty: "", variant: "Closed" }
+                Ok(Value::Enum {
+                    ty: String::new(),
+                    variant: tag.clone(),
+                })
             } else {
                 // Payload variant: `Ok { value: x }` → Map with _variant tag
                 let mut map = BTreeMap::new();
@@ -586,7 +589,9 @@ fn match_pattern(pattern: &LoweredPattern, value: &Value) -> Option<Vec<(String,
                         None
                     }
                 }
-                // Unit variants match by string equality
+                // Unit variants match by enum-variant equality.
+                Value::Enum { variant, .. } if variant == variant_name => Some(vec![]),
+                // Backward-compat path for older snapshots.
                 Value::Str(s) if s == variant_name => Some(vec![]),
                 _ => None,
             }
@@ -1004,6 +1009,7 @@ pub fn sort_key(value: &Value) -> String {
         Value::Request(request) => format!("req:{request:?}"),
         Value::Response(response) => format!("resp:{response:?}"),
         Value::Secret(secret) => format!("secret:{}", secret.len()),
+        Value::Enum { ty, variant } => format!("enum:{ty}:{variant}"),
         Value::Float(f) => format!("f:{f}"),
         Value::Bytes(b) => format!("bytes:{}", b.len()),
         Value::Skipped => "skipped".to_string(),
@@ -1029,6 +1035,13 @@ pub fn value_to_string(value: &Value) -> String {
         Value::Request(request) => format!("{request:?}"),
         Value::Response(response) => format!("{response:?}"),
         Value::Secret(secret) => format!("secret({})", secret.len()),
+        Value::Enum { ty, variant } => {
+            if ty.is_empty() {
+                variant.clone()
+            } else {
+                format!("{ty}.{variant}")
+            }
+        }
         Value::Float(f) => f.to_string(),
         Value::Bytes(b) => format!("<{} bytes>", b.len()),
     }
@@ -1046,6 +1059,7 @@ pub fn value_truthy(value: &Value) -> bool {
         Value::Json(json) => !json.is_null(),
         Value::Secret(secret) => !secret.is_empty(),
         Value::Bytes(b) => !b.is_empty(),
+        Value::Enum { .. } => true,
         Value::Skipped | Value::Unit => false,
         Value::Request(_) | Value::Response(_) => true,
     }

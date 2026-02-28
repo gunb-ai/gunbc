@@ -36,6 +36,8 @@ pub(crate) struct ScopedServiceCall {
 pub(crate) enum ExprRef {
     /// A bare identifier reference: `x`.
     Ident(String),
+    /// Field access reference: `x.field`.
+    FieldAccess { base: String, field: String },
     /// A literal value.
     Literal(crate::ServiceCallArgLiteral),
     /// Any other expression (not decomposed further for scope analysis).
@@ -51,6 +53,7 @@ pub(crate) enum ScopedItem {
     /// A for-loop introducing a nested scope for its body.
     ForLoop {
         element_var: String,
+        iterable: ExprRef,
         passthrough: Vec<String>,
         body: ScopedBody,
     },
@@ -213,6 +216,7 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
             let body_scope = scope_from_expr(body);
             items.push(ScopedItem::ForLoop {
                 element_var: var.clone(),
+                iterable: expr_ref_from_expr(_iterable),
                 passthrough: passthrough.clone(),
                 body: body_scope,
             });
@@ -270,6 +274,12 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
         Expr::Pipe(lhs, rhs) => {
             collect_scoped_items_from_expr(lhs, items);
             collect_scoped_items_from_expr(rhs, items);
+        }
+        Expr::PipeCall(receiver, _, args) => {
+            collect_scoped_items_from_expr(receiver, items);
+            for (_, arg_expr) in args {
+                collect_scoped_items_from_expr(arg_expr, items);
+            }
         }
 
         // Binary op — recurse.
@@ -342,6 +352,21 @@ fn collect_scoped_items_from_expr(expr: &Expr, items: &mut Vec<ScopedItem>) {
 
         // Leaf expressions — no recursion needed.
         Expr::Literal(_) | Expr::Ident(_) => {}
+    }
+}
+
+fn expr_ref_from_expr(expr: &Expr) -> ExprRef {
+    match expr {
+        Expr::Ident(name) => ExprRef::Ident(name.clone()),
+        Expr::FieldAccess(base, field) => match base.as_ref() {
+            Expr::Ident(base_ident) => ExprRef::FieldAccess {
+                base: base_ident.clone(),
+                field: field.clone(),
+            },
+            _ => ExprRef::Opaque,
+        },
+        Expr::Literal(_) => ExprRef::Opaque,
+        _ => ExprRef::Opaque,
     }
 }
 

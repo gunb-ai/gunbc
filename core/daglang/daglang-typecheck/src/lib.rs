@@ -29,8 +29,7 @@ use daglang_syntax::ast::{
     SourceFile, Stmt, TypeBody, TypeExpr, UsesClause,
 };
 use daglang_syntax::ast_utils::{
-    resource_type_name, service_call_lookup_keys,
-    should_track_call_name as should_validate_call_name, type_expr_to_string, walk_stmts,
+    resource_type_name, service_call_lookup_keys, type_expr_to_string, walk_stmts,
 };
 
 /// A typechecked project snapshot.
@@ -2746,6 +2745,49 @@ fn infer_expr_type(
             errors.extend(rhs_errors);
             rhs_val
         }
+        Expr::PipeCall(receiver, _method, args) => {
+            let (_, recv_errors) = infer_expr_type(receiver, local_bindings, infer_context);
+            errors.extend(recv_errors);
+            for (_name, arg) in args {
+                let (_, arg_errors) = infer_expr_type(arg, local_bindings, infer_context);
+                errors.extend(arg_errors);
+            }
+            match _method {
+                daglang_syntax::ast::PipeMethod::Count | daglang_syntax::ast::PipeMethod::Sum => {
+                    ValueType::Named("Int".to_string())
+                }
+                daglang_syntax::ast::PipeMethod::Any
+                | daglang_syntax::ast::PipeMethod::All
+                | daglang_syntax::ast::PipeMethod::Contains
+                | daglang_syntax::ast::PipeMethod::StartsWith
+                | daglang_syntax::ast::PipeMethod::EndsWith => {
+                    ValueType::Named("Bool".to_string())
+                }
+                daglang_syntax::ast::PipeMethod::Join
+                | daglang_syntax::ast::PipeMethod::Repeat
+                | daglang_syntax::ast::PipeMethod::ReplaceSection
+                | daglang_syntax::ast::PipeMethod::Hash => {
+                    ValueType::Named("String".to_string())
+                }
+                daglang_syntax::ast::PipeMethod::ToBytes => {
+                    ValueType::Named("Bytes".to_string())
+                }
+                daglang_syntax::ast::PipeMethod::ToJson => ValueType::Named("Json".to_string()),
+                daglang_syntax::ast::PipeMethod::Map
+                | daglang_syntax::ast::PipeMethod::Filter
+                | daglang_syntax::ast::PipeMethod::FilterMap
+                | daglang_syntax::ast::PipeMethod::FlatMap
+                | daglang_syntax::ast::PipeMethod::SortBy
+                | daglang_syntax::ast::PipeMethod::Append
+                | daglang_syntax::ast::PipeMethod::Chars => {
+                    ValueType::Named("List".to_string())
+                }
+                daglang_syntax::ast::PipeMethod::Fold
+                | daglang_syntax::ast::PipeMethod::First
+                | daglang_syntax::ast::PipeMethod::Last
+                | daglang_syntax::ast::PipeMethod::MaxBy => ValueType::Unknown,
+            }
+        }
         Expr::Lambda(_, body) => {
             let (val, body_errors) = infer_expr_type(body, local_bindings, infer_context);
             errors.extend(body_errors);
@@ -3213,18 +3255,23 @@ struct BodyServiceCall {
 fn collect_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<BodyCall>) {
     walk_stmts(stmts, &mut |expr| {
         if let Expr::Call(name, args) = expr {
-            if should_validate_call_name(name) {
-                calls.push(BodyCall {
-                    callee: name.clone(),
-                    arg_count: args.len(),
-                    named_args: args
-                        .iter()
-                        .filter_map(|(name, _)| name.clone())
-                        .collect::<Vec<_>>(),
-                });
+            if is_internal_synthetic_call(name) {
+                return;
             }
+            calls.push(BodyCall {
+                callee: name.clone(),
+                arg_count: args.len(),
+                named_args: args
+                    .iter()
+                    .filter_map(|(name, _)| name.clone())
+                    .collect::<Vec<_>>(),
+            });
         }
     });
+}
+
+fn is_internal_synthetic_call(name: &str) -> bool {
+    matches!(name, "<expr>" | "as" | "with" | "fn")
 }
 
 fn collect_service_calls_from_stmts(stmts: &[Stmt], calls: &mut Vec<BodyServiceCall>) {

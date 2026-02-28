@@ -522,25 +522,26 @@ spec.rs       # Service operation specs
 | C1 | RT93 | **Stdlib host + caching.** `OnceLock` cache for compiled fn bodies. `include_str!` for stdlib sources. Single `StdLibHost::eval_fn()` interface. Delete per-module compile wrappers. | `classify_callable()` never calls `compile_from_context()`. No `../../dsl` paths. | M |
 | C2 | RT42 | **Pipe methods first-class.** `PipeMethod` enum in syntax. Parser resolves `\|> method()` to `PipeCall(PipeMethod, ...)`. Delete `should_track_call_name()` allowlist. | Allowlist deleted. `PipeMethod` has all 20 methods. All `.dag` compile. | M |
 | C3 | RT45, RT46 | **Typed enums end-to-end.** `Value::Enum { ty, variant }`. Delete `TestClass::parse()` / `FermiCost::parse()` round-trips. Replace `unwrap_or()` fallbacks with errors. | Zero `parse()` on classification. Zero `unwrap_or()` in fidelity. | M |
-| C4 | RT82 | **LoweringContext + dead code.** Context struct grouping 8-11 params. Delete 18 `#[allow(clippy::too_many_arguments)]`. Delete all dead `_ => None` in wiring. | Zero `too_many_arguments`. Zero `_ => None` in wiring. All `.dag` compile. | L |
+| C4 | RT82 | **LoweringContext + dead code (staged).** Context struct grouping 8-11 params. Delete 18 `#[allow(clippy::too_many_arguments)]`. Delete dead `_ => None` arms only after complex-return coverage is proven (C10 RT4a/c). | Zero `too_many_arguments`. `_ => None` deletion is gated by C10 parity (BinOp/If/Match/Pipe returns still wire). All `.dag` compile. | L |
 | C5 | — | **Integrate scope.rs.** Replace `detect_*_branches_in_stmts`, `IfBranchSite`, `MatchBranchSite` with `ScopedBody`. Delete ad-hoc walk functions. | `IfBranchSite` deleted. `scope.rs` has non-test callers. DAG parity. | M |
 | C6 | — | **Extract transport derivation.** `transport.rs` module. Returns `TransportManifest` (pure data). Invariant: every service call site maps to exactly one triplet. | `add_service_transport_triplets` returns data, not mutates builder. | M |
 | C7 | — | **Expr walker totality + typed leaf refs.** Explicit arms for all `Expr` variants. `LeafRef` enum: `Param { name, field, ty }`, `Callable { endpoint, port }`, `Service { endpoint, port }`. | Zero `_ => {}` in expr walkers. `PARAM_REF_SENTINEL` deleted. | M |
 | C8 | RT84 | **Delete dead AST scaffolding.** `MockResponseDef`, `error_cases()`, `@retry`, orphaned `hermetic`. | `MockResponseDef` deleted. `@retry` rejected by parser. `hermetic` warns. | S |
 | C9 | RT38, RT39 | **No panics, no silent parse.** `LowerError::InvalidTransportSpec` replaces `panic!`. Parse error for bad `auth_input`. | Zero `panic!` on user DSL. Parser test for `auth_input: "token"`. | S |
-| C10 | RT94 | **Resolve ReturnExprCompute split-brain.** Desugar complex returns into explicit DAG nodes so emit/interpret share semantics. Delete `MetadataOnly` for `ReturnExprCompute`. Delete `ReturnExprComputeOp`. | Zero `ReturnExprCompute` in any compiled graph. `PrimitiveOpKind::ReturnExprCompute` deleted. | L |
-| C11 | RT67, RT72 | **Move resolve_service.rs to core/.** 2,190 lines → `core/resolve/src/service_ops.rs`. Split `resolve.rs`: generic framework (~1.6k) → `core/resolve/`. Domain dispatch (~700) stays. Must delete app-specific string dispatch in the move. | `resolve_service.rs` deleted from gunbc-dag. New `core/resolve/` crate. Moved code is simpler than source. | L |
-| C12 | RT73 | **Move testgen to core/.** 5 files (2,177 lines) → `core/codegen/src/testgen/`. Must delete gunbc-dag-specific assumptions in the move. | `testgen_dag/` deleted from gunbc-dag. Testgen works from `core/codegen`. | M |
+| C10 | RT94, RT4a, RT4c | **Resolve ReturnExprCompute split-brain + completeness gate.** Desugar complex returns (BinOp/UnaryOp/If/Match/Pipe/...) into explicit DAG semantics so emit/interpret share behavior. Delete `MetadataOnly` for `ReturnExprCompute`. Delete `ReturnExprComputeOp`. Add fail-closed compile-time gate for non-optional unwired returns (RT4c). | Zero `ReturnExprCompute` in any compiled graph. `PrimitiveOpKind::ReturnExprCompute` deleted. No silent return-binding drops (`_ => None`) for required outputs. | L |
+| C10a | RT-I5 | **`make gist` auth credential bridge fix (postmortem Option A/B/C).** Pick one option and implement in `daglang-lower` and/or `resolve_service.rs` so `auth_token: Secret` reaches REST auth reliably. This must land before C11 extraction to avoid migrating a known bug into core. | `make gist` no longer 401s due to empty bearer token path. C11 is blocked until this passes. | M |
+| C11 | RT67, RT72 | **Move resolve_service.rs to core/.** 2,190 lines → `core/resolve/src/service_ops.rs`. Split `resolve.rs`: generic framework (~1.6k) → `core/resolve/`. Domain dispatch (~700) stays. Must delete app-specific string dispatch in the move. **Precondition: C10a complete. Inventory linkage gate required (RF-INV1 or RF-INV2) before/with move.** | `resolve_service.rs` deleted from gunbc-dag. New `core/resolve/` crate. Moved code is simpler than source. No dropped registrations after crate-boundary move (force-link evidence or RF-INV2 replacement). | L |
+| C12 | RT73 | **Move testgen to core/.** 5 files (2,177 lines) → `core/codegen/src/testgen/`. Must delete gunbc-dag-specific assumptions in the move. **Inventory linkage gate required (RF-INV1 or RF-INV2) before/with move.** | `testgen_dag/` deleted from gunbc-dag. Testgen works from `core/codegen`. Cross-crate registrations still discoverable (or inventory removed via RF-INV2 path). | M |
 | C13 | RT68 | **Split mock_defaults.** Generic probing (~350) → `core/test/`. Delete GCP blob (~230). | `mock_defaults.rs` deleted. Auto-mock works from `core/test`. | S |
 | C14 | RT89 | **REST status-code checking.** `GenericRestParseOp` checks status before field extraction. Non-2xx → error. | 401 → structured error (not "field missing"). Test: mock 401 → error has status. | M |
 | C15 | RT88 | **Fail-closed resolver audit.** Classify all `_ =>` fallbacks. Delete `passthrough_fallback_value()` (70 lines). | Zero undocumented fallbacks. `passthrough_fallback_value` deleted. | M |
 | C16 | RT95 | **Transport class in node metadata.** `ServiceTransportClass` in lowered nodes. Registry gen reads metadata, not `node_id.contains("shell")`. | `from_node_context` reads metadata, not substrings. | S |
 | C17 | RT96 | **Kill `propagate_to_param_sources`.** Fix boundary detection. Param source nodes auto-fed. | `propagate_to_param_sources` deleted. One port per input. | M |
 | C18 | — | **Executor dead code.** Delete `looks_effectful_without_kind()`. Delete unwired credential expiry plumbing. | Dead code deleted. `cargo clippy` clean. | S |
-| C19 | RT83 | **Restore passthrough enforcement.** After C4+C5+C7 wire dag_util branches, restore `ExecError` for required outputs with no input. Code ref: `resolve.rs:99` TODO. | `resolve.rs` returns `ExecError`. CI clean (no unwired branches). | S |
+| C19 | RT83, RT4b | **Restore passthrough enforcement + runtime fail-closed diagnostics.** After C4+C5+C7 wire dag_util branches, required outputs with no input must return `ExecError` (not `Skipped`) and emit clear diagnostics for missing declared passthroughs (RT4b). | `resolve.rs` returns `ExecError` for required missing outputs. Missing passthrough ports are diagnosable (no silent fallback). CI clean (no unwired branches). | S |
 | C20 | RT59, RT63 | **CLI generator: profile, mode, subcommand support.** Expose `available_profiles` in `CompileOutput`. Template generates `--profile` enum flag, `--mode ensure\|verify`, subcommand dispatch for multi-func modules. `KEY=VALUE` arg parsing for infra-style tools. Unblocks Worker A. | Generated CLI for `pipelines/sdlc.dag` accepts `--profile`. Generated CLI for multi-func modules has subcommands. | L |
 
-**Chain**: C1 → C3; C2; C4 → C5 → C6 → C10; C7; C8; C9; C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A)
+**Chain**: C1 → C3; C2; C10 (RT4a/c) → C4 → C5 → C6; C7; C8; C9; C10a → (RF-INV1 or RF-INV2 gate) → C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A)
 
 ---
 
@@ -645,6 +646,8 @@ The prepare node treats `auth_token` like any other input field — it may end u
 
 Option C is the smallest fix that unblocks `make gist`. Options A/B are more principled for the long term.
 
+**Queue injection**: This postmortem is now explicitly assigned to Worker C as **C10a (RT-I5)** and is a hard precondition for **C11** (`resolve_service.rs` extraction).
+
 ### POSTMORTEM: `gunbc-ci` false failure — `overall_success: Skipped`
 
 **Symptom**: `gunbc-ci` reports "A required success check returned false" even when all build/test/clippy stages succeed. Pre-existing on `main`. `make ci` (via `gunbc-workflow`) passes because it uses a different code path.
@@ -697,6 +700,8 @@ There is no test or validation that checks: "for every return expression binding
 
 RT4a is the real fix. RT4b/c are defense-in-depth so the class of bug can't recur silently. After RT4a, revert the ci.rs workaround back to `success_port: Some("overall_success")`.
 
+**Queue injection**: RT4a/RT4c are now explicit in **C10**, RT4b is explicit in **C19**, and C10 is ordered before C4 dead-arm deletion to avoid BinOp/complex-return regressions.
+
 ---
 
 ## Red Backlog
@@ -743,6 +748,11 @@ Meanwhile `gunbc-ci` (`ci.rs`) transitively references them through
 **Impact**: Running `gunbc-codegen cigen` produces a ci.yml missing 5
 GCP secret env vars. Current workaround: ci.yml is committed with
 secrets and not regenerated on every codegen pass.
+
+**C11/C12 linkage trap**: moving large subsystems to `core/` crosses crate
+boundaries and can trigger the same linker-drop behavior. Treat **RF-INV1 or
+RF-INV2 as a hard gate** for C11/C12 so moved resolvers/testgen paths do not
+silently lose registrations.
 
 | ID | Fix | Size | Notes |
 |----|-----|------|-------|
