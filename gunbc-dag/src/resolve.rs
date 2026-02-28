@@ -86,7 +86,17 @@ fn execute_with_declared_output_passthrough(
             continue;
         }
         outputs.entry(port_name.clone()).or_insert_with(|| {
-            passthrough_fallback_value(port_name, &inputs).unwrap_or(Value::Skipped)
+            if let Some(fallback) = passthrough_fallback_value(port_name, &inputs) {
+                fallback
+            } else {
+                // RT4b: Emit diagnostic when a declared output port has no wired input.
+                // This typically means the lowerer failed to wire a return expression.
+                eprintln!(
+                    "passthrough warning: declared output `{port_name}` has no wired input \
+                     (falling back to Skipped)"
+                );
+                Value::Skipped
+            }
         });
     }
     Ok(outputs)

@@ -5056,8 +5056,16 @@ fn derive_file_spec(operation: &OperationDef) -> Option<FileOperationSpec> {
         Some(TransportBinding::File { op, path }) => (op.clone(), path.clone()),
         _ => return None,
     };
-    let file_op = gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str)
-        .unwrap_or_else(|| panic!("unknown file operation `{file_op_str}`"));
+    let file_op = match gunbc_ir::transport::FileOp::from_dsl_str(&file_op_str) {
+        Some(op) => op,
+        None => {
+            eprintln!(
+                "lowering error: unknown file operation `{file_op_str}` on `{}`",
+                operation.name
+            );
+            return None;
+        }
+    };
     let input_fields = operation
         .inputs
         .iter()
@@ -7802,6 +7810,15 @@ fn wire_callable_return_outputs(
             item_name,
             &format!("return_{index}"),
         ) else {
+            // RT4c: Emit diagnostic when a return output can't be wired.
+            // Optional outputs (T?) are expected to be missing sometimes;
+            // required outputs that can't be wired indicate a lowering gap.
+            if !output_port.type_id.0.ends_with('?') {
+                eprintln!(
+                    "lowering warning: {module_name}::{item_name} return output `{output_name}` \
+                     could not be wired (unsupported expression kind)"
+                );
+            }
             continue;
         };
         if source_node == target.node_id {

@@ -324,22 +324,41 @@ impl Parser {
                             if let TokenKind::Str(s) = &self.peek().kind {
                                 config.endpoint = Some(s.clone());
                                 self.advance();
+                            } else if Self::token_kind_as_ident(&self.peek().kind).is_some() {
+                                // Typed field syntax: `endpoint: String = "https://..."`
+                                // Skip type identifier and `=`, then extract default string.
+                                self.advance(); // skip type ident
+                                if self.eat(&TokenKind::Eq) {
+                                    if let TokenKind::Str(s) = &self.peek().kind {
+                                        config.endpoint = Some(s.clone());
+                                        self.advance();
+                                    }
+                                }
                             } else {
-                                self.advance();
+                                return Err(self.err(format!(
+                                    "expected string literal for `endpoint`, found {}",
+                                    self.peek().kind.desc()
+                                )));
                             }
                         }
                         "auth" => {
                             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                                 config.auth = Some(self.expect_ident()?);
                             } else {
-                                self.advance();
+                                return Err(self.err(format!(
+                                    "expected identifier for `auth`, found {}",
+                                    self.peek().kind.desc()
+                                )));
                             }
                         }
                         "auth_input" => {
                             if Self::token_kind_as_ident(&self.peek().kind).is_some() {
                                 config.auth_input = Some(self.expect_ident()?);
                             } else {
-                                self.advance();
+                                return Err(self.err(format!(
+                                    "expected identifier for `auth_input`, found {}",
+                                    self.peek().kind.desc()
+                                )));
                             }
                         }
                         _ => {
