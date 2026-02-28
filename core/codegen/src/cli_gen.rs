@@ -652,9 +652,6 @@ fn generate_input_mocks(_entrypoints: &[CliEntrypoint]) -> String {
     );
     code.push_str("    }\n");
     code.push_str("}\n");
-    // RT58: propagate entrypoint values to param_source_* nodes
-    code.push_str("input_mocks.propagate_to_param_sources(&entrypoints.entrypoint_ports);\n");
-
     code
 }
 

@@ -20,6 +20,7 @@
 use std::collections::BTreeMap;
 
 use crate::testgen::analyze::DagAnalysis;
+use daglang_lower::{classify_service_transport, LoweredOp, ServiceTransportClass};
 use gunbc_ir::Dag;
 
 /// Transport class for a transport executor node.
@@ -79,6 +80,27 @@ impl TransportClass {
     }
 }
 
+fn from_service_transport_class(class: ServiceTransportClass) -> TransportClass {
+    match class {
+        ServiceTransportClass::RestNetwork => TransportClass::Rest,
+        ServiceTransportClass::ShellLocal => TransportClass::Shell,
+        ServiceTransportClass::FileBoundary => TransportClass::File,
+        ServiceTransportClass::LocalDirect => TransportClass::Local,
+        ServiceTransportClass::InterfaceStub => TransportClass::Rest,
+        ServiceTransportClass::Unknown => TransportClass::Rest,
+    }
+}
+
+fn transport_class_from_node_metadata<T: 'static>(node: &gunbc_ir::Node<T>) -> Option<TransportClass> {
+    let gunbc_ir::node::NodeBody::Opaque(op) = &node.body else {
+        return None;
+    };
+    let op_any = op as &dyn std::any::Any;
+    let lowered = op_any.downcast_ref::<LoweredOp>()?;
+    let class = classify_service_transport(lowered)?;
+    Some(from_service_transport_class(class))
+}
+
 /// Info about a single transport executor node.
 #[derive(Debug, Clone)]
 pub struct TransportNodeInfo {
@@ -127,7 +149,10 @@ impl VirtualBackendRequirements {
 pub fn derive_virtual_backend_requirements<T>(
     dag: &Dag<T>,
     analysis: &DagAnalysis,
-) -> VirtualBackendRequirements {
+) -> VirtualBackendRequirements
+where
+    T: 'static,
+{
     let mut requirements = VirtualBackendRequirements::default();
 
     // Build a quick lookup of node input/output types.
@@ -140,6 +165,8 @@ pub fn derive_virtual_backend_requirements<T>(
             (n.id.0.as_str(), (req_input, resp_output))
         })
         .collect();
+    let node_by_id: BTreeMap<&str, &gunbc_ir::Node<T>> =
+        dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
 
     for executor_id in &analysis.transport_executors {
         let (input_type, output_type) = node_types
@@ -147,7 +174,10 @@ pub fn derive_virtual_backend_requirements<T>(
             .copied()
             .unwrap_or((None, None));
 
-        let transport_class = TransportClass::from_node_context(executor_id, input_type, output_type);
+        let transport_class = node_by_id
+            .get(executor_id.as_str())
+            .and_then(|node| transport_class_from_node_metadata(*node))
+            .unwrap_or_else(|| TransportClass::from_node_context(executor_id, input_type, output_type));
 
         match transport_class {
             TransportClass::Rest | TransportClass::Http => requirements.needs_rest = true,
