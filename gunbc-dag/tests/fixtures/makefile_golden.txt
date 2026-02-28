@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check deps-config deps-config-check makegen-check bootstrap-check pragma-check verify verify-fix fmt-fix lint-fix ci test-all test test-integration test-external check clippy fmt ci-yaml fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry clippy-lint clippy-lint-dry codegen-ensure codegen-ensure-dry deps deps-dry deps-generate deps-generate-dry docgen docgen-dry generate-design generate-design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry makegen makegen-dry pragma pragma-dry review-design review-design-dry
+.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check deps-config deps-config-check makegen-check bootstrap-check pragma-check verify verify-fix fmt-fix lint-fix ci test-all test test-integration test-external check clippy fmt ci-yaml fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry cigen cigen-dry clippy-lint clippy-lint-dry codegen-ensure codegen-ensure-dry deps deps-dry deps-generate deps-generate-dry docgen docgen-dry generate-design generate-design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry makegen makegen-dry pragma pragma-dry review-design review-design-dry
 
 # Preflight: auto-fix rustc warnings before running generators
 preflight-fix:
@@ -146,6 +146,7 @@ help:
 	@echo "Tools:"
 	@echo "  bootstrap   - Bootstrap"
 	@echo "  build-all   - Build all"
+	@echo "  cigen   - Cigen"
 	@echo "  clippy-lint [PATHS=...]  - Clippy lint"
 	@echo "  codegen-ensure   - Codegen ensure"
 	@echo "  deps [MANIFEST_PATH=deps.toml] [PLATFORM=...]  - Deps"
@@ -219,6 +220,14 @@ build-all: ensure-codegen
 
 build-all-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build-all -q --release -- --dry-run strict
+
+
+# gunbc-cigen entrypoints: 
+cigen: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-cigen -q --release
+
+cigen-dry: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-cigen -q --release -- --dry-run strict
 
 
 # gunbc-clippy-lint entrypoints: paths (String)
