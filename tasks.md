@@ -7,15 +7,16 @@
 
 ## Operating Model: Blue Team / Red Team
 
-One blue lane (scenario-driven), two red lanes, never blocking each other.
+Two blue lanes (independent), red team queue, never blocking each other.
 
 ```
   BLUE TEAM — Advance                     RED TEAM — Harden
   ────────────────────────────            ────────────────────────
-  SDLC Activation (single queue):         Single queue:
-    BT1 → BT2 → BT3 → BT4 →               RT1 → RT2 → RT3 → RT4 →
-    BT5 → BT6 → BT7 → BT8 →               RT5 → RT6 → RT7 → RT8 →
-    BT9 → BT10 → BT11:19 → ...cloud        RT9:12 → RT13:16 → RT17:23
+  Lane 1: SDLC Activation                 Single queue:
+    BT1:16 → BT13:19 → ...cloud             RT1:12 → RT13:16 → RT17:23
+
+  Lane 2: External Dependency Modeling
+    ED1:6 → ED7:13 → ED14:18 → ED19:21
 ```
 
 ### Protocols
@@ -161,6 +162,170 @@ L4+ needs transport on all services the local profile touches — BT6 handles th
 
 ---
 
+## External Dependency Modeling (Lane 2)
+
+### The Principle
+
+Every external system the SDLC scenario touches should be modeled as a
+**tautological `extdeps/` declaration** — facts about what the system *is*,
+not how we use it. These compose upward:
+
+```
+Layer 0: std/             — universal primitives (render, types, languages)
+Layer 1: extdeps/         — "What is GCS?" "What is GitHub Issues?"
+Layer 2: config/          — our repo's choices (which bucket, which branch)
+Layer 3: services/        — transport-level wiring (REST endpoints, shell commands)
+Layer 4: tools/           — executable workflows
+```
+
+**Why this matters**: the SDLC scenario touches 30+ external APIs across 3 cloud
+providers, GitHub, 2 LLM providers, and CLI tools. Today `services/` defines
+*how to talk to them* (transport blocks), but there is no *what are they* layer
+underneath. Adding tautological extdeps models enables:
+
+1. **Compiler-derived invariants** — `readonly`, `idempotent`, CAS preconditions
+   flow from the extdeps model, not from per-operation annotations.
+2. **Cross-provider abstraction grounding** — `infra/core.dag` defines
+   `ObjectStorage` abstractly; extdeps models say *what specific behaviors*
+   GCS/S3/Azure Blob exhibit for that interface.
+3. **Auth model composition** — GCP OAuth2+WIF, AWS SigV4+AssumeRole,
+   Azure Bearer+FederatedCredential are separate tautologies that the
+   credential chain pattern composes.
+4. **Test obligation derivation** — knowing an operation is `readonly` means
+   testgen can skip write-side mocking; knowing it has CAS means testgen
+   must generate conflict scenarios.
+
+### Pattern to Follow
+
+Each extdeps file answers "What is X?" with types + data, zero opinions:
+
+```dag
+module extdeps.cloud.gcp.storage
+
+// "What is a GCS object?"
+type Object {
+  bucket: String
+  key: String
+  generation: Int          // monotonic version — the CAS primitive
+  metageneration: Int
+  content_type: String?
+  size: Int
+}
+
+// "What is optimistic concurrency on GCS?"
+type CasPrecondition {
+  if_generation_match: Int?
+  if_metageneration_match: Int?
+}
+
+// Behavioral facts
+data get_is_readonly: Bool = true
+data get_is_idempotent: Bool = true
+data insert_is_idempotent: Bool = false  // unless if-generation-match: 0
+```
+
+This follows the established patterns:
+- `extdeps/clippy.dag` — "What is Clippy?" (categories, config surface)
+- `extdeps/make.dag` — "What is Make?" (targets, variables, sections)
+- `extdeps/github_actions.dag` — "What is GitHub Actions?" (workflows, jobs, steps)
+- `extdeps/yaml.dag` — "What is YAML?" (indent unit, kv separator, list prefix)
+
+### File Layout
+
+```
+extdeps/
+├── cloud/
+│   ├── core.dag                — universal cloud concepts: Region, AuthScheme,
+│   │                             ServiceEndpoint, RateLimit, IdempotencyToken
+│   ├── gcp/
+│   │   ├── core.dag            — "What is GCP?" project, SA, WIF, scopes
+│   │   ├── iam.dag             — roles, bindings, impersonation
+│   │   ├── secret_manager.dag  — secrets, versions, rotation
+│   │   ├── storage.dag         — buckets, objects, generation-based CAS
+│   │   ├── pubsub.dag          — topics, subscriptions, ack deadlines
+│   │   ├── cloud_run.dag       — services, revisions, traffic, scaling
+│   │   └── sts.dag             — token exchange, OIDC, subject types
+│   ├── aws/
+│   │   ├── core.dag            — "What is AWS?" ARNs, regions, SigV4
+│   │   ├── iam.dag             — roles, policies, trust
+│   │   ├── s3.dag              — buckets, objects, versioning
+│   │   ├── lambda.dag          — functions, runtimes
+│   │   ├── secrets_manager.dag — secrets, rotation
+│   │   └── sqs.dag             — queues, messages, visibility timeout
+│   └── azure/
+│       ├── core.dag            — "What is Azure?" subscriptions, tenants
+│       ├── identity.dag        — managed identities, RBAC
+│       ├── blob_storage.dag    — containers, blobs, ETags
+│       ├── container_apps.dag  — apps, revisions
+│       ├── key_vault.dag       — secrets, certificates
+│       └── service_bus.dag     — queues, topics, messages
+├── github/
+│   ├── core.dag                — "What is GitHub?" repos, auth, rate limits
+│   ├── issues.dag              — states, labels, events, timeline
+│   ├── pull_requests.dag       — reviews, checks, merge strategies
+│   └── gists.dag               — files, versions
+├── llm/
+│   ├── core.dag                — "What is an LLM API?" messages, tokens, roles
+│   ├── anthropic.dag           — models, message format, tool use
+│   └── openai.dag              — models, chat completions, response format
+├── git.dag                     — commits, branches, refs, merge strategies
+└── cargo.dag                   — packages, targets, features, profiles
+```
+
+### Queue
+
+Priority: what the SDLC scenario needs first.
+
+| # | ID | Task | Size | Status | Deps |
+|---|-----|------|------|--------|------|
+| 1 | ED-1 | **`extdeps/cloud/core.dag`** — universal cloud concepts. `Region`, `AuthScheme` (Bearer/SigV4/ApiKey/OIDC), `ServiceEndpoint`, `RateLimit`, `Credential`, `IdempotencyToken`. Shared across GCP/AWS/Azure. | S | Pending | — |
+| 2 | ED-2 | **`extdeps/github/core.dag`** — "What is GitHub?" `Repository`, `User`, `RateLimit`, `AuthToken`, `ApiVersion`, `Pagination` (link-header cursor). Shared across Issues/PRs/Gists. | S | Pending | — |
+| 3 | ED-3 | **`extdeps/github/issues.dag`** — "What is a GitHub Issue?" `Issue`, `IssueState` (Open/Closed), `Label`, `IssueEvent`, `IssueComment`, `Timeline`. Event types as sum type. State machine: open → closed. | M | Pending | ED-2 |
+| 4 | ED-4 | **`extdeps/github/pull_requests.dag`** — "What is a PR?" `PullRequest`, `ReviewState`, `CheckStatus`, `MergeStrategy` (Merge/Squash/Rebase), `BranchProtection`. State machine: draft → open → review → merged/closed. | M | Pending | ED-2 |
+| 5 | ED-5 | **`extdeps/github/gists.dag`** — "What is a Gist?" `Gist`, `GistFile`, `GistVisibility` (Public/Secret). Minimal — gist is simpler than issues/PRs. | S | Pending | ED-2 |
+| 6 | ED-6 | **`extdeps/llm/core.dag`** — "What is an LLM API?" `Message`, `Role` (System/User/Assistant), `TokenUsage`, `StopReason`, `Temperature`, `MaxTokens`. Shared across Anthropic/OpenAI. | S | Pending | — |
+| 7 | ED-7 | **`extdeps/llm/anthropic.dag`** — "What is the Anthropic API?" `Model` (claude-4-sonnet/opus/haiku), `ContentBlock` (Text/ToolUse/ToolResult), `SystemPrompt`, `ThinkingConfig`. | S | Pending | ED-6 |
+| 8 | ED-8 | **`extdeps/llm/openai.dag`** — "What is the OpenAI API?" `Model` (gpt-4o/o1/o3), `ResponseFormat` (Text/JsonObject/JsonSchema), `ToolChoice`. | S | Pending | ED-6 |
+| 9 | ED-9 | **`extdeps/cloud/gcp/core.dag`** — "What is GCP?" `Project`, `ServiceAccount`, `OAuth2Scope`, `WifPool`, `WifProvider`, `ApiEndpoint` pattern (`{service}.googleapis.com/v1`). | M | Pending | ED-1 |
+| 10 | ED-10 | **`extdeps/cloud/gcp/storage.dag`** — "What is GCS?" `Bucket`, `Object`, `StorageClass`, `CasPrecondition` (generation-based), `ObjectOp` behavioral properties. | M | Pending | ED-9 |
+| 11 | ED-11 | **`extdeps/cloud/gcp/pubsub.dag`** — "What is Pub/Sub?" `Topic`, `Subscription`, `AckDeadline`, `OrderingKey`, `DeliveryGuarantee` (AtLeastOnce). | M | Pending | ED-9 |
+| 12 | ED-12 | **`extdeps/cloud/gcp/iam.dag`** — "What is GCP IAM?" `Role`, `Binding`, `Policy`, `ImpersonationChain`, `TokenLifetime`. | S | Pending | ED-9 |
+| 13 | ED-13 | **`extdeps/cloud/gcp/secret_manager.dag`** — "What is Secret Manager?" `Secret`, `SecretVersion`, `RotationSchedule`, `AccessPolicy`. | S | Pending | ED-9 |
+| 14 | ED-14 | **`extdeps/cloud/gcp/cloud_run.dag`** — "What is Cloud Run?" `Service`, `Revision`, `TrafficSplit`, `ScalingConfig`, `ContainerPort`. | M | Pending | ED-9 |
+| 15 | ED-15 | **`extdeps/cloud/gcp/sts.dag`** — "What is STS?" `TokenExchange`, `SubjectTokenType` (JWT/AccessToken), `GrantType`. | S | Pending | ED-9 |
+| 16 | ED-16 | **`extdeps/git.dag`** — "What is Git?" `Commit`, `Branch`, `Remote`, `Ref`, `MergeStrategy`, `DiffStat`. | M | Pending | — |
+| 17 | ED-17 | **`extdeps/cargo.dag`** — "What is Cargo?" `Package`, `Target`, `Profile` (dev/release), `Feature`, `TestHarness`. | S | Pending | — |
+| 18 | ED-18 | **`extdeps/cloud/aws/core.dag`** — "What is AWS?" `Arn`, `Region`, `SigV4`, `AssumeRole`, `SessionToken`. | M | Pending | ED-1 |
+| 19 | ED-19 | **`extdeps/cloud/aws/s3.dag`** + **iam.dag** + **lambda.dag** + **secrets_manager.dag** + **sqs.dag** — AWS service models. Follow GCP patterns. | L | Pending | ED-18 |
+| 20 | ED-20 | **`extdeps/cloud/azure/core.dag`** — "What is Azure?" `Subscription`, `Tenant`, `ManagedIdentity`, `FederatedCredential`. | M | Pending | ED-1 |
+| 21 | ED-21 | **`extdeps/cloud/azure/blob_storage.dag`** + **identity.dag** + **container_apps.dag** + **key_vault.dag** + **service_bus.dag** — Azure service models. Follow GCP patterns. | L | Pending | ED-20 |
+
+### Design Decisions
+
+**Types vs data**: Each extdeps file has both. Types define the shape ("what is a
+GCS object?"). Data declares behavioral facts ("get is readonly and idempotent").
+No functions — extdeps are facts, not computation.
+
+**Granularity**: One file per service, grouped by provider. `core.dag` at each
+level provides shared concepts that service-specific files compose. This matches
+the cloud provider API structure: each service has its own resource model.
+
+**CAS modeling**: GCS uses generation numbers, S3 uses version IDs, Azure Blob
+uses ETags. Each gets its own `CasPrecondition` type. The `infra/core.dag`
+`ObjectStorage` interface maps these into a common `CompareAndSwap` pattern.
+
+**Auth layering**: `cloud/core.dag` defines `AuthScheme` as a sum type.
+`cloud/gcp/core.dag` fills in OAuth2+WIF+ServiceAccount. `cloud/aws/core.dag`
+fills in SigV4+AssumeRole. The credential chain pattern in `std/patterns.dag`
+composes whichever auth tautologies the profile selects.
+
+**Relationship to services/**: `extdeps/` says *what the system is*.
+`services/` says *how we talk to it* (REST endpoints, shell commands).
+`services/gcp/secret_manager.dag` imports types from
+`extdeps/cloud/gcp/secret_manager.dag` and adds transport blocks.
+
+---
+
 ## Blue Unqueued
 
 Raw observations from any worker. Not triaged, not sized.
@@ -180,11 +345,7 @@ Triaged and sized. Promote to lane queues when horizon items are exhausted.
 
 | ID | Item | Size | Priority | Notes |
 |----|------|------|----------|-------|
-| CG-1 | DSL CI model types: `dsl/std/ci.dag` — `CiWorkflow`, `CiJob`, `CiStep` (Run/Uses/DagRun), `CiTrigger`, `CiPermission`, `CiCache`, `CiEnv`, plus provider sum type `CiProvider = GitHub \| GitLab`. Data declarations for shared configs (Rust cache paths, cargo env). | M | P1 | Layer 0 types — no rendering yet. Follow `std/languages.dag` pattern for tautological definitions. |
-| CG-2 | DSL CI rendering functions: `dsl/std/ci_render.dag` — `render_github_workflow(w: CiWorkflow) -> String`, `render_gitlab_workflow(w: CiWorkflow) -> String`, plus helpers (`render_step`, `render_job`, `render_permissions`, `render_env_block`, `render_cache`). Pure functions, string interpolation + join. | M | P1 | Follow `makegen.dag` rendering pattern: small composable fns, `\|> map` + `\|> join("\n")`. YAML indentation via string literals (no general YAML serializer needed). |
-| CG-3 | DSL cigen tool: `dsl/tools/cigen.dag` — single entrypoint `func cigen() -> { written: Bool }` that discovers CI config via extern (permissions, secrets, tool invocation, branches), constructs `CiWorkflow` records, renders both providers, calls `content_upsert` for each. Extern bridge: `discover_ci_config() -> CiConfig`. | M | P1 | Follow `makegen.dag` entrypoint pattern. Discovery extern returns structured config, all rendering is pure DSL. |
-| CG-4 | Delete Rust cigen code: remove `generate_github_actions_template()`, `generate_gitlab_ci_template()`, `validate_github_actions_template()`, `validate_gitlab_ci_template()` from `codegen_cli.rs`. Wire `cmd_cigen()` to the new DSL tool (same pattern as `cmd_codegen()` calling `build_dsl_graph_for_entrypoint`). | S | P1 | ~200 lines deleted from `codegen_cli.rs:450-609`. Validation moves to DSL-side (structural — if the types construct, the YAML is valid). |
-| CG-5 | Migrate `RenderConfig` builder + `SharedStep` + `yaml_block` from `core/ir/src/transport/ci/render.rs` — evaluate what remains needed as Rust runtime vs what becomes dead code after CG-1:4. Delete dead code, keep only provider detection (`detect_provider`, `is_ci`). | S | P1 | May keep `CiRenderer` trait for runtime step-level rendering (animated progress). CI YAML generation is a separate concern. |
+| CG-1:5 | **DSL CI YAML generation (cigen).** Stacked tautologies: `extdeps/yaml.dag`, `extdeps/github_actions.dag`, `extdeps/gitlab_ci.dag`, `config/ci.dag`, `tools/cigen.dag`. Common render layer in `std/render.dag`. Extern bridge `discover_ci_config()`. Deleted ~700 lines Rust. | L | P1 | **Done**. Established the extdeps modeling pattern now used by Lane 2. |
 | H10 | Compute stack orchestration: Cloud Run/GCS/LB lifecycle DAG builder. | L | P2 | `docs/design/horizon/h10-compute-stack-services.md` |
 | S12-E | Multi-worker CAS: GcsClaimStore with generation-based CAS. DSL exists. Distinct from B-12 (which stress-tests SignalStore/ArtifactStore). | M | P2 | Deferred until cloud_run profile needed |
 | H1 | Display reactive DSL: channel-driven event loop. | XL | P3 | No current use case. Review 2026-Q3, delete if not promoted. |

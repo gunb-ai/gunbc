@@ -23,24 +23,17 @@
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
 use gunbc_cli::BinaryArgs;
-use gunbc_codegen::{
-    core_outputs, generate_cli_with_import, generate_cli_with_subcommands, FileWriter, ToolDef,
-};
-use gunbc_ir::CargoInvocation;
+use gunbc_codegen::{core_outputs, generate_cli_with_import, FileWriter, ToolDef};
 use gunbc_exec::{print_attention, run_freshness_steps, AttentionLevel};
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
     update_resource_manifest, FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness,
     ManifestUpdateError, ResourceDef, ResourceError, ResourceIo, ResourceManifest,
 };
-use gunbc_ir::transport::ci::{
-    yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
-};
 use gunbc_ir::WorkspaceLayout;
 use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
@@ -350,264 +343,37 @@ fn cmd_codegen(dry_run: bool) {
     update_manifest_after_codegen(dry_run, &io);
 }
 
-/// Generate CI workflow YAML files.
+/// Generate CI workflow YAML files via the DSL cigen tool.
 ///
-/// Generates both GitHub Actions and GitLab CI configurations.
+/// Builds and executes the DSL graph from tools/cigen.dag. The graph
+/// handles both GitHub Actions and GitLab CI rendering via content_upsert.
 fn cmd_cigen(dry_run: bool) {
     println!("gunbc-codegen: cigen");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
-    let io = TransportIo::new();
-    let writer = FileWriter::new(dry_run, &io);
-
-    let github_provider = GitHubActionsProvider;
-    let gitlab_provider = GitLabCiProvider::default();
-
-    // Generate CI YAML for gunbc-ci
-    let codegen = CargoInvocation::composed("codegen", "dag");
-    let tool = CargoInvocation::composed("ci", "dag");
-
-    // Derive permissions from CI workflow integrations (checkout, GCP WIF, etc.)
-    let ci_perms: Vec<(String, String)> = gunbc_dag::ci::ci_workflow_permissions()
-        .into_iter()
-        .map(|(scope, level)| {
-            (
-                scope.as_yaml_key().to_string(),
-                level.as_yaml_value().to_string(),
-            )
-        })
-        .collect();
-
-    // Secrets required by live flow tests (derived from testgen metadata).
-    let ci_secrets: Vec<String> = gunbc_dag::ci::ci_live_test_secrets()
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
-
-    let config = RenderConfig::new("ci", tool)
-        .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
-        .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
-        .with_cargo_env(gunbc_ir::CargoEnv::ci())
-        .with_git(gunbc_ir::GitConfig::default())
-        .with_cache(CacheConfig::rust())
-        .with_permissions(ci_perms)
-        .with_secrets_env(ci_secrets);
-
-    let outputs: Vec<(&str, CiTemplateKind, String, String)> = vec![
-        (
-            "GitHub Actions",
-            CiTemplateKind::GitHubActions,
-            generate_github_actions_template(&config),
-            github_provider.output_path("ci"),
-        ),
-        (
-            "GitLab CI",
-            CiTemplateKind::GitLabCi,
-            generate_gitlab_ci_template(&config),
-            gitlab_provider.output_path("ci"),
-        ),
-    ];
-
-    let mut had_errors = false;
-    for (label, kind, yaml, path) in &outputs {
-        if let Err(error) = validate_generated_ci_template(*kind, yaml) {
-            eprintln!("  [ci] {} validation ERROR: {}", label, error);
-            had_errors = true;
-            continue;
+    let dag = match gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint(
+        "tools/cigen.dag",
+        Some("cigen"),
+    ) {
+        Ok(dag) => dag,
+        Err(e) => {
+            print_attention(
+                AttentionLevel::Error,
+                "Cigen graph build failed",
+                &e.to_string(),
+            );
+            std::process::exit(1);
         }
+    };
 
-        match writer.write_if_changed(Path::new(path), yaml) {
-            Ok(result) => {
-                let status = if dry_run {
-                    "dry-run"
-                } else if result.changed {
-                    "written"
-                } else {
-                    "unchanged"
-                };
-                println!("  [ci] {} ({})", path, status);
-            }
-            Err(e) => {
-                eprintln!("  [ci] {} ERROR: {}", label, e);
-                had_errors = true;
-            }
-        }
-    }
+    let mode = if dry_run {
+        gunbc_exec::ExecutionMode::DryRun(gunbc_exec::BoundaryMocks::default())
+    } else {
+        gunbc_exec::ExecutionMode::Real
+    };
 
-    if had_errors {
-        std::process::exit(1);
-    }
-
-    println!();
-    println!("Generated: {} CI files", outputs.len());
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CiTemplateKind {
-    GitHubActions,
-    GitLabCi,
-}
-
-fn validate_generated_ci_template(kind: CiTemplateKind, yaml: &str) -> Result<(), String> {
-    match kind {
-        CiTemplateKind::GitHubActions => validate_github_actions_template(yaml),
-        CiTemplateKind::GitLabCi => validate_gitlab_ci_template(yaml),
-    }
-}
-
-fn validate_required_sections(yaml: &str, required: &[&str]) -> Result<(), String> {
-    for section in required {
-        if !yaml.contains(section) {
-            return Err(format!("missing required section: {section}"));
-        }
-    }
-    Ok(())
-}
-
-fn validate_github_actions_template(yaml: &str) -> Result<(), String> {
-    validate_required_sections(
-        yaml,
-        &[
-            "name:",
-            "on:",
-            "permissions:",
-            "env:",
-            "jobs:",
-            "runs-on:",
-            "steps:",
-        ],
-    )?;
-
-    // Basic interpolation sanity check to catch malformed template insertion.
-    let opens = yaml.matches("${{").count();
-    let closes = yaml.matches("}}").count();
-    if opens != closes {
-        return Err(format!(
-            "unbalanced GitHub interpolation markers: {} opening vs {} closing",
-            opens, closes
-        ));
-    }
-
-    Ok(())
-}
-
-fn validate_gitlab_ci_template(yaml: &str) -> Result<(), String> {
-    validate_required_sections(
-        yaml,
-        &["image:", "variables:", "stages:", "cache:", "script:"],
-    )?;
-
-    Ok(())
-}
-
-/// Generate GitHub Actions YAML template.
-fn generate_github_actions_template(config: &RenderConfig) -> String {
-    let mut yaml = String::new();
-
-    yaml.push_str(&config.header("#"));
-    write!(yaml, "\n\nname: {}\n\n", config.workflow_name).unwrap();
-
-    let branches = config.git.ci_branches();
-    yaml.push_str("on:\n  push:\n");
-    yaml_block(&mut yaml, "    branches:", &branches, |b| {
-        format!("      - {}", b)
-    });
-    yaml.push_str("  pull_request:\n");
-    yaml_block(&mut yaml, "    branches:", &branches, |b| {
-        format!("      - {}", b)
-    });
-
-    yaml_block(
-        &mut yaml,
-        "permissions:",
-        &config.permissions,
-        |(scope, level)| format!("  {}: {}", scope, level),
-    );
-
-    yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| {
-        format!("  {}: {}", k, v)
-    });
-
-    write!(
-        yaml,
-        "jobs:\n  {}:\n    runs-on: {}\n    timeout-minutes: {}\n    steps:\n",
-        config.workflow_name, config.runner.id, config.timeout_minutes,
-    )
-    .unwrap();
-
-    if let Some(checkout) = &config.checkout {
-        yaml.push_str("      - name: Checkout\n        uses: actions/checkout@v4\n");
-        if let Some(depth) = checkout.fetch_depth {
-            write!(yaml, "        with:\n          fetch-depth: {}\n", depth).unwrap();
-        }
-        yaml.push('\n');
-    }
-
-    yaml.push_str("      - name: Setup Rust\n        uses: dtolnay/rust-toolchain@stable\n\n");
-
-    if let Some(cache) = &config.cache {
-        yaml.push_str("      - name: Cache Cargo\n        uses: actions/cache@v4\n        with:\n");
-        yaml_block(&mut yaml, "          path: |", &cache.paths, |p| {
-            format!("            {}", p)
-        });
-        writeln!(yaml, "          key: {}", cache.key).unwrap();
-        yaml_block(
-            &mut yaml,
-            "          restore-keys: |",
-            &cache.restore_keys,
-            |k| format!("            {}", k),
-        );
-    }
-
-    yaml.push_str(
-        "      - name: Verify Bootstrap Invariants\n        run: |\n          rm -rf target/codegen\n          # Cargo validates all [[bin]] paths even with --bin filter.\n          # Create minimal stubs so the manifest parses, then check only bootstrap binaries.\n          for dir in $(grep 'path = \"../target/codegen/' gunbc-dag/Cargo.toml | sed 's|.*\"../\\(.*\\)/main.rs\"|\\1|'); do\n            mkdir -p \"$dir\" && echo 'fn main() {}' > \"$dir/main.rs\"\n          done\n          cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci\n\n",
-    );
-
-    write!(
-        yaml,
-        "      - name: Run CI Pipeline\n        run: {}\n",
-        config.tool.command(),
-    )
-    .unwrap();
-
-    // Step-level env: CARGO_INCREMENTAL overrides dtolnay/rust-toolchain's
-    // CARGO_INCREMENTAL=0 (set via $GITHUB_ENV). Step-level env takes precedence.
-    yaml.push_str("        env:\n");
-    yaml.push_str("          CARGO_INCREMENTAL: \"1\"\n");
-    for secret in &config.secrets_env {
-        writeln!(yaml, "          {}: ${{{{ secrets.{} }}}}", secret, secret).unwrap();
-    }
-
-    yaml
-}
-
-/// Generate GitLab CI YAML template.
-fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
-    let mut yaml = String::new();
-
-    yaml.push_str(&config.header("#"));
-    yaml.push_str("\n\nimage: rust:latest\n\n");
-
-    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| {
-        format!("  {}: \"{}\"", k, v)
-    });
-
-    yaml.push_str("stages:\n  - ci\n\n");
-
-    yaml.push_str(
-        "cache:\n  key: cargo-${CI_COMMIT_REF_SLUG}\n  paths:\n    - .cargo/\n    - target/\n\n",
-    );
-
-    write!(
-        yaml,
-        "{}:\n  stage: ci\n  script:\n    - {}\n",
-        config.workflow_name,
-        config.tool.command(),
-    )
-    .unwrap();
-
-    yaml
+    gunbc_exec::execute_and_display(&dag, mode, false, None, None);
 }
 
 /// Resolve workspace package names to their directory paths using cargo metadata.
@@ -791,16 +557,8 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     }
 
     for tool in &tools {
-        // RT63: Use subcommand dispatch when the tool has multiple funcs
-        let code = if tool.has_subcommands() {
-            generate_cli_with_subcommands(
-                &tool.meta,
-                &tool.subcommands,
-                tool.custom_import.as_deref(),
-            )
-        } else {
-            generate_cli_with_import(&tool.meta, &tool.entrypoints, tool.custom_import.as_deref())
-        };
+        let code =
+            generate_cli_with_import(&tool.meta, &tool.entrypoints, tool.custom_import.as_deref());
         let tool_dir = output_dir.join(tool.meta.tool_name.as_ref());
         let main_path = tool_dir.join("main.rs");
 
@@ -1116,12 +874,7 @@ fn print_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        discover_codegen_tools, generate_github_actions_template, generate_gitlab_ci_template,
-        parse_command_arg, validate_generated_ci_template, CiTemplateKind,
-    };
-    use gunbc_ir::transport::ci::{CacheConfig, RenderConfig};
-    use gunbc_ir::CargoInvocation;
+    use super::{discover_codegen_tools, parse_command_arg};
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
@@ -1149,53 +902,6 @@ mod tests {
     }
 
     #[test]
-    fn github_template_passes_static_validation() {
-        let codegen = CargoInvocation::composed("codegen", "dag");
-        let config = RenderConfig::new("ci", CargoInvocation::composed("ci", "dag"))
-            .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
-            .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
-            .with_cargo_env(gunbc_ir::CargoEnv::ci())
-            .with_cache(CacheConfig::rust())
-            .with_permissions(vec![
-                ("contents".to_string(), "read".to_string()),
-                ("id-token".to_string(), "write".to_string()),
-            ]);
-
-        let yaml = generate_github_actions_template(&config);
-        validate_generated_ci_template(CiTemplateKind::GitHubActions, &yaml)
-            .expect("generated GitHub Actions template should validate");
-    }
-
-    #[test]
-    fn github_template_validation_rejects_missing_sections() {
-        let malformed = "name: ci\njobs:\n";
-        let err = validate_generated_ci_template(CiTemplateKind::GitHubActions, malformed)
-            .expect_err("malformed GitHub template should fail validation");
-        assert!(err.contains("missing required section"));
-    }
-
-    #[test]
-    fn gitlab_template_passes_static_validation() {
-        let codegen = CargoInvocation::composed("codegen", "dag");
-        let config = RenderConfig::new("ci", CargoInvocation::composed("ci", "dag"))
-            .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
-            .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
-            .with_cargo_env(gunbc_ir::CargoEnv::ci())
-            .with_cache(CacheConfig::rust());
-
-        let yaml = generate_gitlab_ci_template(&config);
-        validate_generated_ci_template(CiTemplateKind::GitLabCi, &yaml)
-            .expect("generated GitLab CI template should validate");
-    }
-
-    #[test]
-    fn gitlab_template_validation_rejects_missing_sections() {
-        let malformed = "image: rust:latest\n";
-        let err = validate_generated_ci_template(CiTemplateKind::GitLabCi, malformed)
-            .expect_err("malformed GitLab template should fail validation");
-        assert!(err.contains("missing required section"));
-    }
-    #[test]
     fn codegen_discovery_finds_expected_tools() {
         let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -1209,6 +915,8 @@ mod tests {
             "bootstrap",
             "deps",
             "gist",
+            "gist-diff",
+            "gist-recent",
             "makegen",
             "pragma",
             "testgen",

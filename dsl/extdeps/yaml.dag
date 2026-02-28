@@ -1,0 +1,80 @@
+// extdeps/yaml.dag -- "What is YAML?"
+//
+// Tautological model of YAML as a serialization format.
+// Thin parameterization of std/render.dag primitives for YAML's
+// specific syntax: 2-space indent, ": " kv separator, "- " list
+// prefix, "#" comments.
+//
+// Follows the extdeps pattern: facts about an external system,
+// no opinions about our repo.
+//
+// Consumers:
+//   tools/cigen.dag — CI YAML rendering
+
+module extdeps.yaml
+
+import std.languages { yaml_format }
+import std.render {
+  config_format_header, format_comment,
+  indent_text, kv_pair, indented_kv, list_item, indented_list_item,
+  text_block, list_block, kv_block
+}
+
+// YAML indent unit: 2 spaces.
+data yaml_unit: String = "  "
+
+// YAML kv separator: colon-space.
+data yaml_sep: String = ": "
+
+// YAML list prefix: dash-space.
+data yaml_prefix: String = "- "
+
+// ── Scalars ────────────────────────────────────────────────────────
+
+fn yaml_mapping(key: String, value: String) -> String {
+  kv_pair(key: key, sep: yaml_sep, value: value)
+}
+
+fn yaml_sequence_item(value: String) -> String {
+  list_item(prefix: yaml_prefix, value: value)
+}
+
+// ── Indentation ────────────────────────────────────────────────────
+
+fn yaml_indent(level: Int, text: String) -> String {
+  indent_text(level: level, unit: yaml_unit, text: text)
+}
+
+fn yaml_indented_mapping(level: Int, key: String, value: String) -> String {
+  indented_kv(level: level, unit: yaml_unit, key: key, sep: yaml_sep, value: value)
+}
+
+fn yaml_indented_item(level: Int, value: String) -> String {
+  indented_list_item(level: level, unit: yaml_unit, prefix: yaml_prefix, value: value)
+}
+
+// ── Blocks ─────────────────────────────────────────────────────────
+
+fn yaml_block(header: String, level: Int, items: List<String>) -> String {
+  text_block(header: header, level: level, unit: yaml_unit, items: items)
+}
+
+fn yaml_sequence_block(header: String, level: Int, items: List<String>) -> String {
+  list_block(header: header, level: level, unit: yaml_unit, prefix: yaml_prefix, items: items)
+}
+
+fn yaml_mapping_block(level: Int, entries: List<{ key: String, value: String }>) -> String {
+  kv_block(level: level, unit: yaml_unit, sep: yaml_sep, entries: entries)
+}
+
+// ── Comments ───────────────────────────────────────────────────────
+
+fn yaml_comment(text: String) -> String {
+  format_comment(syntax: yaml_format.comment, text: text)
+}
+
+// ── Header ─────────────────────────────────────────────────────────
+
+fn yaml_header(generator: String, regen_command: String) -> String {
+  config_format_header(format: yaml_format, generator: generator, regen_command: regen_command)
+}

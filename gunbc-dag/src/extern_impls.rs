@@ -28,6 +28,7 @@ pub fn all_extern_symbols() -> &'static [(&'static str, &'static str)] {
         ("std.markdown", "render_tree"),
         ("tools.bootstrap", "render_bootstrap_gitignore"),
         ("tools.bootstrap", "render_bootstrap_makefile"),
+        ("tools.cigen", "discover_ci_config"),
         ("tools.gist", "build_snapshot_content"),
         ("tools.makegen", "discover_tools"),
         ("tools.pragma", "render_clippy_toml"),
@@ -58,6 +59,8 @@ pub fn lookup_extern_impl(module: &str, name: &str) -> Option<DynOp> {
         ("tools.bootstrap", "render_bootstrap_gitignore") => {
             Some(DynOp::new(GenerateBootstrapGitignoreOp))
         }
+
+        ("tools.cigen", "discover_ci_config") => Some(DynOp::new(DiscoverCiConfigOp)),
 
         _ => None,
     }
@@ -385,6 +388,55 @@ impl Executable for GenerateBootstrapGitignoreOp {
             .str("gitignore_content", gitignore.clone())
             .str("return", gitignore)
             .ok()
+    }
+}
+
+// ============================================================================
+// tools.cigen extern impls
+// ============================================================================
+
+/// `discover_ci_config() -> CiDiscovery`
+///
+/// Returns dynamic CI configuration values from the Rust runtime:
+/// secrets (from testgen metadata), tool command (from CargoInvocation),
+/// and bootstrap script (verification shell commands).
+/// Static config (branches, runner, permissions, env) lives in config/ci.dag.
+#[derive(Debug, Clone)]
+struct DiscoverCiConfigOp;
+
+impl Executable for DiscoverCiConfigOp {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        let secrets: Vec<Value> = crate::ci::ci_live_test_secrets()
+            .into_iter()
+            .map(|s| Value::Str(s.to_string()))
+            .collect();
+
+        let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
+        let tool_command = tool.command();
+
+        let bootstrap_script = concat!(
+            "rm -rf target/codegen\n",
+            "# Cargo validates all [[bin]] paths even with --bin filter.\n",
+            "# Create minimal stubs so the manifest parses, then check only bootstrap binaries.\n",
+            "for dir in $(grep 'path = \"../target/codegen/' gunbc-dag/Cargo.toml | ",
+            "sed 's|.*\"../\\(.*\\)/main.rs\"|\\1|'); do\n",
+            "  mkdir -p \"$dir\" && echo 'fn main() {}' > \"$dir/main.rs\"\n",
+            "done\n",
+            "cargo check -p gunbc-dag --bin gunbc-codegen --bin gunbc-ci",
+        );
+
+        let mut result = BTreeMap::new();
+        result.insert("secrets".to_string(), Value::List(secrets));
+        result.insert("tool_command".to_string(), Value::Str(tool_command));
+        result.insert(
+            "bootstrap_script".to_string(),
+            Value::Str(bootstrap_script.to_string()),
+        );
+
+        Ok(result.into_iter().collect())
     }
 }
 
