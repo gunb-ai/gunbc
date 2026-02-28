@@ -1,0 +1,112 @@
+// config/workflow_catalog.dag -- Canonical workflow variant registry.
+//
+// This is the source of truth for workflow aliases, backing DSL files,
+// pipeline names, mode gates, and planner namespaces.
+
+module config.workflow_catalog
+
+type WorkflowVariantDef {
+  canonical_name: String,
+  aliases: List<String>,
+  file: String,
+  pipeline: String,
+  mode: String?,
+  namespace: String,
+  is_tool: Bool
+}
+
+data workflow_variants: List<WorkflowVariantDef> = [
+  // Core planner workflows
+  {
+    canonical_name: "ci",
+    aliases: [],
+    file: "ci.dag",
+    pipeline: "ci",
+    mode: None,
+    namespace: "ci",
+    is_tool: false
+  },
+  {
+    canonical_name: "test-all",
+    aliases: ["test_all"],
+    file: "test_all.dag",
+    pipeline: "test_all",
+    mode: None,
+    namespace: "test_all",
+    is_tool: false
+  },
+
+  // Tool workflow variants
+  {
+    canonical_name: "gist",
+    aliases: ["gist_snapshot", "gist-snapshot"],
+    file: "gist.dag",
+    pipeline: "gist",
+    mode: "gist",
+    namespace: "gist",
+    is_tool: true
+  },
+  {
+    canonical_name: "gist-diff",
+    aliases: ["gist_diff"],
+    file: "gist.dag",
+    pipeline: "gist",
+    mode: "gist-diff",
+    namespace: "gist",
+    is_tool: true
+  },
+  {
+    canonical_name: "gist-recent",
+    aliases: ["gist_recent"],
+    file: "gist.dag",
+    pipeline: "gist",
+    mode: "gist-recent",
+    namespace: "gist",
+    is_tool: true
+  },
+  {
+    canonical_name: "bootstrap",
+    aliases: [],
+    file: "bootstrap.dag",
+    pipeline: "bootstrap",
+    mode: None,
+    namespace: "bootstrap",
+    is_tool: true
+  },
+  {
+    canonical_name: "makegen",
+    aliases: [],
+    file: "makegen.dag",
+    pipeline: "makegen",
+    mode: None,
+    namespace: "makegen",
+    is_tool: true
+  },
+  {
+    canonical_name: "pragma",
+    aliases: [],
+    file: "pragma.dag",
+    pipeline: "pragma",
+    mode: None,
+    namespace: "pragma",
+    is_tool: true
+  },
+  {
+    canonical_name: "deps",
+    aliases: [],
+    file: "deps.dag",
+    pipeline: "deps",
+    mode: None,
+    namespace: "deps",
+    is_tool: true
+  },
+  {
+    canonical_name: "build-all",
+    aliases: ["build_all"],
+    file: "build_all.dag",
+    pipeline: "build_all",
+    mode: None,
+    namespace: "build_all",
+    is_tool: true
+  }
+]
