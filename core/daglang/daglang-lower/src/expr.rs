@@ -327,7 +327,7 @@ fn lower_expr(expr: &ast::Expr, variant_names: &HashSet<String>) -> LoweredExpr 
         ast::Expr::PipeCall(receiver, method, args) => LoweredExpr::Pipe {
             receiver: Box::new(lower_expr(receiver, variant_names)),
             call: Box::new(LoweredExpr::Call {
-                name: pipe_method_name(*method).to_string(),
+                name: method.as_str().to_string(),
                 args: args
                     .iter()
                     .map(|(k, v)| (k.clone(), lower_expr(v, variant_names)))
@@ -417,35 +417,6 @@ fn lower_unaryop(op: &ast::UnaryOp) -> LoweredUnaryOp {
     match op {
         ast::UnaryOp::Not => LoweredUnaryOp::Not,
         ast::UnaryOp::Neg => LoweredUnaryOp::Neg,
-    }
-}
-
-fn pipe_method_name(method: ast::PipeMethod) -> &'static str {
-    match method {
-        ast::PipeMethod::Map => "map",
-        ast::PipeMethod::Filter => "filter",
-        ast::PipeMethod::FilterMap => "filter_map",
-        ast::PipeMethod::FlatMap => "flat_map",
-        ast::PipeMethod::SortBy => "sort_by",
-        ast::PipeMethod::Append => "append",
-        ast::PipeMethod::Fold => "fold",
-        ast::PipeMethod::Join => "join",
-        ast::PipeMethod::Count => "count",
-        ast::PipeMethod::Sum => "sum",
-        ast::PipeMethod::First => "first",
-        ast::PipeMethod::Last => "last",
-        ast::PipeMethod::MaxBy => "max_by",
-        ast::PipeMethod::Any => "any",
-        ast::PipeMethod::All => "all",
-        ast::PipeMethod::Contains => "contains",
-        ast::PipeMethod::StartsWith => "starts_with",
-        ast::PipeMethod::EndsWith => "ends_with",
-        ast::PipeMethod::Repeat => "repeat",
-        ast::PipeMethod::ReplaceSection => "replace_section",
-        ast::PipeMethod::Chars => "chars",
-        ast::PipeMethod::ToBytes => "to_bytes",
-        ast::PipeMethod::ToJson => "to_json",
-        ast::PipeMethod::Hash => "hash",
     }
 }
 

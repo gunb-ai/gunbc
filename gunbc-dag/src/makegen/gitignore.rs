@@ -54,15 +54,14 @@ fn load_dsl_categories(build_system: BuildSystem) -> Vec<Category> {
         roots: vec![dsl_root],
         target_file: Some(dag_file),
     };
-    let Ok(output) = compile_from_context(&context) else {
-        return Vec::new();
-    };
-    let Some(value) = output.data_values.get("categories") else {
-        return Vec::new();
-    };
-    let Ok(parsed) = serde_json::from_value::<Vec<DslGitignoreCategory>>(value.clone()) else {
-        return Vec::new();
-    };
+    let output = compile_from_context(&context)
+        .expect("config/gitignore.dag must compile — fix DSL syntax errors before building");
+    let value = output
+        .data_values
+        .get("categories")
+        .expect("config/gitignore.dag must declare categories");
+    let parsed: Vec<DslGitignoreCategory> = serde_json::from_value(value.clone())
+        .expect("config/gitignore.dag categories must deserialize to DslGitignoreCategory");
     let build_system_name = build_system_name(build_system);
     parsed
         .into_iter()

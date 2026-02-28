@@ -570,6 +570,43 @@ pub mod ast {
         Hash,
     }
 
+    impl PipeMethod {
+        pub fn as_str(&self) -> &'static str {
+            match self {
+                Self::Map => "map",
+                Self::Filter => "filter",
+                Self::FilterMap => "filter_map",
+                Self::FlatMap => "flat_map",
+                Self::SortBy => "sort_by",
+                Self::Append => "append",
+                Self::Fold => "fold",
+                Self::Join => "join",
+                Self::Count => "count",
+                Self::Sum => "sum",
+                Self::First => "first",
+                Self::Last => "last",
+                Self::MaxBy => "max_by",
+                Self::Any => "any",
+                Self::All => "all",
+                Self::Contains => "contains",
+                Self::StartsWith => "starts_with",
+                Self::EndsWith => "ends_with",
+                Self::Repeat => "repeat",
+                Self::ReplaceSection => "replace_section",
+                Self::Chars => "chars",
+                Self::ToBytes => "to_bytes",
+                Self::ToJson => "to_json",
+                Self::Hash => "hash",
+            }
+        }
+    }
+
+    impl std::fmt::Display for PipeMethod {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(self.as_str())
+        }
+    }
+
     impl std::str::FromStr for PipeMethod {
         type Err = ();
 

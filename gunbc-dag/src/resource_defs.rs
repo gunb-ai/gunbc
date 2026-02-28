@@ -24,57 +24,12 @@ pub const MAKEFILE_OUTPUT_PATH: &str = "Makefile";
 pub const GITIGNORE_OUTPUT_PATH: &str = ".gitignore";
 pub const DEPS_CONFIG_OUTPUT_PATH: &str = "deps.toml";
 
-/// Fallback globs/paths used when DSL compilation is unavailable.
-const FALLBACK_REPO_SOURCE_INPUT_GLOBS: &[&str] = &[
-    "gunbc-dag/src/**/*.rs",
-    "core/**/*.rs",
-    "lib/**/*.rs",
-    "dsl/**/*.dag",
-];
-const FALLBACK_REPO_CONFIG_INPUT_FILES: &[&str] = &["Cargo.lock", "Cargo.toml", "gunbc-dag/Cargo.toml"];
-const FALLBACK_TESTGEN_INPUT_GLOBS: &[&str] =
-    &["gunbc-dag/src/**/*.rs", "core/ir/src/**/*.rs", "lib/**/*.rs", "dsl/**/*.dag"];
-
 #[derive(Debug, Clone)]
 struct ResourceDslData {
     repo_source_input_globs: Vec<String>,
     repo_config_input_files: Vec<String>,
     testgen_input_globs: Vec<String>,
     output_paths: HashMap<String, String>,
-}
-
-impl ResourceDslData {
-    fn fallback() -> Self {
-        let output_paths = HashMap::from([
-            (
-                BUILD_RESOURCE_MAKEFILE.to_string(),
-                MAKEFILE_OUTPUT_PATH.to_string(),
-            ),
-            (
-                BUILD_RESOURCE_GITIGNORE.to_string(),
-                GITIGNORE_OUTPUT_PATH.to_string(),
-            ),
-            (
-                BUILD_RESOURCE_DEPS_CONFIG.to_string(),
-                DEPS_CONFIG_OUTPUT_PATH.to_string(),
-            ),
-        ]);
-        Self {
-            repo_source_input_globs: FALLBACK_REPO_SOURCE_INPUT_GLOBS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            repo_config_input_files: FALLBACK_REPO_CONFIG_INPUT_FILES
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            testgen_input_globs: FALLBACK_TESTGEN_INPUT_GLOBS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-            output_paths,
-        }
-    }
 }
 
 static RESOURCE_DSL_DATA: OnceLock<ResourceDslData> = OnceLock::new();
@@ -85,34 +40,27 @@ fn resource_dsl_data() -> &'static ResourceDslData {
 
 #[allow(clippy::disallowed_methods)] // Build-time DSL data loading.
 fn load_resource_dsl_data() -> ResourceDslData {
-    let fallback = ResourceDslData::fallback();
-
     let dsl_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dsl");
     let dag_file = dsl_root.join("config/resources.dag");
     let context = DriverContext {
         roots: vec![dsl_root],
         target_file: Some(dag_file),
     };
-    let Ok(output) = compile_from_context(&context) else {
-        return fallback;
-    };
+    let output = compile_from_context(&context)
+        .expect("config/resources.dag must compile — fix DSL syntax errors before building");
 
     let repo_source_input_globs =
-        json_string_list(output.data_values.get("repo_source_input_globs")).unwrap_or_else(|| {
-            fallback.repo_source_input_globs.clone()
-        });
+        json_string_list(output.data_values.get("repo_source_input_globs"))
+            .expect("config/resources.dag must declare repo_source_input_globs");
     let repo_config_input_files =
-        json_string_list(output.data_values.get("repo_config_input_files")).unwrap_or_else(|| {
-            fallback.repo_config_input_files.clone()
-        });
+        json_string_list(output.data_values.get("repo_config_input_files"))
+            .expect("config/resources.dag must declare repo_config_input_files");
     let testgen_input_globs =
-        json_string_list(output.data_values.get("testgen_input_globs")).unwrap_or_else(|| {
-            fallback.testgen_input_globs.clone()
-        });
+        json_string_list(output.data_values.get("testgen_input_globs"))
+            .expect("config/resources.dag must declare testgen_input_globs");
     let output_paths =
-        json_output_paths(output.data_values.get("output_paths")).unwrap_or_else(|| {
-            fallback.output_paths.clone()
-        });
+        json_output_paths(output.data_values.get("output_paths"))
+            .expect("config/resources.dag must declare output_paths");
 
     ResourceDslData {
         repo_source_input_globs,

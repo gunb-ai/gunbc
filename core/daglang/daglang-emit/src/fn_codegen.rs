@@ -215,7 +215,7 @@ fn compile_expr(expr: &ast::Expr, ctx: &CompileContext) -> code_ir::Expr {
         }
         ast::Expr::Pipe(left, right) => compile_pipe(left, right, ctx),
         ast::Expr::PipeCall(receiver, method, args) => {
-            let rhs = ast::Expr::Call(pipe_method_name(*method).to_string(), args.clone());
+            let rhs = ast::Expr::Call(method.as_str().to_string(), args.clone());
             compile_pipe(receiver, &rhs, ctx)
         }
         ast::Expr::StringInterp(parts) => compile_string_interp(parts, ctx),
@@ -264,34 +264,7 @@ fn compile_literal(lit: &ast::Literal) -> code_ir::Expr {
     }
 }
 
-fn pipe_method_name(method: ast::PipeMethod) -> &'static str {
-    match method {
-        ast::PipeMethod::Map => "map",
-        ast::PipeMethod::Filter => "filter",
-        ast::PipeMethod::FilterMap => "filter_map",
-        ast::PipeMethod::FlatMap => "flat_map",
-        ast::PipeMethod::SortBy => "sort_by",
-        ast::PipeMethod::Append => "append",
-        ast::PipeMethod::Fold => "fold",
-        ast::PipeMethod::Join => "join",
-        ast::PipeMethod::Count => "count",
-        ast::PipeMethod::Sum => "sum",
-        ast::PipeMethod::First => "first",
-        ast::PipeMethod::Last => "last",
-        ast::PipeMethod::MaxBy => "max_by",
-        ast::PipeMethod::Any => "any",
-        ast::PipeMethod::All => "all",
-        ast::PipeMethod::Contains => "contains",
-        ast::PipeMethod::StartsWith => "starts_with",
-        ast::PipeMethod::EndsWith => "ends_with",
-        ast::PipeMethod::Repeat => "repeat",
-        ast::PipeMethod::ReplaceSection => "replace_section",
-        ast::PipeMethod::Chars => "chars",
-        ast::PipeMethod::ToBytes => "to_bytes",
-        ast::PipeMethod::ToJson => "to_json",
-        ast::PipeMethod::Hash => "hash",
-    }
-}
+
 
 // ---------------------------------------------------------------------------
 // Identifiers — bare names resolve to enum-variant paths

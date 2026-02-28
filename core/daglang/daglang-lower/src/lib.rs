@@ -8424,7 +8424,7 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
         Expr::PipeCall(receiver, method, args) => expr::LoweredExpr::Pipe {
             receiver: Box::new(remap_expr_idents(receiver)),
             call: Box::new(expr::LoweredExpr::Call {
-                name: pipe_method_name(*method).to_string(),
+                name: method.as_str().to_string(),
                 args: args
                     .iter()
                     .map(|(k, v)| (k.clone(), remap_expr_idents(v)))
@@ -8435,34 +8435,6 @@ fn remap_expr_idents(expr: &Expr) -> expr::LoweredExpr {
     }
 }
 
-fn pipe_method_name(method: daglang_syntax::ast::PipeMethod) -> &'static str {
-    match method {
-        daglang_syntax::ast::PipeMethod::Map => "map",
-        daglang_syntax::ast::PipeMethod::Filter => "filter",
-        daglang_syntax::ast::PipeMethod::FilterMap => "filter_map",
-        daglang_syntax::ast::PipeMethod::FlatMap => "flat_map",
-        daglang_syntax::ast::PipeMethod::SortBy => "sort_by",
-        daglang_syntax::ast::PipeMethod::Append => "append",
-        daglang_syntax::ast::PipeMethod::Fold => "fold",
-        daglang_syntax::ast::PipeMethod::Join => "join",
-        daglang_syntax::ast::PipeMethod::Count => "count",
-        daglang_syntax::ast::PipeMethod::Sum => "sum",
-        daglang_syntax::ast::PipeMethod::First => "first",
-        daglang_syntax::ast::PipeMethod::Last => "last",
-        daglang_syntax::ast::PipeMethod::MaxBy => "max_by",
-        daglang_syntax::ast::PipeMethod::Any => "any",
-        daglang_syntax::ast::PipeMethod::All => "all",
-        daglang_syntax::ast::PipeMethod::Contains => "contains",
-        daglang_syntax::ast::PipeMethod::StartsWith => "starts_with",
-        daglang_syntax::ast::PipeMethod::EndsWith => "ends_with",
-        daglang_syntax::ast::PipeMethod::Repeat => "repeat",
-        daglang_syntax::ast::PipeMethod::ReplaceSection => "replace_section",
-        daglang_syntax::ast::PipeMethod::Chars => "chars",
-        daglang_syntax::ast::PipeMethod::ToBytes => "to_bytes",
-        daglang_syntax::ast::PipeMethod::ToJson => "to_json",
-        daglang_syntax::ast::PipeMethod::Hash => "hash",
-    }
-}
 
 /// Synthesize a compute node for a complex return expression.
 /// Creates a node that evaluates the expression using `evaluate_fn_body` at runtime.
