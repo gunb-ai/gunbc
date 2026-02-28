@@ -915,8 +915,6 @@ mod tests {
             "bootstrap",
             "deps",
             "gist",
-            "gist-diff",
-            "gist-recent",
             "makegen",
             "pragma",
             "testgen",
@@ -925,6 +923,21 @@ mod tests {
                 names.contains(required),
                 "missing tool from DSL discovery: {}",
                 required
+            );
+        }
+
+        // gist.dag is a multi-entrypoint module and should be grouped as one
+        // top-level tool with subcommands.
+        let gist = tools
+            .iter()
+            .find(|t| t.meta.tool_name == "gist")
+            .expect("gist tool should exist");
+        let subcommands: BTreeSet<&str> = gist.subcommands.iter().map(|s| s.name.as_str()).collect();
+        for subcommand in ["gist-diff", "gist-recent"] {
+            assert!(
+                subcommands.contains(subcommand),
+                "missing gist subcommand from DSL discovery: {}",
+                subcommand
             );
         }
     }
