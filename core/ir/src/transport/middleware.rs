@@ -107,6 +107,7 @@ fn default_refresh_threshold_pct() -> u8 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CredentialProvider {
+    #[serde(rename = "oauth_bearer", alias = "o_auth_bearer")]
     OAuthBearer,
     GcpWorkloadIdentityFederation,
     ApiKey,
@@ -143,9 +144,11 @@ fn default_parse_provider_error_shapes() -> bool {
 #[serde(rename_all = "snake_case")]
 pub enum ResponseProvider {
     Generic,
+    #[serde(rename = "github", alias = "git_hub")]
     GitHub,
     Gcp,
     Anthropic,
+    #[serde(rename = "openai", alias = "open_ai")]
     OpenAi,
 }
 
