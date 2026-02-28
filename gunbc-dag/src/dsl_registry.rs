@@ -17,7 +17,7 @@ use daglang_driver::{compile_from_context, DriverContext, InferredEntrypoint};
 use daglang_syntax::ast::{Expr, Item, Literal, TypeExpr};
 use gunbc_cli::ParamType;
 use gunbc_codegen::cli_gen::CliEntrypoint;
-use gunbc_codegen::registry::ToolDef;
+use gunbc_codegen::registry::{SubcommandDef, ToolDef};
 use gunbc_ir::{cargo, Cardinality, WorkspaceLayout};
 
 /// A DSL func parameter, extracted from the AST.
@@ -130,8 +130,79 @@ fn discover_from_dag_file(dsl_root: &Path, path: &Path) -> Option<Vec<ToolDef>> 
         }
     }
 
-    let mut tools = Vec::new();
+    // RT63: When a module has multiple entrypoints, produce ONE ToolDef
+    // with subcommand dispatch instead of N separate binaries.
+    if module_entrypoints.len() > 1 {
+        let file_stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("tool");
+        let module_tool_name = file_stem.replace('_', "-");
+        let description = humanize_tool_name(&module_tool_name);
 
+        // Build subcommand definitions from each entrypoint
+        let mut subcommands = Vec::new();
+        for ep in &module_entrypoints {
+            let subcmd_name = ep.func_name.replace('_', "-");
+            let graph_builder_args = format!("\"{}\", Some(\"{}\")", rel_path, ep.func_name);
+            let mock_spec = format!(
+                "gunbc_dag::mock_defaults::auto_mock_spec(&dag, \"{}\")",
+                subcmd_name,
+            );
+            let entrypoints = func_params
+                .get(&ep.func_name)
+                .map(|params| derive_entrypoints(params))
+                .unwrap_or_default();
+
+            subcommands.push(SubcommandDef {
+                name: subcmd_name.clone(),
+                func_name: ep.func_name.clone(),
+                description: humanize_tool_name(&subcmd_name),
+                graph_builder_call: "build_dsl_graph_for_entrypoint".to_string(),
+                graph_builder_args,
+                returns_result: true,
+                success_port: None,
+                mock_spec_call: Some(mock_spec),
+                entrypoints,
+            });
+        }
+
+        // Use the first entrypoint's graph_builder_args for the top-level meta
+        // (it won't be used directly since dispatch goes through subcommands)
+        let first_args = format!(
+            "\"{}\", Some(\"{}\")",
+            rel_path,
+            module_entrypoints[0].func_name
+        );
+        let mock_spec = format!(
+            "gunbc_dag::mock_defaults::auto_mock_spec(&dag, \"{}\")",
+            module_tool_name,
+        );
+
+        let mut tool = ToolDef::new(
+            String::from("gunbc-dag"),
+            module_tool_name.clone(),
+            description,
+            String::from("build_dsl_graph_for_entrypoint"),
+            first_args,
+        )
+        .returns_result()
+        .mock_spec_call(mock_spec)
+        .import("use gunbc_dag::dsl_builder::build_dsl_graph_for_entrypoint;")
+        .invocation(cargo::CargoInvocation::composed(&module_tool_name, "dag"));
+
+        for output_path in &compile_output.output_paths {
+            tool = tool.output(output_path.clone());
+        }
+        for subcmd in subcommands {
+            tool = tool.subcommand(subcmd);
+        }
+
+        return Some(vec![tool]);
+    }
+
+    // Single entrypoint: produce a standard single-function ToolDef
+    let mut tools = Vec::new();
     for ep in &module_entrypoints {
         let tool_name = ep.func_name.replace('_', "-");
 
@@ -348,12 +419,28 @@ mod tests {
 
         let names: Vec<&str> = tools.iter().map(|t| t.meta.tool_name.as_ref()).collect();
 
-        // All inferred entrypoints should be discovered
+        // Single-func modules → standalone tools
         assert!(names.contains(&"bootstrap"), "missing bootstrap");
-        assert!(names.contains(&"gist-diff"), "missing gist-diff");
-        assert!(names.contains(&"gist-recent"), "missing gist-recent");
         assert!(names.contains(&"makegen"), "missing makegen");
         assert!(names.contains(&"pragma"), "missing pragma");
+
+        // RT63: Multi-func modules → grouped under module name with subcommands
+        // gist.dag has 3 funcs → single "gist" tool with subcommands
+        assert!(names.contains(&"gist"), "missing gist (multi-func module)");
+        let gist = tools.iter().find(|t| t.meta.tool_name == "gist").unwrap();
+        assert!(
+            gist.has_subcommands(),
+            "gist should use subcommand dispatch for multiple funcs"
+        );
+        let subcmd_names: Vec<&str> = gist.subcommands.iter().map(|s| s.name.as_str()).collect();
+        assert!(
+            subcmd_names.contains(&"gist-diff"),
+            "gist should have gist-diff subcommand"
+        );
+        assert!(
+            subcmd_names.contains(&"gist-recent"),
+            "gist should have gist-recent subcommand"
+        );
 
         // Testgen (hardcoded)
         assert!(names.contains(&"testgen"), "missing testgen");
@@ -399,15 +486,20 @@ mod tests {
     fn entrypoints_derived_from_func_params() {
         let tools = discover_tool_defs_from_dsl();
 
-        // gist_diff has: base_ref (CommitSha, default "HEAD~1"), public (Bool, default false)
-        let gist_diff = tools
+        // RT63: gist.dag has multiple funcs → subcommand dispatch.
+        // gist_diff entrypoints are now in the subcommand, not the top-level tool.
+        let gist = tools.iter().find(|t| t.meta.tool_name == "gist").unwrap();
+        let gist_diff = gist
+            .subcommands
             .iter()
-            .find(|t| t.meta.tool_name == "gist-diff")
-            .unwrap();
+            .find(|s| s.name == "gist-diff")
+            .expect("gist should have gist-diff subcommand");
+
+        // gist_diff has: base_ref (CommitSha, default "HEAD~1"), public (Bool, default false)
         assert_eq!(
             gist_diff.entrypoints.len(),
             2,
-            "gist-diff should have 2 entrypoints"
+            "gist-diff subcommand should have 2 entrypoints"
         );
 
         let base_ref = &gist_diff.entrypoints[0];

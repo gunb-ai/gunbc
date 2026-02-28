@@ -140,6 +140,8 @@ pub struct OutputFieldSpec {
     pub is_secret: bool,
     /// True if this field uses `@raw_body` (response body as raw string).
     pub is_raw_body: bool,
+    /// True if the field type is optional (`T?` / `Option<T>`).
+    pub is_optional: bool,
 }
 
 /// Body template entry: a literal constant, an input field reference, or nested entries.

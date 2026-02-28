@@ -29,5 +29,6 @@
       "total_obligations": 2,
       "transport_execution_targets": 0
     }
-  }
+  },
+  "_count_rationale": "Param ref wiring fix: return compute nodes now wire param_source inputs (2026-02-28)."
 }

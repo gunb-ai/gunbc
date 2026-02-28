@@ -7,7 +7,7 @@
     "infra.spec",
     "infra.azure.services"
   ],
-  "_count_rationale": "Restored readonly on read/list/get_url/assume/subscribe and idempotent on read/list/get_url capabilities from pre-migration @annotations (2026-02-28).",
+  "_count_rationale": "Param ref wiring fix: return compute nodes now wire param_source inputs (2026-02-28).",
   "expand_contract": {
     "status": "success",
     "error_contains": null

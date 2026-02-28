@@ -414,7 +414,7 @@ impl Executable for DiscoverCiConfigOp {
             .map(|s| Value::Str(s.to_string()))
             .collect();
 
-        let tool = crate::WorkspaceBinary::Ci.invocation();
+        let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
         let tool_command = tool.command();
 
         let bootstrap_script = concat!(

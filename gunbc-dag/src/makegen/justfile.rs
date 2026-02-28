@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use crate::makegen::registry::{
     BuildConfig, EntrypointParam, MetaTarget, ResourceTargetMap, ToolInfo, ToolRegistry,
 };
-use crate::WorkspaceBinary;
+use gunbc_ir::CargoInvocation;
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::render_ir::FileHeader;
 use gunbc_ir::resource::ExecMode;
@@ -42,7 +42,7 @@ impl<'a> JustfileRenderer<'a> {
     /// Render the complete Justfile with header.
     pub fn render(&self) -> String {
         let regenerate_cmd =
-            CargoCommand::new(Subcommand::Run(WorkspaceBinary::Makegen.invocation()));
+            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("makegen", "dag")));
         let header = FileHeader {
             generator_name: "gunbc-makegen".into(),
             regenerate_command: format!("{} --format just", regenerate_cmd.to_shell()).into(),

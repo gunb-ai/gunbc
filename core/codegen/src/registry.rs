@@ -24,6 +24,39 @@ pub struct ToolDef {
     /// When set, the tool gets a Makefile target automatically.
     /// When None, the tool has no runnable binary (e.g., library-only or not wired up yet).
     pub invocation: Option<cargo::CargoInvocation>,
+    /// Subcommand definitions for multi-func modules (RT63).
+    ///
+    /// When non-empty, the generated CLI uses subcommand dispatch instead of
+    /// direct execution. Each subcommand maps to a separate `func` in the
+    /// `.dag` module with its own graph builder and entrypoints.
+    pub subcommands: Vec<SubcommandDef>,
+}
+
+/// A subcommand within a multi-func tool binary (RT63).
+///
+/// Each subcommand corresponds to one exported `func` in a `.dag` module.
+/// The generated CLI dispatches to the appropriate graph builder based on
+/// the subcommand name.
+#[derive(Debug, Clone)]
+pub struct SubcommandDef {
+    /// Subcommand name in kebab-case (derived from func name).
+    pub name: String,
+    /// Original func name in snake_case.
+    pub func_name: String,
+    /// Short description for help text.
+    pub description: String,
+    /// Graph builder call expression for this subcommand's func.
+    pub graph_builder_call: String,
+    /// Arguments to pass to the graph builder.
+    pub graph_builder_args: String,
+    /// Whether the graph builder returns Result<Dag, BuilderError>.
+    pub returns_result: bool,
+    /// Output port to check for success.
+    pub success_port: Option<String>,
+    /// MockSpec expression for dry-run mode.
+    pub mock_spec_call: Option<String>,
+    /// CLI entrypoints specific to this subcommand.
+    pub entrypoints: Vec<CliEntrypoint>,
 }
 
 /// Configuration for test generation.
@@ -190,11 +223,13 @@ impl ToolDef {
                 success_port: None,
                 enable_step_mode: false,
                 mock_spec_call: None,
+                enable_mode: false,
             },
             entrypoints: vec![],
             custom_import: None,
             outputs: vec![],
             invocation: None,
+            subcommands: vec![],
         }
     }
 
@@ -250,6 +285,23 @@ impl ToolDef {
     pub fn mock_spec_call(mut self, call: impl Into<Cow<'static, str>>) -> Self {
         self.meta.mock_spec_call = Some(call.into());
         self
+    }
+
+    /// Enable `--mode` flag (verify/ensure) for content_upsert tools (RT61).
+    pub fn enable_mode(mut self) -> Self {
+        self.meta.enable_mode = true;
+        self
+    }
+
+    /// Add a subcommand for multi-func dispatch (RT63).
+    pub fn subcommand(mut self, subcmd: SubcommandDef) -> Self {
+        self.subcommands.push(subcmd);
+        self
+    }
+
+    /// Whether this tool uses subcommand dispatch.
+    pub fn has_subcommands(&self) -> bool {
+        !self.subcommands.is_empty()
     }
 }
 

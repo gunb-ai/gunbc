@@ -701,6 +701,32 @@ Nodes:
   - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1 [primitive::CallLiteralSource { literal: String("ensure") } tools.makegen.call_literal_source::strhex:656e73757265]
     outputs:
       * mode: Any (1)
+  - return_expr_compute_tools_makegen_apply_prefix_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::apply_prefix::return]
+    inputs:
+      * prefix: String? (1)
+      * cmd: String (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_apply_prefix_prefix [primitive::CallParamSource { callable: "apply_prefix", param: "prefix" } tools.makegen.call_param_source::apply_prefix::prefix]
+    inputs:
+      * prefix: String? (1)
+    outputs:
+      * prefix: String? (1)
+  - param_source_tools_makegen_apply_prefix_cmd [primitive::CallParamSource { callable: "apply_prefix", param: "cmd" } tools.makegen.call_param_source::apply_prefix::cmd]
+    inputs:
+      * cmd: String (1)
+    outputs:
+      * cmd: String (1)
+  - return_expr_compute_tools_makegen_render_core_targets_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_core_targets::return]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_render_core_targets_workflows [primitive::CallParamSource { callable: "render_core_targets", param: "workflows" } tools.makegen.call_param_source::render_core_targets::workflows]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+    outputs:
+      * workflows: List<CoreWorkflow> (1)
   - param_source_tools_makegen_render_meta_base_res_targets [primitive::CallParamSource { callable: "render_meta_base", param: "res_targets" } tools.makegen.call_param_source::render_meta_base::res_targets]
     inputs:
       * res_targets: List<ResourceTargetEntry> (1)
@@ -744,6 +770,16 @@ Nodes:
   - literal_source_tools_makegen_render_tool_target_return_return_0 [primitive::CallLiteralSource { literal: String("{main}\n{dry}\n{extras}") } tools.makegen.call_literal_source::strhex:7b6d61696e7d0a7b6472797d0a7b6578747261737d]
     outputs:
       * return: String (1)
+  - return_expr_compute_tools_makegen_render_help_core_lines_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::render_help_core_lines::return]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_render_help_core_lines_workflows [primitive::CallParamSource { callable: "render_help_core_lines", param: "workflows" } tools.makegen.call_param_source::render_help_core_lines::workflows]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+    outputs:
+      * workflows: List<CoreWorkflow> (1)
   - literal_source_tools_makegen_render_help_meta_line_return_return_0 [primitive::CallLiteralSource { literal: String("\t{base_line}{fix_line}{check_line}") } tools.makegen.call_literal_source::strhex:097b626173655f6c696e657d7b6669785f6c696e657d7b636865636b5f6c696e657d]
     outputs:
       * return: String (1)
@@ -768,6 +804,16 @@ Nodes:
   - literal_source_tools_makegen_render_help_target_return_return_0 [primitive::CallLiteralSource { literal: String("{header_lines}\n{build_section}\n{dev_section}\n{tool_section}\n") } tools.makegen.call_literal_source::strhex:7b6865616465725f6c696e65737d0a7b6275696c645f73656374696f6e7d0a7b6465765f73656374696f6e7d0a7b746f6f6c5f73656374696f6e7d0a]
     outputs:
       * return: String (1)
+  - return_expr_compute_tools_makegen_collect_core_phony_str_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } tools.makegen.return_expr_compute::collect_core_phony_str::return]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+    outputs:
+      * result: String (1)
+  - param_source_tools_makegen_collect_core_phony_str_workflows [primitive::CallParamSource { callable: "collect_core_phony_str", param: "workflows" } tools.makegen.call_param_source::collect_core_phony_str::workflows]
+    inputs:
+      * workflows: List<CoreWorkflow> (1)
+    outputs:
+      * workflows: List<CoreWorkflow> (1)
   - literal_source_tools_makegen_collect_meta_phony_str_return_return_0 [primitive::CallLiteralSource { literal: String("{base} {checks} {fixes}") } tools.makegen.call_literal_source::strhex:7b626173657d207b636865636b737d207b66697865737d]
     outputs:
       * return: String (1)
@@ -837,6 +883,16 @@ Nodes:
       * paths: List<FilePath> (1)
     outputs:
       * paths: List<FilePath> (1)
+  - return_expr_compute_std_patterns_classify_files_readable_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.patterns.return_expr_compute::classify_files::readable]
+    inputs:
+      * partitioned__readable: Any (1)
+    outputs:
+      * result: List<FilePath> (1)
+  - return_expr_compute_std_patterns_classify_files_skipped_return_1 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.patterns.return_expr_compute::classify_files::skipped]
+    inputs:
+      * partitioned__skipped: Any (1)
+    outputs:
+      * result: List<FilePath> (1)
   - param_source_std_patterns_acquire_subject_token_audience [primitive::CallParamSource { callable: "acquire_subject_token", param: "audience" } std.patterns.call_param_source::acquire_subject_token::audience]
     inputs:
       * audience: NonEmptyStr (1)
@@ -921,6 +977,16 @@ Nodes:
       * bindings: Json (1)
     outputs:
       * bindings: Json (1)
+  - return_expr_compute_std_filesystem_skip_reason_return_return_0 [primitive::ReturnExprCompute { fn_body: LoweredFnBody { stmts: [Return([("result", Literal(None))])] } } std.filesystem.return_expr_compute::skip_reason::return]
+    inputs:
+      * entry: FileEntry (1)
+    outputs:
+      * result: String (1)
+  - param_source_std_filesystem_skip_reason_entry [primitive::CallParamSource { callable: "skip_reason", param: "entry" } std.filesystem.call_param_source::skip_reason::entry]
+    inputs:
+      * entry: FileEntry (1)
+    outputs:
+      * entry: FileEntry (1)
   - acquire_resource_std_resources_Filesystem [callable::Pattern std.resources.resource_lifecycle::acquire::Filesystem]
     outputs:
       * resource_handle: ResourceHandle (1)
@@ -1052,6 +1118,11 @@ Edges:
   - literal_source_tools_makegen_render_phony_line_return_return_0.return -> tools.makegen::render_phony_line.__out:return
   - param_source_tools_makegen_resolve_meta_deps_res_targets.res_targets -> tools.makegen::resolve_resource_target.res_targets
   - literal_source_tools_makegen_resolve_meta_fix_deps_mode_fn_1.mode -> tools.makegen::resolve_resource_target.mode
+  - param_source_tools_makegen_apply_prefix_prefix.prefix -> return_expr_compute_tools_makegen_apply_prefix_return_return_0.prefix
+  - param_source_tools_makegen_apply_prefix_cmd.cmd -> return_expr_compute_tools_makegen_apply_prefix_return_return_0.cmd
+  - return_expr_compute_tools_makegen_apply_prefix_return_return_0.result -> tools.makegen::apply_prefix.__out:return
+  - param_source_tools_makegen_render_core_targets_workflows.workflows -> return_expr_compute_tools_makegen_render_core_targets_return_return_0.workflows
+  - return_expr_compute_tools_makegen_render_core_targets_return_return_0.result -> tools.makegen::render_core_targets.__out:return
   - param_source_tools_makegen_render_meta_base_res_targets.res_targets -> tools.makegen::resolve_meta_deps.res_targets
   - tools.makegen::resolve_meta_deps.return -> tools.makegen::render_target.deps
   - literal_source_tools_makegen_render_meta_base_comment_fn_3.comment -> tools.makegen::render_target.comment
@@ -1070,12 +1141,16 @@ Edges:
   - param_source_tools_makegen_render_meta_targets_res_targets.res_targets -> tools.makegen::render_meta_target.res_targets
   - literal_source_tools_makegen_render_meta_targets_return_return_0.return -> tools.makegen::render_meta_targets.__out:return
   - literal_source_tools_makegen_render_tool_target_return_return_0.return -> tools.makegen::render_tool_target.__out:return
+  - param_source_tools_makegen_render_help_core_lines_workflows.workflows -> return_expr_compute_tools_makegen_render_help_core_lines_return_return_0.workflows
+  - return_expr_compute_tools_makegen_render_help_core_lines_return_return_0.result -> tools.makegen::render_help_core_lines.__out:return
   - literal_source_tools_makegen_render_help_meta_line_return_return_0.return -> tools.makegen::render_help_meta_line.__out:return
   - literal_source_tools_makegen_render_help_tool_line_return_return_0.return -> tools.makegen::render_help_tool_line.__out:return
   - param_source_tools_makegen_render_help_target_workflows.workflows -> tools.makegen::render_help_core_lines.workflows
   - param_source_tools_makegen_render_help_target_metas.metas -> tools.makegen::render_help_meta_lines.metas
   - param_source_tools_makegen_render_help_target_tools.tools -> tools.makegen::render_help_tool_lines.tools
   - literal_source_tools_makegen_render_help_target_return_return_0.return -> tools.makegen::render_help_target.__out:return
+  - param_source_tools_makegen_collect_core_phony_str_workflows.workflows -> return_expr_compute_tools_makegen_collect_core_phony_str_return_return_0.workflows
+  - return_expr_compute_tools_makegen_collect_core_phony_str_return_return_0.result -> tools.makegen::collect_core_phony_str.__out:return
   - literal_source_tools_makegen_collect_meta_phony_str_return_return_0.return -> tools.makegen::collect_meta_phony_str.__out:return
   - literal_source_tools_makegen_render_naming_convention_return_return_0.return -> tools.makegen::render_naming_convention.__out:return
   - param_source_tools_makegen_render_makefile_body_workflows.workflows -> tools.makegen::collect_core_phony_str.workflows
@@ -1103,6 +1178,10 @@ Edges:
   - std.patterns::content_upsert.written -> tools.makegen::makegen.__out:written
   - std.patterns::classify_files::cf_for_0.result -> std.filesystem::partition_entries.entries
   - param_source_std_patterns_classify_files_paths.paths -> std.patterns::classify_files::cf_for_0.items
+  - std.filesystem::partition_entries.readable -> return_expr_compute_std_patterns_classify_files_readable_return_0.partitioned__readable
+  - return_expr_compute_std_patterns_classify_files_readable_return_0.result -> std.patterns::classify_files.__out:readable
+  - std.filesystem::partition_entries.skipped -> return_expr_compute_std_patterns_classify_files_skipped_return_1.partitioned__skipped
+  - return_expr_compute_std_patterns_classify_files_skipped_return_1.result -> std.patterns::classify_files.__out:skipped
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::github_oidc.audience
   - param_source_std_patterns_acquire_subject_token_audience.audience -> std.patterns::metadata_oidc.audience
   - param_source_std_patterns_content_upsert_path.path -> std.patterns::file_content_matches.path
@@ -1136,6 +1215,8 @@ Edges:
   - parse_transport_services_gcp_sts_gcp_Metadata_GetIdentityToken.subject_token -> std.patterns::metadata_oidc.__out:token
   - literal_source_std_patterns_check_iam_binding_has_role_return_0.has_role -> std.patterns::check_iam_binding.__out:has_role
   - param_source_std_patterns_add_iam_binding_bindings.bindings -> std.patterns::add_iam_binding.__out:updated_bindings
+  - param_source_std_filesystem_skip_reason_entry.entry -> return_expr_compute_std_filesystem_skip_reason_return_return_0.entry
+  - return_expr_compute_std_filesystem_skip_reason_return_return_0.result -> std.filesystem::skip_reason.__out:return
   - acquire_resource_std_resources_Filesystem.resource_handle -> release_resource_std_resources_Filesystem.resource_handle
   - acquire_resource_std_resources_Network.resource_handle -> release_resource_std_resources_Network.resource_handle
   - acquire_resource_std_resources_Clock.resource_handle -> release_resource_std_resources_Clock.resource_handle

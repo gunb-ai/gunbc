@@ -227,10 +227,16 @@ fn classify_nodes_with_config(
             NodeBody::SubDag(_) => continue,
         };
 
-        let handler = classify_handler(op).ok_or_else(|| ExecRuntimeError::UnresolvableNode {
-            node_id: node_id.clone(),
-            detail: format!("no runtime op classification for {op:?}"),
-        })?;
+        let handler = match classify_handler(op) {
+            Some(HandlerClassification::Handler(h)) => h,
+            Some(HandlerClassification::MetadataOnly) => continue,
+            None => {
+                return Err(ExecRuntimeError::UnresolvableNode {
+                    node_id: node_id.clone(),
+                    detail: format!("no runtime op classification for {op:?}"),
+                });
+            }
+        };
         let op_ctor = classify_op_ctor(op, &node.outputs, handler).map_err(|detail| {
             ExecRuntimeError::UnresolvableNode {
                 node_id: node_id.clone(),
@@ -271,7 +277,7 @@ pub fn required_embedded_assets(dag: &Dag<LoweredOp>) -> BTreeSet<EmbeddedAsset>
         let NodeBody::Opaque(op) = &node.body else {
             continue;
         };
-        let Some(handler) = classify_handler(op) else {
+        let Some(HandlerClassification::Handler(handler)) = classify_handler(op) else {
             continue;
         };
         if let Some(asset) = handler.embedded_asset() {
@@ -281,41 +287,49 @@ pub fn required_embedded_assets(dag: &Dag<LoweredOp>) -> BTreeSet<EmbeddedAsset>
     assets
 }
 
-fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
+/// Whether a node should be included in exec-runtime emission, skipped
+/// because it's metadata-only, or classified to a specific handler.
+#[derive(Debug, PartialEq)]
+enum HandlerClassification {
+    Handler(HandlerKind),
+    MetadataOnly,
+}
+
+fn classify_handler(op: &LoweredOp) -> Option<HandlerClassification> {
     match op {
-        LoweredOp::Collection { .. } => return Some(HandlerKind::Collection),
+        LoweredOp::Collection { .. } => return Some(HandlerClassification::Handler(HandlerKind::Collection)),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::CallParamSource { .. },
             ..
-        } => return Some(HandlerKind::ParamSource),
+        } => return Some(HandlerClassification::Handler(HandlerKind::ParamSource)),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::CallLiteralSource { .. },
             ..
-        } => return Some(HandlerKind::LiteralSource),
+        } => return Some(HandlerClassification::Handler(HandlerKind::LiteralSource)),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::FsEnv,
             ..
-        } => return Some(HandlerKind::FsEnv),
+        } => return Some(HandlerClassification::Handler(HandlerKind::FsEnv)),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::IoPrepareFileRead,
             ..
-        } => return Some(HandlerKind::PrepareReadContent),
+        } => return Some(HandlerClassification::Handler(HandlerKind::PrepareReadContent)),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::IoExecuteFileRead,
             ..
-        } => return Some(HandlerKind::ExecuteReadContent),
+        } => return Some(HandlerClassification::Handler(HandlerKind::ExecuteReadContent)),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::IoPrepareFileWrite,
             ..
-        } => return Some(HandlerKind::PrepareWriteContent),
+        } => return Some(HandlerClassification::Handler(HandlerKind::PrepareWriteContent)),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::CompareEquality,
             ..
-        } => return Some(HandlerKind::CompareContent),
+        } => return Some(HandlerClassification::Handler(HandlerKind::CompareContent)),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::IoExecuteFileWrite,
             ..
-        } => return Some(HandlerKind::ExecuteTransport),
+        } => return Some(HandlerClassification::Handler(HandlerKind::ExecuteTransport)),
         LoweredOp::Pipeline { .. } => {}
         LoweredOp::Callable {
             obligation:
@@ -324,18 +338,24 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
                 | ObligationCategory::ServiceTransportParse,
             ..
         } => {
-            return Some(HandlerKind::Passthrough);
+            return Some(HandlerClassification::Handler(HandlerKind::Passthrough));
         }
         LoweredOp::Callable { .. } => {}
+        // Structural nodes that have no runtime behavior — safe to skip.
         LoweredOp::Pattern(_)
         | LoweredOp::UnsupportedPattern { .. }
-        | LoweredOp::ExternCall { .. } => return None,
-        // FC-7: Output path annotation nodes are metadata-only.
+        | LoweredOp::ExternCall { .. } => return Some(HandlerClassification::MetadataOnly),
         LoweredOp::Primitive {
             kind: PrimitiveOpKind::ContentUpsertOutputPath { .. },
             ..
-        } => return None,
+        } => return Some(HandlerClassification::MetadataOnly),
+        LoweredOp::Primitive {
+            kind: PrimitiveOpKind::ReturnExprCompute { .. },
+            ..
+        } => return Some(HandlerClassification::MetadataOnly),
     }
+
+    let handler = |h| Some(HandlerClassification::Handler(h));
 
     let (module, name, obligation) = match op {
         LoweredOp::Callable {
@@ -349,48 +369,36 @@ fn classify_handler(op: &LoweredOp) -> Option<HandlerKind> {
     };
 
     match (module, name) {
-        ("tools.makegen", "load_registry") => Some(HandlerKind::MakegenLoadRegistry),
-        ("tools.makegen", "render_makefile_content") => Some(HandlerKind::MakegenRenderMakefile),
-        ("tools.makegen", "makegen") => Some(HandlerKind::MakegenEntrypoint),
-        ("tools.pragma", "render_clippy_toml") => Some(HandlerKind::RenderPragmaClippyToml),
+        ("tools.makegen", "load_registry") => handler(HandlerKind::MakegenLoadRegistry),
+        ("tools.makegen", "render_makefile_content") => handler(HandlerKind::MakegenRenderMakefile),
+        ("tools.makegen", "makegen") => handler(HandlerKind::MakegenEntrypoint),
+        ("tools.pragma", "render_clippy_toml") => handler(HandlerKind::RenderPragmaClippyToml),
         ("tools.pragma", "render_disallowed_methods_allowlist") => {
-            Some(HandlerKind::RenderPragmaAllowlist)
+            handler(HandlerKind::RenderPragmaAllowlist)
         }
-        ("tools.pragma", "render_pragma_lint_policy") => Some(HandlerKind::RenderPragmaLintPolicy),
-        ("tools.pragma", "pragma") => Some(HandlerKind::PragmaEntrypoint),
-        // Obligation-gated passthrough: each obligation must be explicitly
-        // classified. Adding a new ObligationCategory variant produces a
-        // compile error here, forcing a conscious classification decision
-        // instead of silent passthrough. The sets below mirror the policy
-        // declarations in dsl/config/arch_rules.dag.
+        ("tools.pragma", "render_pragma_lint_policy") => handler(HandlerKind::RenderPragmaLintPolicy),
+        ("tools.pragma", "pragma") => handler(HandlerKind::PragmaEntrypoint),
         _ => match obligation {
-            // Passthrough-safe obligations (mirrors passthrough_safe_obligations()).
             Some(ObligationCategory::None) | Some(ObligationCategory::PureGeneric) => {
-                Some(HandlerKind::Passthrough)
+                handler(HandlerKind::Passthrough)
             }
             Some(ObligationCategory::ServiceParamSource)
             | Some(ObligationCategory::InterfaceContractVerification)
             | Some(ObligationCategory::ResourceProvide)
             | Some(ObligationCategory::ResourceAcquire)
-            | Some(ObligationCategory::ResourceRelease) => Some(HandlerKind::Passthrough),
-            // Service transport obligations — should have been caught by the
-            // early return above. Defensive passthrough.
+            | Some(ObligationCategory::ResourceRelease) => handler(HandlerKind::Passthrough),
             Some(ObligationCategory::ServiceTransportPrepare)
             | Some(ObligationCategory::ServiceTransportExecute)
-            | Some(ObligationCategory::ServiceTransportParse) => Some(HandlerKind::Passthrough),
-            // NF-5: require_handler obligations — still passthrough during
-            // migration, but flagged in debug builds. These should eventually
-            // get specialized handlers or fail-closed.
+            | Some(ObligationCategory::ServiceTransportParse) => handler(HandlerKind::Passthrough),
             Some(ObligationCategory::PureRender) | Some(ObligationCategory::PureDataLoad) => {
                 #[cfg(debug_assertions)]
                 eprintln!(
                     "NF-5: obligation {:?} for {module}::{name} is passthrough but should require a handler",
                     obligation.unwrap(),
                 );
-                Some(HandlerKind::Passthrough)
+                handler(HandlerKind::Passthrough)
             }
-            // Pipeline nodes (no obligation) — passthrough.
-            None => Some(HandlerKind::Passthrough),
+            None => handler(HandlerKind::Passthrough),
         },
     }
 }
@@ -1373,7 +1381,7 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&pattern_callable),
-            Some(HandlerKind::Passthrough)
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough))
         );
 
         // Service transport nodes use passthrough.
@@ -1389,7 +1397,7 @@ mod tests {
         };
         assert_eq!(
             classify_handler(&service_prepare),
-            Some(HandlerKind::Passthrough)
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough))
         );
     }
 
@@ -1410,28 +1418,28 @@ mod tests {
         // PureGeneric → passthrough (DSL body wrapper, no specialized handler needed).
         assert_eq!(
             classify_handler(&make(ObligationCategory::PureGeneric)),
-            Some(HandlerKind::Passthrough),
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "PureGeneric should passthrough"
         );
 
         // PureRender → passthrough during migration (TODO: NF-5).
         assert_eq!(
             classify_handler(&make(ObligationCategory::PureRender)),
-            Some(HandlerKind::Passthrough),
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "PureRender should passthrough (migration)"
         );
 
         // PureDataLoad → passthrough during migration (TODO: NF-5).
         assert_eq!(
             classify_handler(&make(ObligationCategory::PureDataLoad)),
-            Some(HandlerKind::Passthrough),
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "PureDataLoad should passthrough (migration)"
         );
 
         // ResourceProvide → passthrough (structural).
         assert_eq!(
             classify_handler(&make(ObligationCategory::ResourceProvide)),
-            Some(HandlerKind::Passthrough),
+            Some(HandlerClassification::Handler(HandlerKind::Passthrough)),
             "ResourceProvide should passthrough"
         );
     }

@@ -15,7 +15,7 @@ use std::collections::HashSet;
 
 use crate::dsl_registry::discover_tool_defs_from_dsl;
 use crate::makegen::registry::{BuildConfig, BuildSystem};
-use crate::WorkspaceBinary;
+use gunbc_ir::CargoInvocation;
 use gunbc_infra::workspace_model::{baseline_commit_policies, CommitReason};
 use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::render_ir::{Category, FileHeader, PlainText, StructuredRenderer};
@@ -219,7 +219,7 @@ impl<'a> GitignoreRenderer<'a> {
     /// Render the complete .gitignore with header.
     pub fn render(&self) -> String {
         let regenerate_cmd =
-            CargoCommand::new(Subcommand::Run(WorkspaceBinary::Bootstrap.invocation()));
+            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("bootstrap", "dag")));
         let header = FileHeader {
             generator_name: "gunbc-bootstrap".into(),
             regenerate_command: regenerate_cmd.to_shell().into(),

@@ -1,5 +1,14 @@
 use crate::ast::{Expr, Stmt, TypeExpr};
 
+/// Returns true if the type expression is optional (`T?`), looking through refinement wrappers.
+pub fn is_type_expr_optional(expr: &TypeExpr) -> bool {
+    match expr {
+        TypeExpr::Optional(_) => true,
+        TypeExpr::Refined(inner, _) => is_type_expr_optional(inner),
+        _ => false,
+    }
+}
+
 pub fn type_expr_to_string(expr: &TypeExpr) -> String {
     match expr {
         TypeExpr::Named(name) => name.clone(),
@@ -39,41 +48,79 @@ pub fn resource_type_name(resource_type: &TypeExpr) -> String {
     }
 }
 
+/// Built-in pipe methods resolved by the evaluator, not as callable targets.
+///
+/// Single authoritative registry. To add a new pipe method:
+/// 1. Add a variant here
+/// 2. Add the string match in `from_str`
+/// 3. Implement the evaluation in `eval.rs`
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PipeMethod {
+    // Collection → Collection
+    Map,
+    Filter,
+    FilterMap,
+    FlatMap,
+    SortBy,
+    Append,
+    // Collection → Scalar
+    Fold,
+    Join,
+    Count,
+    Sum,
+    First,
+    Last,
+    MaxBy,
+    Any,
+    All,
+    Contains,
+    // String methods
+    StartsWith,
+    EndsWith,
+    Repeat,
+    ReplaceSection,
+    Chars,
+    // Conversion methods
+    ToBytes,
+    ToJson,
+    Hash,
+}
+
+impl PipeMethod {
+    /// Parse a method name string into a PipeMethod, if it is a known built-in.
+    pub fn from_str(name: &str) -> Option<Self> {
+        match name {
+            "map" => Some(Self::Map),
+            "filter" => Some(Self::Filter),
+            "filter_map" => Some(Self::FilterMap),
+            "flat_map" => Some(Self::FlatMap),
+            "sort_by" => Some(Self::SortBy),
+            "append" => Some(Self::Append),
+            "fold" => Some(Self::Fold),
+            "join" => Some(Self::Join),
+            "count" => Some(Self::Count),
+            "sum" => Some(Self::Sum),
+            "first" => Some(Self::First),
+            "last" => Some(Self::Last),
+            "max_by" => Some(Self::MaxBy),
+            "any" => Some(Self::Any),
+            "all" => Some(Self::All),
+            "contains" => Some(Self::Contains),
+            "starts_with" => Some(Self::StartsWith),
+            "ends_with" => Some(Self::EndsWith),
+            "repeat" => Some(Self::Repeat),
+            "replace_section" => Some(Self::ReplaceSection),
+            "chars" => Some(Self::Chars),
+            "to_bytes" => Some(Self::ToBytes),
+            "to_json" => Some(Self::ToJson),
+            "hash" => Some(Self::Hash),
+            _ => None,
+        }
+    }
+}
+
 pub fn should_track_call_name(name: &str) -> bool {
-    !matches!(
-        name,
-        "<expr>"
-            | "as"
-            | "with"
-            | "fn"
-            // Built-in pipe methods — resolved by the evaluator, not as
-            // callable targets. Adding new pipe methods here keeps the
-            // typechecker from rejecting non-lossy fn bodies that use them.
-            | "map"
-            | "filter"
-            | "filter_map"
-            | "flat_map"
-            | "fold"
-            | "join"
-            | "count"
-            | "sum"
-            | "first"
-            | "last"
-            | "any"
-            | "all"
-            | "contains"
-            | "sort_by"
-            | "max_by"
-            | "append"
-            | "starts_with"
-            | "ends_with"
-            | "repeat"
-            | "replace_section"
-            | "to_bytes"
-            | "to_json"
-            | "hash"
-            | "chars"
-    )
+    !matches!(name, "<expr>" | "as" | "with" | "fn") && PipeMethod::from_str(name).is_none()
 }
 
 pub fn service_call_lookup_keys(call_path: &[String]) -> Option<[String; 3]> {

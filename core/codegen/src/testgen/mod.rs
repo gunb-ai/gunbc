@@ -26,6 +26,7 @@ pub mod codegen;
 pub mod mock_corpus;
 pub mod obligation;
 pub mod probe_observer;
+pub mod registry_gen;
 pub mod render_rust;
 
 pub use analyze::{analyze_dag, analyze_dag_with_obligations, DagAnalysis};

@@ -16,7 +16,6 @@ use gunbc_ir::Value;
 use crate::makegen::registry::{
     BuildConfig, MetaTarget, ResourceTargetMap, ToolInfo, ToolRegistry, WorkflowSpec,
 };
-use crate::WorkspaceBinary;
 
 // ============================================================================
 // DSL-based Makefile rendering
@@ -229,12 +228,12 @@ pub(crate) fn core_workflow_body(
         "testgen-check" => vec![config.testgen.shell().into()],
         "deps-config" => vec![format!(
             "@target/release/{} --mode=ensure",
-            WorkspaceBinary::DepsConfig.invocation().binary
+            CargoInvocation::composed("deps-config", "dag").binary
         )
         .into()],
         "deps-config-check" => vec![format!(
             "@target/release/{} --mode=verify",
-            WorkspaceBinary::DepsConfig.invocation().binary
+            CargoInvocation::composed("deps-config", "dag").binary
         )
         .into()],
         "makegen-check" => vec![config.makegen.shell().into()],

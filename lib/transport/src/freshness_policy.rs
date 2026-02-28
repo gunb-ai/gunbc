@@ -112,7 +112,7 @@ fn freshness_steps() -> Vec<FreshnessStep> {
                 "--bin".into(),
                 "gunbc-codegen-dag".into(),
                 "--".into(),
-                "dag".into(),
+                "codegen".into(),
             ],
         },
         FreshnessStep {
@@ -124,8 +124,6 @@ fn freshness_steps() -> Vec<FreshnessStep> {
                 "gunbc-dag".into(),
                 "--bin".into(),
                 "gunbc-testgen".into(),
-                "--".into(),
-                "dag".into(),
             ],
         },
         FreshnessStep {
@@ -137,8 +135,6 @@ fn freshness_steps() -> Vec<FreshnessStep> {
                 "gunbc-dag".into(),
                 "--bin".into(),
                 "gunbc-pragma".into(),
-                "--".into(),
-                "dag".into(),
             ],
         },
         FreshnessStep {
