@@ -157,7 +157,7 @@ func run() -> { written: Bool } {
         .expect("extern callable node should be lowered");
     match &render_node.body {
         NodeBody::Opaque(LoweredOp::ExternCall { symbol }) => {
-            assert_eq!(symbol, "sample.externs.render");
+            assert_eq!(symbol, "sample.externs::render");
         }
         other => panic!("expected ExternCall node body, got {other:?}"),
     }

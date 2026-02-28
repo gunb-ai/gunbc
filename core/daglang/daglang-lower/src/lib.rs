@@ -2807,7 +2807,7 @@ fn lower_extern_callable(
         .first()
         .map(|port| port.name.0.clone())
         .unwrap_or_else(|| "return".to_string());
-    let symbol = format!("{module_name}.{}", callable.name);
+    let symbol = format!("{module_name}::{}", callable.name);
     (
         Node::opaque(
             node_id.clone(),
