@@ -413,11 +413,11 @@ goes from 22.7k to ~5.3k lines.
 ### Architectural Principles
 
 1. **Pure functions, imperative shell.** Lowerer phases return typed data, not mutate shared state.
-2. **Clear errors.** Every failure → typed error with location. No panics on user input. No `_ => None` silent drops. No `eprintln!` diagnostics.
+2. **Clear errors.** Every failure → typed error with span + stable error code. No panics on user input. No `_ => None` silent drops. No `eprintln!` diagnostics.
 3. **Strong interfaces.** Pipe methods are an enum, not a string allowlist. Enums are values, not strings. Leaf refs are typed structs, not string sentinels.
 4. **Stdlib is a cached registry, not compile-on-demand.** No runtime `daglang_driver` calls from `core/codegen`. Embed sources, cache once.
 5. **Minimal language core.** Lambdas: no capturing, no mutation, closed combinator set. New features must delete an existing workaround.
-6. **Delete, don't relocate.** Every task net-deletes lines. Workarounds are debt tokens paid before adding features.
+6. **Delete from app layer; generic infra may move to core but must shrink.** Moved modules must delete app-specific branches, string dispatch, heuristics in the move. "Changed directories" without simplification is not progress. Workarounds are debt tokens paid before adding features.
 
 ### File Ownership
 
@@ -430,7 +430,7 @@ goes from 22.7k to ~5.3k lines.
 | `gunbc-dag/src/{embedded_assets,docgen/,bootstrap/,build/,codegen/,infra/,gist,deps_tool}.rs` | **B** |
 | `gunbc-dag/tests/{tool_registration,makefile_parity,extern_ratchet}.rs` | **B** |
 | `core/daglang/` (all 5 compiler crates) | **C** |
-| `core/codegen/src/{fidelity.rs,testgen/}` | **C** |
+| `core/codegen/` (cli_gen, fidelity, registry, testgen/) | **C** |
 | `core/exec/` | **C** |
 | `gunbc-dag/src/{resolve,resolve_service,mock_defaults}.rs`, `testgen_dag/` | **C** |
 | Shared read-only: `lib.rs`, `dsl_builder.rs`, `dsl_registry.rs`, `bin/{ci,codegen_cli}.rs`, `dsl/` | all |
@@ -440,23 +440,27 @@ goes from 22.7k to ~5.3k lines.
 ### Worker A: Binary & Workflow Elimination (-8.4k net)
 
 Delete 5 hand-written binaries and the Rust workflow subsystem. Replace with
-CLI generator extensions and DSL data. After: every binary generated from DSL.
+DSL data. After: every binary generated from DSL.
+
+**Prerequisite**: Worker C delivers C20 (profile-aware CLI generation) first.
+Worker A consumes the generated profile/mode/subcommand support; Worker A does
+NOT modify `core/codegen/src/cli_gen.rs` or any compiler crate.
 
 | # | IDs | What | Acceptance Criteria | Size |
 |---|-----|------|---------------------|------|
-| A1 | RT59 | **Profile-aware CLI generation.** Expose `available_profiles` in `CompileOutput`. Template generates `--profile` enum flag. `unit_test` auto-enables DryRun. | Generated CLI for `pipelines/sdlc.dag` accepts `--profile unit_test`. | M |
-| A2 | RT58, RT60 | **Eliminate `sdlc.rs`.** Move param_source propagation to `detect_entrypoints`. Delete handwritten binary. | `sdlc.rs` deleted. Generated binary works with `--profile unit_test --dry-run`. | S |
-| A3 | RT61 | **Eliminate `deps_config.rs`.** Add `--mode ensure\|verify` to CLI template. | `deps_config.rs` deleted. `gunbc-deps-config --mode=ensure` works. | S |
-| A4 | RT62 | **Eliminate `pipeline.rs`.** Move `query_ci_status()` etc. to DSL func nodes (shell transport to `gh` CLI). | `pipeline.rs` deleted. `gunbc-pipeline --depth 1` works. | M |
-| A5 | RT63, RT64 | **Eliminate `workflow.rs`.** Subcommand dispatch in CLI generator. Move plan rendering to DSL. | `workflow.rs` deleted. `gunbc-workflow plan` and `run` work. | L |
-| A6 | RT65 | **Eliminate `infra.rs`.** 8 subcommands → DSL. `KEY=VALUE` parsing + multi-value flags in template. | `infra.rs` deleted. All 8 subcommands work via generated binary. | L |
+| A1 | RT58, RT60 | **Eliminate `sdlc.rs`.** Move param_source propagation to `detect_entrypoints`. Delete handwritten binary. Requires C20 (profile CLI gen). | `sdlc.rs` deleted. Generated binary works with `--profile unit_test --dry-run`. | S |
+| A2 | RT61 | **Eliminate `deps_config.rs`.** Requires C20 (mode flag support). | `deps_config.rs` deleted. `gunbc-deps-config --mode=ensure` works. | S |
+| A3 | RT62 | **Eliminate `pipeline.rs`.** Move `query_ci_status()` etc. to DSL func nodes (shell transport to `gh` CLI). | `pipeline.rs` deleted. `gunbc-pipeline --depth 1` works. | M |
+| A4 | RT63, RT64 | **Eliminate `workflow.rs`.** Requires C20 (subcommand dispatch). Move plan rendering to DSL. | `workflow.rs` deleted. `gunbc-workflow plan` and `run` work. | L |
+| A5 | RT65 | **Eliminate `infra.rs`.** 8 subcommands → DSL. Requires C20 (`KEY=VALUE` parsing + multi-value flags). | `infra.rs` deleted. All 8 subcommands work via generated binary. | L |
 | A7 | RT78 | **Workflow catalog → DSL data.** `dsl/config/workflow_catalog.dag` with `data` for `WORKFLOW_VARIANTS`. | `catalog.rs` data section deleted. Workflow count matches. | M |
 | A8 | RT79 | **Unit commands → DSL data.** `dsl/config/workflow_commands.dag` with per-workflow `{ program, args }`. | `unit_commands.rs` deleted. Workflow execution uses DSL commands. | M |
 | A9 | RT71 | **Extract generic workflow to `core/workflow/`.** Move planner, executor, admission, coordination, slo, projection, proof, errors, schema, key (9 modules, ~2.5k lines). | New `core/workflow/` crate. gunbc-dag imports it. All tests pass. | L |
 | A10 | RT66 | **Delete binary infrastructure.** Remove `BinaryArgs` from `gunbc-cli`. Clean orphaned support. | `BinaryArgs` deleted. No `#[allow(clippy::disallowed_methods)]` in generated bins. | S |
 | A11 | — | **Delete compensating tests.** 7 `workflow_*.rs` + `infra_cli.rs`. | Files deleted. `cargo test --workspace` passes. | S |
 
-**Chain**: A1 → A2 → A3 → A4; A5 → A6 → A10; A7 → A8 → A9 → A11
+**Prerequisite**: C20 (profile/mode/subcommand CLI gen) must land before A1-A5.
+**Chain**: A1 → A2 → A3; A4 → A5 → A6; A7 → A8 → A9 → A10 → A11
 
 ---
 
@@ -482,22 +486,32 @@ Delete every manual registry, extern bridge, and thin wrapper. Replace with DSL
 
 ---
 
-### Worker C: Compiler Pipeline Refactor (-8.8k net)
+### Worker C: Compiler Pipeline Refactor (-9.2k net)
 
 Restructure compiler into Google-style layer cake. Lowerer as pure functions.
 Resolver fail-closed. Stdlib cached. Types strong. Testgen/resolve extracted to core/.
+Also delivers CLI generator extensions that Worker A consumes.
+
+**Strategy**: strangler refactor. Build new lowerer phases alongside old code, test
+for parity on full `.dag` corpus, switch when proven. Parity requires canonical DAG
+representation (nodes sorted by ID, edges sorted by `(src, dst, ports, kind)`,
+volatile metadata stripped).
 
 Target layout for `daglang-lower/src/`:
 ```
 lib.rs        # public API + re-exports (~2k, down from 8.7k)
 context.rs    # LoweringContext struct
-callable.rs   # Phase 1: lower callables
+callable.rs   # Phase 1: lower callables → Vec<LoweredCallable>
+              #   Invariant: every node has ports for every declared param/return
 scope.rs      # ScopedBody (replaces ad-hoc detect_*)
 transport.rs  # Phase 3: derive transports → TransportManifest
-wiring.rs     # Phases 4-6: derive edges
+              #   Invariant: every service call site → exactly one triplet
+wiring.rs     # Phases 4-6: derive edges → Vec<DerivedEdge>
+              #   Invariant: every non-optional return binding has an edge or WiringGap
 resource.rs   # Phases 7-8: resource lifecycle
-assembly.rs   # Final: assemble_dag(parts)
-expr.rs       # LoweredExpr, LeafRef enum
+assembly.rs   # Final: assemble_dag(parts) — sole mutation point
+              #   Invariant: dedup by NodeKey, deterministic NodeId assignment
+expr.rs       # LoweredExpr, LeafRef enum (not string sentinels)
 eval.rs       # Pure evaluator
 spec.rs       # Service operation specs
 ```
@@ -509,13 +523,13 @@ spec.rs       # Service operation specs
 | C3 | RT45, RT46 | **Typed enums end-to-end.** `Value::Enum { ty, variant }`. Delete `TestClass::parse()` / `FermiCost::parse()` round-trips. Replace `unwrap_or()` fallbacks with errors. | Zero `parse()` on classification. Zero `unwrap_or()` in fidelity. | M |
 | C4 | RT82 | **LoweringContext + dead code.** Context struct grouping 8-11 params. Delete 18 `#[allow(clippy::too_many_arguments)]`. Delete all dead `_ => None` in wiring. | Zero `too_many_arguments`. Zero `_ => None` in wiring. All `.dag` compile. | L |
 | C5 | — | **Integrate scope.rs.** Replace `detect_*_branches_in_stmts`, `IfBranchSite`, `MatchBranchSite` with `ScopedBody`. Delete ad-hoc walk functions. | `IfBranchSite` deleted. `scope.rs` has non-test callers. DAG parity. | M |
-| C6 | — | **Extract transport derivation.** `transport.rs` module. Returns `TransportManifest` (pure data). | `add_service_transport_triplets` returns data, not mutates builder. | M |
-| C7 | — | **Expr walker totality + typed leaf refs.** Explicit arms for all `Expr` variants. `LeafRef` enum replaces `PARAM_REF_SENTINEL`. | Zero `_ => {}` in expr walkers. `PARAM_REF_SENTINEL` deleted. | M |
+| C6 | — | **Extract transport derivation.** `transport.rs` module. Returns `TransportManifest` (pure data). Invariant: every service call site maps to exactly one triplet. | `add_service_transport_triplets` returns data, not mutates builder. | M |
+| C7 | — | **Expr walker totality + typed leaf refs.** Explicit arms for all `Expr` variants. `LeafRef` enum: `Param { name, field, ty }`, `Callable { endpoint, port }`, `Service { endpoint, port }`. | Zero `_ => {}` in expr walkers. `PARAM_REF_SENTINEL` deleted. | M |
 | C8 | RT84 | **Delete dead AST scaffolding.** `MockResponseDef`, `error_cases()`, `@retry`, orphaned `hermetic`. | `MockResponseDef` deleted. `@retry` rejected by parser. `hermetic` warns. | S |
 | C9 | RT38, RT39 | **No panics, no silent parse.** `LowerError::InvalidTransportSpec` replaces `panic!`. Parse error for bad `auth_input`. | Zero `panic!` on user DSL. Parser test for `auth_input: "token"`. | S |
-| C10 | RT94 | **Resolve ReturnExprCompute split-brain.** Desugar complex returns into explicit DAG nodes. Delete `MetadataOnly` for `ReturnExprCompute`. Delete `ReturnExprComputeOp`. | Zero `ReturnExprCompute` in any compiled graph. `PrimitiveOpKind::ReturnExprCompute` deleted. | L |
-| C11 | RT67, RT72 | **Move resolve_service.rs to core/.** 2,190 lines → `core/resolve/src/service_ops.rs`. Split `resolve.rs`: generic framework (~1.6k) → `core/resolve/`. Domain dispatch (~700) stays. | `resolve_service.rs` deleted from gunbc-dag. New `core/resolve/` crate. | L |
-| C12 | RT73 | **Move testgen to core/.** 5 files (2,177 lines) → `core/codegen/src/testgen/`. | `testgen_dag/` deleted from gunbc-dag. Testgen works from `core/codegen`. | M |
+| C10 | RT94 | **Resolve ReturnExprCompute split-brain.** Desugar complex returns into explicit DAG nodes so emit/interpret share semantics. Delete `MetadataOnly` for `ReturnExprCompute`. Delete `ReturnExprComputeOp`. | Zero `ReturnExprCompute` in any compiled graph. `PrimitiveOpKind::ReturnExprCompute` deleted. | L |
+| C11 | RT67, RT72 | **Move resolve_service.rs to core/.** 2,190 lines → `core/resolve/src/service_ops.rs`. Split `resolve.rs`: generic framework (~1.6k) → `core/resolve/`. Domain dispatch (~700) stays. Must delete app-specific string dispatch in the move. | `resolve_service.rs` deleted from gunbc-dag. New `core/resolve/` crate. Moved code is simpler than source. | L |
+| C12 | RT73 | **Move testgen to core/.** 5 files (2,177 lines) → `core/codegen/src/testgen/`. Must delete gunbc-dag-specific assumptions in the move. | `testgen_dag/` deleted from gunbc-dag. Testgen works from `core/codegen`. | M |
 | C13 | RT68 | **Split mock_defaults.** Generic probing (~350) → `core/test/`. Delete GCP blob (~230). | `mock_defaults.rs` deleted. Auto-mock works from `core/test`. | S |
 | C14 | RT89 | **REST status-code checking.** `GenericRestParseOp` checks status before field extraction. Non-2xx → error. | 401 → structured error (not "field missing"). Test: mock 401 → error has status. | M |
 | C15 | RT88 | **Fail-closed resolver audit.** Classify all `_ =>` fallbacks. Delete `passthrough_fallback_value()` (70 lines). | Zero undocumented fallbacks. `passthrough_fallback_value` deleted. | M |
@@ -523,8 +537,9 @@ spec.rs       # Service operation specs
 | C17 | RT96 | **Kill `propagate_to_param_sources`.** Fix boundary detection. Param source nodes auto-fed. | `propagate_to_param_sources` deleted. One port per input. | M |
 | C18 | — | **Executor dead code.** Delete `looks_effectful_without_kind()`. Delete unwired credential expiry plumbing. | Dead code deleted. `cargo clippy` clean. | S |
 | C19 | RT83 | **Restore passthrough enforcement.** After C4+C5+C7 wire dag_util branches, restore `ExecError` for required outputs with no input. Code ref: `resolve.rs:99` TODO. | `resolve.rs` returns `ExecError`. CI clean (no unwired branches). | S |
+| C20 | RT59, RT63 | **CLI generator: profile, mode, subcommand support.** Expose `available_profiles` in `CompileOutput`. Template generates `--profile` enum flag, `--mode ensure\|verify`, subcommand dispatch for multi-func modules. `KEY=VALUE` arg parsing for infra-style tools. Unblocks Worker A. | Generated CLI for `pipelines/sdlc.dag` accepts `--profile`. Generated CLI for multi-func modules has subcommands. | L |
 
-**Chain**: C1 → C3; C2; C4 → C5 → C6 → C10; C7; C8; C9; C11 → C14 → C15 → C19; C12; C13; C16; C17; C18
+**Chain**: C1 → C3; C2; C4 → C5 → C6 → C10; C7; C8; C9; C11 → C14 → C15 → C19; C12; C13; C16; C17; C18; C20 (early, unblocks A)
 
 ---
 
